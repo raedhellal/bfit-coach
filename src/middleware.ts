@@ -123,9 +123,16 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   /**
-   * Everything except Next's own assets and the auth route handlers. `/api/auth/*` is
-   * excluded because those handlers ARE the way in and out of a session; guarding
-   * them would make login unreachable.
+   * Everything except Next's own assets, the auth route handlers and the invite
+   * landing page.
+   *
+   * `/api/auth/*` is excluded because those handlers ARE the way in and out of a
+   * session; guarding them would make login unreachable.
+   *
+   * `/i/*` is excluded because it is the one PUBLIC page (ADR-0012 D5, edge case 3):
+   * it is opened by an invited trainee, who has no Evoli Pro account and could never
+   * pass this guard. It reads no cookie and calls no api, so there is nothing behind
+   * it to protect.
    */
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!api/auth|i/|_next/static|_next/image|favicon.ico|robots.txt).*)"],
 };

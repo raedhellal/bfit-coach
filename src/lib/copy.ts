@@ -88,6 +88,26 @@ export const copy = {
     capacityReached: "Starter includes 2 profiles.",
   },
 
+  /**
+   * /i/<token> — the page the invite QR encodes (ADR-0012 D5, EV-183 edge case 3).
+   *
+   * Trainee-facing, not coach-facing: the wordmark here is "Evoli Fit", the mobile
+   * app, not "Evoli Pro". Nobody who scans this code owns the back-office.
+   *
+   * There is no store listing yet (⛔ D8), so the fallback says "coming soon" rather
+   * than linking somewhere dead — a broken App Store link is worse than a sentence.
+   */
+  invitePage: {
+    brand: "Evoli Fit",
+    title: "Your coach invited you to Evoli",
+    body: "Open the invite in the Evoli Fit app to see who is inviting you. Nothing is shared until you accept.",
+    open: "Open in Evoli Fit",
+    // Edge case 3, verbatim: a phone without the app gets a sentence, not a white screen.
+    fallback:
+      "Don't have the app yet? Install Evoli Fit, then open this link again.",
+    storesComingSoon: "App Store and Google Play links coming soon.",
+  },
+
   client: {
     coachedSince: (date: string) => `Coached since ${date}`,
     adherence: "Adherence this week",

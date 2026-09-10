@@ -61,7 +61,7 @@ browser:
 | `API_BASE_URL` | `http://localhost:8080` | b-fit-api. Trailing slashes stripped in `src/lib/env.ts`. |
 | `COACH_API_MODE` | `live` | `fixture` serves in-memory demo data instead of the api. |
 | `COACH_FIXTURE_SCENARIO` | `populated` | fixture only. `empty` = zero-trainee roster. |
-| `INVITE_BASE_URL` | `http://localhost:3300` | The host the invite URL + QR encode. **Use the LAN IP for the demo.** |
+| `INVITE_BASE_URL` | `http://localhost:3300` | The host the invite URL + QR encode; the link is `<INVITE_BASE_URL>/i/<token>`. **Set it to the Mac's LAN IP for the demo** (`ipconfig getifaddr en0`, e.g. `http://192.168.1.24:3300`) and start Next with `npm run dev -- -H 0.0.0.0`, or a phone cannot reach it. |
 
 ### The fixture switch
 
@@ -89,10 +89,39 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 | `/clients/[id]` | Read-only trainee overview: four stat tiles, 8-week weight trend, red flags, revoke. |
 | `POST /api/auth/login` | BFF sign-in — proxies `POST /auth/login`, sets the cookies. |
 | `POST /api/auth/logout` | Clears both cookies. |
+| `/i/[token]` | **Public** invite landing page — the page the QR encodes. |
 
-`/i/<token>` — the invite landing page ADR-0012 D5 describes — is **not built here yet**;
-the invite URL is composed and QR-encoded already, so that page is the only missing
-piece of the mobile hand-off.
+### The invite link
+
+`src/lib/coachApi.ts` composes exactly one shape, shown in the modal and QR-encoded
+byte-identically (AC2):
+
+```
+<INVITE_BASE_URL>/i/<token>          e.g. http://192.168.1.24:3300/i/<43-char base64url token>
+```
+
+`/i/[token]` is server-rendered, **public** (excluded from the middleware matcher) and
+makes **no API call** — the token is opaque to this surface; b-fit-api validates it when
+the app accepts. It shows the Evoli Fit wordmark, "Your coach invited you to Evoli", one
+button linking to `evolifit://my-coach/invite/<token>`, and a fallback line for a phone
+without the app (no store links yet — ⛔ D8 — so it says "coming soon" instead of
+shipping a dead href). The token is never rendered as text, only inside that href.
+
+It does **not** auto-redirect: iOS Safari only follows a custom scheme from a user
+gesture, so it must stay a real `<a href>` the visitor taps.
+
+#### Demoing it on a phone
+
+A phone cannot resolve `localhost`, so both of these are required:
+
+```sh
+ipconfig getifaddr en0                 # e.g. 192.168.1.24
+INVITE_BASE_URL=http://192.168.1.24:3300 npm run dev -- -H 0.0.0.0
+```
+
+`-H 0.0.0.0` makes Next listen on the LAN instead of the loopback interface; without it
+the QR resolves to a host that refuses the connection. Phone and Mac must be on the same
+Wi-Fi, and macOS may prompt to allow incoming connections for Node the first time.
 
 ## The session (ADR-0012 D5)
 
@@ -163,6 +192,10 @@ server-rendered and CSS chooses (`.only-wide` / `.only-narrow` in `globals.css`)
 npx playwright install chromium   # first run only
 npm run test:e2e
 ```
+
+`qa/invite-landing.spec.ts` covers the public `/i/<token>` page: it renders with no
+session, the `evolifit://my-coach/invite/<token>` href is the only link on it, the token
+never appears as text, and the tap target survives 390 px.
 
 `qa/coach-smoke.spec.ts` runs in fixture mode with the empty scenario and covers the
 login redirect, the roster empty state and its capacity sentence, the httpOnly cookie
