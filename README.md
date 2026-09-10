@@ -93,6 +93,7 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 | `/login` | Credentials. The only page reachable **without a session**. |
 | `/` | Roster: capacity meter, empty state or rows (needs-attention first), invite modal. |
 | `/clients/[id]` | Read-only trainee overview: four stat tiles, 8-week weight trend, red flags, revoke. |
+| `/clients/denied` | The trainee-is-not-on-your-roster page, served with **403**. `/clients/[id]`'s layout redirects here when the api answers 403; `middleware.ts` sets the status, because a page render cannot. Carries no id and makes no api call. |
 | `POST /api/auth/login` | BFF sign-in — proxies `POST /auth/login`, sets the cookies. |
 | `POST /api/auth/logout` | Clears both cookies. |
 | `/i/[token]` | **Public** invite landing page — the page the QR encodes. Inside the middleware matcher, let through explicitly, **GET/HEAD only** (anything else answers 405). |
@@ -149,7 +150,13 @@ This app is a **BFF**: the browser never holds a token and never calls `b-fit-ap
 - `src/middleware.ts` guards every page except `/login` and the public `/i/*` (which it
   handles first, allowing GET/HEAD and answering 405 otherwise), refreshes an expired access
   token through `POST /auth/refresh` (it is the only place that can write the rotated
-  cookie back), and requires `COACH` in the token's `roles` claim.
+  cookie back), requires `COACH` in the token's `roles` claim, and serves
+  `/clients/denied` with **403** — the one non-200 status in the app.
+- The roster lives in the `(roster)` route group so that its `loading.tsx` skeleton
+  belongs to `/` alone. A `loading.tsx` at the app root would flush every response
+  before the render begins, and `/clients/[id]`'s layout would then be unable to
+  redirect a denied read to the 403 page (it would degrade to a `<meta refresh>` served
+  with 200 — BUG-139).
 - `src/lib/apiFetch.ts` attaches `Authorization: Bearer` on the server and retries once
   through `/auth/refresh` on a 401. Concurrent calls from one render (the roster fetches
   `/coach-portal/me` and `/coach-portal/clients` together) share a single in-flight

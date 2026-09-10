@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { CoachShell } from "@/components/shell/CoachShell";
+import { ClientNotice } from "@/components/client/ClientNotice";
 import { RevokeMenu } from "@/components/client/RevokeMenu";
 import { StatTile } from "@/components/client/StatTile";
 import { TrendChart } from "@/components/ui/charts";
-import { Avatar, Badge, Button, Card, CardHead } from "@/components/ui/kit";
+import { Avatar, Badge, Card, CardHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
-import { coachApi, isForbidden, type ClientOverview } from "@/lib/coachApi";
+import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
 import { formatDate, formatInstant, formatKg, formatShortDate } from "@/lib/format";
 import { weightCaption } from "@/lib/weight";
@@ -24,49 +25,24 @@ import { weightCaption } from "@/lib/weight";
 export const dynamic = "force-dynamic";
 
 export default async function ClientPage({ params }: { params: { id: string } }) {
-  let overview: ClientOverview | null = null;
-  let forbidden = false;
-
-  // The coach's own name is only needed for the header, so a failure there must not
-  // take down the overview: it degrades to a header without a name.
-  const mePromise = coachApi.getMe().catch(() => null);
-
-  try {
-    overview = await coachApi.getClient(params.id);
-  } catch (err) {
-    // ADR-0012 D4: the coach portal answers 403 for a foreign id AND for one that does
-    // not exist, so there is no existence oracle. Both land here, and they must read
-    // the same to the coach.
-    forbidden = isForbidden(err);
-  }
-
-  const me = await mePromise;
+  /**
+   * Both reads are the layout's, memoised for this request (src/lib/clientOverview.ts)
+   * — this component does not call the api a second time.
+   *
+   * The 403 case never reaches here: `layout.tsx` has already redirected to
+   * /clients/denied, which middleware serves with the status AC5 asks for. What is left
+   * for this branch is the api being unreachable or answering 5xx, and that must not
+   * tell the coach they are not linked to a trainee they may well be linked to.
+   */
+  const [{ overview }, me] = await Promise.all([
+    readClientOverview(params.id),
+    readCoachMe(),
+  ]);
 
   if (!overview) {
     return (
       <CoachShell coachName={me?.displayName}>
-        <Card>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 14,
-              padding: "32px 16px",
-              textAlign: "center",
-            }}
-          >
-            <UiIcon name="ban" size={26} color="var(--err-ink)" />
-            <div style={{ fontSize: 14.5, color: "var(--ink-2)", maxWidth: 380, lineHeight: 1.5 }}>
-              {forbidden ? copy.client.notFound : copy.client.loadError}
-            </div>
-            <Link href="/">
-              <Button variant="secondary" icon="arrowL">
-                {copy.shell.backToRoster}
-              </Button>
-            </Link>
-          </div>
-        </Card>
+        <ClientNotice message={copy.client.loadError} />
       </CoachShell>
     );
   }

@@ -20,6 +20,22 @@ const ACCESS_COOKIE = "evoli_pro_at";
 const REFRESH_COOKIE = "evoli_pro_rt";
 const LOGIN = "/login";
 
+/**
+ * /clients/denied — the one route this app serves with a non-200 status
+ * (EV-183 AC5, BUG-139).
+ *
+ * A Next.js page render cannot set a response status, so `/clients/[id]`'s layout
+ * redirects here when b-fit-api answers 403 for the id and middleware — the only layer
+ * that can — rewrites the path onto itself with `status: 403`. The rewrite (rather than a bare
+ * `new NextResponse(html)`) is what keeps the friendly sentence in JSX: the page still
+ * renders through the normal pipeline, it is simply served under 403.
+ *
+ * The authorization decision is still b-fit-api's and is still made per request by the
+ * overview's own fetch. This regex only decides which status a page that has ALREADY
+ * been denied is served with, which is why matching it does not weaken ADR-0012 D3.
+ */
+const DENIED_ROUTE = /^\/clients\/denied\/?$/;
+
 const API_BASE_URL = (process.env.API_BASE_URL || "http://localhost:8080").replace(
   /\/+$/,
   ""
@@ -122,7 +138,9 @@ export async function middleware(req: NextRequest) {
   // AC1: only COACH accounts may enter. The sentence itself is rendered by /login.
   if (!hasCoachRole(token)) return toLogin(req, "not_coach");
 
-  const res = NextResponse.next();
+  const res = DENIED_ROUTE.test(pathname)
+    ? NextResponse.rewrite(req.nextUrl, { status: 403 })
+    : NextResponse.next();
   if (rotated) {
     res.cookies.set(ACCESS_COOKIE, rotated.accessToken, {
       ...cookieOptions(),
