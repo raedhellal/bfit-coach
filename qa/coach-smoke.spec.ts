@@ -79,6 +79,26 @@ test("the roster is readable at 390 px with no horizontal scroll", async ({ page
   expect(overflows, "the page must not scroll sideways at 390 px").toBe(false);
 });
 
+test("every control on the roster is a 44 px touch target at 390 px", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page);
+
+  // BUG-146: "Invite a trainee" measured 38.0 px — AC1 asks for tappable at 390 px and
+  // 44 px is the Apple HIG / WCAG 2.5.5 minimum.
+  const invite = page.getByRole("button", { name: "Invite a trainee" });
+  const box = await invite.boundingBox();
+  expect(box, "the invite button must be laid out").not.toBeNull();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+
+  // The floor lives in the kit's Button, not in this one call site, so assert it for
+  // every button on the screen — a second control regressing is the same bug.
+  const heights = await page
+    .locator("button")
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+  expect(heights.length).toBeGreaterThan(0);
+  for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
+});
+
 test("the invite modal shows a link, a QR code and the expiry sentence", async ({ page }) => {
   await signIn(page);
   await page.getByRole("button", { name: "Invite a trainee" }).click();

@@ -13,6 +13,18 @@ import type { CSSProperties, ReactNode } from "react";
 import { UiIcon } from "./icons";
 
 type Sx = CSSProperties;
+
+/**
+ * The minimum height of anything clickable in this kit (BUG-146).
+ *
+ * 44 px is Apple's HIG minimum and WCAG 2.5.5 "Target Size (Enhanced)". EV-183 AC1
+ * demos this back-office at a 390 px viewport, where every control is a thumb target,
+ * so the floor is enforced HERE rather than by each call site passing `size="lg"` —
+ * the roster's "Invite a trainee" button was 38 px precisely because the default size
+ * decided the touch target. `size` now chooses type scale and padding only; the height
+ * is not a per-screen decision.
+ */
+export const MIN_TOUCH_TARGET = 44;
 // ───────────────────────── Buttons ─────────────────────────
 type BtnVariant =
   | "primary"
@@ -52,7 +64,11 @@ export function Button({
   ariaLabel?: string;
   style?: Sx;
 }) {
-  const S = { sm: { h: 32, px: 12, fs: 13 }, md: { h: 38, px: 15, fs: 13.5 }, lg: { h: 44, px: 20, fs: 14.5 } }[size];
+  const S = {
+    sm: { h: MIN_TOUCH_TARGET, px: 12, fs: 13 },
+    md: { h: MIN_TOUCH_TARGET, px: 15, fs: 13.5 },
+    lg: { h: MIN_TOUCH_TARGET, px: 20, fs: 14.5 },
+  }[size];
   const V: Record<BtnVariant, Sx> = {
     primary: { background: "var(--blue-500)", color: "#fff", border: "1px solid transparent", boxShadow: "var(--e-1)" },
     gradient: { background: "var(--grad-energy)", color: "#fff", border: "1px solid transparent", boxShadow: "0 4px 14px rgba(79,124,255,0.3)" },
@@ -110,7 +126,9 @@ export function IconButton({
   title?: string;
   style?: Sx;
 }) {
-  const d = size === "sm" ? 30 : 36;
+  // Square, so the 44 px floor applies to both axes: the overview's "More" trigger is
+  // the only icon-only control in the app and it opens the revoke menu.
+  const d = MIN_TOUCH_TARGET;
   return (
     <button
       title={title}
