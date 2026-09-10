@@ -2,6 +2,7 @@ import "server-only";
 import { apiFetch, ApiError } from "./apiFetch";
 import { COACH_API_MODE, INVITE_BASE_URL } from "./env";
 import { fixtureCoachApi } from "./coachApi.fixture";
+import { sanitiseCoachName } from "./inviteName";
 
 /**
  * The ONE module that knows b-fit-api's coach-portal contract.
@@ -140,10 +141,23 @@ export const coachApi = {
    * phone can reach it on (ADR-0012 D5 — LAN IP for the demo, `pro.evoli.fit` when
    * ⛔ D8 lands). Shown and QR-encoded from this one string so the two are
    * byte-identical, which is AC2.
+   *
+   * The coach's display name is appended as `?coach=<name>` (EV-183 AC3): the mobile
+   * consent screen has to name the coach *before* the trainee accepts, and the api has
+   * no pre-accept lookup for an invite token, so the name has to travel on the link.
+   * It is a hint, not a credential — the app falls back to "Your coach" without it, so
+   * a failed /coach-portal/me must never cost the coach their invite.
    */
   async createInviteWithUrl(): Promise<Invite> {
-    const invite = await impl.createInvite();
-    return { ...invite, url: `${INVITE_BASE_URL}/i/${invite.token}` };
+    const [inviteResult, meResult] = await Promise.allSettled([impl.createInvite(), impl.getMe()]);
+    if (inviteResult.status === "rejected") throw inviteResult.reason;
+    const invite = inviteResult.value;
+
+    const coachName =
+      meResult.status === "fulfilled" ? sanitiseCoachName(meResult.value.displayName) : null;
+    const query = coachName ? `?coach=${encodeURIComponent(coachName)}` : "";
+
+    return { ...invite, url: `${INVITE_BASE_URL}/i/${invite.token}${query}` };
   },
 };
 

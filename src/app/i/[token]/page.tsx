@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Logo } from "@/components/ui/icons";
 import { copy } from "@/lib/copy";
+import { sanitiseCoachName } from "@/lib/inviteName";
 
 /**
  * /i/<token> — the invite landing page (ADR-0012 D5, EV-183 edge case 3).
@@ -24,18 +25,39 @@ import { copy } from "@/lib/copy";
  * in the title. It appears only inside the anchor's href, where it has to be.
  */
 
-export const metadata: Metadata = {
-  title: copy.invitePage.title,
-  description: copy.invitePage.body,
-  robots: { index: false, follow: false },
-};
+type SearchParams = { [key: string]: string | string[] | undefined };
+
+export function generateMetadata({ searchParams }: { searchParams: SearchParams }): Metadata {
+  const coachName = sanitiseCoachName(searchParams.coach);
+  return {
+    // Still no token anywhere near the title — only the coach's name, which is public
+    // to anyone holding the link anyway.
+    title: coachName ? copy.invitePage.titleFrom(coachName) : copy.invitePage.title,
+    description: copy.invitePage.body,
+    robots: { index: false, follow: false },
+  };
+}
 
 // The token is per-request and this page must never be prerendered into a shared HTML
 // file (a cached /i/<token> would be one invite handed to the next scanner).
 export const dynamic = "force-dynamic";
 
-export default function InvitePage({ params }: { params: { token: string } }) {
-  const deepLink = `evolifit://my-coach/invite/${encodeURIComponent(params.token)}`;
+export default function InvitePage({
+  params,
+  searchParams,
+}: {
+  params: { token: string };
+  searchParams: SearchParams;
+}) {
+  // AC3: the coach's name is forwarded to the app on the deep link exactly as it was
+  // received. The app needs it because b-fit-api cannot resolve an invite token before
+  // the trainee accepts, so without this query the consent screen can only say
+  // "Your coach". It is re-encoded rather than concatenated raw so a name containing
+  // `&`, `#` or a space cannot split the deep link into extra parameters.
+  const coachName = sanitiseCoachName(searchParams.coach);
+  const deepLink =
+    `evolifit://my-coach/invite/${encodeURIComponent(params.token)}` +
+    (coachName ? `?coach=${encodeURIComponent(coachName)}` : "");
 
   return (
     <main
@@ -78,7 +100,7 @@ export default function InvitePage({ params }: { params: { token: string } }) {
             color: "var(--ink)",
           }}
         >
-          {copy.invitePage.title}
+          {coachName ? copy.invitePage.titleFrom(coachName) : copy.invitePage.title}
         </h1>
 
         <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: "var(--ink-2)" }}>

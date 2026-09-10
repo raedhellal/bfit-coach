@@ -78,7 +78,10 @@ test("the invite modal shows a link, a QR code and the expiry sentence", async (
   const link = page.getByLabel("Invite link");
   await expect(link).toBeVisible();
   const url = await link.inputValue();
-  expect(url).toMatch(/^http:\/\/localhost:\d+\/i\/[A-Za-z0-9_-]{43}$/);
+  // AC3: the coach's display name rides on the link as ?coach=, because b-fit-api has no
+  // pre-accept lookup for an invite token and the app's consent screen has to name the
+  // coach before the trainee accepts. The fixture coach is "Alex R.".
+  expect(url).toMatch(/^http:\/\/localhost:\d+\/i\/[A-Za-z0-9_-]{43}\?coach=Alex(%20|\+)R\.$/);
 
   // AC2, verbatim.
   await expect(page.getByText("This link works once and expires in 7 days.")).toBeVisible();

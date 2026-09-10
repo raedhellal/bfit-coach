@@ -100,6 +100,13 @@ export const copy = {
   invitePage: {
     brand: "Evoli Fit",
     title: "Your coach invited you to Evoli",
+    /**
+     * AC3: the trainee should see who is inviting them before they accept. The name
+     * arrives as the optional ?coach= query the back-office composed; when it is absent
+     * (an old link, a stripped query, a failed /coach-portal/me) the headline above
+     * stands as-is and the app still says "Your coach".
+     */
+    titleFrom: (coachName: string) => `${coachName} invited you to Evoli Fit`,
     body: "Open the invite in the Evoli Fit app to see who is inviting you. Nothing is shared until you accept.",
     open: "Open in Evoli Fit",
     // Edge case 3, verbatim: a phone without the app gets a sentence, not a white screen.
