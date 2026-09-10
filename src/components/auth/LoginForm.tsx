@@ -29,6 +29,10 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
         return copy.login.notACoach;
       case "INVALID_CREDENTIALS":
         return copy.login.invalidCredentials;
+      // 429 from b-fit-api's login throttle. Saying "incorrect" here would send a coach
+      // who typed the right password into a retry loop that only extends the lockout.
+      case "RATE_LIMITED":
+        return copy.login.rateLimited;
       case "MFA_UNSUPPORTED":
         return copy.login.mfaUnsupported;
       case "API_UNAVAILABLE":

@@ -1,4 +1,5 @@
 import { copy } from "@/lib/copy";
+import { tierLabel } from "@/lib/format";
 
 /**
  * "0 / 2 profiles · Starter" over a thin bar (AC1/AC4/AC6 — the sentence is verbatim
@@ -18,7 +19,7 @@ export function CapacityMeter({
   tier: string;
 }) {
   const pct = capacity > 0 ? Math.min(100, (active / capacity) * 100) : 0;
-  const label = copy.roster.capacity(active, capacity, titleCase(tier));
+  const label = copy.roster.capacity(active, capacity, tierLabel(tier));
   return (
     <div style={{ minWidth: 210, maxWidth: 320, width: "100%" }}>
       <div
@@ -57,9 +58,4 @@ export function CapacityMeter({
       </div>
     </div>
   );
-}
-
-function titleCase(value: string): string {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }

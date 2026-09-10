@@ -42,18 +42,26 @@ test("signing in lands on the roster empty state with the capacity meter", async
   await expect(page.getByText("0 / 2 profiles · Starter", { exact: true })).toBeVisible();
 });
 
-test("the session cookie is httpOnly and unreadable from JavaScript", async ({ page, context }) => {
+test("both session cookies are httpOnly and unreadable from JavaScript", async ({ page, context }) => {
   await signIn(page);
 
   const cookies = await context.cookies();
-  const access = cookies.find((c) => c.name === "evoli_pro_at");
-  expect(access, "the access-token cookie must exist").toBeTruthy();
-  expect(access!.httpOnly).toBe(true);
-  expect(access!.sameSite).toBe("Lax");
+  // BOTH cookies, not just the access token. The refresh token is the longer-lived
+  // credential of the two — it mints access tokens for 30 days — so a refresh cookie
+  // that lost `httpOnly` would be the worse leak of the pair, and asserting only the
+  // access cookie would not notice.
+  for (const name of ["evoli_pro_at", "evoli_pro_rt"]) {
+    const cookie = cookies.find((c) => c.name === name);
+    expect(cookie, `the ${name} cookie must exist`).toBeTruthy();
+    expect(cookie!.httpOnly, `${name} must be httpOnly`).toBe(true);
+    expect(cookie!.sameSite, `${name} must be SameSite=Lax`).toBe("Lax");
+    expect(cookie!.path, `${name} must be scoped to /`).toBe("/");
+  }
 
   // AC1: no token is reachable from the browser.
   const documentCookie = await page.evaluate(() => document.cookie);
   expect(documentCookie).not.toContain("evoli_pro_at");
+  expect(documentCookie).not.toContain("evoli_pro_rt");
   const storage = await page.evaluate(() => JSON.stringify(window.localStorage));
   expect(storage).toBe("{}");
 });
@@ -94,8 +102,10 @@ test("the invite modal shows a link, a QR code and the expiry sentence", async (
   await expect(qr).toBeVisible();
   await expect(qr).toHaveAttribute("src", /^data:image\/png;base64,/);
 
-  // "Send by email" is present but inert, with the reason on it.
-  const email = page.getByRole("button", { name: "Send by email" });
-  await expect(email).toBeDisabled();
-  await expect(email).toHaveAttribute("title", "coming later");
+  // Nothing inert in the modal: email sending is NOT in the demo (EV-183 "NOT in the
+  // demo" item 7), so there is no disabled control inviting the question on stage.
+  await expect(page.getByRole("button", { name: /email/i })).toHaveCount(0);
+  // The roster behind it is the empty scenario (0 / 2), so nothing on this screen is
+  // legitimately disabled either — one page-wide assertion covers the modal.
+  await expect(page.locator("button[disabled]")).toHaveCount(0);
 });

@@ -78,6 +78,21 @@ async function refresh(refreshToken: string): Promise<{
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  /**
+   * /i/* is the one PUBLIC route (ADR-0012 D5, edge case 3): an invited trainee has no
+   * Evoli Pro account and could never pass the guard below. It stays inside the matcher
+   * rather than being excluded from it, so that this file — not a silent gap in a regex
+   * — is what states the route is public, and so the method can be narrowed: the page is
+   * a read, and a POST to a public URL that carries a single-use credential should be
+   * refused rather than served.
+   */
+  if (pathname === "/i" || pathname.startsWith("/i/")) {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      return new NextResponse(null, { status: 405, headers: { Allow: "GET, HEAD" } });
+    }
+    return NextResponse.next();
+  }
   const access = req.cookies.get(ACCESS_COOKIE)?.value || null;
   const refreshToken = req.cookies.get(REFRESH_COOKIE)?.value || null;
   const onLogin = pathname === LOGIN;
@@ -123,16 +138,14 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   /**
-   * Everything except Next's own assets, the auth route handlers and the invite
-   * landing page.
+   * Everything except Next's own assets and the auth route handlers.
    *
    * `/api/auth/*` is excluded because those handlers ARE the way in and out of a
    * session; guarding them would make login unreachable.
    *
-   * `/i/*` is excluded because it is the one PUBLIC page (ADR-0012 D5, edge case 3):
-   * it is opened by an invited trainee, who has no Evoli Pro account and could never
-   * pass this guard. It reads no cookie and calls no api, so there is nothing behind
-   * it to protect.
+   * `/i/*` is deliberately NOT excluded here — it is handled at the top of `middleware`,
+   * where being public is an explicit statement with an explicit method check instead of
+   * an absence from a regex.
    */
-  matcher: ["/((?!api/auth|i/|_next/static|_next/image|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt).*)"],
 };

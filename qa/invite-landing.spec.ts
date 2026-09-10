@@ -78,3 +78,24 @@ test("the invite page fits 390 px with a full-width tap target", async ({ page }
   // Apple's minimum tap target is 44 px.
   expect(box!.height).toBeGreaterThanOrEqual(44);
 });
+
+test("the public invite page answers GET but refuses any other method", async ({ request }) => {
+  // /i/* stays inside the middleware matcher and is let through explicitly there, so
+  // "public" is a statement in code rather than a gap in a regex — and the statement
+  // can be narrowed. The page is a read; a POST to a URL that carries a single-use
+  // credential is refused rather than served.
+  const get = await request.get(`/i/${TOKEN}`);
+  expect(get.status()).toBe(200);
+
+  const post = await request.post(`/i/${TOKEN}`);
+  expect(post.status()).toBe(405);
+  expect(post.headers()["allow"]).toBe("GET, HEAD");
+
+  const head = await request.head(`/i/${TOKEN}`);
+  expect(head.status()).toBe(200);
+
+  for (const method of ["PUT", "DELETE", "PATCH"] as const) {
+    const res = await request.fetch(`/i/${TOKEN}`, { method });
+    expect(res.status(), `${method} must be refused`).toBe(405);
+  }
+});

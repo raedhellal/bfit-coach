@@ -149,3 +149,20 @@ test("a hostile coach name is plain text, capped at 60 characters, and cannot sp
   expect([...query.keys()]).toEqual(["coach"]);
   expect(query.get("coach")!.length).toBeLessThanOrEqual(60);
 });
+
+test("a bidi override in the coach name is stripped, not rendered", async ({ page }) => {
+  // U+202E (RIGHT-TO-LEFT OVERRIDE) reverses everything after it, so a name can make
+  // the headline read a word the coach never typed — invisible in the URL and in a
+  // review. sanitiseCoachName drops U+202A–U+202E along with the other bidi controls.
+  const rlo = "\u202E";
+  const hostile = `Alex${rlo}moc.live${rlo} R.`;
+  await page.goto(`/i/${TOKEN}?coach=${encodeURIComponent(hostile)}`);
+
+  const heading = await page.getByRole("heading").innerText();
+  expect(heading).not.toContain(rlo);
+  expect(heading).toBe("Alex moc.live R. invited you to Evoli Fit");
+
+  const href = await page.getByRole("link", { name: "Open in Evoli Fit" }).getAttribute("href");
+  expect(href).not.toContain(rlo);
+  expect(href).not.toContain("%E2%80%AE");
+});

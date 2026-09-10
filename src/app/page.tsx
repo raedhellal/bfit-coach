@@ -6,6 +6,7 @@ import { Button, Card, EmptyState, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { coachApi, sortNeedsAttentionFirst, type CoachMe, type RosterClient } from "@/lib/coachApi";
 import { copy } from "@/lib/copy";
+import { tierLabel } from "@/lib/format";
 
 /**
  * / — the roster (AC1, AC4).
@@ -67,6 +68,9 @@ export default async function RosterPage() {
   }
 
   const full = me.active >= me.capacity;
+  // Edge case 5's sentence, built from the api's own tier and capacity so it can never
+  // contradict the meter beside it.
+  const fullReason = copy.roster.inviteFull(tierLabel(me.tier), me.capacity);
 
   return (
     <CoachShell coachName={me.displayName}>
@@ -75,7 +79,7 @@ export default async function RosterPage() {
         sub={copy.roster.subtitle}
         actions={
           clients.length > 0 ? (
-            <InviteButton disabled={full} disabledReason={copy.roster.inviteFull} />
+            <InviteButton disabled={full} disabledReason={fullReason} />
           ) : undefined
         }
       />
@@ -92,7 +96,7 @@ export default async function RosterPage() {
         >
           <CapacityMeter active={me.active} capacity={me.capacity} tier={me.tier} />
           {full && (
-            <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{copy.roster.inviteFull}</span>
+            <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{fullReason}</span>
           )}
         </div>
       </Card>
@@ -103,7 +107,7 @@ export default async function RosterPage() {
             icon="users"
             title={copy.roster.emptyTitle}
             sub={copy.roster.emptyBody}
-            action={<InviteButton disabled={full} disabledReason={copy.roster.inviteFull} />}
+            action={<InviteButton disabled={full} disabledReason={fullReason} />}
           />
         </Card>
       ) : (

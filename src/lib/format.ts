@@ -59,3 +59,12 @@ export function formatKgDelta(delta: number): string {
   if (rounded === 0) return "0.0 kg";
   return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toFixed(1)} kg`;
 }
+
+/**
+ * The api's `capacity_tier` enum ("STARTER") as a word a coach reads ("Starter").
+ * Shared by the capacity meter and the at-capacity sentence so the two cannot drift.
+ */
+export function tierLabel(tier: string): string {
+  if (!tier) return tier;
+  return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
+}

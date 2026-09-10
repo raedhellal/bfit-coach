@@ -51,9 +51,25 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = readRefreshToken();
-  if (!refreshToken) return null;
+/**
+ * The single in-flight rotation, keyed by the refresh token that started it.
+ *
+ * One render can fan out several api calls — `/` fetches `/coach-portal/me` and
+ * `/coach-portal/clients` in a `Promise.all` — and if the access token has just
+ * expired they all come back 401 at the same moment. Without this, each of them posts
+ * its own `/auth/refresh` with the SAME refresh token: the api rotates once per call,
+ * so every rotation but the last invalidates the token the others are about to use,
+ * and the coach is signed out by a plain reload.
+ *
+ * Keyed by the refresh token, not global: this is module state in a server process
+ * shared by every request, and handing coach A's fresh access token to coach B's
+ * request would be a session leak. Only a caller presenting the same refresh token —
+ * i.e. the same session — can join the flight. The entry is dropped as soon as it
+ * settles, so a later 401 refreshes again.
+ */
+let inFlightRefresh: { key: string; promise: Promise<string | null> } | null = null;
+
+async function requestRefresh(refreshToken: string): Promise<string | null> {
   try {
     const tokens = await apiPost<{ accessToken?: string }>("/auth/refresh", {
       refreshToken,
@@ -78,9 +94,22 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = readRefreshToken();
+  if (!refreshToken) return Promise.resolve(null);
+  if (inFlightRefresh && inFlightRefresh.key === refreshToken) return inFlightRefresh.promise;
+
+  const promise = requestRefresh(refreshToken).finally(() => {
+    if (inFlightRefresh?.promise === promise) inFlightRefresh = null;
+  });
+  inFlightRefresh = { key: refreshToken, promise };
+  return promise;
+}
+
 /**
  * Authenticated call. Attaches the cookie's access token as `Authorization: Bearer`,
- * and on a 401 refreshes ONCE via `POST /auth/refresh` and replays the request.
+ * and on a 401 refreshes ONCE via `POST /auth/refresh` and replays the request. Several
+ * concurrent calls that all 401 share a single rotation — see `inFlightRefresh`.
  *
  * `cache: "no-store"` on every call is not laziness: ADR-0012 D3 forbids caching an
  * authorization outcome, and AC6 ("revoke is visible on the coach's very next

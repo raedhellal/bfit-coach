@@ -10,7 +10,8 @@
     "lint": "next lint --dir src --dir qa --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "test:e2e:live": "playwright test --config playwright.live.config.ts"
+    "test:e2e:live": "playwright test --config playwright.live.config.ts",
+    "test:e2e:refresh": "playwright test --config playwright.refresh.config.ts"
   },
   "dependencies": {
     "next": "^14.2.35",

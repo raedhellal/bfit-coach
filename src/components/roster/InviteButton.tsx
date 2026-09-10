@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Modal, Skeleton } from "@/components/ui/kit";
-import { UiIcon } from "@/components/ui/icons";
 import { copy } from "@/lib/copy";
 import { createInviteAction } from "@/lib/actions";
 import type { Invite } from "@/lib/coachApi";
@@ -39,11 +38,17 @@ export function InviteButton({
     setCopied(false);
     const result = await createInviteAction();
     if (!result.ok) {
-      setError(result.code === "CAPACITY_REACHED" ? copy.invite.capacityReached : copy.invite.error);
+      setError(
+        result.code === "CAPACITY_REACHED"
+          ? // The server-rendered sentence carries the tier and capacity from
+            // `GET /coach-portal/me`; this component has no `me` of its own.
+            disabledReason || copy.invite.capacityReached
+          : copy.invite.error
+      );
       return;
     }
     setInvite(result.invite);
-  }, []);
+  }, [disabledReason]);
 
   function onOpen() {
     setOpen(true);
@@ -204,36 +209,6 @@ export function InviteButton({
             <p style={{ margin: 0, fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}>
               {copy.invite.expiry}
             </p>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                paddingTop: 4,
-                borderTop: "1px solid var(--hairline)",
-                marginTop: 2,
-              }}
-            >
-              <Button
-                variant="ghost"
-                icon="mail"
-                disabled
-                title={copy.invite.sendByEmailTooltip}
-                style={{ marginTop: 10 }}
-              >
-                {copy.invite.sendByEmail}
-              </Button>
-              <span style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 10 }}>
-                <UiIcon
-                  name="clock"
-                  size={13}
-                  color="var(--ink-3)"
-                  style={{ display: "inline-block", verticalAlign: "-2px", marginRight: 4 }}
-                />
-                {copy.invite.sendByEmailTooltip}
-              </span>
-            </div>
           </div>
         )}
       </Modal>

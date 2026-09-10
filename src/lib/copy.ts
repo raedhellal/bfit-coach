@@ -25,6 +25,11 @@ export const copy = {
     // AC1: a non-COACH account is rejected with exactly this sentence.
     notACoach: "This account is not an Evoli Pro coach account",
     invalidCredentials: "Email or password is incorrect.",
+    // b-fit-api throttles repeated failures and answers 429; /api/auth/login maps that
+    // to RATE_LIMITED. Without its own sentence it read as "wrong password", which sends
+    // a coach who typed the right one into a loop of retries that can only extend the
+    // lockout.
+    rateLimited: "Too many attempts. Wait a few seconds and try again.",
     // MFA is not part of this preview (EV-059 is a follow-up in ADR-0012). The api
     // can still answer a login with a challenge, so say so honestly rather than
     // failing with a generic error.
@@ -51,7 +56,14 @@ export const copy = {
     emptyBody:
       "Invite someone who already uses Evoli Fit. They accept on their phone and appear here.",
     invite: "Invite a trainee", // AC1, verbatim
-    inviteFull: "Starter includes 2 profiles.", // edge case 5, verbatim
+    /**
+     * Edge case 5, verbatim for the Starter tier ("Starter includes 2 profiles.") — but
+     * derived from `GET /coach-portal/me`'s own `tier` and `capacity` rather than
+     * hard-coded, so the sentence cannot disagree with the meter above it the day the
+     * ladder lands (MVE-6).
+     */
+    inviteFull: (tier: string, capacity: number) =>
+      `${tier} includes ${capacity} profile${capacity === 1 ? "" : "s"}.`,
     colTrainee: "Trainee",
     colPlan: "Plan",
     colLastWorkout: "Last workout",
@@ -78,11 +90,14 @@ export const copy = {
     expiryChip: "Expires in 7 days · single use",
     qrAlt: "QR code for the invite link",
     qrFailed: "The QR code could not be drawn. The link above still works.",
-    sendByEmail: "Send by email",
-    sendByEmailTooltip: "coming later",
     close: "Close",
     error: "The invite could not be created.",
-    capacityReached: "Starter includes 2 profiles.",
+    /**
+     * The server action answered CAPACITY_REACHED. The modal is client-side and has no
+     * `me`, so the caller passes the derived sentence in; this is only the fallback for
+     * the race where the roster said there was room and the api disagreed.
+     */
+    capacityReached: "Your plan's profile limit has been reached.",
   },
 
   /**
@@ -158,6 +173,10 @@ export const copy = {
 
   common: {
     loading: "Loading…",
+    // The route-level error boundary catches renders from every page, not just the
+    // roster, so it cannot claim the roster failed.
+    unexpectedError: "Something went wrong.",
+    tryAgain: "Try again",
     dash: "—",
   },
 } as const;

@@ -20,6 +20,11 @@ export const COACH_NAME_MAX = 60;
  * fake a second line of copy — are dropped, whitespace is collapsed, and the result is
  * capped. Returns null when nothing usable is left, which is the "Your coach" fallback.
  *
+ * The stripped class includes the invisible bidi marks U+200B–U+200F and the explicit
+ * overrides U+202A–U+202E. Those last five are not cosmetic: an RLO can make a name
+ * render its characters in reverse inside the headline, so "moc.live" reads as a domain
+ * the coach never typed. A name may be unusual; it may not reorder the sentence.
+ *
  * No HTML escaping here on purpose: React escapes text children, and escaping twice
  * would render "&amp;" for a coach called "Ben & Co".
  */
@@ -29,7 +34,7 @@ export function sanitiseCoachName(raw: string | string[] | undefined | null): st
   if (typeof value !== "string") return null;
 
   const cleaned = value
-    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\uFEFF]/g, " ")
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2028\u2029\uFEFF]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
