@@ -141,6 +141,11 @@ export const copy = {
     weight: "Weight",
     weightTrend: "Weight trend, last 8 weeks",
     noWeighIns: "No weigh-ins in the last 8 weeks", // AC5 block 4, verbatim
+    // The other two states of block 4's caption (BUG-144). AC5 gives the empty-state
+    // sentence only, so these two are ours — they are deliberately about the SERIES,
+    // never about a trend, because with one point there is no trend to report.
+    oneWeighIn: "1 weigh-in, no trend yet",
+    weighInDelta: (delta: string, count: number) => `${delta} over ${count} weigh-ins`,
     redFlags: "Red flags",
     noRedFlags: "No red flags", // AC5 block 5, verbatim
     // AC5's three rules, verbatim. The api sends the code; this maps it. The keys are

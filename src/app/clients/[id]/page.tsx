@@ -7,7 +7,8 @@ import { Avatar, Badge, Button, Card, CardHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { coachApi, isForbidden, type ClientOverview } from "@/lib/coachApi";
 import { copy } from "@/lib/copy";
-import { formatDate, formatInstant, formatKg, formatKgDelta, formatShortDate } from "@/lib/format";
+import { formatDate, formatInstant, formatKg, formatShortDate } from "@/lib/format";
+import { weightCaption } from "@/lib/weight";
 
 /**
  * /clients/[id] — the read-only trainee overview (AC5, EV-083's slice).
@@ -72,8 +73,6 @@ export default async function ClientPage({ params }: { params: { id: string } })
 
   const { adherenceThisWeek: adherence, lastSession, weightSeries, redFlags } = overview;
   const latest = weightSeries.length > 0 ? weightSeries[weightSeries.length - 1] : null;
-  const first = weightSeries.length > 0 ? weightSeries[0] : null;
-  const delta = latest && first ? latest.weightKg - first.weightKg : null;
 
   return (
     <CoachShell coachName={me?.displayName}>
@@ -161,11 +160,9 @@ export default async function ClientPage({ params }: { params: { id: string } })
           tone="green"
           label={copy.client.weight}
           value={latest ? formatKg(latest.weightKg) : copy.common.dash}
-          foot={
-            delta !== null && weightSeries.length > 1
-              ? `${formatKgDelta(delta)} over ${weightSeries.length} weigh-ins`
-              : copy.client.noWeighIns
-          }
+          // One caption, derived from the same series as the value and the sparkline
+          // (BUG-144) — see src/lib/weight.ts.
+          foot={weightCaption(weightSeries)}
         />
       </div>
 
