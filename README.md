@@ -27,9 +27,15 @@ npm run dev                    # http://localhost:3300
 | `npm run dev` | dev server on **:3300** |
 | `npm run build` | production build |
 | `npm run start` | serve the build on :3300 |
+| `npm run test:e2e:refresh` | the single-flight refresh spec, against `qa/stub-api.mjs` |
 | `npm run lint` | `next lint --dir src --dir qa --max-warnings=0` |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:e2e` | Playwright smoke specs (fixture mode, boots its own server) |
+
+**Demo on `npm run dev`, not `npm run start`.** A production build served over plain
+http on the LAN sets `Secure` cookies (`NODE_ENV=production`), the browser drops them,
+and sign-in fails silently — the form posts, the api answers 200, and the coach lands
+back on `/login` with no error to explain it.
 
 **Port 3300 is this surface's port** — `b-fit-api` is 8080, `b-fit-admin` 3100,
 `evoli-landing` 3200, and nothing else may claim 3300. If you keep an editor launch
@@ -61,7 +67,7 @@ browser:
 | `API_BASE_URL` | `http://localhost:8080` | b-fit-api. Trailing slashes stripped in `src/lib/env.ts`. |
 | `COACH_API_MODE` | `live` | `fixture` serves in-memory demo data instead of the api. |
 | `COACH_FIXTURE_SCENARIO` | `populated` | fixture only. `empty` = zero-trainee roster. |
-| `INVITE_BASE_URL` | `http://localhost:3300` | The host the invite URL + QR encode; the link is `<INVITE_BASE_URL>/i/<token>`. **Set it to the Mac's LAN IP for the demo** (`ipconfig getifaddr en0`, e.g. `http://192.168.1.24:3300`) and start Next with `npm run dev -- -H 0.0.0.0`, or a phone cannot reach it. |
+| `INVITE_BASE_URL` | `http://localhost:3300` | The host the invite URL + QR encode; the link is `<INVITE_BASE_URL>/i/<token>?coach=<name>`. **Set it to the Mac's LAN IP for the demo** (`ipconfig getifaddr en0`, e.g. `http://192.168.1.24:3300`) and start Next with `npm run dev -- -H 0.0.0.0`, or a phone cannot reach it. |
 
 ### The fixture switch
 
@@ -84,12 +90,12 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 
 | Route | What |
 |---|---|
-| `/login` | Credentials. The only page middleware lets through. |
+| `/login` | Credentials. The only page reachable **without a session**. |
 | `/` | Roster: capacity meter, empty state or rows (needs-attention first), invite modal. |
 | `/clients/[id]` | Read-only trainee overview: four stat tiles, 8-week weight trend, red flags, revoke. |
 | `POST /api/auth/login` | BFF sign-in — proxies `POST /auth/login`, sets the cookies. |
 | `POST /api/auth/logout` | Clears both cookies. |
-| `/i/[token]` | **Public** invite landing page — the page the QR encodes. |
+| `/i/[token]` | **Public** invite landing page — the page the QR encodes. Inside the middleware matcher, let through explicitly, **GET/HEAD only** (anything else answers 405). |
 
 ### The invite link
 
@@ -97,13 +103,22 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 byte-identically (AC2):
 
 ```
-<INVITE_BASE_URL>/i/<token>          e.g. http://192.168.1.24:3300/i/<43-char base64url token>
+<INVITE_BASE_URL>/i/<token>?coach=<url-encoded display name>
+
+e.g. http://192.168.1.24:3300/i/<43-char base64url token>?coach=Alex%20R.
 ```
+
+The `?coach=` query is the coach's display name from `GET /coach-portal/me`, sanitised
+by `src/lib/inviteName.ts` (plain text, no control or bidi characters, 60 characters).
+It is there because b-fit-api has no pre-accept lookup for an invite token, so it is the
+only way the app's consent screen can name the coach before the trainee accepts (AC3).
+It is optional: a link without it still works and both sides say "Your coach".
 
 `/i/[token]` is server-rendered, **public** (excluded from the middleware matcher) and
 makes **no API call** — the token is opaque to this surface; b-fit-api validates it when
 the app accepts. It shows the Evoli Fit wordmark, "Your coach invited you to Evoli", one
-button linking to `evolifit://my-coach/invite/<token>`, and a fallback line for a phone
+button linking to `evolifit://my-coach/invite/<token>?coach=<name>` (the query forwarded
+untouched, and omitted when the link had none), and a fallback line for a phone
 without the app (no store links yet — ⛔ D8 — so it says "coming soon" instead of
 shipping a dead href). The token is never rendered as text, only inside that href.
 
@@ -131,11 +146,15 @@ This app is a **BFF**: the browser never holds a token and never calls `b-fit-ap
   refresh tokens into **httpOnly, SameSite=Lax, Secure-in-production** cookies
   (`evoli_pro_at` / `evoli_pro_rt`). They are not in the response body, not in
   `localStorage`, and `document.cookie` cannot see them.
-- `src/middleware.ts` guards every page except `/login`, refreshes an expired access
+- `src/middleware.ts` guards every page except `/login` and the public `/i/*` (which it
+  handles first, allowing GET/HEAD and answering 405 otherwise), refreshes an expired access
   token through `POST /auth/refresh` (it is the only place that can write the rotated
   cookie back), and requires `COACH` in the token's `roles` claim.
 - `src/lib/apiFetch.ts` attaches `Authorization: Bearer` on the server and retries once
-  through `/auth/refresh` on a 401.
+  through `/auth/refresh` on a 401. Concurrent calls from one render (the roster fetches
+  `/coach-portal/me` and `/coach-portal/clients` together) share a single in-flight
+  rotation keyed by the refresh token, so one 401 storm is one rotation — two would spend
+  the same refresh token twice and sign the coach out.
 - Nothing is cached: both pages are `force-dynamic` and every fetch is `no-store`,
   because a revoked link must be gone on the coach's very next reload (EV-183 AC6).
 
@@ -198,6 +217,15 @@ session, the `evolifit://my-coach/invite/<token>` href is the only link on it, t
 never appears as text, and the tap target survives 390 px.
 
 `qa/coach-smoke.spec.ts` runs in fixture mode with the empty scenario and covers the
-login redirect, the roster empty state and its capacity sentence, the httpOnly cookie
-(and that `localStorage` is empty), the 390 px no-horizontal-scroll requirement, and the
-invite modal's link, QR, expiry sentence and disabled email control.
+login redirect, the roster empty state and its capacity sentence, **both** session
+cookies being httpOnly (and that `localStorage` is empty), the 390 px
+no-horizontal-scroll requirement, and the invite modal's link, QR and expiry sentence.
+
+`qa/refresh-single-flight.spec.ts` runs from its own config against `qa/stub-api.mjs`, a
+counting stand-in for b-fit-api that rotates its refresh token and reports how many times
+`/auth/refresh` was called. It is not a second fixture — no screen may be built against
+it; it exists so "one render, one rotation" is an assertion instead of a claim:
+
+```sh
+npm run test:e2e:refresh
+```
