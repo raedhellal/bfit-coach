@@ -1,0 +1,104 @@
+/* ============================================================
+   Evoli Pro — token layer.
+   Ported verbatim from b-fit-admin/src/app/globals.css, which is itself the
+   design_handoff_evoli/web-tokens.css port, so the coach back-office is the same
+   product as the dashboard and the mobile app.
+
+   LIGHT MODE ONLY. The admin's `.dark` block and its dark sidebar variables are
+   deliberately not copied: EV-183 ships one theme, and a half-used dark palette is
+   a set of tokens nobody verifies. Re-port the block from the admin if a theme
+   toggle is ever asked for — do not invent new values.
+   ============================================================ */
+
+:root {
+  /* brand */
+  --blue-50:#EEF3FF; --blue-100:#DCE6FF; --blue-200:#BBCCFF; --blue-300:#92ABFF;
+  --blue-400:#6E90FF; --blue-500:#4F7CFF; --blue-600:#3A5FE0; --blue-700:#2C49B8; --blue-800:#21357F;
+  --green-50:#E8FBF1; --green-100:#C9F5DF; --green-400:#3FDA8F; --green-500:#32D583; --green-600:#21B86C; --green-700:#1A9356;
+  --purple-50:#F1ECFE; --purple-100:#E4D9FD; --purple-400:#9B73F7; --purple-500:#8B5CF6; --purple-600:#7440E0;
+  --amber-500:#F59E0B; --amber-50:#FEF6E7;
+  --red-500:#EF4444; --red-50:#FEECEC;
+  --cyan-500:#22C7D6; --coral-500:#FF6A55;
+
+  /* gradients — --grad-energy is the indigo→violet primary button */
+  --grad-energy: linear-gradient(135deg,#4F7CFF 0%,#8B5CF6 100%);
+  --grad-vital:  linear-gradient(135deg,#32D583 0%,#4F7CFF 100%);
+  --grad-purple: linear-gradient(135deg,#9B73F7 0%,#7440E0 100%);
+
+  /* surfaces */
+  --bg:#F6F7F9;
+  --surface:#FFFFFF;
+  --surface-2:#F1F3F7;
+  --surface-3:#E9ECF2;
+  --hover:#F4F6F9;
+  --border:#E7EAF0;
+  --border-2:#D7DCE6;
+  --hairline:#EEF0F4;
+
+  --ink:#0F1729;
+  --ink-2:#586079;
+  --ink-3:#8A92A6;
+  --ink-on:#FFFFFF;
+
+  /* status */
+  --ok:#16A34A; --ok-bg:#E7F6EC; --ok-ink:#0F7A37;
+  --warn:#D97706; --warn-bg:#FBF0DD; --warn-ink:#9A5B05;
+  --err:#DC2626; --err-bg:#FBE9E9; --err-ink:#B01C1C;
+  --info:#2563EB; --info-bg:#E7EEFE; --info-ink:#1D4ED8;
+
+  /* elevation */
+  --e-1:0 1px 2px rgba(16,23,41,0.06), 0 1px 1px rgba(16,23,41,0.04);
+  --e-2:0 4px 12px rgba(16,23,41,0.08);
+  --e-3:0 12px 28px rgba(16,23,41,0.12);
+  --e-card:0 1px 3px rgba(16,23,41,0.06), 0 1px 2px rgba(16,23,41,0.04);
+  --ring:0 0 0 3px rgba(79,124,255,0.18);
+
+  /* radii — cards use --r-2xl (24px) */
+  --r-xs:6px; --r-sm:8px; --r-md:11px; --r-lg:14px; --r-xl:18px; --r-2xl:24px; --r-pill:999px;
+
+  /* type — the --font-* vars are injected by next/font (src/app/fonts.ts) */
+  --font-display:var(--font-space-grotesk),"Space Grotesk","SF Pro Display",system-ui,sans-serif;
+  --font-body:var(--font-inter),"Inter",-apple-system,system-ui,sans-serif;
+}
+
+html, body { margin:0; padding:0; min-height:100%; background:var(--bg); color:var(--ink); font-family:var(--font-body); }
+#app-root { width:100%; min-height:100vh; }
+* { box-sizing:border-box; }
+a { color:inherit; text-decoration:none; }
+button { font-family:var(--font-body); }
+input::placeholder { color:var(--ink-3); }
+
+/* type scale helpers */
+.dt { font-family:var(--font-display); }
+.tnum { font-variant-numeric:tabular-nums; font-feature-settings:"tnum"; }
+
+.row-hover:hover { background:var(--surface-2); }
+
+/* Visible keyboard focus everywhere — the kit's inputs draw their own ring. */
+:focus-visible { outline:2px solid var(--blue-500); outline-offset:2px; border-radius:var(--r-sm); }
+
+@keyframes shimmer { 0%{background-position:-200px 0} 100%{background-position:200px 0} }
+
+/* ─── responsive helpers ───────────────────────────────────────────────
+   The kit styles elements with inline style objects, which cannot carry media
+   queries. Rather than a JS viewport hook (which renders the desktop markup first
+   and swaps on mount — a visible reflow, and a hydration trap), the two layouts
+   are both server-rendered and CSS decides which one is displayed. AC1's 390 px
+   requirement is met with no client JavaScript at all. */
+.only-wide { display: block; }
+.only-narrow { display: none; }
+
+.page { padding: 28px 32px 56px; max-width: 1180px; margin: 0 auto; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.login-split { min-height: 100vh; display: flex; }
+.login-brand { flex: 1; }
+.login-form { width: 480px; max-width: 100%; }
+
+@media (max-width: 767px) {
+  .only-wide { display: none; }
+  .only-narrow { display: block; }
+  .page { padding: 18px 14px 40px; }
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .login-brand { display: none; }
+  .login-form { width: 100%; }
+}
