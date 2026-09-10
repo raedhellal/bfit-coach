@@ -18,6 +18,9 @@ const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
+  // coach-live.spec.ts needs a real b-fit-api and a throwaway Postgres; it runs from
+  // playwright.live.config.ts. This suite must stay runnable with no backend at all.
+  testIgnore: /coach-live\.spec\.ts/,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

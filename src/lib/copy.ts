@@ -56,14 +56,11 @@ export const copy = {
     colPlan: "Plan",
     colLastWorkout: "Last workout",
     colStreak: "Streak",
-    colFlags: "Flags",
     colStatus: "Status",
     noPlan: "No plan",
     noWorkout: "No workouts yet",
     streak: (days: number) => `${days} day${days === 1 ? "" : "s"}`,
     noStreak: "No streak",
-    flagCount: (n: number) => `${n} red flag${n === 1 ? "" : "s"}`,
-    noFlags: "None",
     statusActive: "ACTIVE",
     loadError: "The roster could not be loaded.",
     retry: "Reload",
@@ -131,11 +128,17 @@ export const copy = {
     noWeighIns: "No weigh-ins in the last 8 weeks", // AC5 block 4, verbatim
     redFlags: "Red flags",
     noRedFlags: "No red flags", // AC5 block 5, verbatim
-    // AC5's three rules, verbatim. The api sends the code; this maps it.
+    // AC5's three rules, verbatim. The api sends the code; this maps it. The keys are
+    // b-fit-api's `RedFlag` enum constants, not a local spelling — a code with no
+    // sentence would render as a raw enum name to a coach.
+    //
+    // PAIN_REPORTED is published by the api and never emitted (ADR-0012 D6): there is
+    // no structured pain signal in the product yet. Its sentence stays so the
+    // vocabulary is complete the day EV-082 makes the rule fire.
     redFlagLabels: {
-      MISSED_SESSIONS: "Missed 2 or more planned sessions this week",
+      MISSED_TWO_OR_MORE_SESSIONS: "Missed 2 or more planned sessions this week",
       PAIN_REPORTED: "Reported pain in a session",
-      NO_WEIGH_IN: "No weigh-in for 14 days",
+      NO_WEIGH_IN_14_DAYS: "No weigh-in for 14 days",
     } as Record<string, string>,
     menu: "More",
     revoke: "Revoke access",

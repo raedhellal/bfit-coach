@@ -10,6 +10,12 @@ import type { RosterClient } from "@/lib/coachApi";
  * below it, with CSS choosing (see globals.css). Both are server-rendered, so the
  * narrow layout is correct on first paint — AC1 is demoed at 390 px and a table that
  * needs sideways scrolling to read a trainee's name is not "readable and tappable".
+ *
+ * **There is no red-flag chip here.** `GET /coach-portal/clients` returns no
+ * `redFlags` — the rules are computed per trainee by the overview endpoint — so a chip
+ * on this screen would cost one extra request per row on every roster render. The
+ * flags live on /clients/[id]; the needs-attention signal here is the ordering
+ * (`sortNeedsAttentionFirst`: least recently trained first, never-trained at the top).
  */
 
 function StreakChip({ days }: { days: number }) {
@@ -22,27 +28,17 @@ function StreakChip({ days }: { days: number }) {
   );
 }
 
-function FlagChip({ count }: { count: number }) {
-  if (count === 0) return <span style={{ color: "var(--ink-3)" }}>{copy.roster.noFlags}</span>;
-  return (
-    <Badge tone="red" dot>
-      {copy.roster.flagCount(count)}
-    </Badge>
-  );
-}
-
 export function RosterRows({ clients }: { clients: RosterClient[] }) {
   return (
     <>
       <div className="only-wide">
         <DataTable
-          minWidth={760}
+          minWidth={680}
           columns={[
             { label: copy.roster.colTrainee },
             { label: copy.roster.colPlan },
             { label: copy.roster.colLastWorkout },
             { label: copy.roster.colStreak },
-            { label: copy.roster.colFlags },
             { label: copy.roster.colStatus },
             { label: "", w: 44 },
           ]}
@@ -54,7 +50,7 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                   href={`/clients/${c.id}`}
                   style={{ display: "flex", alignItems: "center", gap: 10 }}
                 >
-                  <Avatar name={c.displayName} size={32} idx={i} />
+                  <Avatar name={c.traineeDisplayName} size={32} idx={i} />
                   <span
                     style={{
                       fontWeight: 600,
@@ -64,36 +60,33 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                     }}
-                    title={c.displayName}
+                    title={c.traineeDisplayName}
                   >
-                    {c.displayName}
+                    {c.traineeDisplayName}
                   </span>
                 </Link>
               </Td>
               <Td
-                title={c.planName || undefined}
+                title={c.currentPlanName || undefined}
                 style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
-                {c.planName || <span style={{ color: "var(--ink-3)" }}>{copy.roster.noPlan}</span>}
+                {c.currentPlanName || <span style={{ color: "var(--ink-3)" }}>{copy.roster.noPlan}</span>}
               </Td>
               <Td>
-                {c.lastWorkoutDate ? (
-                  formatDate(c.lastWorkoutDate)
+                {c.lastCompletedWorkoutDate ? (
+                  formatDate(c.lastCompletedWorkoutDate)
                 ) : (
                   <span style={{ color: "var(--ink-3)" }}>{copy.roster.noWorkout}</span>
                 )}
               </Td>
               <Td>
-                <StreakChip days={c.streakDays} />
-              </Td>
-              <Td>
-                <FlagChip count={c.redFlags.length} />
+                <StreakChip days={c.currentStreakDays} />
               </Td>
               <Td>
                 <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
               </Td>
               <Td align="right">
-                <Link href={`/clients/${c.id}`} aria-label={c.displayName}>
+                <Link href={`/clients/${c.id}`} aria-label={c.traineeDisplayName}>
                   <UiIcon name="chevR" size={16} color="var(--ink-3)" />
                 </Link>
               </Td>
@@ -119,7 +112,7 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Avatar name={c.displayName} size={36} idx={i} />
+                  <Avatar name={c.traineeDisplayName} size={36} idx={i} />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div
                       style={{
@@ -131,7 +124,7 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {c.displayName}
+                      {c.traineeDisplayName}
                     </div>
                     <div
                       style={{
@@ -142,19 +135,18 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {c.planName || copy.roster.noPlan}
+                      {c.currentPlanName || copy.roster.noPlan}
                     </div>
                   </div>
                   <UiIcon name="chevR" size={16} color="var(--ink-3)" />
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <StreakChip days={c.streakDays} />
-                  <FlagChip count={c.redFlags.length} />
+                  <StreakChip days={c.currentStreakDays} />
                   <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
                   {copy.roster.colLastWorkout}:{" "}
-                  {c.lastWorkoutDate ? formatDate(c.lastWorkoutDate) : copy.roster.noWorkout}
+                  {c.lastCompletedWorkoutDate ? formatDate(c.lastCompletedWorkoutDate) : copy.roster.noWorkout}
                 </div>
               </div>
             </Link>

@@ -7,55 +7,98 @@ import { sanitiseCoachName } from "./inviteName";
 /**
  * The ONE module that knows b-fit-api's coach-portal contract.
  *
- * ADR-0012 §D4 is still under staff-engineer challenge, so every path, field name and
- * error code the web surface depends on is written down exactly once, here. When D4
- * moves, this file moves and no screen changes. Screens import `coachApi`, never
- * `apiFetch`.
+ * Every path, field name and error code the web surface depends on is written down
+ * exactly once, here, and the names below are the API's own names verbatim — not a
+ * prettier local vocabulary. A renamed field is a place where drift can hide; when
+ * `traineeDisplayName` is called `traineeDisplayName` all the way to the JSX, a
+ * contract change is a type error rather than an empty cell.
+ *
+ * Source of truth: `b-fit-api` `openapi.yaml` (`/coach-portal/*`) and the DTOs in
+ * `com.bfit.application.dto.coachportal`, branch demo/evoli-pro-mve1.
  *
  * `COACH_API_MODE=fixture` swaps the whole module for src/lib/coachApi.fixture.ts so
- * the screens are demoable before WP-1..WP-3 land. The switch is read from the server
- * environment only.
+ * the screens are demoable without an api. The switch is read from the server
+ * environment only, and `live` is the default.
  */
 
-// ── types (the D4 contract, as this surface consumes it) ─────────────────────
+// ── types (the api contract, as this surface consumes it) ────────────────────
 
+/** `CoachProfileResponse.tier` — enum [STARTER] today; the ladder lands at MVE-6. */
 export type CapacityTier = "STARTER";
-/** AC5's three rules. The api sends the code; src/lib/copy.ts owns the sentence. */
-export type RedFlagCode = "MISSED_SESSIONS" | "PAIN_REPORTED" | "NO_WEIGH_IN";
+/**
+ * AC5's three rules. The api sends the code; src/lib/copy.ts owns the sentence.
+ *
+ * `PAIN_REPORTED` is published by the api and **never emitted**: there is no
+ * structured pain signal in the product (`Feedback` is {EASY, OK, HARD} and no mobile
+ * call site writes `workout_completion.notes`), so the server deliberately does not
+ * compute that rule. We keep it in the vocabulary — and keep its sentence in copy.ts —
+ * so the gap is visible rather than silently absent (ADR-0012 D6).
+ */
+export type RedFlagCode =
+  | "MISSED_TWO_OR_MORE_SESSIONS"
+  | "PAIN_REPORTED"
+  | "NO_WEIGH_IN_14_DAYS";
 /** `com.bfit.domain.workout.Feedback` — there is no PAIN value today (ADR-0012 D6). */
 export type SessionFeedback = "EASY" | "OK" | "HARD";
-export type ClientStatus = "ACTIVE" | "REVOKED";
+/** The roster only ever lists ACTIVE rows; REVOKED links are history. */
+export type ClientStatus = "ACTIVE";
 
-/** GET /coach-portal/me */
+/**
+ * `GET /coach-portal/me` → `CoachProfileResponse`.
+ *
+ * Flat, not `{ capacity: { … } }`: the api returns the three capacity values
+ * alongside the profile and inventing a nested object here would be this surface
+ * disagreeing with its own contract for cosmetic reasons.
+ */
 export interface CoachMe {
-  userId: string;
+  /** The coach's user id — the same account as their Evoli Fit login. */
+  coachId: string;
   displayName: string;
-  capacity: {
-    active: number;
-    capacity: number;
-    tier: CapacityTier;
-  };
+  tier: CapacityTier;
+  /** ACTIVE links held right now. */
+  active: number;
+  /** How many ACTIVE links the tier allows. */
+  capacity: number;
 }
 
-/** GET /coach-portal/clients → `{ items: RosterClient[] }` */
+/** One row of `GET /coach-portal/clients` → `CoachClientSummaryResponse`. */
 export interface RosterClient {
-  /** the `coach_clients` row id — the id every /coach-portal/clients/{id} call takes */
+  /** The `coach_clients` row id — the ONLY id the coach portal addresses. */
   id: string;
-  traineeId: string;
-  displayName: string;
-  planName: string | null;
-  /** ISO-8601 date (YYYY-MM-DD) of the last COMPLETED workout, or null. */
-  lastWorkoutDate: string | null;
-  streakDays: number;
+  traineeDisplayName: string;
+  /** Null when the trainee's app is on no plan. */
+  currentPlanName: string | null;
+  /** `YYYY-MM-DD` (UTC) of the last completed workout; null if there has never been one. */
+  lastCompletedWorkoutDate: string | null;
+  currentStreakDays: number;
   status: ClientStatus;
-  redFlags: RedFlagCode[];
+  /** ISO-8601 instant — when the trainee accepted. */
+  since: string;
 }
 
-export interface RosterResponse {
+/**
+ * `GET /coach-portal/clients` → `CoachClientPageResponse`.
+ *
+ * A paged envelope, not a bare array: every collection endpoint on b-fit-api
+ * paginates. The roster is one page in practice (see `ROSTER_PAGE_SIZE`).
+ */
+export interface RosterPage {
   items: RosterClient[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
 }
 
-/** POST /coach-portal/invites — the raw token is returned once and never again. */
+/**
+ * The api caps `size` at 100 and the largest contemplated tier is 100 profiles, so
+ * one page of 100 is the whole roster for every tier that can exist. If a tier ever
+ * exceeds that, this constant stops being sufficient and the roster needs real
+ * pagination — which is why the page reads `totalElements` and not `items.length`.
+ */
+export const ROSTER_PAGE_SIZE = 100;
+
+/** `POST /coach-portal/invites` → 201 `CoachInviteResponse`. Raw token, once, ever. */
 export interface InviteResponse {
   inviteId: string;
   token: string;
@@ -68,29 +111,44 @@ export interface Invite extends InviteResponse {
   url: string;
 }
 
+/** `TraineeWeightPoint`. */
 export interface WeightPoint {
-  /** ISO-8601 date of the weigh-in. */
+  /** `YYYY-MM-DD`. */
   date: string;
-  kg: number;
+  weightKg: number;
 }
 
-/** GET /coach-portal/clients/{id} */
+/** `TraineeLastSession` — block 3. */
+export interface LastSession {
+  /** `YYYY-MM-DD` (UTC) of completion. */
+  date: string;
+  /** The workout's title; null if the workout row has since gone. */
+  name: string | null;
+  /** Null renders "No feedback given". */
+  difficulty: SessionFeedback | null;
+}
+
+/**
+ * `GET /coach-portal/clients/{id}` → `TraineeOverviewResponse`.
+ *
+ * Exactly AC5's five blocks and nothing else. Note there is **no plan name here** —
+ * the plan is a roster-row field only, so the overview header must not claim one.
+ */
 export interface ClientOverview {
-  id: string;
-  traineeId: string;
-  displayName: string;
-  planName: string | null;
-  /** ISO-8601 instant — `coach_clients.consent_at`. */
-  coachedSince: string;
+  /** The `coach_clients` row id. */
+  clientId: string;
+  traineeDisplayName: string;
+  /** ISO-8601 instant — when the trainee accepted. */
+  since: string;
+  /** Block 1. Week boundaries are UTC (ADR-0012 risk (c)). */
   adherenceThisWeek: { done: number; planned: number };
-  streakDays: number;
-  lastSession: {
-    date: string; // ISO-8601 date
-    name: string;
-    feedback: SessionFeedback | null;
-  } | null;
-  /** Weigh-ins inside the last 8 weeks, oldest first. Empty array = none. */
+  /** Block 2. */
+  currentStreakDays: number;
+  /** Block 3 — null renders "No sessions yet". */
+  lastSession: LastSession | null;
+  /** Block 4 — weigh-ins over the last 8 weeks, oldest first. Empty, never null. */
   weightSeries: WeightPoint[];
+  /** Block 5 — an EMPTY list is "No red flags". */
   redFlags: RedFlagCode[];
 }
 
@@ -98,6 +156,11 @@ export interface ClientOverview {
 
 export { ApiError } from "./apiFetch";
 
+/**
+ * The coach portal answers 403 uniformly for a foreign id, a revoked link AND an id
+ * that never existed, so the prefix is not an existence oracle. All three land here
+ * and must read the same to the coach.
+ */
 export function isForbidden(err: unknown): boolean {
   return err instanceof ApiError && err.status === 403;
 }
@@ -111,8 +174,8 @@ const liveCoachApi = {
   getMe(): Promise<CoachMe> {
     return apiFetch<CoachMe>("/coach-portal/me");
   },
-  listClients(): Promise<RosterResponse> {
-    return apiFetch<RosterResponse>("/coach-portal/clients");
+  listClients(page = 0, size = ROSTER_PAGE_SIZE): Promise<RosterPage> {
+    return apiFetch<RosterPage>(`/coach-portal/clients?page=${page}&size=${size}`);
   },
   createInvite(): Promise<InviteResponse> {
     return apiFetch<InviteResponse>("/coach-portal/invites", { method: "POST" });
@@ -123,6 +186,7 @@ const liveCoachApi = {
     );
   },
   async revokeClient(id: string): Promise<void> {
+    // 204 No Content — `apiFetch` parses an empty body to null, which is the point.
     await apiFetch<void>(
       `/coach-portal/clients/${encodeURIComponent(id)}/revoke`,
       { method: "POST" }
@@ -161,16 +225,24 @@ export const coachApi = {
   },
 };
 
-/** Ordering rule for the roster: needs attention first (EV-183's roster read). */
+/**
+ * Ordering rule for the roster: needs attention first (EV-183's roster read).
+ *
+ * **Least recently seen first**, which is the only needs-attention signal the list
+ * endpoint carries: `CoachClientSummaryResponse` has no `redFlags` field, and the
+ * flags are computed per trainee by `GET /coach-portal/clients/{id}`. Fetching them
+ * for the roster would mean one extra request per row on every render of the landing
+ * page — an N+1 against a tier ladder that already contemplates 100 profiles — so the
+ * red-flag chip lives on the overview only, and the roster sorts by
+ * `lastCompletedWorkoutDate` ascending instead. A trainee who has never completed a
+ * workout (null) sorts first: they are the most in need of attention, not the least.
+ */
 export function sortNeedsAttentionFirst(items: RosterClient[]): RosterClient[] {
   return [...items].sort((a, b) => {
-    if (b.redFlags.length !== a.redFlags.length) {
-      return b.redFlags.length - a.redFlags.length;
-    }
-    // Then the least recently seen — a trainee with no workout at all sorts first.
-    const av = a.lastWorkoutDate ?? "";
-    const bv = b.lastWorkoutDate ?? "";
+    // "" sorts before every real YYYY-MM-DD, so null (never trained) leads.
+    const av = a.lastCompletedWorkoutDate ?? "";
+    const bv = b.lastCompletedWorkoutDate ?? "";
     if (av !== bv) return av < bv ? -1 : 1;
-    return a.displayName.localeCompare(b.displayName);
+    return a.traineeDisplayName.localeCompare(b.traineeDisplayName);
   });
 }

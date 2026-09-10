@@ -5,19 +5,19 @@ import type {
   CoachMe,
   InviteResponse,
   RosterClient,
-  RosterResponse,
+  RosterPage,
   WeightPoint,
 } from "./coachApi";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
  *
- * This exists so the four screens can be built, reviewed and demoed while ADR-0012's
- * D4 endpoints are still under challenge — NOT so the product can pretend to have a
- * backend. Two rules keep it honest:
+ * This exists so the four screens can be reviewed and demoed without a running api —
+ * NOT so the product can pretend to have a backend. Two rules keep it honest:
  *   1. It is server-side and env-gated; `live` is the default and the demo runs live.
- *   2. Its shapes are the same TypeScript types the live client returns, so when D4
- *      lands the only file that changes is coachApi.ts.
+ *   2. Its shapes are the same TypeScript types the live client returns — the api's
+ *      own field names — so a contract change breaks this file at compile time
+ *      instead of letting the fixture drift into a nicer world than production.
  *
  * Dates are computed from `now` on every call, so the fixture never shows a stale
  * "last workout" three months in the past.
@@ -28,7 +28,7 @@ import type {
  */
 
 const SCENARIO = process.env.COACH_FIXTURE_SCENARIO === "empty" ? "empty" : "populated";
-const CAPACITY = 2; // ADR-0012 D4: STARTER_CAPACITY = 2
+const CAPACITY = 2; // CoachProfile.CapacityTier.STARTER.capacity()
 
 function isoDate(daysAgo: number): string {
   const d = new Date();
@@ -43,25 +43,26 @@ function isoInstant(daysAgo: number): string {
 }
 
 const LINA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
-const LINA_TRAINEE_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
 
 /** 71.2 kg → 70.4 kg over eight weekly weigh-ins. */
 const WEIGHTS = [71.2, 71.0, 71.1, 70.8, 70.9, 70.6, 70.5, 70.4];
 
 function weightSeries(): WeightPoint[] {
-  return WEIGHTS.map((kg, i) => ({ date: isoDate((WEIGHTS.length - 1 - i) * 7 + 1), kg }));
+  return WEIGHTS.map((weightKg, i) => ({
+    date: isoDate((WEIGHTS.length - 1 - i) * 7 + 1),
+    weightKg,
+  }));
 }
 
 function lina(): RosterClient {
   return {
     id: LINA_ID,
-    traineeId: LINA_TRAINEE_ID,
-    displayName: "Lina M.",
-    planName: "Intermediate Muscle Building Routine",
-    lastWorkoutDate: isoDate(1),
-    streakDays: 4,
+    traineeDisplayName: "Lina M.",
+    currentPlanName: "Intermediate Muscle Building Routine",
+    lastCompletedWorkoutDate: isoDate(1),
+    currentStreakDays: 4,
     status: "ACTIVE",
-    redFlags: ["MISSED_SESSIONS"],
+    since: isoInstant(23),
   };
 }
 
@@ -71,24 +72,28 @@ let revoked = false;
 export const fixtureCoachApi: CoachApi = {
   async getMe(): Promise<CoachMe> {
     return {
-      userId: "1a2b3c4d-0000-4000-8000-00000000c0ac",
+      coachId: "1a2b3c4d-0000-4000-8000-00000000c0ac",
       displayName: "Alex R.",
-      capacity: {
-        active: SCENARIO === "empty" || revoked ? 0 : 1,
-        capacity: CAPACITY,
-        tier: "STARTER",
-      },
+      tier: "STARTER",
+      active: SCENARIO === "empty" || revoked ? 0 : 1,
+      capacity: CAPACITY,
     };
   },
 
-  async listClients(): Promise<RosterResponse> {
-    if (SCENARIO === "empty" || revoked) return { items: [] };
-    return { items: [lina()] };
+  async listClients(page = 0, size = 100): Promise<RosterPage> {
+    const items = SCENARIO === "empty" || revoked ? [] : [lina()];
+    return {
+      items: page === 0 ? items : [],
+      page,
+      size,
+      totalElements: items.length,
+      totalPages: items.length === 0 ? 0 : 1,
+    };
   },
 
   async createInvite(): Promise<InviteResponse> {
-    // 32 bytes of randomness → base64url, the same shape ADR-0012 D4 specifies, so
-    // the URL and the QR code are the length they will really be.
+    // 32 bytes of randomness → base64url, the same shape the api's token has, so the
+    // URL and the QR code are the length they will really be.
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
     const token = btoa(String.fromCharCode(...bytes))
@@ -105,16 +110,16 @@ export const fixtureCoachApi: CoachApi = {
       throw new ApiError(403, "Forbidden", "COACH_ACCESS_DENIED");
     }
     return {
-      id: LINA_ID,
-      traineeId: LINA_TRAINEE_ID,
-      displayName: "Lina M.",
-      planName: "Intermediate Muscle Building Routine",
-      coachedSince: isoInstant(23),
+      clientId: LINA_ID,
+      traineeDisplayName: "Lina M.",
+      since: isoInstant(23),
       adherenceThisWeek: { done: 2, planned: 4 },
-      streakDays: 4,
-      lastSession: { date: isoDate(1), name: "Upper Body A", feedback: "HARD" },
+      currentStreakDays: 4,
+      lastSession: { date: isoDate(1), name: "Upper Body A", difficulty: "HARD" },
       weightSeries: weightSeries(),
-      redFlags: ["MISSED_SESSIONS"],
+      // MISSED_TWO_OR_MORE_SESSIONS only: PAIN_REPORTED is never emitted by the api
+      // (ADR-0012 D6), so a fixture that showed it would be fiction.
+      redFlags: ["MISSED_TWO_OR_MORE_SESSIONS"],
     };
   },
 

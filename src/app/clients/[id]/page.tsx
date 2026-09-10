@@ -73,7 +73,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
   const { adherenceThisWeek: adherence, lastSession, weightSeries, redFlags } = overview;
   const latest = weightSeries.length > 0 ? weightSeries[weightSeries.length - 1] : null;
   const first = weightSeries.length > 0 ? weightSeries[0] : null;
-  const delta = latest && first ? latest.kg - first.kg : null;
+  const delta = latest && first ? latest.weightKg - first.weightKg : null;
 
   return (
     <CoachShell coachName={me?.displayName}>
@@ -94,7 +94,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
         </Link>
 
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-          <Avatar name={overview.displayName} size={48} />
+          <Avatar name={overview.traineeDisplayName} size={48} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1
               className="dt"
@@ -107,16 +107,20 @@ export default async function ClientPage({ params }: { params: { id: string } })
                 overflowWrap: "anywhere",
               }}
             >
-              {overview.displayName}
+              {overview.traineeDisplayName}
             </h1>
+            {/*
+              No plan badge: `TraineeOverviewResponse` carries no plan name — the plan
+              is a roster-row field only. Rendering "No plan" here would state
+              something about the trainee that this response does not say.
+            */}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 7 }}>
-              <Badge tone="blue">{overview.planName || copy.roster.noPlan}</Badge>
               <Badge tone="neutral">
-                {copy.client.coachedSince(formatInstant(overview.coachedSince))}
+                {copy.client.coachedSince(formatInstant(overview.since))}
               </Badge>
             </div>
           </div>
-          <RevokeMenu clientId={overview.id} displayName={overview.displayName} />
+          <RevokeMenu clientId={overview.clientId} displayName={overview.traineeDisplayName} />
         </div>
       </div>
 
@@ -132,7 +136,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
           icon="flame"
           tone="amber"
           label={copy.client.streak}
-          value={copy.client.streakUnit(overview.streakDays)}
+          value={copy.client.streakUnit(overview.currentStreakDays)}
         />
         <StatTile
           icon="calendar"
@@ -142,9 +146,11 @@ export default async function ClientPage({ params }: { params: { id: string } })
           foot={
             lastSession ? (
               <span>
-                {lastSession.name} ·{" "}
-                {lastSession.feedback
-                  ? copy.client.feedback[lastSession.feedback]
+                {/* `name` is null when the workout row has since gone — then the
+                    feedback stands alone rather than reading "— · Hard". */}
+                {lastSession.name ? `${lastSession.name} · ` : ""}
+                {lastSession.difficulty
+                  ? copy.client.feedback[lastSession.difficulty]
                   : copy.client.noFeedback}
               </span>
             ) : undefined
@@ -154,7 +160,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
           icon="trend"
           tone="green"
           label={copy.client.weight}
-          value={latest ? formatKg(latest.kg) : copy.common.dash}
+          value={latest ? formatKg(latest.weightKg) : copy.common.dash}
           foot={
             delta !== null && weightSeries.length > 1
               ? `${formatKgDelta(delta)} over ${weightSeries.length} weigh-ins`
@@ -167,9 +173,9 @@ export default async function ClientPage({ params }: { params: { id: string } })
         <CardHead title={copy.client.weightTrend} icon="chart" />
         {weightSeries.length > 0 ? (
           <TrendChart
-            points={weightSeries.map((p) => ({ label: formatShortDate(p.date), value: p.kg }))}
+            points={weightSeries.map((p) => ({ label: formatShortDate(p.date), value: p.weightKg }))}
             ariaLabel={`${copy.client.weightTrend}: ${weightSeries
-              .map((p) => `${formatShortDate(p.date)} ${formatKg(p.kg)}`)
+              .map((p) => `${formatShortDate(p.date)} ${formatKg(p.weightKg)}`)
               .join(", ")}`}
           />
         ) : (

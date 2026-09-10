@@ -25,6 +25,9 @@ export default async function RosterPage() {
   let failed = false;
 
   try {
+    // `listClients` is paged. One page of ROSTER_PAGE_SIZE (the api's own maximum) is
+    // the entire roster for every tier that can exist today, so there is no pager on
+    // this screen — but the envelope's `totalElements` is what would prove otherwise.
     const [meResult, roster] = await Promise.all([
       coachApi.getMe(),
       coachApi.listClients(),
@@ -63,7 +66,7 @@ export default async function RosterPage() {
     );
   }
 
-  const full = me.capacity.active >= me.capacity.capacity;
+  const full = me.active >= me.capacity;
 
   return (
     <CoachShell coachName={me.displayName}>
@@ -87,11 +90,7 @@ export default async function RosterPage() {
             justifyContent: "space-between",
           }}
         >
-          <CapacityMeter
-            active={me.capacity.active}
-            capacity={me.capacity.capacity}
-            tier={me.capacity.tier}
-          />
+          <CapacityMeter active={me.active} capacity={me.capacity} tier={me.tier} />
           {full && (
             <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{copy.roster.inviteFull}</span>
           )}
