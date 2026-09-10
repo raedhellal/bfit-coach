@@ -1,0 +1,31 @@
+{
+  "name": "b-fit-coach",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Evoli Pro — the coach back-office (EV-183 / MVE-1 demo cut). Next.js, BFF session, wired to b-fit-api.",
+  "scripts": {
+    "dev": "next dev -p 3300",
+    "build": "next build",
+    "start": "next start -p 3300",
+    "lint": "next lint --dir src --dir qa --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "next": "^14.2.35",
+    "qrcode": "^1.5.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "20.14.10",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.35",
+    "typescript": "5.5.3"
+  }
+}
