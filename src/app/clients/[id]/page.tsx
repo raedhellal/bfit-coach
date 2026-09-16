@@ -62,12 +62,31 @@ export default async function ClientPage({ params }: { params: { id: string } })
    *
    * The nulls in the types are the api refusing to assert; the sentences here are the
    * portal explaining why. They are two different things and both are needed.
+   *
+   * **The scope flag comes FIRST in every block, and the null only after it.** That
+   * ordering is what makes the page safe against an api that predates ADR-0015 B1 —
+   * b-fit-api main, which is what the Vercel deployment talks to. There `scopes` is
+   * absent, so `hasScope` fails closed to false, while `currentStreakDays` is a
+   * primitive `int` and `redFlags` a non-null list: a block that asked the null first
+   * would render "4 days" and "No red flags" for a trainee whose consent this portal
+   * cannot establish. Reading the flag first turns the whole page into "Not shared",
+   * which under-claims and is the only safe direction to be wrong in.
    */
   const { adherenceThisWeek: adherence, lastSession, weightSeries, redFlags } = overview;
   const progressShared = hasScope(overview.scopes, "PROGRESS");
   const weighInsShared = hasScope(overview.scopes, "WEIGH_INS");
-  const series = weightSeries ?? [];
+  const series = weighInsShared ? (weightSeries ?? []) : [];
   const latest = weighInsShared && series.length > 0 ? series[series.length - 1] : null;
+  /**
+   * Block 5 spans two scopes. `redFlags === null` is the ADR's "neither is held", but
+   * a legacy api sends `[]` and means "nothing fired" — which is a claim about a
+   * trainee whose sessions and weigh-ins this coach may never have been allowed to
+   * read. Requiring at least one of the two scopes says the same thing the null does
+   * and keeps saying it when the null is not there.
+   */
+  const redFlagsShared = (progressShared || weighInsShared) && redFlags !== null;
+  /** `0` is a real streak of zero days — but only if PROGRESS was actually shared. */
+  const streak = progressShared ? overview.currentStreakDays : null;
 
   return (
     <CoachShell coachName={me?.displayName}>
@@ -87,31 +106,31 @@ export default async function ClientPage({ params }: { params: { id: string } })
           tone="blue"
           label={copy.client.adherence}
           value={
-            adherence
+            progressShared && adherence
               ? copy.client.adherenceValue(adherence.done, adherence.planned)
               : copy.common.dash
           }
-          foot={adherence ? copy.client.adherenceFoot : copy.client.notShared}
+          foot={
+            progressShared && adherence ? copy.client.adherenceFoot : copy.client.notShared
+          }
         />
         <StatTile
           icon="flame"
           tone="amber"
           label={copy.client.streak}
           // `0` is a real streak of zero days and reads as one; a link without PROGRESS
-          // gets the dash instead (F1 change 1 is what makes the two distinguishable).
-          value={
-            overview.currentStreakDays === null
-              ? copy.common.dash
-              : copy.client.streakUnit(overview.currentStreakDays)
-          }
-          foot={overview.currentStreakDays === null ? copy.client.notShared : undefined}
+          // gets the dash instead (F1 change 1 is what makes the two distinguishable —
+          // and `streak` above re-applies the scope, so an api that never nulls the
+          // field cannot slip a number through here either).
+          value={streak === null ? copy.common.dash : copy.client.streakUnit(streak)}
+          foot={streak === null ? copy.client.notShared : undefined}
         />
         <StatTile
           icon="calendar"
           tone="purple"
           label={copy.client.lastSession}
           value={
-            lastSession
+            progressShared && lastSession
               ? formatDate(lastSession.date)
               : progressShared
                 ? copy.client.noSession
@@ -166,10 +185,11 @@ export default async function ClientPage({ params }: { params: { id: string } })
 
       <Card style={{ marginBottom: 18 }}>
         <CardHead title={copy.client.redFlags} icon="flag" />
-        {/* null = neither PROGRESS nor WEIGH_INS; [] = both held and nothing fired.
-            Collapsing the two would tell a coach "No red flags" about a trainee whose
-            sessions and weigh-ins they have never been allowed to read. */}
-        {redFlags === null ? (
+        {/* null = neither PROGRESS nor WEIGH_INS; [] = at least one held and nothing
+            fired. Collapsing the two would tell a coach "No red flags" about a trainee
+            whose sessions and weigh-ins they have never been allowed to read — so the
+            scope check stands in front of the null rather than behind it. */}
+        {!redFlagsShared || redFlags === null ? (
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
             {copy.client.notSharedRedFlags}
           </p>

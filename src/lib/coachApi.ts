@@ -313,9 +313,33 @@ export interface ClientOverview {
  *
  * A missing overview (the api did not answer) is NOT "not shared": the caller must
  * render its load error instead, which is why this takes the list and not the
- * nullable overview.
+ * nullable overview. That distinction stays the CALLER's and this function must not
+ * blur it — `!overview` is a load error; an overview that arrived without a usable
+ * `scopes` is an answer that says nothing about consent, which is a different thing.
+ *
+ * **Why the `Array.isArray` guard, and why it is not defensive noise.**
+ * `scopes` is typed non-nullable because ADR-0015 B1 puts it on
+ * `TraineeOverviewResponse` — but the type describes the api we are BUILDING, not
+ * every api this build can be pointed at. b-fit-api main predates B1 and serves an
+ * overview with **no `scopes` field at all**, so at runtime the argument is
+ * `undefined` and an unguarded `.includes` is a TypeError thrown inside a server
+ * component's render: the coach gets a 500 opening any trainee from the roster, not a
+ * degraded block. The type system cannot catch it, because the value crosses an
+ * untyped JSON boundary (`apiFetch` casts the parsed body).
+ *
+ * The fallback is `false`, deliberately — FAIL CLOSED. An api that predates B1 has
+ * said nothing about what the trainee consented to share, and the only honest reading
+ * of silence is "not shared", never "shared". The cost is named rather than hidden: a
+ * legacy api that IS serving progress data will have those blocks labelled "Not
+ * shared", which UNDER-claims. Under-claiming shows a coach less than they are
+ * entitled to see; over-claiming shows them a trainee's data on the strength of a
+ * guess, and F1 exists to stop exactly that.
  */
-export function hasScope(scopes: CoachAccessScope[], scope: CoachAccessScope): boolean {
+export function hasScope(
+  scopes: CoachAccessScope[] | null | undefined,
+  scope: CoachAccessScope
+): boolean {
+  if (!Array.isArray(scopes)) return false;
   return scopes.includes(scope);
 }
 
