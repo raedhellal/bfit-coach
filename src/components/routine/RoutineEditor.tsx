@@ -267,6 +267,15 @@ export function RoutineEditor({
             setError(null);
             return;
           }
+          // The re-preview is a WRITE too (it saves the draft first), so it can be the
+          // request that discovers the link ended. Falling through to FAILURE_COPY
+          // here would print the roster sentence inside a modal over a revoked
+          // trainee's plan — the one path where the 409 recovery could still strand
+          // the coach on data they may no longer read.
+          if (again.code === "ACCESS_DENIED") {
+            setPreview(null);
+            return accessEnded();
+          }
           setError(FAILURE_COPY[again.code]);
           setPreview(null);
           return;

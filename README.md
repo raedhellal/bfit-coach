@@ -31,6 +31,13 @@ npm run dev                    # http://localhost:3300
 | `npm run lint` | `next lint --dir src --dir qa --max-warnings=0` |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:e2e` | Playwright smoke specs (fixture mode, boots its own server) |
+| `npm run test:e2e:roster` | the roster specs, on the **populated** fixture scenario (its own server, :3301) |
+
+`test:e2e` and `test:e2e:roster` are **two suites, not one with a flag**:
+`COACH_FIXTURE_SCENARIO` is read once per dev-server process, the main suite needs
+`empty` (EV-183 AC1's empty state and the invite happy path) and the roster's
+scope-filtered nulls need rows. Both are gates — there is no CI here, so this table is
+the checklist.
 
 **Demo on `npm run dev`, not `npm run start`.** A production build served over plain
 http on the LAN sets `Secure` cookies (`NODE_ENV=production`), the browser drops them,

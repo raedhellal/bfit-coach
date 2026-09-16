@@ -118,6 +118,14 @@ export function NutritionTargetsCard({
    * equality, not an inference — and every other COACH row reads "Set by a coach",
    * which is true in all three of the cases that are not this coach and discloses no
    * other coach's identity.
+   *
+   * `coachId !== null &&` is not a defensive habit, it is the null-null collision:
+   * `readCoachMe` degrades to null when `GET /coach-portal/me` fails (a failed header
+   * read must never take down the screen it decorates), and `setBy` is null on every
+   * target the trainee wrote themselves. Without the guard those two nulls compare
+   * equal and a trainee's own COACH-less row would be attributed to a coach whose
+   * identity this render could not even establish. When "you" is unknown, "you" is not
+   * claimed.
    */
   function sourceLine(): string | null {
     if (!targets) return null;

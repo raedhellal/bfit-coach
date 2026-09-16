@@ -507,9 +507,16 @@ test.describe("ADR-0012 D4 — the tab routes are 403 for an id that is not this
  * store — so every read after it 403s for the rest of the run. That is the point of
  * the test and the reason it cannot sit anywhere else: the state it creates is
  * terminal.
+ *
+ * It is also why the routine write and the two nutrition writes are ONE test and not
+ * three. Every tab has to be opened BEFORE the revoke — afterwards the layout's
+ * overview read 403s and the tab redirects before a control can be reached — and a
+ * second test gets a fresh browser context but the same, already-revoked server.
+ * Staging three pages up front is the only shape that can assert three different
+ * components' access-ended branches against one terminal flag.
  */
 test.describe("ADR-0012 AC6 — a revoke ends the session's access mid-edit", () => {
-  test("a write from another tab lands on the denial page, not on an error sentence", async ({
+  test("every write from another tab lands on the denial page, not on an error sentence", async ({
     page,
     context,
   }) => {
@@ -518,6 +525,15 @@ test.describe("ADR-0012 AC6 — a revoke ends the session's access mid-edit", ()
     // Tab A: the coach is editing Lina's routine.
     await page.goto(`/clients/${LINA}/routine`);
     await expect(page.getByLabel("Plan name")).toBeVisible();
+
+    // Tabs C and D: her nutrition, open and ready to write. Staged now, because after
+    // the revoke this URL redirects before the controls exist.
+    const week = await context.newPage();
+    await week.goto(`/clients/${LINA}/nutrition`);
+    await expect(week.getByRole("button", { name: "Apply to Lina M." })).toBeVisible();
+    const targets = await context.newPage();
+    await targets.goto(`/clients/${LINA}/nutrition`);
+    await expect(targets.getByLabel("Calories")).toBeVisible();
 
     // Tab B: the same coach revokes (standing in for the trainee revoking in their
     // app — the fixture's flag is the same one either path sets).
@@ -540,5 +556,24 @@ test.describe("ADR-0012 AC6 — a revoke ends the session's access mid-edit", ()
     // The plan is gone from the screen, not merely annotated.
     await expect(page.getByLabel("Plan name")).toHaveCount(0);
     await expect(page.getByText("The draft could not be saved.")).toHaveCount(0);
+
+    // The same must hold for the nutrition writes — they are separate components with
+    // their own error handling, and "it works on the routine tab" has never been
+    // evidence about this one.
+    await week.getByRole("button", { name: "Apply to Lina M." }).click();
+    await week.getByRole("dialog").getByRole("button", { name: "Apply", exact: true }).click();
+    await week.waitForURL("/clients/denied");
+    await expect(week.getByText("The meal week could not be applied.")).toHaveCount(0);
+    // A revoked trainee's meals are no longer on screen.
+    await expect(week.getByRole("button", { name: /^Swap meal: / })).toHaveCount(0);
+
+    await targets.getByLabel("Calories").fill("2100");
+    await targets.getByRole("button", { name: "Save targets" }).click();
+    await targets
+      .getByRole("dialog")
+      .getByRole("button", { name: "Save targets" })
+      .click();
+    await targets.waitForURL("/clients/denied");
+    await expect(targets.getByText("The targets could not be saved.")).toHaveCount(0);
   });
 });
