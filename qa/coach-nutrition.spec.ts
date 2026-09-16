@@ -490,11 +490,15 @@ test.describe("ADR-0015 — the contract additions the review asked for", () => 
     await signIn(page);
     await page.goto(`/clients/${PETRA}/nutrition`);
 
-    // B2: `source === "COACH"` is not "you". Petra's target was written before she
-    // re-linked, so "Set by you on …" would put this coach's name on another
-    // professional's decision.
-    await expect(page.getByText(/^Set by a coach on /)).toBeVisible();
+    // ADR-0015's amendment, ruling (b): `source === "COACH"` is not "you". Petra's
+    // target was written before she re-linked, so "Set by you on …" would put this
+    // coach's name on another professional's decision — and the fourth label is the
+    // only one that can be rendered from a boolean, since the portal is served no id
+    // and no name for whoever did write it.
+    await expect(page.getByText(/^Set by another coach on /)).toBeVisible();
     await expect(page.getByText(/^Set by you on /)).toHaveCount(0);
+    // The page must not name, or carry, the other coach in any form.
+    await expect(page.locator("body")).not.toContainText("beef");
   });
 
   test("saving targets here DOES read as yours afterwards", async ({ page }) => {
@@ -507,7 +511,9 @@ test.describe("ADR-0015 — the contract additions the review asked for", () => 
 
     await expect(page.getByText("Targets saved.")).toBeVisible();
     await page.reload();
+    // The api recomputes `setByYou` for the caller; the write flips the label.
     await expect(page.getByText(/^Set by you on /)).toBeVisible();
+    await expect(page.getByText(/^Set by another coach on /)).toHaveCount(0);
   });
 
   test("a foreign and a never-existing client id are both 403 on this tab", async ({ page }) => {

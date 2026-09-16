@@ -51,7 +51,8 @@ import type {
 
 const SCENARIO = process.env.COACH_FIXTURE_SCENARIO === "empty" ? "empty" : "populated";
 const CAPACITY = 2; // CoachProfile.CapacityTier.STARTER.capacity()
-/** The signed-in coach. `NutritionTargets.setBy` is compared against this. */
+/** The signed-in coach's own id — `GET /coach-portal/me` only. It is never compared
+ * against anything here: `setByYou` arrives already computed (amendment ruling (b)). */
 const COACH_ID = "1a2b3c4d-0000-4000-8000-00000000c0ac";
 
 function isoDate(daysAgo: number): string {
@@ -742,7 +743,7 @@ function initialNutrition(id: string): NutritionState {
         source: "AUTO",
         // AUTO and MANUAL rows are never attributed to a coach (D6.2: the trainee's
         // own write is a full-row replace that must name the component).
-        setBy: null,
+        setByYou: false,
         activity: "MODERATE",
         updatedAt: new Date().toISOString(),
       },
@@ -768,7 +769,8 @@ function initialNutrition(id: string): NutritionState {
         fatG: 64,
         source: "COACH",
         // Written by the signed-in coach: this is the row "Set by you on {date}" is for.
-        setBy: "1a2b3c4d-0000-4000-8000-00000000c0ac",
+        // The api computes this comparison; the portal is served the answer only.
+        setByYou: true,
         activity: "ACTIVE",
         updatedAt: new Date().toISOString(),
       },
@@ -787,7 +789,7 @@ function initialNutrition(id: string): NutritionState {
         carbsG: 280,
         fatG: 80,
         source: "MANUAL",
-        setBy: null,
+        setByYou: false,
         activity: "VERY_ACTIVE",
         updatedAt: new Date().toISOString(),
       },
@@ -807,11 +809,12 @@ function initialNutrition(id: string): NutritionState {
         carbsG: 180,
         fatG: 60,
         // A COACH target this coach did NOT write. Petra was coached by someone else
-        // before, and `nutrition_targets` survives a revoke-and-re-link — so the
-        // attribution line must say "a coach", never "you". Rendering "Set by you on
-        // …" here would put this coach's name on another professional's decision.
+        // before, and `nutrition_targets` survives a revoke-and-re-link — so the line
+        // must say "another coach", never "you". Note what the fixture CANNOT express
+        // here, by design: there is no id to put in, because the api computes the
+        // comparison and serves the boolean (amendment ruling (b), Q2).
         source: "COACH",
-        setBy: "1a2b3c4d-0000-4000-8000-00000000beef",
+        setByYou: false,
         activity: "LIGHT",
         updatedAt: new Date().toISOString(),
       },
@@ -1114,9 +1117,9 @@ export const fixtureCoachApi: CoachApi = {
       carbsG: body.carbsG,
       fatG: body.fatG,
       source: "COACH",
-      // The coach who just wrote it — `me()`'s id, so the attribution line the page
-      // renders next is true by construction.
-      setBy: COACH_ID,
+      // The caller IS the signed-in coach, so the attribution the page renders next is
+      // true by construction.
+      setByYou: true,
       activity: state.targets?.activity ?? "MODERATE",
       updatedAt: new Date().toISOString(),
     };

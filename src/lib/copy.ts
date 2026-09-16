@@ -333,14 +333,17 @@ export const copy = {
     sourceManual: "Set manually by the trainee",
     sourceCoach: (date: string) => `Set by you on ${date}`,
     /**
-     * `source === "COACH"` with a `setBy` that is not the signed-in coach — a target
-     * written before a revoke-and-re-link, or by a coach account since erased
-     * (ADR-0015 B2). "Set by you" would be this coach's name on another
-     * professional's decision, so the attribution stays true and unspecific: the api
-     * exposes no other coach's display name here, and inventing one would be a
-     * disclosure this surface has no right to make.
+     * AC1's fourth label, named by ADR-0015's 2026-09-16 amendment (ruling (b)):
+     * `source === "COACH"` and `setByYou === false` — a target written before a
+     * revoke-and-re-link, or by a coach account since erased. "Set by you" would be
+     * this coach's name on another professional's decision.
+     *
+     * It never names the other coach, and it cannot: the portal is served a boolean,
+     * not an id and not a name. The amendment's words are "Set by another coach"; the
+     * date is carried because the other three source lines carry it and a byline that
+     * drops it reads like a different kind of fact.
      */
-    sourceCoachOther: (date: string) => `Set by a coach on ${date}`,
+    sourceCoachOther: (date: string) => `Set by another coach on ${date}`,
     emptyTitle: "No nutrition set up yet", // AC1, verbatim
     emptyBody: "Set the targets, then apply a meal week.",
     // AC1, verbatim — ACTIVE link, no NUTRITION scope.

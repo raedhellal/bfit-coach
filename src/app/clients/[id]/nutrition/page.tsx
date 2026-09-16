@@ -95,9 +95,6 @@ export default async function NutritionPage({ params }: { params: { id: string }
             clientId={params.id}
             traineeDisplayName={displayName}
             targets={nutrition.targets}
-            // ADR-0015 B2: "Set by you" is an equality against this, never an
-            // inference from `source === "COACH"`.
-            coachId={me?.coachId ?? null}
           />
 
           <NutritionWeekCard

@@ -499,16 +499,22 @@ export interface NutritionTargets {
   /** `ActivityLevel`; null for a trainee who never completed nutrition onboarding. */
   activity: ActivityLevel | null;
   /**
-   * `nutrition_targets.set_by` — the coach user id that wrote this target, or null.
+   * Did the SIGNED-IN coach write this target? Computed server-side from
+   * `nutrition_targets.set_by`, which the portal never receives.
    *
-   * "Set by you on {date}" may only be rendered when this EQUALS the signed-in coach's
-   * `CoachMe.coachId`. `source === "COACH"` is not sufficient: `set_by` can be null on
-   * a COACH row (D6.2 makes the trainee's own edit write NULL, and an erased coach
-   * account leaves one behind), and a trainee who revoked and re-linked to a different
-   * coach carries the previous coach's target — so "you" would be a false attribution
-   * of someone else's professional judgement.
+   * ADR-0015's 2026-09-16 amendment, ruling (b), Q2 — and it rules AGAINST the uuid
+   * this module asked for. A raw `set_by` would be the first user id of another person
+   * this surface has ever been served: ADR-0012 D4 built the whole portal so that
+   * `{id}` is a `coach_clients` row id and "a leaked or guessed user id buys nothing",
+   * and a previous coach's uuid showing up on two trainees would tell this coach those
+   * two trainees shared a coach. A boolean answers the only question the screen asks
+   * and leaks nothing.
+   *
+   * `source === "COACH"` alone is NOT "you": a re-link after a revoke leaves the
+   * previous coach's target in place, and `set_by` is NULL after that account is
+   * erased. Both make `setByYou` false, which is the fourth label the amendment names.
    */
-  setBy: string | null;
+  setByYou: boolean;
   /** ISO instant — the date in "Set by you on {date}". */
   updatedAt: string;
 }
@@ -541,7 +547,15 @@ export interface PlannedDayView {
   meals: PlannedMealView[];
 }
 
-/** The current week. Seven days, always — a short week is an api bug, not a state. */
+/**
+ * The current week. Seven days, always — a short week is an api bug, not a state.
+ *
+ * ⛔ OPEN: the amendment's ruling (a) gives the WEEK its own attribution
+ * (`weekly_meal_plan.set_by`, week-level provenance — `regenerateDay`, `applySwap` and
+ * `markMealEaten` carry it forward unchanged) and ruling (b) serves the trainee a
+ * `setByName` for it. It does not say whether the coach portal gets a `setByYou` on
+ * the week too. The portal renders no week byline today and will not invent one.
+ */
 export interface MealWeekView {
   /** `YYYY-MM-DD`, the Monday. */
   weekStart: string;

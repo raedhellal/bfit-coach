@@ -34,17 +34,10 @@ export function NutritionTargetsCard({
   clientId,
   traineeDisplayName,
   targets,
-  coachId,
 }: {
   clientId: string;
   traineeDisplayName: string;
   targets: NutritionTargets | null;
-  /**
-   * The SIGNED-IN coach's id, from `GET /coach-portal/me`, resolved on the server and
-   * passed in — it is what `targets.setBy` is compared against. Null when that read
-   * failed, and then "you" is simply not claimed (see `sourceLine`).
-   */
-  coachId: string | null;
 }) {
   const router = useRouter();
   const [calories, setCalories] = useState(targets ? String(targets.calories) : "");
@@ -109,30 +102,23 @@ export function NutritionTargetsCard({
   }
 
   /**
-   * AC1's three source sentences, with ADR-0015 B2's fourth case.
+   * AC1's source line, in the four cases ADR-0015's 2026-09-16 amendment (ruling (b))
+   * settles.
    *
-   * `source === "COACH"` alone does NOT mean "you". `set_by` is null on a COACH row
-   * whose author was erased, and `nutrition_targets` survives a revoke-and-re-link, so
-   * a coach can legitimately be looking at a target written by the trainee's previous
-   * coach. "Set by you on {date}" is therefore gated on `setBy === coachId` — an
-   * equality, not an inference — and every other COACH row reads "Set by a coach",
-   * which is true in all three of the cases that are not this coach and discloses no
-   * other coach's identity.
+   * `source === "COACH"` alone does NOT mean "you": `nutrition_targets` survives a
+   * revoke-and-re-link and `set_by` is NULL once an erased account has been forgotten,
+   * so a coach can legitimately be reading a target written by the trainee's previous
+   * one. The gate is `setByYou`, a boolean the API computes — this component performs
+   * no comparison and holds no id to compare, which is the point: the portal is never
+   * served another person's user id (ADR-0012 D4's rule, applied to attribution).
    *
-   * `coachId !== null &&` is not a defensive habit, it is the null-null collision:
-   * `readCoachMe` degrades to null when `GET /coach-portal/me` fails (a failed header
-   * read must never take down the screen it decorates), and `setBy` is null on every
-   * target the trainee wrote themselves. Without the guard those two nulls compare
-   * equal and a trainee's own COACH-less row would be attributed to a coach whose
-   * identity this render could not even establish. When "you" is unknown, "you" is not
-   * claimed.
+   * The not-you line never names the other coach. It has nothing to name them with.
    */
   function sourceLine(): string | null {
     if (!targets) return null;
     if (targets.source === "AUTO") return copy.nutrition.sourceAuto;
     if (targets.source === "MANUAL") return copy.nutrition.sourceManual;
-    const setByYou = coachId !== null && targets.setBy === coachId;
-    return setByYou
+    return targets.setByYou
       ? copy.nutrition.sourceCoach(formatInstant(targets.updatedAt))
       : copy.nutrition.sourceCoachOther(formatInstant(targets.updatedAt));
   }
