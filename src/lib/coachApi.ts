@@ -431,19 +431,39 @@ export interface CoachRoutineDraftRequest {
 }
 
 /**
- * One line of the publish preview. All three strings are the api's — the portal
- * renders them and never composes a rule sentence of its own, because the rule is
- * `RoutinePolicy`'s and only the engine knows which one fired.
+ * One line of the publish preview — **a whole sentence, in the engine's own words**.
+ *
+ * This module asked for a triple (`{ exercise, replacedWith, rule }`) and EV-184a
+ * ships `List<String>` (`CoachPublishPreviewResponse.repairs`, branch
+ * feat/ev184a-coach-routine-api). The portal adapts to what the api serves, so this is
+ * an alias rather than a record: the whole surface names ONE type, and if the staff
+ * review of EV-184a — where contract item (e) challenges exactly this, on the ground
+ * that EV-184 AC3 asks for the triple — forces the structured shape back, this alias
+ * becomes the interface again and the rest of the diff is the JSX that renders it.
+ *
+ * What the portal loses by taking a string, recorded so the review can weigh it: it
+ * cannot truncate the exercise name inside the modal (EV-184 edge case 6), cannot
+ * style the three parts differently, and cannot assert in a test that the replacement
+ * is a real catalog entry. What it gains is that the rule sentence is unambiguously
+ * the engine's; the portal composes nothing.
+ *
+ * Either way the portal never invents a repair sentence: `RoutinePolicy` is the only
+ * thing that knows which rule fired.
  */
-export interface PublishRepair {
-  exercise: string;
-  replacedWith: string;
-  rule: string;
-}
+export type PublishRepair = string;
 
 /** `POST …/routine/publish/preview`. An EMPTY `repairs` is "No changes were needed". */
 export interface PublishPreview {
   repairs: PublishRepair[];
+  /**
+   * `repairs.length`, served by the api (`CoachPublishPreviewResponse.repairCount`) so
+   * AC3's heading "We changed N things to keep this safe" cannot disagree with the
+   * list beside it. The modal still counts the array it renders — a heading derived
+   * from a different number than the list it heads is the bug this field exists to
+   * make impossible, and reading the field instead would just move the disagreement.
+   * It is consumed here to keep the contract honest and asserted equal in the fixture.
+   */
+  repairCount: number;
   /**
    * OPAQUE. The api hashes (draftId, document, ordered repairs); this surface never
    * parses, shortens, stores or recomputes it — it echoes the exact string back to
@@ -468,6 +488,13 @@ export interface PublishPreview {
 export interface PublishResult {
   planId: string;
   publishedAt: string;
+  /**
+   * The repairs that WERE applied — identical to the acknowledged preview's, by
+   * construction (`CoachPublishResultResponse.repairs`). The portal does not render
+   * them: the coach acknowledged the same list one modal ago, and repeating it after
+   * the fact would read as a second, different set of changes.
+   */
+  repairs: PublishRepair[];
   /**
    * EQUAL BY CONSTRUCTION to the previewed `repairs.length`. D4: publish re-runs the
    * policy and answers 409 on ANY mismatch with the acknowledged set, so a publish that

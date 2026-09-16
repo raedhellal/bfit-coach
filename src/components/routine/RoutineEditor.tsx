@@ -682,8 +682,8 @@ function PublishModal({
         <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 10 }}>
           {repairs.map((repair, i) => (
             <li
-              key={`${repair.exercise}-${i}`}
-              title={copy.routine.repairLine(repair.exercise, repair.replacedWith, repair.rule)}
+              key={`${repair}-${i}`}
+              title={repair}
               style={{
                 display: "flex",
                 alignItems: "flex-start",
@@ -698,12 +698,15 @@ function PublishModal({
             >
               <UiIcon name="shield" size={16} color="var(--warn-ink)" />
               <span>
-                {/* Edge case 6: long exercise names truncate inside the modal too. */}
-                {copy.routine.repairLine(
-                  truncateName(repair.exercise),
-                  truncateName(repair.replacedWith),
-                  repair.rule
-                )}
+                {/*
+                  The api serves the whole sentence (EV-184a `repairs: List<String>`),
+                  so the portal renders it verbatim and composes nothing. Edge case 6's
+                  in-modal truncation of a long exercise name is not possible on a
+                  string the portal cannot take apart — the line wraps instead, and the
+                  full text is on the `title`. That is the cost of the string shape and
+                  it is named in `PublishRepair`.
+                */}
+                {repair}
               </span>
             </li>
           ))}

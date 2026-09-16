@@ -30,6 +30,10 @@ import type {
   TraineeTrainingProfile,
   WeightPoint,
 } from "./coachApi";
+// The fixture composes its repair sentences with the portal's own composer, so the
+// demo's lines are identical to the ones the structured shape produced. See
+// `repairsFor`.
+import { copy } from "./copy";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
@@ -592,6 +596,14 @@ function digestOf(value: string): string {
   return h.toString(16).padStart(8, "0");
 }
 
+/**
+ * One repair per line, as a WHOLE SENTENCE — EV-184a serves `repairs: List<String>`
+ * and the fixture has to be the same shape or it is not a twin.
+ *
+ * The sentence is composed with `copy.routine.repairLine`, which is the composer the
+ * modal used when this was a triple: the demo's lines stay byte-identical, and the day
+ * the api's own wording lands it replaces this and nothing else moves.
+ */
 function repairsFor(id: string, plan: RoutinePlanView): PublishRepair[] {
   const injuries = PROFILES[id]?.injuries ?? [];
   const out: PublishRepair[] = [];
@@ -603,7 +615,7 @@ function repairsFor(id: string, plan: RoutinePlanView): PublishRepair[] {
       if (!rule) continue;
       const replacement = catalogBySlug(rule.replacement);
       if (!replacement) continue;
-      out.push({ exercise: ex.name, replacedWith: replacement.name, rule: rule.rule });
+      out.push(copy.routine.repairLine(ex.name, replacement.name, rule.rule));
     }
   }
   return out;
@@ -1051,6 +1063,9 @@ export const fixtureCoachApi: CoachApi = {
     state().pendingDigest.set(id, digest);
     return {
       repairs,
+      // Served by the api and equal to `repairs.length` by construction — the fixture
+      // derives it from the same array for exactly that reason.
+      repairCount: repairs.length,
       digest,
       // D4/A12: DERIVED, never hardcoded — it reports whether a non-empty equipment
       // list reached the policy. `repairsFor` passes injuries only (BUG-053 is not
@@ -1086,7 +1101,14 @@ export const fixtureCoachApi: CoachApi = {
     state().plans.set(id, { planId, name: repaired.name, trainingDays: repaired.trainingDays });
     state().drafts.delete(id);
     state().pendingDigest.delete(id);
-    return { planId, publishedAt: new Date().toISOString(), repairCount: repairs.length };
+    // The applied repairs are identical to the acknowledged preview's — the digest
+    // check above is what guarantees it, and the fixture computes both from one call.
+    return {
+      planId,
+      publishedAt: new Date().toISOString(),
+      repairs,
+      repairCount: repairs.length,
+    };
   },
 
   async searchCatalog(q: string, muscle: string, equipment: string): Promise<CatalogPage> {

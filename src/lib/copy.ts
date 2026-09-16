@@ -272,8 +272,12 @@ export const copy = {
       `We changed ${n} thing${n === 1 ? "" : "s"} to keep this safe`,
     /**
      * One repair, one line: the exercise, what it was replaced with, and the rule.
-     * Composed here rather than in the JSX so QA reads the sentence in one place —
-     * all three parts are the api's strings, none is invented.
+     *
+     * The MODAL no longer uses this — EV-184a serves `repairs` as whole sentences
+     * (`List<String>`), so the portal renders the api's string and composes nothing.
+     * It survives as the FIXTURE's composer, which is what keeps the demo's repair
+     * lines identical to the ones the triple produced, and it is the function the
+     * modal goes back to if the staff review of EV-184a restores AC3's triple.
      */
     repairLine: (exercise: string, replacedWith: string, rule: string) =>
       `${exercise} → ${replacedWith} · ${rule}`,
