@@ -1,0 +1,366 @@
+import { expect, test, type Page } from "@playwright/test";
+
+/**
+ * EV-184b — the coach's Routine tab, in **fixture mode** (see playwright.config.ts).
+ *
+ * Every sentence asserted below is quoted from EV-184's acceptance criteria and is
+ * asserted verbatim: these are the strings the story promises a coach reads, so a
+ * reworded one is a failed criterion and not a cosmetic diff.
+ *
+ * `mode: "serial"` and `workers: 1` are load-bearing, not tidiness. The fixture is one
+ * in-memory store in one dev-server process and these tests MUTATE it — AC2 requires a
+ * draft to survive a reload and AC3 requires a publish to replace the plan. The
+ * read-only assertions therefore come first for each trainee, before anything writes to
+ * that trainee.
+ *
+ * The scenario selector is the trainee id (the fixture's own design; b-fit-api answers
+ * the roster and each per-trainee read separately, so addressing a trainee the roster
+ * does not list is the real shape too).
+ */
+
+const EMAIL = "coach@evoli.fit";
+const PASSWORD = "Password123!";
+
+/** Populated plan, no injuries → publish previews zero repairs. */
+const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
+/** No active plan at all. */
+const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
+/** ACTIVE link, no WORKOUTS scope → 403 COACH_SCOPE_MISSING. */
+const SARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003";
+/** A shoulder injury that repairs two exercises, and a 50-character exercise name. */
+const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
+/** The exercise catalog answers 503. */
+const OMAR = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
+
+/** `truncateName` elides at 40 with a real ellipsis — EV-184 edge case 6. */
+const LONG_EXERCISE = "Single-Arm Standing Cable Lateral Raise With Pause";
+const LONG_EXERCISE_SHOWN = "Single-Arm Standing Cable Lateral Raise…";
+
+test.describe.configure({ mode: "serial" });
+
+async function signIn(page: Page) {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(EMAIL);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("/");
+}
+
+/** One prescription: the row is a group named by the exercise's full name. */
+function exerciseRow(page: Page, name: string) {
+  return page.getByRole("group", { name, exact: true });
+}
+
+test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
+  test("the plan, its days and every exercise's sets, reps and rest", async ({ page }) => {
+    await signIn(page);
+    const res = await page.goto(`/clients/${LINA}/routine`);
+    expect(res?.status()).toBe(200);
+
+    await expect(page.getByRole("heading", { name: "Lina M." })).toBeVisible();
+    await expect(page.getByLabel("Plan name")).toHaveValue(
+      "Intermediate Muscle Building Routine"
+    );
+    // Nothing is unpublished yet, so the header must not claim a draft.
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByText("Draft — not yet published")).toHaveCount(0);
+
+    // The three training days, in the api's schedule order.
+    await expect(page.getByText("Monday", { exact: true })).toBeVisible();
+    await expect(page.getByText("Wednesday", { exact: true })).toBeVisible();
+    await expect(page.getByText("Friday", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Day 1 focus")).toHaveValue("Upper Body A");
+    await expect(page.getByLabel("Day 2 focus")).toHaveValue("Lower Body");
+    await expect(page.getByLabel("Day 3 focus")).toHaveValue("Upper Body B");
+
+    // AC1: every exercise with its sets, reps and rest.
+    const bench = exerciseRow(page, "Barbell Bench Press");
+    await expect(bench.getByLabel("Sets")).toHaveValue("4");
+    await expect(bench.getByLabel("Reps")).toHaveValue("6-8");
+    await expect(bench.getByLabel("Rest")).toHaveValue("120s");
+
+    const squat = exerciseRow(page, "Barbell Back Squat");
+    await expect(squat.getByLabel("Sets")).toHaveValue("4");
+    await expect(squat.getByLabel("Reps")).toHaveValue("5-8");
+    await expect(squat.getByLabel("Rest")).toHaveValue("150s");
+  });
+
+  test("injuries and equipment are read-only, and nothing promises equipment safety", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/routine`);
+
+    await expect(
+      page.getByText("From the trainee's profile — you cannot change these here.")
+    ).toBeVisible();
+    await expect(page.getByText("Injuries", { exact: true })).toBeVisible();
+    await expect(page.getByText("Available equipment", { exact: true })).toBeVisible();
+    // Lina has no stored injuries: an empty list says "None recorded.", not nothing.
+    await expect(page.getByText("None recorded.")).toBeVisible();
+
+    /**
+     * EV-184 AC3's warning box: `RoutinePolicy.apply` takes injuries ONLY, and the
+     * equipment-aware replacement (BUG-053) is approved and undeployed. The portal
+     * must therefore not render any sentence promising equipment safety. The word
+     * "safe" appears in this product exactly twice — the publish modal's heading and
+     * the nutrition floor line — and neither belongs on this page in its rest state.
+     */
+    await expect(page.locator("body")).not.toContainText("safe", { ignoreCase: true });
+  });
+
+  test("a trainee with no active plan gets the empty state and one control", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${NILS}/routine`);
+
+    await expect(page.getByText("No active plan")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Build a plan" })).toBeVisible();
+    // AC1: "never a blank page or null".
+    await expect(page.locator("body")).not.toContainText("null");
+    await expect(page.getByLabel("Plan name")).toHaveCount(0);
+  });
+
+  test("a link without the WORKOUTS scope reads the scope sentence, not the roster one", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${SARA}/routine`);
+
+    await expect(
+      page.getByText("This trainee has not shared their workouts with you.")
+    ).toBeVisible();
+    // The two denials say different things, and this one must not borrow the other's.
+    await expect(page.locator("body")).not.toContainText(
+      "This trainee is not on your roster"
+    );
+    // No editor, no empty state offering to build a plan the coach may not write.
+    await expect(page.getByRole("button", { name: "Build a plan" })).toHaveCount(0);
+    await expect(page.getByLabel("Plan name")).toHaveCount(0);
+  });
+});
+
+test.describe("AC4 — the catalog refuses rather than half-writing", () => {
+  test("catalog search shows the refusal and offers nothing to pick", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${OMAR}/routine`);
+
+    await page.getByRole("button", { name: "Add exercise" }).first().click();
+    const picker = page.getByRole("dialog");
+    await expect(
+      picker.getByText("The exercise catalog is unavailable. Try again shortly.")
+    ).toBeVisible();
+    // ADR-0013: it does not fall back to a cached list.
+    await expect(picker.getByLabel("Search the catalog")).toHaveCount(0);
+    await expect(picker.getByLabel("Muscle")).toHaveCount(0);
+  });
+
+  test("publish shows the same refusal, and the plan is untouched", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${OMAR}/routine`);
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(
+      page.getByText("The exercise catalog is unavailable. Try again shortly.")
+    ).toBeVisible();
+    // Nothing was published: no modal ever opened.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByLabel("Plan name")).toHaveValue("Full Body Three Day");
+  });
+});
+
+test.describe("AC2 — the coach edits, and the edit survives a reload as a draft", () => {
+  test("reorder, replace, remove, add and sets/reps/rest all survive a hard reload", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${DANA}/routine`);
+    await expect(page.getByText("Published plan")).toBeVisible();
+
+    // Edge case 6: a 50-character name is elided rather than wrapping the row.
+    await expect(page.getByText(LONG_EXERCISE_SHOWN)).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(LONG_EXERCISE);
+
+    // 1 — reorder. Overhead Press is first on the Push day; move it down.
+    await page.getByRole("button", { name: "Move down: Barbell Overhead Press" }).click();
+    // The header flips the moment anything is edited, before any save.
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+
+    // 2 — replace, from the catalog only.
+    await page.getByRole("button", { name: "Replace: Pull-Up" }).click();
+    const picker = page.getByRole("dialog");
+    await expect(picker.getByText("Pick from the catalog. Typed names are not accepted.")).toBeVisible();
+    await picker.getByLabel("Search the catalog").fill("Lat Pulldown");
+    await picker.getByRole("button", { name: /^Lat Pulldown/ }).click();
+    await expect(exerciseRow(page, "Lat Pulldown")).toBeVisible();
+    await expect(exerciseRow(page, "Pull-Up")).toHaveCount(0);
+
+    // 3 — remove.
+    await page.getByRole("button", { name: "Remove: Chest-Supported Row" }).click();
+    await expect(exerciseRow(page, "Chest-Supported Row")).toHaveCount(0);
+
+    // 4 — add, on the second day, filtered by muscle.
+    await page.getByRole("button", { name: "Add exercise" }).nth(1).click();
+    await picker.getByLabel("Muscle").selectOption("Back");
+    await picker.getByRole("button", { name: /^Seated Cable Row/ }).click();
+    await expect(exerciseRow(page, "Seated Cable Row")).toBeVisible();
+
+    // 5 — sets, reps and rest.
+    const raise = exerciseRow(page, LONG_EXERCISE);
+    await raise.getByLabel("Sets").fill("5");
+    await raise.getByLabel("Reps").fill("12-15");
+    await raise.getByLabel("Rest").fill("75s");
+
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+
+    // AC2: a HARD reload, not a client navigation.
+    await page.reload();
+
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+    await expect(exerciseRow(page, "Lat Pulldown")).toBeVisible();
+    await expect(exerciseRow(page, "Seated Cable Row")).toBeVisible();
+    await expect(exerciseRow(page, "Pull-Up")).toHaveCount(0);
+    await expect(exerciseRow(page, "Chest-Supported Row")).toHaveCount(0);
+    const raiseAfter = exerciseRow(page, LONG_EXERCISE);
+    await expect(raiseAfter.getByLabel("Sets")).toHaveValue("5");
+    await expect(raiseAfter.getByLabel("Reps")).toHaveValue("12-15");
+    await expect(raiseAfter.getByLabel("Rest")).toHaveValue("75s");
+
+    // The reorder held too: Bench Press now precedes Overhead Press.
+    const names = await page.getByRole("group").evaluateAll((els) =>
+      els.map((el) => el.getAttribute("aria-label"))
+    );
+    expect(names.indexOf("Barbell Bench Press")).toBeLessThan(
+      names.indexOf("Barbell Overhead Press")
+    );
+  });
+});
+
+test.describe("AC3 — publish previews the repairs and refuses until they are acknowledged", () => {
+  test("the modal counts the repairs, names each one, and offers exactly two controls", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${DANA}/routine`);
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible();
+    // The heading's number agrees with the list length.
+    await expect(modal).toHaveAccessibleName("We changed 2 things to keep this safe");
+    await expect(modal.getByRole("listitem")).toHaveCount(2);
+
+    // Each repair is ONE line: the exercise, what it was replaced with, and the rule.
+    await expect(
+      modal.getByText(
+        "Barbell Overhead Press → Landmine Press · Overhead pressing is contraindicated by a shoulder injury"
+      )
+    ).toBeVisible();
+    await expect(
+      modal.getByText(
+        "Barbell Bench Press → Machine Chest Press · Flat barbell pressing is contraindicated by a shoulder injury"
+      )
+    ).toBeVisible();
+
+    // Exactly two controls, plus the dialog's own Close affordance.
+    await expect(modal.getByRole("button", { name: "Publish with these changes" })).toBeVisible();
+    await expect(modal.getByRole("button", { name: "Cancel" })).toBeVisible();
+    const buttons = await modal.getByRole("button").evaluateAll((els) =>
+      els.map((el) => (el.getAttribute("aria-label") || el.textContent || "").trim())
+    );
+    expect(buttons.filter((b) => b !== "Close").sort()).toEqual([
+      "Cancel",
+      "Publish with these changes",
+    ]);
+  });
+
+  test("Cancel publishes nothing and leaves the draft as it was", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${DANA}/routine`);
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+    // The contraindicated exercises are still in the DRAFT — cancel repaired nothing.
+    await expect(exerciseRow(page, "Barbell Overhead Press")).toBeVisible();
+    await expect(exerciseRow(page, "Barbell Bench Press")).toBeVisible();
+  });
+
+  test("Publish with these changes ships the repaired plan, not the submitted one", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${DANA}/routine`);
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Publish with these changes" })
+      .click();
+
+    await expect(
+      page.getByText("Published. The trainee sees it next time they open the app.")
+    ).toBeVisible();
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByText("Draft — not yet published")).toHaveCount(0);
+
+    // AC3: the repaired exercises are verifiably ABSENT and the replacements present.
+    await expect(exerciseRow(page, "Barbell Overhead Press")).toHaveCount(0);
+    await expect(exerciseRow(page, "Barbell Bench Press")).toHaveCount(0);
+    await expect(exerciseRow(page, "Landmine Press")).toBeVisible();
+    await expect(exerciseRow(page, "Machine Chest Press")).toBeVisible();
+
+    // And it is the server's plan, not a local optimism: reload and re-read it.
+    await page.reload();
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(exerciseRow(page, "Landmine Press")).toBeVisible();
+    await expect(exerciseRow(page, "Barbell Overhead Press")).toHaveCount(0);
+  });
+
+  test("a draft with no violations publishes with one sentence and one control", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/routine`);
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+
+    const modal = page.getByRole("dialog");
+    await expect(modal).toHaveAccessibleName("No changes were needed");
+    await expect(modal.getByRole("listitem")).toHaveCount(0);
+
+    const buttons = await modal.getByRole("button").evaluateAll((els) =>
+      els.map((el) => (el.getAttribute("aria-label") || el.textContent || "").trim())
+    );
+    expect(buttons.filter((b) => b !== "Close")).toEqual(["Publish"]);
+
+    await modal.getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(
+      page.getByText("Published. The trainee sees it next time they open the app.")
+    ).toBeVisible();
+  });
+
+  test("a plan with zero training days is refused, with the story's sentence", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${NILS}/routine`);
+
+    await page.getByRole("button", { name: "Build a plan" }).click();
+    await page.getByRole("button", { name: "Remove day" }).click();
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(page.getByText("A plan needs at least one training day.")).toBeVisible();
+    // Refused, not half-written: no modal, nothing acknowledged.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+});

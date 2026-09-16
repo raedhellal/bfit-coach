@@ -162,8 +162,8 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
   }),
 };
 
-/** Revoke mutates this so AC6's flow can be walked through in fixture mode too. */
-let revoked = false;
+/* Revoke, drafts, published plans and nutrition all live in `state()` — see the
+ * FIXTURE STATE block further down for why none of it may be a module-level `let`. */
 
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-184b / EV-185b fixture state.
@@ -215,9 +215,9 @@ const CATALOG_DOWN_IDS = new Set([OMAR_ID]);
  * to the fixture on purpose: adding a client id to the catalog path so the outage could
  * be addressed "properly" would be this file's convenience leaking into the contract.
  */
-let lastRoutineClient: string | null = null;
 function catalogIsDown(): boolean {
-  return lastRoutineClient !== null && CATALOG_DOWN_IDS.has(lastRoutineClient);
+  const last = state().lastRoutineClient;
+  return last !== null && CATALOG_DOWN_IDS.has(last);
 }
 
 async function fail(status: number, code: string, message: string): Promise<never> {
@@ -227,7 +227,7 @@ async function fail(status: number, code: string, message: string): Promise<neve
 
 /** Every read and write in both tabs goes through this first. */
 async function assertScope(id: string): Promise<void> {
-  if (revoked || !OVERVIEWS[id]) {
+  if (state().revoked || !OVERVIEWS[id]) {
     await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
   }
   if (NO_SCOPE_IDS.has(id)) {
@@ -409,19 +409,6 @@ function omarPlan(): RoutinePlanView {
     ],
   };
 }
-
-/** The live plan per trainee. `publishRoutine` replaces an entry here. */
-const PLANS = new Map<string, RoutinePlanView | null>([
-  [LINA_ID, linaPlan()],
-  [NILS_ID, null], // AC1's "No active plan"
-  [SARA_ID, null],
-  [DANA_ID, danaPlan()],
-  [OMAR_ID, omarPlan()],
-]);
-
-const DRAFTS = new Map<string, CoachRoutineDraft>();
-/** The digest handed out by the last preview, per trainee (EV-184 ruling 2). */
-const PENDING_DIGEST = new Map<string, string>();
 
 /** djb2. Not a security primitive — it stands in for whatever the api will hash. */
 function digestOf(value: string): string {
@@ -617,14 +604,79 @@ function initialNutrition(id: string): NutritionState {
   };
 }
 
-const NUTRITION = new Map<string, NutritionState>();
+/* ════════════════════════════════════════════════════════════════════════════
+ * FIXTURE STATE — process-wide, deliberately.
+ *
+ * Every mutable thing the fixture owns lives in ONE object hung off `globalThis`,
+ * and not in module-level `let`/`Map` bindings. That is not a style choice.
+ *
+ * Next compiles a module that is reached from BOTH a server component and a
+ * `"use server"` action into two webpack layers, and each layer gets its own
+ * instance of the module. With plain module state the coach portal would have two
+ * fixtures: `saveDraftAction` would write to one and the routine page's render would
+ * read the other, so a saved draft would vanish on reload, a published plan would
+ * never appear, and the catalog outage would be invisible to the picker — all of
+ * which look exactly like product bugs in the screens under test. The symbol key is
+ * `Symbol.for`, so a dev-server hot reload that re-evaluates this module rebinds to
+ * the state that is already there instead of resetting a coach's draft mid-edit.
+ *
+ * A process restart still clears everything, which is the intended lifetime: this is
+ * a demo fixture, not a database.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface FixtureState {
+  /** AC6: revoking takes the whole roster away for the rest of the process. */
+  revoked: boolean;
+  /**
+   * The trainee whose routine page was rendered last, so the catalog outage is
+   * reachable. `GET /coach-portal/catalog/exercises` carries no trainee id — rightly,
+   * it is a server-wide read — so this is the one piece of state the api would not
+   * keep, and it stays confined to the fixture rather than being "fixed" by adding a
+   * client id to the catalog path.
+   */
+  lastRoutineClient: string | null;
+  /** The live plan per trainee. `publishRoutine` replaces an entry. */
+  plans: Map<string, RoutinePlanView | null>;
+  drafts: Map<string, CoachRoutineDraft>;
+  /** The digest handed out by the last preview, per trainee (EV-184 ruling 2). */
+  pendingDigest: Map<string, string>;
+  nutrition: Map<string, NutritionState>;
+}
+
+const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
+type GlobalWithFixture = typeof globalThis & Record<symbol, FixtureState | undefined>;
+
+function freshState(): FixtureState {
+  return {
+    revoked: false,
+    lastRoutineClient: null,
+    plans: new Map<string, RoutinePlanView | null>([
+      [LINA_ID, linaPlan()],
+      [NILS_ID, null], // AC1's "No active plan"
+      [SARA_ID, null],
+      [DANA_ID, danaPlan()],
+      [OMAR_ID, omarPlan()],
+    ]),
+    drafts: new Map(),
+    pendingDigest: new Map(),
+    nutrition: new Map(),
+  };
+}
+
+function state(): FixtureState {
+  const g = globalThis as GlobalWithFixture;
+  if (!g[FIXTURE_STATE_KEY]) g[FIXTURE_STATE_KEY] = freshState();
+  return g[FIXTURE_STATE_KEY] as FixtureState;
+}
+
 function nutritionState(id: string): NutritionState {
-  let state = NUTRITION.get(id);
-  if (!state) {
-    state = initialNutrition(id);
-    NUTRITION.set(id, state);
+  const all = state().nutrition;
+  let current = all.get(id);
+  if (!current) {
+    current = initialNutrition(id);
+    all.set(id, current);
   }
-  return state;
+  return current;
 }
 
 export const fixtureCoachApi: CoachApi = {
@@ -633,13 +685,13 @@ export const fixtureCoachApi: CoachApi = {
       coachId: "1a2b3c4d-0000-4000-8000-00000000c0ac",
       displayName: "Alex R.",
       tier: "STARTER",
-      active: SCENARIO === "empty" || revoked ? 0 : 1,
+      active: SCENARIO === "empty" || state().revoked ? 0 : 1,
       capacity: CAPACITY,
     };
   },
 
   async listClients(page = 0, size = 100): Promise<RosterPage> {
-    const items = SCENARIO === "empty" || revoked ? [] : [lina()];
+    const items = SCENARIO === "empty" || state().revoked ? [] : [lina()];
     return {
       items: page === 0 ? items : [],
       page,
@@ -664,7 +716,7 @@ export const fixtureCoachApi: CoachApi = {
 
   async getClient(id: string): Promise<ClientOverview> {
     const known = OVERVIEWS[id];
-    if (!known || revoked) {
+    if (!known || state().revoked) {
       const { ApiError } = await import("./apiFetch");
       throw new ApiError(403, "Forbidden", "COACH_ACCESS_DENIED");
     }
@@ -672,19 +724,19 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async revokeClient(): Promise<void> {
-    revoked = true;
+    state().revoked = true;
   },
 
   // ── EV-184b routine ───────────────────────────────────────────────────────
 
   async getRoutine(id: string): Promise<CoachRoutineResponse> {
     await assertScope(id);
-    lastRoutineClient = id;
+    state().lastRoutineClient = id;
     return {
       clientId: id,
       traineeDisplayName: OVERVIEWS[id]().traineeDisplayName,
-      activePlan: PLANS.get(id) ?? null,
-      draft: DRAFTS.get(id) ?? null,
+      activePlan: state().plans.get(id) ?? null,
+      draft: state().drafts.get(id) ?? null,
       trainingProfile: PROFILES[id] ?? { injuries: [], equipment: [] },
     };
   },
@@ -695,21 +747,21 @@ export const fixtureCoachApi: CoachApi = {
   ): Promise<CoachRoutineDraft> {
     await assertScope(id);
     const saved: CoachRoutineDraft = {
-      planId: PLANS.get(id)?.planId ?? null,
+      planId: state().plans.get(id)?.planId ?? null,
       name: draft.name,
       trainingDays: draft.trainingDays,
       updatedAt: new Date().toISOString(),
     };
-    DRAFTS.set(id, saved);
+    state().drafts.set(id, saved);
     // Any edit invalidates an acknowledgement taken against the previous draft.
-    PENDING_DIGEST.delete(id);
+    state().pendingDigest.delete(id);
     return saved;
   },
 
   async discardRoutineDraft(id: string): Promise<void> {
     await assertScope(id);
-    DRAFTS.delete(id);
-    PENDING_DIGEST.delete(id);
+    state().drafts.delete(id);
+    state().pendingDigest.delete(id);
   },
 
   async previewPublish(id: string): Promise<PublishPreview> {
@@ -717,7 +769,7 @@ export const fixtureCoachApi: CoachApi = {
     if (CATALOG_DOWN_IDS.has(id)) {
       await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
     }
-    const draft = DRAFTS.get(id);
+    const draft = state().drafts.get(id);
     if (!draft || draft.trainingDays.length === 0) {
       // AC4: a draft with zero training days is refused, and nothing is written.
       await fail(400, "COACH_PLAN_EMPTY", "Plan empty");
@@ -725,7 +777,7 @@ export const fixtureCoachApi: CoachApi = {
     const plan = draft as CoachRoutineDraft;
     const repairs = repairsFor(id, plan);
     const digest = digestOf(JSON.stringify({ plan, repairs }));
-    PENDING_DIGEST.set(id, digest);
+    state().pendingDigest.set(id, digest);
     return { repairs, digest };
   },
 
@@ -734,11 +786,11 @@ export const fixtureCoachApi: CoachApi = {
     if (CATALOG_DOWN_IDS.has(id)) {
       await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
     }
-    const draft = DRAFTS.get(id);
+    const draft = state().drafts.get(id);
     if (!draft || draft.trainingDays.length === 0) {
       await fail(400, "COACH_PLAN_EMPTY", "Plan empty");
     }
-    if (PENDING_DIGEST.get(id) !== digest) {
+    if (state().pendingDigest.get(id) !== digest) {
       // AC3: publish is refused until the coach has acknowledged what they were shown.
       await fail(
         409,
@@ -751,9 +803,9 @@ export const fixtureCoachApi: CoachApi = {
     const repaired = applyRepairs(id, plan);
     const planId = `plan-${id.slice(-4)}-${Date.now().toString(36)}`;
     // AC3: the trainee receives the REPAIRED plan, not the submitted one.
-    PLANS.set(id, { planId, name: repaired.name, trainingDays: repaired.trainingDays });
-    DRAFTS.delete(id);
-    PENDING_DIGEST.delete(id);
+    state().plans.set(id, { planId, name: repaired.name, trainingDays: repaired.trainingDays });
+    state().drafts.delete(id);
+    state().pendingDigest.delete(id);
     return { planId, publishedAt: new Date().toISOString(), repairCount: repairs.length };
   },
 

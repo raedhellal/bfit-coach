@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
@@ -97,6 +97,30 @@ export function RoutineEditor({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  /**
+   * Re-seed the working copy when the SERVER's published plan changes identity.
+   *
+   * Publishing returns a new `planId` (a new `plans` row, superseding the previous
+   * assignment), and `router.refresh()` re-renders this page's props — but this is a
+   * client island with its own state, so without this the editor would keep showing
+   * the draft the coach submitted rather than the REPAIRED plan the trainee actually
+   * received. AC3 says the repaired exercise is verifiably absent; a coach must be
+   * able to verify that on the screen they published from, not only after a reload.
+   *
+   * It keys on `planId` rather than on the whole prop so an ordinary "Save draft" —
+   * which refreshes the route but does not change the published plan — does not blow
+   * away the coach's cursor mid-edit. The success notice is set before the refresh
+   * and survives, because this only resets the plan itself.
+   */
+  const publishedPlanId = activePlan?.planId ?? null;
+  const lastPublishedPlanId = useRef(publishedPlanId);
+  useEffect(() => {
+    if (lastPublishedPlanId.current === publishedPlanId) return;
+    lastPublishedPlanId.current = publishedPlanId;
+    setPlan(initialDraft ?? activePlan);
+    setIsDraft(initialDraft !== null);
+  }, [publishedPlanId, activePlan, initialDraft]);
 
   function edit(next: RoutinePlanView) {
     setPlan(next);

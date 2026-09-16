@@ -64,6 +64,22 @@ export function CatalogPicker({
     });
   }, []);
 
+  /**
+   * Every opening starts from the whole catalog.
+   *
+   * The picker stays mounted between openings (the modal renders null when closed),
+   * so without this the second "Add exercise" reopens holding the previous query and
+   * filters — a coach who searched "Lat Pulldown" to replace one exercise then sees a
+   * one-row catalog when they go to add the next, with no visible reason. Nothing is
+   * lost by resetting: a pick is a single act.
+   */
+  useEffect(() => {
+    if (!open) return;
+    setQ("");
+    setMuscle("");
+    setEquipment("");
+  }, [open]);
+
   // Debounced so a five-letter query is one request per pause, not five.
   useEffect(() => {
     if (!open) return;
