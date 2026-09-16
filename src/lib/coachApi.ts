@@ -22,22 +22,22 @@ import { sanitiseCoachName } from "./inviteName";
  */
 
 /* ════════════════════════════════════════════════════════════════════════════
- * PROVISIONAL — EV-184b / EV-185b. Everything in this block is UNBUILT on
- * b-fit-api as of 2026-09-14; ADR-0015 is being written in parallel and may
- * overrule any of it. Nothing below has been observed from a running server.
+ * ALIGNED TO ADR-0015 — EV-184b / EV-185b, with the F1 sign-off edit of 2026-09-16.
  *
- * It is written down here, in one place, so the api engineer can either match it
- * or contradict it deliberately — and so that when the real contract lands the
- * change is confined to this module plus `coachApi.fixture.ts`. No screen, no
- * component and no server action names a path, a query parameter or an error
- * code; they consume the exported types only.
+ * The block this replaces asked four questions and said it was provisional.
+ * ADR-0015 (D4 publish, D5 scopes, D6 nutrition) converged and answers all four; the
+ * answers are recorded at the bottom of this block, including the ONE that the ADR
+ * does not decide and which therefore stays provisional.
  *
- * Until the api answers these, the screens only run under `COACH_API_MODE=fixture`
- * (`live` mode calls them and will 404, which is the honest failure — the portal
- * does not fabricate a routine or a meal week when the server has none).
+ * What is still true: these endpoints are UNBUILT on b-fit-api as of 2026-09-16
+ * (EV-184a / EV-185a implement them). `live` mode calls them and 404s, which is the
+ * honest failure — the portal does not fabricate a routine or a meal week. The
+ * screens are demoable under `COACH_API_MODE=fixture`, whose twin is typed by the
+ * exports below, so an api that lands a different shape is a compile error here and
+ * not a wrong number on a coach's screen.
  *
  *   ROUTINE (EV-184)
- *   GET    /coach-portal/clients/{id}/routine
+ *   GET    /coach-portal/clients/{id}/routine            [scope WORKOUTS]
  *          → CoachRoutineResponse — active plan + days + exercises, the saved
  *            draft if one exists, and the trainee's READ-ONLY injuries/equipment.
  *   GET    /coach-portal/clients/{id}/routine/draft   → CoachRoutineDraft | 404
@@ -52,42 +52,62 @@ import { sanitiseCoachName } from "./inviteName";
  *          → CatalogPage · 503 CATALOG_UNAVAILABLE
  *
  *   NUTRITION (EV-185)
- *   GET    /coach-portal/clients/{id}/nutrition
+ *   GET    /coach-portal/clients/{id}/nutrition          [scope NUTRITION]
  *          → CoachNutritionResponse — targets + source + activity + the current
  *            week + the trainee's READ-ONLY allergies/rules/dislikes.
  *   PUT    /coach-portal/clients/{id}/nutrition/targets ← CoachTargetsRequest
  *   POST   /coach-portal/clients/{id}/nutrition/week/apply ← { weekStart }
- *          400 COACH_WEEK_OUT_OF_RANGE (current week only in slice 1)
+ *          400 COACH_WEEK_OUT_OF_RANGE (current week only — D6)
  *   POST   /coach-portal/clients/{id}/nutrition/week/days/{index}/regenerate
  *   GET    /coach-portal/clients/{id}/nutrition/week/meals/{mealId}/swap
  *   POST   /coach-portal/clients/{id}/nutrition/week/meals/{mealId}/swap
  *          ← { candidateIndex }
  *
- * Four decisions this surface is ASKING FOR rather than assuming — each one is a
- * place the api may say no, and each is isolated to this module:
+ * Every error body is ADR-0013's handler shape `{ code, message, details }`;
+ * `apiFetch` reads `code` and nothing else here parses a message.
  *
- * 1. **`403 COACH_SCOPE_MISSING`.** EV-184 AC1 and EV-185 AC1 require the portal to
- *    tell a coach "This trainee has not shared their workouts with you." — which is a
- *    different sentence from "not on your roster". The portal therefore needs to tell a
- *    SCOPE denial from a LINK denial, and the only carrier is the error code. This does
- *    not weaken ADR-0012 D4: the code is only ever returned for a trainee the caller
- *    already has an ACTIVE link to, so it discloses nothing a foreign or non-existent id
- *    could learn — those keep answering the existing `COACH_ACCESS_DENIED` body. If the
- *    api refuses to distinguish, both sentences collapse into the roster one and AC1's
- *    scope limb cannot be met.
- * 2. **The publish `digest`.** EV-184 ruling 2 requires publish to echo "the exact repair
- *    set the coach was shown". A digest computed server-side over (draft, repair list) is
- *    the smallest thing the client can echo without re-serialising the repairs — and it
- *    means an edit between preview and publish invalidates the acknowledgement, which a
- *    repair-list echo would not.
- * 3. **The catalog's filter vocabulary travels with its results** (`CatalogPage.muscles` /
- *    `.equipment`). The alternative is this surface hard-coding a muscle and equipment
- *    list, i.e. inventing product data in the web tier; the filters would then silently
- *    disagree with the 1,235-row catalog.
- * 4. **Exercise shape mirrors `com.bfit.application.dto.routine.RoutineExercise`** —
- *    `sets` is an int, `reps` and `rest` are STRINGS ("8-12", "90s"), because that record
- *    is what `RoutinePlanWriter` persists. The editor's fields are typed to match rather
- *    than to a tidier `number`, so the draft round-trips without a lossy conversion.
+ * ── the four questions, answered ────────────────────────────────────────────
+ *
+ * 1. **There is NO `COACH_SCOPE_MISSING`, and there never will be** (D5, B1 and
+ *    "The denial body stays undifferentiated"). Every denial — foreign link, missing
+ *    link, revoked link, no coach profile, scope missing — answers the SAME 403 body;
+ *    only a server log line differs. A 403 therefore tells this surface nothing about
+ *    scopes and is routed to /clients/denied exactly as before.
+ *    The scope sentences come from data instead: `GET /coach-portal/clients/{id}`
+ *    resolves the link with `requireManagedLink` — an ACTIVE link and **no data
+ *    scope** — so the overview is reachable for every linked trainee, and it now
+ *    carries `scopes: CoachAccessScope[]`. The portal reads that list, renders
+ *    "This trainee has not shared their …" and does not call the tab's endpoint at
+ *    all. Requiring WORKOUTS on the overview would have 403'd the whole client area
+ *    for a NUTRITION-only link and made EV-185 unreachable (R2-2).
+ *    F1's consequence, and the reason three fields below are nullable: a block whose
+ *    scope is missing is ABSENT, never a zero. `currentStreakDays: null` is "not
+ *    shared" and `0` is a real streak of nothing; `redFlags: null` is "not shared"
+ *    and `[]` is "No red flags"; `weightSeries: null` is "not shared" and `[]` is
+ *    "no weigh-ins in the window". The portal never infers consent from a null — it
+ *    reads `scopes` — the nullability exists so the api stops asserting a number it
+ *    has no right to assert.
+ * 2. **The publish `digest` is granted, and it is OPAQUE** (D4/D-i). The api computes
+ *    `SHA-256(draftId || canonicalJson(document) || canonicalJson(orderedRepairs))`;
+ *    this surface treats it as a string, stores it for exactly as long as the modal is
+ *    open and echoes it back VERBATIM. Publish re-runs the policy and compares the
+ *    resulting repair set to the acknowledged one, so an edit in a second tab between
+ *    preview and publish is `409 COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED` (edge case 2).
+ *    The portal's answer to that 409 is to re-run preview and show the modal again —
+ *    never to retry publish with the stale digest, which is the one behaviour that
+ *    would defeat the acknowledgement.
+ * 3. **The catalog's filter vocabulary is the one question ADR-0015 does NOT answer.**
+ *    It decides that the catalog gate is `CatalogAvailabilityService.hasRows()` and
+ *    that search 503s, and says nothing about facets. So `CatalogPage.muscles` /
+ *    `.equipment` below remain **PROVISIONAL** — the shape this surface asks for,
+ *    served today by the fixture's own vocabulary (25 rows, drawn from the fixture
+ *    catalog itself, never a hard-coded list). If EV-184a declines to return facets,
+ *    the two selects have to be driven by something the api does return; inventing a
+ *    muscle list in the web tier is product data authored outside the catalog and is
+ *    not an option.
+ * 4. **`reps` and `rest` stay STRINGS** ("8-12", "90s"), `sets` an int — confirmed:
+ *    `RoutineExercise` persists them that way, so the editor round-trips the draft
+ *    without a lossy conversion.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 // ── types (the api contract, as this surface consumes it) ────────────────────
@@ -113,6 +133,17 @@ export type SessionFeedback = "EASY" | "OK" | "HARD";
 export type ClientStatus = "ACTIVE";
 
 /**
+ * `com.bfit.domain.coach.CoachAccessScope` — what the trainee consented to share,
+ * per link (ADR-0012, enforced per endpoint by ADR-0015 D5).
+ *
+ * This is the ONLY thing that tells the portal a scope is missing: a 403 is
+ * undifferentiated across every denial by design, so there is no code to read and no
+ * inference to make from a null field. The list arrives on the trainee overview,
+ * which requires an ACTIVE link and no data scope at all.
+ */
+export type CoachAccessScope = "WORKOUTS" | "PROGRESS" | "NUTRITION" | "WEIGH_INS";
+
+/**
  * `GET /coach-portal/me` → `CoachProfileResponse`.
  *
  * Flat, not `{ capacity: { … } }`: the api returns the three capacity values
@@ -135,11 +166,27 @@ export interface RosterClient {
   /** The `coach_clients` row id — the ONLY id the coach portal addresses. */
   id: string;
   traineeDisplayName: string;
-  /** Null when the trainee's app is on no plan. */
+  /**
+   * Null when the trainee's app is on no plan — AND, since ADR-0015 D5/S1, null when
+   * the link lacks WORKOUTS, because the roster is filtered per item on the link's
+   * scopes exactly as the overview is.
+   *
+   * The roster deliberately carries NO `scopes` field (B1.1: it is added only if the
+   * roster hides a tab or a badge, and it hides neither), so this surface cannot tell
+   * "no plan" from "not shared" here and does not try: the row renders the existing
+   * "No plan" for both. The place a coach is told about consent is the trainee's own
+   * overview, which has `scopes`.
+   */
   currentPlanName: string | null;
   /** `YYYY-MM-DD` (UTC) of the last completed workout; null if there has never been one. */
   lastCompletedWorkoutDate: string | null;
-  currentStreakDays: number;
+  /**
+   * Null when the link lacks PROGRESS (F1 change 2 — the field stopped being a
+   * primitive `int` for exactly this reason). A serialised `0` would be a claim about
+   * the trainee rather than an absence of consent, so the row shows neither a chip nor
+   * "No streak" for a null.
+   */
+  currentStreakDays: number | null;
   status: ClientStatus;
   /** ISO-8601 instant — when the trainee accepted. */
   since: string;
@@ -200,8 +247,15 @@ export interface LastSession {
 /**
  * `GET /coach-portal/clients/{id}` → `TraineeOverviewResponse`.
  *
- * Exactly AC5's five blocks and nothing else. Note there is **no plan name here** —
- * the plan is a roster-row field only, so the overview header must not claim one.
+ * AC5's five blocks, plus `scopes` (ADR-0015 B1). Note there is still **no plan name
+ * here** — the plan is a roster-row field only, so the overview header must not claim
+ * one; R2-2's "`currentPlanName` is omitted without WORKOUTS" is about that roster
+ * row, and `TraineeOverviewResponse`'s field list in B1 confirms the overview has none.
+ *
+ * The endpoint requires an ACTIVE link and NO data scope (`requireManagedLink`), which
+ * is why every child route of `/clients/[id]` can be reached by a link that shares only
+ * one kind of data. Each block below is then omitted per scope, and "omitted" is
+ * `null` — never `0`, never `[]`, never a placeholder that reads like data.
  */
 export interface ClientOverview {
   /** The `coach_clients` row id. */
@@ -209,16 +263,40 @@ export interface ClientOverview {
   traineeDisplayName: string;
   /** ISO-8601 instant — when the trainee accepted. */
   since: string;
-  /** Block 1. Week boundaries are UTC (ADR-0012 risk (c)). */
-  adherenceThisWeek: { done: number; planned: number };
-  /** Block 2. */
-  currentStreakDays: number;
-  /** Block 3 — null renders "No sessions yet". */
+  /**
+   * What this link is allowed to read. The portal renders every "not shared" state
+   * from this list and from nothing else (D5/B1).
+   */
+  scopes: CoachAccessScope[];
+  /** Block 1 [PROGRESS]. Week boundaries are UTC (ADR-0012 risk (c)). Null = not shared. */
+  adherenceThisWeek: { done: number; planned: number } | null;
+  /** Block 2 [PROGRESS]. Null = not shared; `0` is a real streak of zero days. */
+  currentStreakDays: number | null;
+  /** Block 3 [PROGRESS] — null renders "No sessions yet" when PROGRESS is held. */
   lastSession: LastSession | null;
-  /** Block 4 — weigh-ins over the last 8 weeks, oldest first. Empty, never null. */
-  weightSeries: WeightPoint[];
-  /** Block 5 — an EMPTY list is "No red flags". */
-  redFlags: RedFlagCode[];
+  /**
+   * Block 4 [WEIGH_INS] — weigh-ins over the last 8 weeks, oldest first.
+   * `null` = not shared; `[]` = shared, and none in the window.
+   */
+  weightSeries: WeightPoint[] | null;
+  /**
+   * Block 5 — composite across PROGRESS (`MISSED_TWO_OR_MORE_SESSIONS`) and WEIGH_INS
+   * (`NO_WEIGH_IN_14_DAYS`). `null` = neither scope is held; `[]` = "No red flags";
+   * a list filtered to the held scope when only one is.
+   */
+  redFlags: RedFlagCode[] | null;
+}
+
+/**
+ * Does this link share `scope`? One helper so no screen hand-writes `.includes`, and
+ * so "the portal decides from `scopes`" is greppable.
+ *
+ * A missing overview (the api did not answer) is NOT "not shared": the caller must
+ * render its load error instead, which is why this takes the list and not the
+ * nullable overview.
+ */
+export function hasScope(scopes: CoachAccessScope[], scope: CoachAccessScope): boolean {
+  return scopes.includes(scope);
 }
 
 // ── EV-184b: the routine contract (PROVISIONAL — see the block at the top) ───
@@ -312,7 +390,11 @@ export interface PublishRepair {
 /** `POST …/routine/publish/preview`. An EMPTY `repairs` is "No changes were needed". */
 export interface PublishPreview {
   repairs: PublishRepair[];
-  /** Echoed back by publish; see decision 2 in the block at the top. */
+  /**
+   * OPAQUE. The api hashes (draftId, document, ordered repairs); this surface never
+   * parses, shortens, stores or recomputes it — it echoes the exact string back to
+   * `POST …/routine/publish`. See answer 2 in the block at the top.
+   */
   digest: string;
 }
 
@@ -335,8 +417,11 @@ export interface CatalogExercise {
 /**
  * `GET /coach-portal/catalog/exercises`.
  *
- * The filter vocabulary ships with the results (decision 3): a hard-coded muscle list
- * in the web tier is product data invented outside the catalog.
+ * **The two facet fields are PROVISIONAL** — answer 3 at the top: ADR-0015 decides the
+ * 503 gate and is silent on facets, so this is still the shape this surface is asking
+ * for rather than one the api has agreed. It is served today by the fixture, whose
+ * vocabulary is derived from its own catalog rows and is marked as such. A hard-coded
+ * muscle list in the web tier would be product data invented outside the catalog.
  */
 export interface CatalogPage {
   items: CatalogExercise[];
@@ -497,20 +582,18 @@ export function isCapacityReached(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_CAPACITY_REACHED";
 }
 
-/**
- * The link is ACTIVE but does not carry the scope this screen needs — EV-184 AC1
- * ("This trainee has not shared their workouts with you.") and EV-185 AC1.
- *
- * PROVISIONAL, decision 1 at the top of this file: it is the error CODE that carries
- * the distinction, never the status, because the status is 403 for a scope denial, a
- * foreign id and an id that never existed alike. If the api declines to send this
- * code, every 403 falls through to `isForbidden` and the coach reads the roster
- * sentence — degraded, but never wrong.
+/*
+ * There is deliberately NO `isScopeMissing`. ADR-0015 D5 keeps the 403 body
+ * undifferentiated across all five denials, so a scope denial is indistinguishable
+ * from a foreign id at the transport layer and any helper claiming otherwise would be
+ * reading a code the api does not send. The scope sentences come from
+ * `ClientOverview.scopes` via `hasScope`, before the tab's endpoint is called at all.
  */
-export function isScopeMissing(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 403 && err.code === "COACH_SCOPE_MISSING";
-}
-/** 503 — ADR-0013's refuse-before-charging condition on the exercise catalog. */
+/**
+ * 503 — ADR-0013's handler shape `{ code, message, details }`, raised by ADR-0015 D4's
+ * `CatalogAvailabilityService.hasRows()` gate on catalog search AND on publish. A
+ * trainee may generate against an empty catalog; a coach may not publish against one.
+ */
 export function isCatalogUnavailable(err: unknown): boolean {
   return err instanceof ApiError && err.code === "CATALOG_UNAVAILABLE";
 }
@@ -518,13 +601,23 @@ export function isCatalogUnavailable(err: unknown): boolean {
 export function isPlanEmpty(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_PLAN_EMPTY";
 }
-/** 409 — the digest did not match the repairs the coach was shown (EV-184 AC3). */
+/**
+ * 409 — the draft changed since the preview, so the repair set the coach acknowledged
+ * is not the one publish computed (EV-184 AC3, edge case 2: a second tab).
+ *
+ * The ONLY correct response is to run `previewPublish` again and show the modal with
+ * the new repairs. Re-sending the stale digest cannot succeed and re-sending a fresh
+ * digest the coach has not seen would defeat the acknowledgement entirely.
+ */
 export function isRepairsUnacknowledged(err: unknown): boolean {
   return (
     err instanceof ApiError && err.code === "COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED"
   );
 }
-/** 400 — slice 1 applies the CURRENT week only (EV-185 edge case 3). */
+/**
+ * 400 — ADR-0015 D6 applies the CURRENT week only, judged on the SERVER clock (the
+ * portal sends no timezone; ADR-0011 is mobile-only). EV-185 edge case 3.
+ */
 export function isWeekOutOfRange(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_WEEK_OUT_OF_RANGE";
 }

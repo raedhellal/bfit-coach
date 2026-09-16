@@ -242,6 +242,14 @@ export function NutritionWeekCard({
       <p style={{ margin: "16px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
         {copy.nutrition.englishOnly}
       </p>
+      {/* ADR-0015 D6: "Regenerate day" is free to the coach and capped on the
+          TRAINEE's plan row, so the coach is spending someone else's allowance. The
+          ADR's accept-and-disclose — the sentence is only shown where the control is. */}
+      {week !== null && (
+        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.nutrition.regenerateSharesLimit(trainee)}
+        </p>
+      )}
 
       <Modal
         open={confirming}
@@ -268,6 +276,13 @@ export function NutritionWeekCard({
         </p>
         <p style={{ margin: "8px 0 0", fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
           {copy.nutrition.seesStraightAway(trainee)}
+        </p>
+        {/* ADR-0015 D6.7: the apply reuses the plan row and carries locked meals
+            forward, so "replaces the week" is true of the row and false of every meal
+            in it. The ADR asks the dialog to say so; a confirm that promised a clean
+            replacement would be the dialog lying about what the button does. */}
+        <p style={{ margin: "8px 0 0", fontSize: 13.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.nutrition.lockedMealsKept}
         </p>
       </Modal>
 

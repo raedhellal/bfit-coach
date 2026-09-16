@@ -25,8 +25,20 @@ const PASSWORD = "Password123!";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 /** No active plan at all. */
 const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
-/** ACTIVE link, no WORKOUTS scope → 403 COACH_SCOPE_MISSING. */
+/**
+ * ACTIVE link whose `scopes` are PROGRESS + WEIGH_INS: no WORKOUTS.
+ *
+ * ADR-0015 D5 removed the error code this used to be driven by — every denial answers
+ * the same 403 body — so the portal decides from the overview's `scopes` and does not
+ * call the routine endpoint at all.
+ */
 const SARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003";
+/** NUTRITION only: the Routine tab is present and reads the scope sentence. */
+const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
+/** WORKOUTS only: the Routine tab is the one thing that works for this trainee. */
+const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+/** An ACTIVE link that shares nothing at all. */
+const MARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008";
 /** A shoulder injury that repairs two exercises, and a 50-character exercise name. */
 const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 /** The exercise catalog answers 503. */
@@ -126,11 +138,16 @@ test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto(`/clients/${SARA}/routine`);
+    const res = await page.goto(`/clients/${SARA}/routine`);
+    // 200, not 403: the scope is read from the overview, and nothing was refused.
+    expect(res?.status()).toBe(200);
 
     await expect(
       page.getByText("This trainee has not shared their workouts with you.")
     ).toBeVisible();
+    // ADR-0015 D5: the tab itself stays, so a withheld scope never reads as a missing
+    // feature. The sentence is what explains the empty page, not the absent tab.
+    await expect(page.getByRole("link", { name: "Routine" })).toBeVisible();
     // The two denials say different things, and this one must not borrow the other's.
     await expect(page.locator("body")).not.toContainText(
       "This trainee is not on your roster"
@@ -362,5 +379,90 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
     await expect(page.getByText("A plan needs at least one training day.")).toBeVisible();
     // Refused, not half-written: no modal, nothing acknowledged.
     await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+});
+
+test.describe("ADR-0015 D5 — the scope sentence is derived from `scopes`", () => {
+  test("NUTRITION-only and no-scope links read it too", async ({ page }) => {
+    await signIn(page);
+
+    for (const id of [PETRA, MARA]) {
+      const res = await page.goto(`/clients/${id}/routine`);
+      expect(res?.status()).toBe(200);
+      await expect(
+        page.getByText("This trainee has not shared their workouts with you.")
+      ).toBeVisible();
+      // The two denials say different things and this one must not borrow the other's.
+      await expect(page.locator("body")).not.toContainText(
+        "This trainee is not on your roster"
+      );
+      await expect(page.getByRole("button", { name: "Build a plan" })).toHaveCount(0);
+      await expect(page.getByLabel("Plan name")).toHaveCount(0);
+    }
+  });
+
+  test("a WORKOUTS-only link gets the whole editor", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await expect(page.getByLabel("Plan name")).toHaveValue("Two Day Full Body");
+    await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(
+      "This trainee has not shared their workouts with you."
+    );
+  });
+});
+
+test.describe("ADR-0015 D4 — a draft that moves between preview and publish", () => {
+  /**
+   * EV-184 edge case 2, the second tab, and the reason the digest exists.
+   *
+   * Tab A previews (and is handed a digest for exactly that draft and those repairs);
+   * tab B then saves an edit, so the draft the server holds is no longer the one A
+   * acknowledged. A's publish is answered `409 COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED`
+   * and the portal must PREVIEW AGAIN and show the modal, not report a failure and not
+   * retry with the stale digest. Before this, the modal closed and the coach read "The
+   * plan could not be published." for a plan that was perfectly publishable.
+   */
+  test("the 409 re-previews and shows the modal again, and the next publish lands", async ({
+    page,
+    context,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    // Tab A: preview. Yusuf has no injuries, so there is nothing to repair — which
+    // isolates the digest: the only reason a publish can fail here is the draft moving.
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    const modal = page.getByRole("dialog");
+    await expect(modal).toHaveAccessibleName("No changes were needed");
+
+    // Tab B: the same coach, the same trainee, one saved edit. Same context, so the
+    // session cookie is shared — this is one coach with two tabs, not two coaches.
+    const other = await context.newPage();
+    await other.goto(`/clients/${YUSUF}/routine`);
+    await other.getByRole("group", { name: "Goblet Squat", exact: true }).getByLabel("Sets").fill("5");
+    await other.getByRole("button", { name: "Save draft" }).click();
+    await expect(other.getByText(/^Draft saved /)).toBeVisible();
+    await other.close();
+
+    // Tab A publishes what it was shown. The server refuses.
+    await modal.getByRole("button", { name: "Publish", exact: true }).click();
+
+    // The modal is still there, with a fresh preview behind it. Waiting for the
+    // control to come back out of its pending state is what makes the next two
+    // assertions deterministic: without it they race the re-preview and would pass
+    // against a modal that is on its way out.
+    await expect(modal.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
+    await expect(modal).toHaveAccessibleName("No changes were needed");
+    // …and the coach is NOT told the plan failed, because it did not.
+    await expect(page.getByText("The plan could not be published.")).toHaveCount(0);
+    await expect(page.getByText(/^Published\. /)).toHaveCount(0);
+
+    // Acknowledging the new preview publishes.
+    await modal.getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(
+      page.getByText("Published. The trainee sees it next time they open the app.")
+    ).toBeVisible();
   });
 });

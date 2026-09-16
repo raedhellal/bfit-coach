@@ -148,6 +148,23 @@ export const copy = {
     weighInDelta: (delta: string, count: number) => `${delta} over ${count} weigh-ins`,
     redFlags: "Red flags",
     noRedFlags: "No red flags", // AC5 block 5, verbatim
+    /**
+     * The per-block "not shared" states (ADR-0015 D5/R2-2 + the F1 sign-off edit).
+     *
+     * These four are OURS, not AC text: EV-183 wrote the overview for a link that
+     * shares everything, and R2-2 created states it never described. They are worded
+     * on EV-184/EV-185 AC1's pattern ("This trainee has not shared their … with you.")
+     * so a coach reads one sentence shape across the whole client area.
+     *
+     * `notShared` is the tile caption; the value above it is a dash, never a 0 and
+     * never "No streak" — both of those are claims about the trainee, and the whole
+     * point of F1 is that the api stopped making them.
+     */
+    notShared: "Not shared",
+    notSharedProgress: "This trainee has not shared their progress with you.",
+    notSharedWeighIns: "This trainee has not shared their weigh-ins with you.",
+    notSharedRedFlags:
+      "Red flags need this trainee's progress and weigh-ins, which they have not shared.",
     // AC5's three rules, verbatim. The api sends the code; this maps it. The keys are
     // b-fit-api's `RedFlag` enum constants, not a local spelling — a code with no
     // sentence would render as a raw enum name to a coach.
@@ -348,7 +365,21 @@ export const copy = {
     // Edge case 3: the portal only ever sends `currentWeekStart`, so this is the
     // sentence for the race where the server's week rolled over mid-session.
     weekOutOfRange: "Only the current week can be applied.",
+    /**
+     * ADR-0015 D6.7: applying a week reuses the plan row and CARRIES LOCKED MEALS
+     * FORWARD, so "replaces the week" is true of the row and not of every meal in it.
+     * The ADR asks the confirm dialog to say so; without this line the dialog promises
+     * a replacement it does not perform.
+     */
+    lockedMealsKept: "Meals the trainee has locked are kept.",
     regenerate: "Regenerate day", // AC3, verbatim
+    /**
+     * ADR-0015 D6: `regenerateDay` is free to the coach but its cap lives on the
+     * TRAINEE's plan row, so a coach spends the trainee's daily allowance. The ADR's
+     * accept-and-disclose: the portal states it (EV-091 carries the fix).
+     */
+    regenerateSharesLimit: (trainee: string) =>
+      `Day regenerations share ${trainee}'s daily limit.`,
     regenerating: "Regenerating…",
     regenerateFailed: "The day could not be regenerated.",
     swap: "Swap meal", // AC3, verbatim

@@ -16,8 +16,19 @@ const PASSWORD = "Password123!";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 /** Exactly one weigh-in, 72.5 kg — BUG-144's repro. */
 const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
-/** No weigh-ins at all. */
+/** No weigh-ins at all — and a link that shares PROGRESS + WEIGH_INS, nothing else. */
 const SARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003";
+/**
+ * ADR-0015 D5 / F1 — the three partial-consent links.
+ *
+ * The overview requires an ACTIVE link and NO data scope, so all three render 200 and
+ * each block is present or absent according to `scopes`. These tests exist because the
+ * failure mode they guard is silent: a `0` streak and an empty `redFlags` list look
+ * exactly like data, and the bug is that the coach believes them.
+ */
+const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006"; // NUTRITION only
+const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007"; // WORKOUTS only
+const MARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008"; // nothing shared
 /** Nobody. The coach portal answers 403 for a foreign id and for one that never existed. */
 const UNLINKED = "00000000-0000-0000-0000-000000000000";
 
@@ -112,5 +123,83 @@ test.describe("AC5 block 4 — the weight tile and its caption agree", () => {
     await expect(
       page.getByText("No weigh-ins in the last 8 weeks", { exact: true })
     ).toHaveCount(2);
+  });
+});
+
+test.describe("ADR-0015 D5 — the overview blanks per block, from `scopes`", () => {
+  test("a link that shares nothing is still reachable, and asserts nothing", async ({ page }) => {
+    await signIn(page);
+
+    // Round one of the ADR required WORKOUTS on the overview, which 403s the whole
+    // client area — including Nutrition — for a link like this one. R2-2 reversed it.
+    const res = await page.goto(`/clients/${MARA}`);
+    expect(res?.status(), "an ACTIVE link with no data scope still opens").toBe(200);
+    await expect(page.getByRole("heading", { name: "Mara D." })).toBeVisible();
+
+    const body = page.locator("body");
+    // The F1 sign-off edit in one assertion: none of the three "absent" fields may
+    // surface as a number or as an empty-list sentence that reads like data.
+    await expect(body).not.toContainText("0 days");
+    await expect(body).not.toContainText("No streak");
+    await expect(body).not.toContainText("No red flags");
+    await expect(body).not.toContainText("No weigh-ins in the last 8 weeks");
+    await expect(body).not.toContainText("No sessions yet");
+    await expect(body).not.toContainText("null");
+
+    await expect(page.getByText("Not shared").first()).toBeVisible();
+    await expect(
+      page.getByText("This trainee has not shared their weigh-ins with you.")
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Red flags need this trainee's progress and weigh-ins, which they have not shared."
+      )
+    ).toBeVisible();
+  });
+
+  test("NUTRITION only: the overview is blank, and Nutrition still works", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${PETRA}`);
+
+    // Block 2's tile: a dash, never "0 days" — the whole point of F1 change 1.
+    const streak = page.getByText("Current streak", { exact: true }).locator("..");
+    await expect(streak).toContainText("—");
+    await expect(streak).toContainText("Not shared");
+    await expect(streak).not.toContainText("0 days");
+
+    // The tab is still there (EV-184b's decision), and it leads somewhere that works.
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(page.getByRole("button", { name: "Save targets" })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(
+      "This trainee has not shared their nutrition with you."
+    );
+  });
+
+  test("WORKOUTS only: the same blanks, and the Routine tab works", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}`);
+
+    const adherence = page.getByText("Adherence this week", { exact: true }).locator("..");
+    await expect(adherence).toContainText("—");
+    await expect(adherence).toContainText("Not shared");
+
+    await page.getByRole("link", { name: "Routine" }).click();
+    await page.waitForURL(`/clients/${YUSUF}/routine`);
+    await expect(page.getByLabel("Plan name")).toHaveValue("Two Day Full Body");
+  });
+
+  test("a fully shared link is unchanged: real numbers, real empty states", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${SARA}`);
+
+    // Sara shares PROGRESS and WEIGH_INS. `0` here is a real streak of zero days and
+    // must keep reading as one — the nullability must not have turned every zero into
+    // a dash, which is the obvious way to "fix" this and is wrong.
+    const streak = page.getByText("Current streak", { exact: true }).locator("..");
+    await expect(streak).toContainText("0 days");
+    await expect(streak).not.toContainText("Not shared");
+    // `[]` is still "No red flags", not "not shared".
+    await expect(page.getByText("No weigh-ins in the last 8 weeks").first()).toBeVisible();
   });
 });

@@ -18,7 +18,17 @@ import type { RosterClient } from "@/lib/coachApi";
  * (`sortNeedsAttentionFirst`: least recently trained first, never-trained at the top).
  */
 
-function StreakChip({ days }: { days: number }) {
+/**
+ * `days` is nullable since ADR-0015 F1: the roster is filtered per item on the link's
+ * scopes, so a trainee who has not shared PROGRESS has no streak to report. The chip
+ * renders a dash for that — NOT "No streak", which is a claim about the trainee, and
+ * not a 0, which is why the api stopped sending a primitive.
+ *
+ * The roster carries no `scopes` field (it hides no tab and no badge — ADR-0015 B1.1),
+ * so this cannot say *why* the number is absent. The overview can, and does.
+ */
+function StreakChip({ days }: { days: number | null }) {
+  if (days === null) return <span style={{ color: "var(--ink-3)" }}>{copy.common.dash}</span>;
   if (days <= 0) return <span style={{ color: "var(--ink-3)" }}>{copy.roster.noStreak}</span>;
   return (
     <Badge tone="amber">

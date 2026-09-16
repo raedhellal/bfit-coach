@@ -74,7 +74,7 @@ const FAILURE_COPY: Record<RoutineFailure, string> = {
   PLAN_EMPTY: copy.routine.planEmpty,
   CATALOG_UNAVAILABLE: copy.routine.catalogUnavailable,
   REPAIRS_UNACKNOWLEDGED: copy.routine.publishFailed,
-  SCOPE_MISSING: copy.routine.scopeMissing,
+  ACCESS_DENIED: copy.client.notFound,
   FAILED: copy.routine.publishFailed,
 };
 
@@ -219,11 +219,37 @@ export function RoutineEditor({
     });
   }
 
+  /**
+   * AC3's confirm, and ADR-0015 D4's 409.
+   *
+   * `COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED` means the draft moved between the preview
+   * and this click — EV-184 edge case 2's second tab — so the repairs the coach
+   * acknowledged are not the ones the server just computed. The ONLY correct answer is
+   * to run preview again and show the modal with the new repair list: retrying publish
+   * with the stale digest cannot succeed, and sending a fresh digest the coach has not
+   * read would publish an unacknowledged repair, which is the single thing the digest
+   * exists to prevent. The modal stays open on purpose — the coach is mid-decision and
+   * a dismissed dialog would look like the publish went through.
+   */
   function confirmPublish() {
-    if (!preview) return;
+    if (!preview || !plan) return;
     startTransition(async () => {
       const result = await publishAction(clientId, preview.digest);
       if (!result.ok) {
+        if (result.code === "REPAIRS_UNACKNOWLEDGED") {
+          const again = await previewPublishAction(clientId, {
+            name: plan.name,
+            trainingDays: plan.trainingDays,
+          });
+          if (again.ok) {
+            setPreview(again.preview);
+            setError(null);
+            return;
+          }
+          setError(FAILURE_COPY[again.code]);
+          setPreview(null);
+          return;
+        }
         setError(FAILURE_COPY[result.code]);
         setPreview(null);
         return;

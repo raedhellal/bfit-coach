@@ -26,11 +26,16 @@ import {
  * promise made in a comment.
  */
 
-export type NutritionFailure = "SCOPE_MISSING" | "WEEK_OUT_OF_RANGE" | "INVALID" | "FAILED";
+/**
+ * ADR-0015 D5: a 403 carries no scope information (the denial body is undifferentiated),
+ * so this is `ACCESS_DENIED` — the link ended — and the scope sentence is decided from
+ * the overview's `scopes` before this card is rendered at all.
+ */
+export type NutritionFailure = "ACCESS_DENIED" | "WEEK_OUT_OF_RANGE" | "INVALID" | "FAILED";
 
 function classify(err: unknown): NutritionFailure {
   if (isWeekOutOfRange(err)) return "WEEK_OUT_OF_RANGE";
-  if (isForbidden(err)) return "SCOPE_MISSING";
+  if (isForbidden(err)) return "ACCESS_DENIED";
   return "FAILED";
 }
 

@@ -1,6 +1,7 @@
 import "server-only";
 import type {
   CatalogExercise,
+  CoachAccessScope,
   CatalogPage,
   ClientOverview,
   CoachApi,
@@ -74,6 +75,17 @@ const LINA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
  */
 const NILS_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
 const SARA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003";
+/**
+ * ADR-0015 D5 — the three partial-consent links. Each one exists because the api can
+ * now answer the overview for a link that shares only some of the data, and the portal
+ * has to render that from `scopes` rather than from a 403 it will never receive.
+ */
+const PETRA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
+const YUSUF_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+const MARA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008";
+
+/** Everything a fully-consented link shares — the shape every EV-183 fixture had. */
+const ALL_SCOPES: CoachAccessScope[] = ["WORKOUTS", "PROGRESS", "NUTRITION", "WEIGH_INS"];
 
 /** 71.2 kg → 70.4 kg over eight weekly weigh-ins. */
 const WEIGHTS = [71.2, 71.0, 71.1, 70.8, 70.9, 70.6, 70.5, 70.4];
@@ -107,6 +119,7 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
     clientId: LINA_ID,
     traineeDisplayName: "Lina M.",
     since: isoInstant(23),
+    scopes: ALL_SCOPES,
     adherenceThisWeek: { done: 2, planned: 4 },
     currentStreakDays: 4,
     lastSession: { date: isoDate(1), name: "Upper Body A", difficulty: "HARD" },
@@ -119,6 +132,7 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
     clientId: NILS_ID,
     traineeDisplayName: "Nils K.",
     since: isoInstant(9),
+    scopes: ALL_SCOPES,
     adherenceThisWeek: { done: 1, planned: 3 },
     currentStreakDays: 1,
     lastSession: { date: isoDate(2), name: "Full Body A", difficulty: "OK" },
@@ -129,6 +143,9 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
     clientId: SARA_ID,
     traineeDisplayName: "Sara P.",
     since: isoInstant(30),
+    // Sara shares her progress and her weigh-ins, and NEITHER her workouts nor her
+    // nutrition: both tabs read the scope sentence while the overview stays full.
+    scopes: ["PROGRESS", "WEIGH_INS"],
     adherenceThisWeek: { done: 0, planned: 3 },
     currentStreakDays: 0,
     lastSession: null,
@@ -140,6 +157,7 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
     clientId: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004",
     traineeDisplayName: "Dana W.",
     since: isoInstant(15),
+    scopes: ALL_SCOPES,
     adherenceThisWeek: { done: 2, planned: 2 },
     currentStreakDays: 6,
     lastSession: { date: isoDate(1), name: "Push", difficulty: "OK" },
@@ -154,11 +172,59 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
     clientId: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005",
     traineeDisplayName: "Omar T.",
     since: isoInstant(40),
+    scopes: ALL_SCOPES,
     adherenceThisWeek: { done: 1, planned: 3 },
     currentStreakDays: 0,
     lastSession: { date: isoDate(4), name: "Full Body A", difficulty: "EASY" },
     weightSeries: [{ date: isoDate(3), weightKg: 81.0 }],
     redFlags: [],
+  }),
+  /**
+   * NUTRITION only (ADR-0015 D5 + F1). Every progress and weigh-in block is `null` —
+   * "not shared" — and not a zero: `currentStreakDays: 0` would tell the coach this
+   * trainee has no streak, which is a claim about a person whose sessions they have
+   * never been allowed to see. `redFlags` is null because BOTH of its scopes are
+   * missing; `weightSeries` null rather than `[]` for the same reason.
+   */
+  [PETRA_ID]: () => ({
+    clientId: PETRA_ID,
+    traineeDisplayName: "Petra L.",
+    since: isoInstant(12),
+    scopes: ["NUTRITION"],
+    adherenceThisWeek: null,
+    currentStreakDays: null,
+    lastSession: null,
+    weightSeries: null,
+    redFlags: null,
+  }),
+  /** WORKOUTS only: the Routine tab works, the Nutrition tab reads the sentence. */
+  [YUSUF_ID]: () => ({
+    clientId: YUSUF_ID,
+    traineeDisplayName: "Yusuf A.",
+    since: isoInstant(21),
+    scopes: ["WORKOUTS"],
+    adherenceThisWeek: null,
+    currentStreakDays: null,
+    lastSession: null,
+    weightSeries: null,
+    redFlags: null,
+  }),
+  /**
+   * An ACTIVE link that shares NOTHING. It is reachable — `requireManagedLink` needs
+   * no data scope — and every block on it is absent. This is the row that proves the
+   * overview is not a 403 for a consent-less link, which is what made EV-185
+   * unreachable in round one of the ADR.
+   */
+  [MARA_ID]: () => ({
+    clientId: MARA_ID,
+    traineeDisplayName: "Mara D.",
+    since: isoInstant(5),
+    scopes: [],
+    adherenceThisWeek: null,
+    currentStreakDays: null,
+    lastSession: null,
+    weightSeries: null,
+    redFlags: null,
   }),
 };
 
@@ -184,11 +250,21 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
  *                    previews with zero repairs ("No changes were needed").
  *   …0002 Nils K.  — no active plan ("No active plan") and no nutrition at all
  *                    ("No nutrition set up yet").
- *   …0003 Sara P.  — ACTIVE link WITHOUT the WORKOUTS or NUTRITION scope: both
- *                    tabs answer 403 COACH_SCOPE_MISSING.
+ *   …0003 Sara P.  — shares PROGRESS + WEIGH_INS only: the overview is complete,
+ *                    both tabs read their scope sentence.
  *   …0004 Dana W.  — an injury that repairs two exercises on publish, and a
  *                    49-character exercise name for the truncation case.
  *   …0005 Omar T.  — the exercise catalog is unavailable (503).
+ *   …0006 Petra L. — NUTRITION only: every overview block is absent, Routine reads
+ *                    its scope sentence, Nutrition works.
+ *   …0007 Yusuf A. — WORKOUTS only: the mirror of Petra.
+ *   …0008 Mara D.  — an ACTIVE link that shares NOTHING. Reachable, and blank.
+ *
+ * The scope denials answer the ordinary 403 body, NOT a scope-specific code
+ * (ADR-0015 D5): the portal must never be able to pass a test by reading a code the
+ * api does not send. In practice the tab does not even call — it reads `scopes` off
+ * the overview — so these branches exist to keep the fixture truthful, not to be the
+ * thing under test.
  *
  * Omar is a note about honesty: catalog availability is a property of the
  * SERVER, not of a trainee. Keying the 503 on his id is a fixture affordance so
@@ -201,8 +277,6 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
 
 const DANA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 const OMAR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
-/** Sara's link is ACTIVE but carries neither scope — see the block above. */
-const NO_SCOPE_IDS = new Set([SARA_ID]);
 /** Fixture affordance only. See the block above. */
 const CATALOG_DOWN_IDS = new Set([OMAR_ID]);
 
@@ -225,13 +299,18 @@ async function fail(status: number, code: string, message: string): Promise<neve
   throw new ApiError(status, message, code);
 }
 
-/** Every read and write in both tabs goes through this first. */
-async function assertScope(id: string): Promise<void> {
-  if (state().revoked || !OVERVIEWS[id]) {
+/**
+ * Every read and write in both tabs goes through this first.
+ *
+ * One body for all four denials — revoked, unknown id, no link, scope missing — which
+ * is ADR-0015 D5's "the denial body stays undifferentiated". A fixture that shouted
+ * COACH_SCOPE_MISSING would let the portal be built against an oracle production
+ * refuses to be.
+ */
+async function assertScope(id: string, required: CoachAccessScope): Promise<void> {
+  const overview = OVERVIEWS[id];
+  if (state().revoked || !overview || !overview().scopes.includes(required)) {
     await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
-  }
-  if (NO_SCOPE_IDS.has(id)) {
-    await fail(403, "COACH_SCOPE_MISSING", "Forbidden");
   }
 }
 
@@ -328,6 +407,8 @@ const PROFILES: Record<string, TraineeTrainingProfile> = {
     equipment: ["Barbell", "Dumbbell", "Cable", "Machine"],
   },
   [OMAR_ID]: { injuries: [], equipment: ["Barbell", "Dumbbell"] },
+  // Petra and Mara never reach the routine tab (no WORKOUTS scope); Yusuf does.
+  [YUSUF_ID]: { injuries: [], equipment: ["Dumbbell", "Machine"] },
 };
 
 function linaPlan(): RoutinePlanView {
@@ -387,6 +468,33 @@ function danaPlan(): RoutinePlanView {
         exercises: [
           exercise("pull-up", 4, "6-10", "120s"),
           exercise("chest-supported-row", 3, "10-12", "90s"),
+        ],
+      },
+    ],
+  };
+}
+
+/** Yusuf shares his workouts and nothing else — a plain two-day plan is enough. */
+function yusufPlan(): RoutinePlanView {
+  return {
+    planId: "plan-yusuf-0007",
+    name: "Two Day Full Body",
+    trainingDays: [
+      {
+        dayOfWeek: 2,
+        focus: "Full Body A",
+        exercises: [
+          exercise("goblet-squat", 3, "10-12", "90s"),
+          exercise("machine-chest-press", 3, "10-12", "90s"),
+          exercise("lat-pulldown", 3, "10-12", "90s"),
+        ],
+      },
+      {
+        dayOfWeek: 4,
+        focus: "Full Body B",
+        exercises: [
+          exercise("leg-press", 3, "12-15", "90s"),
+          exercise("seated-cable-row", 3, "10-12", "90s"),
         ],
       },
     ],
@@ -594,7 +702,27 @@ function initialNutrition(id: string): NutritionState {
       dietProfile: { allergies: [], rules: ["HALAL"], dislikes: [] },
     };
   }
-  // Nils and Sara: AC1's "No nutrition set up yet".
+  if (id === PETRA_ID) {
+    // NUTRITION-only link: the one tab she shares is fully populated, which is what
+    // makes "the overview is blank but Nutrition works" demoable at all.
+    return {
+      targets: {
+        calories: 1850,
+        proteinG: 130,
+        carbsG: 180,
+        fatG: 60,
+        source: "AUTO",
+        activity: "LIGHT",
+        updatedAt: new Date().toISOString(),
+      },
+      week: buildWeek(week, [0, 0, 0, 0, 0, 0, 0]),
+      seeds: [0, 0, 0, 0, 0, 0, 0],
+      floorCalories: 1200,
+      dietProfile: { allergies: [], rules: [], dislikes: [] },
+    };
+  }
+  // Nils and Sara: AC1's "No nutrition set up yet". Yusuf and Mara never get here —
+  // their links carry no NUTRITION scope, so the read is refused before this.
   return {
     targets: null,
     week: null,
@@ -656,6 +784,10 @@ function freshState(): FixtureState {
       [SARA_ID, null],
       [DANA_ID, danaPlan()],
       [OMAR_ID, omarPlan()],
+      [YUSUF_ID, yusufPlan()],
+      // Petra and Mara have no WORKOUTS scope, so no routine read reaches a plan.
+      [PETRA_ID, null],
+      [MARA_ID, null],
     ]),
     drafts: new Map(),
     pendingDigest: new Map(),
@@ -730,7 +862,7 @@ export const fixtureCoachApi: CoachApi = {
   // ── EV-184b routine ───────────────────────────────────────────────────────
 
   async getRoutine(id: string): Promise<CoachRoutineResponse> {
-    await assertScope(id);
+    await assertScope(id, "WORKOUTS");
     state().lastRoutineClient = id;
     return {
       clientId: id,
@@ -745,7 +877,7 @@ export const fixtureCoachApi: CoachApi = {
     id: string,
     draft: CoachRoutineDraftRequest
   ): Promise<CoachRoutineDraft> {
-    await assertScope(id);
+    await assertScope(id, "WORKOUTS");
     const saved: CoachRoutineDraft = {
       planId: state().plans.get(id)?.planId ?? null,
       name: draft.name,
@@ -759,13 +891,13 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async discardRoutineDraft(id: string): Promise<void> {
-    await assertScope(id);
+    await assertScope(id, "WORKOUTS");
     state().drafts.delete(id);
     state().pendingDigest.delete(id);
   },
 
   async previewPublish(id: string): Promise<PublishPreview> {
-    await assertScope(id);
+    await assertScope(id, "WORKOUTS");
     if (CATALOG_DOWN_IDS.has(id)) {
       await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
     }
@@ -782,7 +914,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async publishRoutine(id: string, digest: string): Promise<PublishResult> {
-    await assertScope(id);
+    await assertScope(id, "WORKOUTS");
     if (CATALOG_DOWN_IDS.has(id)) {
       await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
     }
@@ -836,7 +968,7 @@ export const fixtureCoachApi: CoachApi = {
   // ── EV-185b nutrition ─────────────────────────────────────────────────────
 
   async getNutrition(id: string): Promise<CoachNutritionResponse> {
-    await assertScope(id);
+    await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     return {
       clientId: id,
@@ -852,7 +984,7 @@ export const fixtureCoachApi: CoachApi = {
     id: string,
     body: CoachTargetsRequest
   ): Promise<CoachTargetsResult> {
-    await assertScope(id);
+    await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     // `NutritionService.setManual` clamps CALORIES ONLY — protein and fat are
     // untouched, which is exactly what the standing sentence on the page says.
@@ -871,7 +1003,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async applyMealWeek(id: string, weekStart: string): Promise<MealWeekView> {
-    await assertScope(id);
+    await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     if (weekStart !== currentWeekStart()) {
       // Edge case 3: slice 1 applies the current week only.
@@ -884,7 +1016,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async regenerateDay(id: string, index: number): Promise<MealWeekView> {
-    await assertScope(id);
+    await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     if (!state.week) await fail(400, "COACH_WEEK_OUT_OF_RANGE", "No week");
     const week = state.week as MealWeekView;
@@ -894,7 +1026,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getSwapOptions(id: string, mealId: string): Promise<SwapOptions> {
-    await assertScope(id);
+    await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     const meal = state.week?.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
     if (!meal) return { mealId, candidates: [] };
@@ -912,7 +1044,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async applySwap(id: string, mealId: string, candidateIndex: number): Promise<MealWeekView> {
-    await assertScope(id);
+    await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     const week = state.week;
     if (!week) await fail(400, "COACH_WEEK_OUT_OF_RANGE", "No week");

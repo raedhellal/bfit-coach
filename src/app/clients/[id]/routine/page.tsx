@@ -1,9 +1,10 @@
+import { redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientHeader } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { RoutineEditor } from "@/components/routine/RoutineEditor";
-import { coachApi, isForbidden, isScopeMissing } from "@/lib/coachApi";
+import { coachApi, hasScope, isForbidden } from "@/lib/coachApi";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
 
@@ -15,9 +16,15 @@ import { copy } from "@/lib/copy";
  * every test and hand a revoked coach their trainee's plan.
  *
  * Three states, all explicit, none of them a blank page:
- *   · 403 with `COACH_SCOPE_MISSING` → AC1's "has not shared their workouts" sentence.
- *     A plain 403 (revoked between the layout's read and this one) falls back to the
- *     roster sentence, because "they did not share workouts" would be the wrong reason.
+ *   · the link does not carry WORKOUTS → AC1's "has not shared their workouts"
+ *     sentence, decided from `overview.scopes` BEFORE any call is made (ADR-0015 D5).
+ *     There is no `COACH_SCOPE_MISSING` code and there never will be: the api's 403
+ *     body is identical for a scope denial, a foreign id and an id that never existed,
+ *     so a portal that read the reason off an error would be reading something the
+ *     server does not send. Not calling at all is also the honest thing — the request
+ *     would be refused, and asking for data a trainee withheld is not a no-op.
+ *   · 403 from the read itself → the link was revoked between the layout's overview
+ *     and this read, so the answer is the same as any other denial: /clients/denied.
  *   · any other failure → the load-error card. It must NOT claim a scope problem: the
  *     api being down is not the trainee withholding anything.
  *   · success → the editor, which owns AC1's "No active plan" empty state itself.
@@ -29,6 +36,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function RoutinePage({ params }: { params: { id: string } }) {
+  let denied = false;
   const [me, { overview }] = await Promise.all([
     readCoachMe(),
     // The layout has already awaited this; React `cache` makes it free here and gives
@@ -36,15 +44,29 @@ export default async function RoutinePage({ params }: { params: { id: string } }
     readClientOverview(params.id),
   ]);
 
+  // The layout has already proved the link is ACTIVE (the overview needs no data
+  // scope), so a missing overview here means the api failed, not that access ended.
+  const workoutsShared = overview ? hasScope(overview.scopes, "WORKOUTS") : true;
+
   let routine = null;
   let message: string | null = null;
-  try {
-    routine = await coachApi.getRoutine(params.id);
-  } catch (err) {
-    if (isScopeMissing(err)) message = copy.routine.scopeMissing;
-    else if (isForbidden(err)) message = copy.client.notFound;
-    else message = copy.routine.loadError;
+  if (!workoutsShared) {
+    message = copy.routine.scopeMissing;
+  } else {
+    try {
+      routine = await coachApi.getRoutine(params.id);
+    } catch (err) {
+      // A revocation between the layout's read and this one. `redirect` throws, so it
+      // cannot sit inside the `try`.
+      if (isForbidden(err)) denied = true;
+      else message = copy.routine.loadError;
+    }
   }
+  // `/clients/denied` is served 403 by middleware.ts. This page has a loading.tsx
+  // above it, so the redirect degrades to a meta-refresh with a 200 on a cold load —
+  // the coach still lands on the denial page, which is the statement that matters
+  // here; the status that AC5 pins is the overview's, decided in layout.tsx.
+  if (denied) redirect("/clients/denied");
 
   const displayName = routine?.traineeDisplayName ?? overview?.traineeDisplayName ?? "";
 

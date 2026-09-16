@@ -27,8 +27,15 @@ import {
  * `coachApi.ts`, so a renamed api code is a one-line change.
  */
 
+/**
+ * ADR-0015 D5: a 403 is `ACCESS_DENIED` and nothing more specific. It was
+ * `SCOPE_MISSING` here until the ADR settled that the api's denial body is identical
+ * for a scope denial, a foreign id, a revoked link and an id that never existed — so a
+ * write that comes back 403 means access ended, and the scope sentence is decided
+ * earlier, from the overview's `scopes`, before the editor is even rendered.
+ */
 export type RoutineFailure =
-  | "SCOPE_MISSING"
+  | "ACCESS_DENIED"
   | "PLAN_EMPTY"
   | "CATALOG_UNAVAILABLE"
   | "REPAIRS_UNACKNOWLEDGED"
@@ -38,7 +45,7 @@ function classify(err: unknown): RoutineFailure {
   if (isPlanEmpty(err)) return "PLAN_EMPTY";
   if (isCatalogUnavailable(err)) return "CATALOG_UNAVAILABLE";
   if (isRepairsUnacknowledged(err)) return "REPAIRS_UNACKNOWLEDGED";
-  if (isForbidden(err)) return "SCOPE_MISSING";
+  if (isForbidden(err)) return "ACCESS_DENIED";
   return "FAILED";
 }
 

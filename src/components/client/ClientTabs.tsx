@@ -13,6 +13,15 @@ export type ClientTab = "overview" | "routine" | "nutrition";
  * scope denial is per tab, so each one needs to be able to render its own sentence
  * under its own request.
  *
+ * **All three tabs are always present, including for a scope the trainee has not
+ * shared** (ADR-0015 D5). The ADR's B1 leaves the choice to EV-184b and this is it:
+ * a tab that disappears is indistinguishable from a product that has no such feature,
+ * so a coach would read a withheld scope as "Evoli Pro cannot do nutrition" and ask
+ * support rather than ask their trainee. The tab is therefore rendered, and the page
+ * behind it says in one sentence why it is empty — which is also why no `scopes` prop
+ * is threaded through here: this component makes no decision that needs one, and an
+ * unused prop is a contract someone will start depending on.
+ *
  * Server component — the active tab is a prop, not `usePathname`, so this adds no
  * client JavaScript to a page that may otherwise need none.
  */

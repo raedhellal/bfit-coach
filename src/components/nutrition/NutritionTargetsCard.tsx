@@ -82,8 +82,8 @@ export function NutritionTargetsCard({
       setConfirming(false);
       if (!result.ok) {
         setError(
-          result.code === "SCOPE_MISSING"
-            ? copy.nutrition.scopeMissing
+          result.code === "ACCESS_DENIED"
+            ? copy.client.notFound
             : copy.nutrition.targetsFailed
         );
         return;

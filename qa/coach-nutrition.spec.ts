@@ -20,8 +20,20 @@ const PASSWORD = "Password123!";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 /** No targets and no week — AC1's "No nutrition set up yet". */
 const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
-/** ACTIVE link, no NUTRITION scope → 403 COACH_SCOPE_MISSING. */
+/**
+ * ACTIVE link whose `scopes` are PROGRESS + WEIGH_INS: no NUTRITION.
+ *
+ * ADR-0015 D5: there is no scope error code — the 403 body is undifferentiated — so
+ * the sentence below is derived from the overview's `scopes` and the nutrition
+ * endpoint is never called.
+ */
 const SARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003";
+/** NUTRITION only: this tab works, and it is the only one that does. */
+const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
+/** WORKOUTS only: the mirror — this tab reads the scope sentence. */
+const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+/** An ACTIVE link that shares nothing at all. */
+const MARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008";
 /** Source COACH, and no nutrition_preferences row at all (edge case 1). */
 const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 /** Source MANUAL. */
@@ -147,11 +159,15 @@ test.describe("AC1 — the coach opens Nutrition and sees the live targets and w
 
   test("a link without the NUTRITION scope reads the scope sentence", async ({ page }) => {
     await signIn(page);
-    await page.goto(`/clients/${SARA}/nutrition`);
+    const res = await page.goto(`/clients/${SARA}/nutrition`);
+    // 200: nothing was refused — the portal read `scopes` and did not call.
+    expect(res?.status()).toBe(200);
 
     await expect(
       page.getByText("This trainee has not shared their nutrition with you.")
     ).toBeVisible();
+    // The tab stays: a withheld scope must not read as a missing product feature.
+    await expect(page.getByRole("link", { name: "Nutrition" })).toBeVisible();
     await expect(page.locator("body")).not.toContainText(
       "This trainee is not on your roster"
     );
@@ -364,5 +380,55 @@ test.describe("AC3 — the coach shapes the meal week through the existing engin
       .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")));
     expect(names).toHaveLength(28);
     expect(names[0]).not.toBe(`Swap meal: ${swappedName}`);
+  });
+});
+
+test.describe("ADR-0015 D5/D6 — scope-derived states, and what the dialog promises", () => {
+  test("a WORKOUTS-only and a no-scope link read the scope sentence", async ({ page }) => {
+    await signIn(page);
+
+    for (const id of [YUSUF, MARA]) {
+      const res = await page.goto(`/clients/${id}/nutrition`);
+      expect(res?.status()).toBe(200);
+      await expect(
+        page.getByText("This trainee has not shared their nutrition with you.")
+      ).toBeVisible();
+      await expect(page.locator("body")).not.toContainText(
+        "This trainee is not on your roster"
+      );
+      await expect(page.getByRole("button", { name: "Save targets" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^Apply to / })).toHaveCount(0);
+    }
+  });
+
+  test("a NUTRITION-only link gets the whole tab", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${PETRA}/nutrition`);
+
+    await expect(page.getByLabel("Calories")).toHaveValue("1850");
+    await expect(page.getByRole("button", { name: "Apply to Petra L." })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(
+      "This trainee has not shared their nutrition with you."
+    );
+  });
+
+  test("the confirm dialog says locked meals are kept, and the page discloses the cap", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${PETRA}/nutrition`);
+
+    // ADR-0015 D6: `regenerateDay` spends the TRAINEE's daily allowance, so the coach
+    // is told beside the control rather than after the fact.
+    await expect(
+      page.getByText("Day regenerations share Petra L.'s daily limit.")
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Apply to Petra L." }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Petra L. will see this straight away.")).toBeVisible();
+    // D6.7: the apply reuses the plan row and carries locked meals forward, so the
+    // dialog may not promise a clean replacement.
+    await expect(dialog.getByText("Meals the trainee has locked are kept.")).toBeVisible();
   });
 });

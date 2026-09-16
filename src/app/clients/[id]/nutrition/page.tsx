@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientHeader } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
@@ -5,14 +6,17 @@ import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { NutritionTargetsCard } from "@/components/nutrition/NutritionTargetsCard";
 import { NutritionWeekCard } from "@/components/nutrition/NutritionWeekCard";
 import { Card, EmptyState } from "@/components/ui/kit";
-import { coachApi, isForbidden, isScopeMissing } from "@/lib/coachApi";
+import { coachApi, hasScope, isForbidden } from "@/lib/coachApi";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
 
 /**
  * /clients/[id]/nutrition — EV-185b.
  *
- * Same three explicit states as the routine tab, with AC1's empty state on top: a
+ * Same explicit states as the routine tab — the NUTRITION scope is read from the
+ * overview's `scopes` (ADR-0015 D5; there is no scope error code, the 403 body is
+ * undifferentiated), a real 403 goes to /clients/denied, anything else is the load
+ * error — with AC1's empty state on top: a
  * trainee with no targets AND no week gets "No nutrition set up yet" **plus** both
  * controls, not instead of them. That is deliberate — the empty state is the place a
  * coach starts, so hiding the targets form behind it would make "Save targets as the
@@ -28,17 +32,24 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function NutritionPage({ params }: { params: { id: string } }) {
+  let denied = false;
   const [me, { overview }] = await Promise.all([readCoachMe(), readClientOverview(params.id)]);
+
+  const nutritionShared = overview ? hasScope(overview.scopes, "NUTRITION") : true;
 
   let nutrition = null;
   let message: string | null = null;
-  try {
-    nutrition = await coachApi.getNutrition(params.id);
-  } catch (err) {
-    if (isScopeMissing(err)) message = copy.nutrition.scopeMissing;
-    else if (isForbidden(err)) message = copy.client.notFound;
-    else message = copy.nutrition.loadError;
+  if (!nutritionShared) {
+    message = copy.nutrition.scopeMissing;
+  } else {
+    try {
+      nutrition = await coachApi.getNutrition(params.id);
+    } catch (err) {
+      if (isForbidden(err)) denied = true;
+      else message = copy.nutrition.loadError;
+    }
   }
+  if (denied) redirect("/clients/denied");
 
   const displayName = nutrition?.traineeDisplayName ?? overview?.traineeDisplayName ?? "";
   const nothingSetUp = !!nutrition && nutrition.targets === null && nutrition.week === null;
