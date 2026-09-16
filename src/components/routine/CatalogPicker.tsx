@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { Badge, Button, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { Badge, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { copy } from "@/lib/copy";
 import { truncateName } from "@/lib/format";
 import { searchCatalogAction } from "@/lib/routineActions";
