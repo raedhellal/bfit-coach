@@ -39,6 +39,9 @@ const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 /** An ACTIVE link that shares nothing at all. */
 const MARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008";
+/** Nobody: a foreign id and one that never existed answer the same 403 body. */
+const FOREIGN = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e9999";
+const NONEXISTENT = "00000000-0000-0000-0000-000000000000";
 /** A shoulder injury that repairs two exercises, and a 50-character exercise name. */
 const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 /** The exercise catalog answers 503. */
@@ -464,5 +467,78 @@ test.describe("ADR-0015 D4 — a draft that moves between preview and publish", 
     await expect(
       page.getByText("Published. The trainee sees it next time they open the app.")
     ).toBeVisible();
+  });
+});
+
+test.describe("ADR-0012 D4 — the tab routes are 403 for an id that is not this coach's", () => {
+  test("a foreign and a never-existing client id are indistinguishable, and both 403", async ({
+    page,
+  }) => {
+    await signIn(page);
+
+    for (const id of [FOREIGN, NONEXISTENT]) {
+      const res = await page.goto(`/clients/${id}/routine`);
+      // The tab routes sit under `[id]/layout.tsx`, so the denial is decided before
+      // the first byte and /clients/denied is served with the status, exactly as the
+      // overview is (BUG-139). A tab that answered 200 with a friendly card would be a
+      // second, quieter version of that bug.
+      expect(res?.status(), `${id} must be 403`).toBe(403);
+      await expect(
+        page.getByText("This trainee is not on your roster. They may have revoked access.")
+      ).toBeVisible();
+      // No existence oracle, and no scope claim either.
+      await expect(page.locator("body")).not.toContainText("has not shared their");
+    }
+  });
+
+  test("a crawler that never runs JavaScript gets the 403 too", async ({ page }) => {
+    await signIn(page);
+    const res = await page.request.get(`/clients/${FOREIGN}/routine`);
+    expect(res.status()).toBe(403);
+    // And no trainee data leaks with it.
+    expect(await res.text()).not.toContain("Plan name");
+  });
+});
+
+/**
+ * MUST BE LAST IN THIS FILE, and this file is the last one that reads trainee data.
+ *
+ * `revokeClient` sets one process-wide flag in the fixture — one dev server, one
+ * store — so every read after it 403s for the rest of the run. That is the point of
+ * the test and the reason it cannot sit anywhere else: the state it creates is
+ * terminal.
+ */
+test.describe("ADR-0012 AC6 — a revoke ends the session's access mid-edit", () => {
+  test("a write from another tab lands on the denial page, not on an error sentence", async ({
+    page,
+    context,
+  }) => {
+    await signIn(page);
+
+    // Tab A: the coach is editing Lina's routine.
+    await page.goto(`/clients/${LINA}/routine`);
+    await expect(page.getByLabel("Plan name")).toBeVisible();
+
+    // Tab B: the same coach revokes (standing in for the trainee revoking in their
+    // app — the fixture's flag is the same one either path sets).
+    const other = await context.newPage();
+    await other.goto(`/clients/${LINA}`);
+    await other.getByRole("button", { name: "More" }).click();
+    await other.getByRole("menuitem", { name: "Revoke access" }).click();
+    await other.getByRole("dialog").getByRole("button", { name: "Revoke access" }).click();
+    await other.waitForURL("/");
+    await other.close();
+
+    // Tab A still shows the plan and still offers to write to it. The write is the
+    // coach's next request, and AC6 says that request is refused — so the tab must
+    // LEAVE, not decorate a revoked trainee's plan with an error line.
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await page.waitForURL("/clients/denied");
+    await expect(
+      page.getByText("This trainee is not on your roster. They may have revoked access.")
+    ).toBeVisible();
+    // The plan is gone from the screen, not merely annotated.
+    await expect(page.getByLabel("Plan name")).toHaveCount(0);
+    await expect(page.getByText("The draft could not be saved.")).toHaveCount(0);
   });
 });

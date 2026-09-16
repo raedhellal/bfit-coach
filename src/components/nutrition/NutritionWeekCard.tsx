@@ -55,15 +55,34 @@ export function NutritionWeekCard({
 
   const trainee = truncateName(traineeDisplayName);
 
+  /**
+   * A write answered 403 — the link ended under the coach (the trainee revoked, in
+   * their app, mid-session). ADR-0012 AC6 says the next request must be refused, and
+   * `router.refresh()` makes one: the refresh re-runs `[id]/layout.tsx`, whose own
+   * overview read now 403s, and the layout redirects to /clients/denied.
+   *
+   * Without it the card set an error sentence and the coach sat on a screen full of a
+   * revoked trainee's meals — data they are no longer allowed to see — with every
+   * control still offering to write to it. An in-card message cannot fix that, because
+   * the fix is not a sentence, it is leaving the page.
+   */
+  function handleAccessEnded(): boolean {
+    router.refresh();
+    return true;
+  }
+
   function applyWeek() {
     startTransition(async () => {
       const result = await applyWeekAction(clientId, currentWeekStart);
       setConfirming(false);
       if (!result.ok) {
+        if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
         setError(
           result.code === "WEEK_OUT_OF_RANGE"
             ? copy.nutrition.weekOutOfRange
-            : copy.nutrition.applyFailed
+            : result.code === "WEEK_RATE_LIMITED"
+              ? copy.nutrition.weekRateLimited
+              : copy.nutrition.applyFailed
         );
         return;
       }
@@ -77,6 +96,7 @@ export function NutritionWeekCard({
     startTransition(async () => {
       const result = await regenerateDayAction(clientId, index);
       if (!result.ok) {
+        if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
         setError(copy.nutrition.regenerateFailed);
         return;
       }
@@ -91,6 +111,10 @@ export function NutritionWeekCard({
     setCandidates(null);
     startTransition(async () => {
       const result = await swapOptionsAction(clientId, mealId);
+      if (!result.ok && result.code === "ACCESS_DENIED") {
+        setSwapping(null);
+        return void handleAccessEnded();
+      }
       setCandidates(result.ok ? result.options.candidates : []);
     });
   }
@@ -103,6 +127,7 @@ export function NutritionWeekCard({
       setSwapping(null);
       setCandidates(null);
       if (!result.ok) {
+        if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
         setError(copy.nutrition.swapFailed);
         return;
       }
@@ -207,6 +232,14 @@ export function NutritionWeekCard({
                           >
                             {truncateName(meal.name)}
                           </span>
+                          {/* D6.7: the trainee locked this one, so an apply kept it.
+                              The confirm dialog promises exactly this; the marker is
+                              what lets the coach check the promise against the week. */}
+                          {meal.locked && (
+                            <Badge tone="amber" title={copy.nutrition.mealKeptTitle}>
+                              {copy.nutrition.mealKept}
+                            </Badge>
+                          )}
                         </div>
                         <div
                           className="tnum"

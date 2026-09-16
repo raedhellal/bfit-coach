@@ -160,11 +160,14 @@ export function Badge({
   children,
   tone = "neutral",
   dot,
+  /** Hover/AT text when the badge is a one-word marker that needs a sentence. */
+  title,
   style = {},
 }: {
   children?: ReactNode;
   tone?: Tone;
   dot?: boolean;
+  title?: string;
   style?: Sx;
 }) {
   const T: Record<Tone, { bg: string; fg: string }> = {
@@ -177,6 +180,7 @@ export function Badge({
   };
   return (
     <span
+      title={title}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -274,6 +278,15 @@ export function CardHead({
 }
 
 // ───────────────────────── Inputs ─────────────────────────
+/**
+ * ⛔ FOLLOW-UP (staff review 2026-09-16): `Input` is 40 px tall and the modal's Close
+ * button below is 32 px — both under BUG-146's 44 px floor for a control a coach taps
+ * at 390 px. They are shared by every screen, so raising them is a visual change
+ * across the whole portal and belongs in its own change with its own QA pass, not
+ * folded into the ADR-0015 alignment. The one control that was fixed in place is the
+ * routine day-focus field (`RoutineEditor.tsx`), because it was 36 px and is not this
+ * kit's.
+ */
 export function Input({
   label,
   value,

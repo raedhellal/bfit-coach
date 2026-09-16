@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   coachApi,
   isForbidden,
+  isWeekApplyRateLimited,
   isWeekOutOfRange,
   type CoachTargetsRequest,
   type CoachTargetsResult,
@@ -31,10 +32,18 @@ import {
  * so this is `ACCESS_DENIED` — the link ended — and the scope sentence is decided from
  * the overview's `scopes` before this card is rendered at all.
  */
-export type NutritionFailure = "ACCESS_DENIED" | "WEEK_OUT_OF_RANGE" | "INVALID" | "FAILED";
+export type NutritionFailure =
+  | "ACCESS_DENIED"
+  | "WEEK_OUT_OF_RANGE"
+  | "WEEK_RATE_LIMITED"
+  | "INVALID"
+  | "FAILED";
 
 function classify(err: unknown): NutritionFailure {
   if (isWeekOutOfRange(err)) return "WEEK_OUT_OF_RANGE";
+  // ADR-0015 D6.6. Collapsed into FAILED, this read as "try again" — and the retry it
+  // invited could not succeed until the next day.
+  if (isWeekApplyRateLimited(err)) return "WEEK_RATE_LIMITED";
   if (isForbidden(err)) return "ACCESS_DENIED";
   return "FAILED";
 }

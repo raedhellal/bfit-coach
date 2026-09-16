@@ -44,13 +44,21 @@ export default async function RoutinePage({ params }: { params: { id: string } }
     readClientOverview(params.id),
   ]);
 
-  // The layout has already proved the link is ACTIVE (the overview needs no data
-  // scope), so a missing overview here means the api failed, not that access ended.
-  const workoutsShared = overview ? hasScope(overview.scopes, "WORKOUTS") : true;
-
+  /**
+   * Fail CLOSED when the overview did not arrive.
+   *
+   * The layout has already proved the link is ACTIVE (the overview needs no data
+   * scope), so a missing overview here means the api failed — and an api that failed
+   * cannot tell us the trainee shared their workouts. Calling anyway on the optimistic
+   * reading would ask for data this coach may have no consent to read, and would then
+   * have to explain a 403 it caused itself. The load error is the honest answer: it
+   * says the routine could not be loaded, which is exactly what happened.
+   */
   let routine = null;
   let message: string | null = null;
-  if (!workoutsShared) {
+  if (!overview) {
+    message = copy.routine.loadError;
+  } else if (!hasScope(overview.scopes, "WORKOUTS")) {
     message = copy.routine.scopeMissing;
   } else {
     try {

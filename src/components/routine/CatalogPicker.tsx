@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Badge, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { copy } from "@/lib/copy";
 import { truncateName } from "@/lib/format";
@@ -45,11 +46,32 @@ export function CatalogPicker({
   const [unavailable, setUnavailable] = useState(false);
   const [failed, setFailed] = useState(false);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
+  /**
+   * `onClose` is a fresh arrow on every parent render, and `run` is a dependency of
+   * the debounce effect below — closing over the prop directly would re-arm that timer
+   * on every render of the editor. The ref keeps `run` stable while still calling the
+   * current handler. `router` from `useRouter` is stable and can be a real dependency.
+   */
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const run = useCallback((query: string, m: string, e: string) => {
     startTransition(async () => {
       const result = await searchCatalogAction(query, m, e);
       if (!result.ok) {
+        if (result.code === "ACCESS_DENIED") {
+          // The catalog is a server-wide read, so a 403 here is about the SESSION, not
+          // the catalog: the coach profile is gone or the session is no longer a
+          // coach's. Refreshing lets the route boundaries answer it (the layout's
+          // overview read, then middleware) instead of the picker inventing a sentence
+          // about an outage that is not happening.
+          onCloseRef.current();
+          router.refresh();
+          return;
+        }
         setUnavailable(result.code === "CATALOG_UNAVAILABLE");
         setFailed(result.code !== "CATALOG_UNAVAILABLE");
         setItems([]);
@@ -62,7 +84,7 @@ export function CatalogPicker({
       setEquipmentOptions(result.page.equipment);
       setTruncated(result.page.truncated);
     });
-  }, []);
+  }, [router]);
 
   /**
    * Every opening starts from the whole catalog.

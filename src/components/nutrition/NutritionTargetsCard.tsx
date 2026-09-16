@@ -19,7 +19,7 @@ import type { NutritionTargets } from "@/lib/coachApi";
  *     wrong and the contract needs a name, not a rewording here.
  *   · the FLOOR flag is rendered only from `floorCalories` in the api's response. This
  *     component never decides that a floor applied — the floor is 1500 kcal male /
- *     1200 kcal female inside `NutritionService.setManual`, and this surface does not
+ *     1200 kcal female inside `NutritionService.setTarget`, and this surface does not
  *     know the trainee's sex and must not infer one.
  *   · the STANDING line ("…does not yet check protein or fat.") renders whether or not
  *     a floor fired, because what it states is the limit of the check itself. There is
@@ -34,10 +34,17 @@ export function NutritionTargetsCard({
   clientId,
   traineeDisplayName,
   targets,
+  coachId,
 }: {
   clientId: string;
   traineeDisplayName: string;
   targets: NutritionTargets | null;
+  /**
+   * The SIGNED-IN coach's id, from `GET /coach-portal/me`, resolved on the server and
+   * passed in — it is what `targets.setBy` is compared against. Null when that read
+   * failed, and then "you" is simply not claimed (see `sourceLine`).
+   */
+  coachId: string | null;
 }) {
   const router = useRouter();
   const [calories, setCalories] = useState(targets ? String(targets.calories) : "");
@@ -81,11 +88,15 @@ export function NutritionTargetsCard({
       const result = await saveTargetsAction(clientId, { calories: kcal, proteinG, carbsG, fatG });
       setConfirming(false);
       if (!result.ok) {
-        setError(
-          result.code === "ACCESS_DENIED"
-            ? copy.client.notFound
-            : copy.nutrition.targetsFailed
-        );
+        if (result.code === "ACCESS_DENIED") {
+          // The link ended mid-session. Refreshing re-runs `[id]/layout.tsx`, whose
+          // overview read now 403s, and the layout redirects to /clients/denied — the
+          // coach leaves a screen of a revoked trainee's data instead of reading a
+          // sentence beneath it.
+          router.refresh();
+          return;
+        }
+        setError(copy.nutrition.targetsFailed);
         return;
       }
       setError(null);
@@ -97,11 +108,25 @@ export function NutritionTargetsCard({
     });
   }
 
+  /**
+   * AC1's three source sentences, with ADR-0015 B2's fourth case.
+   *
+   * `source === "COACH"` alone does NOT mean "you". `set_by` is null on a COACH row
+   * whose author was erased, and `nutrition_targets` survives a revoke-and-re-link, so
+   * a coach can legitimately be looking at a target written by the trainee's previous
+   * coach. "Set by you on {date}" is therefore gated on `setBy === coachId` — an
+   * equality, not an inference — and every other COACH row reads "Set by a coach",
+   * which is true in all three of the cases that are not this coach and discloses no
+   * other coach's identity.
+   */
   function sourceLine(): string | null {
     if (!targets) return null;
     if (targets.source === "AUTO") return copy.nutrition.sourceAuto;
     if (targets.source === "MANUAL") return copy.nutrition.sourceManual;
-    return copy.nutrition.sourceCoach(formatInstant(targets.updatedAt));
+    const setByYou = coachId !== null && targets.setBy === coachId;
+    return setByYou
+      ? copy.nutrition.sourceCoach(formatInstant(targets.updatedAt))
+      : copy.nutrition.sourceCoachOther(formatInstant(targets.updatedAt));
   }
 
   const source = sourceLine();

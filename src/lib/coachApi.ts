@@ -58,13 +58,27 @@ import { sanitiseCoachName } from "./inviteName";
  *   PUT    /coach-portal/clients/{id}/nutrition/targets ← CoachTargetsRequest
  *   POST   /coach-portal/clients/{id}/nutrition/week/apply ← { weekStart }
  *          400 COACH_WEEK_OUT_OF_RANGE (current week only — D6)
+ *          429 COACH_WEEK_APPLY_RATE_LIMIT (D6.6's cap: 1 apply per link per day)
  *   POST   /coach-portal/clients/{id}/nutrition/week/days/{index}/regenerate
+ *          ⛔ OPEN: the day-regen cap lives on the TRAINEE's plan row (D6) and the
+ *          api has not named its refusal. Until it does, the portal can only
+ *          disclose the sharing up front ("Day regenerations share {trainee}'s
+ *          daily limit."); a coach who hits the cap gets the generic failure.
  *   GET    /coach-portal/clients/{id}/nutrition/week/meals/{mealId}/swap
+ *          MUST bind to the CACHED reader (`WeeklyMealPlanService.getSwapOptions`),
+ *          never `refreshSwapOptions`, which charges the trainee a CHAT credit.
+ *          D6's "metered calls this slice does NOT make".
  *   POST   /coach-portal/clients/{id}/nutrition/week/meals/{mealId}/swap
  *          ← { candidateIndex }
  *
  * Every error body is ADR-0013's handler shape `{ code, message, details }`;
  * `apiFetch` reads `code` and nothing else here parses a message.
+ *
+ * **The subject is always the URL segment.** No coach id and no trainee id ever
+ * travels in a body or a query from this surface. And the scope checks this module
+ * drives are ADVISORY — they decide what a coach is SHOWN. The server actions take a
+ * `clientId` from a client island, so a hostile caller can name any id; enforcement
+ * is the api's, on every endpoint, per D5 E1.
  *
  * ── the four questions, answered ────────────────────────────────────────────
  *
@@ -178,7 +192,13 @@ export interface RosterClient {
    * overview, which has `scopes`.
    */
   currentPlanName: string | null;
-  /** `YYYY-MM-DD` (UTC) of the last completed workout; null if there has never been one. */
+  /**
+   * `YYYY-MM-DD` (UTC) of the last completed workout. Null when there has never been
+   * one **and** when the link lacks PROGRESS — this is progress data and S1 filters it
+   * per item, so the two collapse. The roster labels a null "Not shared" and sorts it
+   * last (see `sortNeedsAttentionFirst`); telling the two apart needs `scopes` on this
+   * row, which is the open api question recorded there.
+   */
   lastCompletedWorkoutDate: string | null;
   /**
    * Null when the link lacks PROGRESS (F1 change 2 — the field stopped being a
@@ -396,13 +416,30 @@ export interface PublishPreview {
    * `POST …/routine/publish`. See answer 2 in the block at the top.
    */
   digest: string;
+  /**
+   * D4/A12: whether a NON-EMPTY equipment list actually reached the policy, derived by
+   * the api and never hardcoded — it reads `false` until BUG-053 is deployed and turns
+   * true on its own afterwards.
+   *
+   * Consumed here and deliberately NOT RENDERED. EV-184 AC3's warning box says the
+   * plan is checked against injuries and not equipment, and that sentence is the
+   * story's; turning it into a conditional claim ("equipment checked ✓") would be this
+   * surface promising a guarantee out of a boolean whose false is the current truth.
+   * It is typed so the day the box changes, the data is already here.
+   */
+  equipmentChecked: boolean;
 }
 
 /** `POST …/routine/publish` → the plan the trainee now has. */
 export interface PublishResult {
   planId: string;
   publishedAt: string;
-  /** The number of repairs actually applied — may differ from the preview's. */
+  /**
+   * EQUAL BY CONSTRUCTION to the previewed `repairs.length`. D4: publish re-runs the
+   * policy and answers 409 on ANY mismatch with the acknowledged set, so a publish that
+   * succeeds applied exactly what the coach was shown. If these two ever differ, the
+   * digest comparison is broken — it is not a number for the portal to reconcile.
+   */
   repairCount: number;
 }
 
@@ -416,6 +453,10 @@ export interface CatalogExercise {
 
 /**
  * `GET /coach-portal/catalog/exercises`.
+ *
+ * `searchCatalog` always sends all three parameters, EMPTY STRING INCLUDED
+ * (`?q=&muscle=&equipment=`): an empty value means "no filter", never "match nothing".
+ * Omitting them instead would make the absent case a second code path on both sides.
  *
  * **The two facet fields are PROVISIONAL** — answer 3 at the top: ADR-0015 decides the
  * 503 gate and is silent on facets, so this is still the shape this surface is asking
@@ -457,6 +498,17 @@ export interface NutritionTargets {
   source: NutritionTargetSource;
   /** `ActivityLevel`; null for a trainee who never completed nutrition onboarding. */
   activity: ActivityLevel | null;
+  /**
+   * `nutrition_targets.set_by` — the coach user id that wrote this target, or null.
+   *
+   * "Set by you on {date}" may only be rendered when this EQUALS the signed-in coach's
+   * `CoachMe.coachId`. `source === "COACH"` is not sufficient: `set_by` can be null on
+   * a COACH row (D6.2 makes the trainee's own edit write NULL, and an erased coach
+   * account leaves one behind), and a trainee who revoked and re-linked to a different
+   * coach carries the previous coach's target — so "you" would be a false attribution
+   * of someone else's professional judgement.
+   */
+  setBy: string | null;
   /** ISO instant — the date in "Set by you on {date}". */
   updatedAt: string;
 }
@@ -470,6 +522,14 @@ export interface PlannedMealView {
   proteinG: number;
   carbsG: number;
   fatG: number;
+  /**
+   * The trainee locked this meal. D6.7: `generateWeek` reuses the plan id and CARRIES
+   * LOCKED MEALS FORWARD, so an "Apply" replaces the row and not every meal in it.
+   * Without this flag the confirm dialog's promise ("Meals the trainee has locked are
+   * kept.") is unverifiable on the screen that follows it — the coach sees a week they
+   * did not generate and cannot tell which parts of it are the trainee's.
+   */
+  locked: boolean;
 }
 
 /** `WeeklyMealPlan.PlannedDay`. `index` is 0–6 from the week start. */
@@ -530,10 +590,15 @@ export interface CoachTargetsRequest {
 /**
  * The saved targets plus the engine's own flag.
  *
- * `floorCalories` is non-null exactly when `NutritionService.setManual` raised the
- * value; the portal renders the engine's sentence from it rather than deciding for
- * itself that a floor applied — the floor is 1500/1200 by profile sex and this surface
- * does not know the trainee's sex and must not guess it.
+ * `floorCalories` is non-null exactly when `NutritionService.setTarget` raised the
+ * value — D6.1's extraction, where `setManual` becomes one caller of it and the floor
+ * becomes the one function no caller can skip. The portal renders the engine's
+ * sentence from it rather than deciding for itself that a floor applied: the floor is
+ * 1500/1200 by profile sex and this surface does not know the trainee's sex and must
+ * not guess it.
+ *
+ * It is a NUMBER and never a sentence. The api returns what the floor was;
+ * `copy.nutrition.floorApplied` is the only place the words exist.
  */
 export interface CoachTargetsResult {
   targets: NutritionTargets;
@@ -614,6 +679,16 @@ export function isRepairsUnacknowledged(err: unknown): boolean {
     err instanceof ApiError && err.code === "COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED"
   );
 }
+/**
+ * 429 — D6.6's cap: ONE apply per link per day. The ADR sizes what it bounds (3
+ * applies × 30 clients ≈ 630 model calls per coach per day) and records the number so
+ * raising it is a decision rather than a default. It is not a transient failure, so
+ * the sentence must not invite a retry that cannot work until tomorrow.
+ */
+export function isWeekApplyRateLimited(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_WEEK_APPLY_RATE_LIMIT";
+}
+
 /**
  * 400 — ADR-0015 D6 applies the CURRENT week only, judged on the SERVER clock (the
  * portal sends no timezone; ADR-0011 is mobile-only). EV-185 edge case 3.
@@ -764,15 +839,30 @@ export const coachApi = {
  * for the roster would mean one extra request per row on every render of the landing
  * page — an N+1 against a tier ladder that already contemplates 100 profiles — so the
  * red-flag chip lives on the overview only, and the roster sorts by
- * `lastCompletedWorkoutDate` ascending instead. A trainee who has never completed a
- * workout (null) sorts first: they are the most in need of attention, not the least.
+ * `lastCompletedWorkoutDate` ascending instead.
+ *
+ * **A null now sorts LAST, and it used to sort first.** That inversion is ADR-0015
+ * D5/S1: `lastCompletedWorkoutDate` IS progress data, so the api filters it per item
+ * and a link without PROGRESS returns null for it forever. Under the old rule every
+ * such trainee pinned itself to the top of the roster permanently — a needs-attention
+ * list led by exactly the trainees the coach has no attention data for. Null is now
+ * what it honestly is: unknown, and unknown goes last.
+ *
+ * The cost of that, named: a trainee who DOES share PROGRESS and has simply never
+ * completed a workout is null too, and now sorts last instead of first. The roster
+ * cannot tell the two apart, because `CoachClientSummaryResponse` carries no `scopes`
+ * (B1.1). Fixing it properly means adding that field — B1.1's condition is now met,
+ * since the roster has to choose between two different labels for one null — and that
+ * is an api question, recorded rather than papered over.
  */
 export function sortNeedsAttentionFirst(items: RosterClient[]): RosterClient[] {
   return [...items].sort((a, b) => {
-    // "" sorts before every real YYYY-MM-DD, so null (never trained) leads.
-    const av = a.lastCompletedWorkoutDate ?? "";
-    const bv = b.lastCompletedWorkoutDate ?? "";
-    if (av !== bv) return av < bv ? -1 : 1;
+    const av = a.lastCompletedWorkoutDate;
+    const bv = b.lastCompletedWorkoutDate;
+    // Unknown last, in both directions, before any date comparison happens.
+    if (av === null && bv !== null) return 1;
+    if (bv === null && av !== null) return -1;
+    if (av !== null && bv !== null && av !== bv) return av < bv ? -1 : 1;
     return a.traineeDisplayName.localeCompare(b.traineeDisplayName);
   });
 }

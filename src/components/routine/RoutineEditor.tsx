@@ -167,6 +167,20 @@ export function RoutineEditor({
     });
   }
 
+  /**
+   * A write answered 403: the trainee revoked the link mid-session (ADR-0012 AC6 —
+   * "the coach's very next request is refused"). `router.refresh()` makes that next
+   * request: it re-runs `[id]/layout.tsx`, whose own overview read now 403s, and the
+   * layout redirects to /clients/denied.
+   *
+   * The alternative this replaces was an error sentence under an editor still full of
+   * a revoked trainee's plan, with every control still offering to write to it. The
+   * remedy for losing access is leaving the page, not a line of copy on it.
+   */
+  function accessEnded(): void {
+    router.refresh();
+  }
+
   function saveDraft() {
     if (!plan) return;
     startTransition(async () => {
@@ -175,6 +189,7 @@ export function RoutineEditor({
         trainingDays: plan.trainingDays,
       });
       if (!result.ok) {
+        if (result.code === "ACCESS_DENIED") return accessEnded();
         setError(copy.routine.saveFailed);
         return;
       }
@@ -189,6 +204,7 @@ export function RoutineEditor({
     startTransition(async () => {
       const result = await discardDraftAction(clientId);
       if (!result.ok) {
+        if (result.code === "ACCESS_DENIED") return accessEnded();
         setError(copy.routine.discardFailed);
         return;
       }
@@ -211,6 +227,7 @@ export function RoutineEditor({
         trainingDays: plan.trainingDays,
       });
       if (!result.ok) {
+        if (result.code === "ACCESS_DENIED") return accessEnded();
         setError(FAILURE_COPY[result.code]);
         return;
       }
@@ -236,6 +253,10 @@ export function RoutineEditor({
     startTransition(async () => {
       const result = await publishAction(clientId, preview.digest);
       if (!result.ok) {
+        if (result.code === "ACCESS_DENIED") {
+          setPreview(null);
+          return accessEnded();
+        }
         if (result.code === "REPAIRS_UNACKNOWLEDGED") {
           const again = await previewPublishAction(clientId, {
             name: plan.name,
@@ -383,7 +404,10 @@ export function RoutineEditor({
                   )
                 }
                 style={{
-                  height: 36,
+                  // BUG-146's floor: a text input a coach taps at 390 px is a control,
+                  // and 36 px was below it. Everything else about the field is
+                  // unchanged — only the tap area grows.
+                  height: MIN_TOUCH_TARGET,
                   borderRadius: "var(--r-md)",
                   border: "1px solid var(--border-2)",
                   background: "var(--surface)",

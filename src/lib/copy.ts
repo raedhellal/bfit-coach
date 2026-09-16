@@ -70,6 +70,12 @@ export const copy = {
     colStreak: "Streak",
     colStatus: "Status",
     noPlan: "No plan",
+    /**
+     * UNUSED since ADR-0015 S1 and kept deliberately: `lastCompletedWorkoutDate` is
+     * now scope-filtered, so the roster cannot tell "never trained" from "not shared"
+     * and says the second. The sentence comes back the day the list response carries
+     * `scopes` — see `sortNeedsAttentionFirst`.
+     */
     noWorkout: "No workouts yet",
     streak: (days: number) => `${days} day${days === 1 ? "" : "s"}`,
     noStreak: "No streak",
@@ -326,6 +332,15 @@ export const copy = {
     sourceAuto: "Calculated automatically",
     sourceManual: "Set manually by the trainee",
     sourceCoach: (date: string) => `Set by you on ${date}`,
+    /**
+     * `source === "COACH"` with a `setBy` that is not the signed-in coach — a target
+     * written before a revoke-and-re-link, or by a coach account since erased
+     * (ADR-0015 B2). "Set by you" would be this coach's name on another
+     * professional's decision, so the attribution stays true and unspecific: the api
+     * exposes no other coach's display name here, and inventing one would be a
+     * disclosure this surface has no right to make.
+     */
+    sourceCoachOther: (date: string) => `Set by a coach on ${date}`,
     emptyTitle: "No nutrition set up yet", // AC1, verbatim
     emptyBody: "Set the targets, then apply a meal week.",
     // AC1, verbatim — ACTIVE link, no NUTRITION scope.
@@ -366,6 +381,13 @@ export const copy = {
     // sentence for the race where the server's week rolled over mid-session.
     weekOutOfRange: "Only the current week can be applied.",
     /**
+     * ADR-0015 D6.6's cap, one apply per trainee per day. It names the limit and does
+     * NOT offer a retry: the generic failure sentence invites a second click that
+     * cannot succeed until tomorrow, which is how a coach ends up believing the portal
+     * is broken.
+     */
+    weekRateLimited: "A meal week can be applied once a day for each trainee. Try again tomorrow.",
+    /**
      * ADR-0015 D6.7: applying a week reuses the plan row and CARRIES LOCKED MEALS
      * FORWARD, so "replaces the week" is true of the row and not of every meal in it.
      * The ADR asks the confirm dialog to say so; without this line the dialog promises
@@ -388,6 +410,14 @@ export const copy = {
     swapNone: "No swap options are available for this meal.",
     swapFailed: "The meal could not be swapped.",
     noMeals: "No meals planned for this day.",
+    /**
+     * The marker on a meal the TRAINEE locked in their own app. ADR-0015 D6.7: an
+     * apply carries locked meals forward, so without this the coach reads a week they
+     * did not generate and cannot tell which parts are the trainee's. One word, and it
+     * is the same word the confirm dialog uses ("…are kept").
+     */
+    mealKept: "Kept",
+    mealKeptTitle: "Locked by the trainee — kept when a week is applied",
     // AC3, verbatim — EV-015's locale lock, removed by EV-073 and not before.
     englishOnly:
       "Meal plans are generated in English. Ingredient checks run on the English names.",

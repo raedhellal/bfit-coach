@@ -51,6 +51,8 @@ import type {
 
 const SCENARIO = process.env.COACH_FIXTURE_SCENARIO === "empty" ? "empty" : "populated";
 const CAPACITY = 2; // CoachProfile.CapacityTier.STARTER.capacity()
+/** The signed-in coach. `NutritionTargets.setBy` is compared against this. */
+const COACH_ID = "1a2b3c4d-0000-4000-8000-00000000c0ac";
 
 function isoDate(daysAgo: number): string {
   const d = new Date();
@@ -106,6 +108,41 @@ function lina(): RosterClient {
     currentStreakDays: 4,
     status: "ACTIVE",
     since: isoInstant(23),
+  };
+}
+
+/**
+ * The two partial-consent roster rows (ADR-0015 D5/S1). They exist so the roster's
+ * own nulls are reachable — the fields are filtered PER ITEM on the link's scopes, and
+ * a fixture that only ever served a fully-consented row would leave "Not shared" and
+ * the null streak rendered by nothing.
+ *
+ * Petra shares NUTRITION only: no plan, no last workout, no streak.
+ * Yusuf shares WORKOUTS only: a plan, and no progress fields at all — which is the
+ * combination that proves the two nulls are independent.
+ */
+function petra(): RosterClient {
+  return {
+    id: PETRA_ID,
+    traineeDisplayName: "Petra L.",
+    currentPlanName: null,
+    lastCompletedWorkoutDate: null,
+    currentStreakDays: null,
+    status: "ACTIVE",
+    since: isoInstant(12),
+  };
+}
+
+function yusuf(): RosterClient {
+  return {
+    id: YUSUF_ID,
+    traineeDisplayName: "Yusuf A.",
+    currentPlanName: "Two Day Full Body",
+    // Progress data, so S1 filters it out of a WORKOUTS-only row.
+    lastCompletedWorkoutDate: null,
+    currentStreakDays: null,
+    status: "ACTIVE",
+    since: isoInstant(21),
   };
 }
 
@@ -254,7 +291,8 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
  *                    both tabs read their scope sentence.
  *   …0004 Dana W.  — an injury that repairs two exercises on publish, and a
  *                    49-character exercise name for the truncation case.
- *   …0005 Omar T.  — the exercise catalog is unavailable (503).
+ *   …0005 Omar T.  — the exercise catalog is unavailable (503), and his weekly
+ *                    apply answers D6.6's 429 COACH_WEEK_APPLY_RATE_LIMIT.
  *   …0006 Petra L. — NUTRITION only: every overview block is absent, Routine reads
  *                    its scope sentence, Nutrition works.
  *   …0007 Yusuf A. — WORKOUTS only: the mirror of Petra.
@@ -279,6 +317,8 @@ const DANA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 const OMAR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
 /** Fixture affordance only. See the block above. */
 const CATALOG_DOWN_IDS = new Set([OMAR_ID]);
+/** Likewise: the link whose weekly apply answers D6.6's 429. */
+const WEEK_APPLY_CAPPED_IDS = new Set([OMAR_ID]);
 
 /**
  * `GET /coach-portal/catalog/exercises` carries no trainee id — it is a server-wide
@@ -619,6 +659,9 @@ function buildDay(weekStart: string, index: number, seed: number): PlannedDayVie
       proteinG: pick.p,
       carbsG: pick.c,
       fatG: pick.f,
+      // Locking is the TRAINEE's act, in their own app: a generated meal is never
+      // born locked, and nothing in this portal can set the flag.
+      locked: false,
     };
   });
   return {
@@ -632,6 +675,49 @@ function buildDay(weekStart: string, index: number, seed: number): PlannedDayVie
 
 function buildWeek(weekStart: string, seeds: number[]): MealWeekView {
   return { weekStart, days: seeds.map((seed, i) => buildDay(weekStart, i, seed)) };
+}
+
+/** Mark one slot on one day as locked by the trainee. Fixture seeding only. */
+function lock(week: MealWeekView, dayIndex: number, slot: MealSlot): MealWeekView {
+  return {
+    ...week,
+    days: week.days.map((day) =>
+      day.index === dayIndex
+        ? { ...day, meals: day.meals.map((m) => (m.slot === slot ? { ...m, locked: true } : m)) }
+        : day
+    ),
+  };
+}
+
+/**
+ * D6.7 made real rather than promised: a generated week REUSES the plan row and keeps
+ * the meals the trainee locked, matched on (day index, slot). The confirm dialog tells
+ * the coach this happens; if the fixture threw locked meals away, the sentence would be
+ * unfalsifiable on the one surface that can show it.
+ *
+ * The carried meal keeps its own `mealId`, because it is the same row — swapping or
+ * regenerating around it must address the meal that survived, not a new id for it.
+ *
+ * Applied to "Apply" (which is what the ADR states) AND to "Regenerate day", where the
+ * ADR is silent: a regenerate that silently dropped a lock would be the same data loss
+ * in a smaller window. Flagged in the contract as an api question rather than assumed
+ * to be free.
+ */
+function carryLockedForward(previous: MealWeekView, next: MealWeekView): MealWeekView {
+  return {
+    ...next,
+    days: next.days.map((day) => {
+      const before = previous.days.find((d) => d.index === day.index);
+      if (!before) return day;
+      return {
+        ...day,
+        meals: day.meals.map((meal) => {
+          const kept = before.meals.find((m) => m.slot === meal.slot && m.locked);
+          return kept ?? meal;
+        }),
+      };
+    }),
+  };
 }
 
 interface NutritionState {
@@ -654,10 +740,16 @@ function initialNutrition(id: string): NutritionState {
         carbsG: 215,
         fatG: 68,
         source: "AUTO",
+        // AUTO and MANUAL rows are never attributed to a coach (D6.2: the trainee's
+        // own write is a full-row replace that must name the component).
+        setBy: null,
         activity: "MODERATE",
         updatedAt: new Date().toISOString(),
       },
-      week: buildWeek(week, [0, 0, 0, 0, 0, 0, 0]),
+      // Lina locked Monday's lunch in her own app — the one meal an "Apply" must
+      // carry forward, and the only way the coach can see which parts of the week are
+      // hers.
+      week: lock(buildWeek(week, [0, 0, 0, 0, 0, 0, 0]), 0, "LUNCH"),
       seeds: [0, 0, 0, 0, 0, 0, 0],
       floorCalories: 1200,
       dietProfile: {
@@ -675,6 +767,8 @@ function initialNutrition(id: string): NutritionState {
         carbsG: 190,
         fatG: 64,
         source: "COACH",
+        // Written by the signed-in coach: this is the row "Set by you on {date}" is for.
+        setBy: "1a2b3c4d-0000-4000-8000-00000000c0ac",
         activity: "ACTIVE",
         updatedAt: new Date().toISOString(),
       },
@@ -693,6 +787,7 @@ function initialNutrition(id: string): NutritionState {
         carbsG: 280,
         fatG: 80,
         source: "MANUAL",
+        setBy: null,
         activity: "VERY_ACTIVE",
         updatedAt: new Date().toISOString(),
       },
@@ -711,7 +806,12 @@ function initialNutrition(id: string): NutritionState {
         proteinG: 130,
         carbsG: 180,
         fatG: 60,
-        source: "AUTO",
+        // A COACH target this coach did NOT write. Petra was coached by someone else
+        // before, and `nutrition_targets` survives a revoke-and-re-link — so the
+        // attribution line must say "a coach", never "you". Rendering "Set by you on
+        // …" here would put this coach's name on another professional's decision.
+        source: "COACH",
+        setBy: "1a2b3c4d-0000-4000-8000-00000000beef",
         activity: "LIGHT",
         updatedAt: new Date().toISOString(),
       },
@@ -814,16 +914,26 @@ function nutritionState(id: string): NutritionState {
 export const fixtureCoachApi: CoachApi = {
   async getMe(): Promise<CoachMe> {
     return {
-      coachId: "1a2b3c4d-0000-4000-8000-00000000c0ac",
+      coachId: COACH_ID,
       displayName: "Alex R.",
       tier: "STARTER",
-      active: SCENARIO === "empty" || state().revoked ? 0 : 1,
+      /**
+       * The real count, not a flattering one. The populated roster is three links
+       * against a STARTER capacity of two, which is a state b-fit-api can reach (the
+       * limit is enforced when an invite is CREATED, so a tier change leaves existing
+       * links active) and which the populated scenario now demonstrates: the meter
+       * reads over capacity and the invite control refuses with edge case 5's
+       * sentence. The invite happy path is the `empty` scenario, which is what the
+       * Playwright suite drives.
+       */
+      active: SCENARIO === "empty" || state().revoked ? 0 : 3,
       capacity: CAPACITY,
     };
   },
 
   async listClients(page = 0, size = 100): Promise<RosterPage> {
-    const items = SCENARIO === "empty" || state().revoked ? [] : [lina()];
+    const items =
+      SCENARIO === "empty" || state().revoked ? [] : [lina(), petra(), yusuf()];
     return {
       items: page === 0 ? items : [],
       page,
@@ -910,7 +1020,16 @@ export const fixtureCoachApi: CoachApi = {
     const repairs = repairsFor(id, plan);
     const digest = digestOf(JSON.stringify({ plan, repairs }));
     state().pendingDigest.set(id, digest);
-    return { repairs, digest };
+    return {
+      repairs,
+      digest,
+      // D4/A12: DERIVED, never hardcoded — it reports whether a non-empty equipment
+      // list reached the policy. `repairsFor` passes injuries only (BUG-053 is not
+      // deployed), so it is false here for every trainee, including the ones with a
+      // full equipment list. That false is the current truth and the fixture says it
+      // rather than flattering the engine.
+      equipmentChecked: false,
+    };
   },
 
   async publishRoutine(id: string, digest: string): Promise<PublishResult> {
@@ -995,6 +1114,9 @@ export const fixtureCoachApi: CoachApi = {
       carbsG: body.carbsG,
       fatG: body.fatG,
       source: "COACH",
+      // The coach who just wrote it — `me()`'s id, so the attribution line the page
+      // renders next is true by construction.
+      setBy: COACH_ID,
       activity: state.targets?.activity ?? "MODERATE",
       updatedAt: new Date().toISOString(),
     };
@@ -1009,9 +1131,20 @@ export const fixtureCoachApi: CoachApi = {
       // Edge case 3: slice 1 applies the current week only.
       await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");
     }
+    if (WEEK_APPLY_CAPPED_IDS.has(id)) {
+      // D6.6's cap is ONE apply per link per day and it is enforced server-side
+      // against a clock this fixture has no business simulating — a real day counter
+      // here would make the demo unusable after the first click. Keying it to one
+      // trainee is the same affordance as the catalog outage above: the state is
+      // reachable beside the others and is NOT a claim that b-fit-api caps per person.
+      await fail(429, "COACH_WEEK_APPLY_RATE_LIMIT", "Rate limited");
+    }
     // AC3: applying twice REPLACES the week; it never accumulates.
+    const previous = state.week;
     state.seeds = state.seeds.map(() => state.seeds[0] + 1);
-    state.week = buildWeek(weekStart, state.seeds);
+    const fresh = buildWeek(weekStart, state.seeds);
+    // D6.7: "idempotent replace" is true of the row and false of the locked meals.
+    state.week = previous ? carryLockedForward(previous, fresh) : fresh;
     return state.week;
   },
 
@@ -1021,7 +1154,7 @@ export const fixtureCoachApi: CoachApi = {
     if (!state.week) await fail(400, "COACH_WEEK_OUT_OF_RANGE", "No week");
     const week = state.week as MealWeekView;
     state.seeds = state.seeds.map((s, i) => (i === index ? s + 1 : s));
-    state.week = buildWeek(week.weekStart, state.seeds);
+    state.week = carryLockedForward(week, buildWeek(week.weekStart, state.seeds));
     return state.week;
   },
 

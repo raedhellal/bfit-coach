@@ -15,7 +15,14 @@ import type { RosterClient } from "@/lib/coachApi";
  * `redFlags` — the rules are computed per trainee by the overview endpoint — so a chip
  * on this screen would cost one extra request per row on every roster render. The
  * flags live on /clients/[id]; the needs-attention signal here is the ordering
- * (`sortNeedsAttentionFirst`: least recently trained first, never-trained at the top).
+ * (`sortNeedsAttentionFirst`: least recently trained first, UNKNOWN last — ADR-0015
+ * S1 made `lastCompletedWorkoutDate` scope-filtered, so a null is no longer "never
+ * trained", it is "no answer").
+ *
+ * Three of these five columns can now be absent because the link did not share them,
+ * and the row cannot say which (the list response carries no `scopes` — B1.1). So the
+ * rule here is: absent renders as an absence, never as a number and never as a claim
+ * about the trainee's behaviour.
  */
 
 /**
@@ -80,13 +87,21 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                 title={c.currentPlanName || undefined}
                 style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
+                {/* "No plan" covers both readings here: the trainee's app really is
+                    on no plan, and the link did not share WORKOUTS. The row has no
+                    `scopes` to tell them apart, and unlike the date this label makes
+                    no claim about what the trainee has been doing. */}
                 {c.currentPlanName || <span style={{ color: "var(--ink-3)" }}>{copy.roster.noPlan}</span>}
               </Td>
               <Td>
                 {c.lastCompletedWorkoutDate ? (
                   formatDate(c.lastCompletedWorkoutDate)
                 ) : (
-                  <span style={{ color: "var(--ink-3)" }}>{copy.roster.noWorkout}</span>
+                  // "No workouts yet" was a statement about the trainee. Post-S1 a
+                  // null is most often a withheld PROGRESS scope, so the cell reports
+                  // the absence instead. See `sortNeedsAttentionFirst` for the case
+                  // this is still imprecise about, and the api field that would fix it.
+                  <span style={{ color: "var(--ink-3)" }}>{copy.client.notShared}</span>
                 )}
               </Td>
               <Td>
@@ -156,7 +171,9 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
                   {copy.roster.colLastWorkout}:{" "}
-                  {c.lastCompletedWorkoutDate ? formatDate(c.lastCompletedWorkoutDate) : copy.roster.noWorkout}
+                  {c.lastCompletedWorkoutDate
+                    ? formatDate(c.lastCompletedWorkoutDate)
+                    : copy.client.notShared}
                 </div>
               </div>
             </Link>

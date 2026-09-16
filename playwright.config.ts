@@ -22,7 +22,7 @@ export default defineConfig({
   // (playwright.live.config.ts); refresh-single-flight.spec.ts needs the counting stub
   // api (playwright.refresh.config.ts). This suite must stay runnable with no backend
   // at all — that is what makes it the gate.
-  testIgnore: /(coach-live|refresh-single-flight)\.spec\.ts/,
+  testIgnore: /(coach-live|refresh-single-flight|coach-roster-scopes)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

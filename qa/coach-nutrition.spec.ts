@@ -34,6 +34,9 @@ const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 /** An ACTIVE link that shares nothing at all. */
 const MARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008";
+/** Nobody: a foreign id and one that never existed answer the same 403 body. */
+const FOREIGN = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e9999";
+const NONEXISTENT = "00000000-0000-0000-0000-000000000000";
 /** Source COACH, and no nutrition_preferences row at all (edge case 1). */
 const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 /** Source MANUAL. */
@@ -430,5 +433,95 @@ test.describe("ADR-0015 D5/D6 — scope-derived states, and what the dialog prom
     // D6.7: the apply reuses the plan row and carries locked meals forward, so the
     // dialog may not promise a clean replacement.
     await expect(dialog.getByText("Meals the trainee has locked are kept.")).toBeVisible();
+  });
+});
+
+test.describe("ADR-0015 — the contract additions the review asked for", () => {
+  test("D6.6's 429 names the daily limit instead of inviting a retry", async ({ page }) => {
+    await signIn(page);
+    // Omar's link is the fixture's rate-limited one (the cap is per link per day on
+    // the server; keying it to one trainee is a fixture affordance, like the 503).
+    await page.goto(`/clients/${OMAR}/nutrition`);
+
+    await page.getByRole("button", { name: "Apply to Omar T." }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Apply", exact: true }).click();
+
+    await expect(
+      page.getByText(
+        "A meal week can be applied once a day for each trainee. Try again tomorrow."
+      )
+    ).toBeVisible();
+    // The generic failure invited a second click that could not succeed until tomorrow.
+    await expect(page.getByText("The meal week could not be applied.")).toHaveCount(0);
+  });
+
+  test("a locked meal is marked, and an apply keeps it", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/nutrition`);
+
+    // Lina locked Monday's lunch in her own app: index 1 of the week's meals
+    // (BREAKFAST, LUNCH, DINNER, SNACK, then Tuesday…). Meal names repeat across days,
+    // so the assertion is positional — the same slot on the same day, before and after.
+    const meals = () =>
+      page
+        .getByRole("button", { name: /^Swap meal: / })
+        .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")));
+
+    await expect(page.getByText("Kept", { exact: true })).toHaveCount(1);
+    const before = await meals();
+
+    await page.getByRole("button", { name: "Apply to Lina M." }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Meals the trainee has locked are kept.")).toBeVisible();
+    await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+
+    await expect.poll(meals).not.toEqual(before);
+    const after = await meals();
+
+    // D6.7: the week is replaced AROUND the lock. Monday's breakfast is a new meal;
+    // Monday's lunch is the one the trainee locked, and it is still there and still
+    // marked — which is what makes the dialog's promise checkable on the screen after it.
+    expect(after[0]).not.toEqual(before[0]);
+    expect(after[1]).toEqual(before[1]);
+    await expect(page.getByText("Kept", { exact: true })).toHaveCount(1);
+  });
+
+  test("a COACH target written by someone else is not attributed to you", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${PETRA}/nutrition`);
+
+    // B2: `source === "COACH"` is not "you". Petra's target was written before she
+    // re-linked, so "Set by you on …" would put this coach's name on another
+    // professional's decision.
+    await expect(page.getByText(/^Set by a coach on /)).toBeVisible();
+    await expect(page.getByText(/^Set by you on /)).toHaveCount(0);
+  });
+
+  test("saving targets here DOES read as yours afterwards", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${PETRA}/nutrition`);
+
+    await page.getByLabel("Calories").fill("2000");
+    await page.getByRole("button", { name: "Save targets" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Save targets" }).click();
+
+    await expect(page.getByText("Targets saved.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(/^Set by you on /)).toBeVisible();
+  });
+
+  test("a foreign and a never-existing client id are both 403 on this tab", async ({ page }) => {
+    await signIn(page);
+
+    for (const id of [FOREIGN, NONEXISTENT]) {
+      const res = await page.goto(`/clients/${id}/nutrition`);
+      // ADR-0012 D4: identical answers, so the portal is not an existence oracle.
+      expect(res?.status(), `${id} must be 403`).toBe(403);
+      await expect(
+        page.getByText("This trainee is not on your roster. They may have revoked access.")
+      ).toBeVisible();
+      // And no scope sentence: nothing here says anything about what was shared.
+      await expect(page.locator("body")).not.toContainText("has not shared their");
+    }
   });
 });

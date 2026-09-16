@@ -35,11 +35,14 @@ export default async function NutritionPage({ params }: { params: { id: string }
   let denied = false;
   const [me, { overview }] = await Promise.all([readCoachMe(), readClientOverview(params.id)]);
 
-  const nutritionShared = overview ? hasScope(overview.scopes, "NUTRITION") : true;
-
+  // Fail CLOSED: no overview means the api failed, and an api that failed cannot tell
+  // us this trainee shared their nutrition. Asking anyway would request data we may
+  // have no consent for and then explain a 403 we caused ourselves.
   let nutrition = null;
   let message: string | null = null;
-  if (!nutritionShared) {
+  if (!overview) {
+    message = copy.nutrition.loadError;
+  } else if (!hasScope(overview.scopes, "NUTRITION")) {
     message = copy.nutrition.scopeMissing;
   } else {
     try {
@@ -92,6 +95,9 @@ export default async function NutritionPage({ params }: { params: { id: string }
             clientId={params.id}
             traineeDisplayName={displayName}
             targets={nutrition.targets}
+            // ADR-0015 B2: "Set by you" is an equality against this, never an
+            // inference from `source === "COACH"`.
+            coachId={me?.coachId ?? null}
           />
 
           <NutritionWeekCard
