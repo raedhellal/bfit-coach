@@ -71,10 +71,11 @@ export const copy = {
     colStatus: "Status",
     noPlan: "No plan",
     /**
-     * UNUSED since ADR-0015 S1 and kept deliberately: `lastCompletedWorkoutDate` is
-     * now scope-filtered, so the roster cannot tell "never trained" from "not shared"
-     * and says the second. The sentence comes back the day the list response carries
-     * `scopes` — see `sortNeedsAttentionFirst`.
+     * In use again. It went unused when ADR-0015 S1 made `lastCompletedWorkoutDate`
+     * scope-filtered and the roster could no longer tell "never trained" from "not
+     * shared"; the list response now carries `scopes` per row (contract item 4), so
+     * this sentence is said only when PROGRESS is actually held — and is exactly the
+     * row `sortNeedsAttentionFirst` puts first.
      */
     noWorkout: "No workouts yet",
     streak: (days: number) => `${days} day${days === 1 ? "" : "s"}`,

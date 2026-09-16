@@ -3,7 +3,7 @@ import { Avatar, Badge, DataTable, Td } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { copy } from "@/lib/copy";
 import { formatDate } from "@/lib/format";
-import type { RosterClient } from "@/lib/coachApi";
+import { hasScope, type RosterClient } from "@/lib/coachApi";
 
 /**
  * The populated roster, rendered twice: a table above 768 px and a stacked card list
@@ -19,10 +19,15 @@ import type { RosterClient } from "@/lib/coachApi";
  * S1 made `lastCompletedWorkoutDate` scope-filtered, so a null is no longer "never
  * trained", it is "no answer").
  *
- * Three of these five columns can now be absent because the link did not share them,
- * and the row cannot say which (the list response carries no `scopes` — B1.1). So the
- * rule here is: absent renders as an absence, never as a number and never as a claim
- * about the trainee's behaviour.
+ * Three of these five columns can be absent because the link did not share them — and
+ * since the list response carries `scopes` per row (contract item 4 / D5 S1), the row
+ * can now say WHICH. "No plan", "No workouts yet" and "No streak" are statements about
+ * the trainee and are rendered only when the relevant scope is held; without it the
+ * cell says "Not shared" and nothing else. An absence is never a number and never a
+ * claim about behaviour.
+ *
+ * `hasScope` fails closed, so an api that sends no `scopes` on the row lands every
+ * one of these on "Not shared" rather than throwing or guessing.
  */
 
 /**
@@ -31,11 +36,14 @@ import type { RosterClient } from "@/lib/coachApi";
  * renders a dash for that — NOT "No streak", which is a claim about the trainee, and
  * not a 0, which is why the api stopped sending a primitive.
  *
- * The roster carries no `scopes` field (it hides no tab and no badge — ADR-0015 B1.1),
- * so this cannot say *why* the number is absent. The overview can, and does.
+ * `shared` comes first and the null second, for the same reason the overview reads the
+ * scope flag first: an api that has not been told to null the field will send a
+ * primitive `0`, and "No streak" about a trainee whose sessions this coach has never
+ * been allowed to see is a claim made out of nothing.
  */
-function StreakChip({ days }: { days: number | null }) {
-  if (days === null) return <span style={{ color: "var(--ink-3)" }}>{copy.common.dash}</span>;
+function StreakChip({ days, shared }: { days: number | null; shared: boolean }) {
+  if (!shared || days === null)
+    return <span style={{ color: "var(--ink-3)" }}>{copy.common.dash}</span>;
   if (days <= 0) return <span style={{ color: "var(--ink-3)" }}>{copy.roster.noStreak}</span>;
   return (
     <Badge tone="amber">
@@ -87,25 +95,35 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                 title={c.currentPlanName || undefined}
                 style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
-                {/* "No plan" covers both readings here: the trainee's app really is
-                    on no plan, and the link did not share WORKOUTS. The row has no
-                    `scopes` to tell them apart, and unlike the date this label makes
-                    no claim about what the trainee has been doing. */}
-                {c.currentPlanName || <span style={{ color: "var(--ink-3)" }}>{copy.roster.noPlan}</span>}
+                {/* "No plan" is a statement about the trainee's app; "Not shared" is
+                    a statement about the link. `scopes` is what makes them two cells
+                    instead of one hedge. */}
+                {c.currentPlanName || (
+                  <span style={{ color: "var(--ink-3)" }}>
+                    {hasScope(c.scopes, "WORKOUTS") ? copy.roster.noPlan : copy.client.notShared}
+                  </span>
+                )}
               </Td>
               <Td>
                 {c.lastCompletedWorkoutDate ? (
                   formatDate(c.lastCompletedWorkoutDate)
                 ) : (
-                  // "No workouts yet" was a statement about the trainee. Post-S1 a
-                  // null is most often a withheld PROGRESS scope, so the cell reports
-                  // the absence instead. See `sortNeedsAttentionFirst` for the case
-                  // this is still imprecise about, and the api field that would fix it.
-                  <span style={{ color: "var(--ink-3)" }}>{copy.client.notShared}</span>
+                  // Two readings of one null, and `scopes` picks: PROGRESS held means
+                  // the trainee has genuinely never completed a workout ("No workouts
+                  // yet", and `sortNeedsAttentionFirst` puts the row FIRST); PROGRESS
+                  // withheld means the date is unknown ("Not shared", sorted last).
+                  <span style={{ color: "var(--ink-3)" }}>
+                    {hasScope(c.scopes, "PROGRESS")
+                      ? copy.roster.noWorkout
+                      : copy.client.notShared}
+                  </span>
                 )}
               </Td>
               <Td>
-                <StreakChip days={c.currentStreakDays} />
+                <StreakChip
+                  days={c.currentStreakDays}
+                  shared={hasScope(c.scopes, "PROGRESS")}
+                />
               </Td>
               <Td>
                 <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
@@ -160,20 +178,28 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {c.currentPlanName || copy.roster.noPlan}
+                      {c.currentPlanName ||
+                        (hasScope(c.scopes, "WORKOUTS")
+                          ? copy.roster.noPlan
+                          : copy.client.notShared)}
                     </div>
                   </div>
                   <UiIcon name="chevR" size={16} color="var(--ink-3)" />
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <StreakChip days={c.currentStreakDays} />
+                  <StreakChip
+                    days={c.currentStreakDays}
+                    shared={hasScope(c.scopes, "PROGRESS")}
+                  />
                   <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
                   {copy.roster.colLastWorkout}:{" "}
                   {c.lastCompletedWorkoutDate
                     ? formatDate(c.lastCompletedWorkoutDate)
-                    : copy.client.notShared}
+                    : hasScope(c.scopes, "PROGRESS")
+                      ? copy.roster.noWorkout
+                      : copy.client.notShared}
                 </div>
               </div>
             </Link>

@@ -181,30 +181,40 @@ export interface RosterClient {
   id: string;
   traineeDisplayName: string;
   /**
+   * What this link shares — the same `CoachAccessScope[]` the overview carries, per
+   * row (staff-review contract item 4, ADR-0015 D5/S1).
+   *
+   * B1.1 added `scopes` to the roster only if the roster ever had to choose between
+   * two different labels for one absent value, and S1 created exactly that: it filters
+   * `currentPlanName`, `lastCompletedWorkoutDate` and `currentStreakDays` per item, so
+   * every one of those nulls now has two readings — "the trainee has none" and "the
+   * trainee did not share it". Without this field the roster had to pick one and be
+   * wrong about the other; worse, it had to sort an unknown date as if it were a
+   * trainee who has never trained, which pinned them to the top of a needs-attention
+   * list forever.
+   *
+   * Read it through `hasScope`, never with `.includes` — an api that predates B1 sends
+   * no such field on this row either, and `hasScope` fails closed for it.
+   */
+  scopes: CoachAccessScope[];
+  /**
    * Null when the trainee's app is on no plan — AND, since ADR-0015 D5/S1, null when
    * the link lacks WORKOUTS, because the roster is filtered per item on the link's
-   * scopes exactly as the overview is.
-   *
-   * The roster deliberately carries NO `scopes` field (B1.1: it is added only if the
-   * roster hides a tab or a badge, and it hides neither), so this surface cannot tell
-   * "no plan" from "not shared" here and does not try: the row renders the existing
-   * "No plan" for both. The place a coach is told about consent is the trainee's own
-   * overview, which has `scopes`.
+   * scopes exactly as the overview is. `scopes` decides which of the two the row says.
    */
   currentPlanName: string | null;
   /**
    * `YYYY-MM-DD` (UTC) of the last completed workout. Null when there has never been
-   * one **and** when the link lacks PROGRESS — this is progress data and S1 filters it
-   * per item, so the two collapse. The roster labels a null "Not shared" and sorts it
-   * last (see `sortNeedsAttentionFirst`); telling the two apart needs `scopes` on this
-   * row, which is the open api question recorded there.
+   * one **or** when the link lacks PROGRESS — this is progress data and S1 filters it
+   * per item. `scopes` above is what tells the two apart, and they are two different
+   * sentences and two different sort positions (see `sortNeedsAttentionFirst`).
    */
   lastCompletedWorkoutDate: string | null;
   /**
    * Null when the link lacks PROGRESS (F1 change 2 — the field stopped being a
    * primitive `int` for exactly this reason). A serialised `0` would be a claim about
    * the trainee rather than an absence of consent, so the row shows neither a chip nor
-   * "No streak" for a null.
+   * "No streak" for a null. With PROGRESS held, `0` is a real streak of zero.
    */
   currentStreakDays: number | null;
   status: ClientStatus;
@@ -879,27 +889,36 @@ export const coachApi = {
  * red-flag chip lives on the overview only, and the roster sorts by
  * `lastCompletedWorkoutDate` ascending instead.
  *
- * **A null now sorts LAST, and it used to sort first.** That inversion is ADR-0015
- * D5/S1: `lastCompletedWorkoutDate` IS progress data, so the api filters it per item
- * and a link without PROGRESS returns null for it forever. Under the old rule every
- * such trainee pinned itself to the top of the roster permanently — a needs-attention
- * list led by exactly the trainees the coach has no attention data for. Null is now
- * what it honestly is: unknown, and unknown goes last.
+ * **A null date has two readings and they sort to opposite ends.** ADR-0015 D5/S1
+ * made `lastCompletedWorkoutDate` scope-filtered, so:
  *
- * The cost of that, named: a trainee who DOES share PROGRESS and has simply never
- * completed a workout is null too, and now sorts last instead of first. The roster
- * cannot tell the two apart, because `CoachClientSummaryResponse` carries no `scopes`
- * (B1.1). Fixing it properly means adding that field — B1.1's condition is now met,
- * since the roster has to choose between two different labels for one null — and that
- * is an api question, recorded rather than papered over.
+ *   · PROGRESS held, date null → the trainee has never completed a workout. That is
+ *     the MOST attention-needing row there is, and it keeps the place it has always
+ *     had: first.
+ *   · PROGRESS not held (or not stated) → the date is UNKNOWN, and unknown sorts
+ *     LAST. Sorting it first produced a needs-attention list led by precisely the
+ *     trainees the coach has no attention data for, permanently.
+ *
+ * Telling the two apart is what `RosterClient.scopes` is for — before it existed both
+ * nulls had to share one position, and the recorded cost of picking "last" was that a
+ * genuinely untrained trainee sank. `hasScope` fails closed, so an api that sends no
+ * `scopes` puts every null in the unknown tier, which is the old behaviour and the
+ * safe one.
+ *
+ * Ties break on display name so the order is stable across renders.
  */
 export function sortNeedsAttentionFirst(items: RosterClient[]): RosterClient[] {
+  /** 0 = never trained, 1 = has a date, 2 = unknown. Lower sorts earlier. */
+  const tier = (c: RosterClient): 0 | 1 | 2 => {
+    if (c.lastCompletedWorkoutDate !== null) return 1;
+    return hasScope(c.scopes, "PROGRESS") ? 0 : 2;
+  };
   return [...items].sort((a, b) => {
+    const at = tier(a);
+    const bt = tier(b);
+    if (at !== bt) return at - bt;
     const av = a.lastCompletedWorkoutDate;
     const bv = b.lastCompletedWorkoutDate;
-    // Unknown last, in both directions, before any date comparison happens.
-    if (av === null && bv !== null) return 1;
-    if (bv === null && av !== null) return -1;
     if (av !== null && bv !== null && av !== bv) return av < bv ? -1 : 1;
     return a.traineeDisplayName.localeCompare(b.traineeDisplayName);
   });

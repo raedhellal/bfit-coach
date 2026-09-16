@@ -104,6 +104,7 @@ function lina(): RosterClient {
   return {
     id: LINA_ID,
     traineeDisplayName: "Lina M.",
+    scopes: ALL_SCOPES,
     currentPlanName: "Intermediate Muscle Building Routine",
     lastCompletedWorkoutDate: isoDate(1),
     currentStreakDays: 4,
@@ -121,11 +122,17 @@ function lina(): RosterClient {
  * Petra shares NUTRITION only: no plan, no last workout, no streak.
  * Yusuf shares WORKOUTS only: a plan, and no progress fields at all — which is the
  * combination that proves the two nulls are independent.
+ * Sara shares PROGRESS + WEIGH_INS and has never completed a workout: the row whose
+ * null date means "never trained" rather than "not shared", so it must read
+ * "No workouts yet" and sort FIRST while Petra's and Yusuf's sort last. Her `0` streak
+ * is a real zero for the same reason. Without her, the two readings of one null are
+ * indistinguishable in the suite and the sort tiers are untested.
  */
 function petra(): RosterClient {
   return {
     id: PETRA_ID,
     traineeDisplayName: "Petra L.",
+    scopes: ["NUTRITION"],
     currentPlanName: null,
     lastCompletedWorkoutDate: null,
     currentStreakDays: null,
@@ -138,12 +145,31 @@ function yusuf(): RosterClient {
   return {
     id: YUSUF_ID,
     traineeDisplayName: "Yusuf A.",
+    scopes: ["WORKOUTS"],
     currentPlanName: "Two Day Full Body",
     // Progress data, so S1 filters it out of a WORKOUTS-only row.
     lastCompletedWorkoutDate: null,
     currentStreakDays: null,
     status: "ACTIVE",
     since: isoInstant(21),
+  };
+}
+
+function sara(): RosterClient {
+  return {
+    id: SARA_ID,
+    traineeDisplayName: "Sara P.",
+    // Matches her overview exactly: PROGRESS + WEIGH_INS, `lastSession: null`,
+    // `currentStreakDays: 0`. The roster row and the overview must not disagree.
+    scopes: ["PROGRESS", "WEIGH_INS"],
+    // No WORKOUTS: the plan is withheld, which is a different cell from "No plan".
+    currentPlanName: null,
+    // PROGRESS *is* shared and there is genuinely no completed workout — the null the
+    // roster is allowed to describe.
+    lastCompletedWorkoutDate: null,
+    currentStreakDays: 0,
+    status: "ACTIVE",
+    since: isoInstant(30),
   };
 }
 
@@ -921,7 +947,7 @@ export const fixtureCoachApi: CoachApi = {
       displayName: "Alex R.",
       tier: "STARTER",
       /**
-       * The real count, not a flattering one. The populated roster is three links
+       * The real count, not a flattering one. The populated roster is four links
        * against a STARTER capacity of two, which is a state b-fit-api can reach (the
        * limit is enforced when an invite is CREATED, so a tier change leaves existing
        * links active) and which the populated scenario now demonstrates: the meter
@@ -929,14 +955,14 @@ export const fixtureCoachApi: CoachApi = {
        * sentence. The invite happy path is the `empty` scenario, which is what the
        * Playwright suite drives.
        */
-      active: SCENARIO === "empty" || state().revoked ? 0 : 3,
+      active: SCENARIO === "empty" || state().revoked ? 0 : 4,
       capacity: CAPACITY,
     };
   },
 
   async listClients(page = 0, size = 100): Promise<RosterPage> {
     const items =
-      SCENARIO === "empty" || state().revoked ? [] : [lina(), petra(), yusuf()];
+      SCENARIO === "empty" || state().revoked ? [] : [lina(), petra(), yusuf(), sara()];
     return {
       items: page === 0 ? items : [],
       page,
