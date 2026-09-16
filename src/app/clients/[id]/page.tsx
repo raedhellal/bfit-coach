@@ -1,14 +1,14 @@
-import Link from "next/link";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
+import { ClientHeader } from "@/components/client/ClientHeader";
 import { RevokeMenu } from "@/components/client/RevokeMenu";
 import { StatTile } from "@/components/client/StatTile";
 import { TrendChart } from "@/components/ui/charts";
-import { Avatar, Badge, Card, CardHead } from "@/components/ui/kit";
+import { Card, CardHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
-import { formatDate, formatInstant, formatKg, formatShortDate } from "@/lib/format";
+import { formatDate, formatKg, formatShortDate } from "@/lib/format";
 import { weightCaption } from "@/lib/weight";
 
 /**
@@ -52,52 +52,15 @@ export default async function ClientPage({ params }: { params: { id: string } })
 
   return (
     <CoachShell coachName={me?.displayName}>
-      <div style={{ marginBottom: 18 }}>
-        <Link
-          href="/"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 13,
-            color: "var(--ink-3)",
-            marginBottom: 14,
-          }}
-        >
-          <UiIcon name="arrowL" size={14} color="var(--ink-3)" />
-          {copy.shell.backToRoster}
-        </Link>
-
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-          <Avatar name={overview.traineeDisplayName} size={48} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h1
-              className="dt"
-              style={{
-                margin: 0,
-                fontWeight: 700,
-                fontSize: 24,
-                letterSpacing: -0.6,
-                color: "var(--ink)",
-                overflowWrap: "anywhere",
-              }}
-            >
-              {overview.traineeDisplayName}
-            </h1>
-            {/*
-              No plan badge: `TraineeOverviewResponse` carries no plan name — the plan
-              is a roster-row field only. Rendering "No plan" here would state
-              something about the trainee that this response does not say.
-            */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 7 }}>
-              <Badge tone="neutral">
-                {copy.client.coachedSince(formatInstant(overview.since))}
-              </Badge>
-            </div>
-          </div>
+      <ClientHeader
+        clientId={overview.clientId}
+        traineeDisplayName={overview.traineeDisplayName}
+        since={overview.since}
+        active="overview"
+        action={
           <RevokeMenu clientId={overview.clientId} displayName={overview.traineeDisplayName} />
-        </div>
-      </div>
+        }
+      />
 
       <div className="stat-grid" style={{ marginBottom: 18 }}>
         <StatTile

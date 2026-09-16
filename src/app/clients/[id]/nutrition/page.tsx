@@ -1,0 +1,96 @@
+import { CoachShell } from "@/components/shell/CoachShell";
+import { ClientHeader } from "@/components/client/ClientHeader";
+import { ClientNotice } from "@/components/client/ClientNotice";
+import { ProfileFacts } from "@/components/client/ProfileFacts";
+import { NutritionTargetsCard } from "@/components/nutrition/NutritionTargetsCard";
+import { NutritionWeekCard } from "@/components/nutrition/NutritionWeekCard";
+import { Card, EmptyState } from "@/components/ui/kit";
+import { coachApi, isForbidden, isScopeMissing } from "@/lib/coachApi";
+import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
+import { copy } from "@/lib/copy";
+
+/**
+ * /clients/[id]/nutrition — EV-185b.
+ *
+ * Same three explicit states as the routine tab, with AC1's empty state on top: a
+ * trainee with no targets AND no week gets "No nutrition set up yet" **plus** both
+ * controls, not instead of them. That is deliberate — the empty state is the place a
+ * coach starts, so hiding the targets form behind it would make "Save targets as the
+ * first ever write" (edge case 9) unreachable.
+ *
+ * Nothing on this page renders `null`, `NaN` or a blank card: every number comes from
+ * a non-null `targets` object or is not rendered at all.
+ *
+ * The dietary block is read-only and outside both client components, so no state in
+ * this tab can submit an allergy, HALAL/KOSHER or a dislike — EV-185's non-negotiable,
+ * made structural rather than promised.
+ */
+export const dynamic = "force-dynamic";
+
+export default async function NutritionPage({ params }: { params: { id: string } }) {
+  const [me, { overview }] = await Promise.all([readCoachMe(), readClientOverview(params.id)]);
+
+  let nutrition = null;
+  let message: string | null = null;
+  try {
+    nutrition = await coachApi.getNutrition(params.id);
+  } catch (err) {
+    if (isScopeMissing(err)) message = copy.nutrition.scopeMissing;
+    else if (isForbidden(err)) message = copy.client.notFound;
+    else message = copy.nutrition.loadError;
+  }
+
+  const displayName = nutrition?.traineeDisplayName ?? overview?.traineeDisplayName ?? "";
+  const nothingSetUp = !!nutrition && nutrition.targets === null && nutrition.week === null;
+
+  return (
+    <CoachShell coachName={me?.displayName}>
+      <ClientHeader
+        clientId={params.id}
+        traineeDisplayName={displayName}
+        since={overview?.since}
+        active="nutrition"
+      />
+
+      {message || !nutrition ? (
+        <ClientNotice message={message ?? copy.nutrition.loadError} />
+      ) : (
+        <>
+          {nothingSetUp && (
+            <Card style={{ marginBottom: 18 }}>
+              <EmptyState
+                icon="apple"
+                title={copy.nutrition.emptyTitle}
+                sub={copy.nutrition.emptyBody}
+              />
+            </Card>
+          )}
+
+          <ProfileFacts
+            title={copy.nutrition.title}
+            icon="shield"
+            groups={[
+              { label: copy.nutrition.allergies, values: nutrition.dietProfile.allergies },
+              { label: copy.nutrition.rules, values: nutrition.dietProfile.rules },
+              { label: copy.nutrition.dislikes, values: nutrition.dietProfile.dislikes },
+            ]}
+            emptyAll={copy.nutrition.noRestrictions}
+          />
+
+          <NutritionTargetsCard
+            clientId={params.id}
+            traineeDisplayName={displayName}
+            targets={nutrition.targets}
+          />
+
+          <NutritionWeekCard
+            clientId={params.id}
+            traineeDisplayName={displayName}
+            week={nutrition.week}
+            currentWeekStart={nutrition.currentWeekStart}
+          />
+        </>
+      )}
+    </CoachShell>
+  );
+}
