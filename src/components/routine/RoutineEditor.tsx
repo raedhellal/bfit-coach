@@ -617,7 +617,7 @@ function PublishModal({
         </ul>
       ) : (
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
-          {copy.routine.noChanges}
+          {copy.routine.noChangesBody}
         </p>
       )}
     </Modal>

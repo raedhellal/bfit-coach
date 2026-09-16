@@ -9,6 +9,7 @@
 //   · Card uses --r-2xl (24px) with a hairline border, per the Evoli Pro look.
 //   · Button/IconButton accept `title`, `ariaLabel` and `onMouseEnter`-free props only;
 //     no behaviour was invented.
+import { useId } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { UiIcon } from "./icons";
 
@@ -436,6 +437,16 @@ export function Modal({
   icon?: string;
   iconTone?: "blue" | "red" | "amber";
 }) {
+  /**
+   * `title` is a ReactNode, so it cannot be handed to `aria-label` as a string.
+   * `aria-labelledby` points at the rendered heading instead, which keeps the
+   * accessible name and the visible name the same string by construction — the
+   * publish modal's name IS "We changed 2 things to keep this safe" (EV-184 AC3),
+   * and a paraphrased label would let the two drift.
+   *
+   * The hook runs before the `open` guard because hooks may not be conditional.
+   */
+  const titleId = useId();
   if (!open) return null;
   const tone = {
     blue: ["var(--blue-50)", "var(--blue-600)"],
@@ -445,7 +456,7 @@ export function Modal({
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(16,23,41,0.45)", backdropFilter: "blur(2px)" }} />
-      <div style={{ position: "relative", width: `min(${width}px, 100vw - 24px)`, maxWidth: "100%", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: "var(--surface)", borderRadius: "var(--r-2xl)", boxShadow: "var(--e-3)", border: "1px solid var(--border)", overflow: "hidden" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ position: "relative", width: `min(${width}px, 100vw - 24px)`, maxWidth: "100%", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: "var(--surface)", borderRadius: "var(--r-2xl)", boxShadow: "var(--e-3)", border: "1px solid var(--border)", overflow: "hidden" }}>
         <div style={{ padding: "22px 24px 0", flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
@@ -455,11 +466,11 @@ export function Modal({
                 </div>
               )}
               <div>
-                <div className="dt" style={{ fontWeight: 600, fontSize: 18, color: "var(--ink)", letterSpacing: -0.3 }}>{title}</div>
+                <div id={titleId} className="dt" style={{ fontWeight: 600, fontSize: 18, color: "var(--ink)", letterSpacing: -0.3 }}>{title}</div>
                 {sub && <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 3 }}>{sub}</div>}
               </div>
             </div>
-            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button onClick={onClose} aria-label="Close" style={{ width: 32, height: 32, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <UiIcon name="x" size={17} color="var(--ink-2)" />
             </button>
           </div>

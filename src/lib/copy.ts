@@ -255,6 +255,14 @@ export const copy = {
       `${exercise} → ${replacedWith} · ${rule}`,
     publishWithChanges: "Publish with these changes", // AC3, verbatim
     noChanges: "No changes were needed", // AC3, verbatim
+    /**
+     * The body of the no-repairs modal. It is NOT a second copy of the heading: the
+     * heading already says "No changes were needed", and rendering that sentence twice
+     * would put two matches on the page for the one string AC3 names, which makes the
+     * criterion unassertable. What it says instead is AC5's own promise — the trainee
+     * learns on next open, because this story ships no push and no messaging.
+     */
+    noChangesBody: "The trainee sees this plan next time they open the app.",
     published: "Published. The trainee sees it next time they open the app.",
     publishFailed: "The plan could not be published.",
     // AC4, verbatim — ADR-0013's refusal, shown for catalog search AND for publish.
