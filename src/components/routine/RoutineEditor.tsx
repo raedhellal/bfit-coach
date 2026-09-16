@@ -364,6 +364,16 @@ export function RoutineEditor({
             {day.exercises.map((exercise, exerciseIndex) => (
               <div
                 key={`${exercise.catalogSlug}-${exerciseIndex}`}
+                /**
+                 * Each prescription is a named group. Without it the row's Sets / Reps
+                 * / Rest fields are three labels repeated once per exercise on the
+                 * page, with nothing tying a value to the exercise it belongs to —
+                 * for a screen reader and for QA alike. The name is the exercise's
+                 * FULL name, not the truncated display string, so the group is still
+                 * addressable when the visible label is elided (edge case 6).
+                 */
+                role="group"
+                aria-label={exercise.name}
                 style={{
                   border: "1px solid var(--border)",
                   borderRadius: "var(--r-lg)",

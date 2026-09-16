@@ -512,7 +512,10 @@ const SLOT_ORDER: MealSlot[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
 function buildDay(weekStart: string, index: number, seed: number): PlannedDayView {
   const meals: PlannedMealView[] = SLOT_ORDER.map((slot, slotIndex) => {
     const options = MEAL_POOL.filter((m) => m.slot === slot);
-    const pick = options[(index * 3 + slotIndex + seed) % options.length];
+    // `index * 2`, not `index * 3`: there are exactly three options per slot, so a
+    // multiple of three made every day of the week identical — a seven-day plan that
+    // repeats one day is not a week, and it made "Regenerate day" impossible to see.
+    const pick = options[(index * 2 + slotIndex + seed) % options.length];
     return {
       mealId: `${weekStart}-${index}-${slot.toLowerCase()}-${seed}`,
       slot,
