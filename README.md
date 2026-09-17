@@ -103,7 +103,28 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 | `/clients/denied` | The trainee-is-not-on-your-roster page, served with **403**. `/clients/[id]`'s layout redirects here when the api answers 403; `middleware.ts` sets the status, because a page render cannot. Carries no id and makes no api call. |
 | `POST /api/auth/login` | BFF sign-in — proxies `POST /auth/login`, sets the cookies. |
 | `POST /api/auth/logout` | Clears both cookies. |
+| `GET /api/version` | **Public** deploy marker — the portal's `/actuator/info`. `{ commit, commitShort, buildTime, environment }`, never cached, GET/HEAD only. See below. |
 | `/i/[token]` | **Public** invite landing page — the page the QR encodes. Inside the middleware matcher, let through explicitly, **GET/HEAD only** (anything else answers 405). |
+
+### Verifying a deploy
+
+`main` auto-deploys to Vercel, and **a 200 from the site is evidence of nothing** —
+the previous build answers 200 too. After a push, poll the deploy marker until it
+reports the commit you pushed, exactly as `b-fit-api` is verified by polling
+`/actuator/info` for `build.commit`:
+
+```sh
+EXPECTED=$(git rev-parse HEAD)
+until [ "$(curl -s https://bfit-coach-seven.vercel.app/api/version | \
+  sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')" = "$EXPECTED" ]; do sleep 5; done
+```
+
+The SHA comes from Vercel's system environment variable `VERCEL_GIT_COMMIT_SHA`
+(with `VERCEL_ENV` for `environment`), read in `next.config.mjs` at build time and
+frozen into the output, with a runtime fallback. Off Vercel — `npm run dev`, or a
+`next build` on your laptop — there is no such variable and the endpoint answers
+`"commit": "unknown"`, `"environment": "local"`. It never guesses from local git:
+a stale SHA would confirm a deploy that never happened.
 
 ### The invite link
 
