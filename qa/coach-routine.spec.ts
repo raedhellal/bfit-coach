@@ -865,6 +865,48 @@ test.describe("EV-190 U4 — adding several exercises in one opening", () => {
 });
 
 /**
+ * EV-190 U6 — save/publish feedback where the coach is looking.
+ *
+ * The notice renders as a `<p>` in the top card. After editing at the bottom of a long
+ * plan, a coach who saves sees nothing move: both the control and its confirmation are
+ * off-screen, so they press it again. EV-190's NOT-list settles the fix as "scroll the
+ * notice into view and announce it" — a sticky action bar is a redesign and is out.
+ */
+test.describe("EV-190 U6 — the confirmation comes to the coach", () => {
+  test("a save from the bottom of a long plan scrolls its notice into view", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 640 });
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const scrolled = await page.evaluate(() => window.scrollY);
+    expect(scrolled, "the page must actually be scrolled for this to mean anything").toBeGreaterThan(200);
+
+    // `dispatchEvent` rather than `click`: Playwright scrolls a control into view
+    // before clicking it, which would stage exactly the state under test away.
+    await page.getByRole("button", { name: "Save draft" }).dispatchEvent("click");
+
+    const notice = page.getByText(/^Draft saved /);
+    await expect(notice).toBeVisible();
+    // Announced, not only drawn.
+    await expect(notice).toHaveRole("status");
+    // And inside the viewport, after the smooth scroll settles.
+    await expect
+      .poll(
+        async () => {
+          const box = await notice.boundingBox();
+          const height = page.viewportSize()?.height ?? 0;
+          return box !== null && box.y >= 0 && box.y + box.height <= height;
+        },
+        { message: "the notice must end up inside the viewport" }
+      )
+      .toBe(true);
+  });
+});
+
+/**
  * MUST BE LAST IN THIS FILE, and this file is the last one that reads trainee data.
  *
  * `revokeClient` sets one process-wide flag in the fixture — one dev server, one

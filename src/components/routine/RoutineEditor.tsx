@@ -175,6 +175,24 @@ export function RoutineEditor({
   } | null>(null);
   const [pending, startTransition] = useTransition();
   const leaving = useUnsavedChanges(dirty);
+  /**
+   * U6 — put the feedback where the coach is looking.
+   *
+   * The notice and the error render in the TOP card, next to the controls that produce
+   * them. After adding an exercise at the bottom of day 5 both the control and its
+   * confirmation are off-screen, so a coach presses Save draft, sees nothing move, and
+   * presses it again.
+   *
+   * EV-190's NOT-list settles what the fix is: "scroll the notice into view and
+   * announce it" — not a sticky action bar, which is a redesign and is out. So the
+   * element keeps its place in the document and is brought to the coach, and it is a
+   * live region so the confirmation exists for someone who is not looking at all.
+   */
+  const feedbackRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!notice && !error) return;
+    feedbackRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [notice, error]);
 
   /**
    * Re-seed the working copy when the SERVER's published plan changes identity.
@@ -543,14 +561,18 @@ export function RoutineEditor({
           </Button>
         </div>
 
-        {notice && (
-          <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>{notice}</p>
-        )}
-        {error && (
-          <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
-            {error}
-          </p>
-        )}
+        <div ref={feedbackRef}>
+          {notice && (
+            <p role="status" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>
+              {notice}
+            </p>
+          )}
+          {error && (
+            <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
+              {error}
+            </p>
+          )}
+        </div>
       </Card>
 
       {/*
