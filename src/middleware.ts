@@ -96,7 +96,22 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   /**
-   * /i/* is the one PUBLIC route (ADR-0012 D5, edge case 3): an invited trainee has no
+   * /api/version is the second PUBLIC route: the deploy marker (the portal's
+   * /actuator/info). It has to answer before a session exists — verifying which commit
+   * is serving is what you do BEFORE anyone signs in, and a redirect to /login here
+   * would make the endpoint useless. Like /i/*, it stays inside the matcher so that
+   * being public is stated here rather than hidden in the regex, and the method is
+   * narrowed the same way.
+   */
+  if (pathname === "/api/version") {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      return new NextResponse(null, { status: 405, headers: { Allow: "GET, HEAD" } });
+    }
+    return NextResponse.next();
+  }
+
+  /**
+   * /i/* is the public PAGE route (ADR-0012 D5, edge case 3): an invited trainee has no
    * Evoli Pro account and could never pass the guard below. It stays inside the matcher
    * rather than being excluded from it, so that this file — not a silent gap in a regex
    * — is what states the route is public, and so the method can be narrowed: the page is
