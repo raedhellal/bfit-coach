@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { copy } from "@/lib/copy";
-import { formatInstant, truncateName } from "@/lib/format";
+import { formatInstant, formatKcal, truncateName } from "@/lib/format";
+import { logPortalEvent } from "@/lib/portalEvents";
 import { saveTargetsAction } from "@/lib/nutritionActions";
 import type { NutritionTargets } from "@/lib/coachApi";
 
@@ -62,6 +63,46 @@ export function NutritionTargetsCard({
     return [calories, protein, carbs, fat].map((v) => Number(v.trim()));
   }
 
+  /**
+   * EV-190 U3 / AC3 — the arithmetic the card never did.
+   *
+   * Four independent numbers with one rule between them ("above 0") meant 2200 kcal
+   * could be saved next to macros summing to 2560, and the prompt was handed both. The
+   * line below states the sum and the signed difference, live, as the coach types.
+   *
+   * It is ADVISORY and blocks nothing: "Save targets" is never disabled by it, nothing
+   * is auto-corrected, and no request is withheld. A coach may have a reason for a
+   * deliberate mismatch, and a tool that refuses a professional's number teaches them
+   * to work around it. 4/4/9 kcal per gram and a ±25 kcal tolerance are the story's
+   * own figures, so QA computes the expected sentence rather than reading it off.
+   *
+   * `null` whenever any field is empty or not a positive number: there is no honest
+   * arithmetic over a missing value, and "0 kcal" or "NaN" would be an invented one
+   * (edge case 5).
+   */
+  const MATCH_TOLERANCE_KCAL = 25;
+
+  function reconciliation(): { line: string; delta: number } | null {
+    const [kcal, proteinG, carbsG, fatG] = parsed();
+    const values = [kcal, proteinG, carbsG, fatG];
+    if (values.some((v) => !Number.isFinite(v) || v <= 0)) return null;
+    const macroKcal = Math.round(proteinG * 4 + carbsG * 4 + fatG * 9);
+    const delta = macroKcal - Math.round(kcal);
+    const sum = formatKcal(macroKcal);
+    if (Math.abs(delta) <= MATCH_TOLERANCE_KCAL) {
+      return { line: copy.nutrition.macrosMatch(sum), delta };
+    }
+    return {
+      line:
+        delta > 0
+          ? copy.nutrition.macrosAbove(sum, formatKcal(delta))
+          : copy.nutrition.macrosBelow(sum, formatKcal(-delta)),
+      delta,
+    };
+  }
+
+  const macros = reconciliation();
+
   function requestSave() {
     const values = parsed();
     // A non-numeric or non-positive value is rejected HERE and nothing is sent.
@@ -77,6 +118,15 @@ export function NutritionTargetsCard({
 
   function save() {
     const [kcal, proteinG, carbsG, fatG] = parsed();
+    if (macros && Math.abs(macros.delta) > MATCH_TOLERANCE_KCAL) {
+      // EV-190's own measurement of whether this line is worth keeping: if coaches
+      // always save straight through it, it is decorative and it comes out.
+      logPortalEvent({
+        event: "coach_targets_macro_mismatch",
+        delta_kcal: macros.delta,
+        saved: true,
+      });
+    }
     startTransition(async () => {
       const result = await saveTargetsAction(clientId, { calories: kcal, proteinG, carbsG, fatG });
       setConfirming(false);
@@ -95,7 +145,12 @@ export function NutritionTargetsCard({
       setError(null);
       setNotice(copy.nutrition.targetsSaved);
       setFloorCalories(result.result.floorCalories);
-      // The server may have clamped the calories; show what was actually stored.
+      /**
+       * The server may have clamped the calories; show what was actually stored — and
+       * because the reconciliation line is derived from this state, it recomputes
+       * against the STORED calories (AC3's last clause). A coach is never shown
+       * arithmetic about a number that was not saved.
+       */
       setCalories(String(result.result.targets.calories));
       router.refresh();
     });
@@ -170,6 +225,20 @@ export function NutritionTargetsCard({
           </label>
         ))}
       </div>
+
+      {/*
+        Beneath the four fields, above the control — the coach reads the arithmetic
+        before they press Save, and it is a `status`, not an `alert`: nothing is wrong,
+        and a screen reader should not be interrupted mid-field by a running total.
+      */}
+      {macros && (
+        <p
+          role="status"
+          style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ink-2)" }}
+        >
+          {macros.line}
+        </p>
+      )}
 
       {invalid && (
         // AC2, verbatim. No request was sent.
