@@ -350,6 +350,19 @@ const OMAR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
 const CATALOG_DOWN_IDS = new Set([OMAR_ID]);
 /** Likewise: the link whose weekly apply answers D6.6's 429. */
 const WEEK_APPLY_CAPPED_IDS = new Set([OMAR_ID]);
+/**
+ * Likewise: the link whose publish preview answers EV-184 AC4's
+ * `COACH_PLAN_EMPTY`.
+ *
+ * This one is a simulation rather than a state the fixture can reach, and it is here
+ * deliberately. EV-190 AC1 put `TrainingDayBounds` on the add/remove controls, so the
+ * editor can no longer be driven to zero training days and the portal cannot produce
+ * this refusal by itself — but **the api still answers it**, and the portal still has
+ * to render "A plan needs at least one training day." Without this switch that mapping
+ * would have no assertion anywhere in the repo, which is coverage leaving quietly
+ * rather than a case that stopped existing.
+ */
+const PLAN_EMPTY_ON_PUBLISH_IDS = new Set([NILS_ID]);
 
 /**
  * `GET /coach-portal/catalog/exercises` carries no trainee id — it is a server-wide
@@ -1051,6 +1064,9 @@ export const fixtureCoachApi: CoachApi = {
     await assertScope(id, "WORKOUTS");
     if (CATALOG_DOWN_IDS.has(id)) {
       await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
+    }
+    if (PLAN_EMPTY_ON_PUBLISH_IDS.has(id)) {
+      await fail(400, "COACH_PLAN_EMPTY", "Plan empty");
     }
     const draft = state().drafts.get(id);
     if (!draft || draft.trainingDays.length === 0) {

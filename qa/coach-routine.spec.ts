@@ -415,6 +415,28 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
     await expect(page.getByText("A plan has between 2 and 6 training days.")).toBeVisible();
   });
 
+  /**
+   * …and the api's refusal is still rendered, which is the half of the old test that
+   * would otherwise have left no assertion anywhere in this repo.
+   *
+   * The UI can no longer PRODUCE a zero-day draft, but the api still answers
+   * `COACH_PLAN_EMPTY` and the portal still maps it to EV-184 AC4's sentence. The
+   * fixture answers it for this trainee (`PLAN_EMPTY_ON_PUBLISH_IDS`) the same way it
+   * answers a 503 for Omar's catalogue — the refusal is the api's, and what is under
+   * test is what the portal does with it.
+   */
+  test("the api's COACH_PLAN_EMPTY still reads as the story's sentence, and nothing publishes", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${NILS}/routine`);
+    await page.getByRole("button", { name: "Build a plan" }).click();
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(page.getByText("A plan needs at least one training day.")).toBeVisible();
+    // Refused, not half-written: no modal, nothing acknowledged.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
 });
 
 test.describe("ADR-0015 D5 — the scope sentence is derived from `scopes`", () => {
@@ -626,6 +648,37 @@ test.describe("EV-190 AC1 — the coach chooses which weekdays the trainee train
     await expect(page.getByLabel("Day 2 weekday")).toHaveValue("6");
   });
 
+  /**
+   * A regression for a defect R1 INTRODUCED and review caught: the day card's React
+   * key was `${day.dayOfWeek}-${dayIndex}`, which was stable only while nothing could
+   * edit `dayOfWeek`. With the weekday control it changes on every pick, so the card
+   * remounted and the `select` lost focus — and AC1 walks four weekday changes in a
+   * row, finding the control again each time.
+   */
+  test("changing a weekday keeps the focus in the control that changed it", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    const weekday = page.getByLabel("Day 1 weekday");
+    const other = page.getByLabel("Day 2 weekday");
+    // Two weekdays day 2 is not on, whatever this trainee's plan holds by now: a
+    // duplicate would be refused and the test would be asserting the refusal instead.
+    const taken = await other.inputValue();
+    const free = ["3", "5", "7"].filter((v) => v !== taken).slice(0, 2);
+
+    await weekday.focus();
+    await weekday.selectOption(free[0]);
+    await expect(weekday).toBeFocused();
+    // Two in a row, because the second is where a remount would show up.
+    await weekday.selectOption(free[1]);
+    await expect(weekday).toBeFocused();
+    await expect(weekday).toHaveValue(free[1]);
+    // The neighbouring card is untouched by any of it.
+    await expect(other).toHaveValue(taken);
+  });
+
   test("adding days stops at the six-day bound, with the reason on screen", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${YUSUF}/routine`);
@@ -716,6 +769,20 @@ test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
     await dialog.getByRole("button", { name: "Leave without saving" }).click();
 
     await page.waitForURL("/");
+
+    /**
+     * ONE Back press returns to the editor, and the NEXT one leaves it again.
+     *
+     * The guard leaves a sentinel history entry for this page while the work is dirty.
+     * If it is still there after the coach leaves, the entry has the editor's own URL,
+     * so the first Back lands on the editor and the second appears to do nothing —
+     * measured as a dead press in review. Confirming a leave now removes it first.
+     */
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/clients/${YUSUF}/routine$`));
+    await page.goBack();
+    await expect(page).toHaveURL(/\/$/);
+
     // Nothing was written on the way out: the name the coach abandoned is not the
     // server's. (A leave that quietly saved would be a different, worse bug.)
     await page.goto(`/clients/${YUSUF}/routine`);

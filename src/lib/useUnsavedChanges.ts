@@ -48,6 +48,41 @@ export function useUnsavedChanges(dirty: boolean) {
    * `popstate` listener does not re-arm the guard against our own `history.go`.
    */
   const bypass = useRef(false);
+  /**
+   * Whether OUR sentinel entry is the current one.
+   *
+   * Tracked here rather than read back off `history.state`: the state object is shared
+   * with Next's router, anything may write to it, and "is this entry mine" is a fact
+   * about this hook, not about the document.
+   */
+  const sentinel = useRef(false);
+
+  /**
+   * Take our sentinel entry back out of the history, then do `then`.
+   *
+   * Everything that leaves this page or hands the router a navigation goes through
+   * here, for two measured reasons. A sentinel left behind costs the coach a DEAD BACK
+   * PRESS after they leave by a link (the entry has the editor's URL, so Back appears
+   * to do nothing) — and with the sentinel still current, a `router.refresh()` never
+   * reaches the layout's redirect to /clients/denied, which is EV-190 edge case 4
+   * failing silently.
+   */
+  const withCleanHistory = useCallback((then: () => void) => {
+    bypass.current = true;
+    if (!sentinel.current) {
+      bypass.current = false;
+      then();
+      return;
+    }
+    const onPop = () => {
+      window.removeEventListener("popstate", onPop);
+      sentinel.current = false;
+      bypass.current = false;
+      then();
+    };
+    window.addEventListener("popstate", onPop);
+    window.history.back();
+  }, []);
 
   // ── Closing the tab or reloading ────────────────────────────────────────────
   useEffect(() => {
@@ -109,15 +144,20 @@ export function useUnsavedChanges(dirty: boolean) {
      * fires, we push it again, and the coach is asked while still on the page with
      * every edit intact.
      */
-    const push = () =>
+    const push = () => {
       window.history.pushState(
         { ...window.history.state, evoliUnsavedGuard: true },
         "",
         window.location.href
       );
+      sentinel.current = true;
+    };
     push();
     const onPop = () => {
       if (bypass.current) return;
+      // The browser has already stepped off the sentinel; put it back so the coach is
+      // asked while still on the page, with every edit intact.
+      sentinel.current = false;
       push();
       setPending({ route: "back", href: null });
     };
@@ -126,9 +166,9 @@ export function useUnsavedChanges(dirty: boolean) {
       window.removeEventListener("popstate", onPop);
       // The work was saved (or the editor unmounted): take the sentinel back out, or
       // the coach's next Back press would appear to do nothing.
-      // `bypass` means we are in the middle of a confirmed navigation: the entry is
-      // about to be replaced by the router, and stepping back here would race it.
-      if (!bypass.current && window.history.state?.evoliUnsavedGuard) {
+      // `bypass` means a confirmed navigation is already removing it.
+      if (!bypass.current && sentinel.current) {
+        sentinel.current = false;
         bypass.current = true;
         window.history.back();
         window.setTimeout(() => {
@@ -157,48 +197,20 @@ export function useUnsavedChanges(dirty: boolean) {
       stayed: false,
     });
     setPending(null);
-    bypass.current = true;
-    if (pending.href) {
-      router.push(pending.href);
-    } else {
-      // Back: two entries — the sentinel we re-pushed, and the page itself.
-      window.history.go(-2);
-    }
-    window.setTimeout(() => {
-      bypass.current = false;
-    }, 0);
-  }, [pending, router]);
+    withCleanHistory(() => {
+      // The sentinel is gone by now, so a link navigation leaves exactly one entry for
+      // this page — no dead Back press — and "back" means one more step, not `go(-2)`.
+      if (pending.href) router.push(pending.href);
+      else window.history.back();
+    });
+  }, [pending, router, withCleanHistory]);
 
   /**
-   * Stand down entirely, and hand the history back CLEAN, for a navigation the page
-   * did not initiate.
-   *
-   * EV-190 edge case 4, and it is measured rather than reasoned: with the sentinel
-   * entry in place, the `router.refresh()` that discovers a revoked link never reached
-   * /clients/denied — the coach stayed on a revoked trainee's plan, which is precisely
-   * what edge case 4 says may not happen. Next's router reconciles a refresh against
-   * `history.state`, and an extra entry this hook pushed over the top of it is not
-   * something it can reconcile.
-   *
-   * So the sentinel is removed FIRST and the caller's navigation runs only once the
-   * `popstate` has landed. `bypass` keeps the pop from re-arming the prompt, and the
-   * no-sentinel case (nothing was dirty) runs the callback straight away.
+   * Stand down, and hand the history back clean, for a navigation the page did not
+   * initiate — an access-ended refresh, or the refresh after a successful save.
+   * `withCleanHistory` is the whole of it; this name is what the editor reads.
    */
-  const release = useCallback((then: () => void) => {
-    bypass.current = true;
-    if (!window.history.state?.evoliUnsavedGuard) {
-      bypass.current = false;
-      then();
-      return;
-    }
-    const onPop = () => {
-      window.removeEventListener("popstate", onPop);
-      bypass.current = false;
-      then();
-    };
-    window.addEventListener("popstate", onPop);
-    window.history.back();
-  }, []);
+  const release = withCleanHistory;
 
   return { prompted: pending !== null, stay, leave, release };
 }

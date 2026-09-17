@@ -21,7 +21,17 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const EMAIL = "coach@evoli.fit";
 const PASSWORD = "Password123!";
+/** WORKOUTS only — the routine tab is the one with the editor on it. */
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+/**
+ * Targets AND a meal week.
+ *
+ * The nutrition screen has to be walked on a trainee who actually shares nutrition:
+ * on a WORKOUTS-only link the tab renders one sentence and NO controls, so the
+ * `Input`-height defect this spec exists for would never have been measured. Review
+ * caught that; the file now uses the right trainee for the right tab.
+ */
+const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const FLOOR = 44;
 
 test.describe.configure({ mode: "serial" });
@@ -71,7 +81,7 @@ test("login, roster, overview, routine and nutrition have no control under 44 px
   for (const path of [
     `/clients/${YUSUF}`,
     `/clients/${YUSUF}/routine`,
-    `/clients/${YUSUF}/nutrition`,
+    `/clients/${LINA}/nutrition`,
   ]) {
     await page.goto(path);
     expect(await undersized(page), path).toEqual([]);

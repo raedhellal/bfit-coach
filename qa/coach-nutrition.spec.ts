@@ -597,6 +597,43 @@ test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily
     ).toBeVisible();
   });
 
+  /**
+   * The tolerance itself, pinned at both sides of the boundary.
+   *
+   * Review's measurement: ±25 could be mutated to 24 with every other test in this
+   * file still green, so the number in the story was not actually asserted anywhere.
+   * 100 g protein + 200 g carbs + 75 g fat = 1,875 kcal, which is 25 above 1,850 and
+   * 26 above 1,849.
+   */
+  test("exactly 25 kcal reads as a match, and 26 does not", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/nutrition`);
+
+    await page.getByLabel("Protein").fill("100");
+    await page.getByLabel("Carbs").fill("200");
+    await page.getByLabel("Fat").fill("75");
+
+    await page.getByLabel("Calories").fill("1850");
+    await expect(
+      page.getByText("Your macros add up to 1,875 kcal — this matches the calorie target.")
+    ).toBeVisible();
+
+    await page.getByLabel("Calories").fill("1849");
+    await expect(
+      page.getByText("Your macros add up to 1,875 kcal — 26 above the calorie target.")
+    ).toBeVisible();
+
+    // …and symmetrically on the other side: 1,900 is 25 below, 1,901 is 26 below.
+    await page.getByLabel("Calories").fill("1900");
+    await expect(
+      page.getByText("Your macros add up to 1,875 kcal — this matches the calorie target.")
+    ).toBeVisible();
+    await page.getByLabel("Calories").fill("1901");
+    await expect(
+      page.getByText("Your macros add up to 1,875 kcal — 26 below the calorie target.")
+    ).toBeVisible();
+  });
+
   test("an empty field produces no line, no NaN and no 0 kcal", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);

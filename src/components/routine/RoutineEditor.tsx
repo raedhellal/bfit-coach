@@ -585,7 +585,19 @@ export function RoutineEditor({
       </div>
 
       {plan.trainingDays.map((day, dayIndex) => (
-        <Card key={`${day.dayOfWeek}-${dayIndex}`} style={{ marginBottom: 14 }}>
+        /**
+         * The key is the POSITION, not the weekday.
+         *
+         * `${day.dayOfWeek}-${dayIndex}` was safe only for as long as nothing could
+         * edit `dayOfWeek` — R1 makes it editable, and a key that changes remounts the
+         * card: the weekday `select` loses focus on every change, so setting four days
+         * in a row means finding the control again four times. Nothing else in this
+         * component keys on the weekday (the exercise rows key on slug + index, and
+         * `weekdayError` carries the day INDEX), so position is the whole of the
+         * identity here. Re-sorting by weekday would break that — which is the other
+         * reason the cards keep their array order.
+         */
+        <Card key={dayIndex} style={{ marginBottom: 14 }}>
           <div
             style={{
               display: "flex",
