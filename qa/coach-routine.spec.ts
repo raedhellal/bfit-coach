@@ -646,6 +646,166 @@ test.describe("EV-190 AC1 — the coach chooses which weekdays the trainee train
 });
 
 /**
+ * EV-190 AC2 (U2) — unsaved editor work cannot be lost without the coach being told.
+ *
+ * These drive the LOSS PATH itself, not a proxy for it: before this change, clicking
+ * the Nutrition tab after an edit navigated away and the working copy went with it.
+ * Each test therefore makes a real edit, takes one of AC2's four routes out, and
+ * checks both that the coach was asked and that Cancel left every edit intact.
+ *
+ * ⚠️ The flag under test is NOT `isDraft` — that is true for a saved draft with no
+ * edits, so the first test here is the one that would catch a guard wired to it: it
+ * opens a trainee WITH a draft, edits nothing, and requires silence.
+ */
+test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
+  test("a coach who changed nothing is not prompted, on a page that has a draft", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByRole("group", { name: "Goblet Squat", exact: true }).getByLabel("Sets").fill("4");
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+
+    // A SAVED draft: the draft badge is on, and the unsaved marker is not.
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.waitForURL(`/clients/${YUSUF}/nutrition`);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("an edit is marked, the tabs ask first, and Cancel keeps every edit", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.getByLabel("Plan name").fill("Two Day Full Body — block 2");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toHaveAccessibleName("Leave with unsaved changes?");
+    // The navigation has NOT happened: the coach is asked before, not after.
+    expect(page.url()).toContain(`/clients/${YUSUF}/routine`);
+
+    await dialog.getByRole("button", { name: "Stay on this page" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(page.url()).toContain(`/clients/${YUSUF}/routine`);
+    // Every edit intact — this is the half that makes the prompt worth having.
+    await expect(page.getByLabel("Plan name")).toHaveValue("Two Day Full Body — block 2");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+  });
+
+  test("the roster breadcrumb asks too, and Leave without saving goes", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.getByLabel("Plan name").fill("Discarded on the way out");
+    // Two links carry this name — the header logo and the breadcrumb. The breadcrumb
+    // is the second, and it is the one a coach uses to leave a trainee.
+    await page.getByRole("link", { name: "Back to roster" }).last().click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toHaveAccessibleName("Leave with unsaved changes?");
+    await dialog.getByRole("button", { name: "Leave without saving" }).click();
+
+    await page.waitForURL("/");
+    // Nothing was written on the way out: the name the coach abandoned is not the
+    // server's. (A leave that quietly saved would be a different, worse bug.)
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await expect(page.getByLabel("Plan name")).not.toHaveValue("Discarded on the way out");
+  });
+
+  test("the browser back button asks, and Cancel leaves the coach on the page", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByLabel("Plan name").fill("Back button test");
+
+    // `goBack` may not settle: the guard re-pushes its sentinel so the document never
+    // changes. That IS the behaviour under test, so the call is allowed to time out.
+    await page.goBack({ timeout: 3000 }).catch(() => null);
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toHaveAccessibleName("Leave with unsaved changes?");
+    await dialog.getByRole("button", { name: "Stay on this page" }).click();
+
+    expect(page.url()).toContain(`/clients/${YUSUF}/routine`);
+    await expect(page.getByLabel("Plan name")).toHaveValue("Back button test");
+  });
+
+  test("closing the tab raises the browser's own beforeunload prompt", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByLabel("Plan name").fill("Closing the tab");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+
+    // Playwright only runs `beforeunload` handlers when asked to, and surfaces the
+    // browser's prompt as a `dialog` event — which is the only way to observe a
+    // handler whose UI belongs to Chrome.
+    const seen = new Promise<string>((resolve) => {
+      page.on("dialog", (d) => {
+        resolve(d.type());
+        void d.dismiss();
+      });
+    });
+    await page.close({ runBeforeUnload: true });
+    expect(await seen).toBe("beforeunload");
+  });
+
+  test("a FAILED save leaves the warning standing; a successful one clears it", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByLabel("Plan name").fill("Failed save");
+
+    /**
+     * Server actions POST to the page's own URL. Answering one with a 500 is the
+     * cheapest honest way to produce the failure AC2 requires QA to force.
+     *
+     * It also pins something measured while writing this test: Next's client resolves
+     * a failed action call with `undefined` rather than rejecting, so `result.ok` threw
+     * and the route's error boundary replaced the whole editor with "Something went
+     * wrong." — losing the working copy through the error path instead of a
+     * navigation. The assertion below that the plan name is STILL on screen is that
+     * defect's regression test.
+     */
+    await page.route(`**/clients/${YUSUF}/routine`, async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fulfill({ status: 500, contentType: "text/plain", body: "" });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText("The draft could not be saved.")).toBeVisible();
+    // The editor is still standing, with the edit in it.
+    await expect(page.getByLabel("Plan name")).toHaveValue("Failed save");
+    await expect(page.getByText("Something went wrong.")).toHaveCount(0);
+    // Still holding unsaved work, so the marker stands and the guard still fires.
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    await expect(page.getByRole("dialog")).toHaveAccessibleName(
+      "Leave with unsaved changes?"
+    );
+    await page.getByRole("dialog").getByRole("button", { name: "Stay on this page" }).click();
+
+    // Now let the save through: the next navigation is silent.
+    await page.unroute(`**/clients/${YUSUF}/routine`);
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.waitForURL(`/clients/${YUSUF}/nutrition`);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+});
+
+/**
  * MUST BE LAST IN THIS FILE, and this file is the last one that reads trainee data.
  *
  * `revokeClient` sets one process-wide flag in the fixture — one dev server, one
@@ -690,11 +850,23 @@ test.describe("ADR-0012 AC6 — a revoke ends the session's access mid-edit", ()
     await other.waitForURL("/");
     await other.close();
 
-    // Tab A still shows the plan and still offers to write to it. The write is the
-    // coach's next request, and AC6 says that request is refused — so the tab must
-    // LEAVE, not decorate a revoked trainee's plan with an error line.
+    /**
+     * Tab A still shows the plan and still offers to write to it. The write is the
+     * coach's next request, and AC6 says that request is refused — so the tab must
+     * LEAVE, not decorate a revoked trainee's plan with an error line.
+     *
+     * EV-190 edge case 4 rides on the same click: the coach is holding UNSAVED edits,
+     * and the unsaved-changes guard must not hold them on a revoked trainee's page.
+     * A coach whose access ended may not be kept there by a dialog about their own
+     * convenience, so the editor drops the flag on the access-ended path.
+     */
+    await page.getByLabel("Plan name").fill("Edited just before the revoke");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
     await page.getByRole("button", { name: "Save draft" }).click();
     await page.waitForURL("/clients/denied");
+    // No prompt stood in the way, and none is left over on the denial page.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByText("Leave with unsaved changes?")).toHaveCount(0);
     await expect(
       page.getByText("This trainee is not on your roster. They may have revoked access.")
     ).toBeVisible();

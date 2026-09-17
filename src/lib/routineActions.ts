@@ -86,7 +86,14 @@ export async function discardDraftAction(clientId: string): Promise<DiscardDraft
 
 export type PreviewResult =
   | { ok: true; preview: PublishPreview }
-  | { ok: false; code: RoutineFailure };
+  /**
+   * `saved` reports whether the DRAFT write landed before the preview failed, and it
+   * exists for EV-190 AC2: the editor's unsaved-changes flag means "not on the
+   * server", and a publish that saved and then hit a 503 from the catalog has left the
+   * coach's work safely saved. Without this the editor would keep warning about work
+   * it had already written, which is the cry-wolf failure AC2 is about.
+   */
+  | { ok: false; code: RoutineFailure; saved: boolean };
 
 /**
  * Save, then preview — one action, deliberately.
@@ -102,12 +109,14 @@ export async function previewPublishAction(
   clientId: string,
   draft: CoachRoutineDraftRequest
 ): Promise<PreviewResult> {
+  let saved = false;
   try {
     await coachApi.saveRoutineDraft(clientId, draft);
+    saved = true;
     const preview = await coachApi.previewPublish(clientId);
     return { ok: true, preview };
   } catch (err) {
-    return { ok: false, code: classify(err) };
+    return { ok: false, code: classify(err), saved };
   }
 }
 

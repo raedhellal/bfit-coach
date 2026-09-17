@@ -6,6 +6,7 @@ import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/comp
 import { UiIcon } from "@/components/ui/icons";
 import { CatalogPicker } from "./CatalogPicker";
 import { copy } from "@/lib/copy";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { ISO_WEEKDAY_NUMBERS, isoWeekdayLabel, truncateName } from "@/lib/format";
 import {
   discardDraftAction,
@@ -103,6 +104,27 @@ function toEntry(exercise: CatalogExercise): RoutineExerciseEntry {
   };
 }
 
+/**
+ * What a server action returns when the request to it FAILED.
+ *
+ * Measured, not assumed: answer a server-action POST with a 500 and Next's client
+ * resolves the call with `undefined` — it does not reject. Before this, `result.ok`
+ * threw inside the transition, the route's error boundary replaced the page with
+ * "Something went wrong.", and the coach's entire working copy went with it. That is
+ * the very loss EV-190 AC2 exists to prevent, arriving through the error path instead
+ * of through a navigation.
+ *
+ * So every action call in this component is funnelled through this: a rejection OR an
+ * `undefined` becomes the ordinary `FAILED` result the editor already knows how to
+ * render, and the working copy stays on screen.
+ */
+async function settled<T extends { ok: boolean }>(
+  call: Promise<T>,
+  fallback: T
+): Promise<T> {
+  return (await call.catch(() => undefined)) ?? fallback;
+}
+
 const FAILURE_COPY: Record<RoutineFailure, string> = {
   PLAN_EMPTY: copy.routine.planEmpty,
   CATALOG_UNAVAILABLE: copy.routine.catalogUnavailable,
@@ -124,6 +146,20 @@ export function RoutineEditor({
   const [plan, setPlan] = useState<RoutinePlanView | null>(initialDraft ?? activePlan);
   /** True from the moment a draft exists on the server OR the coach edits anything. */
   const [isDraft, setIsDraft] = useState(initialDraft !== null);
+  /**
+   * U2's flag, and the reason it is NOT `isDraft`.
+   *
+   * `isDraft` is true for a saved draft with no edits — a coach who opens a draft they
+   * saved yesterday and touches nothing has `isDraft === true` and nothing outstanding.
+   * Guarding on it would prompt on every navigation off this page, and a prompt that
+   * fires when nothing is unsaved is dismissed reflexively and then ignored on the day
+   * it matters.
+   *
+   * `dirty` is set by `edit()` — the single funnel every mutation in this component
+   * goes through — and cleared ONLY by a successful save, publish or discard. A FAILED
+   * save does not clear it: the coach is still holding unsaved work (AC2).
+   */
+  const [dirty, setDirty] = useState(false);
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [preview, setPreview] = useState<PublishPreview | null>(null);
   const [discarding, setDiscarding] = useState(false);
@@ -138,6 +174,7 @@ export function RoutineEditor({
     message: string;
   } | null>(null);
   const [pending, startTransition] = useTransition();
+  const leaving = useUnsavedChanges(dirty);
 
   /**
    * Re-seed the working copy when the SERVER's published plan changes identity.
@@ -161,11 +198,15 @@ export function RoutineEditor({
     lastPublishedPlanId.current = publishedPlanId;
     setPlan(initialDraft ?? activePlan);
     setIsDraft(initialDraft !== null);
+    // The working copy was just replaced by the server's, so nothing local is
+    // outstanding — whatever the coach had is either published or gone.
+    setDirty(false);
   }, [publishedPlanId, activePlan, initialDraft]);
 
   function edit(next: RoutinePlanView) {
     setPlan(next);
     setIsDraft(true);
+    setDirty(true);
     setNotice(null);
     setError(null);
     setWeekdayError(null);
@@ -244,16 +285,35 @@ export function RoutineEditor({
    * remedy for losing access is leaving the page, not a line of copy on it.
    */
   function accessEnded(): void {
-    router.refresh();
+    /**
+     * EV-190 edge case 4. The unsaved-changes guard must not hold a coach whose access
+     * has ended on a page of a revoked trainee's plan, so the flag is dropped BEFORE
+     * the refresh that triggers the layout's redirect. Nothing about this work is
+     * recoverable — the link it belonged to is gone — and a dialog here would be a
+     * dialog about the coach's own convenience blocking a consent decision the trainee
+     * made.
+     */
+    setDirty(false);
+    // The guard's own history entry has to come out BEFORE the refresh, or the
+    // layout's redirect to /clients/denied never lands. See `release`.
+    leaving.release(() => router.refresh());
   }
 
   function saveDraft() {
     if (!plan) return;
     startTransition(async () => {
-      const result = await saveDraftAction(clientId, {
-        name: plan.name,
-        trainingDays: plan.trainingDays,
-      });
+      /**
+       * A server action is a `fetch`, and a `fetch` can fail. Without this `catch` a
+       * dropped connection rejected inside the transition, the coach saw no sentence
+       * at all, and the only thing that told them the save had not happened was the
+       * absence of the "Draft saved" line. EV-190 AC2 turns that into a correctness
+       * requirement: a FAILED save must leave the unsaved-changes flag standing, so
+       * the failure has to be a value, not an unhandled rejection.
+       */
+      const result = await settled(
+        saveDraftAction(clientId, { name: plan.name, trainingDays: plan.trainingDays }),
+        { ok: false, code: "FAILED" } as const
+      );
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return accessEnded();
         setError(copy.routine.saveFailed);
@@ -262,13 +322,20 @@ export function RoutineEditor({
       setNotice(copy.routine.savedAt(new Date().toLocaleTimeString()));
       setError(null);
       setIsDraft(true);
-      router.refresh();
+      setDirty(false);
+      // Every refresh that follows a cleared flag goes through `release` for the same
+      // reason the access-ended path does: the guard's history entry has to come out
+      // before the router is asked to do anything, not while it is doing it.
+      leaving.release(() => router.refresh());
     });
   }
 
   function discard() {
     startTransition(async () => {
-      const result = await discardDraftAction(clientId);
+      const result = await settled(discardDraftAction(clientId), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return accessEnded();
         setError(copy.routine.discardFailed);
@@ -279,25 +346,36 @@ export function RoutineEditor({
       setDiscarding(false);
       setPlan(activePlan);
       setIsDraft(false);
+      setDirty(false);
       setNotice(null);
       setError(null);
-      router.refresh();
+      leaving.release(() => router.refresh());
     });
   }
 
   function openPublish() {
     if (!plan) return;
     startTransition(async () => {
-      const result = await previewPublishAction(clientId, {
-        name: plan.name,
-        trainingDays: plan.trainingDays,
-      });
+      const result = await settled(
+        previewPublishAction(clientId, {
+          name: plan.name,
+          trainingDays: plan.trainingDays,
+        }),
+        { ok: false, code: "FAILED", saved: false } as const
+      );
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return accessEnded();
+        // The draft write is the first half of this action. If it landed, the coach's
+        // work is on the server and the unsaved warning must stop — what failed was
+        // the publish, and the error sentence below says so.
+        if (result.saved) setDirty(false);
         setError(FAILURE_COPY[result.code]);
         return;
       }
       setError(null);
+      // Opening the preview means the draft was saved first (`previewPublishAction`
+      // saves, then previews), so nothing is outstanding.
+      setDirty(false);
       setPreview(result.preview);
     });
   }
@@ -317,17 +395,23 @@ export function RoutineEditor({
   function confirmPublish() {
     if (!preview || !plan) return;
     startTransition(async () => {
-      const result = await publishAction(clientId, preview.digest);
+      const result = await settled(publishAction(clientId, preview.digest), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") {
           setPreview(null);
           return accessEnded();
         }
         if (result.code === "REPAIRS_UNACKNOWLEDGED") {
-          const again = await previewPublishAction(clientId, {
-            name: plan.name,
-            trainingDays: plan.trainingDays,
-          });
+          const again = await settled(
+            previewPublishAction(clientId, {
+              name: plan.name,
+              trainingDays: plan.trainingDays,
+            }),
+            { ok: false, code: "FAILED", saved: false } as const
+          );
           if (again.ok) {
             setPreview(again.preview);
             setError(null);
@@ -352,9 +436,10 @@ export function RoutineEditor({
       }
       setPreview(null);
       setIsDraft(false);
+      setDirty(false);
       setNotice(copy.routine.published);
       setError(null);
-      router.refresh();
+      leaving.release(() => router.refresh());
     });
   }
 
@@ -429,10 +514,14 @@ export function RoutineEditor({
               }}
             />
           </div>
-          <Badge tone={isDraft ? "amber" : "green"}>
-            {/* AC2, verbatim. */}
-            {isDraft ? copy.routine.draftBadge : copy.routine.publishedBadge}
-          </Badge>
+          <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Badge tone={isDraft ? "amber" : "green"}>
+              {/* EV-184 AC2, verbatim. */}
+              {isDraft ? copy.routine.draftBadge : copy.routine.publishedBadge}
+            </Badge>
+            {/* EV-190 AC2: shown from the first edit until the next SUCCESSFUL save. */}
+            {dirty && <Badge tone="red">{copy.routine.unsavedBadge}</Badge>}
+          </span>
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
@@ -788,6 +877,34 @@ export function RoutineEditor({
       >
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
           {copy.routine.discardBody}
+        </p>
+      </Modal>
+
+      {/*
+        AC2's confirm. Two controls and no third option: "Stay" is the default action
+        and leaves every edit intact, because a dialog about losing work whose primary
+        button loses it is a trap.
+      */}
+      <Modal
+        open={leaving.prompted}
+        onClose={leaving.stay}
+        title={copy.routine.leaveTitle}
+        icon="shield"
+        iconTone="amber"
+        width={420}
+        footer={
+          <>
+            <Button variant="secondary" onClick={leaving.stay}>
+              {copy.routine.leaveStay}
+            </Button>
+            <Button variant="danger" onClick={leaving.leave}>
+              {copy.routine.leaveConfirm}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
+          {copy.routine.leaveBody}
         </p>
       </Modal>
 
