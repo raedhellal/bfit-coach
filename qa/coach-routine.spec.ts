@@ -414,6 +414,7 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
     for (const remove of await removes.all()) await expect(remove).toBeDisabled();
     await expect(page.getByText("A plan has between 2 and 6 training days.")).toBeVisible();
   });
+
 });
 
 test.describe("ADR-0015 D5 — the scope sentence is derived from `scopes`", () => {
@@ -757,6 +758,48 @@ test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
     });
     await page.close({ runBeforeUnload: true });
     expect(await seen).toBe("beforeunload");
+  });
+
+  /**
+   * The same defect as the failed save, on the call that fires most often.
+   *
+   * The catalogue search is a server action behind a 180 ms debounce, so it runs on
+   * every keystroke. A failed action call resolves with `undefined` rather than
+   * rejecting, so `result.ok` threw, the route's error boundary replaced the page, and
+   * ONE 500 while typing a search destroyed the coach's entire working copy — the loss
+   * U2 exists to prevent, arriving through a path no dialog could ever guard.
+   *
+   * Measured on this branch before the fix: the body read "Something went wrong." and
+   * the plan-name field was gone.
+   */
+  test("a failed catalogue search does not take the unsaved plan down with it", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByLabel("Plan name").fill("Survives a failed search");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+
+    await page.route(`**/clients/${YUSUF}/routine`, async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fulfill({ status: 500, contentType: "text/plain", body: "" });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.getByRole("button", { name: "Add exercise" }).first().click();
+    const picker = page.getByRole("dialog");
+    await picker.getByLabel("Search the catalog").fill("bench");
+    // The picker says the search failed…
+    await expect(picker.getByRole("alert")).toBeVisible();
+    // …and the editor behind it is intact, with the edit and the warning still on it.
+    await page.keyboard.press("Escape");
+    await expect(page.getByLabel("Plan name")).toHaveValue("Survives a failed search");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+    await expect(page.getByRole("group").first()).toBeVisible();
+
+    await page.unroute(`**/clients/${YUSUF}/routine`);
   });
 
   test("a FAILED save leaves the warning standing; a successful one clears it", async ({

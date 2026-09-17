@@ -6,6 +6,7 @@ import { Badge, Button, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/k
 import { copy } from "@/lib/copy";
 import { truncateName } from "@/lib/format";
 import { searchCatalogAction } from "@/lib/routineActions";
+import { settled } from "@/lib/settled";
 import type { CatalogExercise } from "@/lib/coachApi";
 
 /**
@@ -70,7 +71,17 @@ export function CatalogPicker({
 
   const run = useCallback((query: string, m: string, e: string) => {
     startTransition(async () => {
-      const result = await searchCatalogAction(query, m, e);
+      /**
+       * `settled`, and this is the call site that made the rule general: the search
+       * runs behind a debounce on every keystroke, so it is the action most likely to
+       * meet a failing request — and an unguarded failure here took the whole editor,
+       * and the coach's unsaved plan, down with it. A failed search says the catalogue
+       * is unavailable; it does not lose a plan.
+       */
+      const result = await settled(searchCatalogAction(query, m, e), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") {
           // The catalog is a server-wide read, so a 403 here is about the SESSION, not

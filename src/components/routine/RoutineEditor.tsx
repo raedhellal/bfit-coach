@@ -6,6 +6,7 @@ import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/comp
 import { UiIcon } from "@/components/ui/icons";
 import { CatalogPicker } from "./CatalogPicker";
 import { copy } from "@/lib/copy";
+import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { ISO_WEEKDAY_NUMBERS, isoWeekdayLabel, truncateName } from "@/lib/format";
 import {
@@ -102,27 +103,6 @@ function toEntry(exercise: CatalogExercise): RoutineExerciseEntry {
     reps: "8-12",
     rest: "90s",
   };
-}
-
-/**
- * What a server action returns when the request to it FAILED.
- *
- * Measured, not assumed: answer a server-action POST with a 500 and Next's client
- * resolves the call with `undefined` — it does not reject. Before this, `result.ok`
- * threw inside the transition, the route's error boundary replaced the page with
- * "Something went wrong.", and the coach's entire working copy went with it. That is
- * the very loss EV-190 AC2 exists to prevent, arriving through the error path instead
- * of through a navigation.
- *
- * So every action call in this component is funnelled through this: a rejection OR an
- * `undefined` becomes the ordinary `FAILED` result the editor already knows how to
- * render, and the working copy stays on screen.
- */
-async function settled<T extends { ok: boolean }>(
-  call: Promise<T>,
-  fallback: T
-): Promise<T> {
-  return (await call.catch(() => undefined)) ?? fallback;
 }
 
 const FAILURE_COPY: Record<RoutineFailure, string> = {

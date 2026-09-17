@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Modal, Skeleton } from "@/components/ui/kit";
 import { copy } from "@/lib/copy";
 import { createInviteAction } from "@/lib/actions";
+import { settled } from "@/lib/settled";
 import type { Invite } from "@/lib/coachApi";
 
 /**
@@ -36,7 +37,12 @@ export function InviteButton({
     setQr(null);
     setQrFailed(false);
     setCopied(false);
-    const result = await createInviteAction();
+    // `settled`: a failed request resolves with `undefined`, and the invite modal's
+    // own error sentence is a better answer than the route's error boundary.
+    const result = await settled(createInviteAction(), {
+      ok: false,
+      code: "FAILED",
+    } as const);
     if (!result.ok) {
       setError(
         result.code === "CAPACITY_REACHED"

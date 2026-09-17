@@ -7,6 +7,7 @@ import { copy } from "@/lib/copy";
 import { formatInstant, formatKcal, truncateName } from "@/lib/format";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { saveTargetsAction } from "@/lib/nutritionActions";
+import { settled } from "@/lib/settled";
 import type { NutritionTargets } from "@/lib/coachApi";
 
 /**
@@ -128,7 +129,12 @@ export function NutritionTargetsCard({
       });
     }
     startTransition(async () => {
-      const result = await saveTargetsAction(clientId, { calories: kcal, proteinG, carbsG, fatG });
+      // `settled`: a failed request resolves with `undefined`, and without this the
+      // four numbers the coach just typed go down with the error boundary.
+      const result = await settled(
+        saveTargetsAction(clientId, { calories: kcal, proteinG, carbsG, fatG }),
+        { ok: false, code: "FAILED" } as const
+      );
       setConfirming(false);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") {
