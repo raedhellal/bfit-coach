@@ -70,6 +70,13 @@ export const copy = {
     colStreak: "Streak",
     colStatus: "Status",
     noPlan: "No plan",
+    /**
+     * In use again. It went unused when ADR-0015 S1 made `lastCompletedWorkoutDate`
+     * scope-filtered and the roster could no longer tell "never trained" from "not
+     * shared"; the list response now carries `scopes` per row (contract item 4), so
+     * this sentence is said only when PROGRESS is actually held — and is exactly the
+     * row `sortNeedsAttentionFirst` puts first.
+     */
     noWorkout: "No workouts yet",
     streak: (days: number) => `${days} day${days === 1 ? "" : "s"}`,
     noStreak: "No streak",
@@ -148,6 +155,23 @@ export const copy = {
     weighInDelta: (delta: string, count: number) => `${delta} over ${count} weigh-ins`,
     redFlags: "Red flags",
     noRedFlags: "No red flags", // AC5 block 5, verbatim
+    /**
+     * The per-block "not shared" states (ADR-0015 D5/R2-2 + the F1 sign-off edit).
+     *
+     * These four are OURS, not AC text: EV-183 wrote the overview for a link that
+     * shares everything, and R2-2 created states it never described. They are worded
+     * on EV-184/EV-185 AC1's pattern ("This trainee has not shared their … with you.")
+     * so a coach reads one sentence shape across the whole client area.
+     *
+     * `notShared` is the tile caption; the value above it is a dash, never a 0 and
+     * never "No streak" — both of those are claims about the trainee, and the whole
+     * point of F1 is that the api stopped making them.
+     */
+    notShared: "Not shared",
+    notSharedProgress: "This trainee has not shared their progress with you.",
+    notSharedWeighIns: "This trainee has not shared their weigh-ins with you.",
+    notSharedRedFlags:
+      "Red flags need this trainee's progress and weigh-ins, which they have not shared.",
     // AC5's three rules, verbatim. The api sends the code; this maps it. The keys are
     // b-fit-api's `RedFlag` enum constants, not a local spelling — a code with no
     // sentence would render as a raw enum name to a coach.
@@ -169,11 +193,251 @@ export const copy = {
     revokeCancel: "Cancel",
     revoking: "Revoking…",
     revokeError: "Access could not be revoked.",
+    /**
+     * Was "Read-only. Program editing and messaging are not part of this preview."
+     * EV-184b/EV-185b make the first half false: the Routine and Nutrition tabs are
+     * real writes. The sentence now names only what is still absent, because a
+     * footnote that under-claims is the same kind of lie as one that over-claims.
+     */
     footNote:
-      "Read-only. Program editing and messaging are not part of this preview.",
+      "Messaging and AI drafting are not part of this preview.",
     loadError: "This trainee could not be loaded.",
     notFound:
       "This trainee is not on your roster. They may have revoked access.",
+  },
+
+  /**
+   * Shared by both tabs — EV-184 AC1 and EV-185 AC1 give this sentence in the same
+   * words for two different blocks of profile data, so it lives once. Reworded on one
+   * tab only, it stops being the same promise.
+   */
+  profile: {
+    fromProfile: "From the trainee's profile — you cannot change these here.",
+    none: "None recorded.",
+  },
+
+  tabs: {
+    overview: "Overview",
+    routine: "Routine", // EV-184 AC1, verbatim
+    nutrition: "Nutrition", // EV-185 AC1, verbatim
+  },
+
+  /**
+   * EV-184b. Every sentence marked AC is verbatim story text.
+   *
+   * Note what is NOT here: there is no sentence anywhere claiming the plan is safe for
+   * the trainee's equipment. `RoutinePolicy.apply` takes injuries only; the
+   * equipment-aware replacement is BUG-053 and is not deployed (EV-184 AC3's warning
+   * box). The equipment block is labelled descriptively and promises nothing.
+   */
+  routine: {
+    title: "Routine",
+    injuries: "Injuries",
+    equipment: "Available equipment",
+    emptyTitle: "No active plan", // AC1, verbatim
+    emptyBody: "Nothing is scheduled for this trainee yet.",
+    build: "Build a plan", // AC1, verbatim
+    // AC1, verbatim — the link is ACTIVE but carries no WORKOUTS scope.
+    scopeMissing: "This trainee has not shared their workouts with you.",
+    draftBadge: "Draft — not yet published", // AC2, verbatim
+    publishedBadge: "Published plan",
+    planNameLabel: "Plan name",
+    dayLabel: (n: number) => `Day ${n}`,
+    exercises: (n: number) => `${n} exercise${n === 1 ? "" : "s"}`,
+    sets: "Sets",
+    reps: "Reps",
+    rest: "Rest",
+    moveUp: "Move up",
+    moveDown: "Move down",
+    replace: "Replace",
+    remove: "Remove",
+    addExercise: "Add exercise",
+    addDay: "Add day",
+    removeDay: "Remove day",
+    newDayFocus: "New day",
+    saveDraft: "Save draft", // AC2, verbatim
+    saving: "Saving…",
+    savedAt: (date: string) => `Draft saved ${date}`,
+    saveFailed: "The draft could not be saved.",
+    discardDraft: "Discard draft", // AC2, verbatim
+    discardTitle: "Discard draft?",
+    discardBody:
+      "The draft is deleted and this page goes back to the published plan. This cannot be undone.",
+    discardFailed: "The draft could not be discarded.",
+    cancel: "Cancel", // AC3, verbatim (the modal's second control)
+    publish: "Publish", // AC3, verbatim (the no-repairs modal's single control)
+    publishing: "Publishing…",
+    /** AC3, verbatim, with the number agreeing with the list length. */
+    repairsTitle: (n: number) =>
+      `We changed ${n} thing${n === 1 ? "" : "s"} to keep this safe`,
+    /**
+     * One repair, one line: the exercise, what it was replaced with, and the rule.
+     *
+     * The MODAL no longer uses this — EV-184a serves `repairs` as whole sentences
+     * (`List<String>`), so the portal renders the api's string and composes nothing.
+     * It survives as the FIXTURE's composer, which is what keeps the demo's repair
+     * lines identical to the ones the triple produced, and it is the function the
+     * modal goes back to if the staff review of EV-184a restores AC3's triple.
+     */
+    repairLine: (exercise: string, replacedWith: string, rule: string) =>
+      `${exercise} → ${replacedWith} · ${rule}`,
+    publishWithChanges: "Publish with these changes", // AC3, verbatim
+    noChanges: "No changes were needed", // AC3, verbatim
+    /**
+     * The body of the no-repairs modal. It is NOT a second copy of the heading: the
+     * heading already says "No changes were needed", and rendering that sentence twice
+     * would put two matches on the page for the one string AC3 names, which makes the
+     * criterion unassertable. What it says instead is AC5's own promise — the trainee
+     * learns on next open, because this story ships no push and no messaging.
+     */
+    noChangesBody: "The trainee sees this plan next time they open the app.",
+    published: "Published. The trainee sees it next time they open the app.",
+    publishFailed: "The plan could not be published.",
+    // AC4, verbatim — ADR-0013's refusal, shown for catalog search AND for publish.
+    catalogUnavailable: "The exercise catalog is unavailable. Try again shortly.",
+    planEmpty: "A plan needs at least one training day.", // AC4, verbatim
+    catalogTitle: "Add an exercise",
+    catalogReplaceTitle: "Replace exercise",
+    catalogSearch: "Search the catalog",
+    catalogMuscle: "Muscle",
+    catalogEquipment: "Equipment",
+    catalogAll: "All",
+    catalogNoResults: "No exercises match these filters.",
+    catalogTruncated: "Showing the first matches. Narrow the search to see more.",
+    catalogSearching: "Searching…",
+    // AC2: the coach picks from the catalog and can never type an exercise name.
+    catalogPickOnly: "Pick from the catalog. Typed names are not accepted.",
+    loadError: "This trainee's routine could not be loaded.",
+  },
+
+  /**
+   * EV-185b. Slice 1 has NO nutrition draft and no "Publish" — the coach's control is
+   * "Apply to {trainee}" and the confirm dialog says the trainee sees it immediately,
+   * because they do (EV-185's ruling). There is no disabled Publish button anywhere.
+   */
+  nutrition: {
+    title: "Nutrition",
+    targetsTitle: "Daily targets",
+    calories: "Calories",
+    protein: "Protein",
+    carbs: "Carbs",
+    fat: "Fat",
+    kcal: "kcal",
+    grams: "g",
+    activity: "Activity level",
+    activityLabels: {
+      SEDENTARY: "Sedentary",
+      LIGHT: "Lightly active",
+      MODERATE: "Moderately active",
+      ACTIVE: "Active",
+      VERY_ACTIVE: "Very active",
+    } as Record<string, string>,
+    // AC1's three source sentences, verbatim. `COACH` means this coach: a trainee has
+    // one coach, and the portal never shows another coach's attribution.
+    sourceAuto: "Calculated automatically",
+    sourceManual: "Set manually by the trainee",
+    sourceCoach: (date: string) => `Set by you on ${date}`,
+    /**
+     * AC1's fourth label, named by ADR-0015's 2026-09-16 amendment (ruling (b)):
+     * `source === "COACH"` and `setByYou === false` — a target written before a
+     * revoke-and-re-link, or by a coach account since erased. "Set by you" would be
+     * this coach's name on another professional's decision.
+     *
+     * It never names the other coach, and it cannot: the portal is served a boolean,
+     * not an id and not a name. The amendment's words are "Set by another coach"; the
+     * date is carried because the other three source lines carry it and a byline that
+     * drops it reads like a different kind of fact.
+     */
+    sourceCoachOther: (date: string) => `Set by another coach on ${date}`,
+    emptyTitle: "No nutrition set up yet", // AC1, verbatim
+    emptyBody: "Set the targets, then apply a meal week.",
+    // AC1, verbatim — ACTIVE link, no NUTRITION scope.
+    scopeMissing: "This trainee has not shared their nutrition with you.",
+    allergies: "Allergies",
+    rules: "Dietary rules",
+    dislikes: "Dislikes",
+    // Edge case 1, verbatim: no preferences row is not the same as an empty checked list.
+    noRestrictions: "No dietary restrictions recorded.",
+    saveTargets: "Save targets", // AC2, verbatim
+    saving: "Saving…",
+    // AC2, verbatim — client-side, and no request is sent.
+    invalidNumber: "Enter a number above 0.",
+    // AC2, verbatim: the engine's own flag, rendered only when the api returns it.
+    floorApplied: (n: number) => `Calories raised to a safe minimum of ${n} kcal.`,
+    // AC2, verbatim. It stands whether or not a floor fired, because what it states is
+    // the limit of the check itself: `setManual` clamps calories and nothing else.
+    floorStanding:
+      "Evoli checks calories against a safe minimum. It does not yet check protein or fat.",
+    targetsSaved: "Targets saved.",
+    targetsFailed: "The targets could not be saved.",
+    saveTargetsTitle: "Save targets?",
+    weekTitle: "Meal week",
+    weekOf: (date: string) => `Week of ${date}`,
+    apply: (trainee: string) => `Apply to ${trainee}`, // AC3, verbatim
+    applying: "Applying…",
+    applyTitle: "Apply this meal week?",
+    /** AC3: the dialog names the trainee AND the week start. */
+    applyBody: (trainee: string, weekStart: string) =>
+      `This replaces ${trainee}'s meal week starting ${weekStart}.`,
+    // AC3, verbatim. Used by both confirm dialogs — a coach write in slice 1 is always
+    // immediate, so the sentence is true in both places.
+    seesStraightAway: (trainee: string) => `${trainee} will see this straight away.`,
+    applyConfirm: "Apply",
+    cancel: "Cancel",
+    applyFailed: "The meal week could not be applied.",
+    // Edge case 3: the portal only ever sends `currentWeekStart`, so this is the
+    // sentence for the race where the server's week rolled over mid-session.
+    weekOutOfRange: "Only the current week can be applied.",
+    /**
+     * ADR-0015 D6.6's cap, one apply per trainee per day. It names the limit and does
+     * NOT offer a retry: the generic failure sentence invites a second click that
+     * cannot succeed until tomorrow, which is how a coach ends up believing the portal
+     * is broken.
+     */
+    weekRateLimited: "A meal week can be applied once a day for each trainee. Try again tomorrow.",
+    /**
+     * ADR-0015 D6.7: applying a week reuses the plan row and CARRIES LOCKED MEALS
+     * FORWARD, so "replaces the week" is true of the row and not of every meal in it.
+     * The ADR asks the confirm dialog to say so; without this line the dialog promises
+     * a replacement it does not perform.
+     */
+    lockedMealsKept: "Meals the trainee has locked are kept.",
+    regenerate: "Regenerate day", // AC3, verbatim
+    /**
+     * ADR-0015 D6: `regenerateDay` is free to the coach but its cap lives on the
+     * TRAINEE's plan row, so a coach spends the trainee's daily allowance. The ADR's
+     * accept-and-disclose: the portal states it (EV-091 carries the fix).
+     */
+    regenerateSharesLimit: (trainee: string) =>
+      `Day regenerations share ${trainee}'s daily limit.`,
+    regenerating: "Regenerating…",
+    regenerateFailed: "The day could not be regenerated.",
+    swap: "Swap meal", // AC3, verbatim
+    swapTitle: "Swap meal",
+    swapLoading: "Loading options…",
+    swapNone: "No swap options are available for this meal.",
+    swapFailed: "The meal could not be swapped.",
+    noMeals: "No meals planned for this day.",
+    /**
+     * The marker on a meal the TRAINEE locked in their own app. ADR-0015 D6.7: an
+     * apply carries locked meals forward, so without this the coach reads a week they
+     * did not generate and cannot tell which parts are the trainee's. One word, and it
+     * is the same word the confirm dialog uses ("…are kept").
+     */
+    mealKept: "Kept",
+    mealKeptTitle: "Locked by the trainee — kept when a week is applied",
+    // AC3, verbatim — EV-015's locale lock, removed by EV-073 and not before.
+    englishOnly:
+      "Meal plans are generated in English. Ingredient checks run on the English names.",
+    mealSlots: {
+      BREAKFAST: "Breakfast",
+      LUNCH: "Lunch",
+      DINNER: "Dinner",
+      SNACK: "Snack",
+    } as Record<string, string>,
+    macros: (kcal: number, p: number, c: number, f: number) =>
+      `${kcal} kcal · ${p} g protein · ${c} g carbs · ${f} g fat`,
+    loadError: "This trainee's nutrition could not be loaded.",
   },
 
   common: {

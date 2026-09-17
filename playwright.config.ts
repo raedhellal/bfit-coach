@@ -20,10 +20,24 @@ export default defineConfig({
   testDir: "./qa",
   // coach-live.spec.ts needs a real b-fit-api and a throwaway Postgres
   // (playwright.live.config.ts); refresh-single-flight.spec.ts needs the counting stub
-  // api (playwright.refresh.config.ts). This suite must stay runnable with no backend
-  // at all — that is what makes it the gate.
-  testIgnore: /(coach-live|refresh-single-flight)\.spec\.ts/,
+  // api (playwright.refresh.config.ts); coach-legacy-api.spec.ts needs the pre-ADR-0015
+  // api stub (playwright.legacy.config.ts); coach-roster-scopes.spec.ts needs the
+  // populated fixture scenario (playwright.roster.config.ts). This suite must stay
+  // runnable with no backend at all — that is what makes it the gate.
+  testIgnore: /(coach-live|refresh-single-flight|coach-roster-scopes|coach-legacy-api)\.spec\.ts/,
   fullyParallel: false,
+  /**
+   * ONE worker, not one per file.
+   *
+   * `COACH_API_MODE=fixture` is a single in-memory store inside one dev-server
+   * process: drafts, published plans, targets and meal weeks are module state that
+   * the routine and nutrition specs deliberately MUTATE (a draft has to survive a
+   * reload for EV-184 AC2, a publish has to replace the plan for AC3). Two workers
+   * would interleave writes against that one store and the failures would be
+   * ordering artefacts rather than product defects. `fullyParallel: false` only
+   * serialises within a file; this serialises across them.
+   */
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],

@@ -68,3 +68,46 @@ export function tierLabel(tier: string): string {
   if (!tier) return tier;
   return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
 }
+
+/**
+ * The length past which a name is truncated in the editor, the publish modal and
+ * every attribution line (EV-184 edge case 6, EV-185 edge case 7).
+ *
+ * 40 is the story's own number ("long exercise and coach names (40+ chars)"), so the
+ * case QA drives is the case this constant describes.
+ */
+export const NAME_TRUNCATE_AT = 40;
+
+/**
+ * Truncate for display, with a real ellipsis. CSS `text-overflow` was the alternative
+ * and is worse here for two reasons: the publish modal composes its line as a single
+ * string (so there is no element to clip), and a clipped element still puts the whole
+ * name in the accessibility tree and in `textContent`, which makes "it truncates"
+ * unassertable. Call sites pass the full string as `title` so nothing is lost.
+ */
+export function truncateName(value: string, max: number = NAME_TRUNCATE_AT): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1).trimEnd()}…`;
+}
+
+/** `YYYY-MM-DD` → "Monday". UTC, for the same reason everything else here is. */
+export function formatWeekday(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return "";
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" }).format(d);
+}
+
+/** ISO day-of-week 1–7 (`TrainingDay.dayOfWeek`) → "Monday". */
+const ISO_WEEKDAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+export function isoWeekdayLabel(dayOfWeek: number): string {
+  return ISO_WEEKDAYS[dayOfWeek - 1] ?? "";
+}
