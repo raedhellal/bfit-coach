@@ -263,7 +263,9 @@ export function RoutineEditor({
   function onPick(exercise: CatalogExercise) {
     const target = picker;
     if (!target) return;
-    setPicker(null);
+    // U4: an ADD leaves the picker open for the next one — building a six-exercise day
+    // was six open/search/pick cycles. A REPLACE has nothing left to do, so it closes.
+    if (target.mode === "replace") setPicker(null);
     editExercises(target.dayIndex, (exercises) => {
       if (target.mode === "add") return [...exercises, toEntry(exercise)];
       return exercises.map((ex, i) =>
@@ -848,6 +850,7 @@ export function RoutineEditor({
 
       <CatalogPicker
         open={picker !== null}
+        keepOpen={picker?.mode === "add"}
         title={
           picker?.mode === "replace"
             ? copy.routine.catalogReplaceTitle

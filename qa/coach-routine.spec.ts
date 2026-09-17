@@ -229,10 +229,14 @@ test.describe("AC2 — the coach edits, and the edit survives a reload as a draf
     await page.getByRole("button", { name: "Remove: Chest-Supported Row" }).click();
     await expect(exerciseRow(page, "Chest-Supported Row")).toHaveCount(0);
 
-    // 4 — add, on the second day, filtered by muscle.
+    // 4 — add, on the second day, filtered by muscle. EV-190 U4: an ADD keeps the
+    // picker open for the next one, so this closes it explicitly before carrying on.
     await page.getByRole("button", { name: "Add exercise" }).nth(1).click();
     await picker.getByLabel("Muscle").selectOption("Back");
     await picker.getByRole("button", { name: /^Seated Cable Row/ }).click();
+    await expect(picker.getByText("Added Seated Cable Row.")).toBeVisible();
+    await picker.getByRole("button", { name: "Done" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(exerciseRow(page, "Seated Cable Row")).toBeVisible();
 
     // 5 — sets, reps and rest.
@@ -802,6 +806,61 @@ test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
     await page.getByRole("link", { name: "Nutrition" }).click();
     await page.waitForURL(`/clients/${YUSUF}/nutrition`);
     await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+});
+
+/**
+ * EV-190 U4 — the catalog picker stays open while ADDING.
+ *
+ * `onPick` closed the picker on every pick, so a six-exercise day was six open /
+ * search / pick cycles, each one resetting the query and filters (which is deliberate
+ * and stays). Adding is a repeated act; replacing is a single one, and the two now
+ * behave differently on purpose.
+ */
+test.describe("EV-190 U4 — adding several exercises in one opening", () => {
+  test("three picks, three exercises, in order, and Escape keeps all three", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    const before = await page.getByRole("group").count();
+    await page.getByRole("button", { name: "Add exercise" }).first().click();
+    const picker = page.getByRole("dialog");
+
+    for (const name of ["Goblet Squat", "Lat Pulldown", "Seated Cable Row"]) {
+      await picker.getByLabel("Search the catalog").fill(name);
+      await picker.getByRole("button", { name: new RegExp(`^${name}`) }).click();
+      // The pick is acknowledged, because the day it landed on is behind the dialog.
+      await expect(picker.getByText(`Added ${name}.`)).toBeVisible();
+      // …and the picker is still open, which is the whole item.
+      await expect(picker).toBeVisible();
+    }
+
+    // Edge case 14: Escape after the picks keeps every one of them.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    const names = await page
+      .getByRole("group")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")));
+    expect(names.length).toBe(before + 3);
+    // Appended to the FIRST day (day two's exercises still follow them), in the order
+    // they were picked — three picks in one opening are three distinct exercises.
+    expect(names.join("|")).toContain("Goblet Squat|Lat Pulldown|Seated Cable Row");
+  });
+
+  test("replacing still closes on the pick — it is a single act", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.getByRole("button", { name: "Replace: Leg Press" }).click();
+    const picker = page.getByRole("dialog");
+    await picker.getByLabel("Search the catalog").fill("Goblet Squat");
+    await picker.getByRole("button", { name: /^Goblet Squat/ }).click();
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(exerciseRow(page, "Leg Press")).toHaveCount(0);
   });
 });
 
