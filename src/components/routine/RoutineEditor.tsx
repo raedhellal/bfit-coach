@@ -6,7 +6,9 @@ import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/comp
 import { UiIcon } from "@/components/ui/icons";
 import { CatalogPicker } from "./CatalogPicker";
 import { copy } from "@/lib/copy";
-import { isoWeekdayLabel, truncateName } from "@/lib/format";
+import { settled } from "@/lib/settled";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { ISO_WEEKDAY_NUMBERS, isoWeekdayLabel, truncateName } from "@/lib/format";
 import {
   discardDraftAction,
   previewPublishAction,
@@ -49,11 +51,44 @@ type PickerTarget =
   | { mode: "add"; dayIndex: number }
   | { mode: "replace"; dayIndex: number; exerciseIndex: number };
 
-function emptyDay(existing: RoutineDayEntry[]): RoutineDayEntry {
+/**
+ * `TrainingDayBounds` in the api: a plan is 2 to 6 training days. EV-190 AC1 asks for
+ * the add and remove controls to be disabled AT each end WITH a visible reason, which
+ * is why these are two named constants and not two literals in a JSX expression.
+ *
+ * A plan that already holds 7 days (pre-existing data, edge case 1) renders untouched:
+ * the editor refuses to add an eighth and says why. It never drops one silently.
+ */
+const MIN_TRAINING_DAYS = 2;
+const MAX_TRAINING_DAYS = 6;
+
+/**
+ * The weekday a NEWLY ADDED day starts on — the first one not already in the plan.
+ *
+ * This is now a default the coach can see and change, which is the whole of EV-190 R1.
+ * Until this story it was the ONLY thing that decided `dayOfWeek`, and nothing in the
+ * portal edited it afterwards: every hand-built 4-day plan landed Monday-Thursday, and
+ * `RoutinePlanWriter` derived the trainee's whole 7-row `plan_schedule` — every
+ * `rest_day` flag, and therefore `TrainingDayScheduleFactory`'s training-day vs
+ * rest-day NUTRITION — from it. A UI convenience was steering two surfaces.
+ *
+ * `firstFreeWeekday` returns null when all seven are taken; the caller refuses rather
+ * than returning a duplicate, because `RoutinePlanWriter`'s
+ * `workoutByDay.put(day.dayOfWeek(), ...)` would silently drop one of the two.
+ */
+function firstFreeWeekday(existing: RoutineDayEntry[]): number | null {
   const used = new Set(existing.map((d) => d.dayOfWeek));
-  let dayOfWeek = 1;
-  while (used.has(dayOfWeek) && dayOfWeek < 7) dayOfWeek += 1;
+  return ISO_WEEKDAY_NUMBERS.find((day) => !used.has(day)) ?? null;
+}
+
+function emptyDay(dayOfWeek: number): RoutineDayEntry {
   return { dayOfWeek, focus: copy.routine.newDayFocus, exercises: [] };
+}
+
+/** The two days a brand-new plan starts with: the minimum the bound allows. */
+function startingDays(): RoutineDayEntry[] {
+  const first = emptyDay(1);
+  return [first, emptyDay(firstFreeWeekday([first]) ?? 2)];
 }
 
 function toEntry(exercise: CatalogExercise): RoutineExerciseEntry {
@@ -91,12 +126,53 @@ export function RoutineEditor({
   const [plan, setPlan] = useState<RoutinePlanView | null>(initialDraft ?? activePlan);
   /** True from the moment a draft exists on the server OR the coach edits anything. */
   const [isDraft, setIsDraft] = useState(initialDraft !== null);
+  /**
+   * U2's flag, and the reason it is NOT `isDraft`.
+   *
+   * `isDraft` is true for a saved draft with no edits — a coach who opens a draft they
+   * saved yesterday and touches nothing has `isDraft === true` and nothing outstanding.
+   * Guarding on it would prompt on every navigation off this page, and a prompt that
+   * fires when nothing is unsaved is dismissed reflexively and then ignored on the day
+   * it matters.
+   *
+   * `dirty` is set by `edit()` — the single funnel every mutation in this component
+   * goes through — and cleared ONLY by a successful save, publish or discard. A FAILED
+   * save does not clear it: the coach is still holding unsaved work (AC2).
+   */
+  const [dirty, setDirty] = useState(false);
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [preview, setPreview] = useState<PublishPreview | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * AC1's refusal, held against the day card that refused it so the reason is next to
+   * the control the coach just used rather than at the top of a scrolled page.
+   */
+  const [weekdayError, setWeekdayError] = useState<{
+    dayIndex: number;
+    message: string;
+  } | null>(null);
   const [pending, startTransition] = useTransition();
+  const leaving = useUnsavedChanges(dirty);
+  /**
+   * U6 — put the feedback where the coach is looking.
+   *
+   * The notice and the error render in the TOP card, next to the controls that produce
+   * them. After adding an exercise at the bottom of day 5 both the control and its
+   * confirmation are off-screen, so a coach presses Save draft, sees nothing move, and
+   * presses it again.
+   *
+   * EV-190's NOT-list settles what the fix is: "scroll the notice into view and
+   * announce it" — not a sticky action bar, which is a redesign and is out. So the
+   * element keeps its place in the document and is brought to the coach, and it is a
+   * live region so the confirmation exists for someone who is not looking at all.
+   */
+  const feedbackRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!notice && !error) return;
+    feedbackRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [notice, error]);
 
   /**
    * Re-seed the working copy when the SERVER's published plan changes identity.
@@ -120,13 +196,42 @@ export function RoutineEditor({
     lastPublishedPlanId.current = publishedPlanId;
     setPlan(initialDraft ?? activePlan);
     setIsDraft(initialDraft !== null);
+    // The working copy was just replaced by the server's, so nothing local is
+    // outstanding — whatever the coach had is either published or gone.
+    setDirty(false);
   }, [publishedPlanId, activePlan, initialDraft]);
 
   function edit(next: RoutinePlanView) {
     setPlan(next);
     setIsDraft(true);
+    setDirty(true);
     setNotice(null);
     setError(null);
+    setWeekdayError(null);
+  }
+
+  /**
+   * AC1 — the weekday control, with the duplicate refused rather than accepted.
+   *
+   * The seven weekdays are all OFFERED, including ones already in the plan, and a
+   * duplicate is refused WITH ITS REASON. Disabling the taken options instead would be
+   * a control that does nothing when pressed and explains nothing, and a coach moving
+   * a session from Wednesday to Tuesday would be told neither why Tuesday is not
+   * there nor which day is on it.
+   *
+   * The previous value stands because the `select` is controlled: refusing simply does
+   * not call `edit`, and React re-renders it at the value in state.
+   */
+  function setWeekday(dayIndex: number, dayOfWeek: number) {
+    if (!plan) return;
+    const clash = plan.trainingDays.some((d, i) => i !== dayIndex && d.dayOfWeek === dayOfWeek);
+    if (clash) {
+      setWeekdayError({ dayIndex, message: copy.routine.weekdayTaken(isoWeekdayLabel(dayOfWeek)) });
+      return;
+    }
+    editDays((days) =>
+      days.map((d, i) => (i === dayIndex ? { ...d, dayOfWeek } : d))
+    );
   }
 
   function editDays(mutate: (days: RoutineDayEntry[]) => RoutineDayEntry[]) {
@@ -156,7 +261,9 @@ export function RoutineEditor({
   function onPick(exercise: CatalogExercise) {
     const target = picker;
     if (!target) return;
-    setPicker(null);
+    // U4: an ADD leaves the picker open for the next one — building a six-exercise day
+    // was six open/search/pick cycles. A REPLACE has nothing left to do, so it closes.
+    if (target.mode === "replace") setPicker(null);
     editExercises(target.dayIndex, (exercises) => {
       if (target.mode === "add") return [...exercises, toEntry(exercise)];
       return exercises.map((ex, i) =>
@@ -178,16 +285,35 @@ export function RoutineEditor({
    * remedy for losing access is leaving the page, not a line of copy on it.
    */
   function accessEnded(): void {
-    router.refresh();
+    /**
+     * EV-190 edge case 4. The unsaved-changes guard must not hold a coach whose access
+     * has ended on a page of a revoked trainee's plan, so the flag is dropped BEFORE
+     * the refresh that triggers the layout's redirect. Nothing about this work is
+     * recoverable — the link it belonged to is gone — and a dialog here would be a
+     * dialog about the coach's own convenience blocking a consent decision the trainee
+     * made.
+     */
+    setDirty(false);
+    // The guard's own history entry has to come out BEFORE the refresh, or the
+    // layout's redirect to /clients/denied never lands. See `release`.
+    leaving.release(() => router.refresh());
   }
 
   function saveDraft() {
     if (!plan) return;
     startTransition(async () => {
-      const result = await saveDraftAction(clientId, {
-        name: plan.name,
-        trainingDays: plan.trainingDays,
-      });
+      /**
+       * A server action is a `fetch`, and a `fetch` can fail. Without this `catch` a
+       * dropped connection rejected inside the transition, the coach saw no sentence
+       * at all, and the only thing that told them the save had not happened was the
+       * absence of the "Draft saved" line. EV-190 AC2 turns that into a correctness
+       * requirement: a FAILED save must leave the unsaved-changes flag standing, so
+       * the failure has to be a value, not an unhandled rejection.
+       */
+      const result = await settled(
+        saveDraftAction(clientId, { name: plan.name, trainingDays: plan.trainingDays }),
+        { ok: false, code: "FAILED" } as const
+      );
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return accessEnded();
         setError(copy.routine.saveFailed);
@@ -196,13 +322,20 @@ export function RoutineEditor({
       setNotice(copy.routine.savedAt(new Date().toLocaleTimeString()));
       setError(null);
       setIsDraft(true);
-      router.refresh();
+      setDirty(false);
+      // Every refresh that follows a cleared flag goes through `release` for the same
+      // reason the access-ended path does: the guard's history entry has to come out
+      // before the router is asked to do anything, not while it is doing it.
+      leaving.release(() => router.refresh());
     });
   }
 
   function discard() {
     startTransition(async () => {
-      const result = await discardDraftAction(clientId);
+      const result = await settled(discardDraftAction(clientId), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return accessEnded();
         setError(copy.routine.discardFailed);
@@ -213,25 +346,36 @@ export function RoutineEditor({
       setDiscarding(false);
       setPlan(activePlan);
       setIsDraft(false);
+      setDirty(false);
       setNotice(null);
       setError(null);
-      router.refresh();
+      leaving.release(() => router.refresh());
     });
   }
 
   function openPublish() {
     if (!plan) return;
     startTransition(async () => {
-      const result = await previewPublishAction(clientId, {
-        name: plan.name,
-        trainingDays: plan.trainingDays,
-      });
+      const result = await settled(
+        previewPublishAction(clientId, {
+          name: plan.name,
+          trainingDays: plan.trainingDays,
+        }),
+        { ok: false, code: "FAILED", saved: false } as const
+      );
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return accessEnded();
+        // The draft write is the first half of this action. If it landed, the coach's
+        // work is on the server and the unsaved warning must stop — what failed was
+        // the publish, and the error sentence below says so.
+        if (result.saved) setDirty(false);
         setError(FAILURE_COPY[result.code]);
         return;
       }
       setError(null);
+      // Opening the preview means the draft was saved first (`previewPublishAction`
+      // saves, then previews), so nothing is outstanding.
+      setDirty(false);
       setPreview(result.preview);
     });
   }
@@ -251,17 +395,23 @@ export function RoutineEditor({
   function confirmPublish() {
     if (!preview || !plan) return;
     startTransition(async () => {
-      const result = await publishAction(clientId, preview.digest);
+      const result = await settled(publishAction(clientId, preview.digest), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") {
           setPreview(null);
           return accessEnded();
         }
         if (result.code === "REPAIRS_UNACKNOWLEDGED") {
-          const again = await previewPublishAction(clientId, {
-            name: plan.name,
-            trainingDays: plan.trainingDays,
-          });
+          const again = await settled(
+            previewPublishAction(clientId, {
+              name: plan.name,
+              trainingDays: plan.trainingDays,
+            }),
+            { ok: false, code: "FAILED", saved: false } as const
+          );
           if (again.ok) {
             setPreview(again.preview);
             setError(null);
@@ -286,9 +436,10 @@ export function RoutineEditor({
       }
       setPreview(null);
       setIsDraft(false);
+      setDirty(false);
       setNotice(copy.routine.published);
       setError(null);
-      router.refresh();
+      leaving.release(() => router.refresh());
     });
   }
 
@@ -305,7 +456,7 @@ export function RoutineEditor({
             <Button
               icon="plus"
               onClick={() =>
-                edit({ planId: null, name: copy.routine.title, trainingDays: [emptyDay([])] })
+                edit({ planId: null, name: copy.routine.title, trainingDays: startingDays() })
               }
             >
               {copy.routine.build}
@@ -315,6 +466,13 @@ export function RoutineEditor({
       </Card>
     );
   }
+
+  const addDayRefusal =
+    firstFreeWeekday(plan.trainingDays) === null
+      ? copy.routine.allWeekdaysUsed
+      : plan.trainingDays.length >= MAX_TRAINING_DAYS
+        ? copy.routine.dayCountBound
+        : null;
 
   return (
     <div>
@@ -356,10 +514,14 @@ export function RoutineEditor({
               }}
             />
           </div>
-          <Badge tone={isDraft ? "amber" : "green"}>
-            {/* AC2, verbatim. */}
-            {isDraft ? copy.routine.draftBadge : copy.routine.publishedBadge}
-          </Badge>
+          <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Badge tone={isDraft ? "amber" : "green"}>
+              {/* EV-184 AC2, verbatim. */}
+              {isDraft ? copy.routine.draftBadge : copy.routine.publishedBadge}
+            </Badge>
+            {/* EV-190 AC2: shown from the first edit until the next SUCCESSFUL save. */}
+            {dirty && <Badge tone="red">{copy.routine.unsavedBadge}</Badge>}
+          </span>
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
@@ -379,18 +541,63 @@ export function RoutineEditor({
           </Button>
         </div>
 
-        {notice && (
-          <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>{notice}</p>
-        )}
-        {error && (
-          <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
-            {error}
-          </p>
-        )}
+        <div ref={feedbackRef}>
+          {notice && (
+            <p role="status" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>
+              {notice}
+            </p>
+          )}
+          {error && (
+            <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
+              {error}
+            </p>
+          )}
+        </div>
       </Card>
 
+      {/*
+        AC1 / AC6 — the heading states the KIND of control that sits under it. Ruling 2
+        (c): "Evoli enforces these" is said only where QA has demonstrated the
+        enforcement end to end, and these weekdays are written straight into
+        `plan_schedule` on publish.
+      */}
+      <div style={{ margin: "0 0 12px" }}>
+        <h2
+          className="dt"
+          style={{ margin: 0, fontSize: 15.5, fontWeight: 600, color: "var(--ink)" }}
+        >
+          {copy.routine.trainingDaysHeading}
+        </h2>
+        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.routine.trainingDaysNote}
+        </p>
+        {/*
+          The bound, said ONCE and visibly, when the plan is at the bottom of it. Every
+          "Remove day" control is disabled at that point and a disabled control with no
+          reason reads as a broken one — but the reason belongs to the plan, not to each
+          of the two cards, so it is not repeated per card.
+        */}
+        {plan.trainingDays.length <= MIN_TRAINING_DAYS && (
+          <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+            {copy.routine.dayCountBound}
+          </p>
+        )}
+      </div>
+
       {plan.trainingDays.map((day, dayIndex) => (
-        <Card key={`${day.dayOfWeek}-${dayIndex}`} style={{ marginBottom: 14 }}>
+        /**
+         * The key is the POSITION, not the weekday.
+         *
+         * `${day.dayOfWeek}-${dayIndex}` was safe only for as long as nothing could
+         * edit `dayOfWeek` — R1 makes it editable, and a key that changes remounts the
+         * card: the weekday `select` loses focus on every change, so setting four days
+         * in a row means finding the control again four times. Nothing else in this
+         * component keys on the weekday (the exercise rows key on slug + index, and
+         * `weekdayError` carries the day INDEX), so position is the whole of the
+         * identity here. Re-sorting by weekday would break that — which is the other
+         * reason the cards keep their array order.
+         */
+        <Card key={dayIndex} style={{ marginBottom: 14 }}>
           <div
             style={{
               display: "flex",
@@ -402,7 +609,39 @@ export function RoutineEditor({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <Badge tone="blue">{isoWeekdayLabel(day.dayOfWeek) || copy.routine.dayLabel(dayIndex + 1)}</Badge>
+              {/*
+                R1 — was a static `Badge` showing whatever weekday the insertion order
+                happened to produce. A coach programmes in weekdays ("Monday, Wednesday,
+                Friday"), not in "day 1..4", so the control offers the seven weekdays by
+                name and shows the day's current value.
+
+                The cards keep their ARRAY order and are never re-sorted when a weekday
+                changes: a card that jumps while the coach is typing in it loses their
+                place, and the order of this list decides nothing — the trainee's week is
+                ordered by the weekday itself (`RoutinePlanWriter` keys a map on it).
+              */}
+              <select
+                aria-label={copy.routine.weekdayLabel(dayIndex + 1)}
+                value={day.dayOfWeek}
+                onChange={(e) => setWeekday(dayIndex, Number(e.target.value))}
+                style={{
+                  height: MIN_TOUCH_TARGET,
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border-2)",
+                  background: "var(--surface)",
+                  color: "var(--ink)",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  padding: "0 10px",
+                }}
+              >
+                {ISO_WEEKDAY_NUMBERS.map((iso) => (
+                  <option key={iso} value={iso}>
+                    {isoWeekdayLabel(iso)}
+                  </option>
+                ))}
+              </select>
               <input
                 aria-label={`${copy.routine.dayLabel(dayIndex + 1)} focus`}
                 value={day.focus}
@@ -437,11 +676,28 @@ export function RoutineEditor({
               variant="ghost"
               size="sm"
               icon="trash"
+              ariaLabel={`${copy.routine.removeDay}: ${isoWeekdayLabel(day.dayOfWeek)}`}
+              title={
+                plan.trainingDays.length <= MIN_TRAINING_DAYS
+                  ? copy.routine.dayCountBound
+                  : undefined
+              }
+              disabled={plan.trainingDays.length <= MIN_TRAINING_DAYS}
               onClick={() => editDays((days) => days.filter((_, i) => i !== dayIndex))}
             >
               {copy.routine.removeDay}
             </Button>
           </div>
+
+          {/* AC1's refusal, verbatim, against the day that refused it. */}
+          {weekdayError?.dayIndex === dayIndex && (
+            <p
+              role="alert"
+              style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)" }}
+            >
+              {weekdayError.message}
+            </p>
+          )}
 
           <div style={{ display: "grid", gap: 10 }}>
             {day.exercises.map((exercise, exerciseIndex) => (
@@ -581,16 +837,34 @@ export function RoutineEditor({
         </Card>
       ))}
 
+      {/*
+        AC1's two refusals at the top end, both with a VISIBLE reason rather than an
+        inert control: the 2-6 bound, and the seven weekdays running out (only reachable
+        on a pre-existing 7-day plan, edge case 1 — `MAX_TRAINING_DAYS` stops it first
+        on anything this editor built).
+      */}
       <Button
         variant="secondary"
         icon="plus"
-        onClick={() => editDays((days) => [...days, emptyDay(days)])}
+        title={addDayRefusal ?? undefined}
+        disabled={addDayRefusal !== null}
+        onClick={() => {
+          const next = firstFreeWeekday(plan.trainingDays);
+          if (next === null) return;
+          editDays((days) => [...days, emptyDay(next)]);
+        }}
       >
         {copy.routine.addDay}
       </Button>
+      {addDayRefusal && (
+        <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+          {addDayRefusal}
+        </p>
+      )}
 
       <CatalogPicker
         open={picker !== null}
+        keepOpen={picker?.mode === "add"}
         title={
           picker?.mode === "replace"
             ? copy.routine.catalogReplaceTitle
@@ -620,6 +894,34 @@ export function RoutineEditor({
       >
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
           {copy.routine.discardBody}
+        </p>
+      </Modal>
+
+      {/*
+        AC2's confirm. Two controls and no third option: "Stay" is the default action
+        and leaves every edit intact, because a dialog about losing work whose primary
+        button loses it is a trap.
+      */}
+      <Modal
+        open={leaving.prompted}
+        onClose={leaving.stay}
+        title={copy.routine.leaveTitle}
+        icon="shield"
+        iconTone="amber"
+        width={420}
+        footer={
+          <>
+            <Button variant="secondary" onClick={leaving.stay}>
+              {copy.routine.leaveStay}
+            </Button>
+            <Button variant="danger" onClick={leaving.leave}>
+              {copy.routine.leaveConfirm}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
+          {copy.routine.leaveBody}
         </p>
       </Modal>
 

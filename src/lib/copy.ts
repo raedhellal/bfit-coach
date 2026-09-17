@@ -255,6 +255,50 @@ export const copy = {
     addDay: "Add day",
     removeDay: "Remove day",
     newDayFocus: "New day",
+    /**
+     * EV-190 R1/U1 — the weekday control and what it decides.
+     *
+     * `trainingDaysHeading` is EV-190 AC1 verbatim, and its second half is Ruling 2 (c):
+     * a coach must be able to read off the screen whether a control is a BOUND the
+     * system enforces or a BRIEF the model is asked to follow. These weekdays are
+     * enforced — `RoutinePlanWriter` writes one `Workout` per day and derives the whole
+     * 7-row `plan_schedule` from them.
+     *
+     * `trainingDaysNote` is OURS, not AC text. It exists because the consequence of
+     * this control is invisible from this screen and lands on two other surfaces: the
+     * trainee's Train tab, and `TrainingDayScheduleFactory`, which reads the same rows
+     * to decide training-day vs rest-day nutrition. It says "once you publish" because
+     * a draft changes nothing for the trainee, and it promises nothing about WHAT the
+     * nutrition becomes — only that it follows the schedule, which is what the factory
+     * does.
+     */
+    trainingDaysHeading: "Training days — Evoli enforces these.", // AC1, verbatim
+    trainingDaysNote:
+      "The trainee trains on these weekdays once you publish. The other days are rest days, and their nutrition follows.",
+    /** The per-day accessible name, so seven identical selects stay addressable. */
+    weekdayLabel: (n: number) => `Day ${n} weekday`,
+    // AC1, verbatim: the refusal names the weekday, and the previous value stands.
+    weekdayTaken: (weekday: string) => `${weekday} is already a training day.`,
+    // AC1, verbatim: adding a day can never produce a duplicate weekday.
+    allWeekdaysUsed: "All seven days are already in this plan.",
+    /**
+     * `TrainingDayBounds` is 2-6 in the api. The editor disables the add and remove
+     * controls at each end and says WHY, rather than leaving a control silently inert —
+     * a disabled button with no reason reads as a broken one.
+     */
+    dayCountBound: "A plan has between 2 and 6 training days.",
+    /**
+     * U2. `isDraft` is true for a SAVED draft with no edits, so it cannot be the flag:
+     * a warning that fires when nothing is unsaved is dismissed reflexively and then
+     * ignored on the day it matters. This badge is driven by a separate dirty flag that
+     * is set by the first edit and cleared only by a SUCCESSFUL save or publish.
+     */
+    unsavedBadge: "Unsaved changes",
+    leaveTitle: "Leave with unsaved changes?",
+    leaveBody:
+      "The edits you have made are not saved. If you leave now they are lost.",
+    leaveStay: "Stay on this page",
+    leaveConfirm: "Leave without saving",
     saveDraft: "Save draft", // AC2, verbatim
     saving: "Saving…",
     savedAt: (date: string) => `Draft saved ${date}`,
@@ -304,6 +348,16 @@ export const copy = {
     catalogAll: "All",
     catalogNoResults: "No exercises match these filters.",
     catalogTruncated: "Showing the first matches. Narrow the search to see more.",
+    /**
+     * U4. Adding is a repeated act — building a six-exercise day was six open / search
+     * / pick cycles — so the picker now stays open while ADDING and the coach closes it
+     * themselves. Replacing is a single act and still closes on the pick.
+     *
+     * `catalogAdded` is the only feedback that the pick landed, because the day it
+     * landed on is behind the modal. It is announced, not just drawn.
+     */
+    catalogAdded: (name: string) => `Added ${name}.`,
+    catalogDone: "Done",
     catalogSearching: "Searching…",
     // AC2: the coach picks from the catalog and can never type an exercise name.
     catalogPickOnly: "Pick from the catalog. Typed names are not accepted.",
@@ -368,6 +422,26 @@ export const copy = {
     // the limit of the check itself: `setManual` clamps calories and nothing else.
     floorStanding:
       "Evoli checks calories against a safe minimum. It does not yet check protein or fat.",
+    /**
+     * EV-190 U3 / AC3 — the arithmetic, verbatim, and ADVISORY.
+     *
+     * The four targets are four independent numbers today and the only check is
+     * "above 0", so 2200 kcal with macros summing to 2560 saves silently and the prompt
+     * is handed both. This line states the sum and the signed difference and does
+     * nothing else: "Save targets" is never disabled by it, no value is auto-corrected,
+     * and no request is blocked. A coach may have a reason, and a control that refuses
+     * a professional's deliberate number teaches them to work around the tool.
+     *
+     * 4 kcal/g protein, 4 kcal/g carbs, 9 kcal/g fat, and +/-25 kcal reads as a match —
+     * the story fixes both so QA computes the expected string instead of reading it off
+     * the screen.
+     */
+    macrosAbove: (macroKcal: string, delta: string) =>
+      `Your macros add up to ${macroKcal} kcal — ${delta} above the calorie target.`,
+    macrosBelow: (macroKcal: string, delta: string) =>
+      `Your macros add up to ${macroKcal} kcal — ${delta} below the calorie target.`,
+    macrosMatch: (macroKcal: string) =>
+      `Your macros add up to ${macroKcal} kcal — this matches the calorie target.`,
     targetsSaved: "Targets saved.",
     targetsFailed: "The targets could not be saved.",
     saveTargetsTitle: "Save targets?",

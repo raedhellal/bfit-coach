@@ -531,3 +531,169 @@ test.describe("ADR-0015 — the contract additions the review asked for", () => 
     }
   });
 });
+
+/**
+ * EV-190 AC3 (U3) — the targets card reconciles macros against calories.
+ *
+ * `NutritionTargetsCard` validated only "above 0", so 2200 kcal saved happily next to
+ * macros summing to 2560 and the prompt was handed both numbers with nothing on screen
+ * saying so. The line added here is ADVISORY: it states the arithmetic and refuses
+ * nothing, which is why the last test in this block deliberately saves a mismatch and
+ * reads the stored row back.
+ *
+ * 4 kcal/g protein, 4 kcal/g carbs, 9 kcal/g fat, ±25 kcal reads as a match. These
+ * expectations are COMPUTED from the story's rule, not copied off the screen — and
+ * that is exactly why they do not read as EV-190 AC3 writes them.
+ *
+ * ⚠️ AC3's worked example is arithmetically wrong. It gives 2200 kcal with 180 g
+ * protein, 200 g carbs and 80 g fat and then asserts the sentence "…add up to 2,560
+ * kcal — 360 above…". By AC3's own factors the sum is 180*4 + 200*4 + 80*9 = **2,240**,
+ * and the difference is **40**. The story says the rounding rule is stated "so QA
+ * computes the expected string rather than reading it off the screen", so the RULE
+ * wins over the example, and these tests assert the computed values. The example needs
+ * correcting in the story.
+ */
+test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily", () => {
+  test("the story's own numbers, live, before any save", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/nutrition`);
+
+    await page.getByLabel("Calories").fill("2200");
+    await page.getByLabel("Protein").fill("180");
+    await page.getByLabel("Carbs").fill("200");
+    await page.getByLabel("Fat").fill("80");
+
+    // 180*4 + 200*4 + 80*9 = 2,240; 2,240 − 2,200 = 40. (AC3 prints 2,560/360.)
+    await expect(
+      page.getByText("Your macros add up to 2,240 kcal — 40 above the calorie target.")
+    ).toBeVisible();
+    // Advisory: nothing is disabled, nothing is corrected, no request was sent.
+    await expect(page.getByRole("button", { name: "Save targets" })).toBeEnabled();
+    await expect(page.getByLabel("Protein")).toHaveValue("180");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("the below case, and a 1 kcal difference reads as a match", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/nutrition`);
+
+    await page.getByLabel("Calories").fill("2200");
+    await page.getByLabel("Protein").fill("100");
+    await page.getByLabel("Carbs").fill("100");
+    await page.getByLabel("Fat").fill("50");
+    // 400 + 400 + 450 = 1250; 2200 − 1250 = 950.
+    await expect(
+      page.getByText("Your macros add up to 1,250 kcal — 950 below the calorie target.")
+    ).toBeVisible();
+
+    // Edge case 6: 150*4 + 250*4 + 67*9 = 2203 against 2202 — inside the ±25
+    // tolerance, so it reads as matching rather than as a 1 kcal error.
+    await page.getByLabel("Calories").fill("2202");
+    await page.getByLabel("Protein").fill("150");
+    await page.getByLabel("Carbs").fill("250");
+    await page.getByLabel("Fat").fill("67");
+    await expect(
+      page.getByText("Your macros add up to 2,203 kcal — this matches the calorie target.")
+    ).toBeVisible();
+  });
+
+  /**
+   * The tolerance itself, pinned at both sides of the boundary.
+   *
+   * Review's measurement: ±25 could be mutated to 24 with every other test in this
+   * file still green, so the number in the story was not actually asserted anywhere.
+   * 100 g protein + 200 g carbs + 75 g fat = 1,875 kcal, which is 25 above 1,850 and
+   * 26 above 1,849.
+   */
+  test("exactly 25 kcal reads as a match, and 26 does not", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/nutrition`);
+
+    await page.getByLabel("Protein").fill("100");
+    await page.getByLabel("Carbs").fill("200");
+    await page.getByLabel("Fat").fill("75");
+
+    await page.getByLabel("Calories").fill("1850");
+    await expect(
+      page.getByText("Your macros add up to 1,875 kcal — this matches the calorie target.")
+    ).toBeVisible();
+
+    await page.getByLabel("Calories").fill("1849");
+    await expect(
+      page.getByText("Your macros add up to 1,875 kcal — 26 above the calorie target.")
+    ).toBeVisible();
+
+    // …and symmetrically on the other side: 1,900 is 25 below, 1,901 is 26 below.
+    await page.getByLabel("Calories").fill("1900");
+    await expect(
+      page.getByText("Your macros add up to 1,875 kcal — this matches the calorie target.")
+    ).toBeVisible();
+    await page.getByLabel("Calories").fill("1901");
+    await expect(
+      page.getByText("Your macros add up to 1,875 kcal — 26 below the calorie target.")
+    ).toBeVisible();
+  });
+
+  test("an empty field produces no line, no NaN and no 0 kcal", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/nutrition`);
+
+    await page.getByLabel("Calories").fill("2200");
+    await page.getByLabel("Protein").fill("180");
+    await page.getByLabel("Carbs").fill("200");
+    await page.getByLabel("Fat").fill("");
+
+    // Edge case 5: there is no honest arithmetic over a missing value.
+    await expect(page.getByText(/^Your macros add up to/)).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("NaN");
+    await expect(page.locator("body")).not.toContainText("0 kcal —");
+    // EV-185 AC2 is unchanged: the empty field is still refused at save, client-side.
+    await page.getByRole("button", { name: "Save targets" }).click();
+    await expect(page.getByText("Enter a number above 0.")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("a deliberate mismatch saves exactly as entered, and the floor recomputes the line", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/nutrition`);
+
+    await page.getByLabel("Calories").fill("2200");
+    await page.getByLabel("Protein").fill("180");
+    await page.getByLabel("Carbs").fill("200");
+    await page.getByLabel("Fat").fill("80");
+    await page.getByRole("button", { name: "Save targets" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Save targets" }).click();
+
+    await expect(page.getByText("Targets saved.")).toBeVisible();
+    // The persisted row is what the coach entered — the line overruled nothing.
+    await page.reload();
+    await expect(page.getByLabel("Calories")).toHaveValue("2200");
+    await expect(page.getByLabel("Protein")).toHaveValue("180");
+    await expect(page.getByLabel("Carbs")).toHaveValue("200");
+    await expect(page.getByLabel("Fat")).toHaveValue("80");
+    await expect(
+      page.getByText("Your macros add up to 2,240 kcal — 40 above the calorie target.")
+    ).toBeVisible();
+
+    /**
+     * AC3's last clause: when the engine's floor raises the calories, the line
+     * recomputes against the STORED number. 800 is raised to 1200, so the arithmetic
+     * the coach reads is 2,240 against 1,200 — never against the 800 that was refused.
+     */
+    await page.getByLabel("Calories").fill("800");
+    await expect(
+      page.getByText("Your macros add up to 2,240 kcal — 1,440 above the calorie target.")
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Save targets" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Save targets" }).click();
+    await expect(page.getByText("Calories raised to a safe minimum of 1200 kcal.")).toBeVisible();
+    await expect(page.getByLabel("Calories")).toHaveValue("1200");
+    await expect(
+      page.getByText("Your macros add up to 2,240 kcal — 1,040 above the calorie target.")
+    ).toBeVisible();
+    // The standing sentence is untouched by any of this.
+    await expect(page.getByText(FLOOR_STANDING)).toBeVisible();
+  });
+});

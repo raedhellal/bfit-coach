@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { Badge, Button, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { copy } from "@/lib/copy";
 import { truncateName } from "@/lib/format";
 import { searchCatalogAction } from "@/lib/routineActions";
+import { settled } from "@/lib/settled";
 import type { CatalogExercise } from "@/lib/coachApi";
 
 /**
@@ -28,11 +29,19 @@ import type { CatalogExercise } from "@/lib/coachApi";
 export function CatalogPicker({
   open,
   title,
+  keepOpen,
   onClose,
   onPick,
 }: {
   open: boolean;
   title: string;
+  /**
+   * EV-190 U4. ADDING is a repeated act — a six-exercise day was six open / search /
+   * pick cycles — so the picker stays open while adding and the coach closes it when
+   * they are done. REPLACING is a single act and still closes on the pick, because
+   * there is nothing left to replace.
+   */
+  keepOpen?: boolean;
   onClose: () => void;
   onPick: (exercise: CatalogExercise) => void;
 }) {
@@ -43,6 +52,8 @@ export function CatalogPicker({
   const [muscles, setMuscles] = useState<string[]>([]);
   const [equipmentOptions, setEquipmentOptions] = useState<string[]>([]);
   const [truncated, setTruncated] = useState(false);
+  /** The last exercise added in THIS opening, so the pick is visibly acknowledged. */
+  const [added, setAdded] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [failed, setFailed] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -60,7 +71,17 @@ export function CatalogPicker({
 
   const run = useCallback((query: string, m: string, e: string) => {
     startTransition(async () => {
-      const result = await searchCatalogAction(query, m, e);
+      /**
+       * `settled`, and this is the call site that made the rule general: the search
+       * runs behind a debounce on every keystroke, so it is the action most likely to
+       * meet a failing request — and an unguarded failure here took the whole editor,
+       * and the coach's unsaved plan, down with it. A failed search says the catalogue
+       * is unavailable; it does not lose a plan.
+       */
+      const result = await settled(searchCatalogAction(query, m, e), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") {
           // The catalog is a server-wide read, so a 403 here is about the SESSION, not
@@ -100,6 +121,23 @@ export function CatalogPicker({
     setQ("");
     setMuscle("");
     setEquipment("");
+    setAdded(null);
+  }, [open]);
+
+  /**
+   * Escape closes the picker (edge case 14: "pressing Escape after the third keeps all
+   * three"). The kit's `Modal` has no key handling of its own, and adding it there
+   * would change every dialog in the portal in a change whose QA pass is about touch
+   * targets — so it is handled here, for the one dialog a coach now keeps open across
+   * several actions and therefore expects to dismiss with a key.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCloseRef.current();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
   // Debounced so a five-letter query is one request per pause, not five.
@@ -110,7 +148,22 @@ export function CatalogPicker({
   }, [open, q, muscle, equipment, run]);
 
   return (
-    <Modal open={open} onClose={onClose} title={title} icon="search" width={560}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      icon="search"
+      width={560}
+      // Only the multi-add opening needs a way out that is not "pick something": a
+      // replace picker already closes on the pick.
+      footer={
+        keepOpen ? (
+          <Button variant="secondary" onClick={onClose}>
+            {copy.routine.catalogDone}
+          </Button>
+        ) : undefined
+      }
+    >
       {unavailable ? (
         // AC4, verbatim: refuse and offer nothing, rather than half a catalog.
         <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
@@ -164,7 +217,10 @@ export function CatalogPicker({
               <button
                 key={item.slug}
                 type="button"
-                onClick={() => onPick(item)}
+                onClick={() => {
+                  onPick(item);
+                  if (keepOpen) setAdded(item.name);
+                }}
                 title={item.name}
                 style={{
                   minHeight: MIN_TOUCH_TARGET,
@@ -189,6 +245,16 @@ export function CatalogPicker({
                 </span>
               </button>
             ))}
+            {/*
+              The day the exercise landed on is BEHIND this dialog, so without this the
+              only feedback for a pick is the modal not closing. `status` announces it
+              to a screen reader too; the full name is used, not the truncated one.
+            */}
+            {added && (
+              <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--ok-ink)" }}>
+                {copy.routine.catalogAdded(added)}
+              </p>
+            )}
             {truncated && (
               <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)" }}>
                 {copy.routine.catalogTruncated}

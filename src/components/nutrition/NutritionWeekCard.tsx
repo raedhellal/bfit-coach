@@ -11,6 +11,7 @@ import {
   regenerateDayAction,
   swapOptionsAction,
 } from "@/lib/nutritionActions";
+import { settled } from "@/lib/settled";
 import type { MealWeekView, SwapCandidate } from "@/lib/coachApi";
 
 /**
@@ -73,7 +74,13 @@ export function NutritionWeekCard({
 
   function applyWeek() {
     startTransition(async () => {
-      const result = await applyWeekAction(clientId, currentWeekStart);
+      // `settled` on every action in this card: a failed request resolves with
+      // `undefined`, and an unguarded `result.ok` replaces the whole tab with the
+      // error boundary instead of showing the sentence written for the failure.
+      const result = await settled(applyWeekAction(clientId, currentWeekStart), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       setConfirming(false);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
@@ -94,7 +101,10 @@ export function NutritionWeekCard({
 
   function regenerate(index: number) {
     startTransition(async () => {
-      const result = await regenerateDayAction(clientId, index);
+      const result = await settled(regenerateDayAction(clientId, index), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
         setError(copy.nutrition.regenerateFailed);
@@ -110,7 +120,10 @@ export function NutritionWeekCard({
     setSwapping({ mealId, mealName });
     setCandidates(null);
     startTransition(async () => {
-      const result = await swapOptionsAction(clientId, mealId);
+      const result = await settled(swapOptionsAction(clientId, mealId), {
+        ok: false,
+        code: "FAILED",
+      } as const);
       if (!result.ok && result.code === "ACCESS_DENIED") {
         setSwapping(null);
         return void handleAccessEnded();
@@ -123,7 +136,10 @@ export function NutritionWeekCard({
     const target = swapping;
     if (!target) return;
     startTransition(async () => {
-      const result = await applySwapAction(clientId, target.mealId, candidateIndex);
+      const result = await settled(
+        applySwapAction(clientId, target.mealId, candidateIndex),
+        { ok: false, code: "FAILED" } as const
+      );
       setSwapping(null);
       setCandidates(null);
       if (!result.ok) {

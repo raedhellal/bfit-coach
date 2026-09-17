@@ -80,10 +80,17 @@ test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
     await expect(page.getByText("Published plan")).toBeVisible();
     await expect(page.getByText("Draft — not yet published")).toHaveCount(0);
 
-    // The three training days, in the api's schedule order.
-    await expect(page.getByText("Monday", { exact: true })).toBeVisible();
-    await expect(page.getByText("Wednesday", { exact: true })).toBeVisible();
-    await expect(page.getByText("Friday", { exact: true })).toBeVisible();
+    /**
+     * The three training days, in the api's schedule order.
+     *
+     * Asserted through the weekday CONTROL (EV-190 R1) rather than by text: the seven
+     * weekday names now appear as `<option>`s in every day's select, so
+     * `getByText("Monday")` matches once per day and says nothing about which day is
+     * on it. The value is `TrainingDay.dayOfWeek`, the ISO number the api sends.
+     */
+    await expect(page.getByLabel("Day 1 weekday")).toHaveValue("1"); // Monday
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("3"); // Wednesday
+    await expect(page.getByLabel("Day 3 weekday")).toHaveValue("5"); // Friday
     await expect(page.getByLabel("Day 1 focus")).toHaveValue("Upper Body A");
     await expect(page.getByLabel("Day 2 focus")).toHaveValue("Lower Body");
     await expect(page.getByLabel("Day 3 focus")).toHaveValue("Upper Body B");
@@ -222,10 +229,14 @@ test.describe("AC2 — the coach edits, and the edit survives a reload as a draf
     await page.getByRole("button", { name: "Remove: Chest-Supported Row" }).click();
     await expect(exerciseRow(page, "Chest-Supported Row")).toHaveCount(0);
 
-    // 4 — add, on the second day, filtered by muscle.
+    // 4 — add, on the second day, filtered by muscle. EV-190 U4: an ADD keeps the
+    // picker open for the next one, so this closes it explicitly before carrying on.
     await page.getByRole("button", { name: "Add exercise" }).nth(1).click();
     await picker.getByLabel("Muscle").selectOption("Back");
     await picker.getByRole("button", { name: /^Seated Cable Row/ }).click();
+    await expect(picker.getByText("Added Seated Cable Row.")).toBeVisible();
+    await picker.getByRole("button", { name: "Done" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(exerciseRow(page, "Seated Cable Row")).toBeVisible();
 
     // 5 — sets, reps and rest.
@@ -369,14 +380,57 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
     ).toBeVisible();
   });
 
-  test("a plan with zero training days is refused, with the story's sentence", async ({
+  /**
+   * EV-190 AC1 changed what this test can drive, and it is recorded here rather than
+   * deleted.
+   *
+   * EV-184 asserted the api's `PLAN_EMPTY` refusal by emptying the editor: "Build a
+   * plan" made ONE day and "Remove day" took it away. `TrainingDayBounds` is 2-6 and
+   * EV-190 AC1 puts that bound on the controls, so a new plan now starts at the
+   * minimum of two days and Remove is disabled at two WITH its reason. A zero-day
+   * draft is no longer reachable from this UI.
+   *
+   * `copy.routine.planEmpty` stays — the api still refuses a zero-day draft and the
+   * portal still renders that refusal — but nothing in the portal can now produce one,
+   * so what this test asserts is the bound that made it unreachable.
+   */
+  test("the editor cannot be driven below the two-day bound, so a zero-day draft is unreachable", async ({
     page,
   }) => {
     await signIn(page);
     await page.goto(`/clients/${NILS}/routine`);
 
     await page.getByRole("button", { name: "Build a plan" }).click();
-    await page.getByRole("button", { name: "Remove day" }).click();
+
+    // Two days, not one: the minimum the bound allows.
+    await expect(page.getByLabel("Day 1 weekday")).toBeVisible();
+    await expect(page.getByLabel("Day 2 weekday")).toBeVisible();
+    await expect(page.getByLabel("Day 3 weekday")).toHaveCount(0);
+
+    // Both Remove controls are disabled, and the reason is on the screen, not only in
+    // the tooltip — a disabled control with no reason reads as a broken one.
+    const removes = page.getByRole("button", { name: "Remove day" });
+    await expect(removes).toHaveCount(2);
+    for (const remove of await removes.all()) await expect(remove).toBeDisabled();
+    await expect(page.getByText("A plan has between 2 and 6 training days.")).toBeVisible();
+  });
+
+  /**
+   * …and the api's refusal is still rendered, which is the half of the old test that
+   * would otherwise have left no assertion anywhere in this repo.
+   *
+   * The UI can no longer PRODUCE a zero-day draft, but the api still answers
+   * `COACH_PLAN_EMPTY` and the portal still maps it to EV-184 AC4's sentence. The
+   * fixture answers it for this trainee (`PLAN_EMPTY_ON_PUBLISH_IDS`) the same way it
+   * answers a 503 for Omar's catalogue — the refusal is the api's, and what is under
+   * test is what the portal does with it.
+   */
+  test("the api's COACH_PLAN_EMPTY still reads as the story's sentence, and nothing publishes", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${NILS}/routine`);
+    await page.getByRole("button", { name: "Build a plan" }).click();
 
     await page.getByRole("button", { name: "Publish", exact: true }).click();
     await expect(page.getByText("A plan needs at least one training day.")).toBeVisible();
@@ -501,6 +555,468 @@ test.describe("ADR-0012 D4 — the tab routes are 403 for an id that is not this
 });
 
 /**
+ * EV-190 AC1 (R1 / U1) — which weekdays the trainee trains.
+ *
+ * These tests sit after every EV-184 test in this file because they MUTATE Yusuf's
+ * plan, and they are before the terminal revoke describe because everything is.
+ *
+ * What makes this a defect and not a feature: until this story `emptyDay()` took the
+ * first unused ISO weekday and NOTHING edited `dayOfWeek` afterwards, so every
+ * hand-built 4-day plan landed Monday-Thursday — and `RoutinePlanWriter` derives the
+ * trainee's whole 7-row `plan_schedule` from those numbers, which
+ * `TrainingDayScheduleFactory` then reads to decide training-day vs rest-day NUTRITION.
+ * The cross-surface half of AC1 (the `plan_schedule` rows, the device's Train tab, the
+ * nutrition day types) is `senior-qa`'s against a real api; these assert the portal
+ * half: the control exists, it round-trips, and it refuses a duplicate.
+ */
+test.describe("EV-190 AC1 — the coach chooses which weekdays the trainee trains", () => {
+  test("every training day carries a weekday control, under the heading that names the kind", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    // AC6 / Ruling 2 (c): the heading states that this control is ENFORCED, verbatim.
+    await expect(page.getByText("Training days — Evoli enforces these.")).toBeVisible();
+    // The consequence, which is invisible from this screen and lands on two others.
+    await expect(
+      page.getByText(
+        "The trainee trains on these weekdays once you publish. The other days are rest days, and their nutrition follows."
+      )
+    ).toBeVisible();
+
+    // Yusuf's plan is Tuesday + Thursday, and the control shows the current value.
+    await expect(page.getByLabel("Day 1 weekday")).toHaveValue("2");
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("4");
+    // All seven weekdays are offered, by name, on every day.
+    await expect(page.getByLabel("Day 1 weekday").getByRole("option")).toHaveText([
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ]);
+  });
+
+  test("a duplicate weekday is refused with its reason, and the previous value stands", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    // Day 2 is Thursday; Tuesday is day 1's. `RoutinePlanWriter`'s
+    // `workoutByDay.put(dayOfWeek, ...)` would silently DROP one of the two on publish,
+    // so this refusal is not cosmetic.
+    await page.getByLabel("Day 2 weekday").selectOption("2");
+
+    await expect(page.getByText("Tuesday is already a training day.")).toBeVisible();
+    // The previous value stands, and nothing was marked as an edit.
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("4");
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+    // And a legal move clears the refusal.
+    await page.getByLabel("Day 2 weekday").selectOption("6");
+    await expect(page.getByText("Tuesday is already a training day.")).toHaveCount(0);
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("6");
+  });
+
+  test("the weekdays the coach sets survive a save and a hard reload", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.getByLabel("Day 1 weekday").selectOption("1"); // Monday
+    await page.getByLabel("Day 2 weekday").selectOption("6"); // Saturday
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+
+    // A HARD reload: the draft round-trips through the server, not through state.
+    await page.reload();
+    await expect(page.getByLabel("Day 1 weekday")).toHaveValue("1");
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("6");
+
+    // Publishing carries them: the weekdays are what the plan writer will schedule.
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(page.getByText(/^Published\. /)).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByLabel("Day 1 weekday")).toHaveValue("1");
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("6");
+  });
+
+  /**
+   * A regression for a defect R1 INTRODUCED and review caught: the day card's React
+   * key was `${day.dayOfWeek}-${dayIndex}`, which was stable only while nothing could
+   * edit `dayOfWeek`. With the weekday control it changes on every pick, so the card
+   * remounted and the `select` lost focus — and AC1 walks four weekday changes in a
+   * row, finding the control again each time.
+   */
+  test("changing a weekday keeps the focus in the control that changed it", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    const weekday = page.getByLabel("Day 1 weekday");
+    const other = page.getByLabel("Day 2 weekday");
+    // Two weekdays day 2 is not on, whatever this trainee's plan holds by now: a
+    // duplicate would be refused and the test would be asserting the refusal instead.
+    const taken = await other.inputValue();
+    const free = ["3", "5", "7"].filter((v) => v !== taken).slice(0, 2);
+
+    await weekday.focus();
+    await weekday.selectOption(free[0]);
+    await expect(weekday).toBeFocused();
+    // Two in a row, because the second is where a remount would show up.
+    await weekday.selectOption(free[1]);
+    await expect(weekday).toBeFocused();
+    await expect(weekday).toHaveValue(free[1]);
+    // The neighbouring card is untouched by any of it.
+    await expect(other).toHaveValue(taken);
+  });
+
+  test("adding days stops at the six-day bound, with the reason on screen", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    // Two days to start; each added day takes the first weekday not already in use, so
+    // the plan can never hold two days on one weekday even before the coach edits it.
+    for (let i = 3; i <= 6; i += 1) {
+      await page.getByRole("button", { name: "Add day" }).click();
+      await expect(page.getByLabel(`Day ${i} weekday`)).toBeVisible();
+    }
+    // Monday, Tuesday, Wednesday, Thursday, Friday, Saturday — six distinct weekdays.
+    const values = await page
+      .getByRole("combobox")
+      .evaluateAll((els) => els.map((el) => (el as HTMLSelectElement).value));
+    expect(new Set(values).size).toBe(values.length);
+
+    await expect(page.getByRole("button", { name: "Add day" })).toBeDisabled();
+    await expect(page.getByText("A plan has between 2 and 6 training days.")).toBeVisible();
+    // Nothing was saved: this is a local edit, and the reload proves the refusal did
+    // not write a seventh day behind it.
+    await expect(page.getByLabel("Day 7 weekday")).toHaveCount(0);
+  });
+});
+
+/**
+ * EV-190 AC2 (U2) — unsaved editor work cannot be lost without the coach being told.
+ *
+ * These drive the LOSS PATH itself, not a proxy for it: before this change, clicking
+ * the Nutrition tab after an edit navigated away and the working copy went with it.
+ * Each test therefore makes a real edit, takes one of AC2's four routes out, and
+ * checks both that the coach was asked and that Cancel left every edit intact.
+ *
+ * ⚠️ The flag under test is NOT `isDraft` — that is true for a saved draft with no
+ * edits, so the first test here is the one that would catch a guard wired to it: it
+ * opens a trainee WITH a draft, edits nothing, and requires silence.
+ */
+test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
+  test("a coach who changed nothing is not prompted, on a page that has a draft", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByRole("group", { name: "Goblet Squat", exact: true }).getByLabel("Sets").fill("4");
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+
+    // A SAVED draft: the draft badge is on, and the unsaved marker is not.
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.waitForURL(`/clients/${YUSUF}/nutrition`);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("an edit is marked, the tabs ask first, and Cancel keeps every edit", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.getByLabel("Plan name").fill("Two Day Full Body — block 2");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toHaveAccessibleName("Leave with unsaved changes?");
+    // The navigation has NOT happened: the coach is asked before, not after.
+    expect(page.url()).toContain(`/clients/${YUSUF}/routine`);
+
+    await dialog.getByRole("button", { name: "Stay on this page" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(page.url()).toContain(`/clients/${YUSUF}/routine`);
+    // Every edit intact — this is the half that makes the prompt worth having.
+    await expect(page.getByLabel("Plan name")).toHaveValue("Two Day Full Body — block 2");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+  });
+
+  test("the roster breadcrumb asks too, and Leave without saving goes", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.getByLabel("Plan name").fill("Discarded on the way out");
+    // Two links carry this name — the header logo and the breadcrumb. The breadcrumb
+    // is the second, and it is the one a coach uses to leave a trainee.
+    await page.getByRole("link", { name: "Back to roster" }).last().click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toHaveAccessibleName("Leave with unsaved changes?");
+    await dialog.getByRole("button", { name: "Leave without saving" }).click();
+
+    await page.waitForURL("/");
+
+    /**
+     * ONE Back press returns to the editor, and the NEXT one leaves it again.
+     *
+     * The guard leaves a sentinel history entry for this page while the work is dirty.
+     * If it is still there after the coach leaves, the entry has the editor's own URL,
+     * so the first Back lands on the editor and the second appears to do nothing —
+     * measured as a dead press in review. Confirming a leave now removes it first.
+     */
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/clients/${YUSUF}/routine$`));
+    await page.goBack();
+    await expect(page).toHaveURL(/\/$/);
+
+    // Nothing was written on the way out: the name the coach abandoned is not the
+    // server's. (A leave that quietly saved would be a different, worse bug.)
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await expect(page.getByLabel("Plan name")).not.toHaveValue("Discarded on the way out");
+  });
+
+  test("the browser back button asks, and Cancel leaves the coach on the page", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByLabel("Plan name").fill("Back button test");
+
+    // `goBack` may not settle: the guard re-pushes its sentinel so the document never
+    // changes. That IS the behaviour under test, so the call is allowed to time out.
+    await page.goBack({ timeout: 3000 }).catch(() => null);
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toHaveAccessibleName("Leave with unsaved changes?");
+    await dialog.getByRole("button", { name: "Stay on this page" }).click();
+
+    expect(page.url()).toContain(`/clients/${YUSUF}/routine`);
+    await expect(page.getByLabel("Plan name")).toHaveValue("Back button test");
+  });
+
+  test("closing the tab raises the browser's own beforeunload prompt", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByLabel("Plan name").fill("Closing the tab");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+
+    // Playwright only runs `beforeunload` handlers when asked to, and surfaces the
+    // browser's prompt as a `dialog` event — which is the only way to observe a
+    // handler whose UI belongs to Chrome.
+    const seen = new Promise<string>((resolve) => {
+      page.on("dialog", (d) => {
+        resolve(d.type());
+        void d.dismiss();
+      });
+    });
+    await page.close({ runBeforeUnload: true });
+    expect(await seen).toBe("beforeunload");
+  });
+
+  /**
+   * The same defect as the failed save, on the call that fires most often.
+   *
+   * The catalogue search is a server action behind a 180 ms debounce, so it runs on
+   * every keystroke. A failed action call resolves with `undefined` rather than
+   * rejecting, so `result.ok` threw, the route's error boundary replaced the page, and
+   * ONE 500 while typing a search destroyed the coach's entire working copy — the loss
+   * U2 exists to prevent, arriving through a path no dialog could ever guard.
+   *
+   * Measured on this branch before the fix: the body read "Something went wrong." and
+   * the plan-name field was gone.
+   */
+  test("a failed catalogue search does not take the unsaved plan down with it", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByLabel("Plan name").fill("Survives a failed search");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+
+    await page.route(`**/clients/${YUSUF}/routine`, async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fulfill({ status: 500, contentType: "text/plain", body: "" });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.getByRole("button", { name: "Add exercise" }).first().click();
+    const picker = page.getByRole("dialog");
+    await picker.getByLabel("Search the catalog").fill("bench");
+    // The picker says the search failed…
+    await expect(picker.getByRole("alert")).toBeVisible();
+    // …and the editor behind it is intact, with the edit and the warning still on it.
+    await page.keyboard.press("Escape");
+    await expect(page.getByLabel("Plan name")).toHaveValue("Survives a failed search");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+    await expect(page.getByRole("group").first()).toBeVisible();
+
+    await page.unroute(`**/clients/${YUSUF}/routine`);
+  });
+
+  test("a FAILED save leaves the warning standing; a successful one clears it", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+    await page.getByLabel("Plan name").fill("Failed save");
+
+    /**
+     * Server actions POST to the page's own URL. Answering one with a 500 is the
+     * cheapest honest way to produce the failure AC2 requires QA to force.
+     *
+     * It also pins something measured while writing this test: Next's client resolves
+     * a failed action call with `undefined` rather than rejecting, so `result.ok` threw
+     * and the route's error boundary replaced the whole editor with "Something went
+     * wrong." — losing the working copy through the error path instead of a
+     * navigation. The assertion below that the plan name is STILL on screen is that
+     * defect's regression test.
+     */
+    await page.route(`**/clients/${YUSUF}/routine`, async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fulfill({ status: 500, contentType: "text/plain", body: "" });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText("The draft could not be saved.")).toBeVisible();
+    // The editor is still standing, with the edit in it.
+    await expect(page.getByLabel("Plan name")).toHaveValue("Failed save");
+    await expect(page.getByText("Something went wrong.")).toHaveCount(0);
+    // Still holding unsaved work, so the marker stands and the guard still fires.
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    await expect(page.getByRole("dialog")).toHaveAccessibleName(
+      "Leave with unsaved changes?"
+    );
+    await page.getByRole("dialog").getByRole("button", { name: "Stay on this page" }).click();
+
+    // Now let the save through: the next navigation is silent.
+    await page.unroute(`**/clients/${YUSUF}/routine`);
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.waitForURL(`/clients/${YUSUF}/nutrition`);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+});
+
+/**
+ * EV-190 U4 — the catalog picker stays open while ADDING.
+ *
+ * `onPick` closed the picker on every pick, so a six-exercise day was six open /
+ * search / pick cycles, each one resetting the query and filters (which is deliberate
+ * and stays). Adding is a repeated act; replacing is a single one, and the two now
+ * behave differently on purpose.
+ */
+test.describe("EV-190 U4 — adding several exercises in one opening", () => {
+  test("three picks, three exercises, in order, and Escape keeps all three", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    const before = await page.getByRole("group").count();
+    await page.getByRole("button", { name: "Add exercise" }).first().click();
+    const picker = page.getByRole("dialog");
+
+    for (const name of ["Goblet Squat", "Lat Pulldown", "Seated Cable Row"]) {
+      await picker.getByLabel("Search the catalog").fill(name);
+      await picker.getByRole("button", { name: new RegExp(`^${name}`) }).click();
+      // The pick is acknowledged, because the day it landed on is behind the dialog.
+      await expect(picker.getByText(`Added ${name}.`)).toBeVisible();
+      // …and the picker is still open, which is the whole item.
+      await expect(picker).toBeVisible();
+    }
+
+    // Edge case 14: Escape after the picks keeps every one of them.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    const names = await page
+      .getByRole("group")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")));
+    expect(names.length).toBe(before + 3);
+    // Appended to the FIRST day (day two's exercises still follow them), in the order
+    // they were picked — three picks in one opening are three distinct exercises.
+    expect(names.join("|")).toContain("Goblet Squat|Lat Pulldown|Seated Cable Row");
+  });
+
+  test("replacing still closes on the pick — it is a single act", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.getByRole("button", { name: "Replace: Leg Press" }).click();
+    const picker = page.getByRole("dialog");
+    await picker.getByLabel("Search the catalog").fill("Goblet Squat");
+    await picker.getByRole("button", { name: /^Goblet Squat/ }).click();
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(exerciseRow(page, "Leg Press")).toHaveCount(0);
+  });
+});
+
+/**
+ * EV-190 U6 — save/publish feedback where the coach is looking.
+ *
+ * The notice renders as a `<p>` in the top card. After editing at the bottom of a long
+ * plan, a coach who saves sees nothing move: both the control and its confirmation are
+ * off-screen, so they press it again. EV-190's NOT-list settles the fix as "scroll the
+ * notice into view and announce it" — a sticky action bar is a redesign and is out.
+ */
+test.describe("EV-190 U6 — the confirmation comes to the coach", () => {
+  test("a save from the bottom of a long plan scrolls its notice into view", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 640 });
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const scrolled = await page.evaluate(() => window.scrollY);
+    expect(scrolled, "the page must actually be scrolled for this to mean anything").toBeGreaterThan(200);
+
+    // `dispatchEvent` rather than `click`: Playwright scrolls a control into view
+    // before clicking it, which would stage exactly the state under test away.
+    await page.getByRole("button", { name: "Save draft" }).dispatchEvent("click");
+
+    const notice = page.getByText(/^Draft saved /);
+    await expect(notice).toBeVisible();
+    // Announced, not only drawn.
+    await expect(notice).toHaveRole("status");
+    // And inside the viewport, after the smooth scroll settles.
+    await expect
+      .poll(
+        async () => {
+          const box = await notice.boundingBox();
+          const height = page.viewportSize()?.height ?? 0;
+          return box !== null && box.y >= 0 && box.y + box.height <= height;
+        },
+        { message: "the notice must end up inside the viewport" }
+      )
+      .toBe(true);
+  });
+});
+
+/**
  * MUST BE LAST IN THIS FILE, and this file is the last one that reads trainee data.
  *
  * `revokeClient` sets one process-wide flag in the fixture — one dev server, one
@@ -545,11 +1061,23 @@ test.describe("ADR-0012 AC6 — a revoke ends the session's access mid-edit", ()
     await other.waitForURL("/");
     await other.close();
 
-    // Tab A still shows the plan and still offers to write to it. The write is the
-    // coach's next request, and AC6 says that request is refused — so the tab must
-    // LEAVE, not decorate a revoked trainee's plan with an error line.
+    /**
+     * Tab A still shows the plan and still offers to write to it. The write is the
+     * coach's next request, and AC6 says that request is refused — so the tab must
+     * LEAVE, not decorate a revoked trainee's plan with an error line.
+     *
+     * EV-190 edge case 4 rides on the same click: the coach is holding UNSAVED edits,
+     * and the unsaved-changes guard must not hold them on a revoked trainee's page.
+     * A coach whose access ended may not be kept there by a dialog about their own
+     * convenience, so the editor drops the flag on the access-ended path.
+     */
+    await page.getByLabel("Plan name").fill("Edited just before the revoke");
+    await expect(page.getByText("Unsaved changes")).toBeVisible();
     await page.getByRole("button", { name: "Save draft" }).click();
     await page.waitForURL("/clients/denied");
+    // No prompt stood in the way, and none is left over on the denial page.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByText("Leave with unsaved changes?")).toHaveCount(0);
     await expect(
       page.getByText("This trainee is not on your roster. They may have revoked access.")
     ).toBeVisible();

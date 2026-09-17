@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, IconButton, Modal } from "@/components/ui/kit";
 import { copy } from "@/lib/copy";
 import { revokeClientAction } from "@/lib/actions";
+import { settled } from "@/lib/settled";
 
 /**
  * The overflow menu and its confirm dialog (AC6's coach side).
@@ -41,7 +42,10 @@ export function RevokeMenu({ clientId, displayName }: { clientId: string; displa
   async function revoke() {
     setBusy(true);
     setError(null);
-    const result = await revokeClientAction(clientId);
+    // `settled`: a failed request resolves with `undefined`. A revoke that did not
+    // happen must read as "Access could not be revoked." — the one failure where an
+    // error boundary could leave a coach believing the opposite of what is true.
+    const result = await settled(revokeClientAction(clientId), { ok: false } as const);
     if (!result.ok) {
       setError(copy.client.revokeError);
       setBusy(false);
