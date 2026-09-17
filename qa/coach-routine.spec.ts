@@ -80,10 +80,17 @@ test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
     await expect(page.getByText("Published plan")).toBeVisible();
     await expect(page.getByText("Draft — not yet published")).toHaveCount(0);
 
-    // The three training days, in the api's schedule order.
-    await expect(page.getByText("Monday", { exact: true })).toBeVisible();
-    await expect(page.getByText("Wednesday", { exact: true })).toBeVisible();
-    await expect(page.getByText("Friday", { exact: true })).toBeVisible();
+    /**
+     * The three training days, in the api's schedule order.
+     *
+     * Asserted through the weekday CONTROL (EV-190 R1) rather than by text: the seven
+     * weekday names now appear as `<option>`s in every day's select, so
+     * `getByText("Monday")` matches once per day and says nothing about which day is
+     * on it. The value is `TrainingDay.dayOfWeek`, the ISO number the api sends.
+     */
+    await expect(page.getByLabel("Day 1 weekday")).toHaveValue("1"); // Monday
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("3"); // Wednesday
+    await expect(page.getByLabel("Day 3 weekday")).toHaveValue("5"); // Friday
     await expect(page.getByLabel("Day 1 focus")).toHaveValue("Upper Body A");
     await expect(page.getByLabel("Day 2 focus")).toHaveValue("Lower Body");
     await expect(page.getByLabel("Day 3 focus")).toHaveValue("Upper Body B");
@@ -369,19 +376,39 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
     ).toBeVisible();
   });
 
-  test("a plan with zero training days is refused, with the story's sentence", async ({
+  /**
+   * EV-190 AC1 changed what this test can drive, and it is recorded here rather than
+   * deleted.
+   *
+   * EV-184 asserted the api's `PLAN_EMPTY` refusal by emptying the editor: "Build a
+   * plan" made ONE day and "Remove day" took it away. `TrainingDayBounds` is 2-6 and
+   * EV-190 AC1 puts that bound on the controls, so a new plan now starts at the
+   * minimum of two days and Remove is disabled at two WITH its reason. A zero-day
+   * draft is no longer reachable from this UI.
+   *
+   * `copy.routine.planEmpty` stays — the api still refuses a zero-day draft and the
+   * portal still renders that refusal — but nothing in the portal can now produce one,
+   * so what this test asserts is the bound that made it unreachable.
+   */
+  test("the editor cannot be driven below the two-day bound, so a zero-day draft is unreachable", async ({
     page,
   }) => {
     await signIn(page);
     await page.goto(`/clients/${NILS}/routine`);
 
     await page.getByRole("button", { name: "Build a plan" }).click();
-    await page.getByRole("button", { name: "Remove day" }).click();
 
-    await page.getByRole("button", { name: "Publish", exact: true }).click();
-    await expect(page.getByText("A plan needs at least one training day.")).toBeVisible();
-    // Refused, not half-written: no modal, nothing acknowledged.
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // Two days, not one: the minimum the bound allows.
+    await expect(page.getByLabel("Day 1 weekday")).toBeVisible();
+    await expect(page.getByLabel("Day 2 weekday")).toBeVisible();
+    await expect(page.getByLabel("Day 3 weekday")).toHaveCount(0);
+
+    // Both Remove controls are disabled, and the reason is on the screen, not only in
+    // the tooltip — a disabled control with no reason reads as a broken one.
+    const removes = page.getByRole("button", { name: "Remove day" });
+    await expect(removes).toHaveCount(2);
+    for (const remove of await removes.all()) await expect(remove).toBeDisabled();
+    await expect(page.getByText("A plan has between 2 and 6 training days.")).toBeVisible();
   });
 });
 
@@ -497,6 +524,124 @@ test.describe("ADR-0012 D4 — the tab routes are 403 for an id that is not this
     expect(res.status()).toBe(403);
     // And no trainee data leaks with it.
     expect(await res.text()).not.toContain("Plan name");
+  });
+});
+
+/**
+ * EV-190 AC1 (R1 / U1) — which weekdays the trainee trains.
+ *
+ * These tests sit after every EV-184 test in this file because they MUTATE Yusuf's
+ * plan, and they are before the terminal revoke describe because everything is.
+ *
+ * What makes this a defect and not a feature: until this story `emptyDay()` took the
+ * first unused ISO weekday and NOTHING edited `dayOfWeek` afterwards, so every
+ * hand-built 4-day plan landed Monday-Thursday — and `RoutinePlanWriter` derives the
+ * trainee's whole 7-row `plan_schedule` from those numbers, which
+ * `TrainingDayScheduleFactory` then reads to decide training-day vs rest-day NUTRITION.
+ * The cross-surface half of AC1 (the `plan_schedule` rows, the device's Train tab, the
+ * nutrition day types) is `senior-qa`'s against a real api; these assert the portal
+ * half: the control exists, it round-trips, and it refuses a duplicate.
+ */
+test.describe("EV-190 AC1 — the coach chooses which weekdays the trainee trains", () => {
+  test("every training day carries a weekday control, under the heading that names the kind", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    // AC6 / Ruling 2 (c): the heading states that this control is ENFORCED, verbatim.
+    await expect(page.getByText("Training days — Evoli enforces these.")).toBeVisible();
+    // The consequence, which is invisible from this screen and lands on two others.
+    await expect(
+      page.getByText(
+        "The trainee trains on these weekdays once you publish. The other days are rest days, and their nutrition follows."
+      )
+    ).toBeVisible();
+
+    // Yusuf's plan is Tuesday + Thursday, and the control shows the current value.
+    await expect(page.getByLabel("Day 1 weekday")).toHaveValue("2");
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("4");
+    // All seven weekdays are offered, by name, on every day.
+    await expect(page.getByLabel("Day 1 weekday").getByRole("option")).toHaveText([
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ]);
+  });
+
+  test("a duplicate weekday is refused with its reason, and the previous value stands", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    // Day 2 is Thursday; Tuesday is day 1's. `RoutinePlanWriter`'s
+    // `workoutByDay.put(dayOfWeek, ...)` would silently DROP one of the two on publish,
+    // so this refusal is not cosmetic.
+    await page.getByLabel("Day 2 weekday").selectOption("2");
+
+    await expect(page.getByText("Tuesday is already a training day.")).toBeVisible();
+    // The previous value stands, and nothing was marked as an edit.
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("4");
+    await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+
+    // And a legal move clears the refusal.
+    await page.getByLabel("Day 2 weekday").selectOption("6");
+    await expect(page.getByText("Tuesday is already a training day.")).toHaveCount(0);
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("6");
+  });
+
+  test("the weekdays the coach sets survive a save and a hard reload", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    await page.getByLabel("Day 1 weekday").selectOption("1"); // Monday
+    await page.getByLabel("Day 2 weekday").selectOption("6"); // Saturday
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+
+    // A HARD reload: the draft round-trips through the server, not through state.
+    await page.reload();
+    await expect(page.getByLabel("Day 1 weekday")).toHaveValue("1");
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("6");
+
+    // Publishing carries them: the weekdays are what the plan writer will schedule.
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(page.getByText(/^Published\. /)).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByLabel("Day 1 weekday")).toHaveValue("1");
+    await expect(page.getByLabel("Day 2 weekday")).toHaveValue("6");
+  });
+
+  test("adding days stops at the six-day bound, with the reason on screen", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${YUSUF}/routine`);
+
+    // Two days to start; each added day takes the first weekday not already in use, so
+    // the plan can never hold two days on one weekday even before the coach edits it.
+    for (let i = 3; i <= 6; i += 1) {
+      await page.getByRole("button", { name: "Add day" }).click();
+      await expect(page.getByLabel(`Day ${i} weekday`)).toBeVisible();
+    }
+    // Monday, Tuesday, Wednesday, Thursday, Friday, Saturday — six distinct weekdays.
+    const values = await page
+      .getByRole("combobox")
+      .evaluateAll((els) => els.map((el) => (el as HTMLSelectElement).value));
+    expect(new Set(values).size).toBe(values.length);
+
+    await expect(page.getByRole("button", { name: "Add day" })).toBeDisabled();
+    await expect(page.getByText("A plan has between 2 and 6 training days.")).toBeVisible();
+    // Nothing was saved: this is a local edit, and the reload proves the refusal did
+    // not write a seventh day behind it.
+    await expect(page.getByLabel("Day 7 weekday")).toHaveCount(0);
   });
 });
 

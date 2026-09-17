@@ -6,7 +6,7 @@ import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/comp
 import { UiIcon } from "@/components/ui/icons";
 import { CatalogPicker } from "./CatalogPicker";
 import { copy } from "@/lib/copy";
-import { isoWeekdayLabel, truncateName } from "@/lib/format";
+import { ISO_WEEKDAY_NUMBERS, isoWeekdayLabel, truncateName } from "@/lib/format";
 import {
   discardDraftAction,
   previewPublishAction,
@@ -49,11 +49,44 @@ type PickerTarget =
   | { mode: "add"; dayIndex: number }
   | { mode: "replace"; dayIndex: number; exerciseIndex: number };
 
-function emptyDay(existing: RoutineDayEntry[]): RoutineDayEntry {
+/**
+ * `TrainingDayBounds` in the api: a plan is 2 to 6 training days. EV-190 AC1 asks for
+ * the add and remove controls to be disabled AT each end WITH a visible reason, which
+ * is why these are two named constants and not two literals in a JSX expression.
+ *
+ * A plan that already holds 7 days (pre-existing data, edge case 1) renders untouched:
+ * the editor refuses to add an eighth and says why. It never drops one silently.
+ */
+const MIN_TRAINING_DAYS = 2;
+const MAX_TRAINING_DAYS = 6;
+
+/**
+ * The weekday a NEWLY ADDED day starts on — the first one not already in the plan.
+ *
+ * This is now a default the coach can see and change, which is the whole of EV-190 R1.
+ * Until this story it was the ONLY thing that decided `dayOfWeek`, and nothing in the
+ * portal edited it afterwards: every hand-built 4-day plan landed Monday-Thursday, and
+ * `RoutinePlanWriter` derived the trainee's whole 7-row `plan_schedule` — every
+ * `rest_day` flag, and therefore `TrainingDayScheduleFactory`'s training-day vs
+ * rest-day NUTRITION — from it. A UI convenience was steering two surfaces.
+ *
+ * `firstFreeWeekday` returns null when all seven are taken; the caller refuses rather
+ * than returning a duplicate, because `RoutinePlanWriter`'s
+ * `workoutByDay.put(day.dayOfWeek(), ...)` would silently drop one of the two.
+ */
+function firstFreeWeekday(existing: RoutineDayEntry[]): number | null {
   const used = new Set(existing.map((d) => d.dayOfWeek));
-  let dayOfWeek = 1;
-  while (used.has(dayOfWeek) && dayOfWeek < 7) dayOfWeek += 1;
+  return ISO_WEEKDAY_NUMBERS.find((day) => !used.has(day)) ?? null;
+}
+
+function emptyDay(dayOfWeek: number): RoutineDayEntry {
   return { dayOfWeek, focus: copy.routine.newDayFocus, exercises: [] };
+}
+
+/** The two days a brand-new plan starts with: the minimum the bound allows. */
+function startingDays(): RoutineDayEntry[] {
+  const first = emptyDay(1);
+  return [first, emptyDay(firstFreeWeekday([first]) ?? 2)];
 }
 
 function toEntry(exercise: CatalogExercise): RoutineExerciseEntry {
@@ -96,6 +129,14 @@ export function RoutineEditor({
   const [discarding, setDiscarding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * AC1's refusal, held against the day card that refused it so the reason is next to
+   * the control the coach just used rather than at the top of a scrolled page.
+   */
+  const [weekdayError, setWeekdayError] = useState<{
+    dayIndex: number;
+    message: string;
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
   /**
@@ -127,6 +168,31 @@ export function RoutineEditor({
     setIsDraft(true);
     setNotice(null);
     setError(null);
+    setWeekdayError(null);
+  }
+
+  /**
+   * AC1 — the weekday control, with the duplicate refused rather than accepted.
+   *
+   * The seven weekdays are all OFFERED, including ones already in the plan, and a
+   * duplicate is refused WITH ITS REASON. Disabling the taken options instead would be
+   * a control that does nothing when pressed and explains nothing, and a coach moving
+   * a session from Wednesday to Tuesday would be told neither why Tuesday is not
+   * there nor which day is on it.
+   *
+   * The previous value stands because the `select` is controlled: refusing simply does
+   * not call `edit`, and React re-renders it at the value in state.
+   */
+  function setWeekday(dayIndex: number, dayOfWeek: number) {
+    if (!plan) return;
+    const clash = plan.trainingDays.some((d, i) => i !== dayIndex && d.dayOfWeek === dayOfWeek);
+    if (clash) {
+      setWeekdayError({ dayIndex, message: copy.routine.weekdayTaken(isoWeekdayLabel(dayOfWeek)) });
+      return;
+    }
+    editDays((days) =>
+      days.map((d, i) => (i === dayIndex ? { ...d, dayOfWeek } : d))
+    );
   }
 
   function editDays(mutate: (days: RoutineDayEntry[]) => RoutineDayEntry[]) {
@@ -305,7 +371,7 @@ export function RoutineEditor({
             <Button
               icon="plus"
               onClick={() =>
-                edit({ planId: null, name: copy.routine.title, trainingDays: [emptyDay([])] })
+                edit({ planId: null, name: copy.routine.title, trainingDays: startingDays() })
               }
             >
               {copy.routine.build}
@@ -315,6 +381,13 @@ export function RoutineEditor({
       </Card>
     );
   }
+
+  const addDayRefusal =
+    firstFreeWeekday(plan.trainingDays) === null
+      ? copy.routine.allWeekdaysUsed
+      : plan.trainingDays.length >= MAX_TRAINING_DAYS
+        ? copy.routine.dayCountBound
+        : null;
 
   return (
     <div>
@@ -389,6 +462,35 @@ export function RoutineEditor({
         )}
       </Card>
 
+      {/*
+        AC1 / AC6 — the heading states the KIND of control that sits under it. Ruling 2
+        (c): "Evoli enforces these" is said only where QA has demonstrated the
+        enforcement end to end, and these weekdays are written straight into
+        `plan_schedule` on publish.
+      */}
+      <div style={{ margin: "0 0 12px" }}>
+        <h2
+          className="dt"
+          style={{ margin: 0, fontSize: 15.5, fontWeight: 600, color: "var(--ink)" }}
+        >
+          {copy.routine.trainingDaysHeading}
+        </h2>
+        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.routine.trainingDaysNote}
+        </p>
+        {/*
+          The bound, said ONCE and visibly, when the plan is at the bottom of it. Every
+          "Remove day" control is disabled at that point and a disabled control with no
+          reason reads as a broken one — but the reason belongs to the plan, not to each
+          of the two cards, so it is not repeated per card.
+        */}
+        {plan.trainingDays.length <= MIN_TRAINING_DAYS && (
+          <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+            {copy.routine.dayCountBound}
+          </p>
+        )}
+      </div>
+
       {plan.trainingDays.map((day, dayIndex) => (
         <Card key={`${day.dayOfWeek}-${dayIndex}`} style={{ marginBottom: 14 }}>
           <div
@@ -402,7 +504,39 @@ export function RoutineEditor({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <Badge tone="blue">{isoWeekdayLabel(day.dayOfWeek) || copy.routine.dayLabel(dayIndex + 1)}</Badge>
+              {/*
+                R1 — was a static `Badge` showing whatever weekday the insertion order
+                happened to produce. A coach programmes in weekdays ("Monday, Wednesday,
+                Friday"), not in "day 1..4", so the control offers the seven weekdays by
+                name and shows the day's current value.
+
+                The cards keep their ARRAY order and are never re-sorted when a weekday
+                changes: a card that jumps while the coach is typing in it loses their
+                place, and the order of this list decides nothing — the trainee's week is
+                ordered by the weekday itself (`RoutinePlanWriter` keys a map on it).
+              */}
+              <select
+                aria-label={copy.routine.weekdayLabel(dayIndex + 1)}
+                value={day.dayOfWeek}
+                onChange={(e) => setWeekday(dayIndex, Number(e.target.value))}
+                style={{
+                  height: MIN_TOUCH_TARGET,
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border-2)",
+                  background: "var(--surface)",
+                  color: "var(--ink)",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  padding: "0 10px",
+                }}
+              >
+                {ISO_WEEKDAY_NUMBERS.map((iso) => (
+                  <option key={iso} value={iso}>
+                    {isoWeekdayLabel(iso)}
+                  </option>
+                ))}
+              </select>
               <input
                 aria-label={`${copy.routine.dayLabel(dayIndex + 1)} focus`}
                 value={day.focus}
@@ -437,11 +571,28 @@ export function RoutineEditor({
               variant="ghost"
               size="sm"
               icon="trash"
+              ariaLabel={`${copy.routine.removeDay}: ${isoWeekdayLabel(day.dayOfWeek)}`}
+              title={
+                plan.trainingDays.length <= MIN_TRAINING_DAYS
+                  ? copy.routine.dayCountBound
+                  : undefined
+              }
+              disabled={plan.trainingDays.length <= MIN_TRAINING_DAYS}
               onClick={() => editDays((days) => days.filter((_, i) => i !== dayIndex))}
             >
               {copy.routine.removeDay}
             </Button>
           </div>
+
+          {/* AC1's refusal, verbatim, against the day that refused it. */}
+          {weekdayError?.dayIndex === dayIndex && (
+            <p
+              role="alert"
+              style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)" }}
+            >
+              {weekdayError.message}
+            </p>
+          )}
 
           <div style={{ display: "grid", gap: 10 }}>
             {day.exercises.map((exercise, exerciseIndex) => (
@@ -581,13 +732,30 @@ export function RoutineEditor({
         </Card>
       ))}
 
+      {/*
+        AC1's two refusals at the top end, both with a VISIBLE reason rather than an
+        inert control: the 2-6 bound, and the seven weekdays running out (only reachable
+        on a pre-existing 7-day plan, edge case 1 — `MAX_TRAINING_DAYS` stops it first
+        on anything this editor built).
+      */}
       <Button
         variant="secondary"
         icon="plus"
-        onClick={() => editDays((days) => [...days, emptyDay(days)])}
+        title={addDayRefusal ?? undefined}
+        disabled={addDayRefusal !== null}
+        onClick={() => {
+          const next = firstFreeWeekday(plan.trainingDays);
+          if (next === null) return;
+          editDays((days) => [...days, emptyDay(next)]);
+        }}
       >
         {copy.routine.addDay}
       </Button>
+      {addDayRefusal && (
+        <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+          {addDayRefusal}
+        </p>
+      )}
 
       <CatalogPicker
         open={picker !== null}

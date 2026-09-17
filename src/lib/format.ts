@@ -111,3 +111,16 @@ const ISO_WEEKDAYS = [
 export function isoWeekdayLabel(dayOfWeek: number): string {
   return ISO_WEEKDAYS[dayOfWeek - 1] ?? "";
 }
+
+/** The seven ISO weekdays, in order, for a control that offers all of them. */
+export const ISO_WEEKDAY_NUMBERS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+/**
+ * 2560 → "2,560". Grouped, because the macro reconciliation line (EV-190 AC3) puts a
+ * four-figure kcal total in the middle of a sentence and "2560 kcal" reads as a code.
+ * en-GB for the same reason the dates are: this portal is English-only (EV-183).
+ */
+const KCAL = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
+export function formatKcal(value: number): string {
+  return KCAL.format(Math.round(value));
+}
