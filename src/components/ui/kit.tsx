@@ -278,15 +278,6 @@ export function CardHead({
 }
 
 // ───────────────────────── Inputs ─────────────────────────
-/**
- * ⛔ FOLLOW-UP (staff review 2026-09-16): `Input` is 40 px tall and the modal's Close
- * button below is 32 px — both under BUG-146's 44 px floor for a control a coach taps
- * at 390 px. They are shared by every screen, so raising them is a visual change
- * across the whole portal and belongs in its own change with its own QA pass, not
- * folded into the ADR-0015 alignment. The one control that was fixed in place is the
- * routine day-focus field (`RoutineEditor.tsx`), because it was 36 px and is not this
- * kit's.
- */
 export function Input({
   label,
   value,
@@ -321,7 +312,15 @@ export function Input({
       {label && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 7 }}>{label}</div>}
       <div
         style={{
-          height: 40,
+          /**
+           * EV-190c / BUG-146: was 40 px, under the floor for a control a coach taps at
+           * 390 px. Raised HERE rather than at each call site — the reason
+           * `MIN_TOUCH_TARGET` exists is that the height is not a per-screen decision.
+           *
+           * +2 for the hairline border: `box-sizing: border-box` is global, so a 44 px
+           * box leaves a 42 px field inside it, and the field is what a thumb lands on.
+           */
+          height: MIN_TOUCH_TARGET + 2,
           borderRadius: "var(--r-md)",
           background: "var(--surface)",
           border: `1px solid ${error ? "var(--err)" : focusRing ? "var(--blue-500)" : "var(--border-2)"}`,
@@ -342,6 +341,12 @@ export function Input({
           onKeyDown={onKeyDown}
           style={{
             flex: 1,
+            // The FIELD is the target, not the box around it: the `<input>` itself has
+            // to be the 44 px, or the element a coach taps is an 18 px line of text
+            // inside a compliant-looking wrapper. (The label does forward a click, but
+            // "the parent is big enough" is not something a measurement can see, and
+            // neither can a coach with a thumb.)
+            height: MIN_TOUCH_TARGET,
             border: "none",
             outline: "none",
             background: "transparent",
@@ -483,7 +488,9 @@ export function Modal({
                 {sub && <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 3 }}>{sub}</div>}
               </div>
             </div>
-            <button onClick={onClose} aria-label="Close" style={{ width: 32, height: 32, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {/* EV-190c: was 32 px square — the smallest target in the portal, and the
+                one every modal puts in a corner. Both axes now meet the floor. */}
+            <button onClick={onClose} aria-label="Close" style={{ width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <UiIcon name="x" size={17} color="var(--ink-2)" />
             </button>
           </div>
