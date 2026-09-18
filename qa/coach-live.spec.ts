@@ -105,9 +105,85 @@ test("the full coach arc against a real api: me → invite → accept → overvi
   await expect(page.getByText("No weigh-in for 14 days", { exact: true })).toBeVisible();
   // PAIN_REPORTED is published by the api and never emitted (ADR-0012 D6).
   await expect(page.getByText("Reported pain in a session")).toHaveCount(0);
-  await expect(page.getByText("Read-only. Program editing and messaging are not part of this preview.")).toBeVisible();
+  /**
+   * The footnote. It was "Read-only. Program editing and messaging are not part of this
+   * preview." until EV-184b/EV-185b made the Routine and Nutrition tabs real writes, and
+   * this assertion was not updated with it — so this spec has been RED on main since
+   * then, which is the second reason the routine crash reached a coach: the one suite
+   * that could have seen it was already failing before it got there.
+   */
+  await expect(
+    page.getByText("Messaging and AI drafting are not part of this preview.")
+  ).toBeVisible();
 
   const clientUrl = page.url();
+
+  /* ── EV-184 AC1 live: the ROUTINE TAB, which this spec did not open until now ──
+   *
+   * It stopped at the overview, and that omission is exactly how the portal shipped a
+   * `CoachRoutineResponse` whose four fields b-fit-api has never sent. Fixture mode
+   * agreed with the invented shape, the live run never looked, and the first coach to
+   * click "Routine" got a 200 with nothing on it but the Evoli Pro chrome.
+   *
+   * `qa/contract-drift.spec.ts` is the cheap guard that now catches that class in the
+   * default gate with no api at all. This is the expensive one that proves the page
+   * really renders against a real Spring response — the two are not redundant: the
+   * contract test compares NAMES against a vendored artefact, and this compares PIXELS
+   * against a running server.
+   */
+  const traineeToken2 = await bearer(request, TRAINEE);
+  // Give the trainee a real stored profile, so the guardrail panel has something to say
+  // and the WIRE VOCABULARY is what the assertions below are really about: the api sends
+  // `BARBELL` / `PULL_UP_BAR` / `LOWER_BACK`, and a screen that prints those has failed
+  // the same way BUG-047 failed on mobile.
+  const profile = await request.put(`${API_ORIGIN}/me/profile`, {
+    headers: { Authorization: `Bearer ${traineeToken2}` },
+    data: {
+      fitnessLevel: "INTERMEDIATE",
+      primaryGoal: "BUILD_MUSCLE",
+      weeklyDays: 3,
+      sessionMinutes: 45,
+      equipment: ["BARBELL", "PULL_UP_BAR"],
+      injuries: ["LOWER_BACK", "Sharp pain in the left shoulder on anything overhead"],
+      consentAccepted: true,
+      // BUG-023 §6.5 — the server refuses a profile write that does not name the
+      // versions the consent screen displayed (409 CONSENT_VERSION_STALE).
+      privacyPolicyVersion: "v1.0",
+      termsVersion: "v1.0",
+    },
+  });
+  expect(profile.status(), await profile.text()).toBe(200);
+
+  await page.goto(`${clientUrl}/routine`);
+
+  // The crash's witness: the page body, not just the shell. If `guardrails` were read
+  // under any other name this heading would never render.
+  await expect(page.getByRole("heading", { name: TRAINEE_NAME })).toBeVisible();
+  await expect(page.getByText("From the trainee's profile — you cannot change these here.")).toBeVisible();
+
+  // The trainee has never had a routine, so AC1's empty state — never a blank page.
+  await expect(page.getByText("No active plan", { exact: true })).toBeVisible();
+
+  // The guardrail panel, in WORDS. `LOWER_BACK` is an onboarding chip token and gets its
+  // label; the second entry is the trainee's own free-text note and is passed through
+  // VERBATIM, because humanising a sentence somebody wrote about their own body is how
+  // the one line a coach most needs to read exactly gets mangled.
+  await expect(page.getByText("Lower back", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Sharp pain in the left shoulder on anything overhead", { exact: true })
+  ).toBeVisible();
+  await expect(page.getByText("Barbell", { exact: true })).toBeVisible();
+  await expect(page.getByText("Pull-up bar", { exact: true })).toBeVisible();
+  // Not the raw tokens, in either direction.
+  await expect(page.getByText("LOWER_BACK")).toHaveCount(0);
+  await expect(page.getByText("PULL_UP_BAR")).toHaveCount(0);
+  await expect(page.getByText("BARBELL", { exact: true })).toHaveCount(0);
+
+  // `equipmentChecked` is true here (the list is non-empty), so the unanswered sentence
+  // must NOT appear. Its false case is reachable only from the fixture (Sara).
+  await expect(page.getByText("Not answered yet.")).toHaveCount(0);
+
+  await page.goto(clientUrl);
 
   // ── AC6: revoke, and the roster is right on the very next request ────────────
   await page.getByRole("button", { name: "More" }).click();
