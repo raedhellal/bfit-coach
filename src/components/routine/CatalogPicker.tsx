@@ -103,7 +103,14 @@ export function CatalogPicker({
       setItems(result.page.items);
       setMuscles(result.page.muscles);
       setEquipmentOptions(result.page.equipment);
-      setTruncated(result.page.truncated);
+      /**
+       * There is no `truncated` boolean on the wire — `CoachCatalogPageResponse` is the
+       * ordinary paged envelope every collection endpoint on b-fit-api serves, and the
+       * portal typed a field nobody sends until 2026-09-18. "More matched than we are
+       * showing" is the page's own arithmetic, and it is done here rather than in
+       * `coachApi.ts` because this is a client island and that module is `server-only`.
+       */
+      setTruncated(result.page.totalElements > result.page.items.length);
     });
   }, [router]);
 

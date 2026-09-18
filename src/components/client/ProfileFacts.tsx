@@ -26,8 +26,17 @@ export function ProfileFacts({
 }: {
   title: string;
   icon: string;
-  /** Label → values. A group with no values renders `copy.profile.none`. */
-  groups: { label: string; values: string[] }[];
+  /**
+   * Label → values. A group with no values renders its own `empty` sentence, or
+   * `copy.profile.none` when it has none.
+   *
+   * `empty` exists because an empty list does not always mean the same thing. The
+   * routine tab's equipment group reads `guardrails.equipmentChecked` to tell "the
+   * trainee recorded no equipment" from "the trainee never answered the question" —
+   * two different facts that `[]` alone cannot separate, and saying the first for the
+   * second is a claim about a trainee that nobody made.
+   */
+  groups: { label: string; values: string[]; empty?: string }[];
   /**
    * Rendered INSTEAD of the groups when every group is empty — EV-185 edge case 1's
    * "No dietary restrictions recorded.", which says something different from four
@@ -57,7 +66,7 @@ export function ProfileFacts({
               </div>
               {group.values.length === 0 ? (
                 <span style={{ fontSize: 13.5, color: "var(--ink-3)" }}>
-                  {copy.profile.none}
+                  {group.empty ?? copy.profile.none}
                 </span>
               ) : (
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>

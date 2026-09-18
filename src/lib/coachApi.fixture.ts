@@ -9,6 +9,8 @@ import type {
   CoachNutritionResponse,
   CoachRoutineDraft,
   CoachRoutineDraftRequest,
+  CoachRoutineDraftResponse,
+  CoachRoutineGuardrails,
   CoachRoutineResponse,
   CoachTargetsRequest,
   CoachTargetsResult,
@@ -23,11 +25,11 @@ import type {
   PublishResult,
   RosterClient,
   RosterPage,
+  Routine,
   RoutineExerciseEntry,
   RoutinePlanView,
   SwapOptions,
   TraineeDietProfile,
-  TraineeTrainingProfile,
   WeightPoint,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
@@ -467,33 +469,61 @@ function exercise(slug: string, sets: number, reps: string, rest: string): Routi
  * that repaired for equipment would let the portal be built against a guarantee the
  * engine does not make.
  */
-const REPAIR_RULES: { injury: string; slug: string; replacement: string; rule: string }[] = [
+const REPAIR_RULES: { injury: string; exercise: string; replacement: string; rule: string }[] = [
   {
-    injury: "Left shoulder impingement",
-    slug: "barbell-overhead-press",
+    injury: "SHOULDER",
+    exercise: "Barbell Overhead Press",
     replacement: "landmine-press",
     rule: "Overhead pressing is contraindicated by a shoulder injury",
   },
   {
-    injury: "Left shoulder impingement",
-    slug: "barbell-bench-press",
+    injury: "SHOULDER",
+    exercise: "Barbell Bench Press",
     replacement: "machine-chest-press",
     rule: "Flat barbell pressing is contraindicated by a shoulder injury",
   },
 ];
 
-const PROFILES: Record<string, TraineeTrainingProfile> = {
-  [LINA_ID]: { injuries: [], equipment: ["Barbell", "Dumbbell", "Cable", "Machine"] },
-  [NILS_ID]: { injuries: [], equipment: ["Dumbbell"] },
-  [SARA_ID]: { injuries: [], equipment: [] },
-  [DANA_ID]: {
-    injuries: ["Left shoulder impingement"],
-    equipment: ["Barbell", "Dumbbell", "Cable", "Machine"],
-  },
-  [OMAR_ID]: { injuries: [], equipment: ["Barbell", "Dumbbell"] },
+/**
+ * `CoachRoutineResponse.guardrails` per trainee — **in the api's vocabularies**.
+ *
+ * This map used to hold catalog words ("Barbell", "Dumbbell", "Cable", "Machine") and
+ * prose injuries ("Left shoulder impingement"). Neither is what b-fit-api sends:
+ * `user_profiles.equipment` holds ADR-0005 D1a's eleven tokens and
+ * `user_profiles.injuries` holds the onboarding chips' SCREAMING_SNAKE tokens plus the
+ * trainee's free-text note, verbatim. A fixture speaking a prettier vocabulary than the
+ * wire is the same defect as a client typing a field the wire does not carry: it makes
+ * the rendering code that turns tokens into words unnecessary, so nobody writes it, and
+ * the live screen SHOUTS at a coach.
+ *
+ * Dana's list carries both kinds on purpose — a chip token AND a free-text sentence —
+ * because they are labelled by two different rules (`src/lib/guardrailLabels.ts`).
+ *
+ * `equipmentChecked` is DERIVED from the list being non-empty, exactly as
+ * `RoutinePlanWriter.GuardrailInputs.equipmentChecked()` derives it. Sara's empty list
+ * is therefore an UNANSWERED equipment question, which is the state the routine tab's
+ * "Not answered yet." sentence exists for and the only place it is reachable.
+ */
+const GUARDRAILS: Record<string, CoachRoutineGuardrails> = {
+  [LINA_ID]: guardrails([], ["BARBELL", "DUMBBELLS", "CABLE_MACHINE", "GYM"]),
+  [NILS_ID]: guardrails([], ["DUMBBELLS"]),
+  [SARA_ID]: guardrails([], []),
+  [DANA_ID]: guardrails(
+    ["SHOULDER", "Sharp pain in the left shoulder on anything overhead"],
+    ["BARBELL", "DUMBBELLS", "CABLE_MACHINE", "GYM"]
+  ),
+  [OMAR_ID]: guardrails([], ["BARBELL", "DUMBBELLS"]),
   // Petra and Mara never reach the routine tab (no WORKOUTS scope); Yusuf does.
-  [YUSUF_ID]: { injuries: [], equipment: ["Dumbbell", "Machine"] },
+  [YUSUF_ID]: guardrails([], ["DUMBBELLS", "PULL_UP_BAR"]),
 };
+
+function guardrails(injuries: string[], equipment: string[]): CoachRoutineGuardrails {
+  return { injuries, equipment, equipmentChecked: equipment.length > 0 };
+}
+
+function guardrailsFor(id: string): CoachRoutineGuardrails {
+  return GUARDRAILS[id] ?? guardrails([], []);
+}
 
 function linaPlan(): RoutinePlanView {
   return {
@@ -602,6 +632,66 @@ function omarPlan(): RoutinePlanView {
   };
 }
 
+/**
+ * The fixture's store → the api's `Routine` document.
+ *
+ * The fixture keeps plans in the EDITOR's shape because that is what its repair engine
+ * edits; the wire is a full `Routine`, so the conversion happens at the boundary —
+ * `getRoutine` and `getRoutineDraft` — and nowhere else.
+ *
+ * The five fields no coach control touches (`goal`, `level`, `weeklyProgression`,
+ * `constraints`, `summary`) are FIXTURE DATA, invented here on purpose and only here: a
+ * real routine has them because the generator wrote them, and a fixture standing in for
+ * a generated routine has to carry them or the portal would be built against a document
+ * shape the api cannot produce. They are deliberately absent from the portal's own code
+ * — see the ⛔ write-path block in `coachApi.ts` for why the portal must not invent
+ * them, which is a different question from whether the fixture may.
+ *
+ * Note the exercise conversion DROPS `catalogSlug`, `primaryMuscles` and `equipment`.
+ * That is not a shortcut: `com.bfit.application.dto.routine.RoutineExercise` has no
+ * such fields, so an exercise the coach picks and saves comes back without them, and
+ * the fixture must lose them at the same point the api does.
+ */
+function toRoutineDocument(id: string, plan: RoutinePlanView): Routine {
+  const rails = guardrailsFor(id);
+  return {
+    name: plan.name,
+    goal: "BUILD_MUSCLE",
+    level: "INTERMEDIATE",
+    // `RoutinePlanWriter.reconcileIdentity` derives this from the day count and
+    // ignores any declared value, so the fixture derives it the same way.
+    daysPerWeek: plan.trainingDays.length,
+    trainingDays: plan.trainingDays.map((day) => ({
+      dayOfWeek: day.dayOfWeek,
+      focus: day.focus,
+      estimatedMinutes: null,
+      exercises: day.exercises.map((ex) => ({
+        name: ex.name,
+        sets: ex.sets,
+        reps: ex.reps,
+        rest: ex.rest,
+        tempo: null,
+        notes: null,
+        trackingType: "WEIGHT_REPS" as const,
+        durationSeconds: null,
+        weight: null,
+      })),
+    })),
+    weeklyProgression: [
+      { week: 2, adjustment: "Add one set to the main compound lifts", rationale: null },
+    ],
+    constraints: {
+      // The trainee's OWN stored answers, the same two lists the guardrail panel shows
+      // — `Constraints` is the routine echoing back what it was built to respect.
+      equipment: rails.equipment,
+      injuries: rails.injuries,
+      minutesPerSession: 45,
+      daysPerWeek: plan.trainingDays.length,
+    },
+    summary: null,
+  };
+}
+
 /** djb2. Not a security primitive — it stands in for whatever the api will hash. */
 function digestOf(value: string): string {
   let h = 5381;
@@ -618,12 +708,12 @@ function digestOf(value: string): string {
  * the api's own wording lands it replaces this and nothing else moves.
  */
 function repairsFor(id: string, plan: RoutinePlanView): PublishRepair[] {
-  const injuries = PROFILES[id]?.injuries ?? [];
+  const injuries = guardrailsFor(id).injuries;
   const out: PublishRepair[] = [];
   for (const day of plan.trainingDays) {
     for (const ex of day.exercises) {
       const rule = REPAIR_RULES.find(
-        (r) => r.slug === ex.catalogSlug && injuries.includes(r.injury)
+        (r) => r.exercise === ex.name && injuries.includes(r.injury)
       );
       if (!rule) continue;
       const replacement = catalogBySlug(rule.replacement);
@@ -635,14 +725,14 @@ function repairsFor(id: string, plan: RoutinePlanView): PublishRepair[] {
 }
 
 function applyRepairs(id: string, plan: RoutinePlanView): RoutinePlanView {
-  const injuries = PROFILES[id]?.injuries ?? [];
+  const injuries = guardrailsFor(id).injuries;
   return {
     ...plan,
     trainingDays: plan.trainingDays.map((day) => ({
       ...day,
       exercises: day.exercises.map((ex) => {
         const rule = REPAIR_RULES.find(
-          (r) => r.slug === ex.catalogSlug && injuries.includes(r.injury)
+          (r) => r.exercise === ex.name && injuries.includes(r.injury)
         );
         if (!rule) return ex;
         return { ...exercise(rule.replacement, ex.sets, ex.reps, ex.rest) };
@@ -1025,16 +1115,39 @@ export const fixtureCoachApi: CoachApi = {
 
   // ── EV-184b routine ───────────────────────────────────────────────────────
 
+  /**
+   * **The api's ENVELOPE, not the editor's model.**
+   *
+   * This method used to answer `{ traineeDisplayName, activePlan, draft,
+   * trainingProfile }` — four fields, of which b-fit-api sends exactly none. Because
+   * the fixture is typed by the same module as the client, the two agreed perfectly and
+   * the whole Playwright suite stayed green while the live page threw. So the fixture
+   * now serves what the wire serves: the plan as three siblings, the draft as a
+   * PRESENCE, and `guardrails`. The mapping back to the editor's model happens in
+   * `src/lib/routineDocument.ts`, in both modes, which is what puts it under test.
+   */
   async getRoutine(id: string): Promise<CoachRoutineResponse> {
     await assertScope(id, "WORKOUTS");
     state().lastRoutineClient = id;
+    const plan = state().plans.get(id) ?? null;
+    const draft = state().drafts.get(id) ?? null;
     return {
       clientId: id,
-      traineeDisplayName: OVERVIEWS[id]().traineeDisplayName,
-      activePlan: state().plans.get(id) ?? null,
-      draft: state().drafts.get(id) ?? null,
-      trainingProfile: PROFILES[id] ?? { injuries: [], equipment: [] },
+      planId: plan?.planId ?? null,
+      planName: plan?.name ?? null,
+      routine: plan ? toRoutineDocument(id, plan) : null,
+      guardrails: guardrailsFor(id),
+      hasDraft: draft !== null,
+      draftUpdatedAt: draft?.updatedAt ?? null,
     };
+  },
+
+  /** A 200 with nulls when there is no draft — never a 404, exactly as the api answers. */
+  async getRoutineDraft(id: string): Promise<CoachRoutineDraftResponse> {
+    await assertScope(id, "WORKOUTS");
+    const draft = state().drafts.get(id) ?? null;
+    if (!draft) return { document: null, schemaVersion: null, updatedAt: null };
+    return { document: toRoutineDocument(id, draft), schemaVersion: 1, updatedAt: draft.updatedAt };
   },
 
   async saveRoutineDraft(
@@ -1138,16 +1251,22 @@ export const fixtureCoachApi: CoachApi = {
         (!muscle || e.primaryMuscles === muscle) &&
         (!equipment || (e.equipment ?? "") === equipment)
     );
+    // The api's default page size, and the api's ordinary paged envelope — there is no
+    // `truncated` boolean on the wire, so the fixture must not offer one either. "More
+    // matched than were returned" is `totalElements > items.length` (`isTruncated`).
     const LIMIT = 20;
     return {
       items: items.slice(0, LIMIT),
+      page: 0,
+      size: LIMIT,
+      totalElements: items.length,
+      totalPages: items.length === 0 ? 0 : Math.ceil(items.length / LIMIT),
       muscles: Array.from(
         new Set(CATALOG.map((e) => e.primaryMuscles).filter((m): m is string => !!m))
       ).sort(),
       equipment: Array.from(
         new Set(CATALOG.map((e) => e.equipment).filter((m): m is string => !!m))
       ).sort(),
-      truncated: items.length > LIMIT,
     };
   },
 

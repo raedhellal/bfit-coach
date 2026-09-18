@@ -234,6 +234,15 @@ export const copy = {
     title: "Routine",
     injuries: "Injuries",
     equipment: "Available equipment",
+    /**
+     * OURS, not AC text. `guardrails.equipment` is `[]` in two different situations and
+     * the api distinguishes them with `equipmentChecked`: `false` means the trainee
+     * never answered the equipment question, `true` with an empty list cannot happen.
+     * "None recorded." for an unanswered question states something about the trainee
+     * that they never said — and a coach reading it would reasonably program for a
+     * trainee who owns nothing.
+     */
+    equipmentUnanswered: "Not answered yet.",
     emptyTitle: "No active plan", // AC1, verbatim
     emptyBody: "Nothing is scheduled for this trainee yet.",
     build: "Build a plan", // AC1, verbatim

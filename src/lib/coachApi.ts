@@ -163,6 +163,8 @@ export type CoachAccessScope = "WORKOUTS" | "PROGRESS" | "NUTRITION" | "WEIGH_IN
  * Flat, not `{ capacity: { … } }`: the api returns the three capacity values
  * alongside the profile and inventing a nested object here would be this surface
  * disagreeing with its own contract for cosmetic reasons.
+ * @wire CoachProfileResponse
+ *
  */
 export interface CoachMe {
   /** The coach's user id — the same account as their Evoli Fit login. */
@@ -175,7 +177,11 @@ export interface CoachMe {
   capacity: number;
 }
 
-/** One row of `GET /coach-portal/clients` → `CoachClientSummaryResponse`. */
+/**
+ * One row of `GET /coach-portal/clients` → `CoachClientSummaryResponse`.
+ *
+ * @wire CoachClientSummaryResponse
+ */
 export interface RosterClient {
   /** The `coach_clients` row id — the ONLY id the coach portal addresses. */
   id: string;
@@ -227,6 +233,8 @@ export interface RosterClient {
  *
  * A paged envelope, not a bare array: every collection endpoint on b-fit-api
  * paginates. The roster is one page in practice (see `ROSTER_PAGE_SIZE`).
+ * @wire CoachClientPageResponse
+ *
  */
 export interface RosterPage {
   items: RosterClient[];
@@ -244,7 +252,11 @@ export interface RosterPage {
  */
 export const ROSTER_PAGE_SIZE = 100;
 
-/** `POST /coach-portal/invites` → 201 `CoachInviteResponse`. Raw token, once, ever. */
+/**
+ * `POST /coach-portal/invites` → 201 `CoachInviteResponse`. Raw token, once, ever.
+ *
+ * @wire CoachInviteResponse
+ */
 export interface InviteResponse {
   inviteId: string;
   token: string;
@@ -257,14 +269,22 @@ export interface Invite extends InviteResponse {
   url: string;
 }
 
-/** `TraineeWeightPoint`. */
+/**
+ * `TraineeWeightPoint`.
+ *
+ * @wire TraineeWeightPoint
+ */
 export interface WeightPoint {
   /** `YYYY-MM-DD`. */
   date: string;
   weightKg: number;
 }
 
-/** `TraineeLastSession` — block 3. */
+/**
+ * `TraineeLastSession` — block 3.
+ *
+ * @wire TraineeLastSession
+ */
 export interface LastSession {
   /** `YYYY-MM-DD` (UTC) of completion. */
   date: string;
@@ -286,6 +306,8 @@ export interface LastSession {
  * is why every child route of `/clients/[id]` can be reached by a link that shares only
  * one kind of data. Each block below is then omitted per scope, and "omitted" is
  * `null` — never `0`, never `[]`, never a placeholder that reads like data.
+ * @wire TraineeOverviewResponse
+ *
  */
 export interface ClientOverview {
   /** The `coach_clients` row id. */
@@ -353,41 +375,235 @@ export function hasScope(
   return scopes.includes(scope);
 }
 
-// ── EV-184b: the routine contract (PROVISIONAL — see the block at the top) ───
+// ── EV-184b: the routine contract ───────────────────────────────────────────
+
+/*
+ * ════════════════════════════════════════════════════════════════════════════
+ * NO LONGER PROVISIONAL — realigned to b-fit-api main (`5bc455c`) on 2026-09-18.
+ *
+ * EV-184a landed and the shapes below are now read off the DEPLOYED api, not asked
+ * for: `CoachRoutineResponse`, `CoachRoutineDraftResponse` and the
+ * `com.bfit.application.dto.routine` records they carry. The block that stood here
+ * described an api that had not been built, and the difference was not academic —
+ * `trainingProfile` was a field b-fit-api has never sent, and dereferencing it threw
+ * inside a server component's render, so the live routine page was a 200 with nothing
+ * but the shell on it (BUG: the live routine crash of 2026-09-18).
+ *
+ * THE TWO LAYERS BELOW ARE DIFFERENT THINGS AND THE NAMES SAY SO.
+ *
+ *   · `Routine` / `RoutineTrainingDay` / `RoutineExercise` and the two `Coach*Response`
+ *     records are THE WIRE. Field for field what b-fit-api serves, api names verbatim,
+ *     no reshaping. Anything typed here is a claim about a deployment, and
+ *     `qa/contract-drift.test.mjs` checks every one of those claims against the
+ *     vendored `spec/b-fit-api.openapi.yaml`.
+ *
+ *   · `RoutinePlanView` / `RoutineDayEntry` / `RoutineExerciseEntry` are THE EDITOR'S
+ *     MODEL — a flatter shape the routine editor edits, derived from the wire by
+ *     `src/lib/routineDocument.ts`. They are NOT a contract and must never be typed as
+ *     one; the previous version of this file blurred exactly that line, which is how a
+ *     field nobody serves ended up looking like a field somebody serves.
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+/** `RoutineExercise.trackingType`. Null is WEIGHT_REPS for backward compatibility. */
+export type TrackingType = "WEIGHT_REPS" | "DURATION";
 
 /**
- * One prescribed exercise. Field for field `RoutineExercise` in
- * `com.bfit.application.dto.routine`, minus the fields no coach control touches
- * (`tempo`, `notes`, `weight`, `durationSeconds`): `sets` is an int, `reps` and
- * `rest` are strings because the persisted record's are.
+ * 🔌 WIRE — `com.bfit.application.dto.routine.RoutineExercise`.
  *
- * `catalogSlug` is `ExerciseCatalogEntry.slug` — the identity the coach PICKED.
- * It travels with the draft so the api never has to re-resolve a free-typed name,
- * which is what AC2's "the coach picks, never types" means on the wire.
+ * Note what is NOT here, because its absence is a product fact and not an omission:
+ * there is **no `catalogSlug`, no `primaryMuscles` and no `equipment`**. The persisted
+ * routine document carries an exercise NAME and nothing that identifies a catalog row,
+ * so the identity the coach picked in `CatalogPicker` does not survive a save/publish
+ * round trip — `RoutinePolicy` matches on the name, which is why it can. The editor's
+ * `RoutineExerciseEntry` therefore carries those three as NULLABLE: populated for an
+ * exercise the coach just picked in this session, null for every exercise read back.
+ * @wire RoutineExercise
+ *
+ */
+export interface RoutineExercise {
+  name: string;
+  sets: number;
+  /** "8-12", "AMRAP". Null on a DURATION exercise. */
+  reps: string | null;
+  /** "90s". */
+  rest: string;
+  tempo: string | null;
+  notes: string | null;
+  /** Null is treated as WEIGHT_REPS by the api. */
+  trackingType: TrackingType | null;
+  durationSeconds: number | null;
+  weight: string | null;
+}
+
+/**
+ * 🔌 WIRE — `com.bfit.application.dto.routine.TrainingDay`. ISO 1=Monday…7=Sunday.
+ *
+ * @wire TrainingDay
+ */
+export interface RoutineTrainingDay {
+  dayOfWeek: number;
+  focus: string;
+  /** `@Positive Integer`, so absent is possible. */
+  estimatedMinutes: number | null;
+  exercises: RoutineExercise[];
+}
+
+/**
+ * 🔌 WIRE — `com.bfit.application.dto.routine.ProgressionRule`.
+ *
+ * @wire ProgressionRule
+ */
+export interface ProgressionRule {
+  week: number;
+  adjustment: string;
+  rationale: string | null;
+}
+
+/**
+ * 🔌 WIRE — `com.bfit.application.dto.routine.Constraints`.
+ *
+ * @wire RoutineConstraints
+ */
+export interface RoutineConstraints {
+  equipment: string[];
+  injuries: string[];
+  minutesPerSession: number;
+  daysPerWeek: number;
+}
+
+/**
+ * 🔌 WIRE — `com.bfit.application.dto.routine.Routine`, the document the trainee's own
+ * app renders. `GET …/routine` serves it under `routine` and `GET …/routine/draft`
+ * serves it under `document`; `PUT …/routine/draft` takes one as its whole body.
+ * @wire Routine
+ *
+ */
+export interface Routine {
+  name: string;
+  goal: string;
+  level: string;
+  daysPerWeek: number;
+  trainingDays: RoutineTrainingDay[];
+  weeklyProgression: ProgressionRule[];
+  constraints: RoutineConstraints;
+  summary: string | null;
+}
+
+/**
+ * 🔌 WIRE — `CoachRoutineResponse.Guardrails`. EV-184 AC1's read-only panel.
+ *
+ * **This is the field the page renders, and its name is the api's.** It was
+ * `trainingProfile: { injuries, equipment }` here until 2026-09-18 — a name b-fit-api
+ * has never sent on any endpoint. Adopting `guardrails` rather than translating it in
+ * the adapter is deliberate on three grounds: the api is the source of truth and this
+ * module's whole rule is that its names travel verbatim to the JSX; the api's name is
+ * the *better* name, because these two lists are the policy's inputs and not a
+ * "profile"; and the api's record carries a third field the translated shape dropped.
+ *
+ * `injuries` is the trainee's stored `user_profiles.injuries` — SCREAMING_SNAKE tokens
+ * for the eight onboarding chips PLUS whatever free text they typed into the "Anything
+ * else?" box, verbatim. `equipment` is their stored equipment answer, ADR-0005 D1a's
+ * eleven published tokens. Both are wire vocabularies and neither is renderable as-is;
+ * `src/lib/guardrailLabels.ts` turns them into words.
+ * @wire CoachRoutineGuardrails
+ *
+ */
+export interface CoachRoutineGuardrails {
+  injuries: string[];
+  equipment: string[];
+  /**
+   * Whether a NON-EMPTY equipment list reached the policy — derived server-side from
+   * the stored profile, never hardcoded.
+   *
+   * It is on this response as well as on the publish preview because, as
+   * `CoachRoutineResponse.Guardrails`' javadoc puts it, "the sentence it governs is on
+   * this screen too". What it governs here is NOT an equipment-safety claim — EV-184
+   * AC3's warning box already says the plan is checked against injuries and not
+   * equipment, and BUG-053 is undeployed. What it disambiguates is the EMPTY LIST:
+   * `equipment: []` with `equipmentChecked: false` means the trainee never ANSWERED the
+   * equipment question, which is a different sentence from "they recorded none", and
+   * rendering the second for the first is a claim about a trainee nobody made. See
+   * `copy.routine.equipmentUnanswered`.
+   */
+  equipmentChecked: boolean;
+}
+
+/**
+ * 🔌 WIRE — `GET /coach-portal/clients/{id}/routine` → `CoachRoutineResponse`.
+ *
+ * An ENVELOPE, not the editor's model: the active plan arrives as three sibling fields
+ * (`planId`, `planName`, `routine`) and the draft arrives as a PRESENCE
+ * (`hasDraft` + `draftUpdatedAt`) whose document costs a second call to
+ * `GET …/routine/draft`. Both differences were invisible while the fixture served a
+ * shape of this surface's own invention.
+ *
+ * There is **no `traineeDisplayName` here** — the routine page takes the name from the
+ * overview, which the `[id]` layout has already awaited and `React.cache` makes free.
+ * @wire CoachRoutineResponse
+ *
+ */
+export interface CoachRoutineResponse {
+  clientId: string;
+  /** Null when the trainee is on no plan. */
+  planId: string | null;
+  /** Null renders AC1's "No active plan" empty state. */
+  planName: string | null;
+  /** Null when the trainee has never had a routine (edge case 9). */
+  routine: Routine | null;
+  guardrails: CoachRoutineGuardrails;
+  hasDraft: boolean;
+  /** ISO instant; null when there is no draft. */
+  draftUpdatedAt: string | null;
+}
+
+/**
+ * 🔌 WIRE — `GET/PUT /coach-portal/clients/{id}/routine/draft`.
+ *
+ * **A 200 with nulls, never a 404** — the absence IS the information, and this surface
+ * must not treat "no draft" as an error. `schemaVersion` is the `Routine` shape version
+ * the row was written at; the portal reads it for nothing today and types it so that a
+ * future migration is a visible decision rather than a silently ignored field.
+ * @wire CoachRoutineDraftResponse
+ *
+ */
+export interface CoachRoutineDraftResponse {
+  document: Routine | null;
+  schemaVersion: number | null;
+  updatedAt: string | null;
+}
+
+// ── the editor's model (NOT a contract — derived by src/lib/routineDocument.ts) ──
+
+/**
+ * ✏️ EDITOR MODEL — one prescription row as the editor holds it.
+ *
+ * `catalogSlug`, `primaryMuscles` and `equipment` are nullable because the WIRE does
+ * not carry them (see `RoutineExercise`). They are populated only for an exercise the
+ * coach picked from the catalog in this session, and they are lost on the next read —
+ * which is worth knowing before anything is built on them. `sets` is a number; `reps`
+ * and `rest` are strings because the persisted record's are.
  */
 export interface RoutineExerciseEntry {
-  catalogSlug: string;
+  /** `ExerciseCatalogEntry.slug` — the identity the coach PICKED, when they just did. */
+  catalogSlug: string | null;
   name: string;
-  /** `ExerciseCatalogEntry.primaryMuscles`; null on a catalog row that has none. */
   primaryMuscles: string | null;
-  /** `ExerciseCatalogEntry.equipment`; null means bodyweight/unspecified. */
   equipment: string | null;
   sets: number;
-  /** "8-12", "AMRAP" — a string in the persisted record, not a number. */
   reps: string;
-  /** "90s" — likewise. */
   rest: string;
 }
 
-/** One training day. `dayOfWeek` is ISO 1=Monday…7=Sunday, as `TrainingDay` has it. */
+/** ✏️ EDITOR MODEL — one training day. `dayOfWeek` is ISO 1=Monday…7=Sunday. */
 export interface RoutineDayEntry {
   dayOfWeek: number;
-  /** `TrainingDay.focus` — the split label the coach reads ("Upper body"). */
+  /** The split label the coach reads ("Upper body"). */
   focus: string;
   exercises: RoutineExerciseEntry[];
 }
 
-/** A plan as the coach sees it: name + days. */
+/** ✏️ EDITOR MODEL — a plan as the coach edits it: name + days. */
 export interface RoutinePlanView {
   /** Null for a draft that has never been published. */
   planId: string | null;
@@ -396,35 +612,49 @@ export interface RoutinePlanView {
   trainingDays: RoutineDayEntry[];
 }
 
-/**
- * The trainee's stored profile facts, READ-ONLY (CS-22 / ADR-0001).
- *
- * `UserProfile.injuries` / `.equipment` are `List<String>`. They are displayed and
- * never submitted: there is no field in `CoachRoutineDraftRequest` that could carry
- * them, which is the structural version of the story's "may not submit them".
- */
-export interface TraineeTrainingProfile {
-  injuries: string[];
-  equipment: string[];
-}
-
-/** A saved draft. `updatedAt` is an ISO instant — last write wins (edge case 2). */
+/** ✏️ EDITOR MODEL — a saved draft. `updatedAt` is an ISO instant; last write wins. */
 export interface CoachRoutineDraft extends RoutinePlanView {
   updatedAt: string;
 }
 
-/** `GET /coach-portal/clients/{id}/routine`. */
-export interface CoachRoutineResponse {
-  clientId: string;
-  traineeDisplayName: string;
-  /** Null renders AC1's "No active plan" empty state. */
-  activePlan: RoutinePlanView | null;
-  /** Null means there is nothing unpublished; the header then claims no draft. */
-  draft: CoachRoutineDraft | null;
-  trainingProfile: TraineeTrainingProfile;
-}
+/* ════════════════════════════════════════════════════════════════════════════
+ * ⛔ KNOWN BROKEN AGAINST LIVE — the routine WRITE path (EV-184 AC2/AC3).
+ *
+ * The read path above was realigned to b-fit-api main on 2026-09-18. The write path
+ * was NOT, and this block is why, so that nobody reads the silence as agreement.
+ *
+ * `PUT /coach-portal/clients/{id}/routine/draft` takes `@Valid @RequestBody Routine` —
+ * the WHOLE document — and answers `CoachRoutineDraftResponse`. This surface sends
+ * `{name, trainingDays}` and expects a flat draft back, so against a real api a "Save
+ * draft" is a 400 and the editor shows its generic failure. That is pre-existing and
+ * unchanged by this branch; it is registered field by field in
+ * `qa/contract-deviations.mjs` so the contract test keeps it visible.
+ *
+ * It is NOT fixed here because fixing it is not a web decision:
+ *
+ *   1. `Routine` requires `goal`, `level` (`@NotBlank`), `weeklyProgression`,
+ *      `constraints` and `constraints.minutesPerSession` (`@Positive`). For a trainee
+ *      who has never had a routine — the api's own edge case 9, "the coach builds one
+ *      from scratch" — the portal has no honest source for any of them, and inventing
+ *      a goal and a training level for somebody else's trainee in the web tier is
+ *      exactly the kind of fabrication this surface refuses.
+ *   2. Even with an existing document to carry forward, the editor edits a LOSSY
+ *      projection: `tempo`, `notes`, `trackingType`, `durationSeconds`, `weight` and
+ *      `estimatedMinutes` are on the wire and on no coach control, so a naive rebuild
+ *      of the document would silently delete a DURATION exercise's prescription from a
+ *      trainee's plan. Deciding how a partial edit merges is a story/api question.
+ *
+ * → Needs `architect` + `java-engineer`: either the api accepts a coach-shaped draft
+ *   body (name + days, merged server-side against the stored document, defaults for a
+ *   from-scratch plan), or EV-184 gains the fields a coach must author. Until one of
+ *   those lands, these two types describe a request b-fit-api refuses.
+ * ════════════════════════════════════════════════════════════════════════════ */
 
-/** `PUT …/routine/draft`. Carries no ids and no injuries — deliberately (CS-22). */
+/**
+ * ⛔ `PUT …/routine/draft` as this surface sends it — see the block above.
+ *
+ * @wire Routine
+ */
 export interface CoachRoutineDraftRequest {
   name: string;
   trainingDays: RoutineDayEntry[];
@@ -452,7 +682,11 @@ export interface CoachRoutineDraftRequest {
  */
 export type PublishRepair = string;
 
-/** `POST …/routine/publish/preview`. An EMPTY `repairs` is "No changes were needed". */
+/**
+ * `POST …/routine/publish/preview`. An EMPTY `repairs` is "No changes were needed".
+ *
+ * @wire CoachPublishPreviewResponse
+ */
 export interface PublishPreview {
   repairs: PublishRepair[];
   /**
@@ -484,7 +718,11 @@ export interface PublishPreview {
   equipmentChecked: boolean;
 }
 
-/** `POST …/routine/publish` → the plan the trainee now has. */
+/**
+ * `POST …/routine/publish` → the plan the trainee now has.
+ *
+ * @wire CoachPublishResultResponse
+ */
 export interface PublishResult {
   planId: string;
   publishedAt: string;
@@ -504,7 +742,11 @@ export interface PublishResult {
   repairCount: number;
 }
 
-/** One catalog row, pick-only. `slug` is the identity, `name` is the label. */
+/**
+ * One catalog row, pick-only. `slug` is the identity, `name` is the label.
+ *
+ * @wire ExerciseCatalogDto
+ */
 export interface CatalogExercise {
   slug: string;
   name: string;
@@ -513,26 +755,31 @@ export interface CatalogExercise {
 }
 
 /**
- * `GET /coach-portal/catalog/exercises`.
+ * 🔌 WIRE — `GET /coach-portal/catalog/exercises` → `CoachCatalogPageResponse`.
  *
  * `searchCatalog` always sends all three parameters, EMPTY STRING INCLUDED
  * (`?q=&muscle=&equipment=`): an empty value means "no filter", never "match nothing".
  * Omitting them instead would make the absent case a second code path on both sides.
  *
- * **The two facet fields are PROVISIONAL** — answer 3 at the top: ADR-0015 decides the
- * 503 gate and is silent on facets, so this is still the shape this surface is asking
- * for rather than one the api has agreed. It is served today by the fixture, whose
- * vocabulary is derived from its own catalog rows and is marked as such. A hard-coded
- * muscle list in the web tier would be product data invented outside the catalog.
+ * The facets ARRIVED — `muscles` and `equipment` are derived from the catalog by the
+ * api (EV-184a), so the note that used to stand here calling them provisional is
+ * settled. What did NOT arrive is `truncated`: this is an ordinary paged envelope, the
+ * same one every collection endpoint on b-fit-api serves, and "more rows matched than
+ * were returned" is `totalElements > items.length`. The portal computes that where it
+ * renders it rather than typing a boolean nobody sends.
+ * @wire CoachCatalogPageResponse
+ *
  */
 export interface CatalogPage {
   items: CatalogExercise[];
-  /** Distinct `primaryMuscles` values, for the muscle filter. */
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  /** Every distinct target muscle in the catalog, sorted. */
   muscles: string[];
-  /** Distinct `equipment` values, for the equipment filter. */
+  /** Every distinct equipment value in the catalog, sorted. */
   equipment: string[];
-  /** True when more rows matched than were returned — the UI says "refine". */
-  truncated: boolean;
 }
 
 // ── EV-185b: the nutrition contract (PROVISIONAL) ───────────────────────────
@@ -550,7 +797,11 @@ export type ActivityLevel = "SEDENTARY" | "LIGHT" | "MODERATE" | "ACTIVE" | "VER
 /** `WeeklyMealPlan.MealSlot`. */
 export type MealSlot = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK";
 
-/** `NutritionTarget`, with the api's `…G` gram suffixes kept verbatim. */
+/**
+ * `NutritionTarget`, with the api's `…G` gram suffixes kept verbatim.
+ *
+ * @wire CoachNutritionTargets
+ */
 export interface NutritionTargets {
   calories: number;
   proteinG: number;
@@ -580,7 +831,11 @@ export interface NutritionTargets {
   updatedAt: string;
 }
 
-/** `WeeklyMealPlan.PlannedMeal`, reduced to what the coach's week renders. */
+/**
+ * `WeeklyMealPlan.PlannedMeal`, reduced to what the coach's week renders.
+ *
+ * @wire CoachPlannedMeal
+ */
 export interface PlannedMealView {
   mealId: string;
   slot: MealSlot;
@@ -599,7 +854,11 @@ export interface PlannedMealView {
   locked: boolean;
 }
 
-/** `WeeklyMealPlan.PlannedDay`. `index` is 0–6 from the week start. */
+/**
+ * `WeeklyMealPlan.PlannedDay`. `index` is 0–6 from the week start.
+ *
+ * @wire CoachPlannedDay
+ */
 export interface PlannedDayView {
   index: number;
   /** `YYYY-MM-DD`. */
@@ -616,6 +875,8 @@ export interface PlannedDayView {
  * `markMealEaten` carry it forward unchanged) and ruling (b) serves the trainee a
  * `setByName` for it. It does not say whether the coach portal gets a `setByYou` on
  * the week too. The portal renders no week byline today and will not invent one.
+ * @wire CoachMealWeek
+ *
  */
 export interface MealWeekView {
   /** `YYYY-MM-DD`, the Monday. */
@@ -630,6 +891,8 @@ export interface MealWeekView {
  * submittable: no request type in this module carries an allergy, a rule or a dislike,
  * which is EV-185's "there is no control anywhere that would let them", enforced by
  * the type system rather than by review.
+ * @wire CoachTraineeDietProfile
+ *
  */
 export interface TraineeDietProfile {
   allergies: string[];
@@ -637,7 +900,11 @@ export interface TraineeDietProfile {
   dislikes: string[];
 }
 
-/** `GET /coach-portal/clients/{id}/nutrition`. */
+/**
+ * `GET /coach-portal/clients/{id}/nutrition`.
+ *
+ * @wire CoachNutritionResponse
+ */
 export interface CoachNutritionResponse {
   clientId: string;
   traineeDisplayName: string;
@@ -654,7 +921,11 @@ export interface CoachNutritionResponse {
   dietProfile: TraineeDietProfile;
 }
 
-/** `PUT …/nutrition/targets`. Calories are clamped SERVER-side by the engine's floor. */
+/**
+ * `PUT …/nutrition/targets`. Calories are clamped SERVER-side by the engine's floor.
+ *
+ * @wire CoachTargetsRequest
+ */
 export interface CoachTargetsRequest {
   calories: number;
   proteinG: number;
@@ -674,18 +945,28 @@ export interface CoachTargetsRequest {
  *
  * It is a NUMBER and never a sentence. The api returns what the floor was;
  * `copy.nutrition.floorApplied` is the only place the words exist.
+ * @wire CoachTargetsResult
+ *
  */
 export interface CoachTargetsResult {
   targets: NutritionTargets;
   floorCalories: number | null;
 }
 
-/** `POST …/nutrition/week/apply` — current week only in slice 1. */
+/**
+ * `POST …/nutrition/week/apply` — current week only in slice 1.
+ *
+ * @wire CoachApplyWeekRequest
+ */
 export interface CoachApplyWeekRequest {
   weekStart: string;
 }
 
-/** One swap candidate. `index` is `SwapOptionsResponse.Candidate.index`. */
+/**
+ * One swap candidate. `index` is `SwapOptionsResponse.Candidate.index`.
+ *
+ * @wire CoachSwapCandidate
+ */
 export interface SwapCandidate {
   index: number;
   name: string;
@@ -695,13 +976,21 @@ export interface SwapCandidate {
   fatG: number;
 }
 
-/** `GET …/week/meals/{mealId}/swap`. */
+/**
+ * `GET …/week/meals/{mealId}/swap`.
+ *
+ * @wire CoachSwapOptions
+ */
 export interface SwapOptions {
   mealId: string;
   candidates: SwapCandidate[];
 }
 
-/** `POST …/week/meals/{mealId}/swap`. */
+/**
+ * `POST …/week/meals/{mealId}/swap`.
+ *
+ * @wire CoachApplySwapRequest
+ */
 export interface CoachApplySwapRequest {
   candidateIndex: number;
 }
@@ -809,6 +1098,16 @@ const liveCoachApi = {
 
   getRoutine(id: string): Promise<CoachRoutineResponse> {
     return apiFetch<CoachRoutineResponse>(`${client(id)}/routine`);
+  },
+  /**
+   * The draft DOCUMENT, which `GET …/routine` does not carry — it reports the draft's
+   * PRESENCE (`hasDraft` + `draftUpdatedAt`) and nothing else, so the editor's starting
+   * state costs a second read. Called only when `hasDraft` is true: a 200 full of nulls
+   * is the "no draft" answer and asking for it when the envelope already said there is
+   * none is a round trip that can only agree.
+   */
+  getRoutineDraft(id: string): Promise<CoachRoutineDraftResponse> {
+    return apiFetch<CoachRoutineDraftResponse>(`${client(id)}/routine/draft`);
   },
   saveRoutineDraft(id: string, draft: CoachRoutineDraftRequest): Promise<CoachRoutineDraft> {
     return apiFetch<CoachRoutineDraft>(`${client(id)}/routine/draft`, {
