@@ -4,7 +4,15 @@ import { ClientHeader } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { RoutineEditor } from "@/components/routine/RoutineEditor";
-import { coachApi, hasScope, isForbidden } from "@/lib/coachApi";
+import {
+  coachApi,
+  hasScope,
+  isForbidden,
+  type CoachRoutineDraft,
+  type CoachRoutineResponse,
+} from "@/lib/coachApi";
+import { equipmentLabels, injuryLabels } from "@/lib/guardrailLabels";
+import { toDraftView, toPlanView } from "@/lib/routineDocument";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
 
@@ -54,7 +62,8 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    * have to explain a 403 it caused itself. The load error is the honest answer: it
    * says the routine could not be loaded, which is exactly what happened.
    */
-  let routine = null;
+  let routine: CoachRoutineResponse | null = null;
+  let draft: CoachRoutineDraft | null = null;
   let message: string | null = null;
   if (!overview) {
     message = copy.routine.loadError;
@@ -63,6 +72,22 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   } else {
     try {
       routine = await coachApi.getRoutine(params.id);
+      /**
+       * The draft DOCUMENT is a second read — `GET …/routine` reports only that a draft
+       * EXISTS. Sequential and not `Promise.all`, because `hasDraft` is what decides
+       * whether the second call happens at all: asking for a draft the envelope has
+       * already said is absent can only ever be told the same thing again.
+       *
+       * A draft read that fails is NOT a load error for the whole tab. The published
+       * plan is in hand and is the trainee's live plan, which is the thing AC1 is about;
+       * losing the unpublished draft silently would be worse, so the draft's absence
+       * here means the editor opens on the published plan — the same state a discard
+       * produces — rather than the tab refusing to render.
+       */
+      if (routine.hasDraft) {
+        const saved = await coachApi.getRoutineDraft(params.id);
+        draft = toDraftView(saved?.document, saved?.updatedAt);
+      }
     } catch (err) {
       // A revocation between the layout's read and this one. `redirect` throws, so it
       // cannot sit inside the `try`.
@@ -76,7 +101,20 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   // here; the status that AC5 pins is the overview's, decided in layout.tsx.
   if (denied) redirect("/clients/denied");
 
-  const displayName = routine?.traineeDisplayName ?? overview?.traineeDisplayName ?? "";
+  const displayName = overview?.traineeDisplayName ?? "";
+  const activePlan = routine ? toPlanView(routine.planId, routine.planName, routine.routine) : null;
+
+  /**
+   * The guardrail panel is rendered only when the api actually sent the guardrails.
+   *
+   * `CoachRoutineResponse.guardrails` is a non-nullable record component, so a response
+   * without it is an api that predates EV-184a — and this is the field whose unguarded
+   * dereference threw inside this render on 2026-09-18 and served a 200 with nothing on
+   * it. Omitting the panel is the fail-closed answer: an empty "None recorded." panel
+   * would tell a coach that a trainee has no injuries on the strength of a field we did
+   * not receive, and "we do not know" must stay indistinguishable from absent.
+   */
+  const guardrails = routine?.guardrails;
 
   return (
     <CoachShell coachName={me?.displayName}>
@@ -91,18 +129,31 @@ export default async function RoutinePage({ params }: { params: { id: string } }
         <ClientNotice message={message ?? copy.routine.loadError} />
       ) : (
         <>
-          <ProfileFacts
-            title={copy.routine.title}
-            icon="shield"
-            groups={[
-              { label: copy.routine.injuries, values: routine.trainingProfile.injuries },
-              { label: copy.routine.equipment, values: routine.trainingProfile.equipment },
-            ]}
-          />
+          {guardrails && (
+            <ProfileFacts
+              title={copy.routine.title}
+              icon="shield"
+              groups={[
+                { label: copy.routine.injuries, values: injuryLabels(guardrails.injuries) },
+                {
+                  label: copy.routine.equipment,
+                  values: equipmentLabels(guardrails.equipment),
+                  // `equipmentChecked` is the api's own derivation of "a non-empty
+                  // equipment list reached the policy", and it is the only thing that
+                  // separates a trainee who recorded no equipment from one who never
+                  // answered. It is read here and nowhere else: it authorises no
+                  // equipment-safety sentence, because BUG-053 is undeployed and
+                  // AC3's warning box already says the plan is checked against
+                  // injuries and not equipment.
+                  empty: guardrails.equipmentChecked ? undefined : copy.routine.equipmentUnanswered,
+                },
+              ]}
+            />
+          )}
           <RoutineEditor
             clientId={params.id}
-            activePlan={routine.activePlan}
-            initialDraft={routine.draft}
+            activePlan={activePlan}
+            initialDraft={draft}
           />
         </>
       )}
