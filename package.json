@@ -9,6 +9,7 @@
     "start": "next start -p 3300",
     "lint": "next lint --dir src --dir qa --max-warnings=0",
     "typecheck": "tsc --noEmit",
+    "spec:sync": "node scripts/spec-sync.mjs",
     "test:e2e": "playwright test",
     "test:e2e:live": "playwright test --config playwright.live.config.ts",
     "test:e2e:roster": "playwright test --config playwright.roster.config.ts",
