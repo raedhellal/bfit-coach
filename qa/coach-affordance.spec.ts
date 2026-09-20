@@ -46,7 +46,7 @@ const REPLACE_HINT = "Replace keeps the sets, reps and rest.";
 const PICKER_HINT = "Pick as many as you need — this stays open. Close it when you're done.";
 const PUBLISH_HINT =
   "Publish shows you the safety changes first. Nothing reaches the trainee until you confirm.";
-const SWAP_FREE = "Swapping a meal is instant and doesn't use Lina M.'s daily regenerations.";
+const SWAP_FREE = "Swapping a meal doesn't use Lina M.'s daily regenerations.";
 /** `91b670c`'s wording, which AC5 requires to be unchanged, word for word. */
 const REGENERATE_LIMIT = "Day regenerations share Lina M.'s daily limit.";
 

@@ -51,7 +51,7 @@ const TRAINEE_NAME = "Test User";
 
 const PUBLISH_HINT =
   "Publish shows you the safety changes first. Nothing reaches the trainee until you confirm.";
-const SWAP_FREE = `Swapping a meal is instant and doesn't use ${TRAINEE_NAME}'s daily regenerations.`;
+const SWAP_FREE = `Swapping a meal doesn't use ${TRAINEE_NAME}'s daily regenerations.`;
 const REGENERATE_LIMIT = `Day regenerations share ${TRAINEE_NAME}'s daily limit.`;
 
 test.describe.configure({ mode: "serial" });

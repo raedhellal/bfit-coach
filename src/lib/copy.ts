@@ -539,9 +539,20 @@ export const copy = {
      *
      * The trainee is named the same way the regeneration line names them, so the two
      * sentences sitting together cannot disagree about who they are about.
+     *
+     * ⚠ "is instant and" WAS in this sentence and was CUT by `senior-po` at review. The
+     * cost clause is witnessed twice over; the latency clause had no bound, no timeout
+     * and no test — and `planned_meal.swap_candidates` is never pre-warmed, so the FIRST
+     * swap dialog on every meal is a model round trip (BUG-186 for the text path,
+     * BUG-187 for the images). An unevidenced "can" is the same defect as an unevidenced
+     * "cannot". It also bought nothing: the misread this line exists to kill is "the page
+     * names the regeneration limit and says nothing about swap, so swap must cost
+     * something too", which the cost clause alone answers. Do not add it back, and do not
+     * hedge it to "usually instant" — if the wait needs disclosing, that is a loading
+     * state, not a sentence.
      */
     swapIsFree: (trainee: string) =>
-      `Swapping a meal is instant and doesn't use ${trainee}'s daily regenerations.`,
+      `Swapping a meal doesn't use ${trainee}'s daily regenerations.`,
     regenerating: "Regenerating…",
     regenerateFailed: "The day could not be regenerated.",
     swap: "Swap meal", // AC3, verbatim
