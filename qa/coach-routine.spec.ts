@@ -125,10 +125,23 @@ test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
      * EV-184 AC3's warning box: `RoutinePolicy.apply` takes injuries ONLY, and the
      * equipment-aware replacement (BUG-053) is approved and undeployed. The portal
      * must therefore not render any sentence promising equipment safety. The word
-     * "safe" appears in this product exactly twice — the publish modal's heading and
+     * "safe" appeared in this product exactly twice — the publish modal's heading and
      * the nutrition floor line — and neither belongs on this page in its rest state.
+     *
+     * EV-201 AC4 adds a THIRD occurrence, on this page, by PO decision: the line next
+     * to the Publish control, whose wording the story fixes verbatim. It describes what
+     * the CONTROL does ("shows you the safety changes first" — the modal's own
+     * contents) and promises no property of the check, so the criterion this assertion
+     * defends is unchanged and only its blanket substring is narrowed. Everything else
+     * on the page is still refused the word.
      */
-    await expect(page.locator("body")).not.toContainText("safe", { ignoreCase: true });
+    const rest = (await page.locator("body").innerText()).replace(
+      "Publish shows you the safety changes first. Nothing reaches the trainee until you confirm.",
+      ""
+    );
+    expect(rest.toLowerCase(), "no other sentence on this page may say 'safe'").not.toContain(
+      "safe"
+    );
   });
 
   test("a trainee with no active plan gets the empty state and one control", async ({

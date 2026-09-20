@@ -203,6 +203,19 @@ export function CatalogPicker({
           <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
             {copy.routine.catalogPickOnly}
           </p>
+          {/*
+            EV-201 AC3 — said only on the opening it is true of.
+
+            `keepOpen` is the ADD opening; the REPLACE picker closes on the pick and
+            this line must not appear there. It sits next to `catalogPickOnly` rather
+            than by the footer's "Done" so it is read before the first pick, which is
+            the pick whose silence it explains.
+          */}
+          {keepOpen && (
+            <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+              {copy.routine.catalogStaysOpen}
+            </p>
+          )}
 
           <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
             {pending && items.length === 0 && (
