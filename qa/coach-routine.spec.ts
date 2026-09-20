@@ -18,6 +18,16 @@ import { expect, test, type Page } from "@playwright/test";
  * does not list is the real shape too).
  */
 
+/**
+ * EV-201 AC4's sentence, as a LITERAL rather than an import from `src/lib/copy.ts`.
+ * Deliberate, and the same choice `coach-affordance.spec.ts` makes: importing the
+ * constant would make this assertion agree with the shipped string by construction, so
+ * a reworded sentence would keep both the exemption and the test green. A fixture
+ * derived from its subject cannot witness the subject.
+ */
+const PUBLISH_SAFETY_HINT =
+  "Publish shows you the safety changes first. Nothing reaches the trainee until you confirm.";
+
 const EMAIL = "coach@evoli.fit";
 const PASSWORD = "Password123!";
 
@@ -122,11 +132,20 @@ test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
     await expect(page.getByText("None recorded.")).toBeVisible();
 
     /**
-     * EV-184 AC3's warning box: `RoutinePolicy.apply` takes injuries ONLY, and the
-     * equipment-aware replacement (BUG-053) is approved and undeployed. The portal
-     * must therefore not render any sentence promising equipment safety. The word
-     * "safe" appeared in this product exactly twice — the publish modal's heading and
-     * the nutrition floor line — and neither belongs on this page in its rest state.
+     * EV-184 AC3's warning box. ⚠ The original premise here — "the equipment-aware
+     * replacement (BUG-053) is approved and undeployed" — is now FALSE and was carried
+     * forward unchanged by EV-201, which edited this very block. BUG-053 is CLOSED and
+     * DEPLOYED (`b-fit-mobile/docs/qa/BUGS.md:2428`, fixed by `b-fit-api` e8d975a and
+     * carried in production build 6bf350a). Leaving it would have been a false sentence
+     * justifying the narrowing of a safety guard, on a row whose whole standard is that
+     * every sentence is true and witnessed.
+     *
+     * The assertion survives its own premise, restated as what it actually defends: the
+     * page must not make safety PROMISES in its rest state. That does not depend on
+     * BUG-053 being open — `RoutinePolicy.apply` still takes injuries only, so any
+     * sentence implying the publish check vouches for equipment would be false whatever
+     * the deploy state. The word "safe" appeared in this product exactly twice — the
+     * publish modal's heading and the nutrition floor line — and neither belongs here.
      *
      * EV-201 AC4 adds a THIRD occurrence, on this page, by PO decision: the line next
      * to the Publish control, whose wording the story fixes verbatim. It describes what
@@ -135,8 +154,13 @@ test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
      * defends is unchanged and only its blanket substring is narrowed. Everything else
      * on the page is still refused the word.
      */
+    // Anchor the carve-out: it must not quietly outlive the copy it was granted for.
+    // `.replace(string, …)` strips the FIRST occurrence only, so this also pins the
+    // exemption to exactly one instance of exactly this sentence.
+    await expect(page.getByText(PUBLISH_SAFETY_HINT, { exact: true })).toHaveCount(1);
+
     const rest = (await page.locator("body").innerText()).replace(
-      "Publish shows you the safety changes first. Nothing reaches the trainee until you confirm.",
+      PUBLISH_SAFETY_HINT,
       ""
     );
     expect(rest.toLowerCase(), "no other sentence on this page may say 'safe'").not.toContain(
