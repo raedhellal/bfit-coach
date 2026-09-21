@@ -2884,10 +2884,16 @@ paths:
         what AC1 has QA check, exercise by exercise, phone next to browser.
         `routine` is null for a trainee who has never had one: the portal renders "No active plan"
         and a single "Build a plan" control, never a blank page or `null`.
-        `guardrails` is display-only. No coach endpoint anywhere accepts injuries or equipment, and
-        the policy resolves both from `user_profiles` — at MVE-3 the submitter is the coach, so
-        "resolve from the profile, never from the request" is the difference between the trainee's
-        injuries and a stranger's claim about them (CS-22 / ADR-0001).
+        `guardrails` is display-only, and that is the API's property rather than the UI's — at MVE-3
+        the submitter is the coach, so "resolve from the profile, never from the request" is the
+        difference between the trainee's injuries and a stranger's claim about them (CS-22 /
+        ADR-0001). The policy resolves injuries and equipment from `user_profiles`, and since
+        BUG-185 so does the `plans.equipment` column the trainee's own app reads on `GET /me/plan`.
+        A submitted routine document does carry a `constraints` block — `constraints.equipment` and
+        `constraints.injuries` are both required on `Routine`, so a coach CANNOT omit them — but the
+        server reads neither as a claim about the trainee: submitted equipment is ignored outright,
+        and submitted injuries are unioned with the stored ones, which can only narrow what may be
+        prescribed and never widen it.
         Requires the **WORKOUTS** scope on the link (ADR-0015 D5): a link that did not share
         workouts answers 403, not an empty editor.
       security:
@@ -4147,7 +4153,8 @@ components:
         resolves injuries and equipment from `user_profiles` instead: injuries here are UNIONED with
         the stored ones (every extra injury narrows what may be prescribed) and equipment here is
         IGNORED entirely (a payload claiming ["GYM"] would hand a cable machine to someone who owns
-        nothing — BUG-053). A coach cannot submit either.
+        nothing — BUG-053). A coach MUST submit both — they are required on `Routine`, so a document
+        omitting either is rejected — but neither is read as a claim about the trainee.
       properties:
         equipment:
           type: array
@@ -4478,7 +4485,12 @@ components:
       type: object
       description: >-
         AC1's read-only panel, rendered under "From the trainee's profile — you cannot change these
-        here." Display only: no coach endpoint accepts either field.
+        here." Display only, and enforced server-side rather than by the UI: the policy resolves
+        injuries and equipment from user_profiles, and so does the plans.equipment column the
+        trainee's own app reads on GET /me/plan (BUG-185). A submitted routine document must carry
+        a constraints block (both lists are required on Routine), but submitted equipment is
+        ignored, and submitted injuries are unioned with the stored ones — they can only narrow
+        what may be prescribed, never widen it.
       properties:
         injuries:
           type: array
