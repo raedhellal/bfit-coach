@@ -541,6 +541,17 @@ export function RoutineEditor({
           </Button>
         </div>
 
+        {/*
+          EV-201 AC4 — next to the Publish control, ALWAYS, and before it is pressed.
+
+          `openPublish` saves the draft and opens `PublishModal`; only the modal's
+          confirm calls `publishAction`. The button says "Publish" and does not publish,
+          which is EV-184's safety design and was stated nowhere on this screen.
+        */}
+        <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.routine.publishShowsFirst}
+        </p>
+
         <div ref={feedbackRef}>
           {notice && (
             <p role="status" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>
@@ -642,32 +653,66 @@ export function RoutineEditor({
                   </option>
                 ))}
               </select>
-              <input
-                aria-label={`${copy.routine.dayLabel(dayIndex + 1)} focus`}
-                value={day.focus}
-                title={day.focus}
-                onChange={(e) =>
-                  editDays((days) =>
-                    days.map((d, i) => (i === dayIndex ? { ...d, focus: e.target.value } : d))
-                  )
-                }
-                style={{
-                  // BUG-146's floor: a text input a coach taps at 390 px is a control,
-                  // and 36 px was below it. Everything else about the field is
-                  // unchanged — only the tap area grows.
-                  height: MIN_TOUCH_TARGET,
-                  borderRadius: "var(--r-md)",
-                  border: "1px solid var(--border-2)",
-                  background: "var(--surface)",
-                  padding: "0 10px",
-                  fontFamily: "var(--font-display)",
-                  fontSize: 14.5,
-                  fontWeight: 600,
-                  color: "var(--ink)",
-                  minWidth: 0,
-                  maxWidth: 220,
-                }}
-              />
+              {/*
+                EV-201 AC1 — the label this field never had.
+
+                It was the only editable field on the page with no visible one: an
+                `<input>` with an `aria-label`, between a `select` and a count, styled
+                like a heading. The label is a `<label>` wrapper in the Sets / Reps /
+                Rest style (12px / 600 / --ink-2 — see `NumberField`), so the field is
+                readable as a field and the `aria-label` keeps the per-day accessible
+                name that distinguishes six identical inputs. Nothing about the input's
+                behaviour changes; only a label line appears above it.
+
+                ⚠ `width: "100%"` on the input is LOAD-BEARING and is what the first cut
+                of this label got wrong (senior-qa 2026-09-21, Item 4). The input used to
+                be the flex item itself, so `minWidth: 0` let it shrink with the row —
+                53 / 93 / 123 / 147 px at 320 / 360 / 390 / 414. Wrapping it moved that
+                job to the `<label>`: measured at 390 px the label DOES shrink to 123 px,
+                but an `<input>` has an intrinsic width from its `size` attribute (207 px
+                here) and nothing was asking it to follow its parent — so it overflowed
+                its own label by 84 px and was painted UNDER the exercise count, which
+                then sat inside the field, and the page scrolled sideways at 320/360.
+                `minWidth: 0` on a non-flex-item does nothing about that; `width: 100%`
+                does. Any future wrapper around this field needs the same pairing.
+              */}
+              <label style={{ display: "block", minWidth: 0 }}>
+                <div
+                  style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}
+                >
+                  {copy.routine.dayFocusLabel}
+                </div>
+                <input
+                  aria-label={`${copy.routine.dayLabel(dayIndex + 1)} focus`}
+                  value={day.focus}
+                  title={day.focus}
+                  onChange={(e) =>
+                    editDays((days) =>
+                      days.map((d, i) => (i === dayIndex ? { ...d, focus: e.target.value } : d))
+                    )
+                  }
+                  style={{
+                    // BUG-146's floor: a text input a coach taps at 390 px is a control,
+                    // and 36 px was below it. Everything else about the field is
+                    // unchanged — only the tap area grows.
+                    height: MIN_TOUCH_TARGET,
+                    borderRadius: "var(--r-md)",
+                    border: "1px solid var(--border-2)",
+                    background: "var(--surface)",
+                    padding: "0 10px",
+                    fontFamily: "var(--font-display)",
+                    fontSize: 14.5,
+                    fontWeight: 600,
+                    color: "var(--ink)",
+                    // See the ⚠ above: the field follows the label box, which is the
+                    // flex item that shrinks. `box-sizing: border-box` is global, so the
+                    // padding and the hairline border are inside these 100%.
+                    width: "100%",
+                    minWidth: 0,
+                    maxWidth: 220,
+                  }}
+                  />
+              </label>
               <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
                 {copy.routine.exercises(day.exercises.length)}
               </span>
@@ -696,6 +741,22 @@ export function RoutineEditor({
               style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)" }}
             >
               {weekdayError.message}
+            </p>
+          )}
+
+          {/*
+            EV-201 AC2 — the hint, ONCE PER DAY CARD, above the rows whose Replace
+            controls it is about (the story leaves the placement to the implementer and
+            asks for it to be stated: per day card, not per exercise row, because six
+            copies of one sentence in a six-exercise day is noise and the fact is about
+            the control, not about a particular exercise).
+
+            Edge case 1: a day with no exercises has no Replace control, so the sentence
+            would be orphaned over an empty day — it is not rendered there.
+          */}
+          {day.exercises.length > 0 && (
+            <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--ink-3)" }}>
+              {copy.routine.replaceKeepsPrescription}
             </p>
           )}
 

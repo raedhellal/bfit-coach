@@ -256,6 +256,20 @@ export const copy = {
     sets: "Sets",
     reps: "Reps",
     rest: "Rest",
+    /**
+     * EV-201 AC1. The focus field carried an `aria-label` and no visible one — the only
+     * editable field on the page without a label, sitting between a `select` and a count
+     * and styled like a heading. The label is rendered in the Sets / Reps / Rest style so
+     * a coach reads it as the field it is. Nothing else about the field changes.
+     */
+    dayFocusLabel: "Day focus",
+    /**
+     * EV-201 AC2, verbatim. Replace carries the row's sets, reps and rest onto the new
+     * exercise (`onPick`); Remove-then-Add does not — it lands on the 3 / "8-12" / "90s"
+     * defaults. Both halves were driven before this line shipped. It states what the
+     * control DOES and nothing about safety (the story's second non-negotiable).
+     */
+    replaceKeepsPrescription: "Replace keeps the sets, reps and rest.",
     moveUp: "Move up",
     moveDown: "Move down",
     replace: "Replace",
@@ -320,6 +334,19 @@ export const copy = {
     cancel: "Cancel", // AC3, verbatim (the modal's second control)
     publish: "Publish", // AC3, verbatim (the no-repairs modal's single control)
     publishing: "Publishing…",
+    /**
+     * EV-201 AC4, verbatim, and the one line of this row I would ship alone.
+     *
+     * `openPublish` runs `previewPublishAction` — it SAVES the draft and opens the
+     * repair preview. `publishAction` (the modal's confirm, echoing the digest) is the
+     * only call that reaches the trainee. EV-184's central safety design was stated
+     * nowhere on the screen, and a coach unsure what "Publish" does does not press it.
+     *
+     * It describes what the CONTROL does, not what the guardrail checks: "the safety
+     * changes" is the modal's own contents, and this line promises no property of them.
+     */
+    publishShowsFirst:
+      "Publish shows you the safety changes first. Nothing reaches the trainee until you confirm.",
     /** AC3, verbatim, with the number agreeing with the list length. */
     repairsTitle: (n: number) =>
       `We changed ${n} thing${n === 1 ? "" : "s"} to keep this safe`,
@@ -366,6 +393,13 @@ export const copy = {
      * landed on is behind the modal. It is announced, not just drawn.
      */
     catalogAdded: (name: string) => `Added ${name}.`,
+    /**
+     * EV-201 AC3, verbatim. `keepOpen` is true only for the ADD opening, so this line is
+     * rendered only there — the REPLACE picker closes on the pick and a line promising
+     * otherwise would be false on that dialog. A modal that stays open after a successful
+     * pick is also what a FAILED pick looks like, which is the whole reason it is said.
+     */
+    catalogStaysOpen: "Pick as many as you need — this stays open. Close it when you're done.",
     catalogDone: "Done",
     catalogSearching: "Searching…",
     // AC2: the coach picks from the catalog and can never type an exercise name.
@@ -493,6 +527,32 @@ export const copy = {
      */
     regenerateSharesLimit: (trainee: string) =>
       `Day regenerations share ${trainee}'s daily limit.`,
+    /**
+     * EV-201 AC5, verbatim, next to the line above and never replacing it.
+     *
+     * The page stated the REGENERATION limit and said nothing about swap, so the safe
+     * read was that swapping costs the trainee something too. It does not:
+     * `CoachNutritionUseCase.applySwap` → `WeeklyMealPlanService.applySwap` writes the
+     * meal and invalidates the cached candidates, and touches neither `regenDate` nor
+     * `regenCount` — only `regenerateDay` moves those. Witnessed against a live api by
+     * reading the trainee's own counter before and after a swap (EV-201 AC5).
+     *
+     * The trainee is named the same way the regeneration line names them, so the two
+     * sentences sitting together cannot disagree about who they are about.
+     *
+     * ⚠ "is instant and" WAS in this sentence and was CUT by `senior-po` at review. The
+     * cost clause is witnessed twice over; the latency clause had no bound, no timeout
+     * and no test — and `planned_meal.swap_candidates` is never pre-warmed, so the FIRST
+     * swap dialog on every meal is a model round trip (BUG-186 for the text path,
+     * BUG-187 for the images). An unevidenced "can" is the same defect as an unevidenced
+     * "cannot". It also bought nothing: the misread this line exists to kill is "the page
+     * names the regeneration limit and says nothing about swap, so swap must cost
+     * something too", which the cost clause alone answers. Do not add it back, and do not
+     * hedge it to "usually instant" — if the wait needs disclosing, that is a loading
+     * state, not a sentence.
+     */
+    swapIsFree: (trainee: string) =>
+      `Swapping a meal doesn't use ${trainee}'s daily regenerations.`,
     regenerating: "Regenerating…",
     regenerateFailed: "The day could not be regenerated.",
     swap: "Swap meal", // AC3, verbatim

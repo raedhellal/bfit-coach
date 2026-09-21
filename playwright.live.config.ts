@@ -29,9 +29,9 @@ const API_ORIGIN = process.env.COACH_LIVE_API_ORIGIN || "http://localhost:8099";
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /coach-live\.spec\.ts/,
+  testMatch: /(coach-live|coach-affordance\.live)\.spec\.ts/,
   fullyParallel: false,
-  workers: 1, // the two specs share one coach account and one roster
+  workers: 1, // every spec here shares one coach account, one roster and one database
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: [["list"]],

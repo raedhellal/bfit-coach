@@ -18,13 +18,13 @@ const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
-  // coach-live.spec.ts needs a real b-fit-api and a throwaway Postgres
-  // (playwright.live.config.ts); refresh-single-flight.spec.ts needs the counting stub
+  // coach-live.spec.ts and coach-affordance.live.spec.ts need a real b-fit-api and a
+  // throwaway Postgres (playwright.live.config.ts); refresh-single-flight.spec.ts needs the counting stub
   // api (playwright.refresh.config.ts); coach-legacy-api.spec.ts needs the pre-ADR-0015
   // api stub (playwright.legacy.config.ts); coach-roster-scopes.spec.ts needs the
   // populated fixture scenario (playwright.roster.config.ts). This suite must stay
   // runnable with no backend at all — that is what makes it the gate.
-  testIgnore: /(coach-live|refresh-single-flight|coach-roster-scopes|coach-legacy-api)\.spec\.ts/,
+  testIgnore: /(coach-live|coach-affordance\.live|refresh-single-flight|coach-roster-scopes|coach-legacy-api)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

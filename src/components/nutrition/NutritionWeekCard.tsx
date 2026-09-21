@@ -299,6 +299,19 @@ export function NutritionWeekCard({
           {copy.nutrition.regenerateSharesLimit(trainee)}
         </p>
       )}
+      {/*
+        EV-201 AC5 — in the same region as the regeneration limit, under it, and NOT
+        replacing it. Without it the page states a cost for one control and says nothing
+        about the one next to it, so the safe read is that swapping costs the same.
+        `applySwap` never touches the trainee's `regenCount` / `regenDate`; only
+        `regenerateDay` does. Guarded on `week` for the same reason the line above is —
+        edge case 4, a trainee with no meal week has no swap control to describe.
+      */}
+      {week !== null && (
+        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.nutrition.swapIsFree(trainee)}
+        </p>
+      )}
 
       <Modal
         open={confirming}
