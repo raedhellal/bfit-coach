@@ -583,6 +583,200 @@ export const copy = {
     loadError: "This trainee's nutrition could not be loaded.",
   },
 
+  /**
+   * EV-188b — the coach's routine library. Sentences marked AC are verbatim story text
+   * and `senior-qa` checks them character by character; rewording one is a story change.
+   *
+   * ⚠ SPELLING, recorded rather than silently harmonised: EV-188 AC5 writes
+   * "catalogue" and EV-184 AC4 — already shipped, already QA-verified — writes
+   * "catalog". Both are AC text. The new strings below use the new story's spelling and
+   * `copy.routine.catalogUnavailable` keeps the old one, so two spellings are on the
+   * product at once. That is a PO decision to make, not a tidy-up for an engineer to
+   * take unilaterally on strings QA compares by character.
+   *
+   * ⚠ WHAT IS DELIBERATELY ABSENT: no sentence here says or implies that using a
+   * template on a trainee changes anything the trainee can see. Apply writes the
+   * coach's DRAFT and touches no plan row — b-fit-api's QA confirmed the trainee's app
+   * still shows the old plan immediately after an apply — so `applied` and
+   * `applyNotPublished` both say so in as many words. EV-201 exists because "Publish"
+   * did not publish and the screen never said so; this is that lesson one row later.
+   */
+  templates: {
+    nav: "Templates", // AC1 — the portal's main navigation
+    title: "Templates",
+    subtitle: "Routines you can put on any trainee.",
+    /** AC4, verbatim. Stated once, on the library page. */
+    private: "Templates are yours. No trainee ever sees them.",
+    emptyTitle: "No templates yet", // AC1, verbatim
+    emptyBody: "Build a routine once and put it on any trainee.",
+    create: "New template", // AC1, verbatim
+    loadError: "Your templates could not be loaded.",
+    /**
+     * One body for a foreign template, an id that never existed and one deleted in
+     * another tab — the api answers all three the same way on purpose, so the portal
+     * must not render three sentences and turn the prefix into an existence oracle.
+     */
+    notYours: "That template is not in your library.",
+    backToLibrary: "Back to templates",
+
+    /* ── the library list (AC2) ───────────────────────────────────────────── */
+    /** AC1, verbatim, for a template saved moments ago. */
+    updatedJustNow: "Updated just now",
+    updatedAt: (when: string) => `Updated ${when}`,
+    rowSummary: (days: number, exercises: number) =>
+      `${days} day${days === 1 ? "" : "s"} · ${exercises} exercise${exercises === 1 ? "" : "s"}`,
+    edit: "Edit", // AC2, verbatim
+    duplicate: "Duplicate", // AC2, verbatim
+    rename: "Rename", // AC2, verbatim
+    remove: "Delete", // AC2, verbatim
+    use: "Use on a trainee", // AC2, verbatim
+    /**
+     * AC2's cap, with the number the API SERVES rather than a hardcoded 50 — raising it
+     * is a decision on the api side and the portal must not disagree with it on screen.
+     * It is a PRODUCT bound (a flat list of 50 needs no folders, tags or search) and
+     * Ruling 5c forbids describing it as a storage control, so this sentence does not.
+     */
+    limitReached: (limit: number) =>
+      `You can keep up to ${limit} templates. Delete one to make room.`,
+    remaining: (left: number, limit: number) => `${left} of ${limit} left`,
+
+    /* ── rename (AC2) ─────────────────────────────────────────────────────── */
+    renameTitle: "Rename template",
+    renameLabel: "Template name",
+    /** AC2, verbatim. Both templates are left unchanged. */
+    nameTaken: "You already have a template called that.",
+    nameRequired: "Give the template a name.",
+    nameTooLong: "A template name is at most 80 characters.",
+    renameFailed: "The template could not be renamed.",
+    duplicateFailed: "The template could not be duplicated.",
+
+    /* ── delete (AC2) ─────────────────────────────────────────────────────── */
+    deleteTitle: "Delete template?",
+    /**
+     * AC2 — the confirm NAMES the template, and states Ruling 2's guarantee, which is
+     * the single most important sentence on this screen: a coach who thinks deleting a
+     * template might disturb a trainee's live plan will never delete one.
+     */
+    deleteBody: (name: string) =>
+      `“${name}” is deleted from your library. Every plan and every draft you made from it is unchanged.`,
+    deleteFailed: "The template could not be deleted.",
+
+    /* ── the editor ───────────────────────────────────────────────────────── */
+    newTitle: "New template",
+    editTitle: "Edit template",
+    nameLabel: "Template name",
+    documentNameLabel: "Routine name",
+    documentNameRequired: "Give the routine a name.",
+    newDocumentName: "New routine",
+    newDayFocus: "New day",
+    goalLabel: "Goal",
+    levelLabel: "Level",
+    minutesLabel: "Minutes per session",
+    summaryLabel: "Summary",
+    summaryHint: "Shown to nobody but you. Leave it empty if you have nothing to add.",
+    notesLabel: "Notes",
+    tempoLabel: "Tempo",
+    weightLabel: "Weight",
+    trackingLabel: "Tracked as",
+    trackingWeightReps: "Weight and reps",
+    trackingDuration: "Duration",
+    durationLabel: "Seconds",
+    save: "Save template",
+    saving: "Saving…",
+    saved: "Template saved",
+    saveFailed: "The template could not be saved.",
+    unsavedBadge: "Unsaved changes",
+    /**
+     * ADR-0016 §Amendment V1b, said on the screen it costs.
+     *
+     * The validation group was withdrawn: the server accepts only a document it would
+     * accept as a published plan, so there is no autosave and a half-built template
+     * cannot be parked on the server. A coach who does not know that loses a tab and
+     * blames the product. The editor therefore states the rule up front and lists what
+     * is outstanding, rather than letting Save fail with a 400.
+     */
+    notSaveableYet: "This template is not ready to save yet:",
+    localOnly: "Nothing here is saved until you press Save template.",
+
+    /* ── bounds (AC2 / Ruling 5c) ─────────────────────────────────────────── */
+    dayCountBound: "A template has between 2 and 6 training days.",
+    dayEmpty: (n: number) => `Day ${n} has no exercises.`,
+    dayFocusRequired: (n: number) => `Day ${n} needs a focus.`,
+    duplicateWeekday: "Two training days are on the same weekday.",
+    freeTextTooLong: "One of the text fields is too long.",
+    /** AC2, verbatim — on the disabled "Add exercise" control at 12. */
+    dayFull: "12 exercises is the most in one day.",
+    /** AC2, verbatim — the server's refusal, named with the day and its count. */
+    tooLarge: (day: number, count: number) =>
+      `A training day can hold up to 12 exercises. Day ${day} has ${count}.`,
+
+    /* ── save as template (AC1) ───────────────────────────────────────────── */
+    saveAsTemplate: "Save as template", // AC1, verbatim
+    saveAsTemplateTitle: "Save as template",
+    fromPlan: "From the published plan",
+    fromDraft: "From your unpublished draft",
+    /** Edge case 12 — an active plan with no routine document. Never an empty template. */
+    sourceEmpty: "This trainee has no routine to copy yet.",
+    saveAsTemplateDone: (name: string) => `“${name}” is in your templates.`,
+    saveAsTemplateFailed: "The template could not be created.",
+
+    /* ── use on a trainee (AC3) ───────────────────────────────────────────── */
+    useTitle: "Use on a trainee",
+    pickTrainee: "Trainee",
+    /**
+     * AC3, verbatim. The picker offers ACTIVE, WORKOUTS-scoped links ONLY, so this
+     * sentence is never shown beside a trainee the coach would then be refused for.
+     */
+    guardrailsAtPublish: (trainee: string) =>
+      `${trainee}'s injuries and equipment are applied when you publish.`,
+    useConfirm: (template: string, trainee: string) =>
+      `Put “${template}” on ${trainee}?`,
+    /**
+     * AC3, verbatim — shown ONLY after the api has answered 409 COACH_DRAFT_EXISTS.
+     *
+     * It is not a pre-read. ADR-0016 D9.1 rejected reading the draft first because
+     * check-then-act across two tabs makes this sentence a lie; the retry echoes the
+     * timestamp the 409 carried, and a second tab that saved in between is refused
+     * again rather than overwritten.
+     */
+    replacesDraft: (trainee: string) =>
+      `This replaces your unpublished draft for ${trainee}. That draft cannot be recovered.`,
+    useIt: "Use this template",
+    replaceAndUse: "Replace the draft",
+    cancel: "Cancel",
+    noTrainees: "You have no trainees who have shared their workouts with you.",
+    applyFailed: "The template could not be used on that trainee.",
+    /**
+     * The 409 with no `details.existingUpdatedAt`. The portal will NOT retry blind: a
+     * retry without the assertion is a draft destroyed on a guess, and the assertion is
+     * the only thing that makes the sentence above true.
+     */
+    applyConflictUnreadable:
+      "That trainee's draft changed while this dialog was open. Open it again.",
+    /**
+     * 🔴 The sentence constraint 4 of this story is about, and it is on screen BEFORE
+     * the coach confirms, not after. Apply writes the coach's draft and nothing else.
+     */
+    applyNotPublished:
+      "This fills your draft for that trainee. Nothing changes for them until you publish.",
+    applied: (trainee: string) =>
+      `Draft ready for ${trainee}. Nothing has changed for them yet — publish when you are ready.`,
+
+    /* ── in the trainee's editor (AC3 / AC5) ──────────────────────────────── */
+    /** AC3, verbatim. Disappears when the template is deleted, and nothing else does. */
+    startedFrom: (name: string) => `Started from ${name}`,
+    /**
+     * AC5, verbatim at n = 2. **"may"**, because the matcher is fuzzy and the product
+     * does not claim to know more than it does — and nothing is removed on its opinion.
+     */
+    unbindable: (n: number) =>
+      n === 1
+        ? "1 exercise may not be in the exercise catalogue. Check it before you publish."
+        : `${n} exercises may not be in the exercise catalogue. Check them before you publish.`,
+    /** AC5, verbatim — marked IN PLACE, on the row, in the day it belongs to. */
+    notInCatalogue: "Not found in the catalogue",
+  },
+
   common: {
     loading: "Loading…",
     // The route-level error boundary catches renders from every page, not just the

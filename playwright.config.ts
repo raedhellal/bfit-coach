@@ -22,9 +22,12 @@ export default defineConfig({
   // throwaway Postgres (playwright.live.config.ts); refresh-single-flight.spec.ts needs the counting stub
   // api (playwright.refresh.config.ts); coach-legacy-api.spec.ts needs the pre-ADR-0015
   // api stub (playwright.legacy.config.ts); coach-roster-scopes.spec.ts needs the
-  // populated fixture scenario (playwright.roster.config.ts). This suite must stay
-  // runnable with no backend at all — that is what makes it the gate.
-  testIgnore: /(coach-live|coach-affordance\.live|refresh-single-flight|coach-roster-scopes|coach-legacy-api)\.spec\.ts/,
+  // populated fixture scenario (playwright.roster.config.ts); coach-library-apply.spec.ts
+  // needs it too — EV-188 AC3's trainee picker is built from the roster, and this
+  // suite's `empty` scenario serves no rows, so the apply half can only reach its
+  // no-trainees branch here (which `coach-library.spec.ts` asserts). This suite must
+  // stay runnable with no backend at all — that is what makes it the gate.
+  testIgnore: /(coach-live|coach-affordance\.live|refresh-single-flight|coach-roster-scopes|coach-legacy-api|coach-library-apply)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

@@ -9,13 +9,25 @@ import { defineConfig, devices } from "@playwright/test";
  * streak — and those only render with rows present, so they get their own server.
  *
  * COACH_ROSTER_PORT keeps it off :3300 and off the main suite's port when both run.
+ *
+ * ⚠ FILE ORDER: Playwright runs files in name order with `workers: 1`, and
+ * `coach-library-apply.spec.ts` MUTATES the fixture's draft store for two trainees. It
+ * sorts before `coach-roster-scopes.spec.ts`, which is read-only — that is the safe
+ * order and it is an accident of the names, so a rename needs re-checking.
  */
 const PORT = process.env.COACH_ROSTER_PORT || "3301";
 const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /coach-roster-scopes\.spec\.ts/,
+  /**
+   * EV-188b's apply half joins this config for the same reason the roster scopes did:
+   * AC3's trainee picker is built from the ROSTER, and the main suite's `empty`
+   * scenario serves no rows — so "Use on a trainee" there can only reach its
+   * no-trainees branch. The populated scenario is the only place the apply, its 409
+   * retry and AC5's marks are reachable at all.
+   */
+  testMatch: /(coach-roster-scopes|coach-library-apply)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,

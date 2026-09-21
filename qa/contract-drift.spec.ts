@@ -137,7 +137,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 32;
+const SCHEMAS_EXPECTED = 40;
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -200,11 +200,13 @@ for (const entry of interfaces) {
   });
 }
 
-test("the vendored spec records the b-fit-api commit it came from", () => {
-  const sha = readFileSync(join(ROOT, "spec", "b-fit-api.sha"), "utf8").trim();
-  // A dirty-worktree copy is provenance nobody can reproduce; spec-sync.mjs says so in
-  // the file and this is where saying so has a consequence.
-  expect(sha, "spec/b-fit-api.sha must be a plain 40-character commit sha").toMatch(
-    /^[0-9a-f]{40}$/
-  );
-});
+/*
+ * The provenance assertion that used to sit here has MOVED to
+ * `qa/api-merge-condition.spec.ts`, and grew a second half.
+ *
+ * It read `spec/b-fit-api.sha` and checked it was 40 hex characters. That proves the
+ * file is a sha and nothing about whether the api it names has SHIPPED — and EV-188b is
+ * written against `feat/ev188a-template-library-api`, a branch. So the check now lives
+ * beside the merge condition it serves, where it can be checked against the sibling
+ * repo rather than against a regex.
+ */
