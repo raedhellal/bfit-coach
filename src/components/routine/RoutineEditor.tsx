@@ -663,6 +663,18 @@ export function RoutineEditor({
                 readable as a field and the `aria-label` keeps the per-day accessible
                 name that distinguishes six identical inputs. Nothing about the input's
                 behaviour changes; only a label line appears above it.
+
+                ⚠ `width: "100%"` on the input is LOAD-BEARING and is what the first cut
+                of this label got wrong (senior-qa 2026-09-21, Item 4). The input used to
+                be the flex item itself, so `minWidth: 0` let it shrink with the row —
+                53 / 93 / 123 / 147 px at 320 / 360 / 390 / 414. Wrapping it moved that
+                job to the `<label>`: measured at 390 px the label DOES shrink to 123 px,
+                but an `<input>` has an intrinsic width from its `size` attribute (207 px
+                here) and nothing was asking it to follow its parent — so it overflowed
+                its own label by 84 px and was painted UNDER the exercise count, which
+                then sat inside the field, and the page scrolled sideways at 320/360.
+                `minWidth: 0` on a non-flex-item does nothing about that; `width: 100%`
+                does. Any future wrapper around this field needs the same pairing.
               */}
               <label style={{ display: "block", minWidth: 0 }}>
                 <div
@@ -692,6 +704,10 @@ export function RoutineEditor({
                     fontSize: 14.5,
                     fontWeight: 600,
                     color: "var(--ink)",
+                    // See the ⚠ above: the field follows the label box, which is the
+                    // flex item that shrinks. `box-sizing: border-box` is global, so the
+                    // padding and the hairline border are inside these 100%.
+                    width: "100%",
                     minWidth: 0,
                     maxWidth: 220,
                   }}

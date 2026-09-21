@@ -216,7 +216,14 @@ test("AC5 — a swap leaves the trainee's day-regeneration counter where it was"
       headers: asTrainee,
       data: {},
     });
-    expect(generated.status(), await generated.text()).toBe(200);
+    /**
+     * **201, not 200.** `MeNutritionPlanController.generateWeek` is annotated
+     * `@ResponseStatus(HttpStatus.CREATED)`. This asserted 200 until 2026-09-21 and was
+     * therefore red on any FRESH database and green only on a re-run, where the week
+     * already exists and this branch never executes — a setup step that only works the
+     * second time (senior-qa, EV-201 pass, P3).
+     */
+    expect(generated.status(), await generated.text()).toBe(201);
   }
   await expect
     .poll(

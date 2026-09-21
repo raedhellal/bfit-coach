@@ -131,24 +131,92 @@ test.describe("AC1 — the day focus looks like the field it is", () => {
     await discardDraft(page);
   });
 
-  test("edge case 2 — the day card still fits at 390 px", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await signIn(page);
-    await page.goto(`/clients/${LINA}/routine`);
+  /**
+   * AC1's fourth bullet — and the assertion that replaces the one which could not see
+   * the defect it existed to catch.
+   *
+   * The first version of this test asserted `toBeVisible()` on each part of the day
+   * header plus "no horizontal scroll at 390". Both were TRUE while the exercise count
+   * was painted INSIDE the focus field (senior-qa, 2026-09-21, Item 4): Playwright's
+   * `toBeVisible()` is blind to occlusion — an element covered by, or covering, another
+   * is still visible — and 390 px happened to be the one narrow width with no overflow.
+   * A green test that cannot see the defect is worse than no test, so this one measures
+   * the two things the eye actually caught:
+   *
+   *   1. **Occlusion** — the count's box and the field's box must not intersect AT ALL,
+   *      and `document.elementFromPoint` at the field's centre must return the FIELD.
+   *      Boxes alone would miss a full cover with identical bounds; the hit test alone
+   *      would miss a partial overlap that still leaves the centre clear. Both, or the
+   *      class stays invisible.
+   *   2. **Horizontal scroll at 320 and 360**, not only at 390 — the branch overflowed
+   *      to 373 px at both, i.e. the first version's single width was the one width
+   *      that could not fail.
+   *
+   * The widths are the story's 390 plus the three around it that the sweep found to
+   * behave differently. Every day card is checked, not the first: the fixture's three
+   * cards carry different focus strings and counts.
+   */
+  for (const width of [320, 360, 390, 414]) {
+    test(`edge case 2 — ${width} px: the count is outside the focus field, and nothing scrolls sideways`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await signIn(page);
+      await page.goto(`/clients/${LINA}/routine`);
 
-    await expect(page.getByLabel("Day 1 weekday")).toBeVisible();
-    await expect(page.getByText(DAY_FOCUS_LABEL, { exact: true }).first()).toBeVisible();
-    await expect(page.getByLabel("Day 1 focus")).toBeVisible();
-    await expect(page.getByText("4 exercises").first()).toBeVisible();
-    // Every EV-201 line renders at this width too.
-    await expect(page.getByText(REPLACE_HINT).first()).toBeVisible();
-    await expect(page.getByText(PUBLISH_HINT)).toBeVisible();
+      await expect(page.getByLabel("Day 1 weekday")).toBeVisible();
+      await expect(page.getByText(DAY_FOCUS_LABEL, { exact: true })).toHaveCount(3);
+      // Every EV-201 line renders at this width too.
+      await expect(page.getByText(REPLACE_HINT).first()).toBeVisible();
+      await expect(page.getByText(PUBLISH_HINT)).toBeVisible();
 
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    );
-    expect(overflow, "no horizontal scrolling at 390 px").toBeLessThanOrEqual(0);
-  });
+      const counts = ["4 exercises", "3 exercises", "3 exercises"];
+      for (const [i, count] of counts.entries()) {
+        const field = page.getByLabel(`Day ${i + 1} focus`);
+        const countSpan = page.getByText(count, { exact: true }).nth(i === 0 ? 0 : i - 1);
+        await expect(field).toBeVisible();
+        await expect(countSpan).toBeVisible();
+        // `elementFromPoint` is VIEWPORT-relative: a field below the fold answers `null`
+        // and the hit test would be inconclusive rather than true. Scroll first, then
+        // take both boxes, so the boxes and the hit test describe the same layout.
+        await field.scrollIntoViewIfNeeded();
+
+        const fieldBox = (await field.boundingBox())!;
+        const countBox = (await countSpan.boundingBox())!;
+        const overlapX =
+          Math.min(fieldBox.x + fieldBox.width, countBox.x + countBox.width) -
+          Math.max(fieldBox.x, countBox.x);
+        const overlapY =
+          Math.min(fieldBox.y + fieldBox.height, countBox.y + countBox.height) -
+          Math.max(fieldBox.y, countBox.y);
+        expect(
+          Math.max(overlapX, 0) * Math.max(overlapY, 0),
+          `day ${i + 1}: "${count}" overlaps the focus field by ${Math.round(
+            Math.max(overlapX, 0)
+          )} × ${Math.round(Math.max(overlapY, 0))} px at ${width} px ` +
+            `(field ${Math.round(fieldBox.x)}…${Math.round(fieldBox.x + fieldBox.width)}, ` +
+            `count ${Math.round(countBox.x)}…${Math.round(countBox.x + countBox.width)})`
+        ).toBe(0);
+
+        // What is painted at the middle of the field must BE the field. The count sitting
+        // on top of it is the symptom a bounding box can still miss.
+        const atCentre = await field.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return { tag: hit?.tagName ?? "none", isField: hit === el };
+        });
+        expect(
+          atCentre.isField,
+          `day ${i + 1}: the centre of the focus field is covered by <${atCentre.tag}> at ${width} px`
+        ).toBe(true);
+      }
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+      );
+      expect(overflow, `no horizontal scrolling at ${width} px`).toBeLessThanOrEqual(0);
+    });
+  }
 });
 
 test.describe("AC2 — Replace says it keeps the prescription, and it does", () => {
