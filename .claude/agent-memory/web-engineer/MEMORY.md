@@ -15,3 +15,5 @@
 - [The coach portal auto-deploys](coach-portal-auto-deploys-to-production.md) — main ships to bfit-coach-seven.vercel.app; merging IS releasing, whatever the README says
 - [A whole-representation PUT](a-whole-representation-put-needs-a-required-nullable-type.md) — an omitted field is a silent wipe; type it required-and-nullable, build it in one place
 - [getByText is a case-insensitive substring](playwright-gettext-is-case-insensitive-substring.md) — "Saved." matches "…Nothing was saved."; scope a locator, never .first()
+- [An empty state names what was absent](an-empty-state-must-name-what-was-absent.md) — a 0/0 gated on a plan row is not "no sessions"; two true blocks can make one false page
+- [A fixture without the shape cannot guard it](a-fixture-without-the-shape-cannot-guard-it.md) — sabotage the branch and watch the guard go red, or it is decoration
