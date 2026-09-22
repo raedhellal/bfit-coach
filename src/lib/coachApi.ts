@@ -140,7 +140,7 @@ export type CapacityTier = "STARTER";
  * union that omitted it would be a false statement about the wire. **Its sentence does
  * not** — `copy.client.redFlagLabels` has two entries and EV-187 AC4 makes that
  * release-blocking: the portal may not advertise a rule that cannot fire, in a legend,
- * a tooltip, a filter or an empty state. See `qa/red-flag-vocabulary.spec.ts`.
+ * a tooltip, a filter or an empty state. See `qa/coach-red-flags-vocabulary.spec.ts`.
  */
 export type RedFlagCode =
   | "MISSED_TWO_OR_MORE_SESSIONS"

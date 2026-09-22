@@ -231,7 +231,7 @@ export const copy = {
      * in this object is in the shipped bundle whether or not a coach ever sees it
      * rendered, which is why removing it is the fix and not hiding it behind a branch.
      *
-     * EV-187 AC4 makes the grep release-blocking, `qa/red-flag-vocabulary.spec.ts`
+     * EV-187 AC4 makes the grep release-blocking, `qa/coach-red-flags-vocabulary.spec.ts`
      * enforces it on the source and on the rendered DOM, and it binds on the CONCEPT
      * rather than one spelling — the b-fit-api guard it mirrors does the same.
      *

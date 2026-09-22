@@ -58,29 +58,37 @@ export function AdherenceSeries({ series }: { series: Series }) {
       <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 10 }}>
         {series.weeks.map((week) => {
           /**
-           * A week with no plan is drawn as no bar at all and reads "No plan". A 0 %
-           * bar would be the same picture as a week the trainee missed everything, and
-           * they are not the same fact — this is `hasPlan` applied per week, which is
-           * the rule that stopped a brand-new account being flagged on its first day.
-           */
-          /**
-           * **Which of the two `planned` numbers draws the bar, and why there are two.**
+           * **A BAR IS DRAWN ONLY FOR A WEEK THAT IS OVER AND HAD A PLAN, AND IT IS
+           * ALWAYS `done / planned` — THE TWO NUMBERS PRINTED BESIDE IT.**
            *
-           * AC3 asks for two things that cannot be one number: the current week must
-           * count only days STRICTLY BEFORE today (ADR-0012 D6 — a Monday is not a 0 %
-           * week), and the current week must be IDENTICAL to the shipped "adherence
-           * this week" block, which on a Monday reads 0 / 3. So the api sends both and
-           * this component spends them differently: `plannedSoFar` is what the bar is
-           * measured against (nothing that has not happened yet can have been missed),
-           * and `planned` is what the row READS, because that is the number the block
-           * above it shows for the same week at the same moment.
+           * The row is ONE fact or it is nothing. The first cut drew the current week
+           * against `plannedSoFar` while the text printed `planned`, and the staff review
+           * rendered the witness: LINA's current week was a **full** bar next to
+           * "2 / 4 sessions". The mirror case is worse and is exactly the Monday ADR-0012
+           * D6 is about — `plannedSoFar = 0` with `done > 0` gives an EMPTY bar next to
+           * "1 / 3 sessions".
            *
-           * No percentage is rendered anywhere on this card, in any week — which is the
-           * other half of "a Monday does not render a 0 % week".
+           * The full-bar direction is the one that decided this. A picture that says
+           * "on track" beside a number that says otherwise, on the one block built to
+           * catch disengagement, is the same failure direction as EV-187a's blocking
+           * defect (a no-plan week reading as perfect adherence) and BUG-198 (0 of 3
+           * prescribed reading 50 %). Three mechanisms that all make a struggling client
+           * look fine is not a coincidence to add a fourth to.
+           *
+           * So the in-progress week gets the treatment `hasPlan === false` already has:
+           * **no bar**, and its figures stand on their own. A week that has not finished
+           * has no proportion to draw — three of five days done is not 60 % of anything
+           * yet — and drawing one against either denominator asserts something the week
+           * cannot support. `plannedSoFar` is still on the wire and still typed; it is
+           * simply not a number this component spends, and AC3's "identical to the
+           * shipped block" clause is met by the LABEL, which is where it was always met.
+           *
+           * No percentage is rendered anywhere on this card, in any week — the other
+           * half of "a Monday does not render a 0 % week".
            */
-          const measuredAgainst = week.partial ? week.plannedSoFar : week.planned;
-          const ratio =
-            week.hasPlan && measuredAgainst > 0 ? Math.min(1, week.done / measuredAgainst) : 0;
+          const drawBar = week.hasPlan && !week.partial;
+          const fillPercent =
+            drawBar && week.planned > 0 ? Math.round(Math.min(1, week.done / week.planned) * 100) : 0;
           return (
             <li
               key={week.weekCommencing}
@@ -99,26 +107,41 @@ export function AdherenceSeries({ series }: { series: Series }) {
               <span style={{ color: "var(--ink-3)", whiteSpace: "nowrap" }}>
                 {formatDate(week.weekCommencing)}
               </span>
-              <span
-                aria-hidden="true"
-                style={{
-                  height: 10,
-                  borderRadius: "var(--r-pill)",
-                  background: "var(--surface-3)",
-                  overflow: "hidden",
-                  display: "block",
-                }}
-              >
+              {/* The grid cell is always present so the three columns line up down the
+                  card; the TRACK is not, because an empty track is still a picture of a
+                  week and a week with no plan (or one still running) has none. */}
+              {drawBar ? (
                 <span
+                  aria-hidden="true"
                   style={{
-                    display: "block",
-                    height: "100%",
-                    width: `${Math.round(ratio * 100)}%`,
+                    height: 10,
                     borderRadius: "var(--r-pill)",
-                    background: "var(--blue-500)",
+                    background: "var(--surface-3)",
+                    overflow: "hidden",
+                    display: "block",
                   }}
-                />
-              </span>
+                >
+                  <span
+                    /**
+                     * `data-fill` is the percentage the width is set from — the SAME
+                     * expression, read once. It exists so a spec can compare the bar to
+                     * the label beside it as numbers rather than by parsing an inline
+                     * style, which is the assertion the suite did not have when it
+                     * rendered a full bar next to "2 / 4 sessions" and stayed green.
+                     */
+                    data-fill={fillPercent}
+                    style={{
+                      display: "block",
+                      height: "100%",
+                      width: `${fillPercent}%`,
+                      borderRadius: "var(--r-pill)",
+                      background: "var(--blue-500)",
+                    }}
+                  />
+                </span>
+              ) : (
+                <span aria-hidden="true" />
+              )}
               <span style={{ whiteSpace: "nowrap", fontWeight: 600 }}>
                 {week.hasPlan
                   ? copy.client.weekSessions(week.done, week.planned)

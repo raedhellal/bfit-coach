@@ -46,7 +46,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
    * session titles), and a link without PROGRESS is answered 403 for it while the rest
    * of this page is a legitimate 200.
    */
-  const [{ overview }, { progress }, me] = await Promise.all([
+  const [{ overview }, progress, me] = await Promise.all([
     readClientOverview(params.id),
     readClientProgress(params.id),
     readCoachMe(),
@@ -119,12 +119,12 @@ export default async function ClientPage({ params }: { params: { id: string } })
   const workoutsShared = hasScope(overview.scopes, "WORKOUTS");
   const monitoringShared = progressShared && workoutsShared;
   /**
-   * ⚠️ The monitoring read's `forbidden` flag is deliberately NOT destructured, and its
-   * absence is the point: the api's 403 is undifferentiated across "no such id",
-   * "another coach's client", "revoked" and "scope missing" (ADR-0012 D4), so branching
-   * on it would be the portal inferring consent from a status code — the one thing
-   * ADR-0015 R2-2 forbids. A block says "not shared" from `scopes`; when the scope IS
-   * held and the data still did not arrive, it says the api did not answer.
+   * ⚠️ `readClientProgress` answers `TraineeProgress | null` and NOTHING about the
+   * status it failed with. That is deliberate: the api's 403 is undifferentiated across
+   * "no such id", "another coach's client", "revoked" and "scope missing" (ADR-0012 D4),
+   * so branching on it would be the portal inferring consent from a status code — the
+   * one thing ADR-0015 R2-2 forbids. A block says "not shared" from `scopes`; when the
+   * scope IS held and the data still did not arrive, it says the api did not answer.
    */
 
   return (

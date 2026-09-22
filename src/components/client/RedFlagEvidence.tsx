@@ -19,7 +19,7 @@ import type { FiredRedFlag } from "@/lib/coachApi";
  * 🔴 Two rules are rendered here and there is no third. `PAIN_REPORTED` has never fired
  * and cannot — nothing writes `workout_completion.notes` — so it is absent from the
  * label map and from this component, and there is no "coming soon" either. The absence
- * is deliberate, it is release-blocking (AC4), and `qa/red-flag-vocabulary.spec.ts`
+ * is deliberate, it is release-blocking (AC4), and `qa/coach-red-flags-vocabulary.spec.ts`
  * holds it.
  */
 export function RedFlagEvidence({ flags }: { flags: FiredRedFlag[] }) {

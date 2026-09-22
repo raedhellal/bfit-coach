@@ -125,6 +125,80 @@ test.describe("AC3 — adherence over eight weeks, not one", () => {
     await expect(series).not.toContainText("NaN");
   });
 
+  /**
+   * 🔴 **THE BAR AND THE NUMBER BESIDE IT ARE ONE FACT.**
+   *
+   * The suite rendered a FULL bar next to "2 / 4 sessions" and stayed green: every
+   * assertion here was about text, and the bar is `aria-hidden` and carried no text to
+   * assert. The staff review caught it by rendering the page and reading `width:` off
+   * the fill span by hand, which is not a gate.
+   *
+   * So the fill carries `data-fill` — the same number its width is set from — and this
+   * test recomputes it from the row's own printed figures. It fails on the old code in
+   * both directions: a full bar beside 2 / 4 (reassuring a coach about a client who is
+   * behind) and an empty bar beside 1 / 3 on a Monday.
+   */
+  test("every drawn bar equals the figures printed beside it", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+
+    const rows = block(page, "Adherence, last 8 weeks").getByRole("listitem");
+    await expect(rows).toHaveCount(8);
+
+    let drawn = 0;
+    for (let i = 0; i < 8; i += 1) {
+      const row = rows.nth(i);
+      /**
+       * The LAST span of the row, not the row's own text: the date column renders
+       * "10 Aug 2026" immediately before the figures, so reading the whole row gives
+       * "10 Aug 20263 / 4 sessions" and a digit-greedy match pulls "20263 / 4" out of it.
+       * That is not a hypothetical — it is what this test did on its first run.
+       */
+      const label = (await row.locator("span").last().textContent())!;
+      const fill = row.locator("[data-fill]");
+      const figures = label.match(/^(\d+) \/ (\d+) sessions$/);
+
+      if ((await fill.count()) === 0) {
+        /**
+         * The only two weeks allowed to draw nothing: one with no plan, and the
+         * in-progress one. The current week is the LAST row, so "no bar" anywhere else
+         * with figures present would be a week silently missing its picture.
+         */
+        const isNoPlan = label.includes("No plan");
+        expect(
+          isNoPlan || i === 7,
+          `week ${i + 1} ("${label}") draws no bar and is neither the no-plan week nor the current one`
+        ).toBe(true);
+        continue;
+      }
+
+      drawn += 1;
+      expect(figures, `a drawn bar on a row with no figures: "${label}"`).not.toBeNull();
+      const [, done, planned] = figures!.map(Number);
+      const expected = planned > 0 ? Math.round(Math.min(1, done / planned) * 100) : 0;
+      expect(
+        Number(await fill.getAttribute("data-fill")),
+        `week ${i + 1} prints "${done} / ${planned} sessions" and draws a different bar`
+      ).toBe(expected);
+    }
+
+    // …and the check above cannot pass by finding no bars at all.
+    expect(drawn, "no week drew a bar, so the agreement was never tested").toBeGreaterThan(3);
+  });
+
+  test("the in-progress week draws no bar at all", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+
+    const rows = block(page, "Adherence, last 8 weeks").getByRole("listitem");
+    // A week that has not finished has no proportion to draw: three of five days done is
+    // not 60 % of anything yet, and drawing it against either denominator asserts
+    // something the week cannot support. Its figures still stand, and they are still the
+    // shipped block's figures — AC3's "identical" clause lives on the LABEL.
+    await expect(rows.nth(7).locator("[data-fill]")).toHaveCount(0);
+    await expect(rows.nth(7)).toContainText(/\d+ \/ \d+ sessions/);
+  });
+
   test("a trainee with no history renders one sentence and no chart", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${KAIA}`);

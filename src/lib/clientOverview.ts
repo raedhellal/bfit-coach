@@ -50,18 +50,27 @@ export const readClientOverview = cache(
  * id", "another coach's client", "revoked" and "scope missing", so it says nothing
  * about consent and must not be read as if it did.
  *
- * `forbidden` is still returned rather than swallowed: the caller distinguishes "the
- * api said no" (expected for a link without PROGRESS) from "the api did not answer",
- * which is a load error and gets a sentence of its own.
+ * **There is no `forbidden` flag on this reader, unlike `readClientOverview` above, and
+ * that is the decision rather than an omission.** It carried one, described as something
+ * "the caller distinguishes" — and no caller read it, because there is nothing a caller
+ * may honestly do with it: the 403 is undifferentiated, so "the api said no" and "the api
+ * did not answer" are the same answer to the only question this page asks. The page
+ * decides from `scopes` (is this block shared?) and from `progress === null` (did the
+ * data arrive?), and a flag nobody reads is an invitation to branch on a status code,
+ * which is the one thing ADR-0015 R2-2 forbids. The overview's flag stays because
+ * `[id]/layout.tsx` really does spend it, on the status the whole route is served with.
  *
  * Cached per request for the same reason as the overview: the page reads it once.
  */
 export const readClientProgress = cache(
-  async (id: string): Promise<{ progress: TraineeProgress | null; forbidden: boolean }> => {
+  async (id: string): Promise<TraineeProgress | null> => {
     try {
-      return { progress: await coachApi.getClientProgress(id), forbidden: false };
-    } catch (err) {
-      return { progress: null, forbidden: isForbidden(err) };
+      return await coachApi.getClientProgress(id);
+    } catch {
+      // Every failure is the same answer here: a 403 (no PROGRESS, revoked, foreign id,
+      // no such id — one body for all four) and a 500 both mean "no monitoring data",
+      // and the page has already decided from `scopes` which sentence that deserves.
+      return null;
     }
   }
 );
