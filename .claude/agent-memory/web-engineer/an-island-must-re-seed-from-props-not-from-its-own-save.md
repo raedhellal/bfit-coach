@@ -1,34 +1,43 @@
 ---
 name: an-island-must-re-seed-from-props-not-from-its-own-save
-description: A client island that compares incoming props against the value it last SAVED undoes its own write for the few hundred ms before router.refresh() lands
+description: revalidatePath pushes fresh props with the action's own response, so dropping router.refresh() does NOT stop a form island re-seeding over what the coach is typing — use a per-field dirty flag
 metadata:
   type: project
 ---
 
-The re-seed guard that keeps a client island from going stale
-([[client-islands-go-stale-after-a-server-write]]) has a wrong version that looks
-identical and is worse than no guard at all:
+Two separate mistakes in one re-seed guard, both made on EV-202b, the second caught by
+staff review after I had claimed it fixed.
 
+**1. Compare against the last PROP, never the last value you SAVED.**
 ```
 // WRONG — `seen` is set from the action's RESPONSE
 if (sig(props) !== seen) { setSeen(sig(props)); reseed(props); }
 ```
+After a save the island is ahead of the server's props, so every signature looks "new"
+and the island re-seeds back to the pre-save values, then forward again. The state
+variable must track *the last prop this island was given*.
 
-After a save, the island's state is AHEAD of the server's props — the route has not
-re-rendered yet. Comparing against what it saved makes every prop signature "new", so
-the island **re-seeds itself back to the pre-save values**, then forward again when the
-refresh lands. In EV-202b's progress form the observable symptom was: save, start
-typing, and ~300 ms later the keystrokes vanish. A Playwright spec that saved and then
-filled a field had its input silently reverted, and the failure read as "the save did
-not happen".
+**2. 🔴 `revalidatePath` inside the server action returns a fresh RSC payload WITH the
+action's own response.** Props therefore change in the same tick the save resolves, and
+a form that re-seeds on any prop change deletes whatever was typed during the round
+trip — **whether or not you call `router.refresh()`**. Removing the refresh closes
+nothing; it only removes a second, redundant round trip. A reviewer measured it three
+ways (as-is: reverted · without the success re-seed: still reverted · without
+`revalidatePath` too: survives).
 
 **How to apply:**
-- The state variable tracks **the last prop this island was given**, never the last
-  value it wrote. Then props being stale is a no-op and a genuine server change
-  re-seeds.
-- Ask whether the refresh is needed at all. If the write's response IS the new
-  representation (a PUT that answers the recomputed block), the island already holds
-  the truth; `revalidatePath` in the action covers the next navigation, and dropping
-  `router.refresh()` removes the re-seed window entirely. Keep the refresh for
-  `ACCESS_DENIED`, where the point is to re-run the layout and reach the denial
-  redirect.
+- Keep `revalidatePath`. The same push is what keeps a reload, a back-navigation and a
+  second tab off a cached render — deleting it to win the race trades a lost keystroke
+  for a stale screen.
+- Hold a **per-field dirty flag**: set on `onChange`, cleared when a save is *sent*,
+  and consulted by *both* re-seed paths (prop signature and success handler). Advance
+  the prop signature even when a field was not re-seeded, or a dirty field leaves the
+  island a prop behind for good.
+- Carry the flags in the same state object as the field values and update them with
+  functional updates — the success handler runs after an `await` and a closure over
+  the old state is stale.
+- The display half (a table, a summary) should still follow props unconditionally. Only
+  the inputs are the coach's.
+
+Related: [[client-islands-go-stale-after-a-server-write]],
+[[a-notice-already-on-screen-is-not-a-sync-point]].

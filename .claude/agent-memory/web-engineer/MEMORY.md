@@ -10,6 +10,8 @@
 - [A picture with no text is unassertable](a-picture-with-no-text-is-unassertable.md) — an aria-hidden bar hid a full bar beside "2 / 4"; emit the drawn value as data-*
 - [Copy for a capability that does not exist](copy-for-a-capability-that-does-not-exist.md) — delete the label, guard the concept not one spelling
 - [The portal reads scopes, never a status](coach-portal-reads-scopes-never-a-status.md) — one block can 403 while the page is 200; blocks need the endpoint's scope AND their own
-- [Islands re-seed from props, not from their own save](an-island-must-re-seed-from-props-not-from-its-own-save.md) — comparing against the saved value undoes the write for ~300 ms
+- [Islands re-seed from props, not from their own save](an-island-must-re-seed-from-props-not-from-its-own-save.md) — revalidatePath pushes props with the response; dropping router.refresh() fixes nothing, use per-field dirty flags
+- [A notice already on screen is not a sync point](a-notice-already-on-screen-is-not-a-sync-point.md) — waiting for "Saved." from the previous save made a race test green against its own defect
+- [The coach portal auto-deploys](coach-portal-auto-deploys-to-production.md) — main ships to bfit-coach-seven.vercel.app; merging IS releasing, whatever the README says
 - [A whole-representation PUT](a-whole-representation-put-needs-a-required-nullable-type.md) — an omitted field is a silent wipe; type it required-and-nullable, build it in one place
 - [getByText is a case-insensitive substring](playwright-gettext-is-case-insensitive-substring.md) — "Saved." matches "…Nothing was saved."; scope a locator, never .first()
