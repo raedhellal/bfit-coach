@@ -22,22 +22,52 @@ import type { AdherenceSeries as Series } from "@/lib/coachApi";
  */
 export function AdherenceSeries({ series }: { series: Series }) {
   /**
-   * The whole-series empty state (AC3's last clause, and edge case 1).
+   * The whole-series empty state — EV-208 AC1/AC2, superseding EV-187 AC3's last
+   * clause, and edge case 1.
    *
-   * `planned === 0 && done === 0` over eight weeks means nothing was ever scheduled and
-   * nothing was ever done — a brand-new trainee, or one whose plan post-dates the
-   * window. It renders one sentence and NO chart: eight bars of 0 % is a picture of a
-   * trainee failing, drawn from the absence of a plan.
+   * Still ONE branch and NO chart: eight bars of 0 % is a picture of a trainee failing,
+   * drawn from the absence of a plan. What changed is the SENTENCE, and why:
    *
-   * ⚠️ It is also what BUG-197 produces for a freshly-published trainee, whose
+   * `planned === 0 && done === 0` is **not a statement about sessions**. Both the
+   * numerator and the denominator are gated on `hadAPlanDuring`, so the branch is
+   * reached whenever no week in the window had a plan — which is ordinary for anyone
+   * who trains ad hoc without ever calling `POST /plans/select`. The single sentence
+   * this used to print, "No sessions in the last 8 weeks", then sat directly above a
+   * *Recent sessions* list of five real dated workouts (BUG-205): a false claim about a
+   * person, inferred from a missing `user_plan` row, and a contradiction of the per-week
+   * "No plan" state one line down.
+   *
+   * So the portal tells the two worlds apart itself, from `hasPlan` — which is already
+   * on the wire, so this needed no api change. `weeks.some(w => w.hasPlan)` is the
+   * whole discriminator:
+   *
+   *   - **no week had a plan** → "No plan on record for these 8 weeks". An absence is
+   *     rendered as an absence. It is also the honest reading for a brand-new trainee
+   *     (edge case 4) and for a `weeks: []` payload (edge case 1) — the one wording
+   *     that is true in both of the worlds this condition cannot distinguish.
+   *   - **a plan existed and scheduled nothing** → "No sessions scheduled in the last
+   *     8 weeks". Reachable in the ordinary way once EV-209 lands (a rest-day-only week
+   *     reads 0 / 0 with `hasPlan = true`); until then it is pinned by the fixture.
+   *
+   * Neither sentence says whether the trainee trained. The session-history block below
+   * answers that, and is the only block on this page entitled to.
+   *
+   * ⚠️ This branch is also what BUG-197 produces for a freshly-published trainee, whose
    * `selected_at` was overwritten on the publish path and whose history therefore reads
    * 0/0 for every past week. That bug belongs to the api's write path; what the portal
-   * owes is not to report it as "0 % adherent".
+   * owes is not to report it as "0 % adherent" — nor, now, as "no sessions".
+   *
+   * `done > 0` or `planned > 0` is untouched: a real 0-of-N week (edge case 2) still
+   * renders the chart and the headline, because a trainee who missed everything must
+   * still read as having missed everything.
    */
   if (series.planned === 0 && series.done === 0) {
+    const hadAPlan = series.weeks.some((week) => week.hasPlan);
     return (
       <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">
-        <BlockNote>{copy.client.noSessionsIn8Weeks}</BlockNote>
+        <BlockNote>
+          {hadAPlan ? copy.client.nothingScheduledIn8Weeks : copy.client.noPlanInWindow}
+        </BlockNote>
       </MonitoringBlock>
     );
   }
