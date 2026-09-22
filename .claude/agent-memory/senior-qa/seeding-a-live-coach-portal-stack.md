@@ -43,12 +43,27 @@ Publishing through the api needs the two-step `publish/preview` → take its `di
 **Three more traps, measured on the EV-208 gate (2026-09-23):**
 - `POST /auth/register` returns the token at **`tokens.accessToken`**, not `accessToken` (login
   returns it at the top level). Access tokens last **15 minutes**; re-login per step in a long seed.
-- **Plan ids are deterministic from the onboarding profile**, so two trainees with the same answers
-  share one `plans` row — any SQL edit to `plan_schedule` hits both. Vary `weeklyDays`/`primaryGoal`
-  to force a distinct plan before editing one.
+- ⚠️ **CORRECTED 2026-09-23 (EV-209 gate): plan ids are deterministic from the USER ID, not the
+  profile** — `PlanGeneratorService` computes `deterministicId("plan:" + userId)`. So **every
+  trainee gets its own `plans` row** and an SQL edit to one plan's `plan_schedule` never touches
+  another's. The earlier note here said the opposite; varying `weeklyDays`/`primaryGoal` to force a
+  distinct plan is unnecessary (though `weeklyDays` is still the knob for the *shape*:
+  `resolveWorkoutDays` has cases for **2–6 only**, so 1 and 7 scheduled days have no product path).
 - The STARTER seat cap is re-checked on every accept, so once N links are ACTIVE no further accept
   succeeds: `UPDATE coach_clients SET status='REVOKED', revoked_at=now(), revoked_by='TRAINEE'`
   first, run the invite/accept/revoke cycle, then reactivate them all in one statement.
 - A link with `WORKOUTS` removed from `coach_clients.scopes` does **not** hide the adherence block:
   it renders with *"This trainee has not shared their progress with you."*
 
+**Four more, measured on the EV-209 gate (2026-09-23):**
+- **`coach_profiles` has no `id` column** — the PK is `user_id`. `insert into coach_profiles
+  (user_id, display_name, capacity_tier, created_at)`. And `coach_clients` names the trainee column
+  **`trainee_id`**, not `trainee_user_id`.
+- **Emails are stored lower-cased.** A seed that builds an address containing an upper-case tag and
+  then looks the row up with `where email = '<the literal>'` gets **zero rows** while the
+  registration itself succeeded — a confusing failure. Use `where lower(email) = lower(...)`, and
+  assert the id is non-empty before using it.
+- **The api's clock is `Clock.systemUTC()`** (`ApplicationConfig`), so *its* today is the UTC date,
+  not the host's. After ~22:00 CEST every "current week" / "today" assertion is about yesterday.
+- **`weeklyDays: 3` generates exactly the BUG-198 fixture**: workouts on dow 1/3/5, `is_rest_day`
+  on 2/4/6/7, rest days pointing at a `Mobility Flow` workout. No SQL needed for that shape.
