@@ -9,8 +9,19 @@ ADR-0012 decides. Both documents live in the hub repo:
 - `b-fit-mobile/docs/product/stories/EV-183-evoli-pro-demo-mve1.md`
 - `b-fit-mobile/docs/architecture/adr/0012-coach-trainee-link.md`
 
-> **This repo merges to no `main` and is deployed nowhere.** `GATE-MVE1` is closed;
-> this is a demo build, local only, no production, no public URL.
+> 🔴 **THIS REPO AUTO-DEPLOYS. A merge to `main` reaches production.**
+> `main` is continuously deployed to Vercel at **https://bfit-coach-seven.vercel.app**.
+> Verify what is live with `curl https://bfit-coach-seven.vercel.app/api/version`.
+>
+> The previous banner here said this repo "merges to no `main` and is deployed
+> nowhere ... no production, no public URL". That was **false**, and it was read and
+> believed on 2026-09-22 while deciding whether a push was safe: 18 commits were
+> pushed on the understanding that nothing would ship, and EV-188b and EV-201 went
+> to production at 17:26 that day. Corrected when `staff-engineer` checked the live
+> URL during the EV-202b review instead of trusting this file.
+>
+> `GATE-MVE1` being closed governs who is *told* about the portal. It does not stop
+> a merge deploying it.
 
 ---
 
