@@ -5,3 +5,4 @@
 - [Seeding a live coach-portal stack](seeding-a-live-coach-portal-stack.md) — API-only trainee seeding, plus capacity/scope/rate-limit/catalog traps
 - [Holding a save open without faking it](holding-a-save-open-without-faking-it.md) — CDP throttling ignores loopback; use a forwarding proxy, and watch the probe go red
 - [b-fit-coach: merge IS release](coach-portal-merge-is-release.md) — the portal auto-deploys to production on merge; the EV-202 gate rests on a dated Raed statement
+- [EV-208 live gate](project_ev208-live-gate.md) — 2026-09-23 PASS at 6dadeb2; BUG-213 filed; how AC2's all-rest week and the base-build red witness were built
