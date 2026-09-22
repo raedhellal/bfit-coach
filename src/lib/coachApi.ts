@@ -571,6 +571,37 @@ export interface CoachRoutineDraftResponse {
   document: Routine | null;
   schemaVersion: number | null;
   updatedAt: string | null;
+  /**
+   * EV-188a. Which template this draft was started from, for the editor's "Started
+   * from {name}" line — null for a hand-built draft, and **null again once that
+   * template is deleted** (`ON DELETE SET NULL`), which is AC2's delete rule showing
+   * through the read: deleting a template makes the line disappear and changes nothing
+   * else about the draft.
+   *
+   * It is an ID and not a name, so the line costs a lookup against the library list.
+   * It is never provenance on the PUBLISHED plan: publish deletes the draft row, so
+   * after a publish no row anywhere joins a plan to a template.
+   */
+  sourceTemplateId: string | null;
+  /**
+   * EV-188 AC5 — exercise NAMES in this draft the catalogue would not match today,
+   * re-derived on every open and NEVER stored.
+   *
+   * The portal marks the matching rows in place and offers Replace and Remove, and
+   * that is the whole of its authority here: **nothing removes an exercise from a
+   * coach's programming except the coach pressing Remove.** Because the list is
+   * re-derived, the marks are gone after a catalogue re-sync with no edit having been
+   * made — and two opens of an unedited draft may legitimately differ.
+   */
+  unbindableExercises: string[];
+  /**
+   * Whether the catalogue check RAN. `false` with an empty list means NOT CHECKED,
+   * which is a different fact from "checked and clean" — the same distinction
+   * `CoachRoutineGuardrails.equipmentChecked` exists for. The portal renders no
+   * clean-bill sentence for the unchecked case, because on a fresh deploy the derived
+   * index is built over zero rows.
+   */
+  catalogChecked: boolean;
 }
 
 // ── the editor's model (NOT a contract — derived by src/lib/routineDocument.ts) ──
@@ -658,6 +689,208 @@ export interface CoachRoutineDraft extends RoutinePlanView {
 export interface CoachRoutineDraftRequest {
   name: string;
   trainingDays: RoutineDayEntry[];
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-188b — THE COACH'S ROUTINE LIBRARY. The first resource on this prefix that
+ * the COACH owns rather than one they reach through a trainee.
+ *
+ * ✅ TYPED AGAINST A SHIPPED API — but only since 2026-09-21, and the history is
+ * the point. Every name below was written against `b-fit-api`
+ * `feat/ev188a-template-library-api` @ `341f752` while that branch was APPROVE +
+ * QA PASS and **unmerged**, under a hard merge condition. `b-fit-api` main is now
+ * `21ed43f` (the merge of that branch) and `341f752` is an ancestor of it, so the
+ * condition is DISCHARGED and `spec/b-fit-api.sha` reads `on-api-main: YES`.
+ *
+ * Two facts worth keeping, because they are what makes the re-sync a check rather
+ * than a formality: `341f752:openapi.yaml` and `21ed43f:openapi.yaml` are
+ * BYTE-IDENTICAL (sha256 13f0662…), so nothing typed below depends on anything
+ * the merged spec lacks; and the re-sync was not remembered by a person — the
+ * forcing function in `qa/api-merge-condition.spec.ts` turned red the moment the
+ * api caught up, which is exactly the job it was written for.
+ *
+ * WHAT THE PORTAL MUST NOT ASSUME, from the api's own QA pass:
+ *   · The server accepts only a PUBLISHABLE template (ADR-0016 §Amendment V1b).
+ *     Full `@Valid Routine` runs at the save boundary: fewer than two training
+ *     days, a day with no exercises, or a `daysPerWeek` that disagrees with the
+ *     list, and the save is a 400. There is no validation group and there will
+ *     not be one. **The editor owns transient invalid state** — see
+ *     `src/lib/templateDocument.ts`, which refuses to POST rather than
+ *     discovering the 400, and `TemplateEditor`, which holds the work locally.
+ *   · Apply is DEFAULT-REFUSING and the confirm is a 409 RETRY, not a pre-read
+ *     (D9.1). `replacesDraftUpdatedAt` is echoed from the 409's
+ *     `details.existingUpdatedAt`, and the comparison happens inside the write
+ *     transaction, so a second tab that saved in between is refused AGAIN.
+ *   · **Apply does not publish.** It writes the coach's draft for that trainee
+ *     and touches no `plans` row. The trainee's app, refreshed at that moment,
+ *     still shows their old plan. Every sentence this surface renders around
+ *     apply has to survive that fact — EV-201 exists because "Publish" did not
+ *     publish and the screen never said so.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * `TEMPLATE_NAME_MAX` is in `src/lib/templateDocument.ts`, not here, and that is not
+ * tidiness: this module is `server-only`, so a client island importing one VALUE from
+ * it drags `apiFetch` and the bearer token into the browser bundle and Next refuses to
+ * build. Client components may import TYPES from here (erased at compile time) and
+ * nothing else.
+ */
+
+/**
+ * 🔌 WIRE — one row of `GET /coach-portal/templates`.
+ *
+ * Name, day count, exercise count, last-updated — "and nothing else" is AC2's own
+ * phrase and it is the reason this is a separate type from `CoachTemplate`: the list
+ * does not carry the document, and a row that could render an exercise would grow one.
+ * The two counts are derived server-side from the document on every list call.
+ *
+ * @wire CoachTemplateSummaryResponse
+ */
+export interface CoachTemplateSummary {
+  id: string;
+  name: string;
+  dayCount: number;
+  exerciseCount: number;
+  /** ISO instant. The list is newest-updated first and this surface does not re-sort it. */
+  updatedAt: string;
+}
+
+/**
+ * 🔌 WIRE — `GET /coach-portal/templates`.
+ *
+ * `limit` and `remaining` are served so the portal can say "You can keep up to 50
+ * templates" without hardcoding 50, and can show "Delete one to make room" BEFORE the
+ * 409 rather than only after it. Unpaged by design: the cap is a product bound, so a
+ * flat list needs no folders, tags or search.
+ *
+ * @wire CoachTemplateListResponse
+ */
+export interface CoachTemplateList {
+  templates: CoachTemplateSummary[];
+  limit: number;
+  remaining: number;
+}
+
+/**
+ * 🔌 WIRE — `CoachTemplateResponse`: a template with its document.
+ *
+ * `document.constraints.equipment` and `.injuries` are ALWAYS empty — the api strips
+ * them at the write boundary and REFUSES any row where they are not at the read
+ * boundary (AC4). The portal must send them empty too, and
+ * `src/lib/templateDocument.ts` is the one place that guarantees it: a template carries
+ * the coach's prescription and nothing a trainee said about themselves.
+ *
+ * `minutesPerSession` and `daysPerWeek` DO survive — they are the coach's own
+ * prescription, not a trainee's answer.
+ *
+ * @wire CoachTemplateResponse
+ */
+export interface CoachTemplate {
+  id: string;
+  name: string;
+  schemaVersion: number;
+  document: Routine;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 🔌 WIRE — the body of `POST /coach-portal/templates` and `PUT …/templates/{id}`.
+ *
+ * **The whole `Routine`, not a projection.** This is the one place this surface differs
+ * in kind from EV-184b's still-broken `CoachRoutineDraftRequest`, and the difference is
+ * not a style choice — it is what makes the write path sendable at all:
+ *
+ *   · the ⛔ draft path cannot send `goal`/`level` because inventing a training goal
+ *     for SOMEBODY ELSE'S TRAINEE in the web tier is a fabrication. A template belongs
+ *     to the coach and describes nobody, so the coach authors those fields themselves,
+ *     through controls, and the editor shows every one of them;
+ *   · the ⛔ draft path would drop `tempo`, `notes`, `trackingType`, `durationSeconds`,
+ *     `weight` and `estimatedMinutes` on a round trip because the editor edits a lossy
+ *     projection. The template editor edits the DOCUMENT, so nothing is lost — which
+ *     AC4 requires from the other direction too: "nothing travels in a template that
+ *     the coach cannot see and edit", so any field that survives has to be on screen.
+ *
+ * @wire CoachTemplateSaveRequest
+ */
+export interface CoachTemplateSaveRequest {
+  name: string;
+  document: Routine;
+}
+
+/**
+ * 🔌 WIRE — `POST …/templates/{id}/rename`.
+ *
+ * Its own mapping rather than a nullable field on the save body, so a rename from the
+ * library list does not have to fetch the whole document first.
+ *
+ * @wire CoachTemplateRenameRequest
+ */
+export interface CoachTemplateRenameRequest {
+  name: string;
+}
+
+/** Which of the trainee's two routines "Save as template" copies (AC1). */
+export type CoachTemplateSource = "PLAN" | "DRAFT";
+
+/**
+ * 🔌 WIRE — `POST /coach-portal/clients/{id}/routine/save-as-template`.
+ *
+ * `source` is a closed enum and not a boolean, deliberately: "from the published plan"
+ * and "from my unpublished draft" are two facts, and a `fromDraft: boolean` is how a
+ * third source becomes a second boolean.
+ *
+ * @wire CoachTemplateFromRoutineRequest
+ */
+export interface CoachTemplateFromRoutineRequest {
+  name: string;
+  source: CoachTemplateSource;
+}
+
+/**
+ * 🔌 WIRE — `POST …/templates/{id}/apply`.
+ *
+ * `clientId` is the `coach_clients` LINK id, the same id every other mapping on this
+ * prefix takes in its path — it is in a body here because the URL addresses the
+ * TEMPLATE, and it is resolved through `requireActiveLinkRow(WORKOUTS)` exactly as a
+ * path segment would be. A trainee this coach may not write to is refused, and the
+ * portal never offers them in the picker in the first place (AC3).
+ *
+ * `replacesDraftUpdatedAt` ABSENT means "only if there is no draft". That is the whole
+ * of D9.1: the first apply asserts nothing, a 409 says what exists, and the retry
+ * echoes the timestamp the coach was shown.
+ *
+ * @wire CoachTemplateApplyRequest
+ */
+export interface CoachTemplateApplyRequest {
+  clientId: string;
+  replacesDraftUpdatedAt?: string | null;
+}
+
+/**
+ * 🔌 WIRE — the trainee's DRAFT as it stands after a template was copied into it.
+ *
+ * ⚠ It is a draft. No `plans` row was written, no `user_plan` row, no assignment. The
+ * trainee sees nothing until the coach publishes, and every sentence this surface
+ * renders after an apply says so.
+ *
+ * `unbindableExercises` is AC5's advisory list of exercise NAMES the catalogue would
+ * not match today — re-derived on every read and never stored. `catalogChecked: false`
+ * with an empty list means NOT CHECKED, which is a different fact from "checked and
+ * clean"; the portal must not render the clean sentence for the unchecked case.
+ *
+ * @wire CoachTemplateApplyResponse
+ */
+export interface CoachTemplateApplyResult {
+  clientId: string;
+  sourceTemplateId: string;
+  sourceTemplateName: string;
+  document: Routine;
+  updatedAt: string;
+  replacedExistingDraft: boolean;
+  unbindableExercises: string[];
+  catalogChecked: boolean;
 }
 
 /**
@@ -1043,6 +1276,70 @@ export function isRepairsUnacknowledged(err: unknown): boolean {
     err instanceof ApiError && err.code === "COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED"
   );
 }
+/* ── EV-188's five refusals (ADR-0016 D9.5) ────────────────────────────────────
+ *
+ * Each is its OWN code and each has its own sentence, because a template limit reported
+ * as a generic denial is a coach who thinks the product is broken. The api-side test
+ * `CoachTemplateErrorCodeResolutionTest` holds the handler to these names; these five
+ * predicates are the only place the portal reads them.
+ */
+
+/** 409 — AC2: the coach already has a template with that name (folded for case). */
+export function isTemplateNameTaken(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_TEMPLATE_NAME_TAKEN";
+}
+/** 409 — AC2's cap at 50. A product bound, NOT a storage control (Ruling 5c). */
+export function isTemplateLimitReached(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_TEMPLATE_LIMIT_REACHED";
+}
+/** 400 — AC2: a training day over 12 exercises. Nothing is truncated. */
+export function isTemplateTooLarge(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_TEMPLATE_TOO_LARGE";
+}
+/**
+ * 400 — edge case 12: an active plan with no routine document (the legacy population
+ * that predates generated routines). The portal hides "Save as template" for that
+ * trainee, so this is the direct-call refusal and a belt to that brace.
+ */
+export function isTemplateSourceEmpty(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_TEMPLATE_SOURCE_EMPTY";
+}
+/**
+ * 400 — a stored template whose day count a plan cannot carry. ADR-0016's §Amendment
+ * describes this and `COACH_PLAN_EMPTY` as **fail-closed backstops for rows not written
+ * through the application**: since V1b validates the full publish contract at the save
+ * boundary, no template this portal can create can reach it. It is handled anyway,
+ * because "unreachable" is a claim about today's writers.
+ */
+export function isTemplateNotPublishable(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_TEMPLATE_NOT_PUBLISHABLE";
+}
+
+/**
+ * 409 `COACH_DRAFT_EXISTS` — AC3's confirm, and the reason it is a RETRY.
+ *
+ * ADR-0016 D9.1 rejected the obvious design (read the draft, show the dialog, then
+ * POST) because it is check-then-act across two browser tabs: between the read and the
+ * POST the draft can change, and then "this replaces your unpublished draft" is a
+ * sentence about something that no longer exists. Apply is default-refusing instead —
+ * the first call asserts nothing, this 409 reports what is there, and the retry echoes
+ * the timestamp the coach was actually shown. The comparison runs inside the write
+ * transaction, so a second tab that saved in between causes the retry to be refused
+ * AGAIN rather than to overwrite.
+ *
+ * Returns the `updatedAt` to echo, or null if the api sent a 409 with no details —
+ * in which case the portal must NOT retry blind. Not retrying is a coach who presses
+ * the button again; retrying without the assertion is a draft destroyed on a guess.
+ */
+export function draftExistsUpdatedAt(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.code !== "COACH_DRAFT_EXISTS") return null;
+  const value = err.details?.existingUpdatedAt;
+  return typeof value === "string" ? value : null;
+}
+export function isDraftExists(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_DRAFT_EXISTS";
+}
+
 /**
  * 429 — D6.6's cap: ONE apply per link per day. The ADR sizes what it bounds (3
  * applies × 30 clients ≈ 630 model calls per coach per day) and records the number so
@@ -1133,6 +1430,82 @@ const liveCoachApi = {
   searchCatalog(q: string, muscle: string, equipment: string): Promise<CatalogPage> {
     const query = new URLSearchParams({ q, muscle, equipment });
     return apiFetch<CatalogPage>(`/coach-portal/catalog/exercises?${query.toString()}`);
+  },
+
+  // ── EV-188b the coach's routine library ───────────────────────────────────
+  //
+  // 🔴 Nine mappings, all of them on an api branch that has NOT merged. See the block
+  // above the template types and `qa/api-merge-condition.spec.ts`.
+
+  listTemplates(): Promise<CoachTemplateList> {
+    return apiFetch<CoachTemplateList>("/coach-portal/templates");
+  },
+  getTemplate(id: string): Promise<CoachTemplate> {
+    return apiFetch<CoachTemplate>(`/coach-portal/templates/${encodeURIComponent(id)}`);
+  },
+  createTemplate(body: CoachTemplateSaveRequest): Promise<CoachTemplate> {
+    return apiFetch<CoachTemplate>("/coach-portal/templates", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  updateTemplate(id: string, body: CoachTemplateSaveRequest): Promise<CoachTemplate> {
+    return apiFetch<CoachTemplate>(`/coach-portal/templates/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+  renameTemplate(id: string, name: string): Promise<CoachTemplate> {
+    const body: CoachTemplateRenameRequest = { name };
+    return apiFetch<CoachTemplate>(`/coach-portal/templates/${encodeURIComponent(id)}/rename`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  duplicateTemplate(id: string): Promise<CoachTemplate> {
+    return apiFetch<CoachTemplate>(
+      `/coach-portal/templates/${encodeURIComponent(id)}/duplicate`,
+      { method: "POST" }
+    );
+  },
+  async deleteTemplate(id: string): Promise<void> {
+    // 204 No Content.
+    await apiFetch<void>(`/coach-portal/templates/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+  /**
+   * AC3. `replacesDraftUpdatedAt` is OMITTED on the first attempt — absent means "only
+   * if there is no draft" — and carries the echo from the 409 on the retry. It is never
+   * sent as null-meaning-force: there is no force.
+   */
+  applyTemplate(
+    id: string,
+    clientId: string,
+    replacesDraftUpdatedAt?: string
+  ): Promise<CoachTemplateApplyResult> {
+    const body: CoachTemplateApplyRequest = replacesDraftUpdatedAt
+      ? { clientId, replacesDraftUpdatedAt }
+      : { clientId };
+    return apiFetch<CoachTemplateApplyResult>(
+      `/coach-portal/templates/${encodeURIComponent(id)}/apply`,
+      { method: "POST", body: JSON.stringify(body) }
+    );
+  },
+  /**
+   * AC1's other two entry points. This one is under `/clients/{id}` and not under
+   * `/templates` because its SUBJECT is a trainee — it reads that trainee's plan or the
+   * coach's draft for them, so it is guarded by `requireActiveLinkRow(WORKOUTS)` like
+   * every other mapping that reads trainee data.
+   */
+  saveRoutineAsTemplate(
+    id: string,
+    body: CoachTemplateFromRoutineRequest
+  ): Promise<CoachTemplate> {
+    return apiFetch<CoachTemplate>(`${client(id)}/routine/save-as-template`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   },
 
   // ── EV-185b nutrition (PROVISIONAL paths) ─────────────────────────────────

@@ -4,6 +4,7 @@ import { ClientHeader } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { RoutineEditor } from "@/components/routine/RoutineEditor";
+import { SaveAsTemplateButton } from "@/components/templates/SaveAsTemplateButton";
 import {
   coachApi,
   hasScope,
@@ -65,6 +66,10 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   let routine: CoachRoutineResponse | null = null;
   let draft: CoachRoutineDraft | null = null;
   let message: string | null = null;
+  /** EV-188 AC5 — advisory, re-derived by the api on every read, never stored here. */
+  let unbindableExercises: string[] = [];
+  /** EV-188 AC3's "Started from {name}", resolved from the draft's template id. */
+  let sourceTemplateName: string | null = null;
   if (!overview) {
     message = copy.routine.loadError;
   } else if (!hasScope(overview.scopes, "WORKOUTS")) {
@@ -87,6 +92,30 @@ export default async function RoutinePage({ params }: { params: { id: string } }
       if (routine.hasDraft) {
         const saved = await coachApi.getRoutineDraft(params.id);
         draft = toDraftView(saved?.document, saved?.updatedAt);
+        /**
+         * Guarded, not dereferenced. These three fields are EV-188a's and EV-188a has
+         * not merged, so an api that predates it sends none of them — which is exactly
+         * the shape of the 2026-09-18 crash, where an unguarded read of a field nobody
+         * served threw inside this render and served a 200 with nothing on it.
+         * Absent reads as "no marks", which under-claims: the coach is shown no
+         * warning rather than a warning about a check that never ran.
+         */
+        unbindableExercises = Array.isArray(saved?.unbindableExercises)
+          ? saved.unbindableExercises
+          : [];
+        /**
+         * AC3's line costs a lookup: the draft carries the template ID, and the name
+         * lives on the library list. A failure here loses the LINE and nothing else —
+         * the draft is in hand and is what the coach came for, so the tab must not
+         * refuse to render because a decorative sentence could not be resolved. A
+         * template deleted since the apply is simply not in the list, and the line
+         * disappears, which is AC2's delete rule arriving through the read.
+         */
+        if (saved?.sourceTemplateId) {
+          const library = await coachApi.listTemplates().catch(() => null);
+          sourceTemplateName =
+            library?.templates.find((t) => t.id === saved.sourceTemplateId)?.name ?? null;
+        }
       }
     } catch (err) {
       // A revocation between the layout's read and this one. `redirect` throws, so it
@@ -150,10 +179,23 @@ export default async function RoutinePage({ params }: { params: { id: string } }
               ]}
             />
           )}
+          {/*
+            AC1's two other entry points into the library. Rendered ABOVE the editor and
+            outside it: it writes to the COACH's library, not to this trainee's plan, and
+            nothing it does can reach the editor's working copy. It renders nothing at
+            all when there is neither a plan document nor a draft (edge case 12).
+          */}
+          <SaveAsTemplateButton
+            clientId={params.id}
+            planName={activePlan ? activePlan.name : null}
+            hasDraft={draft !== null}
+          />
           <RoutineEditor
             clientId={params.id}
             activePlan={activePlan}
             initialDraft={draft}
+            sourceTemplateName={sourceTemplateName}
+            unbindableExercises={unbindableExercises}
           />
         </>
       )}

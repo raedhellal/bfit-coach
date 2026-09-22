@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { CatalogPicker } from "./CatalogPicker";
+import { DayFocusField, NumberField, TextField, WeekdaySelect } from "./RoutineFields";
 import { copy } from "@/lib/copy";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -117,10 +118,30 @@ export function RoutineEditor({
   clientId,
   activePlan,
   initialDraft,
+  sourceTemplateName = null,
+  unbindableExercises = [],
 }: {
   clientId: string;
   activePlan: RoutinePlanView | null;
   initialDraft: CoachRoutineDraft | null;
+  /**
+   * EV-188 AC3 — the name of the template this draft was started from, resolved by the
+   * page from `CoachRoutineDraftResponse.sourceTemplateId`. Null for a hand-built
+   * draft, and null again once that template is deleted (`ON DELETE SET NULL`), which
+   * is AC2's delete rule showing through: the line disappears and nothing else does.
+   */
+  sourceTemplateName?: string | null;
+  /**
+   * EV-188 AC5 — exercise names the catalogue would not match today, re-derived by the
+   * api on every open and NEVER stored.
+   *
+   * The editor marks them IN PLACE and offers Replace and Remove, both of which already
+   * exist and both of which do something. It removes nothing on its own: "nothing
+   * removes an exercise from a coach's programming except a coach pressing Remove"
+   * (Ruling 5a). Because the list is re-derived rather than cached, the marks survive a
+   * reload and then disappear after a catalogue re-sync with no edit having been made.
+   */
+  unbindableExercises?: string[];
 }) {
   const router = useRouter();
   const [plan, setPlan] = useState<RoutinePlanView | null>(initialDraft ?? activePlan);
@@ -467,6 +488,20 @@ export function RoutineEditor({
     );
   }
 
+  /**
+   * The marks apply to the DRAFT the server sent. Once the coach edits, a row they
+   * added or replaced carries a name that is not in this set and is therefore unmarked
+   * — which is right: the api has not been asked about it, and claiming it is fine
+   * would be this surface answering a question only the catalogue can.
+   */
+  const unbindable = new Set(unbindableExercises.map((name) => name.toLowerCase()));
+  /** How many of the flagged names are still IN the plan the coach is looking at. */
+  const flaggedInPlan = plan.trainingDays.reduce(
+    (total, day) =>
+      total + day.exercises.filter((ex) => unbindable.has(ex.name.toLowerCase())).length,
+    0
+  );
+
   const addDayRefusal =
     firstFreeWeekday(plan.trainingDays) === null
       ? copy.routine.allWeekdaysUsed
@@ -552,6 +587,36 @@ export function RoutineEditor({
           {copy.routine.publishShowsFirst}
         </p>
 
+        {/* EV-188 AC3, verbatim. Present only while the template still exists. */}
+        {sourceTemplateName && isDraft && (
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+            {copy.templates.startedFrom(sourceTemplateName)}
+          </p>
+        )}
+
+        {/*
+          EV-188 AC5, verbatim, ABOVE the plan — "may", because the matcher is fuzzy and
+          the product does not claim to know more than it does. The count is the flagged
+          rows STILL PRESENT, so removing one takes it out of the sentence as well as
+          off the row; the sentence and the marks can never disagree.
+        */}
+        {flaggedInPlan > 0 && (
+          <p
+            role="status"
+            style={{
+              margin: "12px 0 0",
+              padding: "10px 12px",
+              borderRadius: "var(--r-lg)",
+              background: "var(--warn-bg)",
+              color: "var(--warn-ink)",
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            {copy.templates.unbindable(flaggedInPlan)}
+          </p>
+        )}
+
         <div ref={feedbackRef}>
           {notice && (
             <p role="status" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>
@@ -631,88 +696,26 @@ export function RoutineEditor({
                 place, and the order of this list decides nothing — the trainee's week is
                 ordered by the weekday itself (`RoutinePlanWriter` keys a map on it).
               */}
-              <select
-                aria-label={copy.routine.weekdayLabel(dayIndex + 1)}
+              <WeekdaySelect
+                dayIndex={dayIndex}
                 value={day.dayOfWeek}
-                onChange={(e) => setWeekday(dayIndex, Number(e.target.value))}
-                style={{
-                  height: MIN_TOUCH_TARGET,
-                  borderRadius: "var(--r-md)",
-                  border: "1px solid var(--border-2)",
-                  background: "var(--surface)",
-                  color: "var(--ink)",
-                  fontFamily: "var(--font-display)",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  padding: "0 10px",
-                }}
-              >
-                {ISO_WEEKDAY_NUMBERS.map((iso) => (
-                  <option key={iso} value={iso}>
-                    {isoWeekdayLabel(iso)}
-                  </option>
-                ))}
-              </select>
+                onChange={(dayOfWeek) => setWeekday(dayIndex, dayOfWeek)}
+              />
               {/*
-                EV-201 AC1 — the label this field never had.
-
-                It was the only editable field on the page with no visible one: an
-                `<input>` with an `aria-label`, between a `select` and a count, styled
-                like a heading. The label is a `<label>` wrapper in the Sets / Reps /
-                Rest style (12px / 600 / --ink-2 — see `NumberField`), so the field is
-                readable as a field and the `aria-label` keeps the per-day accessible
-                name that distinguishes six identical inputs. Nothing about the input's
-                behaviour changes; only a label line appears above it.
-
-                ⚠ `width: "100%"` on the input is LOAD-BEARING and is what the first cut
-                of this label got wrong (senior-qa 2026-09-21, Item 4). The input used to
-                be the flex item itself, so `minWidth: 0` let it shrink with the row —
-                53 / 93 / 123 / 147 px at 320 / 360 / 390 / 414. Wrapping it moved that
-                job to the `<label>`: measured at 390 px the label DOES shrink to 123 px,
-                but an `<input>` has an intrinsic width from its `size` attribute (207 px
-                here) and nothing was asking it to follow its parent — so it overflowed
-                its own label by 84 px and was painted UNDER the exercise count, which
-                then sat inside the field, and the page scrolled sideways at 320/360.
-                `minWidth: 0` on a non-flex-item does nothing about that; `width: 100%`
-                does. Any future wrapper around this field needs the same pairing.
+                EV-201 AC1's labelled focus field, and the load-bearing `width: 100%`
+                senior-qa measured on 2026-09-21 (item 4), both now in
+                `RoutineFields.tsx` so the template editor cannot grow a second copy of
+                the same overflow. The reasoning lives with the component.
               */}
-              <label style={{ display: "block", minWidth: 0 }}>
-                <div
-                  style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}
-                >
-                  {copy.routine.dayFocusLabel}
-                </div>
-                <input
-                  aria-label={`${copy.routine.dayLabel(dayIndex + 1)} focus`}
-                  value={day.focus}
-                  title={day.focus}
-                  onChange={(e) =>
-                    editDays((days) =>
-                      days.map((d, i) => (i === dayIndex ? { ...d, focus: e.target.value } : d))
-                    )
-                  }
-                  style={{
-                    // BUG-146's floor: a text input a coach taps at 390 px is a control,
-                    // and 36 px was below it. Everything else about the field is
-                    // unchanged — only the tap area grows.
-                    height: MIN_TOUCH_TARGET,
-                    borderRadius: "var(--r-md)",
-                    border: "1px solid var(--border-2)",
-                    background: "var(--surface)",
-                    padding: "0 10px",
-                    fontFamily: "var(--font-display)",
-                    fontSize: 14.5,
-                    fontWeight: 600,
-                    color: "var(--ink)",
-                    // See the ⚠ above: the field follows the label box, which is the
-                    // flex item that shrinks. `box-sizing: border-box` is global, so the
-                    // padding and the hairline border are inside these 100%.
-                    width: "100%",
-                    minWidth: 0,
-                    maxWidth: 220,
-                  }}
-                  />
-              </label>
+              <DayFocusField
+                dayIndex={dayIndex}
+                value={day.focus}
+                onChange={(focus) =>
+                  editDays((days) =>
+                    days.map((d, i) => (i === dayIndex ? { ...d, focus } : d))
+                  )
+                }
+              />
               <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
                 {copy.routine.exercises(day.exercises.length)}
               </span>
@@ -799,6 +802,15 @@ export function RoutineEditor({
                     {truncateName(exercise.name)}
                   </span>
                   <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {/*
+                      EV-188 AC5 — marked IN PLACE, in the day it belongs to, so the
+                      coach can see WHICH exercises without reading a list. The two
+                      actions the AC requires (Replace, Remove) are the row's own and
+                      both already do something.
+                    */}
+                    {unbindable.has(exercise.name.toLowerCase()) && (
+                      <Badge tone="amber">{copy.templates.notInCatalogue}</Badge>
+                    )}
                     {exercise.primaryMuscles && (
                       <Badge tone="neutral">{exercise.primaryMuscles}</Badge>
                     )}
@@ -1082,60 +1094,3 @@ function PublishModal({
     </Modal>
   );
 }
-
-function NumberField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label style={{ display: "block" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}>
-        {label}
-      </div>
-      <input
-        type="number"
-        min={1}
-        max={20}
-        value={value}
-        onChange={(e) => onChange(Math.max(1, Number(e.target.value) || 1))}
-        style={FIELD_STYLE}
-      />
-    </label>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label style={{ display: "block" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}>
-        {label}
-      </div>
-      <input value={value} onChange={(e) => onChange(e.target.value)} style={FIELD_STYLE} />
-    </label>
-  );
-}
-
-const FIELD_STYLE = {
-  height: MIN_TOUCH_TARGET,
-  width: 96,
-  borderRadius: "var(--r-md)",
-  border: "1px solid var(--border-2)",
-  background: "var(--surface)",
-  padding: "0 10px",
-  fontFamily: "var(--font-body)",
-  fontSize: 13.5,
-  color: "var(--ink)",
-} as const;

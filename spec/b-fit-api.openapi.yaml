@@ -3165,6 +3165,447 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/routine/save-as-template:
+    post:
+      summary: Save this trainee's routine into the coach's own library
+      description: >-
+        EV-188 AC1. `source=PLAN` copies the trainee's currently published routine document;
+        `source=DRAFT` copies the coach's unpublished draft for this link. Guarded by
+        `requireActiveLinkRow(WORKOUTS)` like every other mapping that reads a trainee's data — the
+        subject here is still a trainee, which is why this one lives under `/clients/{id}` and the
+        rest of the library does not.
+        The stored template carries the prescription and **no answer the trainee gave about
+        themselves**: `constraints.equipment` and `constraints.injuries` are normalised empty at the
+        write boundary and refused at the read boundary. A trainee with an active plan and no
+        routine document is refused with 400 COACH_TEMPLATE_SOURCE_EMPTY, never an empty template.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachTemplateFromRoutineRequest"
+      responses:
+        "201":
+          description: The new template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTemplateResponse"
+        "400":
+          description: >-
+            COACH_TEMPLATE_SOURCE_EMPTY, or COACH_TEMPLATE_TOO_LARGE naming the day and its count.
+            Nothing is truncated, dropped or saved partially.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: See GET /coach-portal/clients/{id}/routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_TEMPLATE_NAME_TAKEN, or COACH_TEMPLATE_LIMIT_REACHED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/templates:
+    get:
+      summary: The coach's own routine library
+      description: >-
+        EV-188 AC2. Newest-updated first; each row carries name, day count, exercise count and the
+        last-updated date, and nothing else. Unpaged because the cap is 50 rows per coach, enforced
+        at the write under a pessimistic lock — a bounded collection, not an unbounded query. A
+        second coach sees an EMPTY library, never a filtered view of this one.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The library
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTemplateListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Create a template
+      description: >-
+        EV-188 AC1's "New template". The submitted `constraints.equipment` and
+        `constraints.injuries` are stored EMPTY whatever they contain — a template carries the
+        prescription and nothing a trainee told us about themselves — and the read boundary refuses
+        any row where they are not.
+        The document is validated against the FULL publish contract — a template is held to exactly
+        the contract a draft is held to, so `trainingDays` must carry 2..6 days and `daysPerWeek`
+        must agree. There is no "template validation group": an earlier design had one and it was
+        withdrawn, because *strict now, relax later* is reversible while *permissive now, strict
+        later* strands rows in a store whose rows live for months.
+        The cost is deliberate and the portal must plan for it: **the server is not a scratchpad.**
+        An editor may not autosave a document with fewer than two training days; transient invalid
+        state belongs to the client, which is where every form editor already keeps it.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachTemplateSaveRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTemplateResponse"
+        "400":
+          description: >-
+            The document is invalid, or COACH_TEMPLATE_TOO_LARGE — a day over 12 exercises, named
+            with its count. Nothing is truncated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_TEMPLATE_NAME_TAKEN, or COACH_TEMPLATE_LIMIT_REACHED at 50
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/templates/{id}:
+    get:
+      summary: One template, with its document
+      description: >-
+        EV-188 AC1. Every denial on this mapping is ONE body — a template belonging to another
+        coach, an id that never existed and a template deleted in another tab are the same branch of
+        `requireOwnedTemplate`, not three branches that happen to agree. A template has no status
+        column and is not soft-deleted, so there is no third state to diverge.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTemplateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      summary: Replace a template
+      description: >-
+        EV-188 AC2's Edit. Editing REPLACES; there is no versioning and no history, and two variants
+        are a Duplicate plus a Rename. **Editing a template after it has been used changes nothing
+        for any trainee it was used on** — the copy was one-way and the link was severed at the
+        moment of copying. Deleting one changes nothing either.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachTemplateSaveRequest"
+      responses:
+        "200":
+          description: The saved template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTemplateResponse"
+        "400":
+          description: Invalid, or COACH_TEMPLATE_TOO_LARGE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_TEMPLATE_NAME_TAKEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Delete a template
+      description: >-
+        EV-188 AC2. After it, every draft and every published plan previously produced from this
+        template is COMPLETELY unchanged — `coach_plan_drafts.source_template_id` is ON DELETE SET
+        NULL, so the editor's "Started from {name}" line disappears and nothing else does. That is a
+        delete RULE, not a test.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/templates/{id}/rename:
+    post:
+      summary: Rename a template
+      description: >-
+        EV-188 AC2. Its own mapping rather than a nullable document on the save body: a rename from
+        the library list must not have to fetch the whole document first, and "null means leave it
+        alone" is the suppression-parameter shape this API rejects by rule. A name the coach already
+        uses is refused and leaves BOTH templates unchanged. The uniqueness key folds case and
+        surrounding whitespace, because a coach who has "Push Day" does mean they already have
+        "push day ".
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachTemplateRenameRequest"
+      responses:
+        "200":
+          description: The renamed template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTemplateResponse"
+        "400":
+          description: Empty, whitespace-only, or over 80 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_TEMPLATE_NAME_TAKEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/templates/{id}/duplicate:
+    post:
+      summary: Duplicate a template
+      description: >-
+        EV-188 AC2. The copy is named "{name} (copy)", then "(copy 2)" and so on — the name key is
+        folded and unique, so the suffix must probe, and the probe is BOUNDED rather than a loop.
+        The copy is **semantically** identical (same days, same exercises, same prescriptions), not
+        byte-identical: it re-serialises through the same write boundary, and copying the raw JSONB
+        in SQL would bypass the boundary the stripping guarantee depends on. No template write path
+        may bypass it.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: The copy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTemplateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_TEMPLATE_LIMIT_REACHED at 50
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/templates/{id}/apply:
+    post:
+      summary: Use this template on a trainee
+      description: >-
+        EV-188 AC3. Fills THAT trainee's draft and touches nothing else: no `plans` row, no
+        `user_plan` row, no assignment row. The trainee's app, refreshed at that moment, still shows
+        their old plan. Publishing is EV-184's unchanged preview → digest → publish, with the same
+        repair acknowledgement and the same provenance — `plans.authored_by` is the coach,
+        `plans.source` is COACH and `plans.source_plan_id` stays NULL. A template-derived plan is
+        indistinguishable, to the trainee, from a hand-built one, and that is intended.
+        **Apply is DEFAULT-REFUSING.** Without `replacesDraftUpdatedAt`, an existing draft answers
+        409 COACH_DRAFT_EXISTS carrying that draft's `updatedAt`, and the retry echoes it. The
+        comparison happens inside the write transaction, so a second tab that saved in between
+        causes the retry to be refused AGAIN rather than to overwrite — which is the only thing that
+        makes the portal's "this replaces your unpublished draft" sentence true.
+        Apply runs NO policy and reads NOTHING about the trainee: the trainee's injuries and
+        equipment are applied when the plan is PUBLISHED. `unbindableExercises` is advisory — every
+        exercise is copied verbatim and nothing is ever removed except by the coach pressing Remove.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachTemplateApplyRequest"
+      responses:
+        "200":
+          description: The trainee's draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTemplateApplyResponse"
+        "400":
+          description: >-
+            COACH_PLAN_EMPTY for a template with no training day, or
+            COACH_TEMPLATE_NOT_PUBLISHABLE for a day count a plan cannot carry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Foreign, unknown or deleted template; a clientId this coach is not linked to; or a link
+            without WORKOUTS. Answered EVEN WHILE the catalogue is unavailable, so a stranger never
+            learns the catalogue's state from a 503 where they should have had a 403.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_DRAFT_EXISTS — `details.existingUpdatedAt` is what the retry echoes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: CATALOG_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /coach-portal/catalog/exercises:
     get:
       summary: The exercise catalog the coach picks from
@@ -4523,6 +4964,204 @@ components:
           type: string
           format: date-time
           nullable: true
+        sourceTemplateId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            EV-188a. Which template this draft was started from, for the editor's "Started from
+            {name}" line. Null for a hand-built draft, and null again once that template is deleted
+            (ON DELETE SET NULL). It is never provenance on the PUBLISHED plan: publish deletes the
+            draft row, so after a publish no row anywhere joins a plan to a template — which is what
+            makes back-propagation underivable rather than merely disabled.
+        unbindableExercises:
+          type: array
+          items:
+            type: string
+          description: >-
+            EV-188 AC5. Exercise names in this draft that the catalogue would not match today,
+            RE-DERIVED on every open and NEVER stored. A stored staleness flag is a cache of an
+            opinion about a catalogue that moves: wrong from the moment it is written, surviving the
+            sync that fixes it, and needing a sweeper. Because it is transient, a mark computed over
+            a half-built index is wrong for at most one page view. The marks may legitimately differ
+            between two opens of an UNEDITED draft — that is the honest rendering of a fuzzy matcher
+            over a moving catalogue, and nothing here ever removes an exercise.
+        catalogChecked:
+          type: boolean
+          description: >-
+            Whether the catalogue check ran at all. FALSE with an empty list means NOT CHECKED,
+            which is a different fact from "checked and clean" — the same distinction
+            `GuardrailInputs.equipmentChecked` exists for. On a fresh deploy the derived index is
+            built over zero rows and a naive recompute would mark every exercise in every draft.
+            This read does NOT answer 503 for that: refusing to open a draft because a background
+            sync is in flight is a worse failure than an unchecked one.
+    CoachTemplateSaveRequest:
+      type: object
+      description: A routine template to create or replace.
+      required: [name, document]
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          description: >-
+            Unique per coach, folded for case and surrounding whitespace. VARCHAR(80) counts
+            CHARACTERS; JavaScript's .length counts UTF-16 code units. They agree for BMP characters
+            — including Arabic base letters and harakat — and disagree for anything outside the BMP,
+            i.e. emoji, where JS counts 2 and Postgres counts 1.
+        document:
+          allOf:
+            - $ref: "#/components/schemas/Routine"
+          description: >-
+            The routine document. `constraints.equipment` and `constraints.injuries` are @NotNull on
+            the shared Routine type, so a caller CANNOT omit them — and the server reads neither as
+            a claim about anybody: both are stored empty and any row where they are not is refused
+            when it is read back.
+    CoachTemplateRenameRequest:
+      type: object
+      description: A new name for an existing template.
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 80
+    CoachTemplateFromRoutineRequest:
+      type: object
+      description: Save this trainee's routine into the coach's own library.
+      required: [name, source]
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          description: Pre-named with the plan's name by the portal, editable before saving.
+        source:
+          type: string
+          enum: [PLAN, DRAFT]
+          description: >-
+            A closed enum rather than a boolean. "From the published plan" and "from my unpublished
+            draft" are two facts, and a boolean named fromDraft would make the third source somebody
+            adds a second boolean.
+    CoachTemplateApplyRequest:
+      type: object
+      description: Which trainee to put this template on, and what it may replace.
+      required: [clientId]
+      properties:
+        clientId:
+          type: string
+          format: uuid
+          description: >-
+            The coach_clients link id for the target trainee. It is a link id in a BODY, which this
+            prefix otherwise never does — and it is still not trusted: it is resolved through
+            requireActiveLinkRow(principal, clientId, WORKOUTS) exactly as a path segment would be.
+            The URL addresses the TEMPLATE because that is the resource the capability is minted
+            from; the trainee is the second subject of a two-subject operation and both are checked.
+        replacesDraftUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            The updatedAt of the draft this apply is allowed to replace, echoed from a previous
+            409 COACH_DRAFT_EXISTS. ABSENT means "only if there is no draft".
+    CoachTemplateResponse:
+      type: object
+      description: A routine template in the coach's private library.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        schemaVersion:
+          type: integer
+        document:
+          allOf:
+            - $ref: "#/components/schemas/Routine"
+          description: >-
+            The prescription. `constraints.equipment` and `constraints.injuries` are ALWAYS empty —
+            a template carries no answer a trainee gave about themselves. `minutesPerSession` and
+            `daysPerWeek` are the coach's own prescription and do survive.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CoachTemplateSummaryResponse:
+      type: object
+      description: >-
+        One row of the library list: name, day count, exercise count, last-updated — and nothing
+        else. The two counts are derived from the document in Java, per row, on every list call. NOT
+        denormalised counter columns: two columns to keep in step with a document, for a list a
+        coach opens by hand.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        dayCount:
+          type: integer
+        exerciseCount:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+    CoachTemplateListResponse:
+      type: object
+      description: >-
+        The coach's library, newest-updated first. Unpaged, and that is a bounded decision rather
+        than an unbounded query: the cap is 50 rows per coach, enforced at the write under a
+        pessimistic lock.
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachTemplateSummaryResponse"
+        limit:
+          type: integer
+          description: >-
+            The product cap on templates per coach. Served so the portal can render the refusal copy
+            without hard-coding the number. It is a PRODUCT bound — a flat list of 50 needs no
+            folders, tags or search — and NOT a storage control: it bounds the count, not the size.
+        remaining:
+          type: integer
+          description: >-
+            How many more this coach may create, so "Delete one to make room" can be shown BEFORE
+            the 409 rather than only after it.
+    CoachTemplateApplyResponse:
+      type: object
+      description: The trainee's draft, as it now stands after a template was copied into it.
+      properties:
+        clientId:
+          type: string
+          format: uuid
+        sourceTemplateId:
+          type: string
+          format: uuid
+        sourceTemplateName:
+          type: string
+        document:
+          $ref: "#/components/schemas/Routine"
+        updatedAt:
+          type: string
+          format: date-time
+        replacedExistingDraft:
+          type: boolean
+        unbindableExercises:
+          type: array
+          items:
+            type: string
+          description: >-
+            Advisory and never persisted. A template holds a NAME, not a catalogue reference, so
+            "stale" can only mean "the fuzzy matcher would not bind this name today" — an opinion
+            about a catalogue that moves and that can be half-synced. Deleting a coach's programming
+            on that opinion would make the same name behave two ways depending on which button the
+            coach pressed, and would turn a transient into a permanent loss. The decision moves from
+            the matcher to the coach, who can still reach the same end state by pressing Remove.
+        catalogChecked:
+          type: boolean
+          description: >-
+            Whether the catalogue check could run. FALSE with an empty list is "not checked", which
+            is not the same fact as "checked and clean".
     CoachPublishPreviewResponse:
       type: object
       description: What publishing this draft would change, and the token that acknowledges it.

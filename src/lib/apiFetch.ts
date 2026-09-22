@@ -11,21 +11,45 @@ import { cookies } from "next/headers";
 export class ApiError extends Error {
   status: number;
   code: string | null;
-  constructor(status: number, message: string, code: string | null = null) {
+  /**
+   * `ApiError.details` — the third member of ADR-0013's handler envelope.
+   *
+   * It was dropped until EV-188b because no refusal this surface handled carried one.
+   * `409 COACH_DRAFT_EXISTS` does: `details.existingUpdatedAt` is the timestamp of the
+   * draft the apply refused to replace, and ADR-0016 D9.1's whole point is that the
+   * portal ECHOES it back rather than pre-reading the draft itself. Without this field
+   * AC3's confirm would have to check-then-act across two tabs, which is the design the
+   * ADR rejected by name: "the dialog becomes a lie".
+   *
+   * Typed as `unknown` values, never parsed here — the shape is per-code and the one
+   * reader (`draftExistsUpdatedAt`) narrows it at its own call site.
+   */
+  details: Record<string, unknown> | null;
+  constructor(
+    status: number,
+    message: string,
+    code: string | null = null,
+    details: Record<string, unknown> | null = null
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
-/** The api's error envelope is `{ code, message }` (`ErrorResponse`). */
+/** The api's error envelope is `{ code, message, details? }` (`ApiError`). */
 function toApiError(status: number, body: unknown): ApiError {
-  const b = body as { code?: unknown; message?: unknown } | null;
+  const b = body as { code?: unknown; message?: unknown; details?: unknown } | null;
   const code = typeof b?.code === "string" ? b.code : null;
   const message =
     typeof b?.message === "string" ? b.message : `Request failed (${status})`;
-  return new ApiError(status, message, code);
+  const details =
+    b?.details && typeof b.details === "object" && !Array.isArray(b.details)
+      ? (b.details as Record<string, unknown>)
+      : null;
+  return new ApiError(status, message, code, details);
 }
 
 async function parse(res: Response): Promise<unknown> {

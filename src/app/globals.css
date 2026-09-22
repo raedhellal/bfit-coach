@@ -102,3 +102,46 @@ input::placeholder { color:var(--ink-3); }
   .login-brand { display: none; }
   .login-form { width: 100%; }
 }
+
+/* ── the portal header (CoachShell) ──────────────────────────────────────────
+   One bar on a wide screen; the navigation drops to its own line below 520 px.
+
+   This is a class rather than an inline style because a media query cannot override
+   one, and the narrow case is not cosmetic: measured at 320 px with the nav inline,
+   the nav box shrank to 88.75 px against ~155 px of intrinsic link width, so the
+   "Templates" link overflowed and was painted under the Sign out button. `toBeVisible()`
+   passes on that; `qa/layout.ts`'s box-intersection and hit test do not. */
+.shell-bar {
+  max-width: 1180px;
+  margin: 0 auto;
+  height: 62px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.shell-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+@media (max-width: 520px) {
+  .shell-bar {
+    height: auto;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    row-gap: 6px;
+  }
+  /* `flex-wrap` above is what actually prevents the overlap — MEASURED: removing this
+     rule alone leaves the sweep green, removing the whole media query turns it red with
+     a 43 px overlap at 320 px. These two lines are for PLACEMENT, so the nav lands on a
+     line of its own, below the coach's name and the sign-out control, rather than
+     wherever wrapping happens to put it. Belt to that brace, and said so rather than
+     claimed as the fix. */
+  .shell-nav {
+    order: 3;
+    flex-basis: 100%;
+  }
+}

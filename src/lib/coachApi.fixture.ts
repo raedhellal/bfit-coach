@@ -12,6 +12,11 @@ import type {
   CoachRoutineDraftResponse,
   CoachRoutineGuardrails,
   CoachRoutineResponse,
+  CoachTemplate,
+  CoachTemplateApplyResult,
+  CoachTemplateFromRoutineRequest,
+  CoachTemplateList,
+  CoachTemplateSaveRequest,
   CoachTargetsRequest,
   CoachTargetsResult,
   InviteResponse,
@@ -26,6 +31,7 @@ import type {
   RosterClient,
   RosterPage,
   Routine,
+  RoutineDayEntry,
   RoutineExerciseEntry,
   RoutinePlanView,
   SwapOptions,
@@ -386,6 +392,23 @@ async function fail(status: number, code: string, message: string): Promise<neve
 }
 
 /**
+ * The same refusal, carrying ADR-0013's third envelope member.
+ *
+ * Only `409 COACH_DRAFT_EXISTS` needs one today, and it needs it badly: the portal's
+ * retry echoes `details.existingUpdatedAt`, so a fixture that dropped `details` would
+ * make the retry untestable and the confirm dialog a claim nobody had checked.
+ */
+async function failWithDetails(
+  status: number,
+  code: string,
+  message: string,
+  details: Record<string, unknown>
+): Promise<never> {
+  const { ApiError } = await import("./apiFetch");
+  throw new ApiError(status, message, code, details);
+}
+
+/**
  * Every read and write in both tabs goes through this first.
  *
  * One body for all four denials — revoked, unknown id, no link, scope missing — which
@@ -690,6 +713,228 @@ function toRoutineDocument(id: string, plan: RoutinePlanView): Routine {
     },
     summary: null,
   };
+}
+
+
+// ── EV-188b the coach's routine library ─────────────────────────────────────
+
+/**
+ * The fixture's half of EV-188.
+ *
+ * It reproduces the api's REFUSALS, not just its happy paths, because every one of
+ * them has a sentence on screen that would otherwise be untestable: the folded name
+ * collision, the bounded `(copy N)` probe, the 50 cap, the 12-per-day bound, the
+ * legacy trainee with no routine, and — the one that matters most — apply's
+ * **default-refusing** 409 carrying `details.existingUpdatedAt`.
+ *
+ * ⚠ It does NOT reproduce the api's `@Valid` refusal of a sub-publishable document,
+ * and that is deliberate: `src/lib/templateDocument.ts` stops such a document from
+ * being sent at all, so a fixture 400 would test a path the portal cannot reach. What
+ * IS tested is that the editor refuses first — which is the behaviour ADR-0016
+ * §Amendment V1b obliges this surface to have.
+ */
+const TEMPLATE_LIMIT = 50; // CoachTemplateUseCase.MAX_TEMPLATES_PER_COACH
+const COPY_SUFFIX_MAX = 20; // the probe is BOUNDED, never a loop
+
+/** The api folds case and surrounding whitespace for the uniqueness key. */
+function nameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function templateDocument(name: string, days: RoutineDayEntry[]): Routine {
+  return {
+    name,
+    goal: "BUILD_MUSCLE",
+    level: "INTERMEDIATE",
+    daysPerWeek: days.length,
+    trainingDays: days.map((day) => ({
+      dayOfWeek: day.dayOfWeek,
+      focus: day.focus,
+      estimatedMinutes: null,
+      exercises: day.exercises.map((ex) => ({
+        name: ex.name,
+        sets: ex.sets,
+        reps: ex.reps,
+        rest: ex.rest,
+        tempo: null,
+        notes: null,
+        trackingType: "WEIGHT_REPS" as const,
+        durationSeconds: null,
+        weight: null,
+      })),
+    })),
+    weeklyProgression: [],
+    // AC4: ALWAYS empty. The api strips on write and refuses on read; the fixture
+    // must not be the one place a trainee's answers survive in a template.
+    constraints: { equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: days.length },
+    summary: null,
+  };
+}
+
+/**
+ * A raw exercise name that is NOT in the fixture catalog, so AC5's unbindable mark is
+ * reachable. The api's version of this is a fuzzy matcher over a catalogue that moves;
+ * here it is simply a name with no row, which produces the same observable.
+ */
+function rawEntry(name: string, sets: number, reps: string, rest: string): RoutineExerciseEntry {
+  return { catalogSlug: null, name, primaryMuscles: null, equipment: null, sets, reps, rest };
+}
+
+/**
+ * Two seeded templates, because an empty library and a populated one are different
+ * screens and both are ACs. "Legacy strength" carries two exercise names the catalog
+ * has never held — that is AC5's scenario, and it is seeded rather than constructed
+ * through the editor because the editor cannot produce one (an exercise can only arrive
+ * through `CatalogPicker`).
+ */
+function seedTemplates(): CoachTemplate[] {
+  const now = Date.now();
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
+  return [
+    {
+      id: "7c2d0a11-0000-4000-8000-0000000000b1",
+      name: "Upper / Lower split",
+      schemaVersion: 1,
+      document: templateDocument("Upper / Lower split", [
+        {
+          dayOfWeek: 1,
+          focus: "Upper body",
+          exercises: [
+            exercise("barbell-bench-press", 4, "6-8", "120s"),
+            exercise("chest-supported-row", 4, "8-10", "90s"),
+            exercise("barbell-overhead-press", 3, "8-10", "90s"),
+          ],
+        },
+        {
+          dayOfWeek: 4,
+          focus: "Lower body",
+          exercises: [
+            exercise("barbell-back-squat", 4, "5-6", "150s"),
+            exercise("romanian-deadlift", 3, "8-10", "120s"),
+            exercise("standing-calf-raise", 3, "12-15", "60s"),
+          ],
+        },
+      ]),
+      createdAt: at(60 * 24 * 9),
+      updatedAt: at(60 * 24 * 2),
+    },
+    {
+      id: "7c2d0a11-0000-4000-8000-0000000000b2",
+      name: "Legacy strength",
+      schemaVersion: 1,
+      document: templateDocument("Legacy strength", [
+        {
+          dayOfWeek: 2,
+          focus: "Push",
+          exercises: [
+            exercise("dumbbell-bench-press", 3, "8-10", "90s"),
+            // AC5 — two names the catalogue would not match today.
+            rawEntry("Svend Press", 3, "12-15", "60s"),
+            rawEntry("Zercher Carry", 3, "30m", "90s"),
+          ],
+        },
+        {
+          dayOfWeek: 5,
+          focus: "Pull",
+          exercises: [
+            exercise("lat-pulldown", 3, "10-12", "75s"),
+            exercise("seated-cable-row", 3, "10-12", "75s"),
+          ],
+        },
+      ]),
+      createdAt: at(60 * 24 * 30),
+      updatedAt: at(60 * 24 * 11),
+    },
+  ];
+}
+
+/** `GET /coach-portal/templates` order: newest-updated first. */
+function templatesNewestFirst(): CoachTemplate[] {
+  return [...state().templates.values()].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+}
+
+async function ownedTemplate(id: string): Promise<CoachTemplate> {
+  const found = state().templates.get(id);
+  // AC1/AC2 — ONE body for foreign, unknown and deleted. Not an existence oracle.
+  if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  return found as CoachTemplate;
+}
+
+async function assertNameFree(name: string, exceptId: string | null): Promise<void> {
+  const key = nameKey(name);
+  for (const template of state().templates.values()) {
+    if (template.id !== exceptId && nameKey(template.name) === key) {
+      await fail(409, "COACH_TEMPLATE_NAME_TAKEN", "You already have a template called that.");
+    }
+  }
+}
+
+async function assertRoom(): Promise<void> {
+  if (state().templates.size >= TEMPLATE_LIMIT) {
+    await fail(409, "COACH_TEMPLATE_LIMIT_REACHED", "Template limit reached.");
+  }
+}
+
+/** AC2 — the day-size bound, refused with the day NAMED and nothing truncated. */
+async function assertDaySizes(document: Routine): Promise<void> {
+  for (let i = 0; i < document.trainingDays.length; i += 1) {
+    const count = document.trainingDays[i].exercises.length;
+    if (count > 12) {
+      await fail(
+        400,
+        "COACH_TEMPLATE_TOO_LARGE",
+        `A training day can hold up to 12 exercises. Day ${i + 1} has ${count}.`
+      );
+    }
+  }
+}
+
+/** Edge case 7 — `(copy)`, then `(copy 2)`. The probe is bounded, never a loop. */
+function copyName(original: string): string {
+  const base = `${original} (copy)`;
+  const taken = new Set([...state().templates.values()].map((t) => nameKey(t.name)));
+  if (!taken.has(nameKey(base))) return base;
+  for (let suffix = 2; suffix <= COPY_SUFFIX_MAX; suffix += 1) {
+    const candidate = `${original} (copy ${suffix})`;
+    if (!taken.has(nameKey(candidate))) return candidate;
+  }
+  return `${original} (copy ${Date.now()})`;
+}
+
+/**
+ * AC5 — the names the catalogue would not match, RE-DERIVED on every read.
+ *
+ * Never stored, which is what makes the marks disappear after a re-sync with no edit
+ * having been made, and what makes two opens of an unedited draft legitimately differ.
+ */
+function unbindableNames(days: RoutineDayEntry[]): string[] {
+  const known = new Set(CATALOG.map((e) => e.name.toLowerCase()));
+  const out: string[] = [];
+  for (const day of days) {
+    for (const ex of day.exercises) {
+      if (!known.has(ex.name.toLowerCase()) && !out.includes(ex.name)) out.push(ex.name);
+    }
+  }
+  return out;
+}
+
+function toDayEntries(document: Routine): RoutineDayEntry[] {
+  return document.trainingDays.map((day) => ({
+    dayOfWeek: day.dayOfWeek,
+    focus: day.focus,
+    exercises: day.exercises.map((ex) => {
+      const known = CATALOG.find((c) => c.name.toLowerCase() === ex.name.toLowerCase());
+      return {
+        catalogSlug: known?.slug ?? null,
+        name: ex.name,
+        primaryMuscles: known?.primaryMuscles ?? null,
+        equipment: known?.equipment ?? null,
+        sets: ex.sets,
+        reps: ex.reps ?? "",
+        rest: ex.rest,
+      };
+    }),
+  }));
 }
 
 /** djb2. Not a security primitive — it stands in for whatever the api will hash. */
@@ -1012,6 +1257,15 @@ interface FixtureState {
   drafts: Map<string, CoachRoutineDraft>;
   /** The digest handed out by the last preview, per trainee (EV-184 ruling 2). */
   pendingDigest: Map<string, string>;
+  /** EV-188b — the coach's library, keyed by template id. */
+  templates: Map<string, CoachTemplate>;
+  /**
+   * Which template each trainee's CURRENT draft was started from
+   * (`coach_plan_drafts.source_template_id`). Cleared when the draft is discarded or
+   * published, and — AC2's delete rule — when the template itself is deleted, which is
+   * `ON DELETE SET NULL` in the api. A hand-built draft has no entry.
+   */
+  draftTemplate: Map<string, string>;
   nutrition: Map<string, NutritionState>;
 }
 
@@ -1035,6 +1289,8 @@ function freshState(): FixtureState {
     ]),
     drafts: new Map(),
     pendingDigest: new Map(),
+    templates: new Map(seedTemplates().map((t) => [t.id, t])),
+    draftTemplate: new Map(),
     nutrition: new Map(),
   };
 }
@@ -1146,8 +1402,33 @@ export const fixtureCoachApi: CoachApi = {
   async getRoutineDraft(id: string): Promise<CoachRoutineDraftResponse> {
     await assertScope(id, "WORKOUTS");
     const draft = state().drafts.get(id) ?? null;
-    if (!draft) return { document: null, schemaVersion: null, updatedAt: null };
-    return { document: toRoutineDocument(id, draft), schemaVersion: 1, updatedAt: draft.updatedAt };
+    if (!draft) {
+      return {
+        document: null,
+        schemaVersion: null,
+        updatedAt: null,
+        sourceTemplateId: null,
+        unbindableExercises: [],
+        // No draft, so nothing was checked. `false` with an empty list is "not
+        // checked", which the portal must not render as "checked and clean".
+        catalogChecked: false,
+      };
+    }
+    /**
+     * AC5 — re-derived on EVERY read and never stored, which is what makes the marks
+     * survive a reload and then disappear after a catalogue re-sync with no edit
+     * having been made. The catalog outage is the "not checked" case, and it answers
+     * an empty list with `catalogChecked: false` rather than marking everything.
+     */
+    const down = catalogIsDown();
+    return {
+      document: toRoutineDocument(id, draft),
+      schemaVersion: 1,
+      updatedAt: draft.updatedAt,
+      sourceTemplateId: state().draftTemplate.get(id) ?? null,
+      unbindableExercises: down ? [] : unbindableNames(draft.trainingDays),
+      catalogChecked: !down,
+    };
   },
 
   async saveRoutineDraft(
@@ -1171,6 +1452,9 @@ export const fixtureCoachApi: CoachApi = {
     await assertScope(id, "WORKOUTS");
     state().drafts.delete(id);
     state().pendingDigest.delete(id);
+    // The draft row is gone, so its `source_template_id` goes with it. A later
+    // hand-built draft must not inherit "Started from …" from a discarded one.
+    state().draftTemplate.delete(id);
   },
 
   async previewPublish(id: string): Promise<PublishPreview> {
@@ -1268,6 +1552,213 @@ export const fixtureCoachApi: CoachApi = {
         new Set(CATALOG.map((e) => e.equipment).filter((m): m is string => !!m))
       ).sort(),
     };
+  },
+
+  // ── EV-188b the coach's routine library ───────────────────────────────────
+
+  async listTemplates(): Promise<CoachTemplateList> {
+    const templates = templatesNewestFirst();
+    return {
+      templates: templates.map((t) => ({
+        id: t.id,
+        name: t.name,
+        dayCount: t.document.trainingDays.length,
+        exerciseCount: t.document.trainingDays.reduce((n, d) => n + d.exercises.length, 0),
+        updatedAt: t.updatedAt,
+      })),
+      limit: TEMPLATE_LIMIT,
+      remaining: Math.max(0, TEMPLATE_LIMIT - templates.length),
+    };
+  },
+
+  async getTemplate(id: string): Promise<CoachTemplate> {
+    return ownedTemplate(id);
+  },
+
+  async createTemplate(body: CoachTemplateSaveRequest): Promise<CoachTemplate> {
+    await assertRoom();
+    await assertNameFree(body.name, null);
+    await assertDaySizes(body.document);
+    const now = new Date().toISOString();
+    const created: CoachTemplate = {
+      id: crypto.randomUUID(),
+      name: body.name.trim(),
+      schemaVersion: 1,
+      // The api strips the two trainee-answer lists at the write boundary whatever the
+      // body carries. The fixture does the same, so a portal bug that started sending
+      // them could never look like it worked here.
+      document: {
+        ...body.document,
+        constraints: { ...body.document.constraints, equipment: [], injuries: [] },
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    state().templates.set(created.id, created);
+    return created;
+  },
+
+  async updateTemplate(id: string, body: CoachTemplateSaveRequest): Promise<CoachTemplate> {
+    const existing = await ownedTemplate(id);
+    await assertNameFree(body.name, id);
+    await assertDaySizes(body.document);
+    const saved: CoachTemplate = {
+      ...existing,
+      name: body.name.trim(),
+      document: {
+        ...body.document,
+        constraints: { ...body.document.constraints, equipment: [], injuries: [] },
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    state().templates.set(id, saved);
+    return saved;
+  },
+
+  async renameTemplate(id: string, name: string): Promise<CoachTemplate> {
+    const existing = await ownedTemplate(id);
+    // AC2: a collision leaves BOTH templates unchanged — the throw happens before the
+    // map is touched, which is the whole of that guarantee here.
+    await assertNameFree(name, id);
+    const saved: CoachTemplate = {
+      ...existing,
+      name: name.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+    state().templates.set(id, saved);
+    return saved;
+  },
+
+  async duplicateTemplate(id: string): Promise<CoachTemplate> {
+    const original = await ownedTemplate(id);
+    await assertRoom();
+    const now = new Date().toISOString();
+    /**
+     * AC2 as amended by Ruling 6a: **semantically** identical, not byte-identical. The
+     * copy is rebuilt through the same write path rather than aliased — sharing the
+     * object would make an edit to one show up in the other, and copying raw storage is
+     * what ADR-0016 D9.3 forbids on the api side because it bypasses the write boundary
+     * the stripping guarantee stands on.
+     */
+    const duplicated: CoachTemplate = {
+      id: crypto.randomUUID(),
+      name: copyName(original.name),
+      schemaVersion: original.schemaVersion,
+      document: JSON.parse(JSON.stringify(original.document)) as Routine,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state().templates.set(duplicated.id, duplicated);
+    return duplicated;
+  },
+
+  async deleteTemplate(id: string): Promise<void> {
+    await ownedTemplate(id);
+    state().templates.delete(id);
+    /**
+     * Ruling 2, and AC2's most important assertion: deleting a template changes NOTHING
+     * about any draft or plan made from it. `source_template_id` is `ON DELETE SET
+     * NULL`, so the "Started from …" line disappears and the draft's content is
+     * untouched — which is exactly what this loop does and all it does.
+     */
+    for (const [clientId, templateId] of state().draftTemplate.entries()) {
+      if (templateId === id) state().draftTemplate.delete(clientId);
+    }
+  },
+
+  async applyTemplate(
+    id: string,
+    clientId: string,
+    replacesDraftUpdatedAt?: string
+  ): Promise<CoachTemplateApplyResult> {
+    const template = await ownedTemplate(id);
+    /**
+     * AC5 — the 403 is answered EVEN WHILE the catalogue is unavailable, so a stranger
+     * never learns the catalogue's state from a 503 where they should have had a 403.
+     * Scope first, then the outage.
+     */
+    await assertScope(clientId, "WORKOUTS");
+    if (catalogIsDown()) {
+      await fail(503, "CATALOG_UNAVAILABLE", "The exercise catalogue is unavailable.");
+    }
+
+    /**
+     * AC3 / ADR-0016 D9.1 — **default-refusing**, and the comparison is here, at the
+     * write, not at a read the client did earlier. Without the assertion an existing
+     * draft is a 409 carrying its `updatedAt`; WITH an assertion that no longer matches
+     * — a second tab saved in between — it is refused AGAIN. That is the only thing
+     * that makes the portal's "this replaces your unpublished draft" sentence true.
+     */
+    const existing = state().drafts.get(clientId) ?? null;
+    if (existing && existing.updatedAt !== replacesDraftUpdatedAt) {
+      await failWithDetails(409, "COACH_DRAFT_EXISTS", "This trainee already has a draft.", {
+        existingUpdatedAt: existing.updatedAt,
+      });
+    }
+
+    const updatedAt = new Date().toISOString();
+    const days = toDayEntries(template.document);
+    state().drafts.set(clientId, {
+      // A draft has never been published, so it carries no plan id.
+      planId: null,
+      name: template.document.name,
+      trainingDays: days,
+      updatedAt,
+    });
+    state().draftTemplate.set(clientId, template.id);
+    // Any new draft invalidates a publish acknowledgement taken against the old one.
+    state().pendingDigest.delete(clientId);
+
+    return {
+      clientId,
+      sourceTemplateId: template.id,
+      sourceTemplateName: template.name,
+      document: template.document,
+      updatedAt,
+      replacedExistingDraft: existing !== null,
+      // Advisory and never persisted. Nothing is removed on it.
+      unbindableExercises: unbindableNames(days),
+      catalogChecked: true,
+    };
+  },
+
+  async saveRoutineAsTemplate(
+    id: string,
+    body: CoachTemplateFromRoutineRequest
+  ): Promise<CoachTemplate> {
+    await assertScope(id, "WORKOUTS");
+    const source =
+      body.source === "DRAFT"
+        ? (state().drafts.get(id) ?? null)
+        : (state().plans.get(id) ?? null);
+    /**
+     * Edge case 12 — an active plan with no routine document (the legacy population).
+     * Refused with a code and a sentence naming the reason; never an empty template
+     * silently created. The portal hides the control for this trainee as well, so this
+     * is the belt to that brace.
+     */
+    if (!source) {
+      await fail(400, "COACH_TEMPLATE_SOURCE_EMPTY", "This trainee has no routine to copy.");
+    }
+    const plan = source as RoutinePlanView;
+    await assertRoom();
+    await assertNameFree(body.name, null);
+    const document = templateDocument(plan.name, plan.trainingDays);
+    await assertDaySizes(document);
+    const now = new Date().toISOString();
+    const created: CoachTemplate = {
+      id: crypto.randomUUID(),
+      name: body.name.trim(),
+      schemaVersion: 1,
+      // AC4 — the prescription, and nothing the trainee told us about themselves.
+      // `templateDocument` writes both lists empty; the trainee's guardrails are never
+      // read on this path at all.
+      document,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state().templates.set(created.id, created);
+    return created;
   },
 
   // ── EV-185b nutrition ─────────────────────────────────────────────────────
