@@ -3857,6 +3857,70 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/progress-goal:
+    put:
+      summary: Set the trainee's programme start date and milestone weight
+      description: >-
+        EV-202a AC1. **TWO values, and there is no third.** Start weight, current weight, start body
+        fat and current body fat are DERIVED from the trainee's own `weigh_ins` and
+        `body_measurements` rows — the trainee owns their body data and already records it, a
+        coach-typed baseline would be a second writer on it, and a derived one cannot go stale
+        against the chart printed below it. No field on this request could carry one.
+        A **PUT of the whole representation**: an omitted value CLEARS that value, which is an
+        explicit write and not a no-op — the row survives with a null milestone, `set_by` updated,
+        and the trainee's milestone row disappears from their Measurements screen.
+        Last write wins. Two scalars, one actor, no trainee writer.
+        The response is the SAME block `GET /coach-portal/clients/{id}` embeds, recomputed from the
+        trainee's readings, so the portal needs no refetch.
+        🔴 **G-GOAL**: the milestone weight is a NARRATIVE number. No routine generator, no
+        nutrition target calculation, no prompt and no policy reads it. A coach typing 60 here does
+        not move a calorie target by one kilocalorie.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachProgressGoalRequest"
+      responses:
+        "200":
+          description: The saved goal and the derived block
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraineeProgressGoal"
+        "400":
+          description: >-
+            COACH_MILESTONE_OUT_OF_RANGE — the milestone is outside 25..300 kg. NOTHING is written,
+            including the start date that arrived in the same body, and the value is never clamped.
+            Or VALIDATION_ERROR for a number that does not fit NUMERIC(5,2).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not a coach, not this coach's client, revoked, no such id, or the link does not carry
+            WEIGH_INS — one undifferentiated body for all five. A revoke takes effect on the very
+            next request; the guard caches nothing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /coach-portal/clients/{id}/nutrition/week/apply:
     post:
       summary: Apply a meal week to the trainee, immediately
@@ -4752,9 +4816,137 @@ components:
           items:
             type: string
             enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS]
+        progressGoal:
+          allOf:
+            - $ref: "#/components/schemas/TraineeProgressGoal"
+          nullable: true
+          description: >-
+            EV-202a's block 6 — where the trainee started, where they are and where they are going.
+            NULL when this link does not carry the WEIGH_INS scope; render "This trainee has not
+            shared their weigh-ins with you." from `scopes`, never from a 403.
+            It is NON-null even for a trainee who has never recorded anything: every reading inside
+            is then null, which renders "X hasn't recorded a weight yet" while the milestone field
+            stays editable and still saves.
+            ⚠ The WEIGH_INS grant delivers BODY FAT from EV-202a onward, which is why EV-202c widens
+            the consent description to name body composition and must reach devices before this is
+            deployed.
       required:
         - clientId
         - scopes
+    TraineeProgressGoal:
+      type: object
+      description: >-
+        EV-202a. **Two values are written by the coach** (`startedOn`, `milestoneWeightKg`) and four
+        are DERIVED from the trainee's own `weigh_ins` / `body_measurements` rows. There is no write
+        path for a start weight, a current weight, a start body fat or a current body fat, and no
+        request field that could carry one: the trainee owns their body data and already records it,
+        and a derived baseline cannot go stale against the chart printed below it.
+        🔴 **G-GOAL**: `milestoneWeightKg` is a NARRATIVE number. No routine generator, no nutrition
+        target calculation, no prompt and no policy reads it — enforced by two release-blocking
+        tests, a static one and a difference-of-zero one. A coach typing 60 here moves nobody's
+        calorie target by one kilocalorie.
+        **Null is a fact, and there are three different ones.** A null `Reading` is "no reading on
+        or after the start date" or "not recorded", never 0. A null delta is "one end is missing",
+        while 0.0 is a real delta. A null `milestoneWeightKg` renders NO row at all on the trainee's
+        screen — no empty state, no placeholder, no call to action.
+      properties:
+        startedOn:
+          type: string
+          format: date
+          description: >-
+            The start of the COACHING/programme — NOT the link date, which is
+            `TraineeOverviewResponse.since` and a different fact. Never null: it falls back to the
+            link date, and `startedOnSource` says so. May be in the future.
+        startedOnSource:
+          type: string
+          enum: [COACH, SELF, LINK_DEFAULT]
+          description: >-
+            LINK_DEFAULT means nobody set a start date and this is the date the trainee accepted.
+            Print the provenance; do not pass a defaulted date off as a typed one.
+        milestoneWeightKg:
+          type: number
+          format: double
+          nullable: true
+          example: 80.0
+          description: >-
+            🔴 G-GOAL — narrative. 25.00..300.00 kg on write; outside that, 400
+            COACH_MILESTONE_OUT_OF_RANGE and NOTHING is written, never a silent clamp.
+        milestoneSetByName:
+          type: string
+          nullable: true
+          description: >-
+            Who set the milestone. Null WITH a milestone present is "set by a coach who has left" —
+            the `ON DELETE SET NULL` fired and the number is unchanged.
+        milestoneSource:
+          type: string
+          nullable: true
+          enum: [COACH, SELF]
+        milestoneUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        startWeight:
+          allOf:
+            - $ref: "#/components/schemas/TraineeProgressReading"
+          nullable: true
+          description: >-
+            The first weight reading on or after `startedOn`, merged across both weight tables by
+            the SAME per-date rule `weightSeries` uses, so the block and the chart cannot disagree.
+            Null renders "No reading on or after {date}" — never 0 and never the earliest reading of
+            all time.
+        currentWeight:
+          allOf:
+            - $ref: "#/components/schemas/TraineeProgressReading"
+          nullable: true
+        startBodyFat:
+          allOf:
+            - $ref: "#/components/schemas/TraineeProgressReading"
+          nullable: true
+          description: >-
+            Body fat lives ONLY on `body_measurements`; `weigh_ins` has no such column. A trainee
+            who logs through the weigh-in screen therefore has a weight and no body fat, and "Not
+            recorded" is a different fact from "no weigh-in" — do not collapse them and do not
+            render 0 %.
+        currentBodyFat:
+          allOf:
+            - $ref: "#/components/schemas/TraineeProgressReading"
+          nullable: true
+        weightDeltaKg:
+          type: number
+          format: double
+          nullable: true
+          description: current − start. Null unless both ends exist; 0.0 is real.
+        bodyFatDeltaPts:
+          type: number
+          format: double
+          nullable: true
+          description: current − start, in percentage POINTS.
+        weightToGoKg:
+          type: number
+          format: double
+          nullable: true
+          description: >-
+            milestone − current weight. Positive is a bulk and negative a cut; no direction is
+            assumed and no warning fires. 0.0 is an exact hit, with no celebration and no event.
+      required:
+        - startedOn
+        - startedOnSource
+    TraineeProgressReading:
+      type: object
+      description: >-
+        One reading and the day it was recorded. Every reading carries its own date because the
+        weight and body-fat columns resolve independently and may name different days — a
+        measurement row may carry a body fat and no weight.
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+          format: double
+      required:
+        - date
+        - value
     Routine:
       type: object
       description: >-
@@ -4928,6 +5120,33 @@ components:
           type: string
           format: date-time
       required: [calories, proteinG, carbsG, fatG, source, setByYou, updatedAt]
+    CoachProgressGoalRequest:
+      type: object
+      description: >-
+        EV-202a. The two values a coach types. Both are optional and both are CLEARED by omitting
+        them — see the endpoint's description for why an omission is a write.
+        There is deliberately no field for a start weight, a current weight, a body-fat value, a
+        milestone body fat, a milestone waist or a milestone DATE: each was ruled out by name, and
+        a request type with no field for a number is the only way "the coach cannot type that
+        number" survives the next refactor.
+      properties:
+        startedOn:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-06-01"
+          description: >-
+            The start of the coaching/programme. May be in the future — the Start column then reads
+            "No reading on or after {date}" and the delta cell is EMPTY, never 0.
+        milestoneWeightKg:
+          type: number
+          format: double
+          nullable: true
+          example: 80.0
+          description: >-
+            🔴 G-GOAL — narrative. 25.00..300.00 kg; outside that, 400 COACH_MILESTONE_OUT_OF_RANGE
+            and nothing is written. Never clamped.
+
     CoachTargetsRequest:
       type: object
       description: EV-185 AC2 — what a coach may write about a trainee's nutrition; four numbers.
@@ -5534,9 +5753,18 @@ components:
     MyCoachResponse:
       type: object
       description: >-
-        The trainee's current coach. No coach user id is exposed — Settings renders a name and a
-        date, and shipping an id the client has no endpoint for is a disclosure with no use.
+        The trainee's current coach — the caller's OWN active link, or `null`. Carries the linked
+        coach's id (BUG-201): the client needs a stable per-coach key to remember it has already
+        shown the one-time write-disclosure card (EV-197 AC4), and with no id it derived `''` and
+        the card never rendered. Nothing else about the coach is published here, and an unlinked
+        coach's id is unreachable on this endpoint — no link, no body.
       properties:
+        coachId:
+          type: string
+          format: uuid
+          description: >-
+            The linked coach's user id. Present whenever the body is non-null. Addresses nothing:
+            there is no endpoint that reads a coach by id.
         coachDisplayName:
           type: string
           description: AC6's "Coached by `<name>`".
@@ -5550,7 +5778,7 @@ components:
           items:
             type: string
             enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS]
-      required: [coachDisplayName, since, scopes]
+      required: [coachId, coachDisplayName, since, scopes]
     AcceptCoachInviteRequest:
       type: object
       description: >-

@@ -383,13 +383,40 @@ test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
 });
 
 test.describe("AC6 — the page is read-only, by a closed list", () => {
+  /**
+   * ⚠️ **AMENDED BY EV-202b, and narrowed rather than relaxed.**
+   *
+   * This test asserted that the whole page carried NO field and exactly one button.
+   * EV-202b authorises one form on it — the coaching start date and the milestone
+   * weight, the two values EV-202 Ruling 1 lets a coach write — so the page-wide
+   * version of the claim is now false, and leaving it as a `.skip` or deleting it
+   * would take EV-187 AC6's coverage with it.
+   *
+   * What it asserts instead is the same property drawn where it is still true and
+   * where it still catches something:
+   *   · EV-187's own two blocks contain no control at all — the monitoring read stays
+   *     a read, and the story's "it is not one control away from writing" holds of the
+   *     adherence series and the session history;
+   *   · the page's controls remain a CLOSED LIST by accessible name, now three items
+   *     long. A fourth still fails here, by name, rather than by review.
+   */
   test("nothing on the monitoring page can write", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${LINA}`);
 
-    // No form and no field: the page reads, and it is not one control away from writing.
-    await expect(page.locator("form")).toHaveCount(0);
-    await expect(page.locator("input, textarea, select")).toHaveCount(0);
+    for (const title of ["Adherence, last 8 weeks", "Recent sessions"]) {
+      await expect(
+        block(page, title).locator("input, textarea, select, button"),
+        `${title} is a read, and must carry no control`
+      ).toHaveCount(0);
+    }
+
+    /**
+     * The two fields EV-202b adds, and no third. AC2 counts them inside its own block;
+     * this counts them across the whole page, which is what catches a field arriving
+     * somewhere else on it.
+     */
+    await expect(page.locator("main").locator("input, textarea, select")).toHaveCount(2);
 
     /**
      * Every button on the page, by accessible name, against AC6's closed list. The
@@ -409,10 +436,12 @@ test.describe("AC6 — the page is read-only, by a closed list", () => {
           ).trim()
         )
       );
-    // "More" is EV-183's revoke menu — AC6 item (ii)'s client-level control — and it is
-    // the only button in the page's main region. The shell's "Sign out" is chrome and is
-    // scoped out above. A new control arriving on this page fails here, by name.
-    expect(names.sort()).toEqual(["More"]);
+    /**
+     * "More" is EV-183's revoke menu — AC6 item (ii)'s client-level control. "Save" is
+     * EV-202b's, and it is the ONLY write on this page. The shell's "Sign out" is
+     * chrome and is scoped out above. A new control arriving here fails by name.
+     */
+    expect(names.sort()).toEqual(["More", "Save"]);
   });
 });
 

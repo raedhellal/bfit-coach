@@ -327,6 +327,124 @@ export const copy = {
       "This trainee is not on your roster. They may have revoked access.",
   },
 
+  /* ══════════════════════════════════════════════════════════════════════════
+   * EV-202b — where the trainee started, where they are, and where they are going.
+   *
+   * Four sentences below are the STORY'S, verbatim, and senior-qa checks them
+   * character by character against EV-202's acceptance criteria:
+   *   · `noReadingOnOrAfter` — AC3
+   *   · `notRecorded`        — AC4 ("not `0 %`, not a dash, not an empty row")
+   *   · `noWeightYet`        — AC5
+   *   · `notShared`          — AC6
+   *
+   * ⚠ `notShared` deliberately does NOT reuse `client.notSharedWeighIns` ("This
+   * trainee has not shared their weigh-ins with you."), which says the same thing one
+   * card higher up the same page. AC6 gives its sentence in the first-name form and a
+   * story's AC text is not a place to improve on the story; the two shapes now sit on
+   * one screen, which is a question for `senior-po` and not something to resolve by
+   * rewording an AC here.
+   *
+   * 🔴 G-GOAL. `milestoneNote` is the one sentence on this block that makes a claim
+   * about the SYSTEM rather than about the trainee, and it is a negative one — so it
+   * owes a witness. It has two, both api-side and both release-blocking in EV-202
+   * AC8: the static limb (`milestone_weight_kg` appears in the coach-portal DTO, its
+   * use case, the entity and the migration, and in NOTHING under `infrastructure/ai`,
+   * `domain/nutrition` or `domain/fitness`) and the difference-of-zero limb (setting an
+   * extreme milestone changes neither the nutrition targets nor a generated routine,
+   * byte for byte). Without those two runs the sentence would be an assurance, which
+   * is exactly what `CLAUDE.md` forbids.
+   * ══════════════════════════════════════════════════════════════════════════ */
+  progressGoal: {
+    /** The block title, and its landmark name. Ours, not the story's. */
+    title: "Progress and milestone",
+    weight: "Weight",
+    bodyFat: "Body fat",
+
+    /* The five cells of a metric row, in the order AC2 prints them. */
+    start: (value: string) => `Start ${value}`,
+    current: (value: string) => `Current ${value}`,
+    milestone: (value: string) => `Milestone ${value}`,
+    /**
+     * AC2 reads "6.0 kg to go" for a cut and edge case 4 reads "+4.0 kg" for a bulk,
+     * so the SIGN is part of the value and not of this template. See `toGoValue` in
+     * src/lib/progressGoal.ts, which is the only place that decides it.
+     */
+    toGo: (value: string) => `${value} to go`,
+    /** "92.0 kg (1 Jun 2026)" — a reading printed with the day it was recorded. */
+    withDate: (value: string, date: string) => `${value} (${date})`,
+
+    /** AC3, verbatim. Renders INSTEAD of a Start value, and the delta cell is absent. */
+    noReadingOnOrAfter: (date: string) => `No reading on or after ${date}`,
+    /**
+     * AC4, verbatim. "Body fat — Not recorded", and never `0 %`, never a dash and
+     * never an empty row: `weigh_ins` has no body-fat column, so a trainee who logs
+     * through the weigh-in screen has a weight and no body fat, and "has not recorded
+     * body fat" and "has not weighed in" are two different facts about a person.
+     */
+    notRecorded: "Not recorded",
+    /** AC5, verbatim. The milestone field stays editable and still saves beneath it. */
+    noWeightYet: (firstName: string) => `${firstName} hasn't recorded a weight yet.`,
+    /** AC6, verbatim — rendered from `scopes`, NEVER inferred from a 403. */
+    notShared: (firstName: string) => `${firstName} hasn't shared their weigh-ins with you.`,
+    /** The api did not answer. A separate sentence from "not shared", on purpose. */
+    loadError: "This block could not be loaded. Reload the page to try again.",
+
+    /* ── the start date and its provenance ──────────────────────────────────
+     *
+     * The api never sends a null `startedOn`: it falls back to the link date and says
+     * so in `startedOnSource`. Printing the date without the provenance would pass a
+     * defaulted date off as a typed one — which is exactly the shape a silent wipe of
+     * `startedOn` takes, since the PUT is a whole representation and a cleared date
+     * comes back as a PLAUSIBLE WRONG DATE rather than as a blank.
+     *
+     * There is deliberately NO sentence for `startedOnSource === "SELF"`. EV-202 AC11
+     * gives the trainee no way to set one ("nothing is editable"), so a line reading
+     * "set by the trainee" would be copy for a state the product cannot reach — a
+     * shipped claim about a capability that does not exist. The date still renders;
+     * only the provenance clause is withheld.
+     */
+    startedOn: (date: string) => `Coaching started ${date}`,
+    startedOnCoach: "set by a coach",
+    startedOnLinkDefault: "no start date set, so this is the date the link was accepted",
+
+    /* ── the milestone's attribution ────────────────────────────────────────
+     *
+     * The row is user-scoped, not link-scoped (edge case 10): after a revoke and a new
+     * link the next coach sees the previous coach's milestone, and this line is what
+     * makes that honest. `milestoneSetByName` null WITH a milestone present is the
+     * `ON DELETE SET NULL` case — the coach's account is gone and the number is not.
+     */
+    milestoneSetBy: (name: string, date: string) => `Milestone set by ${name} on ${date}`,
+    milestoneSetByGone: "Milestone set by a coach who has left",
+
+    /* ── the edit form: TWO fields, and there is no third ────────────────────
+     *
+     * There is no heading key here. The form sits under the block's own title inside
+     * one card, so a second heading would name nothing the region is not already
+     * named; a key nothing renders is a string nobody can review in place.
+     */
+    startDateLabel: "Coaching start date",
+    /**
+     * Said out loud because the PUT is a whole representation: clearing the field and
+     * saving is a WRITE, not a no-op, and what comes back is the link date. A coach
+     * who is not told that reads the fallback as the date they set.
+     */
+    startDateHint: "Clear it to fall back to the date the link was accepted.",
+    milestoneLabel: "Milestone weight (kg)",
+    /** 🔴 G-GOAL. Witnessed by EV-202 AC8's two release-blocking api runs. */
+    milestoneNote:
+      "A number you and your trainee agreed. Plans and nutrition targets are not calculated from it.",
+    save: "Save",
+    saving: "Saving…",
+    saved: "Saved.",
+    /** Client-side, and no request is sent. */
+    invalidMilestone: "Enter a milestone weight in kilograms, or leave it empty.",
+    invalidDate: "Enter the start date as a calendar date, or leave it empty.",
+    /** Edge case 6's 400, rendered rather than pre-empted: the api refuses, we report. */
+    outOfRange: "A milestone weight must be between 25 and 300 kg. Nothing was saved.",
+    failed: "The start date and milestone could not be saved.",
+  },
+
   /**
    * Shared by both tabs — EV-184 AC1 and EV-185 AC1 give this sentence in the same
    * words for two different blocks of profile data, so it lives once. Reworded on one

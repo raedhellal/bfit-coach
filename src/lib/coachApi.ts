@@ -381,6 +381,22 @@ export interface ClientOverview {
    * a list filtered to the held scope when only one is.
    */
   redFlags: RedFlagCode[] | null;
+  /**
+   * Block 6 [WEIGH_INS] — EV-202a. `null` = this link does not carry `WEIGH_INS`, and
+   * the portal still decides that sentence from `scopes` rather than from the null:
+   * the block is NON-null for a trainee who has never recorded anything (every reading
+   * inside is then null), so the null and the empty state are two different facts and
+   * collapsing them would tell a coach "not shared" about a trainee who simply has not
+   * weighed in yet.
+   *
+   * ⚠ Optional in the TYPE, non-optional on the wire. An api that predates EV-202a
+   * (`9218a77`) sends no such field, and the deployment this portal is pointed at is
+   * not always the one this branch was written against — `progressGoal` absent must
+   * render the same as "not shared", never a crash inside a server component's render.
+   * That is the 2026-09-18 `trainingProfile` lesson applied before it costs a blank
+   * page rather than after.
+   */
+  progressGoal?: TraineeProgressGoal | null;
 }
 
 /**
@@ -1567,6 +1583,131 @@ export function isWeekOutOfRange(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_WEEK_OUT_OF_RANGE";
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-202b — where the trainee started, where they are, and where they are going.
+ *
+ * b-fit-api `9218a77`, merged and deployed. Two operations' worth of contract:
+ * the `progressGoal` block embedded in `GET /coach-portal/clients/{id}`, and
+ * `PUT /coach-portal/clients/{id}/progress-goal`, which answers the SAME block
+ * recomputed — so a save needs no refetch.
+ *
+ * 🔴 FOUR PROPERTIES OF THIS CONTRACT THAT THE TYPES CANNOT STATE, each of which is a
+ * defect in this surface if it is forgotten:
+ *
+ *   1. **`{id}` is the `coach_clients` row id, never the trainee's user id.** Every
+ *      path on this surface goes through `client(id)` for exactly that reason.
+ *   2. **The PUT is a WHOLE REPRESENTATION.** `{}` clears BOTH values and answers 200.
+ *      There is no audit trail and no previous value, so a request that omits a field
+ *      the coach did not touch destroys it silently — and worse for the start date
+ *      than for the milestone, because a cleared `startedOn` falls back to the link
+ *      date and renders as a PLAUSIBLE WRONG DATE rather than as a blank. This is why
+ *      `CoachProgressGoalRequest`'s two fields are REQUIRED properties of the
+ *      TypeScript type (`string | null`, not `?:`): omitting one is then a compile
+ *      error at every call site rather than a data loss nobody sees.
+ *   3. **`weightToGoKg` is SIGNED** (`milestone − current`), so printing it raw under
+ *      the words "to go" renders "−6.0 kg to go" where the story reads "6.0 kg to go".
+ *      `src/lib/progressGoal.ts` owns that rendering; no component formats it.
+ *   4. **Three different nulls.** A null `TraineeProgressReading` is "no reading on or
+ *      after the start date" or "not recorded" — never 0. A null delta is "one end is
+ *      missing", while `0.0` is a real delta of zero. A null `milestoneWeightKg` is no
+ *      milestone at all.
+ *
+ * 🔴 **G-GOAL (EV-202 Ruling 2) binds this surface too.** The milestone is a NARRATIVE
+ * number: nothing generates from it, and nothing on this screen may imply that it
+ * does. No projection, no progress bar toward it, no "at this rate", and it is never
+ * rendered beside the plan or the calorie targets. The witness for the claim the block
+ * prints ("Plans and nutrition targets are not calculated from it.") is EV-202 AC8's
+ * two release-blocking api tests — the static grep and the difference-of-zero run —
+ * not an assurance written here.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * One reading and the day it was recorded.
+ *
+ * Every reading carries its OWN date because weight and body fat resolve independently
+ * and may name different days: a `body_measurements` row can hold a body fat and no
+ * weight (EV-202 edge case 2). There is no single "as of" date for the block.
+ *
+ * @wire TraineeProgressReading
+ */
+export interface TraineeProgressReading {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  value: number;
+}
+
+/**
+ * The block itself — two coach-written values and four DERIVED ones.
+ *
+ * There is no write path for a start weight, a current weight, a start body fat or a
+ * current body fat, and `CoachProgressGoalRequest` below has no field that could carry
+ * one (EV-202 Ruling 1). The trainee owns their body data and already records it.
+ *
+ * @wire TraineeProgressGoal
+ */
+export interface TraineeProgressGoal {
+  /**
+   * The start of the COACHING/programme — NOT the link date, which is
+   * `ClientOverview.since` and a different fact. Never null: it falls back to the link
+   * date, and `startedOnSource` is what says so. May be in the future.
+   */
+  startedOn: string;
+  /** `LINK_DEFAULT` = nobody set one; print the provenance, never pass it off as typed. */
+  startedOnSource: "COACH" | "SELF" | "LINK_DEFAULT";
+  /** 🔴 G-GOAL — narrative. 25.00..300.00 kg on write; outside that, a 400 and no write. */
+  milestoneWeightKg: number | null;
+  /** Null WITH a milestone present = "set by a coach who has left" (`ON DELETE SET NULL`). */
+  milestoneSetByName: string | null;
+  milestoneSource: "COACH" | "SELF" | null;
+  milestoneUpdatedAt: string | null;
+  /** The first weight reading on or after `startedOn`. Null ⇒ "No reading on or after …". */
+  startWeight: TraineeProgressReading | null;
+  currentWeight: TraineeProgressReading | null;
+  /** Body fat lives ONLY on `body_measurements`; a weigh-in has no such column. */
+  startBodyFat: TraineeProgressReading | null;
+  currentBodyFat: TraineeProgressReading | null;
+  /** current − start. Null unless both ends exist; `0.0` is real. */
+  weightDeltaKg: number | null;
+  /** current − start, in percentage POINTS. */
+  bodyFatDeltaPts: number | null;
+  /** 🔴 SIGNED: milestone − current. Positive is a bulk, negative a cut. */
+  weightToGoKg: number | null;
+}
+
+/**
+ * The two values a coach types, and the whole representation of them.
+ *
+ * **Both properties are REQUIRED and nullable, and that is the pin on trap 2.** The
+ * api treats an omitted field as a clear, so a partial body is a silent wipe; making
+ * them required means the compiler refuses a call site that builds a request from only
+ * the field the coach edited. `src/lib/progressGoal.ts` is the one place that
+ * constructs one, and `qa/coach-progress-goal.spec.ts` pins the key set in all four
+ * branches AND drives the property end-to-end through the form.
+ *
+ * There is deliberately no field for a start weight, a current weight, a body fat, a
+ * milestone body fat, a milestone waist or a milestone DATE: each was ruled out by
+ * name in EV-202, and a request type with no field for a number is the only way "the
+ * coach cannot type that number" survives the next refactor.
+ *
+ * @wire CoachProgressGoalRequest
+ */
+export interface CoachProgressGoalRequest {
+  /** `YYYY-MM-DD`, or null to clear. May be in the future (edge case 3). */
+  startedOn: string | null;
+  /** kg, or null to clear. Never clamped here — 25..300 is the api's refusal to make. */
+  milestoneWeightKg: number | null;
+}
+
+/**
+ * 400 — EV-202 edge case 6. The milestone is outside 25..300 kg, and NOTHING was
+ * written, including the start date that arrived in the same body. Never a silent
+ * clamp: `NutritionPreferences:61`'s `Math.min` is the local precedent for how a clamp
+ * hides a mistake, and EV-190 Ruling 3 forbids one here.
+ */
+export function isMilestoneOutOfRange(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_MILESTONE_OUT_OF_RANGE";
+}
+
 // ── the live client ──────────────────────────────────────────────────────────
 
 /**
@@ -1606,6 +1747,19 @@ const liveCoachApi = {
   /** EV-187b — the monitoring blocks. GET only; nothing on that page writes. */
   getClientProgress(id: string): Promise<TraineeProgress> {
     return apiFetch<TraineeProgress>(`${client(id)}/progress`);
+  },
+  /**
+   * EV-202b — the ONE write this story adds, and the only non-GET mapping under
+   * `/coach-portal/clients/{id}` outside the routine and nutrition tabs.
+   *
+   * `body` is a whole representation: both fields are sent on every call, including
+   * the one the coach did not touch. See `CoachProgressGoalRequest`.
+   */
+  setProgressGoal(id: string, body: CoachProgressGoalRequest): Promise<TraineeProgressGoal> {
+    return apiFetch<TraineeProgressGoal>(`${client(id)}/progress-goal`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
   },
   async revokeClient(id: string): Promise<void> {
     // 204 No Content — `apiFetch` parses an empty body to null, which is the point.

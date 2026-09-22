@@ -1,4 +1,4 @@
-b19c1f3d688b2ab2e85302999809d5d8665b05b1
+9218a7750b4cfd84bb31f0b9e52ba0086f7ce939
 # Provenance, written by scripts/spec-sync.mjs. Line 1 is the value; these are for you.
 # on-api-main: NO means the portal is typed against an api that has NOT shipped.
 # qa/api-merge-condition.spec.ts fails when this line and b-fit-api disagree.
