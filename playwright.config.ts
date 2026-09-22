@@ -27,7 +27,7 @@ export default defineConfig({
   // suite's `empty` scenario serves no rows, so the apply half can only reach its
   // no-trainees branch here (which `coach-library.spec.ts` asserts). This suite must
   // stay runnable with no backend at all — that is what makes it the gate.
-  testIgnore: /(coach-live|coach-affordance\.live|refresh-single-flight|coach-roster-scopes|coach-legacy-api|coach-library-apply)\.spec\.ts/,
+  testIgnore: /(coach-live|coach-affordance\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-legacy-api|coach-library-apply)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

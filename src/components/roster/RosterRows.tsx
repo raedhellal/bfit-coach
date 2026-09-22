@@ -11,13 +11,12 @@ import { hasScope, type RosterClient } from "@/lib/coachApi";
  * narrow layout is correct on first paint — AC1 is demoed at 390 px and a table that
  * needs sideways scrolling to read a trainee's name is not "readable and tappable".
  *
- * **There is no red-flag chip here.** `GET /coach-portal/clients` returns no
- * `redFlags` — the rules are computed per trainee by the overview endpoint — so a chip
- * on this screen would cost one extra request per row on every roster render. The
- * flags live on /clients/[id]; the needs-attention signal here is the ordering
- * (`sortNeedsAttentionFirst`: least recently trained first, UNKNOWN last — ADR-0015
- * S1 made `lastCompletedWorkoutDate` scope-filtered, so a null is no longer "never
- * trained", it is "no answer").
+ * **There IS a red-flag badge here, as of EV-187b.** There was not, and the reason was
+ * good: `GET /coach-portal/clients` carried no flag count, so a chip would have cost
+ * one extra request per row on every roster render. EV-187a put `redFlagCount` on the
+ * row — computed from the SAME evaluation the trainee's own page runs, so the badge and
+ * the flags on that page cannot disagree — and the endpoint now sorts, so the
+ * needs-attention signal is the ordering AND the badge instead of the ordering alone.
  *
  * Three of these five columns can be absent because the link did not share them — and
  * since the list response carries `scopes` per row (contract item 4 / D5 S1), the row
@@ -53,17 +52,51 @@ function StreakChip({ days, shared }: { days: number | null; shared: boolean }) 
   );
 }
 
+/**
+ * EV-187 AC2's flag column. Three values, three renderings, and collapsing any two of
+ * them is the defect:
+ *
+ *   · `n > 0` → the badge, "1 flag" / "2 flags" (both spellings are verified).
+ *   · `0`     → **nothing**. Not "0 flags", not a grey chip — a row with no flags is a
+ *               row the coach can skip, and a badge reading zero is noise on the one
+ *               screen whose job is to be scanned.
+ *   · `null`  → "Not shared". The link carries neither WORKOUTS nor WEIGH_INS, so no
+ *               rule could be evaluated at all. It is never rendered as "no flags":
+ *               a coach must not read a consent boundary as good news. The api sorts
+ *               these rows LAST for the same reason.
+ */
+function FlagBadge({ count }: { count: number | null }) {
+  /**
+   * `typeof`, not `=== null`, and it FAILS CLOSED for the same reason `hasScope` does:
+   * the type describes the api we are building, not every api this build can be pointed
+   * at. An api that predates EV-187a sends no `redFlagCount` at all, so at runtime the
+   * value is `undefined` — and `undefined <= 0` is false, which would have rendered
+   * "undefined flags" in a coach's roster. Silence about a flag count is "not shared",
+   * which under-claims; the other direction invents news.
+   */
+  if (typeof count !== "number")
+    return <span style={{ color: "var(--ink-3)" }}>{copy.roster.flagsNotShared}</span>;
+  if (count <= 0) return null;
+  return (
+    <Badge tone="red">
+      <UiIcon name="flag" size={12} />
+      {copy.roster.flags(count)}
+    </Badge>
+  );
+}
+
 export function RosterRows({ clients }: { clients: RosterClient[] }) {
   return (
     <>
       <div className="only-wide">
         <DataTable
-          minWidth={680}
+          minWidth={760}
           columns={[
             { label: copy.roster.colTrainee },
             { label: copy.roster.colPlan },
             { label: copy.roster.colLastWorkout },
             { label: copy.roster.colStreak },
+            { label: copy.roster.colFlags },
             { label: copy.roster.colStatus },
             { label: "", w: 44 },
           ]}
@@ -124,6 +157,9 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                   days={c.currentStreakDays}
                   shared={hasScope(c.scopes, "PROGRESS")}
                 />
+              </Td>
+              <Td>
+                <FlagBadge count={c.redFlagCount} />
               </Td>
               <Td>
                 <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
@@ -191,6 +227,10 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                     days={c.currentStreakDays}
                     shared={hasScope(c.scopes, "PROGRESS")}
                   />
+                  {/* The narrow card carries the badge too — AC2 is demoed at 390 px,
+                      and a triage signal that only exists on a desktop table is not a
+                      triage signal. */}
+                  <FlagBadge count={c.redFlagCount} />
                   <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>

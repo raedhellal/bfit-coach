@@ -1,7 +1,9 @@
 import "server-only";
 import type {
+  AdherenceSeries,
   CatalogExercise,
   CoachAccessScope,
+  FiredRedFlag,
   CatalogPage,
   ClientOverview,
   CoachApi,
@@ -30,12 +32,18 @@ import type {
   PublishResult,
   RosterClient,
   RosterPage,
+  RosterSort,
   Routine,
   RoutineDayEntry,
   RoutineExerciseEntry,
   RoutinePlanView,
+  SessionFeedback,
+  SessionHistory,
+  SessionHistoryItem,
   SwapOptions,
   TraineeDietProfile,
+  TraineeProgress,
+  WeekAdherence,
   WeightPoint,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
@@ -98,6 +106,32 @@ const SARA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003";
 const PETRA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
 const YUSUF_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 const MARA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008";
+/**
+ * EV-187b. Two trainees the monitoring blocks need and that no existing fixture row
+ * could become without breaking what it already demonstrates:
+ *
+ *   Tobias — ALL scopes, and the only trainee with a flag of EACH kind (AC2's "one has
+ *            a flag of each kind", AC4's two evidence shapes on one page). He carries
+ *            the 7/7 week (edge case 2) and a real "Last weigh-in <date> — <N> days
+ *            ago", which is the sentence BUG-197's fix reserved for a trainee who HAS
+ *            weighed in.
+ *   Kaia   — edge case 1: an ACTIVE link, all four scopes, and literally no data. She
+ *            is the only way to reach "No sessions in the last 8 weeks" and "No
+ *            completed sessions yet", and the only way to prove the blocks render no
+ *            `0 %`, no `NaN` and no axis full of zeroes for a brand-new trainee. She is
+ *            overview-only (not on the roster), which is this fixture's existing shape.
+ */
+/**
+ * The EV-184b / EV-185b scenario ids. They are declared HERE rather than beside the
+ * routine block they belong to because `OVERVIEWS` and `PROGRESS` are initialised at
+ * module load and key on them — a `const` declared further down is in its temporal dead
+ * zone at that moment, which is a ReferenceError on the first request and not a
+ * compile error. See the block above the routine fixtures for what each one is for.
+ */
+const DANA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
+const OMAR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
+const TOBIAS_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
+const KAIA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0010";
 
 /** Everything a fully-consented link shares — the shape every EV-183 fixture had. */
 const ALL_SCOPES: CoachAccessScope[] = ["WORKOUTS", "PROGRESS", "NUTRITION", "WEIGH_INS"];
@@ -120,8 +154,50 @@ function lina(): RosterClient {
     currentPlanName: "Intermediate Muscle Building Routine",
     lastCompletedWorkoutDate: isoDate(1),
     currentStreakDays: 4,
+    // EV-187 AC2. The count is the LENGTH of the same trainee's `redFlags` on the
+    // overview, by construction — QA compares the badge to the flags on the page for
+    // every seeded trainee, and a fixture that let the two drift would be testing
+    // nothing.
+    redFlagCount: OVERVIEWS[LINA_ID]().redFlags?.length ?? null,
     status: "ACTIVE",
     since: isoInstant(23),
+  };
+}
+
+/**
+ * ALL scopes, and the only row with TWO flags — AC2's "one has a flag of each kind",
+ * and the singular/plural pair the badge is asserted on ("2 flags" beside "1 flag").
+ */
+function tobias(): RosterClient {
+  return {
+    id: TOBIAS_ID,
+    traineeDisplayName: "Tobias R.",
+    scopes: ALL_SCOPES,
+    currentPlanName: "Push Pull Legs",
+    lastCompletedWorkoutDate: isoDate(9),
+    currentStreakDays: 0,
+    redFlagCount: OVERVIEWS[TOBIAS_ID]().redFlags?.length ?? null,
+    status: "ACTIVE",
+    since: isoInstant(60),
+  };
+}
+
+/**
+ * An ACTIVE link that shares nothing at all. `redFlagCount` is NULL — no rule could be
+ * evaluated — so the row reads "Not shared" and sorts LAST, never among the rows with
+ * no flags. A `0` here would tell the coach this trainee is fine, from nothing.
+ */
+function mara(): RosterClient {
+  return {
+    id: MARA_ID,
+    traineeDisplayName: "Mara D.",
+    scopes: [],
+    currentPlanName: null,
+    lastCompletedWorkoutDate: null,
+    currentStreakDays: null,
+    redFlagCount: null,
+    status: "ACTIVE",
+    since: isoInstant(5),
   };
 }
 
@@ -148,6 +224,8 @@ function petra(): RosterClient {
     currentPlanName: null,
     lastCompletedWorkoutDate: null,
     currentStreakDays: null,
+    // Neither WORKOUTS nor WEIGH_INS: no rule could be evaluated → "Not shared", last.
+    redFlagCount: null,
     status: "ACTIVE",
     since: isoInstant(12),
   };
@@ -162,6 +240,12 @@ function yusuf(): RosterClient {
     // Progress data, so S1 filters it out of a WORKOUTS-only row.
     lastCompletedWorkoutDate: null,
     currentStreakDays: null,
+    /**
+     * WORKOUTS is held, so the missed-sessions rule COULD be evaluated and it did not
+     * fire: a real `0`, which renders no badge at all and never "0 flags". This is the
+     * row that keeps "not shared" and "no flags" from collapsing into one rendering.
+     */
+    redFlagCount: 0,
     status: "ACTIVE",
     since: isoInstant(21),
   };
@@ -180,6 +264,7 @@ function sara(): RosterClient {
     // roster is allowed to describe.
     lastCompletedWorkoutDate: null,
     currentStreakDays: 0,
+    redFlagCount: OVERVIEWS[SARA_ID]().redFlags?.length ?? null,
     status: "ACTIVE",
     since: isoInstant(30),
   };
@@ -302,7 +387,332 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
     weightSeries: null,
     redFlags: null,
   }),
+  /**
+   * EV-187b. Both live rules fired for one trainee — the page that has to render two
+   * evidence shapes at once, and the roster row that reads "2 flags".
+   *
+   * His last weigh-in is 21 days old, so `NO_WEIGH_IN_14_DAYS` fires with a REAL date:
+   * `weightSeries` is non-empty (the weigh-in is inside the 8-week window) and the
+   * evidence reads "Last weigh-in <date> — 21 days ago". "Never weighed in" is
+   * reserved for Sara, who has genuinely never logged one.
+   */
+  [TOBIAS_ID]: () => ({
+    clientId: TOBIAS_ID,
+    traineeDisplayName: "Tobias R.",
+    since: isoInstant(60),
+    scopes: ALL_SCOPES,
+    adherenceThisWeek: { done: 0, planned: 3 },
+    currentStreakDays: 0,
+    lastSession: { date: isoDate(9), name: "Legs", difficulty: "HARD" },
+    weightSeries: [
+      { date: isoDate(35), weightKg: 88.4 },
+      { date: isoDate(28), weightKg: 88.0 },
+      { date: isoDate(21), weightKg: 87.6 },
+    ],
+    redFlags: ["MISSED_TWO_OR_MORE_SESSIONS", "NO_WEIGH_IN_14_DAYS"],
+  }),
+  /**
+   * Edge case 1 — an ACTIVE link, all four scopes, and literally no data: accepted
+   * today, never trained, never weighed in. Every block must render its own empty
+   * state and nothing may render `NaN`, `0 / 0 = 0 %` or an axis full of zeroes.
+   *
+   * She carries `NO_WEIGH_IN_14_DAYS` **and nothing else**, which is the story's own
+   * wording: she has never weighed in, so the rule fires and its evidence is the
+   * "Never weighed in" branch.
+   */
+  [KAIA_ID]: () => ({
+    clientId: KAIA_ID,
+    traineeDisplayName: "Kaia B.",
+    since: isoInstant(0),
+    scopes: ALL_SCOPES,
+    adherenceThisWeek: { done: 0, planned: 0 },
+    currentStreakDays: 0,
+    lastSession: null,
+    weightSeries: [],
+    redFlags: ["NO_WEIGH_IN_14_DAYS"],
+  }),
 };
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-187b — the monitoring read, `GET /coach-portal/clients/{id}/progress`.
+ *
+ * The api half (b-fit-api `b19c1f3`) is MERGED AND DEPLOYED, so unlike the routine and
+ * nutrition fixtures this one is a twin of something real. It exists for the same two
+ * reasons the rest of this file does: the Playwright suite runs without an api, and the
+ * demo can show states a dev database does not happen to contain.
+ *
+ * TWO PLACES IT KNOWINGLY SIMPLIFIES, named rather than hidden:
+ *
+ *   1. **The missed-session evidence is not bucketed into the ISO week.** The api lists
+ *      the days of THIS week that were scheduled, have passed, and have no completed
+ *      session (ADR-0012 D6). The fixture serves two fixed recent dates instead, so the
+ *      "2 flags" row does not become "1 flag" every Monday and Tuesday and take the
+ *      suite with it. What the fixture demonstrates is the RENDERING of evidence; that
+ *      the evidence is the same computation as the flag is asserted api-side, where the
+ *      computation is.
+ *   2. **The weeks are hand-written, not derived from sessions.** The api buckets one
+ *      range read. Here the series and the session list are two literals that are kept
+ *      consistent BY CONSTRUCTION where an AC compares them — the current week equals
+ *      the overview's `adherenceThisWeek`, and `items[0]` equals the overview's
+ *      `lastSession` — because those are exactly the two comparisons AC3 and AC5 ask QA
+ *      to make on one screen.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** The Monday (UTC) of the ISO week `weeksAgo` weeks before the current one. */
+function mondayOfWeeksAgo(weeksAgo: number): string {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const mondayIndex = (d.getUTCDay() + 6) % 7; // 0 = Monday … 6 = Sunday
+  d.setUTCDate(d.getUTCDate() - mondayIndex - weeksAgo * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+/** `[done, planned]`, or `null` for a week in which no plan existed ("No plan"). */
+type WeekSpec = [done: number, planned: number] | null;
+
+/**
+ * Eight `WeekSpec`s, oldest first, → the wire's `AdherenceSeries`.
+ *
+ * `plannedSoFar` is `planned` for a completed week and, for the current one, the number
+ * of scheduled days that have already passed — which is the whole of ADR-0012 D6 as it
+ * applies to the series: a Monday must not read as a 0 % week.
+ */
+function adherenceSeries(specs: WeekSpec[]): AdherenceSeries {
+  const elapsedThisWeek = (new Date().getUTCDay() + 6) % 7; // Mon = 0 days elapsed
+  const weeks: WeekAdherence[] = specs.map((spec, i) => {
+    const weeksAgo = specs.length - 1 - i;
+    const partial = weeksAgo === 0;
+    const [done, planned] = spec ?? [0, 0];
+    return {
+      weekCommencing: mondayOfWeeksAgo(weeksAgo),
+      done,
+      planned,
+      plannedSoFar: partial ? Math.min(planned, elapsedThisWeek) : planned,
+      hasPlan: spec !== null,
+      partial,
+    };
+  });
+  // Summed here, as the api sums them, so the headline and the bars cannot disagree.
+  return {
+    done: weeks.reduce((sum, w) => sum + w.done, 0),
+    planned: weeks.reduce((sum, w) => sum + w.planned, 0),
+    weeks,
+  };
+}
+
+/** `[daysAgo, name, difficulty]` → one history row. */
+type SessionSpec = [daysAgo: number, name: string | null, difficulty: SessionFeedback | null];
+
+/** Session rows, newest first, with the api's own summary counts derived from them. */
+function sessionHistory(specs: SessionSpec[]): SessionHistory {
+  const items: SessionHistoryItem[] = specs
+    .slice(0, 10)
+    .map(([daysAgo, name, difficulty]) => ({ date: isoDate(daysAgo), name, difficulty }));
+  const count = (value: SessionFeedback) => items.filter((i) => i.difficulty === value).length;
+  return {
+    returned: items.length,
+    easy: count("EASY"),
+    ok: count("OK"),
+    hard: count("HARD"),
+    noFeedback: items.filter((i) => i.difficulty === null).length,
+    items,
+  };
+}
+
+/** The `MISSED_TWO_OR_MORE_SESSIONS` flag with its evidence. Never empty. */
+function missedFlag(missed: [daysAgo: number, sessionName: string | null][]): FiredRedFlag {
+  return {
+    flag: "MISSED_TWO_OR_MORE_SESSIONS",
+    missedSessions: missed.map(([daysAgo, sessionName]) => ({
+      date: isoDate(daysAgo),
+      sessionName,
+    })),
+    weighIn: null,
+  };
+}
+
+/**
+ * The `NO_WEIGH_IN_14_DAYS` flag. `daysAgo === null` is the ONLY case that renders
+ * "Never weighed in" — a trainee who weighed in long ago carries a real date.
+ */
+function noWeighInFlag(daysAgo: number | null): FiredRedFlag {
+  return {
+    flag: "NO_WEIGH_IN_14_DAYS",
+    missedSessions: null,
+    weighIn: {
+      lastWeighInDate: daysAgo === null ? null : isoDate(daysAgo),
+      daysSince: daysAgo,
+    },
+  };
+}
+
+const PROGRESS_WEEKS = 8; // `TraineeProgressResponse.weeks` — a server constant.
+
+/**
+ * The progress read, by id. Every id here also has an overview, and the two agree
+ * where an AC compares them.
+ *
+ * A trainee whose link lacks PROGRESS is NOT in this map and never reaches it: the api
+ * names PROGRESS at the guard, so Petra, Yusuf and Mara are answered 403 — the same
+ * undifferentiated 403 as a revoked link and an id that never existed. The portal
+ * renders their "not shared" sentence from `scopes`, never from that status.
+ */
+const PROGRESS: Record<string, () => TraineeProgress> = {
+  [LINA_ID]: () => ({
+    clientId: LINA_ID,
+    weeks: PROGRESS_WEEKS,
+    // The last week is 2 / 4 — identical to her overview's "Adherence this week"
+    // (AC3's last clause). The 0/0 week is the one before her plan existed.
+    adherence: adherenceSeries([[3, 3], null, [3, 4], [0, 4], [4, 4], [2, 4], [3, 4], [2, 4]]),
+    // 12 completed sessions, capped at 10 server-side. `items[0]` IS her overview's
+    // "Last session": 1 day ago, Upper Body A, Hard.
+    sessions: sessionHistory([
+      [1, "Upper Body A", "HARD"],
+      [4, "Lower Body A", "OK"],
+      [6, "Upper Body B", "OK"],
+      [8, "Lower Body B", null],
+      [11, "Upper Body A", "EASY"],
+      [13, "Lower Body A", "HARD"],
+      [15, "Upper Body B", "OK"],
+      [18, "Lower Body B", "OK"],
+      [20, "Upper Body A", "EASY"],
+      [22, "Lower Body A", "HARD"],
+      [25, "Upper Body B", "OK"],
+      [27, "Lower Body B", "OK"],
+    ]),
+    redFlags: [missedFlag([[3, "Lower Body B"], [5, "Upper Body B"]])],
+    scopes: ALL_SCOPES,
+  }),
+  [TOBIAS_ID]: () => ({
+    clientId: TOBIAS_ID,
+    weeks: PROGRESS_WEEKS,
+    // A 7 / 7 week (edge case 2: the label must not wrap and the bar must not
+    // overflow), and a current week of 0 / 3 — his overview's figure.
+    adherence: adherenceSeries([[7, 7], [4, 5], [3, 5], [2, 5], [0, 3], [1, 3], [0, 3], [0, 3]]),
+    sessions: sessionHistory([
+      [9, "Legs", "HARD"],
+      [12, "Pull", "HARD"],
+      [14, "Push", null],
+      [17, "Legs", "HARD"],
+      [19, "Pull", "OK"],
+      [21, "Push", "HARD"],
+      [24, "Legs", "OK"],
+      [26, "Pull", null],
+      [28, "Push", "EASY"],
+      [31, "Legs", "HARD"],
+    ]),
+    // Both live rules, on one page, with their two different evidence shapes.
+    redFlags: [missedFlag([[2, "Push"], [4, "Pull"]]), noWeighInFlag(21)],
+    scopes: ALL_SCOPES,
+  }),
+  [NILS_ID]: () => ({
+    clientId: NILS_ID,
+    weeks: PROGRESS_WEEKS,
+    adherence: adherenceSeries([null, null, [2, 3], [3, 3], [1, 3], [2, 3], [2, 3], [1, 3]]),
+    // Six, not ten: AC5's "Of the last 6 sessions: …", which must never read
+    // "of the last 10".
+    sessions: sessionHistory([
+      [2, "Full Body A", "OK"],
+      [5, "Full Body B", "EASY"],
+      [7, "Full Body A", "OK"],
+      [9, "Full Body B", null],
+      [12, "Full Body A", "HARD"],
+      [14, "Full Body B", "OK"],
+    ]),
+    redFlags: [],
+    scopes: ALL_SCOPES,
+  }),
+  [SARA_ID]: () => ({
+    clientId: SARA_ID,
+    weeks: PROGRESS_WEEKS,
+    // PROGRESS is held (so this read is not a 403) but WORKOUTS is not, so both
+    // workout blocks are ABSENT — not zero, not an empty list.
+    adherence: null,
+    sessions: null,
+    // She has never logged a weight in either table: the one trainee for whom
+    // "Never weighed in" is true.
+    redFlags: [noWeighInFlag(null)],
+    scopes: ["PROGRESS", "WEIGH_INS"],
+  }),
+  [KAIA_ID]: () => ({
+    clientId: KAIA_ID,
+    weeks: PROGRESS_WEEKS,
+    // Edge case 1 — an eight-week series in which nothing was ever scheduled. This
+    // must render "No sessions in the last 8 weeks", NOT eight 0 % bars.
+    adherence: adherenceSeries([null, null, null, null, null, null, null, null]),
+    sessions: sessionHistory([]),
+    redFlags: [noWeighInFlag(null)],
+    scopes: ALL_SCOPES,
+  }),
+  [DANA_ID]: () => ({
+    clientId: DANA_ID,
+    weeks: PROGRESS_WEEKS,
+    adherence: adherenceSeries([[2, 2], [1, 2], [2, 2], [2, 2], [0, 2], [2, 2], [1, 2], [2, 2]]),
+    sessions: sessionHistory([
+      [1, "Push", "OK"],
+      [3, "Pull", "EASY"],
+      [6, "Push", "OK"],
+      [8, "Pull", "OK"],
+      [10, "Push", "HARD"],
+    ]),
+    redFlags: [],
+    scopes: ALL_SCOPES,
+  }),
+  [OMAR_ID]: () => ({
+    clientId: OMAR_ID,
+    weeks: PROGRESS_WEEKS,
+    adherence: adherenceSeries([[3, 3], [2, 3], [1, 3], [3, 3], [2, 3], [1, 3], [2, 3], [1, 3]]),
+    sessions: sessionHistory([
+      [4, "Full Body A", "EASY"],
+      [7, "Full Body B", "OK"],
+      [9, "Full Body A", "OK"],
+    ]),
+    redFlags: [],
+    scopes: ALL_SCOPES,
+  }),
+};
+
+/**
+ * EV-187 AC2's order, as the api computes it — `CoachPortalQueryService`'s two
+ * comparators, mirrored field for field.
+ *
+ * **The portal does not sort.** The key spans the whole roster and the portal holds one
+ * page of it, so a client-side sort would order page 1 among itself and call it triage.
+ * That is why this lives in the fixture (the api's twin) and not in a component.
+ */
+function sortRoster(items: RosterClient[], sort: RosterSort): RosterClient[] {
+  const MIN = "0000-00-00";
+  const MAX = "9999-99-99";
+  const activityShared = (c: RosterClient) => c.scopes.includes("PROGRESS");
+  /** Longest silence first; a WITHHELD date is unknown, not silent, so it goes last. */
+  const silenceKey = (c: RosterClient) =>
+    !activityShared(c) ? MAX : (c.lastCompletedWorkoutDate ?? MIN);
+  /** Most recent first; unknown last, for the same reason in the other direction. */
+  const activityKey = (c: RosterClient) =>
+    !activityShared(c) || c.lastCompletedWorkoutDate === null ? MIN : c.lastCompletedWorkoutDate;
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+  return [...items].sort((a, b) => {
+    if (sort === "recent_activity") {
+      return (
+        cmp(activityKey(b), activityKey(a)) ||
+        a.traineeDisplayName.localeCompare(b.traineeDisplayName) ||
+        cmp(a.id, b.id)
+      );
+    }
+    // null = "not shared": ranked after every row whose flags COULD be evaluated,
+    // including the rows that have none. A consent boundary is not good news.
+    const rank = (c: RosterClient) => (c.redFlagCount === null ? 1 : 0);
+    const flags = (c: RosterClient) => c.redFlagCount ?? 0;
+    return (
+      rank(a) - rank(b) ||
+      flags(b) - flags(a) ||
+      cmp(silenceKey(a), silenceKey(b)) ||
+      a.traineeDisplayName.localeCompare(b.traineeDisplayName) ||
+      cmp(a.id, b.id)
+    );
+  });
+}
 
 /* Revoke, drafts, published plans and nutrition all live in `state()` — see the
  * FIXTURE STATE block further down for why none of it may be a module-level `let`. */
@@ -352,8 +762,6 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
  * asks for within one dev-server process, and nothing survives a restart.
  * ════════════════════════════════════════════════════════════════════════════ */
 
-const DANA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
-const OMAR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
 /** Fixture affordance only. See the block above. */
 const CATALOG_DOWN_IDS = new Set([OMAR_ID]);
 /** Likewise: the link whose weekly apply answers D6.6's 429. */
@@ -1331,9 +1739,22 @@ export const fixtureCoachApi: CoachApi = {
     };
   },
 
-  async listClients(page = 0, size = 100): Promise<RosterPage> {
+  async listClients(sort = "needs_attention" as RosterSort, page = 0, size = 100): Promise<RosterPage> {
+    /**
+     * Six ACTIVE links — AC2's seeded roster, and every rendering of the flag column
+     * on one screen: two flags (Tobias), one flag (Lina, Sara), a real zero and no
+     * badge at all (Yusuf), and "Not shared" (Petra, Mara).
+     *
+     * ⚠️ AC2 seeds *exactly two* flagged trainees; this fixture has three, because
+     * Sara's `NO_WEIGH_IN_14_DAYS` is a consequence of her having genuinely never
+     * weighed in (which is what she is for — BUG-144) and silencing it would make the
+     * fixture disagree with its own overview. The seeding count is QA's to satisfy
+     * against the api; what the fixture owes is every rendering, and it has them.
+     */
     const items =
-      SCENARIO === "empty" || state().revoked ? [] : [lina(), petra(), yusuf(), sara()];
+      SCENARIO === "empty" || state().revoked
+        ? []
+        : sortRoster([lina(), petra(), yusuf(), sara(), tobias(), mara()], sort);
     return {
       items: page === 0 ? items : [],
       page,
@@ -1362,6 +1783,18 @@ export const fixtureCoachApi: CoachApi = {
       const { ApiError } = await import("./apiFetch");
       throw new ApiError(403, "Forbidden", "COACH_ACCESS_DENIED");
     }
+    return known();
+  },
+
+  /**
+   * EV-187b. The api names PROGRESS **at the guard**, so a link without it is answered
+   * the same undifferentiated 403 as a revoked link, another coach's client and an id
+   * that never existed (ADR-0012 D4). `assertScope` is exactly that shape already.
+   */
+  async getClientProgress(id: string): Promise<TraineeProgress> {
+    await assertScope(id, "PROGRESS");
+    const known = PROGRESS[id];
+    if (!known) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
     return known();
   },
 

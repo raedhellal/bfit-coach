@@ -72,12 +72,17 @@ test.describe("AC3 — Use on a trainee", () => {
       .locator("select option")
       .evaluateAll((options) => options.map((o) => o.textContent?.trim() ?? ""));
     /**
-     * Lina shares everything and Yusuf shares WORKOUTS. Petra (NUTRITION only) and Sara
-     * (PROGRESS + WEIGH_INS) are NOT offered — AC3: "a trainee the coach may not write
-     * to is not offered and then refused". Being refused in front of the coach is the
-     * failure this excludes, not a 403 nobody sees.
+     * Lina and Tobias share everything and Yusuf shares WORKOUTS. Petra (NUTRITION
+     * only), Sara (PROGRESS + WEIGH_INS) and Mara (nothing) are NOT offered — AC3: "a
+     * trainee the coach may not write to is not offered and then refused". Being
+     * refused in front of the coach is the failure this excludes, not a 403 nobody sees.
+     *
+     * Tobias and Mara arrived with EV-187b, which seeded AC2's six-trainee roster: the
+     * picker is built FROM the roster, so a new link is a new option here by
+     * construction. That is the property worth having, and this list is where it is
+     * checked.
      */
-    expect(offered.sort()).toEqual(["Lina M.", "Yusuf A."]);
+    expect(offered.sort()).toEqual(["Lina M.", "Tobias R.", "Yusuf A."]);
   });
 
   test("the confirm names the template and the trainee, and says when guardrails apply", async ({

@@ -131,11 +131,16 @@ export type CapacityTier = "STARTER";
 /**
  * AC5's three rules. The api sends the code; src/lib/copy.ts owns the sentence.
  *
- * `PAIN_REPORTED` is published by the api and **never emitted**: there is no
- * structured pain signal in the product (`Feedback` is {EASY, OK, HARD} and no mobile
- * call site writes `workout_completion.notes`), so the server deliberately does not
- * compute that rule. We keep it in the vocabulary — and keep its sentence in copy.ts —
- * so the gap is visible rather than silently absent (ADR-0012 D6).
+ * `PAIN_REPORTED` is published by the api and **never emitted, and cannot be**: there
+ * is no structured pain signal in the product (`Feedback` is {EASY, OK, HARD} and no
+ * mobile call site writes `workout_completion.notes`), so the server deliberately does
+ * not compute that rule. EV-082, which would create the signal, is not scheduled.
+ *
+ * The constant stays in this VOCABULARY because it is b-fit-api's published enum and a
+ * union that omitted it would be a false statement about the wire. **Its sentence does
+ * not** — `copy.client.redFlagLabels` has two entries and EV-187 AC4 makes that
+ * release-blocking: the portal may not advertise a rule that cannot fire, in a legend,
+ * a tooltip, a filter or an empty state. See `qa/coach-red-flags-vocabulary.spec.ts`.
  */
 export type RedFlagCode =
   | "MISSED_TWO_OR_MORE_SESSIONS"
@@ -223,9 +228,48 @@ export interface RosterClient {
    * "No streak" for a null. With PROGRESS held, `0` is a real streak of zero.
    */
   currentStreakDays: number | null;
+  /**
+   * EV-187 AC2 — how many red flags fired, from the SAME evaluation the trainee's own
+   * page runs, so the roster badge and the flags on the page cannot disagree.
+   *
+   * Three values, three different renderings, and collapsing any two of them is the
+   * defect this field exists to prevent:
+   *   · `null` — the link carries neither WORKOUTS nor WEIGH_INS, so no rule could be
+   *     evaluated. The row reads "Not shared" and the api sorts it LAST. It is never
+   *     `0` in this case: a coach must not read a consent boundary as good news.
+   *   · `0` — a real "no flags". NO badge at all, and never "0 flags".
+   *   · `n > 0` — the badge, "1 flag" / "2 flags".
+   */
+  redFlagCount: number | null;
   status: ClientStatus;
   /** ISO-8601 instant — when the trainee accepted. */
   since: string;
+}
+
+/**
+ * `GET /coach-portal/clients?sort=…` — EV-187 AC2's triage order.
+ *
+ * **The api sorts, not the portal.** The key spans the whole roster and the portal
+ * holds one page of it, so a client-side sort would order page 1 among itself and call
+ * it triage. `needs_attention` is the api's default and this surface's default on a
+ * fresh browser session.
+ */
+export type RosterSort = "needs_attention" | "recent_activity";
+
+export const ROSTER_SORTS: readonly RosterSort[] = ["needs_attention", "recent_activity"];
+
+/** The default on a fresh browser session (AC2). */
+export const DEFAULT_ROSTER_SORT: RosterSort = "needs_attention";
+
+/**
+ * A value that may have come from a cookie or a query string → a sort the api accepts.
+ *
+ * The api answers 400 for any other value rather than falling back silently, so the
+ * portal must not forward one: a tampered cookie would otherwise turn the roster into
+ * its load-error card.
+ */
+export function asRosterSort(value: string | null | undefined): RosterSort {
+  return ROSTER_SORTS.includes(value as RosterSort) ? (value as RosterSort) : DEFAULT_ROSTER_SORT;
 }
 
 /**
@@ -373,6 +417,171 @@ export function hasScope(
 ): boolean {
   if (!Array.isArray(scopes)) return false;
   return scopes.includes(scope);
+}
+
+// ── EV-187b: the monitoring contract ─────────────────────────────────────────
+
+/*
+ * `GET /coach-portal/clients/{id}/progress` — EV-187a, b-fit-api `b19c1f3`, on main
+ * and deployed. The ONE operation this story adds, and it is a GET: EV-187 AC6's
+ * closed list is asserted against the OpenAPI diff, which went 91 → 92 operations with
+ * zero removals and no non-GET mapping.
+ *
+ * These types are read off the vendored `spec/b-fit-api.openapi.yaml`, not asked for,
+ * and every one of them carries an `@wire` tag so `qa/contract-drift.spec.ts` checks
+ * the claim rather than trusting it.
+ */
+
+/**
+ * `TraineeWeekAdherence` — one ISO week of the series, oldest first.
+ *
+ * **`planned` and `plannedSoFar` are two facts, not a rounding choice.** AC3 asks for
+ * the current week to count only days strictly before today (ADR-0012 D6, so a Monday
+ * does not render as a 0 % week) AND for the current week to be identical to the
+ * shipped "adherence this week" block, which on a Monday are 0/0 and 0/3. The api
+ * sends both; the portal renders `plannedSoFar` in the bar and `planned` where it has
+ * to agree with the shipped block. They differ only when `partial` is true.
+ *
+ * @wire TraineeWeekAdherence
+ */
+export interface WeekAdherence {
+  /** `YYYY-MM-DD`, the Monday — AC3's week-commencing label. */
+  weekCommencing: string;
+  /** Sessions completed AS PLANNED WORK: always 0 when `hasPlan` is false. */
+  done: number;
+  planned: number;
+  plannedSoFar: number;
+  /**
+   * False when no plan existed during this week. `done` and `planned` are then both 0
+   * and the portal MUST render "No plan" — never a 0 % week. A week nothing was
+   * scheduled in is not a week the trainee failed.
+   */
+  hasPlan: boolean;
+  /** True for the week containing today. */
+  partial: boolean;
+}
+
+/**
+ * `TraineeAdherenceSeries` — AC3's series and the headline above it.
+ *
+ * `done` and `planned` are the api's own sums of `weeks[]`. **The portal does not add
+ * them up itself** (BUG-198: a workout on a declared rest day already counts as a
+ * planned session, and portal-side arithmetic on top of that would compound one wrong
+ * number into two that disagree).
+ *
+ * @wire TraineeAdherenceSeries
+ */
+export interface AdherenceSeries {
+  done: number;
+  planned: number;
+  weeks: WeekAdherence[];
+}
+
+/**
+ * `TraineeSessionHistoryItem` — AC5's row: date, name, difficulty, nothing else.
+ *
+ * @wire TraineeSessionHistoryItem
+ */
+export interface SessionHistoryItem {
+  /** `YYYY-MM-DD` (UTC) of completion. */
+  date: string;
+  /** Null when the workout row has gone; the portal renders the date alone. */
+  name: string | null;
+  /** Null renders "No feedback given". It is not a fourth difficulty. */
+  difficulty: SessionFeedback | null;
+}
+
+/**
+ * `TraineeSessionHistory` — the last ten completed sessions and their summary line.
+ *
+ * `returned` is the REAL count, which is what makes AC5's "Of the last 6 sessions: …"
+ * possible without the portal counting rows and hoping the api agrees.
+ * `easy + ok + hard + noFeedback === returned`.
+ *
+ * @wire TraineeSessionHistory
+ */
+export interface SessionHistory {
+  returned: number;
+  easy: number;
+  ok: number;
+  hard: number;
+  noFeedback: number;
+  /** At most 10, newest first. The cap is server-side and has no parameter. */
+  items: SessionHistoryItem[];
+}
+
+/**
+ * `TraineeMissedSession` — one scheduled day, already passed, with nothing completed
+ * on it. AC4's evidence for `MISSED_TWO_OR_MORE_SESSIONS`.
+ *
+ * @wire TraineeMissedSession
+ */
+export interface MissedSession {
+  /** `YYYY-MM-DD`. Only days strictly before today are ever listed. */
+  date: string;
+  /** Null when the plan's schedule names no workout for that day. Never invented. */
+  sessionName: string | null;
+}
+
+/**
+ * `TraineeWeighInEvidence` — AC4's evidence for `NO_WEIGH_IN_14_DAYS`.
+ *
+ * Both fields are null TOGETHER and **only** for a trainee who has never logged a
+ * weight in either weight table (BUG-143's two tables, merged api-side). That is the
+ * only case that may render "Never weighed in" — a trainee who weighed in nine weeks
+ * ago carries a real date here while `weightSeries` is empty, and "nothing recently"
+ * is not "nothing ever".
+ *
+ * @wire TraineeWeighInEvidence
+ */
+export interface WeighInEvidence {
+  /** `YYYY-MM-DD`, of ANY age — not bounded by the 8-week chart window. */
+  lastWeighInDate: string | null;
+  daysSince: number | null;
+}
+
+/**
+ * `TraineeFiredRedFlag` — a flag that fired, WITH the evidence it fired on.
+ *
+ * Exactly one evidence field is populated and the flag decides which. The portal never
+ * renders a flag with an empty evidence block and never renders evidence for a flag
+ * that did not fire — the list only ever contains flags that fired.
+ *
+ * @wire TraineeFiredRedFlag
+ */
+export interface FiredRedFlag {
+  flag: RedFlagCode;
+  /** `MISSED_TWO_OR_MORE_SESSIONS` only. Never empty — the rule needs two. */
+  missedSessions: MissedSession[] | null;
+  /** `NO_WEIGH_IN_14_DAYS` only. */
+  weighIn: WeighInEvidence | null;
+}
+
+/**
+ * `GET /coach-portal/clients/{id}/progress` → `TraineeProgressResponse`.
+ *
+ * Three blocks in one read, each blanking on its OWN scope exactly as the overview's
+ * blocks do (ADR-0015 R2-2 / F1): `null` is "not shared", never `0` and never an empty
+ * list that reads like data. The portal renders "not shared" from `scopes` and from
+ * nothing else — never from a null, never from a 403.
+ *
+ * @wire TraineeProgressResponse
+ */
+export interface TraineeProgress {
+  clientId: string;
+  /** How many ISO weeks the series covers. A server constant; there is no picker. */
+  weeks: number;
+  /** [WORKOUTS] null = not shared. */
+  adherence: AdherenceSeries | null;
+  /** [WORKOUTS] null = not shared. */
+  sessions: SessionHistory | null;
+  /**
+   * null = the link carries neither WORKOUTS nor WEIGH_INS; `[]` = "No red flags".
+   * Identical, flag for flag, to the overview's `redFlags` — one evaluation, two
+   * projections.
+   */
+  redFlags: FiredRedFlag[] | null;
+  scopes: CoachAccessScope[];
 }
 
 // ── EV-184b: the routine contract ───────────────────────────────────────────
@@ -1372,8 +1581,19 @@ const liveCoachApi = {
   getMe(): Promise<CoachMe> {
     return apiFetch<CoachMe>("/coach-portal/me");
   },
-  listClients(page = 0, size = ROSTER_PAGE_SIZE): Promise<RosterPage> {
-    return apiFetch<RosterPage>(`/coach-portal/clients?page=${page}&size=${size}`);
+  /**
+   * `sort` is sent on every call, including for the default: the api's default and
+   * this surface's default happen to agree today, and a portal that relied on that
+   * agreement would silently change order the day the api's default changed.
+   */
+  listClients(
+    sort: RosterSort = DEFAULT_ROSTER_SORT,
+    page = 0,
+    size = ROSTER_PAGE_SIZE
+  ): Promise<RosterPage> {
+    return apiFetch<RosterPage>(
+      `/coach-portal/clients?page=${page}&size=${size}&sort=${encodeURIComponent(sort)}`
+    );
   },
   createInvite(): Promise<InviteResponse> {
     return apiFetch<InviteResponse>("/coach-portal/invites", { method: "POST" });
@@ -1382,6 +1602,10 @@ const liveCoachApi = {
     return apiFetch<ClientOverview>(
       `/coach-portal/clients/${encodeURIComponent(id)}`
     );
+  },
+  /** EV-187b — the monitoring blocks. GET only; nothing on that page writes. */
+  getClientProgress(id: string): Promise<TraineeProgress> {
+    return apiFetch<TraineeProgress>(`${client(id)}/progress`);
   },
   async revokeClient(id: string): Promise<void> {
     // 204 No Content — `apiFetch` parses an empty body to null, which is the point.
@@ -1577,48 +1801,20 @@ export const coachApi = {
   },
 };
 
-/**
- * Ordering rule for the roster: needs attention first (EV-183's roster read).
+/*
+ * ⛔ `sortNeedsAttentionFirst` WAS HERE, and it is gone on purpose (EV-187b).
  *
- * **Least recently seen first**, which is the only needs-attention signal the list
- * endpoint carries: `CoachClientSummaryResponse` has no `redFlags` field, and the
- * flags are computed per trainee by `GET /coach-portal/clients/{id}`. Fetching them
- * for the roster would mean one extra request per row on every render of the landing
- * page — an N+1 against a tier ladder that already contemplates 100 profiles — so the
- * red-flag chip lives on the overview only, and the roster sorts by
- * `lastCompletedWorkoutDate` ascending instead.
+ * It sorted the roster in the browser's server render by `lastCompletedWorkoutDate`,
+ * because `GET /coach-portal/clients` carried no flag count and fetching one per row
+ * would have been an N+1 on every roster render. EV-187a put `redFlagCount` on the row
+ * and `sort` on the endpoint, so **the api sorts now** — and the portal must not
+ * re-sort on top of it for a reason that is structural rather than tidy: the sort key
+ * spans the whole roster and this surface holds ONE PAGE of it, so a client-side sort
+ * orders page 1 among itself and calls it triage. AC2's "load the flags lazily per row"
+ * is refused by the story for the same reason.
  *
- * **A null date has two readings and they sort to opposite ends.** ADR-0015 D5/S1
- * made `lastCompletedWorkoutDate` scope-filtered, so:
- *
- *   · PROGRESS held, date null → the trainee has never completed a workout. That is
- *     the MOST attention-needing row there is, and it keeps the place it has always
- *     had: first.
- *   · PROGRESS not held (or not stated) → the date is UNKNOWN, and unknown sorts
- *     LAST. Sorting it first produced a needs-attention list led by precisely the
- *     trainees the coach has no attention data for, permanently.
- *
- * Telling the two apart is what `RosterClient.scopes` is for — before it existed both
- * nulls had to share one position, and the recorded cost of picking "last" was that a
- * genuinely untrained trainee sank. `hasScope` fails closed, so an api that sends no
- * `scopes` puts every null in the unknown tier, which is the old behaviour and the
- * safe one.
- *
- * Ties break on display name so the order is stable across renders.
+ * The old function's ruling survives inside the api's comparator, which the fixture
+ * mirrors in `sortRoster`: a null `lastCompletedWorkoutDate` means "never trained" when
+ * PROGRESS is held and sorts FIRST, and "unknown" when it is not and sorts LAST.
  */
-export function sortNeedsAttentionFirst(items: RosterClient[]): RosterClient[] {
-  /** 0 = never trained, 1 = has a date, 2 = unknown. Lower sorts earlier. */
-  const tier = (c: RosterClient): 0 | 1 | 2 => {
-    if (c.lastCompletedWorkoutDate !== null) return 1;
-    return hasScope(c.scopes, "PROGRESS") ? 0 : 2;
-  };
-  return [...items].sort((a, b) => {
-    const at = tier(a);
-    const bt = tier(b);
-    if (at !== bt) return at - bt;
-    const av = a.lastCompletedWorkoutDate;
-    const bv = b.lastCompletedWorkoutDate;
-    if (av !== null && bv !== null && av !== bv) return av < bv ? -1 : 1;
-    return a.traineeDisplayName.localeCompare(b.traineeDisplayName);
-  });
-}
+

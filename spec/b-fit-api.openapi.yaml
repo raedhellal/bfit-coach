@@ -2746,6 +2746,24 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - name: sort
+          in: query
+          required: false
+          description: >-
+            EV-187a AC2's triage order. `needs_attention` (the default) is flagged first —
+            descending by the number of fired red flags, then ascending by the date of the last
+            completed workout so the longest silence is highest, then by display name, then by id
+            so the order is stable across reloads for unchanged data. A row whose link shares
+            neither WORKOUTS nor WEIGH_INS has no flag count at all (`redFlagCount: null`) and
+            sorts LAST, never among the zero-flag rows: a coach must not read a consent boundary as
+            good news. `recent_activity` is most recently active first, unknown activity last.
+            **The API sorts, not the portal** — the key spans the whole roster and the portal holds
+            one page of it, so a client-side sort would order page 1 among itself and call it
+            triage. Any other value is a 400, not a silent fall-back to the default.
+          schema:
+            type: string
+            enum: [needs_attention, recent_activity]
+            default: needs_attention
       responses:
         "200":
           description: A page of roster rows
@@ -2838,6 +2856,55 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "403":
           description: Not a coach, not this coach's client, revoked, or no such id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/progress:
+    get:
+      summary: Eight weeks of adherence, the last ten sessions, and red-flag evidence
+      description: >-
+        EV-187a AC3/AC4/AC5 — the monitoring page's three blocks in one read: adherence per ISO week
+        over a fixed 8-week horizon, the last ten completed sessions with the difficulty the trainee
+        reported, and every red flag that fired WITH the evidence it fired on.
+        **Requires the PROGRESS scope at the guard.** A link that does not carry it answers the same
+        undifferentiated 403 as another coach's client, a revoked link and an id that never existed
+        (ADR-0012 D4) — so the denial says nothing about which of the four it was, and the portal
+        renders "This trainee has not shared their progress with you." from
+        `TraineeOverviewResponse.scopes`, never from this status.
+        Inside, each block still blanks on its OWN scope: `adherence` and `sessions` are null
+        without WORKOUTS, matching the overview's `adherenceThisWeek` and `lastSession`, so the two
+        pages cannot show different numbers for the same trainee.
+        `redFlags` here is the overview's `redFlags` with the evidence attached — one evaluation,
+        two projections, so the badge and the evidence cannot disagree.
+        **GET only.** This story adds no non-GET mapping anywhere on this prefix; nothing on the
+        monitoring page writes to a trainee's plan, sessions, nutrition, weigh-ins or targets.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The three monitoring blocks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraineeProgressResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not a coach, not this coach's client, revoked, no such id, or the link does not carry
+            PROGRESS — one body for all five.
           content:
             application/json:
               schema:
@@ -4279,6 +4346,17 @@ components:
             The trainee's current streak in days. NULL when this link does not carry the PROGRESS
             scope — 0 is a real streak of zero and must not be rendered for data the trainee did not
             share.
+        redFlagCount:
+          type: integer
+          nullable: true
+          description: >-
+            EV-187a AC2 — how many red flags fired for this trainee, from the SAME evaluation the
+            trainee's own page runs, so the roster badge and the flags on the page cannot disagree
+            (QA compares them for every seeded trainee).
+            **NULL means "not shared"**: the link carries neither WORKOUTS nor WEIGH_INS, so no rule
+            could be evaluated at all. Such a row renders "Not shared" and sorts LAST under
+            `needs_attention`. It is never 0 in that case. 0 is a real "no flags" and renders no
+            badge at all — not "0 flags".
         status:
           type: string
           enum: [ACTIVE]
@@ -4379,6 +4457,210 @@ components:
         weightKg:
           type: number
       required: [date, weightKg]
+    TraineeProgressResponse:
+      type: object
+      description: >-
+        EV-187a AC3/AC4/AC5. The monitoring page, in three blocks and no fourth horizon: there is no
+        date-range picker and `weeks` is a server constant, so a client cannot ask for another
+        window.
+      properties:
+        clientId:
+          type: string
+          format: uuid
+        weeks:
+          type: integer
+          example: 8
+          description: How many ISO weeks the series covers. A server constant.
+        adherence:
+          allOf:
+            - $ref: "#/components/schemas/TraineeAdherenceSeries"
+          nullable: true
+          description: >-
+            NULL when the link does not carry WORKOUTS — the same blanking as the overview's
+            `adherenceThisWeek`, so the two pages cannot disagree. Render "not shared" from
+            `scopes`.
+        sessions:
+          allOf:
+            - $ref: "#/components/schemas/TraineeSessionHistory"
+          nullable: true
+          description: >-
+            NULL when the link does not carry WORKOUTS: session names and the trainee's difficulty
+            feedback are workout CONTENT, the same disclosure as the overview's `lastSession`.
+        redFlags:
+          type: array
+          nullable: true
+          description: >-
+            The fired flags WITH their evidence — identical, flag for flag, to the overview's
+            `redFlags`, because it is one evaluation projected twice. NULL when the link carries
+            neither WORKOUTS nor WEIGH_INS (no rule could be evaluated); EMPTY is "No red flags".
+            A flag is never returned with an empty evidence block, and evidence is never returned
+            for a flag that did not fire.
+          items:
+            $ref: "#/components/schemas/TraineeFiredRedFlag"
+        scopes:
+          type: array
+          description: The scopes this link carries, verbatim from `coach_clients.scopes`.
+          items:
+            type: string
+            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS]
+      required: [clientId, weeks, scopes]
+    TraineeAdherenceSeries:
+      type: object
+      description: >-
+        AC3's series and its headline. `done` and `planned` are the sums of `weeks[]` — the headline
+        "`<done>` of `<planned>` planned sessions in the last 8 weeks" is a sum the coach can check
+        by hand, and a test checks it too.
+      properties:
+        done:
+          type: integer
+        planned:
+          type: integer
+        weeks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraineeWeekAdherence"
+      required: [done, planned, weeks]
+    TraineeWeekAdherence:
+      type: object
+      description: >-
+        One ISO week, oldest first.
+        **`planned` vs `plannedSoFar`** is AC3's two clauses that cannot both be one number: it asks
+        for the current week to count only days strictly before today AND for the current week to be
+        identical to the shipped "adherence this week" block, which on a Monday are 0/0 and 0/3. Both
+        facts are on the wire and neither is invented — `planned` is the shipped block byte for byte,
+        `plannedSoFar` is the elapsed-days number that does not render a Monday as a 0 % week
+        (ADR-0012 D6). They differ only when `partial` is true.
+      properties:
+        weekCommencing:
+          type: string
+          format: date
+          description: The Monday of the week — AC3's week-commencing label.
+        done:
+          type: integer
+          description: >-
+            Sessions completed in the week, as PLANNED work: 0 whenever `hasPlan` is false, because
+            a week nothing was scheduled in contains no planned work to have done. A session
+            completed in such a week is still in the session history and in the streak; it is not
+            adherence.
+        planned:
+          type: integer
+        plannedSoFar:
+          type: integer
+        hasPlan:
+          type: boolean
+          description: >-
+            False when no plan existed during this week; `done` and `planned` are then both 0 and
+            the client MUST render "No plan", never a 0 % week — a week nothing was scheduled in is
+            not a week the trainee failed. Limited by the schema: `user_plan` holds one row per user
+            with no history, so this means "the plan they are on now already existed then". A
+            trainee who switched plans reads as "No plan" for the weeks before the switch.
+            EV-040c's `plan_assignments` is what makes it exact.
+        partial:
+          type: boolean
+          description: True for the week containing today.
+      required: [weekCommencing, done, planned, plannedSoFar, hasPlan, partial]
+    TraineeSessionHistory:
+      type: object
+      description: >-
+        AC5. The last ten completed sessions, newest first, and the summary line above them.
+        `returned` is the REAL count, so the client writes "Of the last 6 sessions: …" for a trainee
+        with six and never "of the last 10". `easy + ok + hard + noFeedback == returned`.
+      properties:
+        returned:
+          type: integer
+        easy:
+          type: integer
+        ok:
+          type: integer
+        hard:
+          type: integer
+        noFeedback:
+          type: integer
+        items:
+          type: array
+          description: >-
+            At most 10, newest first. The cap is server-side and there is no parameter that raises
+            it; the read is LIMITed at the database on
+            `idx_workout_sessions_completed (user_id, completed_at DESC)`, not a full history scan
+            filtered in memory.
+          items:
+            $ref: "#/components/schemas/TraineeSessionHistoryItem"
+      required: [returned, easy, ok, hard, noFeedback, items]
+    TraineeSessionHistoryItem:
+      type: object
+      description: One completed session — date, name, difficulty, and nothing else on the row.
+      properties:
+        date:
+          type: string
+          format: date
+          description: UTC date of completion.
+        name:
+          type: string
+          nullable: true
+        difficulty:
+          type: string
+          nullable: true
+          enum: [EASY, OK, HARD]
+          description: >-
+            Null renders "No feedback given". It is not a fourth value and must not be counted as
+            one — `noFeedback` above is where it is counted.
+      required: [date]
+    TraineeFiredRedFlag:
+      type: object
+      description: >-
+        AC4 — a red flag that fired, with the evidence it fired on. Exactly one evidence field is
+        populated, decided by the flag: MISSED_TWO_OR_MORE_SESSIONS carries `missedSessions` (never
+        empty — the rule needs two), NO_WEIGH_IN_14_DAYS carries `weighIn`. PAIN_REPORTED can appear
+        here never; see `RedFlag`.
+      properties:
+        flag:
+          $ref: "#/components/schemas/RedFlag"
+        missedSessions:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/TraineeMissedSession"
+        weighIn:
+          allOf:
+            - $ref: "#/components/schemas/TraineeWeighInEvidence"
+          nullable: true
+      required: [flag]
+    TraineeMissedSession:
+      type: object
+      description: >-
+        A day that was scheduled, has already passed, and has no completed session on it. Only days
+        STRICTLY BEFORE today are ever listed (ADR-0012 D6), and only when a plan existed.
+      properties:
+        date:
+          type: string
+          format: date
+        sessionName:
+          type: string
+          nullable: true
+          description: >-
+            The name of the session scheduled that day. Null when the plan's schedule names no
+            workout for it; the client renders the date alone and does not invent a name.
+      required: [date]
+    TraineeWeighInEvidence:
+      type: object
+      description: >-
+        AC4's second sentence: "Last weigh-in `<date>` — `<N>` days ago", or "Never weighed in".
+        Both fields are null TOGETHER, and only for a trainee who has NEVER logged a weight in
+        either weight table — they are two views of one fact, so a client never has to reconcile a
+        date with no age.
+      properties:
+        lastWeighInDate:
+          type: string
+          format: date
+          nullable: true
+          description: >-
+            The most recent weigh-in OF ANY AGE, not bounded by the 8-week chart window. A trainee
+            who weighed in nine weeks ago carries that date here while `weightSeries` is empty:
+            "nothing recently" and "nothing ever" are different facts and only the second one may be
+            rendered as "Never weighed in".
+        daysSince:
+          type: integer
+          nullable: true
     RedFlag:
       type: string
       description: >-

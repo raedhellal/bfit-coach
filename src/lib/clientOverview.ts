@@ -1,6 +1,12 @@
 import "server-only";
 import { cache } from "react";
-import { coachApi, isForbidden, type ClientOverview, type CoachMe } from "./coachApi";
+import {
+  coachApi,
+  isForbidden,
+  type ClientOverview,
+  type CoachMe,
+  type TraineeProgress,
+} from "./coachApi";
 
 /**
  * The trainee overview, read ONCE per request and shared by the two components that
@@ -26,6 +32,45 @@ export const readClientOverview = cache(
       // ADR-0012 D4: the coach portal answers 403 for a foreign id AND for one that
       // does not exist, so there is no existence oracle. Both land here.
       return { overview: null, forbidden: isForbidden(err) };
+    }
+  }
+);
+
+/**
+ * EV-187b — the monitoring read (`GET /coach-portal/clients/{id}/progress`).
+ *
+ * **A 403 here is not the denial page.** The overview endpoint requires an ACTIVE link
+ * and no data scope; this one names `PROGRESS` at the guard, so a link that shares only
+ * workouts or only nutrition is answered 403 for the monitoring blocks while the rest
+ * of the trainee's page is a perfectly legitimate 200. Throwing, or reusing the layout's
+ * redirect, would 403 the whole client area for a trainee the coach is entitled to see.
+ *
+ * So the outcome is a value, and the caller renders **"not shared" from `scopes`** and
+ * never from this status — ADR-0012 D4's denial is undifferentiated across "no such
+ * id", "another coach's client", "revoked" and "scope missing", so it says nothing
+ * about consent and must not be read as if it did.
+ *
+ * **There is no `forbidden` flag on this reader, unlike `readClientOverview` above, and
+ * that is the decision rather than an omission.** It carried one, described as something
+ * "the caller distinguishes" — and no caller read it, because there is nothing a caller
+ * may honestly do with it: the 403 is undifferentiated, so "the api said no" and "the api
+ * did not answer" are the same answer to the only question this page asks. The page
+ * decides from `scopes` (is this block shared?) and from `progress === null` (did the
+ * data arrive?), and a flag nobody reads is an invitation to branch on a status code,
+ * which is the one thing ADR-0015 R2-2 forbids. The overview's flag stays because
+ * `[id]/layout.tsx` really does spend it, on the status the whole route is served with.
+ *
+ * Cached per request for the same reason as the overview: the page reads it once.
+ */
+export const readClientProgress = cache(
+  async (id: string): Promise<TraineeProgress | null> => {
+    try {
+      return await coachApi.getClientProgress(id);
+    } catch {
+      // Every failure is the same answer here: a 403 (no PROGRESS, revoked, foreign id,
+      // no such id — one body for all four) and a 500 both mean "no monitoring data",
+      // and the page has already decided from `scopes` which sentence that deserves.
+      return null;
     }
   }
 );

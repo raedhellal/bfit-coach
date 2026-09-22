@@ -2,9 +2,11 @@ import { CoachShell } from "@/components/shell/CoachShell";
 import { CapacityMeter } from "@/components/roster/CapacityMeter";
 import { InviteButton } from "@/components/roster/InviteButton";
 import { RosterRows } from "@/components/roster/RosterRows";
+import { RosterSortToggle } from "@/components/roster/RosterSortToggle";
 import { Button, Card, EmptyState, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
-import { coachApi, sortNeedsAttentionFirst, type CoachMe, type RosterClient } from "@/lib/coachApi";
+import { coachApi, type CoachMe, type RosterClient } from "@/lib/coachApi";
+import { readRosterSort } from "@/lib/rosterSort";
 import { copy } from "@/lib/copy";
 import { tierLabel } from "@/lib/format";
 
@@ -24,6 +26,12 @@ export default async function RosterPage() {
   let me: CoachMe | null = null;
   let clients: RosterClient[] | null = null;
   let failed = false;
+  /**
+   * EV-187 AC2. The session cookie, or "Needs attention" on a fresh session — read on
+   * the SERVER because the api does the sorting: the key spans the whole roster and
+   * this page holds one page of it, so sorting here would order page 1 among itself.
+   */
+  const sort = readRosterSort();
 
   try {
     // `listClients` is paged. One page of ROSTER_PAGE_SIZE (the api's own maximum) is
@@ -31,10 +39,12 @@ export default async function RosterPage() {
     // this screen — but the envelope's `totalElements` is what would prove otherwise.
     const [meResult, roster] = await Promise.all([
       coachApi.getMe(),
-      coachApi.listClients(),
+      coachApi.listClients(sort),
     ]);
     me = meResult;
-    clients = sortNeedsAttentionFirst(roster.items);
+    // Rendered in the order the api returned. Re-sorting here is the defect, not the
+    // safety net: see the block where `sortNeedsAttentionFirst` used to live.
+    clients = roster.items;
   } catch {
     failed = true;
   }
@@ -95,9 +105,14 @@ export default async function RosterPage() {
           }}
         >
           <CapacityMeter active={me.active} capacity={me.capacity} tier={me.tier} />
-          {full && (
-            <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{fullReason}</span>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            {full && (
+              <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{fullReason}</span>
+            )}
+            {/* AC2's one control. Absent on the empty roster: an order for zero rows is
+                a control that can only mislead. */}
+            {clients.length > 0 && <RosterSortToggle sort={sort} />}
+          </div>
         </div>
       </Card>
 

@@ -27,7 +27,7 @@ export default defineConfig({
    * no-trainees branch. The populated scenario is the only place the apply, its 409
    * retry and AC5's marks are reachable at all.
    */
-  testMatch: /(coach-roster-scopes|coach-library-apply)\.spec\.ts/,
+  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-library-apply)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   // The same cold-compile budget as the main config, and for the same reason —
