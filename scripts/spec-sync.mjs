@@ -40,7 +40,32 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "..");
-const api = process.env.B_FIT_API_DIR || resolve(repo, "..", "b-fit-api");
+/**
+ * Where b-fit-api is — resolved the SAME way `qa/api-merge-condition.spec.ts` resolves
+ * it, through `--git-common-dir`, rather than as `resolve(repo, "..")`.
+ *
+ * `resolve(repo, "..")` is the sibling of whatever directory this checkout happens to
+ * sit in, which inside a `git worktree` is `<repo>/.claude/worktrees/` — so `spec:sync`
+ * from a worktree tried to copy `…/.claude/worktrees/b-fit-api/openapi.yaml` and died
+ * on ENOENT. Every agent branch on this surface is built in a worktree, so "vendor the
+ * spec" is the first command of a story and was the first one to fail.
+ */
+function siblingApiDir() {
+  const named = process.env.B_FIT_API_DIR;
+  if (named) return named;
+  try {
+    const common = execFileSync(
+      "git",
+      ["-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { encoding: "utf8" }
+    ).trim();
+    return resolve(dirname(common), "..", "b-fit-api");
+  } catch {
+    return resolve(repo, "..", "b-fit-api");
+  }
+}
+
+const api = siblingApiDir();
 
 const source = join(api, "openapi.yaml");
 copyFileSync(source, join(repo, "spec", "b-fit-api.openapi.yaml"));
