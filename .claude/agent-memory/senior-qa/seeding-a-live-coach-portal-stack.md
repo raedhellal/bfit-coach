@@ -39,3 +39,16 @@ DB and every routine/publish path is dead for an environmental reason. Restart w
 `EXERCISE_PROVIDER=seed` before concluding anything about the portal's publish flow.
 
 Publishing through the api needs the two-step `publish/preview` → take its `digest` → `publish`.
+
+**Three more traps, measured on the EV-208 gate (2026-09-23):**
+- `POST /auth/register` returns the token at **`tokens.accessToken`**, not `accessToken` (login
+  returns it at the top level). Access tokens last **15 minutes**; re-login per step in a long seed.
+- **Plan ids are deterministic from the onboarding profile**, so two trainees with the same answers
+  share one `plans` row — any SQL edit to `plan_schedule` hits both. Vary `weeklyDays`/`primaryGoal`
+  to force a distinct plan before editing one.
+- The STARTER seat cap is re-checked on every accept, so once N links are ACTIVE no further accept
+  succeeds: `UPDATE coach_clients SET status='REVOKED', revoked_at=now(), revoked_by='TRAINEE'`
+  first, run the invite/accept/revoke cycle, then reactivate them all in one statement.
+- A link with `WORKOUTS` removed from `coach_clients.scopes` does **not** hide the adherence block:
+  it renders with *"This trainee has not shared their progress with you."*
+
