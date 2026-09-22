@@ -696,12 +696,19 @@ export interface CoachRoutineDraftRequest {
  * EV-188b — THE COACH'S ROUTINE LIBRARY. The first resource on this prefix that
  * the COACH owns rather than one they reach through a trainee.
  *
- * 🔴 TYPED AGAINST AN API THAT HAS NOT SHIPPED. Every name below comes from
- * `b-fit-api` `feat/ev188a-template-library-api` @ 341f752 — APPROVE + QA PASS,
- * NOT MERGED. `spec/b-fit-api.sha` records it, says `on-api-main: NO`, and
- * `qa/api-merge-condition.spec.ts` turns red the moment that stops being true.
- * The condition on this branch is written there and it is hard: this portal may
- * not merge until 341f752 is an ancestor of b-fit-api's main. Main auto-deploys.
+ * ✅ TYPED AGAINST A SHIPPED API — but only since 2026-09-21, and the history is
+ * the point. Every name below was written against `b-fit-api`
+ * `feat/ev188a-template-library-api` @ `341f752` while that branch was APPROVE +
+ * QA PASS and **unmerged**, under a hard merge condition. `b-fit-api` main is now
+ * `21ed43f` (the merge of that branch) and `341f752` is an ancestor of it, so the
+ * condition is DISCHARGED and `spec/b-fit-api.sha` reads `on-api-main: YES`.
+ *
+ * Two facts worth keeping, because they are what makes the re-sync a check rather
+ * than a formality: `341f752:openapi.yaml` and `21ed43f:openapi.yaml` are
+ * BYTE-IDENTICAL (sha256 13f0662…), so nothing typed below depends on anything
+ * the merged spec lacks; and the re-sync was not remembered by a person — the
+ * forcing function in `qa/api-merge-condition.spec.ts` turned red the moment the
+ * api caught up, which is exactly the job it was written for.
  *
  * WHAT THE PORTAL MUST NOT ASSUME, from the api's own QA pass:
  *   · The server accepts only a PUBLISHABLE template (ADR-0016 §Amendment V1b).

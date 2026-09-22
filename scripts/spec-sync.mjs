@@ -26,6 +26,7 @@
  *     # comment lines
  *     ref: <the api branch/tag this came from>
  *     on-api-main: YES | NO | UNKNOWN
+ *     dirty: yes                ← only when the api worktree had uncommitted spec edits
  *
  * `qa/api-merge-condition.spec.ts` reads `on-api-main` and fails when the declaration
  * and the sibling repo disagree — in EITHER direction. A branch vendored as NO that
@@ -85,15 +86,25 @@ function onApiMain() {
 
 const merged = onApiMain();
 
+/**
+ * ⚠ Line 1 is EXACTLY the sha and nothing else.
+ *
+ * It used to be `${sha} (dirty worktree)`, which collided with the reader's own rule
+ * that line 1 is 40 hex characters — so a dirty api worktree produced an
+ * unexplainable red in `qa/api-merge-condition.spec.ts` instead of the legible
+ * provenance note the marker was written for. A warning that breaks the thing it is
+ * warning inside is worse than no warning. It has its own field now.
+ */
 writeFileSync(
   join(repo, "spec", "b-fit-api.sha"),
   [
-    `${sha}${status ? " (dirty worktree)" : ""}`,
+    sha,
     "# Provenance, written by scripts/spec-sync.mjs. Line 1 is the value; these are for you.",
     "# on-api-main: NO means the portal is typed against an api that has NOT shipped.",
     "# qa/api-merge-condition.spec.ts fails when this line and b-fit-api disagree.",
     `ref: ${ref}`,
     `on-api-main: ${merged}`,
+    ...(status ? ["dirty: yes  # openapi.yaml had uncommitted edits — this sha does not name what was copied"] : []),
     "",
   ].join("\n")
 );

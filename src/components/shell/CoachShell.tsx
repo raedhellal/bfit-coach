@@ -58,7 +58,7 @@ export function CoachShell({
           <Link href="/" aria-label={copy.shell.backToRoster}>
             <Logo size={30} label={copy.brand} />
           </Link>
-          <nav aria-label={copy.shell.roster} className="shell-nav">
+          <nav aria-label={copy.shell.nav} className="shell-nav">
             <ShellLink href="/" current={section === "roster"}>
               {copy.shell.roster}
             </ShellLink>

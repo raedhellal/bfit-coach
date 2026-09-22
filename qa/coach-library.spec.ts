@@ -68,7 +68,7 @@ function dayCard(page: Page, dayIndex: number) {
 test.describe("AC1 — Templates is in the portal's main navigation", () => {
   test("the roster carries a Templates link that opens the library", async ({ page }) => {
     await signIn(page);
-    const nav = page.getByRole("navigation", { name: "Roster" });
+    const nav = page.getByRole("navigation", { name: "Portal" });
     await expect(nav.getByRole("link", { name: "Templates" })).toBeVisible();
 
     await nav.getByRole("link", { name: "Templates" }).click();
@@ -76,7 +76,7 @@ test.describe("AC1 — Templates is in the portal's main navigation", () => {
     await expect(page.getByRole("heading", { name: "Templates" })).toBeVisible();
     // The nav says where you are, and says it to a screen reader too.
     await expect(
-      page.getByRole("navigation", { name: "Roster" }).getByRole("link", { name: "Templates" })
+      page.getByRole("navigation", { name: "Portal" }).getByRole("link", { name: "Templates" })
     ).toHaveAttribute("aria-current", "page");
   });
 
@@ -89,7 +89,7 @@ test.describe("AC1 — Templates is in the portal's main navigation", () => {
   }) => {
     await signIn(page);
     await page.goto("/templates");
-    const templates = page.getByRole("navigation", { name: "Roster" }).getByRole("link", {
+    const templates = page.getByRole("navigation", { name: "Portal" }).getByRole("link", {
       name: "Templates",
     });
     const signOut = page.getByRole("button", { name: "Sign out" });
@@ -284,6 +284,11 @@ test.describe("AC1 — the coach builds a template from nothing", () => {
     const before = await readEditor(page);
     expect(before.days.length).toBe(2);
     expect(before.days[0].exercises.length).toBe(3);
+    // Same reason as the save-as-template comparison: a reload that preserved the day
+    // count and lost every prescription would pass on the outer guard alone.
+    expect(before.days[0].exercises[0].sets).not.toBe("");
+    expect(before.days[0].exercises[0].reps).not.toBe("");
+    expect(before.days[0].exercises[0].rest).not.toBe("");
     // AC1 — "editable again with the same values after a hard reload".
     await page.reload();
     await expect(page.getByRole("group", { name: "Day 1", exact: true })).toBeVisible();
@@ -343,7 +348,22 @@ test.describe("AC1 — Save as template, from the trainee's Routine page", () =>
     // AC1 — the template's days, exercises, sets, reps and rest are identical to the
     // plan's. Read off the two screens, exercise by exercise.
     const plan = await readTraineeEditor(page);
+    /**
+     * ⚠ GUARD THE FIELDS, NOT JUST THE OUTER LIST.
+     *
+     * `expect(plan.days.length).toBe(3)` alone was not enough, and that is measured:
+     * blinding BOTH readers' label lookup so `sets` / `reps` / `rest` answered `""` on
+     * every row left this test GREEN, while the Duplicate test at :194 — which already
+     * carried these three lines — went red under the identical probe. The outer guard
+     * witnesses days, weekdays, focuses and exercise names; AC1 asks for sets, reps and
+     * rest too ("QA compares exercise by exercise"), and an empty string compared with
+     * an empty string is the same vacuous pass as `{days: []}` vs `{days: []}`.
+     */
     expect(plan.days.length).toBe(3);
+    expect(plan.days[0].exercises.length).toBeGreaterThan(0);
+    expect(plan.days[0].exercises[0].sets).not.toBe("");
+    expect(plan.days[0].exercises[0].reps).not.toBe("");
+    expect(plan.days[0].exercises[0].rest).not.toBe("");
     await page.goto("/templates");
     const template = await openAndRead(page, "Lina's plan");
     expect(template.days).toEqual(plan.days);

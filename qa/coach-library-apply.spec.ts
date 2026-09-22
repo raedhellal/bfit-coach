@@ -144,9 +144,15 @@ test.describe("AC3 — Use on a trainee", () => {
 
     // 409 COACH_DRAFT_EXISTS → AC3's sentence, verbatim, and a control that names what
     // it does. The coach is still in the dialog; nothing has been destroyed.
+    /**
+     * AC3, verbatim, with ONE full stop. The shipped string had two — "Yusuf A.." —
+     * because the sentence appended a stop to a display name that already ends in one,
+     * and this assertion pinned the typo rather than catching it. Asserting the correct
+     * sentence is what turns the test back into a witness.
+     */
     await expect(
       dialog.getByText(
-        "This replaces your unpublished draft for Yusuf A.. That draft cannot be recovered.",
+        "This replaces your unpublished draft for Yusuf A. That draft cannot be recovered.",
         { exact: true }
       )
     ).toBeVisible();
@@ -232,7 +238,16 @@ test.describe("AC2 — deleting a template changes nothing about what was made f
     await page.goto(`/clients/${YUSUF}/routine`);
     // Read the draft as it stands, exercise by exercise, BEFORE the delete.
     const before = await readDays(page);
+    /**
+     * Same family as `coach-library.spec.ts`'s readers, and unproven until now: the
+     * outer guard witnesses the day list, so a delete that emptied every day would
+     * still compare `[]` with `[]` per day and pass. AC2 says the draft is "completely
+     * unchanged" and QA "compares exercise by exercise", so the fields are guarded too.
+     */
     expect(before.length).toBeGreaterThan(0);
+    expect(before[0].exercises.length).toBeGreaterThan(0);
+    expect(before[0].exercises[0].name).not.toBe("");
+    expect(before[0].exercises[0].sets).not.toBe("");
 
     await page.goto("/templates");
     await row(page, SEEDED_B).getByRole("button", { name: "Delete" }).click();

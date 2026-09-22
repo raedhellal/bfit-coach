@@ -41,6 +41,28 @@ export default defineConfig({
    * serialises within a file; this serialises across them.
    */
   workers: 1,
+  /**
+   * ⏱ The assertion budget, raised for a COLD `.next` — not for a slow product.
+   *
+   * `next dev` compiles a route the first time it is NAVIGATED to, and this suite runs
+   * against `next dev` by design (that is what makes it the gate: no build step, no
+   * backend). EV-188b added three routes and 25 tests, which pushed the first
+   * assertion on several pages past Playwright's 5 s `expect` default on a cold
+   * checkout: `senior-qa` measured branch-cold RED 2/2 and main-cold GREEN 2/2, with a
+   * DIFFERENT pre-existing file failing each time and no EV-188b test ever failing —
+   * so it is compile latency, not a defect, and a fresh clone was getting a red gate.
+   *
+   * 10 s is sized against the thing that actually varies (one route's first compile),
+   * and the per-test budget is raised with it so a test holding several such
+   * assertions cannot pass each one and then trip the test timeout instead. Both are
+   * still far below anything a product regression would need: a page that renders in
+   * 9 s is a bug this suite would now MISS, which is the cost, and it is bounded — the
+   * live suite (`playwright.live.config.ts`) is where real latency is judged.
+   */
+  expect: { timeout: 10_000 },
+  timeout: 60_000,
+  // Compile every route once before anything is timed — see qa/warm-routes.ts.
+  globalSetup: "./qa/warm-routes.ts",
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],

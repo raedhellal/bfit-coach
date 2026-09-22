@@ -9,6 +9,18 @@
  * No invented benefits, no tier price, no ToS/DPA wording (EV-183 "NOT in the demo"
  * item 12 — ⛔ D8/D9 are open).
  */
+/**
+ * Append a full stop unless the value already ends a sentence.
+ *
+ * Trainee display names in this product are frequently `"Yusuf A."` — an initial with
+ * its own stop — so any sentence that interpolates one and then punctuates produces a
+ * double stop. It is the smallest possible defect and it was shipped and then pinned by
+ * a test, which is why it gets a named helper rather than a `.replace` at one call site.
+ */
+function endSentence(value: string): string {
+  return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`;
+}
+
 export const copy = {
   brand: "Evoli Pro", // AC1: the app header reads exactly this
   tagline: "The coach back-office for Evoli Fit.",
@@ -40,6 +52,15 @@ export const copy = {
   },
 
   shell: {
+    /**
+     * The NAVIGATION landmark's name, and not the same string as `roster`.
+     *
+     * It was `roster` — so a screen-reader user heard a navigation called "Roster"
+     * whose contents were Roster **and** Templates, i.e. a landmark named after one of
+     * its own children. "Portal" names what the region is: the two places this product
+     * has.
+     */
+    nav: "Portal",
     roster: "Roster",
     signOut: "Sign out",
     backToRoster: "Back to roster",
@@ -739,8 +760,15 @@ export const copy = {
      * timestamp the 409 carried, and a second tab that saved in between is refused
      * again rather than overwritten.
      */
+    /**
+     * AC3's wording with the sentence boundary handled, because the display names this
+     * product actually holds end in one: "Yusuf A." produced *"…draft for Yusuf A..
+     * That draft…"* — a double stop, shipped, and PINNED by a test asserting the string
+     * exactly, which is the worse half of the defect. A name already ending in `.`,
+     * `!` or `?` supplies its own terminator.
+     */
     replacesDraft: (trainee: string) =>
-      `This replaces your unpublished draft for ${trainee}. That draft cannot be recovered.`,
+      `This replaces your unpublished draft for ${endSentence(trainee)} That draft cannot be recovered.`,
     useIt: "Use this template",
     replaceAndUse: "Replace the draft",
     cancel: "Cancel",

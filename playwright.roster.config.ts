@@ -30,6 +30,13 @@ export default defineConfig({
   testMatch: /(coach-roster-scopes|coach-library-apply)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
+  // The same cold-compile budget as the main config, and for the same reason —
+  // see playwright.config.ts. This config serves its own dev server, so it pays
+  // the first-compile cost for every route it touches all over again.
+  expect: { timeout: 10_000 },
+  timeout: 60_000,
+  // Compile every route once before anything is timed — see qa/warm-routes.ts.
+  globalSetup: "./qa/warm-routes.ts",
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
