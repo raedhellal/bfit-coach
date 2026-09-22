@@ -12,10 +12,13 @@ import {
   bodyFatAbsent,
   buildProgressGoalRequest,
   describeChange,
+  editField,
   hasAnyReading,
+  markSent,
   milestoneAttribution,
   progressRows,
-  seedFields,
+  reseedPreservingEdits,
+  seedFormState,
   startedOnLine,
   storedValues,
 } from "@/lib/progressGoal";
@@ -71,30 +74,34 @@ export function ProgressGoalBlock({
    * by the api's own answer on every successful save.
    *
    * **Re-seeded when the SERVER's value changes**, compared by signature during
-   * render rather than in an effect. A `router.refresh()` (ours after a save, or
-   * another component's) re-renders the server component and hands down new props, but
-   * does NOT remount this island — so state seeded once from props goes stale and the
-   * table keeps showing what was submitted instead of what was stored. That defect
-   * shipped once already in the routine editor. Keying on the value's identity and not
-   * on "any refresh" is what keeps a refresh from throwing away a half-typed number.
+   * render rather than in an effect. A route re-render hands down new props but does
+   * NOT remount this island, so state seeded once from props goes stale and the table
+   * keeps showing what was submitted instead of what was stored — the defect that
+   * shipped in the routine editor.
    *
-   * ⚠️ `propSignature` tracks the LAST PROP THIS ISLAND WAS GIVEN — never the last
-   * value it saved, which is what the first draft compared against and which made the
-   * form flicker back to the pre-save numbers. For the few hundred milliseconds
-   * between the action resolving and `router.refresh()` landing, the server's props
-   * are legitimately STALE: an island that treats "props disagree with my state" as
-   * "re-seed" undoes its own save and then redoes it, and a test that types into the
-   * field during that window sees its input silently reverted.
+   * ⚠️ `propSignature` tracks the LAST PROP THIS ISLAND WAS GIVEN, never the last
+   * value it saved. Comparing against what it saved made the island treat its own
+   * successful write as a disagreement and re-seed back to the pre-save numbers.
+   *
+   * 🔴 **The TABLE follows the props unconditionally; the FIELDS do not.** Props
+   * arrive here on the back of the coach's own save — `revalidatePath` returns a
+   * fresh RSC payload with the action's response, in the same tick — so a form that
+   * re-seeded on every prop change would delete anything typed during the round trip.
+   * `reseedPreservingEdits` skips a field the coach has touched since the last save
+   * was sent. `src/lib/progressGoal.ts` carries the measurement behind that rule.
    */
   const signature = `${incoming.startedOn}|${incoming.startedOnSource}|${incoming.milestoneWeightKg}|${incoming.milestoneUpdatedAt}`;
   const [propSignature, setPropSignature] = useState(signature);
   const [goal, setGoal] = useState(incoming);
-  const [fields, setFields] = useState(() => seedFields(incoming));
+  const [fields, setFields] = useState(() => seedFormState(incoming));
 
   if (signature !== propSignature) {
+    // The signature is advanced whether or not a field was re-seeded — otherwise a
+    // dirty field would leave the island one prop behind for good, and the NEXT,
+    // unrelated prop push would re-seed against a signature that is two changes old.
     setPropSignature(signature);
     setGoal(incoming);
-    setFields(seedFields(incoming));
+    setFields((current) => reseedPreservingEdits(current, incoming));
   }
 
   const [notice, setNotice] = useState<string | null>(null);
@@ -112,15 +119,14 @@ export function ProgressGoalBlock({
    * Keyed on the state that makes each true, so a re-render does not re-count one and
    * a trainee who moves from "no readings" to "readings" counts each state once.
    */
-  const coach = coachId ?? "unknown";
   useEffect(() => {
-    if (empty) logPortalEvent({ event: "coach_progress_block_empty", coachId: coach, clientId });
-  }, [empty, coach, clientId]);
+    if (empty) logPortalEvent({ event: "coach_progress_block_empty", coachId, clientId });
+  }, [empty, coachId, clientId]);
   useEffect(() => {
     if (noBodyFat) {
-      logPortalEvent({ event: "coach_progress_bodyfat_absent", coachId: coach, clientId });
+      logPortalEvent({ event: "coach_progress_bodyfat_absent", coachId, clientId });
     }
-  }, [noBodyFat, coach, clientId]);
+  }, [noBodyFat, coachId, clientId]);
 
   function save() {
     /**
@@ -142,6 +148,12 @@ export function ProgressGoalBlock({
     setInvalid(null);
     const body = built.body;
     const changed = describeChange(storedValues(goal), body);
+    /**
+     * Both fields are now the coach's SETTLED intent: what is on screen is what is
+     * being sent. Anything typed from here until the response lands re-marks that
+     * field dirty and is therefore kept, which is the whole of the race fix.
+     */
+    setFields(markSent);
 
     startTransition(async () => {
       // `settled`: a rejected action resolves to a value instead of taking the two
@@ -178,28 +190,29 @@ export function ProgressGoalBlock({
        * null `startWeight` and a null delta, and the table says so immediately.
        */
       setGoal(result.goal);
-      setFields(seedFields(result.goal));
+      // Same rule as the prop path: a field touched while the save was in flight is
+      // the coach's, and the api's echo of the value they had already sent does not
+      // get to overwrite it.
+      setFields((current) => reseedPreservingEdits(current, result.goal));
       logPortalEvent({
         event: "coach_progress_goal_set",
-        coachId: coach,
+        coachId,
         clientId,
         hasStartDate: body.startedOn !== null,
         hasMilestone: body.milestoneWeightKg !== null,
         changed,
       });
       /**
-       * ⚠️ **No `router.refresh()` on success, and that is the decision rather than an
-       * omission.** The `PUT` answers the same block the `GET` embeds, recomputed, so
-       * this island is already holding the server's truth — a refresh would fetch a
-       * second copy of what it has. What it would also do is hand down new props a few
-       * hundred milliseconds later and re-seed the two fields, which DISCARDS anything
-       * the coach typed in the meantime. Measured, not theorised: a spec that saved
-       * and then typed had its input silently reverted mid-test.
+       * ⚠️ **No `router.refresh()` here — and that closes nothing by itself, which is
+       * the correction to what this comment used to claim.** `revalidatePath` in the
+       * action already returns a fresh RSC payload with this response, so the island
+       * gets new props either way; a `router.refresh()` would only add a second,
+       * redundant round trip for data this component is already holding.
        *
-       * The route is still revalidated server-side inside the action, so the next
-       * reload, back-navigation or second tab reads the stored values. Nothing else on
-       * this page derives from the progress goal — the weight tile and the 8-week chart
-       * are the trainee's own readings, which this write cannot change.
+       * The keystroke race that the earlier version of this note said was fixed by
+       * the omission is fixed by `reseedPreservingEdits` above, and by the regression
+       * test in `qa/coach-progress-goal.spec.ts` that holds the response open, types
+       * during it, and fails without that rule.
        */
     });
   }
@@ -294,7 +307,9 @@ export function ProgressGoalBlock({
              * back to the link date, not a no-op (edge case 7).
              */
             hint={copy.progressGoal.startDateHint}
-            onChange={(e) => setFields((f) => ({ ...f, startedOn: e.target.value }))}
+            onChange={(e) =>
+              setFields((current) => editField(current, "startedOn", e.target.value))
+            }
           />
         </div>
         <div style={{ flex: "1 1 180px", minWidth: 0 }}>
@@ -314,7 +329,9 @@ export function ProgressGoalBlock({
              * for instead of showing them why it was refused.
              */
             hint={copy.progressGoal.milestoneNote}
-            onChange={(e) => setFields((f) => ({ ...f, milestone: e.target.value }))}
+            onChange={(e) =>
+              setFields((current) => editField(current, "milestone", e.target.value))
+            }
           />
         </div>
       </div>

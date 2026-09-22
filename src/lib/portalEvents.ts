@@ -27,6 +27,12 @@ export type PortalEvent =
    * a meal, an ingredient, an allergy or any free text they wrote. None of that can
    * reach these three lines: every other property is a boolean or a closed enum.
    *
+   * `coachId` is NULLABLE, and null rather than a placeholder: `GET /coach-portal/me`
+   * can fail, that read already degrades the header to a nameless one instead of
+   * taking the page down, and an event still has to fire. A magic `"unknown"` in a
+   * field typed as an opaque id is a value every future query has to know about; a
+   * null is the absence it actually is.
+   *
    * `coach_progress_bodyfat_absent` exists to be a KILL CONDITION, not a metric: EV-202
    * says in as many words that if it fires for nearly every trainee then the body-fat
    * half of this block is decoration and should be cut. It is the one event here whose
@@ -34,14 +40,14 @@ export type PortalEvent =
    */
   | {
       event: "coach_progress_goal_set";
-      coachId: string;
+      coachId: string | null;
       clientId: string;
       hasStartDate: boolean;
       hasMilestone: boolean;
       changed: "start" | "milestone" | "both" | "cleared" | "unchanged";
     }
-  | { event: "coach_progress_block_empty"; coachId: string; clientId: string }
-  | { event: "coach_progress_bodyfat_absent"; coachId: string; clientId: string };
+  | { event: "coach_progress_block_empty"; coachId: string | null; clientId: string }
+  | { event: "coach_progress_bodyfat_absent"; coachId: string | null; clientId: string };
 
 export function logPortalEvent(payload: PortalEvent): void {
   if (typeof window === "undefined") return;

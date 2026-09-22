@@ -101,13 +101,20 @@ export function describeChange(
   before: { startedOn: string | null; milestoneWeightKg: number | null },
   after: CoachProgressGoalRequest
 ): ProgressGoalChange {
-  if (after.startedOn === null && after.milestoneWeightKg === null) return "cleared";
   const startChanged = before.startedOn !== after.startedOn;
   const milestoneChanged = before.milestoneWeightKg !== after.milestoneWeightKg;
+  /**
+   * ⚠ "Nothing changed" is asked FIRST, before "both are now empty".
+   *
+   * The other order reported `cleared` for a Save on a trainee who never had either
+   * value — the stored pair is `{null, null}`, the built body is `{null, null}`, and
+   * nothing was cleared because there was nothing there. That is the same falsity
+   * `unchanged` was added to avoid, surviving one branch higher up.
+   */
+  if (!startChanged && !milestoneChanged) return "unchanged";
+  if (after.startedOn === null && after.milestoneWeightKg === null) return "cleared";
   if (startChanged && milestoneChanged) return "both";
-  if (startChanged) return "start";
-  if (milestoneChanged) return "milestone";
-  return "unchanged";
+  return startChanged ? "start" : "milestone";
 }
 
 /* ── 2. the signed "to go" figure ───────────────────────────────────────────── */
@@ -342,6 +349,76 @@ export function seedFields(goal: TraineeProgressGoal): {
     startedOn: goal.startedOnSource === "LINK_DEFAULT" ? "" : goal.startedOn.slice(0, 10),
     milestone: goal.milestoneWeightKg === null ? "" : String(goal.milestoneWeightKg),
   };
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🔴 THE FORM'S STATE, AND THE ONE RULE THAT KEEPS A COACH'S KEYSTROKES.
+ *
+ * The block is handed fresh props whenever the route re-renders — and on THIS screen
+ * that happens on the back of the coach's own save: `revalidatePath` in the server
+ * action makes Next return a new RSC payload **with the action's response**, in the
+ * same tick. So "props changed" arrives while the coach may still be typing, and a
+ * form that re-seeds on every prop change deletes what they are writing.
+ *
+ * Dropping `router.refresh()` does NOT close that — the payload rides on the action's
+ * own response, not on a second request. This was measured three ways on `5c8b7d3`
+ * (as-is: reverted; without the success re-seed: still reverted; without
+ * `revalidatePath` as well: survives), so the only fix that holds is per-field.
+ *
+ * The rule: **a field the coach has touched since the last settled save is never
+ * re-seeded, whatever caused the props to change.** A field they have not touched
+ * still tracks the server, so a value changed in another tab still lands.
+ *
+ * `revalidatePath` STAYS. It is what keeps every other path — a reload, a
+ * back-navigation, a second tab — reading the stored values rather than a cached
+ * render, and the same review that found the race confirmed nothing is stale on any
+ * of them precisely because it fires.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+export interface ProgressGoalFormState {
+  startedOn: string;
+  milestone: string;
+  /** Touched since the last settled save. Not rendered — it decides re-seeding only. */
+  dirty: { startedOn: boolean; milestone: boolean };
+}
+
+/** A clean form, seeded from the server. Both fields track the server again. */
+export function seedFormState(goal: TraineeProgressGoal): ProgressGoalFormState {
+  return { ...seedFields(goal), dirty: { startedOn: false, milestone: false } };
+}
+
+/**
+ * Re-seed from `goal`, keeping any field the coach is in the middle of editing.
+ *
+ * `dirty` is carried forward rather than cleared: a prop push is not a save, so it
+ * must not decide that the coach has finished with a field. Only a settled save
+ * clears it (`seedFormState`).
+ */
+export function reseedPreservingEdits(
+  current: ProgressGoalFormState,
+  goal: TraineeProgressGoal
+): ProgressGoalFormState {
+  const seeded = seedFields(goal);
+  return {
+    startedOn: current.dirty.startedOn ? current.startedOn : seeded.startedOn,
+    milestone: current.dirty.milestone ? current.milestone : seeded.milestone,
+    dirty: current.dirty,
+  };
+}
+
+/** One field edited by the coach — which marks it dirty and nothing else. */
+export function editField(
+  current: ProgressGoalFormState,
+  field: "startedOn" | "milestone",
+  value: string
+): ProgressGoalFormState {
+  return { ...current, [field]: value, dirty: { ...current.dirty, [field]: true } };
+}
+
+/** A save has been sent: both fields are the coach's settled intent until re-touched. */
+export function markSent(current: ProgressGoalFormState): ProgressGoalFormState {
+  return { ...current, dirty: { startedOn: false, milestone: false } };
 }
 
 /** What `describeChange` compares against — the stored values, not the field text. */

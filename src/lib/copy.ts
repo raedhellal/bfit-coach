@@ -417,8 +417,12 @@ export const copy = {
     milestoneSetBy: (name: string, date: string) => `Milestone set by ${name} on ${date}`,
     milestoneSetByGone: "Milestone set by a coach who has left",
 
-    /* ── the edit form: TWO fields, and there is no third ──────────────────── */
-    editTitle: "Start date and milestone",
+    /* ── the edit form: TWO fields, and there is no third ────────────────────
+     *
+     * There is no heading key here. The form sits under the block's own title inside
+     * one card, so a second heading would name nothing the region is not already
+     * named; a key nothing renders is a string nobody can review in place.
+     */
     startDateLabel: "Coaching start date",
     /**
      * Said out loud because the PUT is a whole representation: clearing the field and

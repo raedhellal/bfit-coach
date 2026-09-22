@@ -1,6 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
-import { buildProgressGoalRequest, toGoValue } from "../src/lib/progressGoal";
+import {
+  buildProgressGoalRequest,
+  describeChange,
+  editField,
+  markSent,
+  reseedPreservingEdits,
+  seedFormState,
+  toGoValue,
+} from "../src/lib/progressGoal";
+import type { TraineeProgressGoal } from "../src/lib/coachApi";
 
 /**
  * EV-202b — the progress block on the trainee's page: AC1 (the two values persist),
@@ -407,6 +416,87 @@ test.describe("the request is a whole representation", () => {
     expect(buildProgressGoalRequest("", "500").ok).toBe(true);
   });
 
+  /** A stored block, for the two pure rules below. Only four fields matter to them. */
+  function storedGoal(
+    startedOn: string | null,
+    milestoneWeightKg: number | null
+  ): TraineeProgressGoal {
+    return {
+      startedOn: startedOn ?? "2026-01-01",
+      startedOnSource: startedOn === null ? "LINK_DEFAULT" : "COACH",
+      milestoneWeightKg,
+      milestoneSetByName: milestoneWeightKg === null ? null : "Alex R.",
+      milestoneSource: milestoneWeightKg === null ? null : "COACH",
+      milestoneUpdatedAt: milestoneWeightKg === null ? null : "2026-09-20T10:00:00Z",
+      startWeight: null,
+      currentWeight: null,
+      startBodyFat: null,
+      currentBodyFat: null,
+      weightDeltaKg: null,
+      bodyFatDeltaPts: null,
+      weightToGoKg: null,
+    };
+  }
+
+  test("a field the coach is editing is never re-seeded; an untouched one still tracks the server", () => {
+    /**
+     * 🔴 The rule behind the in-flight regression test below, isolated from the
+     * browser. Props arrive on the back of the coach's own save (`revalidatePath`
+     * returns a fresh RSC payload with the action's response), so "props changed" is
+     * not evidence that the coach has finished typing.
+     */
+    const opened = seedFormState(storedGoal("2026-06-01", 80));
+    expect(opened).toEqual({
+      startedOn: "2026-06-01",
+      milestone: "80",
+      dirty: { startedOn: false, milestone: false },
+    });
+
+    const typing = editField(opened, "milestone", "69");
+    const pushed = reseedPreservingEdits(typing, storedGoal("2026-07-01", 67));
+
+    // The touched field is the coach's…
+    expect(pushed.milestone, "an edited field was re-seeded from props").toBe("69");
+    // …and the untouched one still follows the server.
+    expect(pushed.startedOn).toBe("2026-07-01");
+    // A prop push is not a save, so it does not decide the coach has finished.
+    expect(pushed.dirty).toEqual({ startedOn: false, milestone: true });
+
+    // Only a sent save settles them — after which both track the server again.
+    const afterSend = reseedPreservingEdits(markSent(typing), storedGoal("2026-07-01", 67));
+    expect(afterSend.milestone).toBe("67");
+  });
+
+  test("a save that changes nothing is not reported as a clear", () => {
+    // N2: a trainee who never had either value has nothing to clear, and saying
+    // `cleared` about them is the same falsity `unchanged` exists to prevent.
+    expect(
+      describeChange({ startedOn: null, milestoneWeightKg: null }, {
+        startedOn: null,
+        milestoneWeightKg: null,
+      })
+    ).toBe("unchanged");
+    // A real clear is still a clear.
+    expect(
+      describeChange({ startedOn: "2026-06-01", milestoneWeightKg: 80 }, {
+        startedOn: null,
+        milestoneWeightKg: null,
+      })
+    ).toBe("cleared");
+    expect(
+      describeChange({ startedOn: "2026-06-01", milestoneWeightKg: 80 }, {
+        startedOn: "2026-06-01",
+        milestoneWeightKg: 75,
+      })
+    ).toBe("milestone");
+    expect(
+      describeChange({ startedOn: null, milestoneWeightKg: null }, {
+        startedOn: "2026-06-01",
+        milestoneWeightKg: 75,
+      })
+    ).toBe("both");
+  });
+
   test("the signed 'to go' figure renders in all three directions", () => {
     expect(toGoValue(-6)).toBe("6.0 kg"); // AC2's cut — magnitude, unsigned
     expect(toGoValue(4)).toBe("+4.0 kg"); // edge case 4's bulk — the plus is the direction
@@ -563,6 +653,77 @@ test.describe("🔴 the edit form always sends BOTH fields", () => {
     await expect(block(page).locator("[data-provenance='milestone']")).toHaveText(
       /^Milestone set by Alex R\. on .+$/
     );
+  });
+});
+
+test.describe("🔴 a value typed while the save is in flight survives", () => {
+  test("the field the coach is editing is not re-seeded out from under them", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await setLina(page, isoDate(50), "65");
+
+    /**
+     * 🔴 **The race the first cut of this block claimed to have fixed and had not.**
+     *
+     * Dropping `router.refresh()` closed nothing: `revalidatePath` inside the server
+     * action makes Next return a fresh RSC payload **with the action's own response**,
+     * so the island is handed new props in the same tick the save resolves, the
+     * prop-signature re-seed fires, and anything typed during the round trip is
+     * overwritten while "Saved." is on screen. It is a lost keystroke rather than a
+     * lost fact — the number left on screen is the stored truth — but the coach typed
+     * it and the screen ate it.
+     *
+     * The round trip is HELD OPEN here rather than raced: without the delay this test
+     * would pass on a broken build whenever the response happened to land after the
+     * second `fill`, which is a test that reports the network's timing instead of the
+     * product's behaviour.
+     */
+    await page.route(`**/clients/${LINA}`, async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await route.continue();
+    });
+
+    /**
+     * ⚠ Synchronised on the RESPONSE, not on the "Saved." notice. The notice is
+     * already on screen from `setLina`'s own save, so waiting for it returns
+     * instantly and the assertion below would run BEFORE the round trip finished —
+     * a green that means "the revert has not happened yet". That false green is how
+     * the first version of this test passed against the defect it was written for.
+     */
+    const settled = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.url().includes(LINA)
+    );
+
+    await milestoneField(page).fill("67");
+    // Not awaited to completion: the next line happens while the PUT is in flight.
+    await block(page).getByRole("button", { name: "Save" }).click();
+    await milestoneField(page).fill("69");
+
+    await settled;
+    /**
+     * The table showing the SAVED value is the proof that the response has been
+     * applied — and the fresh props ride on that same response, so from here on a
+     * field still holding "69" is the re-seed having been skipped rather than the
+     * re-seed not having run yet. The settle is the belt to that braces.
+     */
+    await expect(cell(page, "weight", "milestone")).toHaveText("Milestone 67.0 kg");
+    await page.waitForTimeout(1500);
+
+    // The coach's in-progress edit is still theirs.
+    await expect(
+      milestoneField(page),
+      "a value typed during the save was re-seeded away"
+    ).toHaveValue("69");
+
+    /**
+     * And the two things that must NOT be sacrificed to keep it: the field the coach
+     * did not touch still tracks the server, and the TABLE shows what was actually
+     * stored — 67, the value that was saved — rather than the unsaved 69. A block that
+     * echoed the field would be claiming a number the api never received.
+     */
+    await expect(startDateField(page)).toHaveValue(isoDate(50));
   });
 });
 
