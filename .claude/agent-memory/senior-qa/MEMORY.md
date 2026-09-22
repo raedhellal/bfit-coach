@@ -1,4 +1,7 @@
 # Memory index
 
 - [EV-187b live gate](project_ev187b-live-gate.md) — 2026-09-22 live merge gate for the coach portal monitoring half; BUG-205 filed
+- [EV-202b live gate](project_ev202b-live-gate.md) — 2026-09-22 live gate, PASS at 080110f; BUG-210 (en-GB renders September as "Sept")
 - [Seeding a live coach-portal stack](seeding-a-live-coach-portal-stack.md) — API-only trainee seeding, plus capacity/scope/rate-limit/catalog traps
+- [Holding a save open without faking it](holding-a-save-open-without-faking-it.md) — CDP throttling ignores loopback; use a forwarding proxy, and watch the probe go red
+- [b-fit-coach: merge IS release](coach-portal-merge-is-release.md) — the portal auto-deploys to production on merge; the EV-202 gate rests on a dated Raed statement
