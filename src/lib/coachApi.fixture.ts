@@ -45,6 +45,9 @@ import type {
   TraineeProgress,
   WeekAdherence,
   WeightPoint,
+  CoachProgressGoalRequest,
+  TraineeProgressGoal,
+  TraineeProgressReading,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -275,7 +278,14 @@ function sara(): RosterClient {
  * the trainee who has never weighed in because that is the rule the api would actually
  * compute for them — the flags and block 4 have to agree here as they do in the api.
  */
-const OVERVIEWS: Record<string, () => ClientOverview> = {
+/**
+ * EV-202b note: these entries carry NO `progressGoal`. The block is derived and
+ * attached by `OVERVIEWS` below, from this entry's own `scopes` and `since` plus
+ * whatever the coach has saved — so a fixture row cannot accidentally serve a
+ * progress block to a link that does not carry `WEIGH_INS`, and cannot serve a
+ * baseline that disagrees with the weight series two lines above it.
+ */
+const BASE_OVERVIEWS: Record<string, () => ClientOverview> = {
   [LINA_ID]: () => ({
     clientId: LINA_ID,
     traineeDisplayName: "Lina M.",
@@ -432,6 +442,195 @@ const OVERVIEWS: Record<string, () => ClientOverview> = {
     redFlags: ["NO_WEIGH_IN_14_DAYS"],
   }),
 };
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-202b — the progress block, `GET /coach-portal/clients/{id}` + `PUT …/progress-goal`.
+ *
+ * The api half (b-fit-api `9218a77`) is merged and deployed, so this is a twin of
+ * something real. It is DERIVED rather than written out, and that is the whole design:
+ * the block's four readings are computed from the same reading lists the weight series
+ * is built from, so the block and the chart cannot disagree (EV-202 edge case 1), and
+ * moving the start date really does move the baseline — which is the only way AC3 is
+ * testable end to end without a database.
+ *
+ * It also makes the whole-representation trap REACHABLE in fixture mode: `PUT` stores
+ * the body it is given, so a request that omits a field clears it, exactly as the api
+ * does. A form that economised and sent only the edited value would show its damage
+ * here, in the browser, rather than in production.
+ *
+ * ⚠ ONE SIMPLIFICATION, named rather than hidden: the api merges `weigh_ins` and
+ * `body_measurements` per date inside `CoachPortalQueryService`; here the two lists are
+ * already merged by construction. What the fixture demonstrates is the RENDERING of
+ * the block and the arithmetic the coach can reproduce by hand; that the baseline uses
+ * the same per-date helper as the series is asserted api-side, where the helper is.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface TraineeReadings {
+  /** Oldest first, like every other series on this surface. */
+  weights: TraineeProgressReading[];
+  /**
+   * Body fat lives ONLY on `body_measurements` — `weigh_ins` has no such column — so a
+   * trainee who logs through the weigh-in screen has weights and an EMPTY list here.
+   * That is AC4's "Not recorded", and it is a different fact from having no weigh-in.
+   */
+  bodyFats: TraineeProgressReading[];
+}
+
+/**
+ * Who has recorded what.
+ *
+ *   Lina   — eight weekly weights (the SAME series her chart draws) and two body-fat
+ *            readings on the FIRST and LAST of those days, so both columns resolve to
+ *            the same dates and the body-fat cells print no date of their own (AC2).
+ *   Nils   — one weigh-in and no body fat at all: start and current are the same
+ *            reading, the weight delta is a REAL `0.0 kg`, and body fat reads "Not
+ *            recorded" (AC4, both halves on one row).
+ *   Tobias — weights and body fats on DIFFERENT days (edge case 2), which is the only
+ *            trainee for whom the body-fat cells print their own dates.
+ *   Sara   — nothing, ever. AC5's sentence, next to a milestone whose author has left.
+ *   Kaia   — nothing, ever, and no milestone either: AC5 at its emptiest.
+ */
+const READINGS: Record<string, TraineeReadings> = {
+  [LINA_ID]: {
+    weights: weightSeries().map((p) => ({ date: p.date, value: p.weightKg })),
+    bodyFats: [
+      { date: isoDate(50), value: 24.0 },
+      { date: isoDate(1), value: 22.5 },
+    ],
+  },
+  [NILS_ID]: {
+    weights: [{ date: isoDate(1), value: 72.5 }],
+    bodyFats: [],
+  },
+  [SARA_ID]: { weights: [], bodyFats: [] },
+  [DANA_ID]: {
+    weights: [
+      { date: isoDate(15), value: 64.8 },
+      { date: isoDate(8), value: 64.5 },
+      { date: isoDate(1), value: 64.2 },
+    ],
+    bodyFats: [{ date: isoDate(15), value: 21.0 }],
+  },
+  [OMAR_ID]: {
+    weights: [{ date: isoDate(3), value: 81.0 }],
+    bodyFats: [],
+  },
+  [TOBIAS_ID]: {
+    weights: [
+      { date: isoDate(35), value: 88.4 },
+      { date: isoDate(28), value: 88.0 },
+      { date: isoDate(21), value: 87.6 },
+    ],
+    bodyFats: [
+      { date: isoDate(33), value: 26.0 },
+      { date: isoDate(19), value: 25.2 },
+    ],
+  },
+  [KAIA_ID]: { weights: [], bodyFats: [] },
+};
+
+/** What a coach has written. Stored WHOLE, because the PUT replaces the whole thing. */
+interface ProgressGoalRecord {
+  startedOn: string | null;
+  milestoneWeightKg: number | null;
+  /** Null WITH a milestone = the `ON DELETE SET NULL` case: the coach has left. */
+  setByName: string | null;
+  updatedAt: string | null;
+}
+
+/** The first reading on or after `from` — never the earliest reading of all time. */
+function firstOnOrAfter(
+  readings: TraineeProgressReading[],
+  from: string
+): TraineeProgressReading | null {
+  return readings.find((r) => r.date >= from) ?? null;
+}
+
+function latest(readings: TraineeProgressReading[]): TraineeProgressReading | null {
+  return readings.length === 0 ? null : readings[readings.length - 1];
+}
+
+/** `null` unless BOTH ends exist. `0` is a real delta and must not come from here. */
+function delta(
+  start: TraineeProgressReading | null,
+  current: TraineeProgressReading | null
+): number | null {
+  if (start === null || current === null) return null;
+  return Number((current.value - start.value).toFixed(2));
+}
+
+/**
+ * The block, recomputed on every read — which is what makes a saved start date move
+ * the baseline on the very next render rather than at the next restart.
+ *
+ * `since` is passed in rather than looked up, so this can be called from inside an
+ * `OVERVIEWS` entry without the entry calling itself.
+ */
+function progressGoalFor(id: string, since: string): TraineeProgressGoal {
+  const stored = state().progressGoals.get(id) ?? null;
+  const readings = READINGS[id] ?? { weights: [], bodyFats: [] };
+
+  // Never null on the wire: it falls back to the link date, and the SOURCE says so.
+  const startedOn = stored?.startedOn ?? since.slice(0, 10);
+  const startWeight = firstOnOrAfter(readings.weights, startedOn);
+  const currentWeight = latest(readings.weights);
+  const startBodyFat = firstOnOrAfter(readings.bodyFats, startedOn);
+  const currentBodyFat = latest(readings.bodyFats);
+  const milestoneWeightKg = stored?.milestoneWeightKg ?? null;
+
+  return {
+    startedOn,
+    startedOnSource: stored?.startedOn ? "COACH" : "LINK_DEFAULT",
+    milestoneWeightKg,
+    milestoneSetByName: milestoneWeightKg === null ? null : (stored?.setByName ?? null),
+    milestoneSource: milestoneWeightKg === null ? null : "COACH",
+    milestoneUpdatedAt: milestoneWeightKg === null ? null : (stored?.updatedAt ?? null),
+    startWeight,
+    currentWeight,
+    startBodyFat,
+    currentBodyFat,
+    weightDeltaKg: delta(startWeight, currentWeight),
+    bodyFatDeltaPts: delta(startBodyFat, currentBodyFat),
+    /**
+     * 🔴 SIGNED — `milestone − current`. Positive is a bulk and negative a cut; the
+     * fixture sends it exactly as the api does, so a portal that printed it raw would
+     * render "−2.4 kg to go" here too rather than only against production.
+     */
+    weightToGoKg:
+      milestoneWeightKg === null || currentWeight === null
+        ? null
+        : Number((milestoneWeightKg - currentWeight.value).toFixed(2)),
+  };
+}
+
+/**
+ * Every overview, with its progress block attached.
+ *
+ * The scope decides it, from the entry's OWN `scopes` list: `null` for a link without
+ * `WEIGH_INS` (Petra, Yusuf, Mara), and a block for everyone else — INCLUDING the
+ * trainees who have never recorded anything, whose block is non-null and full of
+ * nulls. Those are two different facts and the portal renders two different sentences
+ * for them, so the fixture must not collapse them either.
+ */
+const OVERVIEWS: Record<string, () => ClientOverview> = Object.fromEntries(
+  Object.entries(BASE_OVERVIEWS).map(([id, build]) => [
+    id,
+    () => {
+      const overview = build();
+      return {
+        ...overview,
+        progressGoal: overview.scopes.includes("WEIGH_INS")
+          ? progressGoalFor(id, overview.since)
+          : null,
+      };
+    },
+  ])
+);
+
+/** The link date, for the `LINK_DEFAULT` fallback on the write path. */
+function sinceOf(id: string): string {
+  return BASE_OVERVIEWS[id]().since;
+}
 
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-187b — the monitoring read, `GET /coach-portal/clients/{id}/progress`.
@@ -1675,6 +1874,14 @@ interface FixtureState {
    */
   draftTemplate: Map<string, string>;
   nutrition: Map<string, NutritionState>;
+  /**
+   * EV-202b. Keyed by the `coach_clients` row id here, where the api keys the row by
+   * USER id (edge case 10 — the goal survives a revoke and a re-link). The fixture has
+   * one coach and one link per trainee, so the two are the same thing in this process;
+   * the difference is noted rather than modelled, because modelling it would mean
+   * inventing a user id this surface is never given.
+   */
+  progressGoals: Map<string, ProgressGoalRecord>;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -1700,6 +1907,56 @@ function freshState(): FixtureState {
     templates: new Map(seedTemplates().map((t) => [t.id, t])),
     draftTemplate: new Map(),
     nutrition: new Map(),
+    /**
+     * Four seeded goals, each reaching a state the others cannot:
+     *   Lina   — a coach-set start date and a milestone BELOW her current weight: the
+     *            ordinary cut, and the "to go" figure whose signed source is negative.
+     *   Tobias — a milestone ABOVE his current weight (edge case 4, a bulk): "+2.4 kg
+     *            to go", no warning, no assumed direction.
+     *   Omar   — a milestone EQUAL to his current weight (edge case 5): "0.0 kg to go",
+     *            no celebration and no event.
+     *   Sara   — a milestone whose author has LEFT (`set_by` → NULL): the number is
+     *            unchanged and the attribution says so. She has no readings at all, so
+     *            this is also AC5's empty state with a milestone beside it.
+     */
+    progressGoals: new Map<string, ProgressGoalRecord>([
+      [
+        LINA_ID,
+        {
+          startedOn: isoDate(50),
+          milestoneWeightKg: 68.0,
+          setByName: "Alex R.",
+          updatedAt: isoInstant(6),
+        },
+      ],
+      [
+        TOBIAS_ID,
+        {
+          startedOn: isoDate(40),
+          milestoneWeightKg: 90.0,
+          setByName: "Alex R.",
+          updatedAt: isoInstant(12),
+        },
+      ],
+      [
+        OMAR_ID,
+        {
+          startedOn: null,
+          milestoneWeightKg: 81.0,
+          setByName: "Alex R.",
+          updatedAt: isoInstant(2),
+        },
+      ],
+      [
+        SARA_ID,
+        {
+          startedOn: null,
+          milestoneWeightKg: 62.0,
+          setByName: null,
+          updatedAt: isoInstant(45),
+        },
+      ],
+    ]),
   };
 }
 
@@ -1800,6 +2057,48 @@ export const fixtureCoachApi: CoachApi = {
 
   async revokeClient(): Promise<void> {
     state().revoked = true;
+  },
+
+  /**
+   * EV-202b — `PUT /coach-portal/clients/{id}/progress-goal`.
+   *
+   * 🔴 **A WHOLE REPRESENTATION, and the fixture is faithful to that rather than
+   * forgiving about it.** The body replaces the record: a field that arrives `null` —
+   * or does not arrive at all — CLEARS the stored value, `set_by` is updated, and the
+   * answer is a 200. There is no merge, no "only if present" and no previous value to
+   * recover, because the api has none either. A portal that sent only the field the
+   * coach edited would silently destroy the other one here, in a browser, which is the
+   * only place a test can see it before a coach does.
+   *
+   * The 403 is `assertScope(WEIGH_INS)`'s, undifferentiated across every denial
+   * (ADR-0015 D5), and it is asserted BEFORE the range check so a link that may not
+   * write cannot learn the api's bounds by probing them.
+   */
+  async setProgressGoal(
+    id: string,
+    body: CoachProgressGoalRequest
+  ): Promise<TraineeProgressGoal> {
+    await assertScope(id, "WEIGH_INS");
+    /**
+     * Edge case 6 — `< 25` or `> 300` kg is a 400 and **NOTHING is written**,
+     * including the start date that arrived in the same body. Never a silent clamp:
+     * a clamp would store a number the coach did not type and report success.
+     */
+    if (
+      body.milestoneWeightKg !== null &&
+      (body.milestoneWeightKg < 25 || body.milestoneWeightKg > 300)
+    ) {
+      await fail(400, "COACH_MILESTONE_OUT_OF_RANGE", "Milestone out of range");
+    }
+    state().progressGoals.set(id, {
+      startedOn: body.startedOn,
+      milestoneWeightKg: body.milestoneWeightKg,
+      // The caller IS the signed-in coach, so the attribution is true by construction.
+      setByName: body.milestoneWeightKg === null ? null : "Alex R.",
+      updatedAt: new Date().toISOString(),
+    });
+    // The SAME block the GET embeds, recomputed — so the portal needs no refetch.
+    return progressGoalFor(id, sinceOf(id));
   },
 
   // ── EV-184b routine ───────────────────────────────────────────────────────

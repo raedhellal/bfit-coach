@@ -6,6 +6,7 @@ import { StatTile } from "@/components/client/StatTile";
 import { AdherenceSeries } from "@/components/client/AdherenceSeries";
 import { BlockNote, MonitoringBlock } from "@/components/client/MonitoringBlock";
 import { SessionHistory } from "@/components/client/SessionHistory";
+import { ProgressGoalBlock } from "@/components/client/ProgressGoalBlock";
 import { RedFlagEvidence } from "@/components/client/RedFlagEvidence";
 import { TrendChart } from "@/components/ui/charts";
 import { Card, CardHead } from "@/components/ui/kit";
@@ -13,16 +14,19 @@ import { UiIcon } from "@/components/ui/icons";
 import { hasScope } from "@/lib/coachApi";
 import { readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
-import { formatDate, formatKg, formatShortDate } from "@/lib/format";
+import { firstName, formatDate, formatKg, formatShortDate } from "@/lib/format";
 import { weightCaption } from "@/lib/weight";
 
 /**
- * /clients/[id] — the read-only trainee overview (AC5, EV-083's slice).
+ * /clients/[id] — the trainee overview (AC5, EV-083's slice).
  *
- * Read-only is a hard property, not a description: the only interactive elements on
- * this page are links, the back control and the revoke menu. No form, no input, no
- * message box, no AI action, no publish — MVE-3/MVE-4/MVE-5 are excluded by the story
- * and the footer says so to the person looking at the screen.
+ * ⚠️ **It is no longer read-only, and this paragraph used to say it was.** EV-202b puts
+ * ONE form on this page: the two values a coach writes about a trainee's body — a
+ * coaching start date and a milestone weight — inside the progress block below. Every
+ * other control here is still a link, the back control or the revoke menu, and no
+ * block on this page has an input for a number the trainee recorded: the four derived
+ * readings have no write path and `CoachProgressGoalRequest` has no field for one
+ * (EV-202 Ruling 1). Messaging and AI drafting remain absent and the footer says so.
  *
  * `force-dynamic` for the same reason as the roster: a revoked link must 403 on the
  * next request, so nothing about this page may be cached.
@@ -221,6 +225,37 @@ export default async function ClientPage({ params }: { params: { id: string } })
           </p>
         )}
       </Card>
+
+      {/* ── EV-202b: where they started, where they are, where they are going ─
+          The WEIGH_INS block, so it sits with the weight trend and nowhere near the
+          plan or the calorie targets — G-GOAL is a layout constraint as well as an
+          api one. The scope flag is asked FIRST and the null only after it, the same
+          ordering every other block on this page uses. */}
+      {!weighInsShared ? (
+        <MonitoringBlock title={copy.progressGoal.title} icon="trend">
+          {/* AC6, verbatim, and decided from `scopes` — never inferred from the 403
+              that `PUT …/progress-goal` would answer, which is undifferentiated
+              across five denials and says nothing about consent. */}
+          <BlockNote>
+            {copy.progressGoal.notShared(firstName(overview.traineeDisplayName))}
+          </BlockNote>
+        </MonitoringBlock>
+      ) : !overview.progressGoal ? (
+        <MonitoringBlock title={copy.progressGoal.title} icon="trend">
+          {/* WEIGH_INS IS held, so the api owed a block: `progressGoal` is non-null
+              even for a trainee who has never recorded anything (every reading inside
+              is then null). Its absence is therefore an api that did not answer — an
+              older deployment, or a degraded one — and never a consent statement. */}
+          <BlockNote>{copy.progressGoal.loadError}</BlockNote>
+        </MonitoringBlock>
+      ) : (
+        <ProgressGoalBlock
+          clientId={overview.clientId}
+          coachId={me?.coachId ?? null}
+          traineeDisplayName={overview.traineeDisplayName}
+          goal={overview.progressGoal}
+        />
+      )}
 
       {/* ── EV-187 AC3: eight weeks of adherence ───────────────────────────── */}
       {!monitoringShared ? (

@@ -42,7 +42,17 @@ async function signIn(page: Page) {
 
 /** The stat tile whose label is exactly "Weight" (not the "Weight trend" card). */
 function weightTile(page: Page) {
-  return page.getByText("Weight", { exact: true }).locator("..");
+  /**
+   * Scoped to the STAT GRID, not to the page.
+   *
+   * EV-202b's progress block puts a second exact "Weight" on this screen — the label
+   * of its metric row — so an unscoped `getByText("Weight", { exact: true })` resolves
+   * to two elements and this helper dies of strict mode. Worse than the failure would
+   * be the version that "fixed" it with `.first()`: the tile and the row would then be
+   * one reorder apart from silently swapping, and this file's assertions about the
+   * TILE would be checking the row. The grid is what identifies the tile.
+   */
+  return page.locator(".stat-grid").getByText("Weight", { exact: true }).locator("..");
 }
 
 test.describe("AC5 — a trainee the coach is not linked to", () => {

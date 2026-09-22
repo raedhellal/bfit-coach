@@ -124,3 +124,39 @@ const KCAL = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
 export function formatKcal(value: number): string {
   return KCAL.format(Math.round(value));
 }
+
+/* ── EV-202b: body composition ─────────────────────────────────────────────── */
+
+/** 24.0 → "24.0 %". One decimal, the same precision a caliper or an InBody reports. */
+export function formatPct(value: number): string {
+  return `${value.toFixed(1)} %`;
+}
+
+/**
+ * −4 → "−4.0 pts" with a real minus sign; +1.5 → "+1.5 pts"; 0 → "0.0 pts".
+ *
+ * **Percentage POINTS, not per cent** (EV-202a's own field name, `bodyFatDeltaPts`).
+ * A drop from 28 % to 24 % is four points and a fourteen per cent relative change, and
+ * a coach reading "−4.0 %" cannot tell which was meant. `0.0 pts` is a real delta of
+ * zero and is a different fact from an ABSENT delta, which renders no cell at all.
+ */
+export function formatPtsDelta(delta: number): string {
+  const rounded = Number(delta.toFixed(1));
+  if (rounded === 0) return "0.0 pts";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toFixed(1)} pts`;
+}
+
+/**
+ * "Lina M." → "Lina".
+ *
+ * EV-202 AC5 and AC6 address the trainee by first name ("{FirstName} hasn't recorded a
+ * weight yet."), and `traineeDisplayName` is the only name this surface is ever given
+ * — ADR-0012 D4 keeps user ids and full records off the portal's wire. A display name
+ * with no space is returned whole rather than cut, and an empty one falls back to the
+ * generic word so a sentence never begins with a space.
+ */
+export function firstName(displayName: string): string {
+  const trimmed = (displayName ?? "").trim();
+  if (trimmed === "") return "This trainee";
+  return trimmed.split(/\s+/)[0];
+}
