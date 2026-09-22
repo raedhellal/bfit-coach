@@ -261,8 +261,22 @@ export const copy = {
      * did nothing, on the strength of a bug in somebody else's write path.
      */
     weekNoPlan: "No plan",
-    /** AC3, verbatim — the whole-series empty state. No chart, no axis of zeroes. */
-    noSessionsIn8Weeks: "No sessions in the last 8 weeks",
+    /**
+     * EV-208 AC1, verbatim — the whole-series empty state when NO week in the window
+     * had a plan. No chart, no axis of zeroes.
+     *
+     * 🔴 It replaces EV-187 AC3's last clause, `"No sessions in the last 8 weeks"`,
+     * which is **deleted from the product** (EV-208 supersedes that clause; EV-187b is
+     * merged, so nothing is reverted). That sentence was reached from
+     * `done === 0 && planned === 0`, a condition that is true whenever no week had a
+     * plan — so it told a coach their client did nothing while "Recent sessions"
+     * listed five workouts they did (BUG-205). It also contradicted `weekNoPlan` one
+     * line up. Neither of the two sentences here says anything about whether the
+     * trainee trained; the session-history block below is the only block entitled to.
+     */
+    noPlanInWindow: "No plan on record for these 8 weeks",
+    /** EV-208 AC2, verbatim — a plan existed in the window, but nothing was scheduled. */
+    nothingScheduledIn8Weeks: "No sessions scheduled in the last 8 weeks",
 
     /** AC5. The title is ours; the summary line and both empty states are the story's. */
     sessionHistory: "Recent sessions",

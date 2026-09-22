@@ -119,10 +119,13 @@ const MARA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008";
  *            ago", which is the sentence BUG-197's fix reserved for a trainee who HAS
  *            weighed in.
  *   Kaia   — edge case 1: an ACTIVE link, all four scopes, and literally no data. She
- *            is the only way to reach "No sessions in the last 8 weeks" and "No
- *            completed sessions yet", and the only way to prove the blocks render no
- *            `0 %`, no `NaN` and no axis full of zeroes for a brand-new trainee. She is
- *            overview-only (not on the roster), which is this fixture's existing shape.
+ *            is the only way to reach "No completed sessions yet", and the only way to
+ *            prove the blocks render no `0 %`, no `NaN` and no axis full of zeroes for
+ *            a brand-new trainee. She is overview-only (not on the roster), which is
+ *            this fixture's existing shape. Since EV-208 her adherence card reads
+ *            "No plan on record for these 8 weeks" — the same branch as Ruben's, and
+ *            the reason she could NOT stand in for him: with no sessions of her own,
+ *            her page never puts the two blocks in contradiction.
  */
 /**
  * The EV-184b / EV-185b scenario ids. They are declared HERE rather than beside the
@@ -135,6 +138,35 @@ const DANA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 const OMAR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
 const TOBIAS_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
 const KAIA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0010";
+/**
+ * EV-208. Three trainees for the two halves of the whole-series empty state and for the
+ * case it must not swallow, which no existing row could become without destroying what
+ * it already demonstrates:
+ *
+ *   Ruben — **BUG-205, reproduced without a line of SQL.** ALL scopes, an adherence
+ *           payload with `hasPlan = false` on every week (he called
+ *           `POST /me/plan/generate` and never `POST /plans/select`), AND five real
+ *           completed sessions dated inside the window. He is the only trainee on whom
+ *           the two blocks can be read against each other on one screen: the adherence
+ *           card must describe the missing PLAN, while *Recent sessions* below it still
+ *           lists the five workouts he actually did. Kaia cannot carry this — she has
+ *           no sessions at all, so on her page the old sentence was merely useless
+ *           rather than false, which is why 242 green tests never saw BUG-205.
+ *   Elif  — AC2: a plan DID exist in the window and scheduled nothing, so
+ *           `done = 0`, `planned = 0` with `hasPlan = true` on some weeks. The api
+ *           reaches this shape in the ordinary way once EV-209 lands (a week whose plan
+ *           is all rest days); the fixture makes it reachable today so the second
+ *           sentence cannot be silently lost.
+ *   Noor  — EV-208 edge case 2, the case this row must NOT swallow: a plan that
+ *           scheduled 24 sessions and a trainee who did NONE of them. `done = 0` with
+ *           `planned > 0` is a real 0 %, not an empty state, and her page must still
+ *           carry the chart and the headline. Without her the whole-series
+ *           `done === 0, planned > 0` shape is absent from the fixture, and a branch
+ *           written on `done === 0` alone would pass every other test on this page.
+ */
+const RUBEN_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0011";
+const ELIF_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0012";
+const NOOR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0013";
 
 /** Everything a fully-consented link shares — the shape every EV-183 fixture had. */
 const ALL_SCOPES: CoachAccessScope[] = ["WORKOUTS", "PROGRESS", "NUTRITION", "WEIGH_INS"];
@@ -441,6 +473,52 @@ const BASE_OVERVIEWS: Record<string, () => ClientOverview> = {
     weightSeries: [],
     redFlags: ["NO_WEIGH_IN_14_DAYS"],
   }),
+  /**
+   * EV-208 AC1 / BUG-205 — the trainee who trains and has no plan.
+   *
+   * `adherenceThisWeek` is `0 / 0` because nothing was ever SCHEDULED, and `lastSession`
+   * is a real, recent session because he trained anyway. Those two facts are not in
+   * conflict; the sentence that used to be printed from the first of them was.
+   */
+  [RUBEN_ID]: () => ({
+    clientId: RUBEN_ID,
+    traineeDisplayName: "Ruben T.",
+    since: isoInstant(40),
+    scopes: ALL_SCOPES,
+    adherenceThisWeek: { done: 0, planned: 0 },
+    currentStreakDays: 0,
+    lastSession: { date: isoDate(2), name: "Full Body A", difficulty: "OK" },
+    weightSeries: [],
+    redFlags: ["NO_WEIGH_IN_14_DAYS"],
+  }),
+  /** EV-208 AC2 — a plan existed in the window and scheduled nothing. */
+  [ELIF_ID]: () => ({
+    clientId: ELIF_ID,
+    traineeDisplayName: "Elif K.",
+    since: isoInstant(50),
+    scopes: ALL_SCOPES,
+    adherenceThisWeek: { done: 0, planned: 0 },
+    currentStreakDays: 0,
+    lastSession: null,
+    weightSeries: [],
+    redFlags: ["NO_WEIGH_IN_14_DAYS"],
+  }),
+  /**
+   * EV-208 edge case 2 — a genuine zero. Three sessions a week were prescribed for
+   * eight weeks and none were done: `0 / 3` this week is a REAL 0 %, not an absence,
+   * and the card must go on saying so.
+   */
+  [NOOR_ID]: () => ({
+    clientId: NOOR_ID,
+    traineeDisplayName: "Noor S.",
+    since: isoInstant(70),
+    scopes: ALL_SCOPES,
+    adherenceThisWeek: { done: 0, planned: 3 },
+    currentStreakDays: 0,
+    lastSession: null,
+    weightSeries: [],
+    redFlags: ["MISSED_TWO_OR_MORE_SESSIONS"],
+  }),
 };
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -527,6 +605,9 @@ const READINGS: Record<string, TraineeReadings> = {
     ],
   },
   [KAIA_ID]: { weights: [], bodyFats: [] },
+  [RUBEN_ID]: { weights: [], bodyFats: [] },
+  [ELIF_ID]: { weights: [], bodyFats: [] },
+  [NOOR_ID]: { weights: [], bodyFats: [] },
 };
 
 /** What a coach has written. Stored WHOLE, because the PUT replaces the whole thing. */
@@ -836,11 +917,74 @@ const PROGRESS: Record<string, () => TraineeProgress> = {
   [KAIA_ID]: () => ({
     clientId: KAIA_ID,
     weeks: PROGRESS_WEEKS,
-    // Edge case 1 — an eight-week series in which nothing was ever scheduled. This
-    // must render "No sessions in the last 8 weeks", NOT eight 0 % bars.
+    // Edge case 1 / EV-208 edge case 4 — an eight-week series in which no plan ever
+    // existed. This must render "No plan on record for these 8 weeks", NOT eight 0 %
+    // bars, and not a claim about sessions she may or may not have done.
     adherence: adherenceSeries([null, null, null, null, null, null, null, null]),
     sessions: sessionHistory([]),
     redFlags: [noWeighInFlag(null)],
+    scopes: ALL_SCOPES,
+  }),
+  /**
+   * EV-208 AC1 — **BUG-205 as a fixture**: no plan, and five sessions that happened.
+   *
+   * `hasPlan = false` on every week (the whole window pre-dates any `user_plan` row),
+   * so `done` and `planned` both sum to 0 — and five COMPLETED sessions, dated inside
+   * the same window, in the block directly below. The pair is the defect: the adherence
+   * card must now describe the missing plan, and *Recent sessions* must still list all
+   * five, unchanged. Suppressing either block was refused by the story.
+   */
+  [RUBEN_ID]: () => ({
+    clientId: RUBEN_ID,
+    weeks: PROGRESS_WEEKS,
+    adherence: adherenceSeries([null, null, null, null, null, null, null, null]),
+    sessions: sessionHistory([
+      [2, "Full Body A", "OK"],
+      [5, "Full Body B", "OK"],
+      [9, "Full Body A", "OK"],
+      [13, "Full Body B", "OK"],
+      [18, "Full Body A", "OK"],
+    ]),
+    redFlags: [noWeighInFlag(null)],
+    scopes: ALL_SCOPES,
+  }),
+  /**
+   * EV-208 AC2 — a plan on record that scheduled nothing.
+   *
+   * `[0, 0]` is a week WITH a plan (`hasPlan = true`) and no prescribed session, which
+   * is what EV-209's rest-day-only week will read once that row lands. The sums are
+   * still 0 / 0, so the same branch is taken — and it must take the other sentence.
+   */
+  [ELIF_ID]: () => ({
+    clientId: ELIF_ID,
+    weeks: PROGRESS_WEEKS,
+    adherence: adherenceSeries([null, null, [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]),
+    sessions: sessionHistory([]),
+    redFlags: [noWeighInFlag(null)],
+    scopes: ALL_SCOPES,
+  }),
+  /**
+   * EV-208 edge case 2 — `done = 0`, `planned = 24`. The empty state must NOT swallow
+   * this: a trainee who missed everything must still read as having missed everything,
+   * so the chart renders and the headline says "0 of 24 planned sessions in the last 8
+   * weeks". This is the whole-series shape no other fixture row has, and it is the one
+   * a branch written on `done === 0` alone would silently capture.
+   */
+  [NOOR_ID]: () => ({
+    clientId: NOOR_ID,
+    weeks: PROGRESS_WEEKS,
+    adherence: adherenceSeries([
+      [0, 3],
+      [0, 3],
+      [0, 3],
+      [0, 3],
+      [0, 3],
+      [0, 3],
+      [0, 3],
+      [0, 3],
+    ]),
+    sessions: sessionHistory([]),
+    redFlags: [missedFlag([[2, "Full Body A"], [4, "Full Body B"]])],
     scopes: ALL_SCOPES,
   }),
   [DANA_ID]: () => ({

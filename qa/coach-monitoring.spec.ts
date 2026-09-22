@@ -19,6 +19,12 @@ import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout"
  *   Sara   — PROGRESS + WEIGH_INS, no WORKOUTS: the workout blocks are ABSENT, and she
  *            is the one trainee for whom "Never weighed in" is true.
  *   Kaia   — ALL scopes and no data at all (edge case 1): every empty state at once.
+ *   Ruben  — EV-208 / BUG-205: ALL scopes, NO plan in the eight-week window, and five
+ *            real completed sessions inside it. The one trainee on whom the adherence
+ *            card and the session list can be read against each other.
+ *   Elif   — EV-208 AC2: a plan DID exist in the window and scheduled nothing.
+ *   Noor   — EV-208 edge case 2: 24 sessions prescribed, none done. A real 0 %, and
+ *            the one series-level `done = 0, planned > 0` on this surface.
  *   Yusuf  — WORKOUTS only: no PROGRESS, so the monitoring read is 403 and the blocks
  *            must say so from `scopes` and not from the status.
  */
@@ -32,6 +38,9 @@ const SARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003";
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 const TOBIAS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
 const KAIA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0010";
+const RUBEN = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0011";
+const ELIF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0012";
+const NOOR = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0013";
 
 const NOT_SHARED_PROGRESS = "This trainee has not shared their progress with you.";
 
@@ -203,12 +212,128 @@ test.describe("AC3 — adherence over eight weeks, not one", () => {
     await signIn(page);
     await page.goto(`/clients/${KAIA}`);
 
-    await expect(page.getByText("No sessions in the last 8 weeks")).toBeVisible();
+    // EV-208 AC1 (superseding EV-187 AC3's last clause) + edge case 4: a trainee with
+    // neither a plan nor a session is described as having no PLAN, which is the one
+    // wording true in both of the worlds this branch cannot tell apart.
+    await expect(
+      block(page, "Adherence, last 8 weeks").getByText("No plan on record for these 8 weeks", {
+        exact: true,
+      })
+    ).toBeVisible();
     // Edge case 1: no axis full of zeroes, no "0 / 0", no NaN, no division by zero.
     expect(await weekLines(page)).toEqual([]);
     const series = block(page, "Adherence, last 8 weeks");
     await expect(series).not.toContainText("0 / 0");
     await expect(series).not.toContainText("NaN");
+  });
+});
+
+/**
+ * EV-208 — the adherence card says what it MEASURED, not what the trainee did.
+ *
+ * Closes BUG-205, which `senior-qa` built with no SQL: register → onboard →
+ * `POST /me/plan/generate` (writes the plan and its workouts, but not `user_plan`) →
+ * never `POST /plans/select` → complete five workouts. Every call answers 200, and the
+ * portal then printed "No sessions in the last 8 weeks" directly above five dated
+ * workouts — one sentence counting sessions AGAINST A PLAN, the block below it listing
+ * sessions THAT HAPPENED, and only one of them saying so.
+ *
+ * ⚠️ These assertions name the two new sentences LITERALLY and with `{ exact: true }`.
+ * Not a regex with the changed words wildcarded (BUG-210's shape: an AC pinned with its
+ * one wrong token as `(.+)`, green through 242 tests) — the block's own region, the
+ * whole string, nothing else.
+ */
+test.describe("EV-208 — the whole-series empty state names the absence it measured", () => {
+  test("AC1 — no plan in the window: the card describes the plan, and the five sessions below it are still listed", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${RUBEN}`);
+
+    const series = block(page, "Adherence, last 8 weeks");
+    await expect(
+      series.getByText("No plan on record for these 8 weeks", { exact: true })
+    ).toBeVisible();
+
+    // AC1: no chart, no week rows, no "0 / 0", no NaN.
+    expect(await weekLines(page)).toEqual([]);
+    await expect(series).not.toContainText("0 / 0");
+    await expect(series).not.toContainText("NaN");
+
+    /**
+     * THE DEFECT ITSELF: the deleted sentence must not appear anywhere on the page —
+     * least of all on the one page that also lists five workouts. `getByText` is a
+     * substring match by default, which is what is wanted here: any rendering of the
+     * old clause, however it is wrapped, fails this.
+     */
+    await expect(page.getByText("No sessions in the last 8 weeks")).toHaveCount(0);
+    // …and not the OTHER new sentence either: he had no plan, so nothing was measured
+    // against one and nothing can be said about what was scheduled.
+    await expect(page.getByText("No sessions scheduled in the last 8 weeks")).toHaveCount(0);
+
+    /**
+     * And the truthful half of the pair is untouched and still present — the story
+     * refused suppressing either block. Five dated rows and the summary that counts
+     * them, on the same screen as the sentence above.
+     */
+    const sessions = block(page, "Recent sessions");
+    await expect(sessions.getByRole("listitem")).toHaveCount(5);
+    await expect(
+      sessions.getByText("Of the last 5 sessions: 0 easy · 5 OK · 0 hard · 0 no feedback", {
+        exact: true,
+      })
+    ).toBeVisible();
+    // Every row carries a real date: the workouts happened, whatever the card above says.
+    for (const row of await sessions.getByRole("listitem").all()) {
+      await expect(row).toContainText(/\d{1,2} \w{3,5} \d{4}/);
+    }
+  });
+
+  test("AC2 — a plan existed and scheduled nothing: the other sentence, and only it", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${ELIF}`);
+
+    const series = block(page, "Adherence, last 8 weeks");
+    await expect(
+      series.getByText("No sessions scheduled in the last 8 weeks", { exact: true })
+    ).toBeVisible();
+    // AC2: "and NOT AC1's sentence". The two states are chosen from `hasPlan`, so a
+    // branch that collapsed them would be green on one of these two tests and red here.
+    await expect(page.getByText("No plan on record for these 8 weeks")).toHaveCount(0);
+    await expect(page.getByText("No sessions in the last 8 weeks")).toHaveCount(0);
+
+    expect(await weekLines(page)).toEqual([]);
+    await expect(series).not.toContainText("0 / 0");
+    await expect(series).not.toContainText("NaN");
+  });
+
+  /**
+   * Edge case 2 — the case this row must NOT swallow.
+   *
+   * Noor was prescribed 24 sessions over the eight weeks and did none of them:
+   * `done = 0` with `planned > 0`. It is a REAL 0 %, not an absence, and a branch
+   * written on "no sessions" rather than on the 0/0 pair would capture her and tell her
+   * coach there was nothing to measure. Eight rows, a headline with her own numbers,
+   * and NEITHER empty-state sentence.
+   */
+  test("edge case 2 — a trainee who missed everything still reads as having missed everything", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${NOOR}`);
+
+    const series = block(page, "Adherence, last 8 weeks");
+    await expect(
+      series.getByText("0 of 24 planned sessions in the last 8 weeks", { exact: true })
+    ).toBeVisible();
+    await expect(series.getByRole("listitem")).toHaveCount(8);
+    expect(await weekLines(page)).toEqual(Array(8).fill("0 / 3 sessions"));
+
+    await expect(page.getByText("No plan on record for these 8 weeks")).toHaveCount(0);
+    await expect(page.getByText("No sessions scheduled in the last 8 weeks")).toHaveCount(0);
+    await expect(page.getByText("No sessions in the last 8 weeks")).toHaveCount(0);
   });
 });
 
