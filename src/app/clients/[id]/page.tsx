@@ -3,11 +3,15 @@ import { ClientNotice } from "@/components/client/ClientNotice";
 import { ClientHeader } from "@/components/client/ClientHeader";
 import { RevokeMenu } from "@/components/client/RevokeMenu";
 import { StatTile } from "@/components/client/StatTile";
+import { AdherenceSeries } from "@/components/client/AdherenceSeries";
+import { BlockNote, MonitoringBlock } from "@/components/client/MonitoringBlock";
+import { SessionHistory } from "@/components/client/SessionHistory";
+import { RedFlagEvidence } from "@/components/client/RedFlagEvidence";
 import { TrendChart } from "@/components/ui/charts";
 import { Card, CardHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { hasScope } from "@/lib/coachApi";
-import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
+import { readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
 import { formatDate, formatKg, formatShortDate } from "@/lib/format";
 import { weightCaption } from "@/lib/weight";
@@ -35,8 +39,16 @@ export default async function ClientPage({ params }: { params: { id: string } })
    * for this branch is the api being unreachable or answering 5xx, and that must not
    * tell the coach they are not linked to a trainee they may well be linked to.
    */
-  const [{ overview }, me] = await Promise.all([
+  /**
+   * Three reads, in parallel. The monitoring read (EV-187b) is a second endpoint and
+   * not a widening of the overview: it is the only one that requires the PROGRESS
+   * scope, it is the expensive one (the 8-week range, the schedule and up to ten
+   * session titles), and a link without PROGRESS is answered 403 for it while the rest
+   * of this page is a legitimate 200.
+   */
+  const [{ overview }, { progress }, me] = await Promise.all([
     readClientOverview(params.id),
+    readClientProgress(params.id),
     readCoachMe(),
   ]);
 
@@ -87,6 +99,33 @@ export default async function ClientPage({ params }: { params: { id: string } })
   const redFlagsShared = (progressShared || weighInsShared) && redFlags !== null;
   /** `0` is a real streak of zero days — but only if PROGRESS was actually shared. */
   const streak = progressShared ? overview.currentStreakDays : null;
+
+  /**
+   * EV-187b's two workout blocks (AC3's series, AC5's history) need TWO scopes, and
+   * both checks are the portal reading `scopes` rather than reading a status code:
+   *
+   *   · PROGRESS, because the api names it at the monitoring endpoint's guard — a link
+   *     without it is answered 403 there, and that 403 is undifferentiated (ADR-0012
+   *     D4), so it is not evidence of anything and is never rendered as a consent
+   *     statement.
+   *   · WORKOUTS, because session names and weekly adherence are workout CONTENT and
+   *     the api blanks them on that scope inside the response, exactly as the shipped
+   *     overview blanks `adherenceThisWeek` and `lastSession`.
+   *
+   * AC1's trainee Q holds WORKOUTS and NUTRITION but not PROGRESS; trainee R holds
+   * PROGRESS but not WEIGH_INS. Requiring both is what makes Q read the progress
+   * sentence and R read the weigh-in one.
+   */
+  const workoutsShared = hasScope(overview.scopes, "WORKOUTS");
+  const monitoringShared = progressShared && workoutsShared;
+  /**
+   * ⚠️ The monitoring read's `forbidden` flag is deliberately NOT destructured, and its
+   * absence is the point: the api's 403 is undifferentiated across "no such id",
+   * "another coach's client", "revoked" and "scope missing" (ADR-0012 D4), so branching
+   * on it would be the portal inferring consent from a status code — the one thing
+   * ADR-0015 R2-2 forbids. A block says "not shared" from `scopes`; when the scope IS
+   * held and the data still did not arrive, it says the api did not answer.
+   */
 
   return (
     <CoachShell coachName={me?.displayName}>
@@ -183,6 +222,35 @@ export default async function ClientPage({ params }: { params: { id: string } })
         )}
       </Card>
 
+      {/* ── EV-187 AC3: eight weeks of adherence ───────────────────────────── */}
+      {!monitoringShared ? (
+        <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">
+          <BlockNote>{copy.client.notSharedProgress}</BlockNote>
+        </MonitoringBlock>
+      ) : !progress?.adherence ? (
+        <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">
+          {/* `monitoringShared` says the api should have sent a series, so a missing one
+              is the api not answering — never "not shared", which would be this page
+              inventing a consent fact from an outage. */}
+          <BlockNote>{copy.client.monitoringLoadError}</BlockNote>
+        </MonitoringBlock>
+      ) : (
+        <AdherenceSeries series={progress.adherence} />
+      )}
+
+      {/* ── EV-187 AC5: the last ten sessions ──────────────────────────────── */}
+      {!monitoringShared ? (
+        <MonitoringBlock title={copy.client.sessionHistory} icon="calendar">
+          <BlockNote>{copy.client.notSharedProgress}</BlockNote>
+        </MonitoringBlock>
+      ) : !progress?.sessions ? (
+        <MonitoringBlock title={copy.client.sessionHistory} icon="calendar">
+          <BlockNote>{copy.client.monitoringLoadError}</BlockNote>
+        </MonitoringBlock>
+      ) : (
+        <SessionHistory history={progress.sessions} />
+      )}
+
       <Card style={{ marginBottom: 18 }}>
         <CardHead title={copy.client.redFlags} icon="flag" />
         {/* null = neither PROGRESS nor WEIGH_INS; [] = at least one held and nothing
@@ -197,7 +265,24 @@ export default async function ClientPage({ params }: { params: { id: string } })
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
             {copy.client.noRedFlags}
           </p>
+        ) : progress?.redFlags && progress.redFlags.length > 0 ? (
+          /**
+           * EV-187 AC4 — the SAME flags, now carrying the evidence they fired on. It is
+           * one evaluation projected twice (the overview's codes and this list), so the
+           * badge on the roster, the codes here and the evidence cannot disagree.
+           */
+          <RedFlagEvidence flags={progress.redFlags} />
         ) : (
+          /**
+           * The shipped EV-183 rendering, and the one case that still reaches it: a link
+           * that carries WEIGH_INS but NOT PROGRESS. The overview evaluates the weigh-in
+           * rule on `WEIGH_INS` alone, while the evidence endpoint names PROGRESS at its
+           * guard — so the flag is real and this coach may see it, and the evidence
+           * behind it is not theirs to read. A degraded api answer lands here too.
+           *
+           * It is a flag WITHOUT an evidence block, never a flag with an EMPTY one:
+           * AC4's clause is about the latter, and `RedFlagEvidence` cannot produce it.
+           */
           <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 10 }}>
             {redFlags.map((code) => (
               <li

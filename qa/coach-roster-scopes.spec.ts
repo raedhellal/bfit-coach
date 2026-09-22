@@ -83,20 +83,30 @@ test("a held scope with no data says so, and is not confused with an absence", a
 test("an unknown last-workout date sorts LAST, not first", async ({ page }) => {
   await signIn(page);
 
-  // `evaluateAll` does not auto-wait, and the roster streams behind a loading.tsx —
-  // read the rows only once they are there, or the assertion races the skeleton.
-  await expect(page.locator(".only-wide tbody tr")).toHaveCount(4);
+  /**
+   * Six rows since EV-187b seeded AC2's roster (Tobias and Mara joined the four).
+   *
+   * ⚠️ **The sort moved with it, and this test asserts the SURVIVING half of the old
+   * ruling.** Order used to be `lastCompletedWorkoutDate` ascending, computed in the
+   * portal. EV-187a put `redFlagCount` on the row and `sort` on the endpoint, so the api
+   * orders by flags FIRST and the silence key second. What ADR-0015 S1's ruling still
+   * governs — and what this test is for — is the two readings of one null date: PROGRESS
+   * held and never trained sorts EARLY, PROGRESS withheld is unknown and sorts LAST. The
+   * flag ordering itself belongs to `coach-roster-triage.spec.ts`.
+   */
+  await expect(page.locator(".only-wide tbody tr")).toHaveCount(6);
   const names = await rowNames(page);
-  // Sara shares PROGRESS and has never trained — the most attention-needing row there
-  // is, and it keeps the place a null date has always had: first.
-  expect(names[0]).toContain("Sara P.");
-  // Lina has a real date and comes next.
-  expect(names[1]).toContain("Lina M.");
+  // Sara shares PROGRESS, has never trained, and carries one flag: still above Lina,
+  // who has the same flag count and trained yesterday.
+  expect(names.indexOf(names.find((n) => n.includes("Sara P."))!)).toBeLessThan(
+    names.indexOf(names.find((n) => n.includes("Lina M."))!)
+  );
   // Petra and Yusuf withheld PROGRESS: their date is UNKNOWN, not old, so they sort
-  // last. Sorting them first produced a needs-attention list led by exactly the
+  // after Lina. Sorting them first produced a needs-attention list led by exactly the
   // trainees the coach has no attention data for, permanently.
-  expect(names.slice(2).join(" ")).toContain("Petra L.");
-  expect(names.slice(2).join(" ")).toContain("Yusuf A.");
+  const afterLina = names.slice(names.findIndex((n) => n.includes("Lina M.")) + 1).join(" ");
+  expect(afterLina).toContain("Petra L.");
+  expect(afterLina).toContain("Yusuf A.");
 });
 
 test("the roster never renders a bare null or NaN for a filtered field", async ({ page }) => {

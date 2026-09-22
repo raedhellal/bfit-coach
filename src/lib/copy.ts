@@ -104,6 +104,25 @@ export const copy = {
     statusActive: "ACTIVE",
     loadError: "The roster could not be loaded.",
     retry: "Reload",
+
+    // ── EV-187 AC2: triage ──────────────────────────────────────────────────
+    colFlags: "Flags",
+    /** AC2, verbatim: "2 flags" / "1 flag". Both spellings are verified. */
+    flags: (count: number) => `${count} flag${count === 1 ? "" : "s"}`,
+    /**
+     * The control's own name, and the two orders. "Needs attention" and "Recently
+     * active" are AC2's words; the group label is ours.
+     */
+    sortLabel: "Sort",
+    sortNeedsAttention: "Needs attention",
+    sortRecentActivity: "Recently active",
+    /**
+     * What the flag column says for a link that shares neither workouts nor weigh-ins.
+     * The SAME sentence as every other absence on this surface (`client.notShared`),
+     * deliberately: a coach must not have to learn a second vocabulary for the one
+     * column where an absence could be misread as good news.
+     */
+    flagsNotShared: "Not shared",
   },
 
   invite: {
@@ -193,18 +212,92 @@ export const copy = {
     notSharedWeighIns: "This trainee has not shared their weigh-ins with you.",
     notSharedRedFlags:
       "Red flags need this trainee's progress and weigh-ins, which they have not shared.",
-    // AC5's three rules, verbatim. The api sends the code; this maps it. The keys are
-    // b-fit-api's `RedFlag` enum constants, not a local spelling — a code with no
-    // sentence would render as a raw enum name to a coach.
-    //
-    // PAIN_REPORTED is published by the api and never emitted (ADR-0012 D6): there is
-    // no structured pain signal in the product yet. Its sentence stays so the
-    // vocabulary is complete the day EV-082 makes the rule fire.
+    /**
+     * 🔴 **THE TWO RULES THAT CAN FIRE. THERE IS NO THIRD ENTRY HERE, AND ITS ABSENCE
+     * IS THE POINT — DO NOT ADD ONE.**
+     *
+     * `RedFlag.PAIN_REPORTED` is published in b-fit-api's enum and is **never emitted
+     * and cannot be**: session feedback is exactly {EASY, OK, HARD}, and
+     * `workout_completion.notes` — the column a pain note would live in — is written by
+     * **no mobile call site**. The only pain detection in the product reads AI-chat free
+     * text, which the trainee did not consent to share with a coach (the four scopes are
+     * Workouts · Progress · Nutrition · Weigh-ins; messages are not among them).
+     * **EV-082, which would create the signal, is not scheduled.**
+     *
+     * This map used to carry its sentence "so the vocabulary is complete the day EV-082
+     * makes the rule fire". EV-187 ruled that out: *"the portal may not advertise a rule
+     * that cannot fire"*, in a legend, a filter, an empty state or a tooltip — and not
+     * "coming soon" either, because that is a promise with no date. A sentence sitting
+     * in this object is in the shipped bundle whether or not a coach ever sees it
+     * rendered, which is why removing it is the fix and not hiding it behind a branch.
+     *
+     * EV-187 AC4 makes the grep release-blocking, `qa/red-flag-vocabulary.spec.ts`
+     * enforces it on the source and on the rendered DOM, and it binds on the CONCEPT
+     * rather than one spelling — the b-fit-api guard it mirrors does the same.
+     *
+     * Both keys are b-fit-api's `RedFlag` constants, not a local spelling.
+     */
     redFlagLabels: {
       MISSED_TWO_OR_MORE_SESSIONS: "Missed 2 or more planned sessions this week",
-      PAIN_REPORTED: "Reported pain in a session",
       NO_WEIGH_IN_14_DAYS: "No weigh-in for 14 days",
     } as Record<string, string>,
+
+    /* ── EV-187b: monitoring (AC3 · AC4 · AC5) ─────────────────────────────── */
+
+    /** AC3. The block title is ours; the headline and the bar label are the story's. */
+    adherenceSeries: "Adherence, last 8 weeks",
+    /** AC3, verbatim: "<done> of <planned> planned sessions in the last 8 weeks". */
+    adherenceSeriesHeadline: (done: number, planned: number) =>
+      `${done} of ${planned} planned sessions in the last 8 weeks`,
+    /** AC3, verbatim: each week reads "<done> / <planned> sessions". */
+    weekSessions: (done: number, planned: number) => `${done} / ${planned} sessions`,
+    /**
+     * AC3, verbatim. A week in which no plan existed is "No plan" and NOT a 0 % week —
+     * a week nothing was scheduled in is not a week the trainee failed.
+     *
+     * ⚠️ It is also what a trainee whose routine was just published reads for every
+     * past week (BUG-197: publishing overwrites `selected_at`, so the history is
+     * erased). Rendering those weeks as "0 % adherent" would tell a coach their client
+     * did nothing, on the strength of a bug in somebody else's write path.
+     */
+    weekNoPlan: "No plan",
+    /** AC3, verbatim — the whole-series empty state. No chart, no axis of zeroes. */
+    noSessionsIn8Weeks: "No sessions in the last 8 weeks",
+
+    /** AC5. The title is ours; the summary line and both empty states are the story's. */
+    sessionHistory: "Recent sessions",
+    /**
+     * AC5, verbatim: "Of the last <n> sessions: <n> easy · <n> OK · <n> hard · <n> no
+     * feedback". `returned` is the api's REAL count, so a trainee with six reads "Of
+     * the last 6 sessions: …" and never "of the last 10".
+     */
+    sessionSummary: (
+      returned: number,
+      easy: number,
+      ok: number,
+      hard: number,
+      noFeedback: number
+    ) =>
+      `Of the last ${returned} sessions: ${easy} easy · ${ok} OK · ${hard} hard · ${noFeedback} no feedback`,
+    /** AC5, verbatim. */
+    noCompletedSessions: "No completed sessions yet",
+
+    /** AC4. The evidence heading is ours. */
+    missedSessionsEvidence: "Missed sessions",
+    /**
+     * AC4, verbatim: "Last weigh-in <date> — <N> days ago".
+     *
+     * Always plural, and that is not an oversight: the rule is "no weigh-in for 14
+     * days", so `days` is never 1. A singular branch here would be a line no build can
+     * reach and no test can assert.
+     */
+    lastWeighIn: (date: string, days: number) => `Last weigh-in ${date} — ${days} days ago`,
+    /**
+     * AC4, verbatim — and reserved for a trainee who has genuinely NEVER logged a
+     * weight, in either weight table. A trainee who weighed in nine weeks ago has an
+     * empty 8-week chart and a real date here: "nothing recently" is not "nothing ever".
+     */
+    neverWeighedIn: "Never weighed in",
     menu: "More",
     revoke: "Revoke access",
     revokeTitle: "Revoke access?",
@@ -223,6 +316,13 @@ export const copy = {
     footNote:
       "Messaging and AI drafting are not part of this preview.",
     loadError: "This trainee could not be loaded.",
+    /**
+     * EV-187b. The api did not answer the monitoring read — NOT a scope denial, which
+     * is `notSharedProgress` and is decided from `scopes`. The two must stay different
+     * sentences: telling a coach a trainee has not shared something because a server
+     * was down is a claim about the trainee made out of an outage.
+     */
+    monitoringLoadError: "These blocks could not be loaded. Reload the page to try again.",
     notFound:
       "This trainee is not on your roster. They may have revoked access.",
   },
