@@ -8,3 +8,4 @@
 - [EV-208 live gate](project_ev208-live-gate.md) — 2026-09-23 PASS at 6dadeb2; BUG-213 filed; how AC2's all-rest week and the base-build red witness were built
 - [EV-209 gate + prod closure](project_ev209-live-gate.md) — PASS at 34bcf99; BUG-198 closed on the DEPLOYED merge commit; prod IS drivable; BUG-215 P0 seeded accounts live
 - [EV-210b gate](project_ev210b-gate.md) — 2026-09-23 PASS at a2f483d; mutant ledger for the DOM property file; AC4 (iii) counter is not scoped to the EV-208 regression
+- [EV-214 gate](project_ev214-gate.md) — 2026-09-23 PASS at 6e5eac8; new mutants + the time and viewport channels that defeat a background-image ban
