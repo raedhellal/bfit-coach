@@ -8,9 +8,19 @@ metadata:
 `qa/coach-adherence-property.spec.ts` guards P-ADH C2 by reading CSS channels a
 proportional bar can be painted through **with no layout box** — the geometric limbs
 above it cannot see those at all. EV-214 hand-wrote three `backgroundImage` reads;
-EV-216 turned the set into **data**: `PAINT_CHANNELS` = `{name, property, pseudo,
-initial}` × (`background-image`, `box-shadow`, `border-image-source`, `mask-image`) ×
-(own box, `::before`, `::after`).
+EV-216 turned the set into **data**, and `senior-po` named the model: the guard reads a
+**(box × property) matrix**, and EV-215 extended the box axis while EV-216 extended the
+property axis — *one enumeration, short on both*. `PAINT_CHANNELS` is
+`{name, property, pseudo, initial}` over (`background-image`, `box-shadow`,
+`border-image-source`, `mask-image`, `content`) × (own box, `::before`, `::after`), plus
+`background-image` on `::first-letter`.
+
+**It is SPARSE on purpose.** A cell is present when the property can paint on that box
+**and somebody showed it**, never on symmetry: on `::first-letter`, `box-shadow` and
+`border-image-source` compute a non-initial value and paint nothing, and `mask-image` is
+dropped entirely — entries for those would ban a declaration that cannot paint. And
+`content` is the reason per-entry `initial` exists: it computes to `normal` on the own
+box and `none` on the pseudos.
 
 Three things that make it a guard rather than a list:
 
