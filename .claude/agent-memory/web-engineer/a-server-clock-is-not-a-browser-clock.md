@@ -32,6 +32,19 @@ fails `coach-library.spec.ts:266` ("Updated just now"), because the server stamp
 `updatedAt`. That failure is the split clock, not the change under test. Add a scratch
 probe spec that logs `new Date()` so each run shows which day it saw.
 
+**A test that passes its own date is not re-measured by faking the clock.** I reported
+"12 failed on each of seven days" for the EV-249 override mutant. Every call in that spec
+passes its own `now`, so seven faked-clock runs were **one result repeated**, not seven
+measurements (staff-engineer, 2026-09-23). Fake the process clock only for code that reads
+it, which here means the server's `adherenceSeries([...])` calls with no date.
+
+**The axis that did matter was the time zone.** A `getDay`-for-`getUTCDay` swap is green in
+UTC. In `mondayOfWeeksAgo` it goes red only in a **negative**-offset zone (Pago_Pago, at
+Monday 00:00Z, which is Sunday locally). The spec now loops `process.env.TZ` over UTC,
+Kiritimati and Pago_Pago inside each test. Node honours a runtime `TZ` change, and
+`delete process.env.TZ` restores the system zone, which matters because `workers: 1`
+shares one process across every file.
+
 **Roster config port:** `playwright.roster.config.ts` reads `COACH_ROSTER_PORT` (default
 3301), not `COACH_PORT`. Passing `COACH_PORT` is silently ignored.
 
