@@ -19,3 +19,9 @@ and made an unknown state **throw** instead of guessing.
 `Ready to merge` claims the gates are **cleared** and also adds a `ready-to-merge` tag, so it
 overstates a row still under review. `Done` still needs a merge SHA. Verify with:
 `node -e "import('./tools/youtrack/yt.mjs').then(m=>(m.yt||m.default)('GET','/issues/EVO-36?fields=idReadable,customFields(name,value(name))').then(r=>console.log(JSON.stringify(r))))"`
+
+📌 **`Withdrawn` (resolved) added 2026-09-23** for a row carded and then withdrawn: not `Done`
+(nothing merged, and `Done` owes a sha) and not `Open` (nobody should pick it up). **`Duplicate` is
+not a substitute** — YouTrack's own workflow requires a duplicates link and a withdrawn row
+duplicates nothing. The unknown-state throw I added fired for the first time here and **prevented a
+silent demotion to `Open`**, exactly as intended.
