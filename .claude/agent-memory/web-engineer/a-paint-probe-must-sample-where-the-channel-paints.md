@@ -22,6 +22,13 @@ scanlines on the same screenshot read **1.000 at y=1 and y=7 of 26**: a full bar
   no dependency), then report the painted fraction of the width. A byte diff of two
   screenshots cannot tell a bar from an antialiasing wobble and cannot report its width
   — and the width is the defect.
+- 🔴 **An EMPTINESS measured with the wrong box is not a measurement.** I reported
+  `box-shadow` as unable to paint on `::first-letter` from a 0.040 reading — while the
+  computed value said `1280px … inset`. An `inset` shadow paints inside the **padding
+  box**, and a `::first-letter` with no padding is one glyph wide. With
+  `padding-right: 100vw` the same declaration painted **1.000 of the row width**. Before
+  concluding a channel *cannot* paint somewhere, **give it a box big enough to show it**
+  — and be suspicious whenever a computed value is large and the paint is not.
 - **Sample several scanlines**, not one. `box-shadow: inset` and `mask-image` wash the
   whole box; `border-image` only paints the border strip; a `::before` may paint
   anywhere. Print `y=n/height` beside each number so a dud is visible as a dud.
