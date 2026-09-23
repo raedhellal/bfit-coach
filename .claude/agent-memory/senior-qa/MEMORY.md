@@ -9,5 +9,5 @@
 - [EV-209 gate + prod closure](project_ev209-live-gate.md) — PASS at 34bcf99; BUG-198 closed on the DEPLOYED merge commit; prod IS drivable; BUG-215 P0 seeded accounts live
 - [EV-210b gate](project_ev210b-gate.md) — 2026-09-23 PASS at a2f483d; mutant ledger for the DOM property file; AC4 (iii) counter is not scoped to the EV-208 regression
 - [EV-214 gate](project_ev214-gate.md) — 2026-09-23 PASS at 6e5eac8; new mutants + the time and viewport channels that defeat a background-image ban
-- [EV-216 gate](project_ev216-gate.md) — FAIL at eadd421, PASS at afebbe7; the gutter-above-the-row clip trap; mask-border is the next open channel (BUG-221)
+- [EV-216 gate](project_ev216-gate.md) — FAIL eadd421, PASS afebbe7 + 7b64a16; clip-region and fullPage-drops-hover probe traps; BUG-222 hover quantifier
 - [GUARD rows vs product rows](feedback_guard-rows-vs-product-rows.md) — a hole in our own guard is a numbered BUGS.md row that is NOT counted; the axis is user-reachable, not merged
