@@ -654,8 +654,24 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * `senior-po` cards. A reader who needs to know whether a NEW mechanism is caught should
  * build it and run this limb, not reason from a sentence here.
  *
- * A flat `background-color` is untouched (a colour cannot
- * encode a ratio positionally; only an image can), and the geometry limb, `minimumBars`
+ * 🔴 **A flat `background-color` is untouched as a SCOPE DECISION inherited from
+ * EV-214 — NOT because a colour cannot draw a proportion.** It can, when the **box**
+ * carries the ratio instead of the paint:
+ * `::first-letter { padding-right: <ratio>vw; background-color: rgba(79,124,255,.85) }`
+ * paints a proportional bar past every channel here — **witnessed** (`staff-engineer`,
+ * EV-216 review; reproduced on this branch: **1.000 of the row width on every scanline
+ * beside "21 Sept 2026 — 2 / 4 sessions"** against a control of 0.074, 0.899 on a 3/4,
+ * 0.602 on a 2/4, 0.074 on a 0/4, with **every channel in `PAINT_CHANNELS` initial on
+ * that box** and no image function anywhere; the guard is 16 passed on it). It is
+ * **carded, not closed**: a fifth family is a `senior-po` scope call, and folding one
+ * into this row is the unbounded scope EV-216 refused by name.
+ *
+ * 📌 The sentence this replaces said *"a colour cannot encode a ratio positionally; only
+ * an image can"*. The BOUNDARY was fine; the REASON was false, and a false reason is
+ * worse than no reason — a reader who trusts it never tries the construction. That is
+ * what AC3 owes, and it is the eighth capability sentence falsified in this file.
+ *
+ * The geometry limb, `minimumBars`
  * and the `overflow:hidden` behaviour are deliberately not touched here — EV-214 is a
  * different mechanism, not a stronger version of that one.
  *
@@ -813,6 +829,15 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     attributes read, and the computed channels are `none` for the `Infinity%` value.
  *     Closing it means scanning the ancestor chain or resolving the `var()` — the
  *     general CSS resolver EV-215 rules out by name. Disclosed in EV-215's `✗` block.
+ *   · 🔴 **A proportional bar painted with NO image function at all — the ratio in the
+ *     BOX, the paint a flat colour**: `::first-letter { padding-right: <ratio>vw;
+ *     background-color: rgba(79,124,255,.85) }`. CONSTRUCTED and PAINTING — 1.000 of the
+ *     row width beside "2 / 4 sessions" (control 0.074), proportional across the series
+ *     — and the guard is green on it. What was tried: **nothing in this table can reach
+ *     it**, because every channel here reads a property whose value is a PICTURE, and
+ *     this one's picture is the element's geometry. It is not a fifth property to add;
+ *     it is a fifth FAMILY (a paint channel that is not an image), and `senior-po` owns
+ *     that scope call. → a card, deliberately not closed here.
  *   · **`border-image-source` and `mask-image` on `::first-letter`** — the two EMPTY
  *     CELLS of that box's row in the matrix, and 🔴 **the third one is no longer empty:
  *     `box-shadow` was listed here until the reviewer re-measured it with a `100vw`
