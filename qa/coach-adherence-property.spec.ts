@@ -341,16 +341,47 @@ test.describe("EV-210b AC3 / P-ADH C2 — the bar and the numbers beside it are 
    * nothing. So Ines states it, and this asserts she still does.
    */
   test("the hazard world still HAS the hazard — done > plannedSoFar, stated not derived", () => {
-    const fixture = readFileSync(join(__dirname, "..", "src", "lib", "coachApi.fixture.ts"), "utf8");
-    const world = fixture.slice(fixture.indexOf("[INES_ID]: () => ({"));
-    expect(world, "Ines's progress entry was not found in the fixture").not.toBe("");
-    const current = world.match(/\[\s*1,\s*3,\s*0,?\s*\]/);
+    /**
+     * ⚠️ Comments are stripped FIRST. The first cut of this guard matched the paragraph
+     * in the fixture that EXPLAINS the tuple, so deleting the tuple left it green — a
+     * guard reading its own documentation back and reporting it as protection. It was
+     * caught by mutating the fixture, which is the only way any of these are caught.
+     */
+    const fixture = readFileSync(join(__dirname, "..", "src", "lib", "coachApi.fixture.ts"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+
+    /**
+     * The PROGRESS entry, not the overview one: both are keyed `[INES_ID]` and only one
+     * of them holds the series. "the part that contains `adherenceSeries(`" is NOT
+     * enough — the part that starts at her OVERVIEW entry runs on to the end of the file
+     * and contains everybody else's series, so it matched, and the guard read LINA's
+     * week and went red on correct code. The entry is the part whose `adherenceSeries([`
+     * comes before the NEXT trainee key — and it is the CALL that is looked for, with
+     * its bracket, not the substring `adherenceSeries(`, which also matches the
+     * function's own declaration several hundred lines earlier.
+     */
+    const CALL = "adherenceSeries([";
+    const NEXT_ENTRY = /_ID\]: \(\) => \(\{/;
+    const entry = fixture
+      .split("[INES_ID]: () => ({")
+      .slice(1)
+      .find((part) => {
+        const call = part.indexOf(CALL);
+        const next = part.search(NEXT_ENTRY);
+        return call !== -1 && (next === -1 || call < next);
+      });
+    expect(entry, "Ines's progress entry was not found in the fixture").toBeTruthy();
+
+    const body = entry!.slice(entry!.indexOf(CALL) + CALL.length);
+    const tuples = body.slice(0, body.indexOf("])")).match(/\[[^\]]*\]|null/g) ?? [];
+    expect(tuples.length, "Ines's series is no longer eight weeks").toBe(8);
     expect(
-      current,
+      tuples[tuples.length - 1].replace(/\s/g, ""),
       "Ines's current week no longer states `[1, 3, 0]` (done 1 / planned 3 / plannedSoFar 0). " +
         "Without done > plannedSoFar on EVERY weekday, nothing on this surface can tell a " +
         "`plannedSoFar` renderer from a `planned` one."
-    ).not.toBeNull();
+    ).toBe("[1,3,0]");
   });
 });
 
