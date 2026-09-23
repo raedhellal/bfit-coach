@@ -1,6 +1,6 @@
 ---
 name: project_ev216-gate
-description: EV-216 (paint channels nobody reads) gate 2026-09-23 — FAIL at eadd421, PASS at afebbe7; border-image-source on ::first-letter paints in the gutter above the row; mask-border is the next open channel
+description: EV-216 gate 2026-09-23 — FAIL eadd421, PASS afebbe7, PASS 7b64a16 (pin 19); clip-region and fullPage-drops-hover probe traps; BUG-222 hover quantifier for EV-217
 metadata:
   type: project
 ---
@@ -52,3 +52,21 @@ fill` — **261 passed with the current-week row painted end to end (0.993 vs co
 one of the 18 channels initial. Measured for whoever closes it: the standard spelling
 `mask-border-source` computes `""` in this Chromium and would trip the guard's own empty-value
 assertion, so the entry must be the `-webkit-` one.
+
+**Re-gate at `7b64a16` (BUG-221 entry, pin 19) — started 2026-09-23, written incrementally.** A first
+attempt at this tip was lost with its session (nothing recorded; treat as not run). Ports
+3365–3368, `lsof`-verified free; 3300/3302/3303 belong to other sessions and were not touched.
+- `7b64a16`: `src/` diff vs `fdd654d` empty; `tsc exit=0`, `lint exit=0`, cold `next build exit=0` (`.next` confirmed gone first).
+- `COACH_PORT=3365 npx playwright test` → **261 passed, exit=0**; roster config **18 passed, exit=0**; `--list` exit=0, **261 in 16 files**.
+- Roster diff vs `afebbe7` (line numbers stripped): **8 changed lines = the FOUR world titles 18 → 19**, nothing else. `grep -c "19 enumerated"` = 4, `"18"` = 0. The AC3 ratchet title carries no number. **The implementer's "five world titles" is a miscount, the second in a row** — cosmetic, but its reports' counts should be checked, not relayed.
+- BUG-221 escape re-planted byte-identical; PAINT PROBE first: current row "2 / 4 sessions" **0.993** (control 0.031), 0.744 on 3/4, 0.496 on finished 2/4 — my afebbe7 numbers exactly. The implementer read 0.957/0.675/0.475: same order and proportions, a different detector/plant; the number is the probe's, the paint is the same.
+- Whole gate with the escape live: **4 failed / 257 passed, exit=1**; the four reds are only the AC1 world tests (`:1516`); **32 offences, every one `[-webkit-mask-box-image-source on its own box]`**, zero `DECLARES` (implementer: 30 — plant scope, same channel).
+- **Independence on the whole gate**: entry removed, pin 18, mutant still planted → **261 passed, exit=0**. Nothing else in the suite sees it; the cell is load-bearing. Spec restored.
+- False-positive direction: the clean-tree run above IS it — 261 passed with the entry present and pin 19.
+- W5 (fifth walk-past): M1's exact shadow gated on `li:hover`. ⚠️ My `fullPage` probe first read 0.046 under hover — a `fullPage` screenshot resizes the viewport and DROPS the hover; the computed value said otherwise, so the probe was wrong. Viewport-clip probe: current row "2 / 4 sessions" **REST 0.031 → HOVER 1.000**, 0.651→0.894 on 3/4, 0.440→0.596 on finished 2/4.
+- W5 whole gate: **261 passed, exit=0** with the hover bar live. Filed **BUG-222 `[GUARD]` P2** — fourth implicit quantifier (interaction state), EV-217's family, NOT a condition on EV-216. BUG-221 closed on my re-run. **Verdict at `7b64a16`: PASS.**
+
+**Probe trap to carry forward:** `page.screenshot({ fullPage: true })` resizes the viewport and DROPS
+`:hover` — it read 0.046 on a row whose computed shadow was 1280 px. When the computed value and
+the pixels disagree, suspect the probe first; for any state-dependent paint, scroll into view and
+capture in the viewport.
