@@ -603,10 +603,21 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * geometric limb never sees it. Rendered, that gave Lina a **fully painted** bar beside
  * "2 / 4 sessions" — mechanism 2 of EV-210's own table, restored.
  *
- * So this limb is **structural, not geometric**: inside a week row, no element's **own**
- * background-image, on either channel. ⚠️ Not "nothing paints a background image at
- * all" — a `::before` on a week row paints one and this limb stays GREEN (witnessed by
- * the reviewer, and see the `✗` list below). A flat `background-color` is untouched (a colour cannot
+ * So this limb is **structural, not geometric**: for every element inside a week row, it
+ * **READS** both channels of that element's own `background-image` — the computed value
+ * and the inline declaration — once, at the default viewport.
+ *
+ * ⚠️ **That is a statement about what it reads, deliberately, and not about what can be
+ * drawn.** Every totality sentence written about this guard has been falsified by the
+ * next person to try: "nothing paints a background image at all" died to a `::before`,
+ * and "the element's own background-image, on either channel" died TWICE on the computed
+ * channel alone — to a gradient applied after an `animation` delay (`none` at t=0, a full
+ * bar behind "2 / 4 sessions" at t=11s) and to one behind `@media (max-width: 520px)`,
+ * which paints at the 320 px width `qa/layout.ts` sweeps this portal at. Both are
+ * `senior-po` cards. A reader who needs to know whether a NEW mechanism is caught should
+ * build it and run this limb, not reason from a sentence here.
+ *
+ * A flat `background-color` is untouched (a colour cannot
  * encode a ratio positionally; only an image can), and the geometry limb, `minimumBars`
  * and the `overflow:hidden` behaviour are deliberately not touched here — EV-214 is a
  * different mechanism, not a stronger version of that one.
@@ -661,9 +672,25 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     than widened to "no image function anywhere in the attribute", because that is an
  *     assertion change and this file's remaining escapes are being carded together
  *     rather than patched one regex at a time.
- *   ✗ `url(`, `image-set(` and `element(` are in the inline pattern with **no witness in
- *     either direction** — nobody has constructed one and nobody has shown one cannot be
- *     built. They are listed for completeness of the mechanism, not as tested reach.
+ *   ✓ **`url(` IS witnessed**, by `senior-qa`'s M-Q3: `background: url("data:image/svg+
+ *     xml,…") no-repeat 0 0 / <pct>% 100%` goes red in BOTH directions at once — Ines by
+ *     the INLINE clause alone (the `Infinity%` size discards the shorthand, so the
+ *     computed value is `none`) and Lina by the COMPUTED clause. It is the best witness
+ *     this limb has for the two clauses being independently load-bearing.
+ *   ✗ `image-set(` and `element(` are in the inline pattern with **no witness in either
+ *     direction** — nobody has constructed one and nobody has shown one cannot be built.
+ *     They are listed for completeness of the mechanism, not as tested reach.
+ *
+ *   🔴 And the two the gate found, on the COMPUTED channel of an element's OWN
+ *     background-image — i.e. inside what this limb reads, not in any channel disclosed
+ *     above. Both are `senior-po` cards:
+ *   ✗ **a time-shifted paint.** `@keyframes` + `animation: … 1ms 8s forwards`, the ratio
+ *     in an inline custom property. Every computed `background-image` is `none` at t=0,
+ *     so the EV-214 section is 4 passed; at t=11s Lina's figures span computes
+ *     `linear-gradient(90deg, rgb(79, 124, 255) 100%, …)`. The limb samples one instant.
+ *   ✗ **a viewport-gated paint.** `@media (max-width: 520px)`. Green at the default
+ *     viewport; at 320 px a full blue bar sits behind "2 / 4 sessions". The limb samples
+ *     one viewport — and 320 px is the width this portal is swept at by name.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /** One element inside a week row, as the two reads that can reveal a painted picture. */
@@ -689,8 +716,9 @@ interface RowPaint {
  * It matches the VALUE of a `background` / `background-image` declaration, so the honest
  * bars — `background:var(--blue-500)` and `background:var(--surface-3)` — do not match,
  * and a `background-color` never can. `url(`, `image-set(` and `element(` are listed
- * beside the gradients because they are the other ways a CSS box paints an image; none
- * of them has been constructed on this surface.
+ * beside the gradients because they are the other ways a CSS box paints an image.
+ * `url(` has been constructed on this surface and caught (a `data:image/svg+xml` bar
+ * sized `<pct>% 100%` — `senior-qa`'s M-Q3); `image-set(` and `element(` have not.
  */
 const INLINE_BACKGROUND_IMAGE = /background(-image)?\s*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
 
@@ -737,9 +765,13 @@ test.describe("EV-214 AC1 / P-ADH C2 — no week row paints a picture that has n
       await expect(block(page, ADHERENCE)).toBeVisible();
 
       const rows = await paintedElementsInWeekRows(block(page, ADHERENCE));
-      expect(rows.length, `${world.name}: the adherence block rendered no week rows at all`).toBe(
-        world.weeks
-      );
+      // "…not the ${world.weeks} this world renders", never "no week rows at all": the
+      // assertion is an equality, so SEVEN rows — a week silently dropped, which is the
+      // interesting failure — would otherwise be reported as zero.
+      expect(
+        rows.length,
+        `${world.name}: the adherence block did not render the ${world.weeks} week rows this world has`
+      ).toBe(world.weeks);
 
       const offences: string[] = [];
       let inspected = 0;
