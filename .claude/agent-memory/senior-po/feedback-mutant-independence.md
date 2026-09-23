@@ -21,3 +21,8 @@ load-bearing and nobody knew.**
 clause is caught **by its own clause alone**, and that a mutant already caught by a pre-existing limb
 **does not count** as that row's witness. First rows carrying it: EV-215 AC3, EV-216 AC2. Sibling
 rule: [[feedback-write-acs-against-the-real-surface]].
+
+📌 **Best witness form, found on EV-214:** `url(` went red in **both** directions **at once** —
+Ines via the inline clause alone (the `Infinity%` size discards the shorthand, so computed is `none`),
+Lina via the computed clause. **One construction proving both clauses beats two constructions each
+proving one**, because it cannot be satisfied by a clause that is dead in the other direction.

@@ -10,3 +10,6 @@
 - [Never split a row to start it](decision-never-split-a-row-to-start-it.md) — EV-205a: AC7's non-merge clause is the pressure closing BUG-215
 - [Mutant independence](feedback-mutant-independence.md) — two clauses killing the same mutant proves neither; require per-clause attribution
 - [Narrow guard, broad banner](decision-narrow-guard-broad-banner.md) — EV-216: enumerated denylists are fine, but the banner must state the real predicate
+- [Disclosure is an instruction](feedback-disclosure-is-an-instruction.md) — guards say what they DO and how to check more; never what they catch or miss
+- [A passing assertion may not bind](feedback-a-passing-assertion-may-not-bind.md) — asText() coerces; assert shape before value; green proves nothing until a mutant kills it
+- [Enumerate deletions, not reverts](feedback-enumerate-deletions-not-reverts.md) — drop-path offers as discrete deletions; grep for readers, not just behaviour tests
