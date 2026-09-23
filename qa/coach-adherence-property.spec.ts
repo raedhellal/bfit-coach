@@ -586,7 +586,16 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * EV-214 — **P-ADH C2: a picture nothing can measure is not allowed to exist.**
+ * EV-214 / EV-215 / EV-216 — **P-ADH C2: no element in a week row has a non-initial
+ * value on any of the paint channels enumerated in `PAINT_CHANNELS`, and none declares
+ * an image function in its inline `style` attribute.**
+ *
+ * 🔴 **That sentence is the PREDICATE, and it replaced a banner that named the
+ * MECHANISM CLASS** ("a picture nothing can measure is not allowed to exist"). The
+ * property this section serves — *nothing inside a week row paints a proportional
+ * picture through any channel* — is stated once, in **P-ADH C2**, and is NOT restated
+ * here: this is an enumerated guard, an enumerated guard is an acceptable guard, and
+ * what it owes is not to imply it has achieved the property. **EV-216 AC3.**
  *
  * Story: `b-fit-mobile/docs/product/stories/EV-214-adherence-picture-has-a-measurable-box.md`
  * (parent: `EV-210-adherence-never-overstates.md`, property **P-ADH**, consequence
@@ -695,16 +704,12 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     defect as permitting one. If someone constructs one, that is its own row.
  *   ✗ anything outside a week row. A decorative background elsewhere on the page is a
  *     design decision, not an adherence picture.
- *   ✗ 🔴 **`box-shadow: inset <pct>vw 0 0 0 rgba(…)`** — a second paint channel nobody
- *     had named. It draws a full bar beside "2 / 4 sessions" with the suite at 260
- *     green: no layout box, no background image, so neither clause here sees it.
- *     `border-image` and `mask-image` are the same family. Reviewer-constructed, with a
- *     rendered screenshot as the witness; carded as **EV-216**. What was tried against
- *     it: none of the four channels above reports it — `box-shadow` is not a
- *     `background-image` on any of the three computed channels, including the two
- *     pseudo-element ones, and it is not a `background` value in the attribute. Reading
- *     it means reading a property this limb does not read at all, which is EV-216's
- *     structural question and not a wider regex.
+ *   ✓ 🔴 **`box-shadow: inset <pct>vw 0 0 0 rgba(…)`, `border-image` and `mask-image`**
+ *     — a second paint channel nobody had named, which drew a full bar beside
+ *     "2 / 4 sessions" with the suite at 260 green. It was `✗` here until **EV-216**,
+ *     which did not widen a regex: it added the three computed properties to the read,
+ *     and they are now three of the entries in `PAINT_CHANNELS`. The three mutants and
+ *     their independence witnesses are recorded in the EV-216 banner below.
  *   ✓ **`url(` IS witnessed**, by `senior-qa`'s M-Q3: `background: url("data:image/svg+
  *     xml,…") no-repeat 0 0 / <pct>% 100%` goes red in BOTH directions at once — Ines by
  *     the INLINE clause alone (the `Infinity%` size discards the shorthand, so the
@@ -749,17 +754,165 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     gap rather than a channel gap, so widening the property list closes neither.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-216 AC3 — **THE DISCLOSURE. What this section reads, when, at what configuration,
+ * and how to find out about anything it does not read.**
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-216-a-proportional-picture-in-a-channel-nobody-reads.md`
+ * (parent: `EV-210-adherence-never-overstates.md`, property **P-ADH**, consequence
+ * **C2**). AC1 is the three new channels in `PAINT_CHANNELS`; this block is AC3, and
+ * `senior-po` calls it the part of the row worth more than the three assertions.
+ *
+ * **WHAT IT READS.** For **every element inside every week row of the adherence block,
+ * the `li` itself included**, two kinds of read:
+ *
+ *   1. **The computed channels enumerated in `PAINT_CHANNELS`** — one CSS property on
+ *      one of the element's three boxes, asserted equal to that property's initial
+ *      value. `PAINT_CHANNELS` is the ONLY place in this file the covered channels are
+ *      listed: the read iterates it, the failure message names the entry that fired,
+ *      and a ratcheted count (`PAINT_CHANNELS_EXPECTED`) means removing one is a
+ *      deliberate two-line edit rather than a silent one. Adding a channel is one line.
+ *   2. **The inline `style` attribute**, through `INLINE_BACKGROUND_IMAGE` and
+ *      `INLINE_CUSTOM_PROPERTY_IMAGE` — a denylist over attribute TEXT, documented at
+ *      the two constants, with its reach (and three witnessed escapes) recorded there.
+ *
+ * **WHEN, AND AT WHAT CONFIGURATION.** Once per world, immediately after the adherence
+ * block becomes visible, at the config's default viewport, in `next dev` fixture mode.
+ * One instant, one viewport, one page state.
+ *
+ * **CHANNELS AND MECHANISMS NOT READ, WITH WHAT WAS TRIED.** Each entry is a mechanism
+ * somebody **constructed and ran against this section**, with the row that owns it. It
+ * is a list of what has been built, **not** a list of what exists, and it is not a
+ * claim that anything absent from it is caught — six totality sentences written about
+ * this guard have been falsified by the next person to try one. Later rows append to
+ * this list; the entry shape is *mechanism — what was tried — owning row*.
+ *
+ *   · **A time-delayed paint** (`animation … 1ms 8s forwards`) and **a viewport-gated
+ *     paint** (`@media (max-width: 520px)`, and 320 px is a width this portal is swept
+ *     at by name). What was tried: both arrive on channels this section DOES read — the
+ *     element's own `background-image` — so neither a further property nor a wider
+ *     inline pattern reaches them. Only reading again, at another instant or another
+ *     width, does. A **sampling** gap rather than a channel gap. → **EV-217**.
+ *   · **A re-spelling of an image function inside the inline denylist's reach** — an
+ *     ident escape (`linear-gradi\65 nt(`), a non-ASCII ident (`--é-paint`), a `;`
+ *     inside a comment. What was tried: all three are resolved by the CSS parser BEFORE
+ *     a computed read can see them, and the computed clauses are green on the ones that
+ *     do not paint (`Infinity%`), so no computed channel added here can close a spelling
+ *     gap and no wider regex has survived a reviewer yet. → **EV-218**.
+ *   · **A custom property declared on an ANCESTOR of the week rows** (`--adh-paint` on
+ *     the `<ul>`) and spent inside one. What was tried: the scan is `li` plus its
+ *     descendants, so the attribute carrying the declaration is never one of the
+ *     attributes read, and the computed channels are `none` for the `Infinity%` value.
+ *     Closing it means scanning the ancestor chain or resolving the `var()` — the
+ *     general CSS resolver EV-215 rules out by name. Disclosed in EV-215's `✗` block.
+ *   · **`<canvas>` and `<img>`.** No witness in either direction: nobody has built one,
+ *     and nobody has shown one cannot be built. `senior-po` has declined four times to
+ *     fold them in on the strength of neighbouring mechanisms being real. Not a row.
+ *   · **A channel-independent paint detector**, which would replace this enumeration
+ *     rather than extend it, is a NAMED OPEN QUESTION for `architect`. It is not
+ *     scheduled, this section does not wait on it, and nothing here approves building
+ *     one.
+ *
+ * **HOW TO FIND OUT WHETHER A MECHANISM NOT LISTED ABOVE IS CAUGHT.** Build it in an
+ * uncommitted copy of `AdherenceSeries.tsx`, run this file, and — before believing a
+ * green — **probe that it actually painted**, because a mutant that never fired proves
+ * nothing in either direction. `senior-qa` lost a run to exactly that (a `var()` whose
+ * varying stop sat in an ancestor's value, which Chrome resolves at the DECLARING
+ * element, so nothing painted and the suite was green: a dud that looked like a wider
+ * escape). Do not reason from a sentence in this file; every sentence here is about
+ * what the reads DO, and none of them is a statement about what can be drawn.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * One computed read: a CSS property, on one of an element's three boxes, and the value
+ * of that property which means *this box paints nothing through this channel*.
+ *
+ * `property` is the KEBAB spelling and is read with `getPropertyValue`, not through the
+ * camelCase accessor: an accessor a browser does not implement is `undefined` and reads
+ * as a silently absent channel, whereas `getPropertyValue` returns `""` for a property
+ * name the browser does not report — and `""` is asserted against below, so a channel
+ * that is not a real read in this browser goes red instead of passing vacuously.
+ */
+interface PaintChannel {
+  /** How the channel is named in a red build. EV-216 AC1 asks which channel fired. */
+  name: string;
+  property: string;
+  /** `null` for the element's own box. */
+  pseudo: "::before" | "::after" | null;
+  /** The property's initial value — what "paints nothing here" computes to. */
+  initial: string;
+}
+
+/**
+ * 🔴 **THE one place the covered channels are listed — EV-216 AC3.**
+ *
+ * Adding a channel is one line here. Removing one is visible twice: the entry is gone
+ * from a list a reader reads top to bottom, and `PAINT_CHANNELS_EXPECTED` goes red.
+ *
+ * The four properties, and why each is a channel a proportional bar can be painted
+ * through without a layout box of its own:
+ *
+ *   · `background-image` — EV-214's witnessed bypass (a gradient behind the figures).
+ *   · `box-shadow` — EV-216's. `inset ${(done / plannedSoFar) * 100}vw 0 0 0 rgba(79,
+ *     124, 255, .35)` on a week row paints Lina's row end to end beside "2 / 4
+ *     sessions" with the suite at 260 green, and `inset` means it needs no box of its
+ *     own beyond the one the row already has.
+ *   · `border-image-source` and `mask-image` — named by `staff-engineer` as the same
+ *     family, and each carries a mutant of its own (AC2), because a family named in
+ *     prose is not a family until somebody builds the other two.
+ *
+ * All four are read on the element's own box **and on both generated boxes**. The
+ * pseudo-element reads exist because EV-215 was the row that found a `::before`
+ * carrying the gradient while the element's own computed style said `none`; shipping
+ * three new properties without them would re-open that hole on the day it was closed.
+ *
+ * ⚠️ The ban is on the channel, not on a ratio: this limb cannot tell a proportional
+ * value from a constant one, so a DECORATIVE shadow inside a week row would be a false
+ * positive. There is none today — `AdherenceSeries.tsx` uses `background`, `width` and
+ * `border-radius` inside the rows and nothing else — and the honest-row direction is
+ * RUN, not assumed, by the four worlds below passing against unmodified code. If the
+ * design ever needs one, that is a `senior-po` decision (EV-216 edge cases 1 and 2),
+ * not an exception carved here.
+ */
+const PAINT_CHANNELS: PaintChannel[] = [
+  { name: "background-image on its own box", property: "background-image", pseudo: null, initial: "none" },
+  { name: "background-image on ::before", property: "background-image", pseudo: "::before", initial: "none" },
+  { name: "background-image on ::after", property: "background-image", pseudo: "::after", initial: "none" },
+  { name: "box-shadow on its own box", property: "box-shadow", pseudo: null, initial: "none" },
+  { name: "box-shadow on ::before", property: "box-shadow", pseudo: "::before", initial: "none" },
+  { name: "box-shadow on ::after", property: "box-shadow", pseudo: "::after", initial: "none" },
+  { name: "border-image-source on its own box", property: "border-image-source", pseudo: null, initial: "none" },
+  { name: "border-image-source on ::before", property: "border-image-source", pseudo: "::before", initial: "none" },
+  { name: "border-image-source on ::after", property: "border-image-source", pseudo: "::after", initial: "none" },
+  { name: "mask-image on its own box", property: "mask-image", pseudo: null, initial: "none" },
+  { name: "mask-image on ::before", property: "mask-image", pseudo: "::before", initial: "none" },
+  { name: "mask-image on ::after", property: "mask-image", pseudo: "::after", initial: "none" },
+];
+
+/**
+ * Pinned, for the reason `SCHEMAS_EXPECTED` is pinned in `qa/contract-drift.spec.ts`:
+ * a guard whose coverage is a list can be emptied one entry at a time and still pass
+ * every assertion it makes. Deleting the `::after` read used to leave this suite 260
+ * green. Raise it in the same commit that adds a channel; lowering it is a decision
+ * somebody has to write down.
+ */
+const PAINT_CHANNELS_EXPECTED = 12;
+
 /** One element inside a week row, as the reads that can reveal a painted picture. */
 interface RowElement {
   tag: string;
   /**
-   * `backgroundImage` as computed for the element itself and for each of its two
-   * generated boxes — what actually paints, on all three of the boxes an element can
-   * have. Carried as a list of NAMED channels rather than three fields so the failure
-   * message can say which read fired (EV-215 AC1): a red build that says only "paints a
-   * background image" sends the reader to an element whose own computed style is `none`.
+   * One entry per `PAINT_CHANNELS` entry, in that order — what actually computes, on
+   * each property, on each of the three boxes an element can have. Carried as a list of
+   * NAMED channels rather than as fields so the failure message can say which read
+   * fired (EV-215 AC1, kept by EV-216 AC1): a red build that says only "paints" sends
+   * the reader to an element whose own computed style is `none`.
+   *
+   * `initial` travels with the value because it is the channel's definition of "paints
+   * nothing", and comparing against it here is what lets a channel be added in one
+   * line without touching the loop that judges it.
    */
-  computed: { channel: string; value: string }[];
+  computed: { channel: string; value: string; initial: string }[];
   /** The raw inline `style` attribute — what was asked for, valid or not. */
   inline: string;
 }
@@ -828,31 +981,36 @@ const INLINE_CUSTOM_PROPERTY_IMAGE = /--[^:;]*:[^;]*(gradient\(|url\(|image-set\
 
 /** Every element inside every week row — the row itself included — with all four reads. */
 async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
-  return region.locator("li").evaluateAll((rows) =>
-    rows.map((row) => ({
-      // The date column is the row's first child. Read from its own element: the row's
-      // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
-      date: (row.firstElementChild?.textContent ?? "").trim(),
-      rowText: (row.textContent ?? "").trim(),
-      // The row itself is included — AC1 says "every element inside it INCLUDING the row
-      // itself", because a gradient on the `li` paints behind all three columns at once.
-      elements: [row, ...Array.from(row.querySelectorAll<HTMLElement>("*"))].map((el) => ({
-        tag: el.tagName.toLowerCase(),
-        // EV-215 AC1 — the SECOND argument is the whole fix. `getComputedStyle(el)`
-        // reports the element's own box; a `::before` carrying the gradient is a box
-        // this element also owns, and the same call reports it when it is asked to.
-        computed: [
-          { channel: "its own box", value: getComputedStyle(el).backgroundImage },
-          { channel: "::before", value: getComputedStyle(el, "::before").backgroundImage },
-          { channel: "::after", value: getComputedStyle(el, "::after").backgroundImage },
-        ],
-        inline: el.getAttribute("style") ?? "",
+  return region.locator("li").evaluateAll(
+    (rows, channels: PaintChannel[]) =>
+      rows.map((row) => ({
+        // The date column is the row's first child. Read from its own element: the row's
+        // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
+        date: (row.firstElementChild?.textContent ?? "").trim(),
+        rowText: (row.textContent ?? "").trim(),
+        // The row itself is included — AC1 says "every element inside it INCLUDING the
+        // row itself", because a gradient on the `li` paints behind all three columns at
+        // once, and EV-216's `box-shadow: inset …` bypass was constructed ON the row.
+        elements: [row, ...Array.from(row.querySelectorAll<HTMLElement>("*"))].map((el) => ({
+          tag: el.tagName.toLowerCase(),
+          // EV-215 AC1 — the SECOND argument of `getComputedStyle` is half the fix: a
+          // `::before` carrying the picture is a box this element also owns, and the
+          // same call reports it when it is asked to. EV-216 AC1 is the other half: the
+          // PROPERTY is a parameter too, so the set of channels is data rather than
+          // three hand-written reads, and it lives in exactly one place.
+          computed: channels.map((channel) => ({
+            channel: channel.name,
+            value: getComputedStyle(el, channel.pseudo).getPropertyValue(channel.property),
+            initial: channel.initial,
+          })),
+          inline: el.getAttribute("style") ?? "",
+        })),
       })),
-    }))
+    PAINT_CHANNELS
   );
 }
 
-test.describe("EV-214 AC1 / EV-215 / P-ADH C2 — no week row paints a picture that has no box to measure", () => {
+test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week row has a non-initial value on an enumerated paint channel", () => {
   /**
    * EV-210b's own four worlds — AC1 adds no fixture. `minimumElements` is a fact about
    * the FIXTURE and the row's structure (eight rows, each at least the `li` plus a date
@@ -867,8 +1025,30 @@ test.describe("EV-214 AC1 / EV-215 / P-ADH C2 — no week row paints a picture t
     { name: "Noor — eight REAL 0 % weeks", id: NOOR, weeks: 8, minimumElements: 24 },
   ];
 
+  /**
+   * EV-216 AC3's other half. The disclosure above says the covered channels are listed
+   * in ONE place; that is only true while the list cannot shrink unnoticed, and the
+   * four tests below iterate the table, so they stay green on an emptier one. This is
+   * the assertion that makes a removal a decision: it is two lines to make, and it
+   * fails by naming the channels that are actually in the table.
+   */
+  test("P-ADH C2 (EV-216 AC3): the enumerated channel list has not silently shrunk", () => {
+    expect(
+      PAINT_CHANNELS.map((channel) => channel.name),
+      `PAINT_CHANNELS holds ${PAINT_CHANNELS.length} channels, not the ${PAINT_CHANNELS_EXPECTED} ` +
+        "this file was merged with. Adding a channel is one line here and one to " +
+        "PAINT_CHANNELS_EXPECTED; removing one needs the same two edits, on purpose, and a note " +
+        "in the disclosure block above `PaintChannel` saying what is no longer read."
+    ).toHaveLength(PAINT_CHANNELS_EXPECTED);
+    expect(
+      new Set(PAINT_CHANNELS.map((channel) => channel.name)).size,
+      "Two channels share a name, so a red build cannot say which read fired — EV-216 AC1 " +
+        "requires the failure to name the channel."
+    ).toBe(PAINT_CHANNELS.length);
+  });
+
   for (const world of WORLDS) {
-    test(`P-ADH C2 (EV-214): nothing inside a week row paints a background image — ${world.name}`, async ({
+    test(`P-ADH C2 (EV-216 AC1): no element in a week row paints through one of the ${PAINT_CHANNELS.length} enumerated channels — ${world.name}`, async ({
       page,
     }) => {
       await signIn(page);
@@ -891,20 +1071,34 @@ test.describe("EV-214 AC1 / EV-215 / P-ADH C2 — no week row paints a picture t
           inspected += 1;
           const where = `${world.name} — week row "${row.date}" ("${row.rowText}"), <${element.tag}>`;
           /**
-           * The channel list is RATCHETED, because `inspected` counts elements and not
-           * channels: deleting the `::after` read leaves this suite 260 green, which is
-           * the same shape of hole `minimumBars` exists for one section up. A guard that
-           * reads three boxes has to say it reads three boxes somewhere a deletion trips.
+           * The channel list is RATCHETED against `PAINT_CHANNELS`, because `inspected`
+           * counts ELEMENTS and not channels: deleting the `::after` read used to leave
+           * this suite 260 green, which is the same shape of hole `minimumBars` exists
+           * for one section up. This asserts the browser was actually asked for every
+           * channel the table lists; `PAINT_CHANNELS_EXPECTED` is what stops the table
+           * itself from shrinking.
            */
           expect(
             element.computed.map((channel) => channel.channel),
-            `${where}: the three computed channels EV-215 AC1 requires were not all read`
-          ).toEqual(["its own box", "::before", "::after"]);
-          const painting = element.computed.filter((channel) => channel.value !== "none");
+            `${where}: the channels read do not match PAINT_CHANNELS — a channel in the table was not read`
+          ).toEqual(PAINT_CHANNELS.map((channel) => channel.name));
+          /**
+           * A computed read of a property this browser does not report returns `""`,
+           * which is neither the initial value nor a paint — it is a channel that is not
+           * a read at all, and it would pass the loop below in silence. `mask-image` is
+           * the live example: it is unprefixed in this Chromium (verified), and a
+           * browser where it is not would otherwise be a suite that quietly stopped
+           * checking one of EV-216's three channels.
+           */
+          expect(
+            element.computed.filter((channel) => channel.value.trim() === "").map((c) => c.channel),
+            `${where}: a channel returned an empty computed value, so this browser does not report that property — the channel is listed but not read`
+          ).toEqual([]);
+          const painting = element.computed.filter((channel) => channel.value !== channel.initial);
           if (painting.length > 0) {
             for (const channel of painting) {
               offences.push(
-                `${where} PAINTS background-image on ${channel.channel}: ${channel.value}`
+                `${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`
               );
             }
           } else if (INLINE_BACKGROUND_IMAGE.test(element.inline)) {
@@ -924,11 +1118,16 @@ test.describe("EV-214 AC1 / EV-215 / P-ADH C2 — no week row paints a picture t
 
       expect(
         offences,
-        "A week row paints a picture of adherence that nothing can measure. P-ADH C2 says the " +
-          "picture IS the two numbers printed beside it; a background image has no layout box, " +
-          "so the geometric limb above cannot check it against them — it is the EV-214 bypass " +
-          "(an unmeasurable picture ALONGSIDE bars that already satisfy `minimumBars`). The fix " +
-          "belongs in the renderer: draw the ratio as a measurable box, or draw nothing."
+        "An element inside a week row has a non-initial value on one of the channels this " +
+          "section enumerates, or declares an image function in its inline style. P-ADH C2 says " +
+          "the picture IS the two numbers printed beside it; a value on one of these channels " +
+          "paints with no layout box of its own, so the geometric limb above cannot check it " +
+          "against them — that is the EV-214 / EV-216 bypass (an unmeasurable picture ALONGSIDE " +
+          "bars that already satisfy `minimumBars`). " +
+          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS` plus two inline text denylists; it " +
+          "is not a proof that nothing else can paint. What is read, and what is known not to be, " +
+          "is disclosed above `PaintChannel`. The fix belongs in the renderer: draw the ratio as " +
+          "a measurable box, or draw nothing."
       ).toEqual([]);
 
       expect(
