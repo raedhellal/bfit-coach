@@ -1147,6 +1147,17 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
    *   · every `(property, pseudo)` pair is unique, so an entry cannot be repointed onto
    *     a pair another entry already covers and disappear behind it.
    *
+   * **Both were then witnessed, separately, because an assertion nobody has seen fire is
+   * decoration** (this file's own standard):
+   *   · the reviewer's exact walk-past — name kept, `property` repointed to
+   *     `background-image`, M1 planted and painting — went from its 16 green to
+   *     **1 failed / 15 passed**, the red naming `"box-shadow on its own box reads
+   *     background-image"`;
+   *   · and because the first limb throws before the second is reached, the uniqueness
+   *     limb got its own mutant: an entry NAMED `background-image on its own box, again`
+   *     reading `background-image` on the same box — name and property in agreement, so
+   *     only uniqueness can fire. **1 failed / 15 passed.**
+   *
    * The other direction is run too, and the table fails CLOSED: corrupting an entry's
    * `initial` on clean code gives 4 failed rather than a quiet pass.
    */
