@@ -24,3 +24,4 @@
 - [getComputedStyle takes a second argument](getcomputedstyle-takes-a-second-argument.md) — ::before paints a full bar the default call reports as none; never disclose "the obvious tool does not"
 - [An inline denylist is one var() hop wide](an-inline-denylist-is-one-var-hop-wide.md) — a custom property plus Infinity% blinds both reads, and --é-paint walks past any name charset
 - [Paint channels are a table, not three reads](a-paint-channel-list-is-data-not-three-reads.md) — getPropertyValue + per-entry initial + a pinned count; an accessor a browser lacks reads as a silent pass
+- [Photograph the mutant, on the right scanline](a-paint-probe-must-sample-where-the-channel-paints.md) — a full border-image bar reads 0.04 at mid-row; decode the PNG, scan several lines, control first
