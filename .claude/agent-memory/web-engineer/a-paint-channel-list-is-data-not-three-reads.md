@@ -24,6 +24,13 @@ box and `none` on the pseudos.
 
 Three things that make it a guard rather than a list:
 
+- 🔴 **When a property has a prefixed and an unprefixed spelling, read BOTH and
+  enumerate the one that returns a value.** `getPropertyValue("mask-border-source")` is
+  `""` in this Chromium — an entry naming it would be listed and never read — while
+  `-webkit-mask-box-image-source` returns the gradient and is a live paint channel
+  (a flat background colour revealed to the ratio: no image function anywhere, whole
+  suite green). This is *not* the adversarial-spelling question: a prefix is the
+  platform's two names for one implementation, so the set is bounded by reading it.
 - **Read with `getPropertyValue("kebab-case")`, not the camelCase accessor.** An
   accessor a browser does not implement is `undefined` and reads as a channel that
   silently stopped checking; `getPropertyValue` returns `""`, and `""` is asserted
