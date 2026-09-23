@@ -12,3 +12,4 @@
 - [The stale sibling banner](stale-sibling-banner-contradicts-the-new-one.md) — grep the whole file for the OLD enumeration; EV-216's "four channels" survived 140 lines up
 - [Probe a declaration through the DOM](probe-a-css-declaration-through-the-dom-not-an-html-attribute.md) — a `url("data:…")` in a setContent `style="…"` truncates, and a raw `<svg>` payload fakes the paint
 - [`content` and `::first-letter` are paint channels](content-and-first-letter-are-paint-channels.md) — both paint a proportional bar with the 12-entry table green; `::marker` is a dud on a grid row
+- [A colour can encode a ratio](colour-plus-ratio-padding-is-a-picture.md) — `background-color` + ratio-sized padding on `::first-letter`: proportional bar, guard green
