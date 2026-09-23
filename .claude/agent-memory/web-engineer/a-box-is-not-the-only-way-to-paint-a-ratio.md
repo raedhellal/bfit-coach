@@ -17,14 +17,28 @@ more that stay green against it:
   sessions" with the whole suite green: no box, no background image. `border-image` and
   `mask-image` are the same family.
 
-**Why it matters:** the adherence surface has now produced four distinct mechanisms for
-drawing a flattering picture (inline width, gradient background, pseudo-element,
-inset shadow), and every guard written so far has been a guard against the *last* one.
-A limb over one CSS property is a limb over one spelling.
+And two that are **not a channel gap at all** — they are the element's own
+`background-image` on the computed channel, i.e. inside what the limb already reads:
 
-**How to apply:** when a spec claims a picture cannot be drawn, say which *channel* it
-reads and treat every other channel as open unless a mutant says otherwise — and never
-write "nothing paints X" when the limb reads one property on one element. See
+- **a time-shifted paint** — `animation: … 1ms 8s forwards`: every computed value is
+  `none` at t=0 and the bar is fully painted at t=11s;
+- **a viewport-gated paint** — `@media (max-width: 520px)`: green at the default
+  viewport, a full bar at the 320 px width this portal is swept at.
+
+**A DOM read samples one instant and one viewport**, and that is a dimension of the gap
+that no amount of widening the *property* list closes.
+
+**Why it matters:** the adherence surface has now produced six distinct mechanisms for
+drawing a flattering picture (inline width, gradient background, pseudo-element,
+inset shadow, delayed animation, media query), and every guard written so far has been a
+guard against the *last* one. A limb over one CSS property is a limb over one spelling.
+
+**How to apply:** write the guard's javadoc as *"this limb READS X"*, never as *"nothing
+can draw Y"*. Every totality sentence written about this file has been falsified by the
+next person to try one — three times in three reviews, each time by a mechanism the
+sentence's author had not thought of, which is exactly what a totality sentence cannot
+survive. Say which channel, at which instant, at which viewport, and treat everything
+else as open until a mutant says otherwise. See
 [[an-invalid-css-value-computes-to-none]] and
 [[a-picture-with-no-text-is-unassertable]].
 
