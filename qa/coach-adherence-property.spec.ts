@@ -813,24 +813,26 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     attributes read, and the computed channels are `none` for the `Infinity%` value.
  *     Closing it means scanning the ancestor chain or resolving the `var()` — the
  *     general CSS resolver EV-215 rules out by name. Disclosed in EV-215's `✗` block.
- *   · 🔴 **Three pseudo-element channels that are NOT `::before` / `::after`, all three
- *     CONSTRUCTED, all three PAINTING, all three reading `none` on the element and on
- *     both boxes this table does read** — found during the ADR-0024 challenge:
- *     an image in `content` (`.k::before{content: linear-gradient(90deg, blue 50%,
- *     red 50%); display:block; width:100px; height:20px}`), `::first-letter{background-
- *     image:…}` and `::marker{background-image:…}`. What was tried: the table's `pseudo`
- *     field would take them in one line each, and they are deliberately NOT being taken
- *     — this file's precedent, set twice and right both times, is that a constructed
- *     escape is DISCLOSED in the row that finds it and CARDED, not folded into the row
- *     that happens to be open (EV-214 did it with the gradient residue, EV-215 with the
- *     ancestor declaration). `::selection` and `::backdrop` were probed and do **not**
- *     paint — duds, recorded so nobody re-runs them. → a `senior-po` card.
- *   · **`-webkit-box-reflect` — UNRESOLVED, not negative.** It probed `paints=no`, but
- *     that probe clipped its screenshot to the element's own box and a reflection paints
- *     BELOW it, which is the same near-miss as this row's `border-image` mutant (a full
- *     bar read as 0.04 because the scanline was in the wrong place). Nobody has sampled
- *     outside the box yet. What was tried is therefore a probe whose geometry cannot
- *     answer the question; it is recorded as open rather than as a negative result.
+ *   · 🔴 **`::first-letter { background-image: … }` — CONSTRUCTED on this surface,
+ *     PAINTS a band on every row, and the guard stayed green at 16 passed.** What was
+ *     tried: it is readable by exactly the `getComputedStyle` second argument EV-215
+ *     established, so closing it is one entry per box in the table above — and it is
+ *     deliberately NOT taken here, because a short PSEUDO-ELEMENT list is EV-215's
+ *     family and a short PROPERTY list is this row's, and folding the two together is
+ *     the neighbouring-shapes error these rows have refused twice. → **`EV-219`**.
+ *   · **`::marker { background-image: … }` — DOES NOT REPRODUCE on this surface, which
+ *     is not the same as disproven.** What was tried: `list-style: inside disc`, an
+ *     overridden `content`, and a coloured `\2588` block to test whether the box exists
+ *     at all. Nothing painted — the week rows are `display: grid`, so no marker box is
+ *     generated. A change to `display: list-item` would need re-probing. → **`EV-219`**.
+ *   · **`-webkit-box-reflect` — RESOLVED, and it does paint**, at `y=17..26` when the
+ *     row's box ends at `y=12`: OUTSIDE the element, which is why the first probe (a
+ *     screenshot clipped to the element's own box) missed it — the same sampling-geometry
+ *     near-miss as this row's `border-image` mutant. But it only MIRRORS existing
+ *     content, and the current week draws no bar to mirror, so **no overstatement could
+ *     be constructed with it**. Disclosed and carded, not an entry.
+ *   · **`::selection` and `::backdrop`** were probed and do **not** paint — duds,
+ *     recorded so that nobody spends a second afternoon on them.
  *   · ✓ **A `-webkit-mask-image`-only bypass — TRIED, PAINTS, and CAUGHT.** Written with
  *     no unprefixed `mask-image` at all: blue 1.000 across all five scanlines, and red
  *     on the `mask-image` entry, because Blink aliases the prefixed form onto the
@@ -844,6 +846,13 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     rather than extend it, is a NAMED OPEN QUESTION for `architect`. It is not
  *     scheduled, this section does not wait on it, and nothing here approves building
  *     one.
+ *
+ * 🔴 **Why the single-source list matters more than any entry in it, in `senior-po`'s
+ * words:** *every enumeration in this guard has been short. Channels, spellings,
+ * pseudo-elements, properties — **four lists, four times too short.*** That is the
+ * argument for `PAINT_CHANNELS` being one line per channel even when a ruling adds work
+ * to it, and it is the reason AC3 asks for the narrowness to be VISIBLE rather than
+ * for the narrowness to be denied.
  *
  * **HOW TO FIND OUT WHETHER A MECHANISM NOT LISTED ABOVE IS CAUGHT.** Build it in an
  * uncommitted copy of `AdherenceSeries.tsx`, run this file, and — before believing a
@@ -881,7 +890,7 @@ interface PaintChannel {
  * Adding a channel is one line here. Removing one is visible twice: the entry is gone
  * from a list a reader reads top to bottom, and `PAINT_CHANNELS_EXPECTED` goes red.
  *
- * The four properties, and why each is a channel a proportional bar can be painted
+ * The five properties, and why each is a channel a proportional bar can be painted
  * through without a layout box of its own:
  *
  *   · `background-image` — EV-214's witnessed bypass (a gradient behind the figures).
@@ -892,6 +901,10 @@ interface PaintChannel {
  *   · `border-image-source` and `mask-image` — named by `staff-engineer` as the same
  *     family, and each carries a mutant of its own (AC2), because a family named in
  *     prose is not a family until somebody builds the other two.
+ *   · `content` — an image function in a generated box's `content`, constructed twice
+ *     independently during review and painting a full-width bar beside "2 / 4 sessions"
+ *     against this branch with all twelve other channels, both denylists, the geometry
+ *     limbs and `minimumBars` green. See its entry below for its two initial values.
  *
  * All four are read on the element's own box **and on both generated boxes**. The
  * pseudo-element reads exist because EV-215 was the row that found a `::before`
@@ -987,6 +1000,29 @@ const PAINT_CHANNELS: PaintChannel[] = [
   { name: "mask-image on its own box", property: "mask-image", pseudo: null, initial: "none" },
   { name: "mask-image on ::before", property: "mask-image", pseudo: "::before", initial: "none" },
   { name: "mask-image on ::after", property: "mask-image", pseudo: "::after", initial: "none" },
+  /**
+   * 🔴 `content` — added on `senior-po`'s ruling, not as a disclosure. An image in
+   * `content` (`::before { content: linear-gradient(90deg, …); display: block; width:
+   * …; height: … }`) is a computed property, read post-parse, on the element: **this
+   * table's own family**, and shipping the table while knowingly omitting a member of
+   * its own family would be a narrow guard wearing a broad banner — the defect this row
+   * exists to fix, committed by the row itself.
+   *
+   * ⚠️ **Its `initial` is not `none` on all three boxes, and that is measured, not
+   * assumed:** `content` computes to `normal` on an element's own box and to `none` on
+   * `::before` / `::after` (all 38 elements of Lina's eight rows, on clean code). A
+   * single shared `initial` would have made the own-box entry fire on every element in
+   * the block. This is what a per-entry `initial` is for.
+   *
+   * ⚠️ **It sharpens edge case 2.** A DECORATIVE STRING in a `::before` inside a week
+   * row — a bullet, a separator, an icon glyph — now goes red, because a computed read
+   * cannot tell a string from a picture. There is none today (`::before content` is
+   * `none` on every element of every row, measured). If design wants one, that is a
+   * **stop and ask `senior-po`**, not a silent carve-out here.
+   */
+  { name: "content on its own box", property: "content", pseudo: null, initial: "normal" },
+  { name: "content on ::before", property: "content", pseudo: "::before", initial: "none" },
+  { name: "content on ::after", property: "content", pseudo: "::after", initial: "none" },
 ];
 
 /**
@@ -996,7 +1032,7 @@ const PAINT_CHANNELS: PaintChannel[] = [
  * green. Raise it in the same commit that adds a channel; lowering it is a decision
  * somebody has to write down.
  */
-const PAINT_CHANNELS_EXPECTED = 12;
+const PAINT_CHANNELS_EXPECTED = 15;
 
 /** One element inside a week row, as the reads that can reveal a painted picture. */
 interface RowElement {
