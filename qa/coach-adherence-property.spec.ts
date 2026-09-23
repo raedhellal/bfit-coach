@@ -80,7 +80,10 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
  *     🔴 **B3 is now CLOSED, by the EV-214 section at the bottom of this file** — a
  *     structural limb, because a thing with no box cannot be measured by a limb that
  *     measures boxes. `scaleX`, `flex-basis`, `border-*-width` and inline `width` are
- *     all caught here, geometrically, as before.
+ *     all caught here, geometrically, as before. ⚠️ **Since EV-218 the red is on Lina's
+ *     row, not Ines's**: Lina's current week is now `3 / 4` with `plannedSoFar = 2`,
+ *     and B3 re-run there is 3 failed with Ines GREEN — see the EV-218 block below
+ *     before reading that green as a lost witness.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -600,9 +603,9 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * EV-214 / EV-215 / EV-216 — **P-ADH C2: no element in a week row has a non-initial
- * value on any of the paint channels enumerated in `PAINT_CHANNELS`, and none declares
- * an image function in its inline `style` attribute.**
+ * EV-214 / EV-215 / EV-216 / EV-218 — **P-ADH C2: no element in a week row has a
+ * non-initial computed value on any of the paint channels enumerated in
+ * `PAINT_CHANNELS`.**
  *
  * 🔴 **That sentence is the PREDICATE, and it replaced a banner that named the
  * MECHANISM CLASS** ("a picture nothing can measure is not allowed to exist"). The
@@ -627,36 +630,25 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * "2 / 4 sessions" — mechanism 2 of EV-210's own table, restored.
  *
  * So this limb is **structural, not geometric**: for every element inside a week row, it
- * **READS**, once, at the default viewport, two kinds of thing:
+ * **READS**, once, at the default viewport, **one kind of thing — the computed channels
+ * enumerated in `PAINT_CHANNELS`** (EV-216): a CSS property on one of an element's boxes,
+ * asserted equal to that property's initial value, with a red build naming the entry
+ * that fired. **That table is the ONLY list of covered channels in this file, and it is
+ * the one to read: this sentence deliberately does not repeat it.** It used to, naming
+ * three `backgroundImage` reads, and it went on saying "four channels" for a whole review
+ * after the limb had grown to twelve — the seventh falsifiable capability sentence in
+ * this file, and the first one ABOVE the banner rather than in it. See the EV-216
+ * disclosure above `PaintChannel` for what the table reads, when, and what it does not
+ * read.
  *
- *   1. 🔴 **the computed channels enumerated in `PAINT_CHANNELS`** (EV-216) — a CSS
- *      property on one of an element's three boxes, its own and both generated ones,
- *      asserted equal to that property's initial value, with a red build naming the
- *      entry that fired. **That table is the ONLY list of covered channels in this
- *      file, and it is the one to read: this sentence deliberately does not repeat it.**
- *      It used to, naming three `backgroundImage` reads, and it went on saying "four
- *      channels" for a whole review after the limb had grown to twelve — the seventh
- *      falsifiable capability sentence in this file, and the first one ABOVE the banner
- *      rather than in it. See the EV-216 disclosure above `PaintChannel` for what the
- *      table reads, when, and what it does not read;
- *   2. the inline `style` attribute, where **one of four literal spellings** —
- *      `gradient(`, `url(`, `image-set(`, `element(` — appears either in a `background`
- *      / `background-image` value or in a `--…:` declaration in the same attribute
- *      (**EV-215 AC3** — `--adh-paint: linear-gradient(…);
- *      background-image: var(--adh-paint)` puts no such spelling in the property the
- *      first pattern reads).
- *
- *      🔴 **Four spellings, NOT "an image function" — that sentence was falsified.** It
- *      said "an image function" until `senior-qa` wrote
- *      `background-image: linear-gradi\65 nt(90deg, …)`: a CSS ident escape inside the
- *      function name, which Chrome tokenises as `linear-gradient(` and PAINTS. With a
- *      valid ratio the computed channel catches it (4 failed); on Ines's `1 / 0` row the
- *      `Infinity%` value makes the computed read `none` and it is a **total escape — 3
- *      failed, Ines green**. That is the reach of the DENYLIST, unchanged from EV-214
- *      (`INLINE_BACKGROUND_IMAGE` is byte-identical on `dbf3589`, verified with
- *      `git show`), and EV-215 deliberately does not widen it: replacing the denylist
- *      with a resolver is ruled out by name in the card and handed to `EV-216`. It is
- *      carded with QA's two runs as its witnesses.
+ * 🔴 **It does NOT read the inline `style` attribute (EV-218, ADR-0024).** Until EV-218
+ * a second read ran two text patterns over that attribute (`INLINE_BACKGROUND_IMAGE`,
+ * `INLINE_CUSTOM_PROPERTY_IMAGE`) to see a declaration the CSS parser had discarded. It
+ * matched spellings, and four were walked past it — a `var()` hop, `--é-paint`,
+ * `linear-gradi\65 nt(`, and a `;` inside a comment. EV-218 deleted both patterns and
+ * added the fixture row that makes the renderer they were standing in for emit a value
+ * that parses: see the EV-218 block below. The deleted text is at
+ * `969519c:qa/coach-adherence-property.spec.ts`.
  *
  * ⚠️ **That is a statement about what it reads, deliberately, and not about what can be
  * drawn.** Every totality sentence written about this guard has been falsified by the
@@ -689,48 +681,20 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * and the `overflow:hidden` behaviour are deliberately not touched here — EV-214 is a
  * different mechanism, not a stronger version of that one.
  *
- * **Why the INLINE read as well as the computed ones.** EV-214 AC1 asks for the
- * computed value, because a gradient can arrive from a stylesheet or a custom property
- * where no inline attribute exists. But the computed read alone is **green on half of
- * the bypass**, and this was measured rather than reasoned:
+ * **What the computed read cannot see, measured rather than reasoned** — and the reason
+ * EV-214 and EV-215 once added an inline read beside it, which EV-218 removed:
  *
  *   · **Lina** — `linear-gradient(90deg, var(--blue-500) 100%, transparent 0%)` computes
- *     to `linear-gradient(90deg, rgb(79, 124, 255) 100%, rgba(0, 0, 0, 0) 0%)`. Caught.
+ *     to `linear-gradient(90deg, rgb(79, 124, 255) 100%, rgba(0, 0, 0, 0) 0%)`. Read.
  *   · **Ines** — the SAME expression with `done / plannedSoFar = 1 / 0` emits
  *     `…var(--blue-500) Infinity%…`. `Infinity%` is not a valid `<length-percentage>`,
  *     so Chrome discards the whole declaration at parse time and
  *     `getComputedStyle(el).backgroundImage` is **`none`**. Witnessed, not assumed.
  *
- * A ban that reads only what painted is therefore weakest exactly where the renderer is
- * most broken — and the 1/0 row is not benign, because the same expression paints a
- * flattering 100 % the moment `plannedSoFar` is 1 rather than 0. So the DECLARATION is
- * banned as well as the paint, and **neither read subsumes the other — witnessed in BOTH
- * directions**, which is not what the mutants above show on their own: under B3, Lina is
- * caught by the computed clause but would also be caught by the inline one, so two
- * clauses killing the same mutant shows neither to be necessary. The reviewer supplied
- * the missing half by delivering the same gradient from `globals.css` with the ratio in
- * a custom property and **no inline `background` at all** → 4 red, from the computed
- * clause alone.
- *
- * **EV-215 AC3 — and why the custom-property pattern is its own clause with its own
- * witness.** The inline read is a denylist over attribute TEXT, so one hop of `var()`
- * moves the image function out of the declaration it reads. On its own that hop is
- * partial — the computed clause still catches the half that paints — so killing it
- * would show nothing about either clause. Combined with the `Infinity%` shape it is
- * total: `--adh-paint: linear-gradient(90deg, var(--blue-500) <done/plannedSoFar> …);
- * background-image: var(--adh-paint)` on Ines's `1 / 0` row computes to `none` AND
- * declares no image function in a `background` value. That COMBINATION is the mutant
- * carried out for this clause, and it is killed by this clause alone: 4 red, with the
- * three computed channels and `INLINE_BACKGROUND_IMAGE` all green on it. Independence was
- * shown by disabling THIS clause alone against that mutant: Ines goes back to green while
- * the other three worlds stay red, so no other clause kills the combination.
- *
- * 🔴 **And the same mutant with one accent — `--é-paint` — is the witness that killed the
- * FIRST version of this clause.** A pattern pinned to the ASCII spelling of the ident, or
- * to an anchor admitting only whitespace before it, is walked past by a rename or by a
- * `/*comment*\/`, with everything else identical. The pattern now reads `--` to the
- * declaration's colon and neither. Both escapes are recorded at the constant itself,
- * because a sentence describing a regex belongs beside the regex.
+ * A declaration the parser discards leaves nothing on the computed side for this limb to
+ * read, on any channel. EV-214 answered that with a text pattern over the declaration;
+ * EV-218 answers it with a fixture row where the same expression yields a value that
+ * parses. The EV-218 block below says which world carries which witness now.
  *
  * **What this limb does NOT cover, stated rather than assumed:**
  *   ✗ `<canvas>` and `<img>` as adherence pictures. Nobody has constructed either, and
@@ -746,16 +710,18 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     and they are now three of the entries in `PAINT_CHANNELS`. The three mutants and
  *     their independence witnesses are recorded in the EV-216 banner below.
  *   ✓ **`url(` IS witnessed**, by `senior-qa`'s M-Q3: `background: url("data:image/svg+
- *     xml,…") no-repeat 0 0 / <pct>% 100%` goes red in BOTH directions at once — Ines by
- *     the INLINE clause alone (the `Infinity%` size discards the shorthand, so the
- *     computed value is `none`) and Lina by the COMPUTED clause. It is the best witness
- *     this limb has for the two clauses being independently load-bearing.
- *   ✗ `image-set(` and `element(` are in the inline pattern with **no witness in either
- *     direction** — nobody has constructed one and nobody has shown one cannot be built.
- *     They are listed for completeness of the mechanism, not as tested reach.
+ *     xml,…") no-repeat 0 0 / <pct>% 100%`. Until EV-218 it went red in both directions
+ *     at once — Ines by the inline clause alone, Lina by the computed one. Re-run by
+ *     EV-218 with the declaration built by React (no HTML string; the page's `<svg>` count
+ *     equal to the control's, so nothing was injected):
+ *     Lina's current row paints **0.92–1.00 of its width beside "3 / 4 sessions"**
+ *     (control 0.000), computed `url("data:image/svg+xml,…")` — **3 failed, Ines GREEN**,
+ *     because the `Infinity%` size discards the shorthand there and nothing paints.
+ *     (`image-set(` and `element(` were listed in the deleted inline pattern with no
+ *     witness either way; nothing in this file names them any more.)
  *   ⛔ **COULD NOT CONSTRUCT: the image function split across a `var()` boundary.**
- *     `--adh-fn: linear-gradient; background-image: var(--adh-fn)(90deg, …)` would put no
- *     image function in either inline pattern, and it does not paint: Chrome does not
+ *     `--adh-fn: linear-gradient; background-image: var(--adh-fn)(90deg, …)` was built
+ *     against the inline patterns EV-218 deleted, and it does not paint: Chrome does not
  *     re-tokenise a substituted ident into a function token. The reviewer ran it — 15
  *     passed, and **zero `PAINTS` offences anywhere, including the rows that draw
  *     honestly**. A green suite there is CORRECT rather than a miss, and the way to tell
@@ -769,19 +735,17 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     so the EV-214 section is 4 passed; at t=11s Lina's figures span computes
  *     `linear-gradient(90deg, rgb(79, 124, 255) 100%, …)`. The limb samples one instant;
  *     carded as **EV-217**. What was tried: this is the element's OWN `background-image`
- *     on a channel the limb does read, so neither the pseudo argument nor a wider inline
- *     pattern moves it — only reading again at another instant does.
- *   ✗ 🔴 **a custom property declared on an ANCESTOR of the week rows and spent inside
- *     one.** `--adh-paint` on the `<ul>` (`AdherenceSeries.tsx`, one element above the
- *     rows) with `background-image: var(--adh-paint)` on a row's figures span: 3 failed,
- *     **Ines green** — the same total escape as the `1 / 0` combination, one element
- *     higher. Reviewer-constructed. What was tried: nothing here reads it, because the
- *     scan is `region.locator("li")` plus descendants, so the attribute holding the
- *     declaration is never one of the attributes read, and the three computed channels
- *     are `none` for the `Infinity%` value as before. Widening THIS pattern cannot reach
- *     it — closing it means scanning the ancestor chain or resolving the `var()`, which
- *     is the general CSS resolver EV-215 rules out by name. A `senior-po` card, not a
- *     silent widening.
+ *     on a channel the limb does read, so neither the pseudo argument nor another entry
+ *     in `PAINT_CHANNELS` moves it — only reading again at another instant does.
+ *   · **a custom property declared on an ANCESTOR of the week rows and spent inside
+ *     one** — `--adh-paint` on the `<ul>`, `background-image: var(--adh-paint)` inside a
+ *     row. At EV-215: 3 failed, **Ines green** — the ancestor's attribute was never one
+ *     the inline patterns read. EV-218 reads no declaration on any element, the row's or
+ *     an ancestor's; the computed value is read where it is SPENT. Re-run by EV-218 with
+ *     the declaration on the `<ul>` and the `var()` spent on the current week's `li`:
+ *     Lina's row paints **0.92–1.00 beside "3 / 4 sessions"**, computed
+ *     `linear-gradient(… 150% …)` — **3 failed, Ines GREEN**, because on her row the
+ *     spent value holds `Infinity%` and computes to `none`.
  *   ✗ **a viewport-gated paint.** `@media (max-width: 520px)`. Green at the default
  *     viewport; at 320 px a full blue bar sits behind "2 / 4 sessions". The limb samples
  *     one viewport — and 320 px is the width this portal is swept at by name. Carded as
@@ -800,7 +764,7 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *
  * **WHAT IT READS.** For **every element in the LIGHT DOM inside every week row of the
  * adherence block, the `li` itself included** — the scan is `querySelectorAll("*")`,
- * which does not cross a shadow root, and this app opens none — two kinds of read:
+ * which does not cross a shadow root, and this app opens none — one kind of read:
  *
  *   1. **The computed channels enumerated in `PAINT_CHANNELS`** — one CSS property on
  *      one of the element's three boxes, asserted equal to that property's initial
@@ -808,9 +772,27 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *      listed: the read iterates it, the failure message names the entry that fired,
  *      and a ratcheted count (`PAINT_CHANNELS_EXPECTED`) means removing one is a
  *      deliberate two-line edit rather than a silent one. Adding a channel is one line.
- *   2. **The inline `style` attribute**, through `INLINE_BACKGROUND_IMAGE` and
- *      `INLINE_CUSTOM_PROPERTY_IMAGE` — a denylist over attribute TEXT, documented at
- *      the two constants, with its reach (and three witnessed escapes) recorded there.
+ *
+ *      🔴 **EV-218 (ADR-0024) — read this as an instruction.** Each channel is read
+ *      **after** the CSS parser and asserted only `!== initial`. No clause of this limb
+ *      matches a value against any text, so there is no spelling for a construction to
+ *      vary — and none may be added: ADR-0024 M3 measured `-webkit-gradient(linear, …)`
+ *      computing with its author's spelling verbatim, so a computed `/gradient\(/` would
+ *      be walked past. Test that a property is present; never match its value.
+ *      It reads **no declaration**: not the inline `style` attribute (EV-218 deleted
+ *      that read), not a custom property on the row or on an ancestor. So it is blind to
+ *      a declaration the parser **discarded** (`Infinity%`, `NaN%`), which contributes
+ *      no computed value to any box. The renderer that emits `Infinity%` on Ines's
+ *      `1 / 0` row is exercised on **Lina's `3 / 4` row** instead, where the same
+ *      expression yields `150 %`, which parses — see the EV-218 block for which world
+ *      carries which witness. What it does not read is the list below. **If you need
+ *      to know whether a NEW mechanism is caught, build it, confirm it paints, and run
+ *      this limb. Do not reason from this paragraph.**
+ *
+ *      ⚠️ **This FILE still matches one spelling, in a different limb.** The geometry
+ *      limb's `not.toMatch(/NaN|Infinity/i)` over `inlineStyle` (EV-210b) is a text
+ *      matcher. ADR-0024 S2 records it as redundant on the mutant it was written for
+ *      and defeated by `calc(1 / 0 * 100%)`, and rules its removal a separate row.
  *
  * **WHEN, AND AT WHAT CONFIGURATION.** Once per world, immediately after the adherence
  * block becomes visible, at the config's default viewport, in `next dev` fixture mode.
@@ -828,21 +810,20 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *   · **A time-delayed paint** (`animation … 1ms 8s forwards`) and **a viewport-gated
  *     paint** (`@media (max-width: 520px)`, and 320 px is a width this portal is swept
  *     at by name). What was tried: both arrive on channels this section DOES read — the
- *     element's own `background-image` — so neither a further property nor a wider
- *     inline pattern reaches them. Only reading again, at another instant or another
- *     width, does. A **sampling** gap rather than a channel gap. → **EV-217**.
- *   · **A re-spelling of an image function inside the inline denylist's reach** — an
- *     ident escape (`linear-gradi\65 nt(`), a non-ASCII ident (`--é-paint`), a `;`
- *     inside a comment. What was tried: all three are resolved by the CSS parser BEFORE
- *     a computed read can see them, and the computed clauses are green on the ones that
- *     do not paint (`Infinity%`), so no computed channel added here can close a spelling
- *     gap and no wider regex has survived a reviewer yet. → **EV-218**.
- *   · **A custom property declared on an ANCESTOR of the week rows** (`--adh-paint` on
- *     the `<ul>`) and spent inside one. What was tried: the scan is `li` plus its
- *     descendants, so the attribute carrying the declaration is never one of the
- *     attributes read, and the computed channels are `none` for the `Infinity%` value.
- *     Closing it means scanning the ancestor chain or resolving the `var()` — the
- *     general CSS resolver EV-215 rules out by name. Disclosed in EV-215's `✗` block.
+ *     element's own `background-image` — so no further property reaches them. Only
+ *     reading again, at another instant or another width, does. A **sampling** gap rather than a channel gap. → **EV-217**.
+ *   · **A declaration the CSS parser discarded** — `Infinity%` / `NaN%` in any spelling,
+ *     inline, in a custom property, on the row or on an ancestor. Not read: no
+ *     declaration is, only computed values. What was tried: ADR-0024 M1 found no CSSOM
+ *     channel that reports such a declaration except `getAttribute("style")`, the text
+ *     read EV-218 deleted. The renderer that emits one is exercised on Lina's
+ *     `done > plannedSoFar >= 1` row instead, where its value parses. → **EV-218 /
+ *     ADR-0024**, decided; the reversal triggers are in the ADR.
+ *   · **`getComputedStyle(el).getPropertyValue("--…")`** — a custom property's computed
+ *     token stream. Deliberately unused (ADR-0024 M2): ident escapes survive in it
+ *     unresolved, so reading it is text matching again, and `:root` properties inherit
+ *     into every element. A clause with its own witness if anyone wants it, not a quiet
+ *     addition.
  *   · 🔴 **A proportional bar painted with NO image function at all — the ratio in the
  *     BOX, the paint a flat colour**: `::first-letter { padding-right: <ratio>vw;
  *     background-color: rgba(79,124,255,.85) }`. CONSTRUCTED and PAINTING — 1.000 of the
