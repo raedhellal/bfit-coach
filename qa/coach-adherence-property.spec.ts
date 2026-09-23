@@ -191,6 +191,53 @@ async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
   );
 }
 
+/**
+ * A trainee's `adherenceSeries([...])` tuples, read from the fixture SOURCE, whitespace
+ * removed, oldest first. A source read because nothing else can see `plannedSoFar`: it
+ * is never printed, and `coachApi.fixture.ts` is `import "server-only"` with `PROGRESS`
+ * unexported, so a spec cannot import the derived value.
+ *
+ * ⚠️ Comments are stripped FIRST. The first cut of this guard matched the paragraph in
+ * the fixture that EXPLAINS the tuple, so deleting the tuple left it green — a guard
+ * reading its own documentation back and reporting it as protection. It was caught by
+ * mutating the fixture, which is the only way any of these are caught.
+ *
+ * The PROGRESS entry, not the overview one: both are keyed `[<NAME>_ID]` and only one of
+ * them holds the series. "the part that contains `adherenceSeries(`" is NOT enough — the
+ * part that starts at the OVERVIEW entry runs on to the end of the file and contains
+ * everybody else's series, so it matched, and the guard read LINA's week and went red on
+ * correct code. The entry is the part whose `adherenceSeries([` comes before the NEXT
+ * trainee key — and it is the CALL that is looked for, with its bracket, not the
+ * substring `adherenceSeries(`, which also matches the function's own declaration
+ * several hundred lines earlier.
+ */
+function fixtureSeriesTuples(key: "INES_ID" | "LINA_ID"): string[] {
+  const fixture = readFileSync(join(__dirname, "..", "src", "lib", "coachApi.fixture.ts"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const CALL = "adherenceSeries([";
+  const NEXT_ENTRY = /_ID\]: \(\) => \(\{/;
+  const entry = fixture
+    .split(`[${key}]: () => ({`)
+    .slice(1)
+    .find((part) => {
+      const call = part.indexOf(CALL);
+      const next = part.search(NEXT_ENTRY);
+      return call !== -1 && (next === -1 || call < next);
+    });
+  expect(entry, `${key}'s progress entry was not found in the fixture`).toBeTruthy();
+  const body = entry!.slice(entry!.indexOf(CALL) + CALL.length);
+  return (body.slice(0, body.indexOf("])")).match(/\[[^\]]*\]|null/g) ?? []).map((t) =>
+    t.replace(/\s/g, "")
+  );
+}
+
+/** The LAST tuple of a trainee's fixture series — the only one whose third element counts. */
+function lastFixtureTuple(key: "INES_ID" | "LINA_ID"): string | undefined {
+  const tuples = fixtureSeriesTuples(key);
+  return tuples[tuples.length - 1];
+}
+
 /** The figures printed in the row, or `null` if the row prints none ("No plan"). */
 function figuresOf(label: string): { done: number; planned: number } | null {
   const match = label.match(/^(\d+)\s*\/\s*(\d+)\s+sessions$/);
@@ -374,43 +421,10 @@ test.describe("EV-210b AC3 / P-ADH C2 — the bar and the numbers beside it are 
    * nothing. So Ines states it, and this asserts she still does.
    */
   test("the hazard world still HAS the hazard — done > plannedSoFar, stated not derived", () => {
-    /**
-     * ⚠️ Comments are stripped FIRST. The first cut of this guard matched the paragraph
-     * in the fixture that EXPLAINS the tuple, so deleting the tuple left it green — a
-     * guard reading its own documentation back and reporting it as protection. It was
-     * caught by mutating the fixture, which is the only way any of these are caught.
-     */
-    const fixture = readFileSync(join(__dirname, "..", "src", "lib", "coachApi.fixture.ts"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
-
-    /**
-     * The PROGRESS entry, not the overview one: both are keyed `[INES_ID]` and only one
-     * of them holds the series. "the part that contains `adherenceSeries(`" is NOT
-     * enough — the part that starts at her OVERVIEW entry runs on to the end of the file
-     * and contains everybody else's series, so it matched, and the guard read LINA's
-     * week and went red on correct code. The entry is the part whose `adherenceSeries([`
-     * comes before the NEXT trainee key — and it is the CALL that is looked for, with
-     * its bracket, not the substring `adherenceSeries(`, which also matches the
-     * function's own declaration several hundred lines earlier.
-     */
-    const CALL = "adherenceSeries([";
-    const NEXT_ENTRY = /_ID\]: \(\) => \(\{/;
-    const entry = fixture
-      .split("[INES_ID]: () => ({")
-      .slice(1)
-      .find((part) => {
-        const call = part.indexOf(CALL);
-        const next = part.search(NEXT_ENTRY);
-        return call !== -1 && (next === -1 || call < next);
-      });
-    expect(entry, "Ines's progress entry was not found in the fixture").toBeTruthy();
-
-    const body = entry!.slice(entry!.indexOf(CALL) + CALL.length);
-    const tuples = body.slice(0, body.indexOf("])")).match(/\[[^\]]*\]|null/g) ?? [];
+    const tuples = fixtureSeriesTuples("INES_ID");
     expect(tuples.length, "Ines's series is no longer eight weeks").toBe(8);
     expect(
-      tuples[tuples.length - 1].replace(/\s/g, ""),
+      tuples[tuples.length - 1],
       "Ines's current week no longer states `[1, 3, 0]` (done 1 / planned 3 / plannedSoFar 0). " +
         "Without done > plannedSoFar on EVERY weekday, nothing on this surface can tell a " +
         "`plannedSoFar` renderer from a `planned` one."
@@ -1311,8 +1325,6 @@ interface RowElement {
    * line without touching the loop that judges it.
    */
   computed: { channel: string; value: string; initial: string }[];
-  /** The raw inline `style` attribute — what was asked for, valid or not. */
-  inline: string;
 }
 
 interface RowPaint {
@@ -1323,61 +1335,12 @@ interface RowPaint {
   elements: RowElement[];
 }
 
-/**
- * A background-image value in an inline `style` attribute.
- *
- * It matches the VALUE of a `background` / `background-image` declaration, so the honest
- * bars — `background:var(--blue-500)` and `background:var(--surface-3)` — do not match,
- * and a `background-color` never can. `url(`, `image-set(` and `element(` are listed
- * beside the gradients because they are the other ways a CSS box paints an image.
- * `url(` has been constructed on this surface and caught (a `data:image/svg+xml` bar
- * sized `<pct>% 100%` — `senior-qa`'s M-Q3); `image-set(` and `element(` have not.
- */
-const INLINE_BACKGROUND_IMAGE = /background(-image)?\s*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
 
 /**
- * **Any `--…:` declaration in the attribute whose value names an image function** —
- * EV-215 AC3.
- *
- * `background-image: var(--adh-paint)` names no image function, so the pattern above
- * cannot see one: the gradient is in the `--adh-paint` declaration beside it. This reads
- * that declaration rather than resolving the `var()`, which is deliberate — resolving it
- * would be the general CSS resolver EV-215 rules out, and a gradient declared in a week
- * row's own inline style is the mechanism whether or not this attribute is where it is
- * finally spent.
- *
- * 🔴 **It reads `--` to the declaration's colon, with no anchor and no name charset, and
- * both of those are the fix rather than sloppiness.** The first cut of this pattern was
- * `/(^|;)\s*--[A-Za-z0-9_-]+\s*:…/`, and the reviewer walked past it with the AC3 mutant
- * unchanged apart from cosmetics, twice:
- *   · **`--é-paint`** in place of `--adh-paint` — a plain React style object, no special
- *     rendering. CSS idents allow non-ASCII and `[A-Za-z0-9_-]+` does not: 3 failed with
- *     **Ines green**, a total escape on the `1 / 0` row AC3 exists for, while Lina's row
- *     went red with `PAINTS … on its own box` — so Chrome accepts and PAINTS `--é-paint`
- *     and it is not a parser quirk.
- *   · **a CSS comment before the declaration** — `background-image:var(--adh-paint);/*x*\/
- *     --adh-paint:linear-gradient(… Infinity% …)` (it needs `dangerouslySetInnerHTML`,
- *     since React's style object always serialises `;`-separated), which defeats the
- *     `(^|;)\s*` anchor. The anchor bought nothing and cost that.
- * `[^:;]*` is what keeps it inside one declaration **for the false-positive direction**:
- * a `--` appearing inside some other property's value cannot reach a later colon, so the
- * pattern cannot fire on a declaration it is not reading.
- *
- * 🔴 **It does NOT carry in the false-negative direction, and `senior-qa` falsified the
- * sentence that implied it did.** `--adh-paint:/*;*\/linear-gradient(…)` escapes: a `;`
- * inside a comment or a string does not end a declaration, so the CSS parser sees no `;`
- * there and this pattern sees one. Same family as the ident escape above — the reach of a
- * text denylist, `EV-216`'s question, not widened here.
- *
- * It does not fire on the honest bars: `background:var(--blue-500)` has no colon after
- * its `--`, and the palette and `--r-pill` are declared on `:root` in `globals.css`, not
- * in a row's `style` attribute. That direction was checked BY CAUSE and not inferred from
- * a green suite: `grep -rn '\["--' src/` returns nothing — no element in `src/` carries an
- * inline custom property at all.
+ * Every element inside every week row — the row itself included — with every
+ * `PAINT_CHANNELS` read. Computed values only: the inline `style` attribute is not read
+ * (EV-218, ADR-0024).
  */
-const INLINE_CUSTOM_PROPERTY_IMAGE = /--[^:;]*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
-
-/** Every element inside every week row — the row itself included — with all four reads. */
 async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
   return region.locator("li").evaluateAll(
     (rows, channels: PaintChannel[]) =>
@@ -1401,26 +1364,32 @@ async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
             value: getComputedStyle(el, channel.pseudo).getPropertyValue(channel.property),
             initial: channel.initial,
           })),
-          inline: el.getAttribute("style") ?? "",
         })),
       })),
     PAINT_CHANNELS
   );
 }
 
-test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week row has a non-initial value on an enumerated paint channel", () => {
+test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a week row has a non-initial value on an enumerated paint channel", () => {
   /**
-   * EV-210b's own four worlds — AC1 adds no fixture. `minimumElements` is a fact about
-   * the FIXTURE and the row's structure (eight rows, each at least the `li` plus a date
-   * span and a figures span), not about what the renderer chooses to draw: without it an
-   * iteration that found no rows, or rows with no children, would satisfy every
-   * assertion inside the loop. That is the failure mode nine C3 guards shipped with.
+   * EV-210b's own four worlds. `minimumElements` is a fact about the FIXTURE and the
+   * row's structure (eight rows, each at least the `li` plus a date span and a figures
+   * span), not about what the renderer chooses to draw: without it an iteration that
+   * found no rows, or rows with no children, would satisfy every assertion inside the
+   * loop. That is the failure mode nine C3 guards shipped with.
+   *
+   * `currentWeek` is the figures the LAST rendered row must print. For Lina it is the
+   * EV-218 ratchet (ADR-0024 decision 3): her current week is the fixture's one
+   * `done > plannedSoFar >= 1` row, and the assertion that it still renders lives in
+   * the same test that reads its paint. The rendered figures cannot show
+   * `plannedSoFar` — nothing prints it — so the tuple's third element, and Lina's
+   * presence in this table, are held by the EV-218 test after the loop.
    */
-  const WORLDS: { name: string; id: string; weeks: number; minimumElements: number }[] = [
-    { name: "Ines — the done > plannedSoFar current week (1 / 3, plannedSoFar 0)", id: INES, weeks: 8, minimumElements: 24 },
-    { name: "Lina — a no-plan week mid-window and a partial current week (2 / 4)", id: LINA, weeks: 8, minimumElements: 24 },
-    { name: "Tobias — eight weeks that all had a plan", id: TOBIAS, weeks: 8, minimumElements: 24 },
-    { name: "Noor — eight REAL 0 % weeks", id: NOOR, weeks: 8, minimumElements: 24 },
+  const WORLDS: { name: string; id: string; weeks: number; minimumElements: number; currentWeek: string }[] = [
+    { name: "Ines — the done > plannedSoFar current week (1 / 3, plannedSoFar 0)", id: INES, weeks: 8, minimumElements: 24, currentWeek: "1 / 3 sessions" },
+    { name: "Lina — a no-plan week mid-window and the done > plannedSoFar >= 1 current week (3 / 4, plannedSoFar 2)", id: LINA, weeks: 8, minimumElements: 24, currentWeek: "3 / 4 sessions" },
+    { name: "Tobias — eight weeks that all had a plan", id: TOBIAS, weeks: 8, minimumElements: 24, currentWeek: "0 / 3 sessions" },
+    { name: "Noor — eight REAL 0 % weeks", id: NOOR, weeks: 8, minimumElements: 24, currentWeek: "0 / 3 sessions" },
   ];
 
   /**
@@ -1528,6 +1497,15 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
         rows.length,
         `${world.name}: the adherence block did not render the ${world.weeks} week rows this world has`
       ).toBe(world.weeks);
+      // EV-218 / ADR-0024 decision 3 — the rendered ratchet. For Lina this binds the
+      // fixture's `done` and `planned`, her render path, and this test reading her rows
+      // in ONE assertion; `plannedSoFar` is not printed, so it is held separately below.
+      expect(
+        rows[rows.length - 1].rowText,
+        `${world.name}: the current (last) week no longer prints "${world.currentWeek}". For Lina ` +
+          "that row is the fixture's only done > plannedSoFar >= 1 week, the one this section " +
+          "relies on to see a done / plannedSoFar renderer after the parser (ADR-0024)."
+      ).toContain(world.currentWeek);
 
       const offences: string[] = [];
       let inspected = 0;
@@ -1559,23 +1537,11 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
             element.computed.filter((channel) => channel.value.trim() === "").map((c) => c.channel),
             `${where}: a channel returned an empty computed value, so this browser does not report that property — the channel is listed but not read`
           ).toEqual([]);
-          const painting = element.computed.filter((channel) => channel.value !== channel.initial);
-          if (painting.length > 0) {
-            for (const channel of painting) {
-              offences.push(
-                `${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`
-              );
-            }
-          } else if (INLINE_BACKGROUND_IMAGE.test(element.inline)) {
-            // Declared but not painted: an invalid value (`Infinity%`) that Chrome
-            // dropped. Same mechanism, one bad division away from painting.
-            offences.push(`${where} DECLARES a background image: style="${element.inline}"`);
-          } else if (INLINE_CUSTOM_PROPERTY_IMAGE.test(element.inline)) {
-            // EV-215 AC3 — declared in a custom property and spent through `var()`, with
-            // nothing painting because the value is invalid. Neither the three computed
-            // channels nor the pattern above can see this one.
+          // Presence only: the value is compared to the channel's initial and never
+          // matched against any pattern (ADR-0024 — no value text for a spelling to vary).
+          for (const channel of element.computed.filter((c) => c.value !== c.initial)) {
             offences.push(
-              `${where} DECLARES a background image in a custom property: style="${element.inline}"`
+              `${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`
             );
           }
         }
@@ -1584,12 +1550,19 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
       expect(
         offences,
         "An element inside a week row has a non-initial value on one of the channels this " +
-          "section enumerates, or declares an image function in its inline style. P-ADH C2 says " +
-          "the picture IS the two numbers printed beside it; a value on one of these channels " +
-          "paints with no layout box of its own, so the geometric limb above cannot check it " +
-          "against them — that is the EV-214 / EV-216 bypass (an unmeasurable picture ALONGSIDE " +
-          "bars that already satisfy `minimumBars`). " +
-          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS` plus two inline text denylists; it " +
+          "section enumerates. P-ADH C2 says the picture IS the two numbers printed beside it; " +
+          "a value on one of these channels paints with no layout box of its own, so the " +
+          "geometric limb above cannot check it against them — that is the EV-214 / EV-216 " +
+          "bypass (an unmeasurable picture ALONGSIDE bars that already satisfy `minimumBars`). " +
+          (world.id === LINA
+            ? "🔴 If ONLY this world is red, read this first: Lina's current week is the " +
+              "fixture's `done > plannedSoFar >= 1` row (`[3, 4, 2]`, EV-218 / ADR-0024). A " +
+              "renderer dividing by `plannedSoFar` emits a valid 150 % there, which paints and " +
+              "is read here; on Ines's `1 / 0` row the same renderer emits `Infinity%`, which " +
+              "the parser drops, so Ines stays green BY DESIGN — this is where that renderer " +
+              "is caught, not a lost witness. "
+            : "") +
+          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS`, read after the CSS parser; it " +
           "is not a proof that nothing else can paint. What is read, and what is known not to be, " +
           "is disclosed above `PaintChannel`. The fix belongs in the renderer: draw the ratio as " +
           "a measurable box, or draw nothing."
@@ -1602,4 +1575,37 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
       ).toBeGreaterThanOrEqual(world.minimumElements);
     });
   }
+
+  /**
+   * 🔴 **EV-218 — what the rendered ratchet in the loop cannot hold.**
+   *
+   * The loop's `currentWeek` assertion lives INSIDE an iteration over `WORLDS`, so deleting
+   * Lina's entry deletes the assertion with it — the way EV-216's predecessor ratchet
+   * stopped catching a deletion once its read iterated a table. And it reads printed
+   * figures, while the hazard is in `plannedSoFar`, which nothing prints: dropping the
+   * tuple's third element, or swapping it with the `[3, 4]` week before it, leaves
+   * "3 / 4 sessions" on screen and takes the hazard away. `plannedSoFar` then comes from
+   * the weekday (`min(planned, elapsed)`), which is `0` every Monday — the day the
+   * renderer's output is dropped by the parser and nothing here reads it.
+   *
+   * So this holds the other two: Lina is in `WORLDS` with that current week, and her
+   * last tuple in the fixture SOURCE still states `plannedSoFar = 2`. A derived-value
+   * check is not available: `coachApi.fixture.ts` is `import "server-only"` and
+   * `PROGRESS` is not exported.
+   */
+  test("P-ADH C2 (EV-218): the done > plannedSoFar >= 1 world is still read, and still states the hazard", () => {
+    expect(
+      WORLDS.filter((world) => world.id === LINA).map((world) => world.currentWeek),
+      "Lina is no longer read by this section with her `3 / 4` current week. She is the only " +
+        "world whose current week makes a done / plannedSoFar renderer emit a value that " +
+        "parses (150 %); without her, that renderer is caught here on no weekday that " +
+        "derives plannedSoFar = 0 (ADR-0024)."
+    ).toEqual(["3 / 4 sessions"]);
+    expect(
+      lastFixtureTuple("LINA_ID"),
+      "Lina's current week no longer states `[3, 4, 2]` (done 3 / planned 4 / plannedSoFar 2) " +
+        "as its LAST tuple. The third element is honoured only there; anywhere else, or " +
+        "absent, plannedSoFar follows the weekday and the hazard is gone on a Monday."
+    ).toBe("[3,4,2]");
+  });
 });
