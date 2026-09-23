@@ -455,8 +455,10 @@ export function hasScope(
  * the current week to count only days strictly before today (ADR-0012 D6, so a Monday
  * does not render as a 0 % week) AND for the current week to be identical to the
  * shipped "adherence this week" block, which on a Monday are 0/0 and 0/3. The api
- * sends both; the portal renders `plannedSoFar` in the bar and `planned` where it has
- * to agree with the shipped block. They differ only when `partial` is true.
+ * sends both; they differ only when `partial` is true. The portal draws a week's bar
+ * from the two numbers printed beside it, `done / planned`, and draws one only for a
+ * week that is over and had a plan; the current week gets no bar. The rule and why are
+ * in `src/components/client/AdherenceSeries.tsx`.
  *
  * @wire TraineeWeekAdherence
  */

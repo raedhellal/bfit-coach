@@ -198,9 +198,11 @@ async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
 
 /**
  * A trainee's `adherenceSeries([...])` tuples, read from the fixture SOURCE, whitespace
- * removed, oldest first. A source read because nothing else can see `plannedSoFar`: it
- * is never printed, and `coachApi.fixture.ts` is `import "server-only"` with `PROGRESS`
- * unexported, so a spec cannot import the derived value.
+ * removed, oldest first. This reads the tuple's TEXT. It does not call the function, so
+ * it says nothing about what `adherenceSeries` does with the tuple. A source read,
+ * because a world's `plannedSoFar` is never printed, and `coachApi.fixture.ts` is
+ * `import "server-only"` with `PROGRESS` unexported. What the function returns for a
+ * stated tuple on each weekday is tested in `qa/coach-fixture-adherence.spec.ts` (EV-249).
  *
  * ⚠️ Comments are stripped FIRST. The first cut of this guard matched the paragraph in
  * the fixture that EXPLAINS the tuple, so deleting the tuple left it green — a guard
@@ -213,8 +215,8 @@ async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
  * everybody else's series, so it matched, and the guard read LINA's week and went red on
  * correct code. The entry is the part whose `adherenceSeries([` comes before the NEXT
  * trainee key — and it is the CALL that is looked for, with its bracket, not the
- * substring `adherenceSeries(`, which also matches the function's own declaration
- * several hundred lines earlier.
+ * substring `adherenceSeries(`, which matched the function's own declaration while it
+ * lived in the fixture (it moved to `src/lib/fixtureAdherence.ts` in EV-249).
  */
 function fixtureSeriesTuples(key: "INES_ID" | "LINA_ID"): string[] {
   const fixture = readFileSync(join(__dirname, "..", "src", "lib", "coachApi.fixture.ts"), "utf8")
@@ -995,6 +997,7 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     that covered the plain spellings on a Monday is gone. Carded separately (move
  *     `adherenceSeries` / `WeekSpec` out of the `server-only` module and unit-test that a
  *     stated last tuple's `plannedSoFar` survives any clock); not built here.
+ *     ➕ Built as EV-249: `qa/coach-fixture-adherence.spec.ts`.
  *   · **Ines `[1, 3, 0]` — LOSES her C2 paint witness for a `done / plannedSoFar`
  *     renderer, and only for that.** Her rows are still read by the paint limb on every
  *     channel like every other world's; it is that renderer which emits `Infinity%` on
@@ -1695,9 +1698,10 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
    * renderer's output is dropped by the parser and nothing here reads it.
    *
    * So this holds the other two: Lina is in `WORLDS` with that current week, and her
-   * last tuple in the fixture SOURCE still states `plannedSoFar = 2`. A derived-value
-   * check is not available: `coachApi.fixture.ts` is `import "server-only"` and
-   * `PROGRESS` is not exported.
+   * last tuple in the fixture SOURCE still states `plannedSoFar = 2`. The second is a
+   * read of the tuple's TEXT, not of its effect: it stays green if `adherenceSeries`
+   * ignores the third element. The effect, the function returning the stated value on
+   * each weekday, is tested in `qa/coach-fixture-adherence.spec.ts` (EV-249).
    */
   test("P-ADH C2 (EV-218): the done > plannedSoFar >= 1 world is still read, and still states the hazard", () => {
     expect(
