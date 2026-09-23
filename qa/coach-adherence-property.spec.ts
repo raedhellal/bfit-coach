@@ -813,14 +813,16 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     attributes read, and the computed channels are `none` for the `Infinity%` value.
  *     Closing it means scanning the ancestor chain or resolving the `var()` — the
  *     general CSS resolver EV-215 rules out by name. Disclosed in EV-215's `✗` block.
- *   · **`box-shadow`, `border-image-source` and `mask-image` on `::first-letter`** —
- *     the three EMPTY CELLS of that box's row in the matrix. What was tried: each was
- *     declared on a week row's figures span, on a row drawing no honest bar so any paint
- *     is attributable. The first two COMPUTE a non-initial value and **paint nothing**
- *     (0.007→0.040 and 0.009→0.065 of row width, against controls of 0.049 and 0.069);
- *     `mask-image` is **dropped on that box entirely**. They are unread deliberately: an
- *     entry would go red on a declaration that cannot paint there, banning something
- *     with no witness of harm. If a future engine paints one, it is one line.
+ *   · **`border-image-source` and `mask-image` on `::first-letter`** — the two EMPTY
+ *     CELLS of that box's row in the matrix, and 🔴 **the third one is no longer empty:
+ *     `box-shadow` was listed here until the reviewer re-measured it with a `100vw`
+ *     padding box and it painted a full-width bar beside "2 / 4 sessions".** What was
+ *     tried, for the two that remain: each declared on a row drawing no honest bar so
+ *     any paint is attributable, **with the wide padding box** —
+ *     `border-image-source` computes the gradient and paints nothing (MAXLINE 0.055,
+ *     control 0.069); `mask-image` is dropped on the box entirely. Unread deliberately:
+ *     an entry would ban a declaration that cannot paint there. **Re-measure with a wide
+ *     box before concluding anything about a cell here** — see the entry's comment.
  *   · ⛔ **`::marker { background-image: … }` — COULD NOT CONSTRUCT ONE**, which is the
  *     honest third answer and not a negative result. What was tried, three ways in this
  *     app's own DOM: `background-image` on `::marker`; `list-style: inside disc` to give
@@ -934,8 +936,9 @@ interface PaintChannel {
  *     against this branch with all twelve other channels, both denylists, the geometry
  *     limbs and `minimumBars` green. See its entry below for its two initial values.
  *
- * And the fourth BOX, `::first-letter` — `background-image` only, and the "only" is
- * measured rather than conservative. See the entry.
+ * And the fourth BOX, `::first-letter` — `background-image` and `box-shadow`, with the
+ * two cells beside them empty **as measured with a 100 vw padding box**. That
+ * qualification is the entry's whole point; read it there.
  *
  * All four are read on the element's own box **and on both generated boxes**. The
  * pseudo-element reads exist because EV-215 was the row that found a `::before`
@@ -964,14 +967,15 @@ interface PaintChannel {
  * If the design ever needs a decorative shadow INSIDE a row, that is a `senior-po`
  * decision (EV-216 edge cases 1 and 2), not an exception carved here.
  *
- * ── **EV-216 AC2 — the five mutants, each with the probe that it PAINTED.** ──────────
+ * ── **EV-216 AC2 — the six mutants, each with the probe that it PAINTED.** ───────────
  *
  * Each was planted in an uncommitted `AdherenceSeries.tsx`, rendered on **Lina**, and
  * photographed before the suite was believed: a screenshot of each week row, PNG-decoded,
  * five scanlines per row, reporting the fraction of the row's width painted blue. The
  * control run (clean code) is the number each is read against. **A green — or a red —
- * under a mutant nobody has watched paint is worth nothing** (clause 7); one of these
- * five proved it, below.
+ * under a mutant nobody has watched paint is worth nothing** (clause 7); two of these
+ * six proved it, below — once as a mutant that looked dead and was not, and once as a
+ * cell that looked empty and was not.
  *
  *   · **M1 `box-shadow`** — `inset ${(week.done / week.plannedSoFar) * 100}vw 0 0 0
  *     rgba(79, 124, 255, .35)` on the `li`, exactly as `staff-engineer` constructed it.
@@ -990,6 +994,22 @@ interface PaintChannel {
  *     scanlines, the same row reads **blue 1.000 at y=1 and y=7 of 26** — a full bar
  *     beside "2 / 4 sessions" — and 0.75 / 0.50 on the 3 / 4 and 2 / 4 finished weeks.
  *     RESULT: **4 failed**, every offence naming `[border-image-source on its own box]`.
+ *   · **M6 `box-shadow` on `::first-letter`, and the empty cell that was not empty.**
+ *     `li > span:first-child::first-letter { padding-right: 100vw; box-shadow: inset
+ *     <ratio>vw 0 0 0 rgba(79,124,255,.85) }`. This cell was SHIPPED AS EMPTY on the
+ *     strength of a 0.040 reading, and the reading was taken against a `::first-letter`
+ *     with no padding — a box one glyph wide, which an `inset` shadow paints inside of.
+ *     PROBE with the padding box: Lina's current row (control 0.074, no honest bar)
+ *     reads **1.000 on every scanline** beside "2 / 4 sessions", computed
+ *     `rgba(79,124,255,0.85) 1280px 0px 0px 0px inset`, and the series is proportional —
+ *     1.000 on 3/3 and 4/4, **0.894 on a 3/4, 0.596 on a 2/4**, 0.000 on the 0/4 and
+ *     no-plan weeks. Reproduced against the tip BEFORE the entry existed: **16 passed**,
+ *     a live escape. RESULT after the entry: **4 failed**, 12 offences, every one naming
+ *     `[box-shadow on ::first-letter]`, zero `DECLARES`, geometry and `minimumBars`
+ *     green; independence run (that cell alone removed, pin lowered) **16 passed**.
+ *     📌 The lesson is not about `box-shadow`: **an emptiness measured with the wrong box
+ *     is not a measurement**, and this is the third time in this file that a probe's
+ *     geometry rather than the channel produced the answer.
  *   · **M5 `background-image` on `::first-letter`** — a band on the first letter of a
  *     week row's span, stretched to the ratio with `padding-right: <ratio>vw`.
  *     🔴 **Its first version was killed by TWO clauses and therefore witnessed
@@ -1026,16 +1046,17 @@ interface PaintChannel {
  * **Independence (clause 4), run per mutant rather than argued.** With the mutant still
  * planted and still painting, its ONE channel entry was deleted from `PAINT_CHANNELS`
  * (and `PAINT_CHANNELS_EXPECTED` lowered by one, so the ratchet was not what went red):
- * **16 passed** every time, for all five. Nothing else in this file kills any of them —
+ * **16 passed** every time, for all six. Nothing else in this file kills any of them —
  * not the geometry limbs, not `minimumBars`, not the two inline denylists, not the other
- * fifteen channels. Two clauses killing one mutant would show neither to be needed, and
+ * sixteen channels. Two clauses killing one mutant would show neither to be needed, and
  * M5's first version was exactly that and was rebuilt rather than reported.
  *
  * **Clause 8 — would it still have gone red if the bug had been the other one?** The
  * cross-matrix says no, and that is the point: M1 fired 29 offences and *only* on
  * `box-shadow`, M2 only on `border-image-source`, M3 only on `mask-image`, M4 32 and
- * only on `content on ::before`, M5 58 and only on `background-image on ::first-letter`
- * — with zero `DECLARES` offences and no other test in this file red under any of them. So each
+ * only on `content on ::before`, M5 58 and only on `background-image on ::first-letter`,
+ * M6 12 and only on `box-shadow on ::first-letter` — with zero `DECLARES` offences and
+ * no other test in this file red under any of them. So each
  * channel is carrying its own weight and none is riding on another's witness. What the
  * three mutants share is the SHAPE the guard was written for — a bar whose painted
  * length is `done / plannedSoFar`, reading FULL beside a row that prints "2 / 4
@@ -1065,22 +1086,39 @@ const PAINT_CHANNELS: PaintChannel[] = [
   /**
    * ── box: ::first-letter ──────────────────────────────────────────────────────────
    *
-   * 🔴 **One cell, not four, and the three empty ones are a MEASUREMENT.** A
-   * `::first-letter { background-image: linear-gradient(…); padding-right: <ratio>vw }`
-   * on a week row's figures span paints a band **0.871 → 0.924 of the row width beside
-   * "2 / 4 sessions"** (control: 0.068), proportional across the finished weeks. The
-   * other three properties were each tried on `::first-letter`, on rows that draw no
-   * honest bar so any blue is the mutant's:
-   *   · `box-shadow` — COMPUTES `rgba(79,124,255,0.85) 1280px 0px 0px 0px inset` and
-   *     **does not paint** (0.007 → 0.040, control 0.049);
-   *   · `border-image-source` — computes the gradient and **does not paint** (0.009 →
-   *     0.065, control 0.069);
-   *   · `mask-image` — is **dropped entirely**: `none` on this box, nothing to read.
-   * An entry for any of those three would go red on a declaration that cannot paint
-   * there, which is a ban with no witness of harm — the same defect EV-214 refused for
-   * `<canvas>`. They are named in the disclosure instead, with these numbers.
+   * TWO cells, and 🔴 **the method by which the other two were found empty is part of
+   * the finding — read it before adding or removing anything here.**
+   *
+   * **An emptiness measured with the WRONG BOX is not a measurement.** This entry list
+   * shipped `box-shadow` as an empty cell on the strength of a probe that read
+   * `0.040 of row width` against a control of `0.049` — while the computed value was
+   * `rgba(79,124,255,0.85) 1280px 0px 0px 0px inset`, i.e. a 1280 px shadow. Both
+   * numbers were real and the inference was wrong: **an `inset` shadow paints inside the
+   * PADDING BOX, and a `::first-letter` with no padding is ONE GLYPH WIDE.** The reviewer
+   * added `padding-right: 100vw` and the same declaration painted **1.000 of the row
+   * width on every scanline beside "2 / 4 sessions"** (control 0.074 on that row, which
+   * draws no honest bar), proportional across the series — 1.000 on 3/3 and 4/4, 0.894
+   * on a 3/4, 0.596 on a 2/4, 0.000 on the 0/4 and no-plan weeks. Reproduced here before
+   * the entry was added: the guard was **16 passed** on it. That is EV-210's mechanism 2,
+   * restored, and it is the THIRD time in this file that a probe's geometry, not the
+   * channel, produced the answer.
+   *
+   * ⚠️ **So the two remaining empty cells carry their method, not just their number**,
+   * and both were re-measured **with the 100 vw padding box** — they are empty because
+   * the channel does not paint on this box, NOT because the box was a glyph wide:
+   *   · `border-image-source` — computes
+   *     `linear-gradient(90deg, rgba(79,124,255,0.85) 100%, …)` on the box and paints
+   *     nothing: **MAXLINE 0.055 against a control of 0.069**, wide box;
+   *   · `mask-image` — is **dropped on this box entirely**: `none` even when declared,
+   *     so there is nothing to read and nothing to clip (a flat `background` colour
+   *     declared beside it paints the full padding box, which is the `background-image`
+   *     cell's family and is already read).
+   * An entry for either would go red on a declaration that cannot paint there — a ban
+   * with no witness of harm, the defect EV-214 refused for `<canvas>`. If a future
+   * engine paints one, each is one line, and **re-measure with the wide box**.
    */
   { name: "background-image on ::first-letter", property: "background-image", pseudo: "::first-letter", initial: "none" },
+  { name: "box-shadow on ::first-letter", property: "box-shadow", pseudo: "::first-letter", initial: "none" },
   /**
    * 🔴 `content` — added on `senior-po`'s ruling, not as a disclosure. An image in
    * `content` (`::before { content: linear-gradient(90deg, …); display: block; width:
@@ -1113,7 +1151,7 @@ const PAINT_CHANNELS: PaintChannel[] = [
  * green. Raise it in the same commit that adds a channel; lowering it is a decision
  * somebody has to write down.
  */
-const PAINT_CHANNELS_EXPECTED = 16;
+const PAINT_CHANNELS_EXPECTED = 17;
 
 /** One element inside a week row, as the reads that can reveal a painted picture. */
 interface RowElement {
@@ -1259,10 +1297,31 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
    * So the two assertions below bind the entries to what they read. Both are already
    * true of the table as merged and neither required a rename:
    *
-   *   · every entry's `name` begins with its `property`, so the label a red build
-   *     prints cannot name a channel the entry does not read;
+   *   · every entry's `name` is EXACTLY `` `${property} on ${pseudo ?? "its own box"}` ``,
+   *     so the label a red build prints cannot name a channel the entry does not read —
+   *     on either axis;
    *   · every `(property, pseudo)` pair is unique, so an entry cannot be repointed onto
    *     a pair another entry already covers and disappear behind it.
+   *
+   * 🔴 **`startsWith` was the first cut and it bound only the PROPERTY axis.** It admits
+   * `{ name: "background-image on ::first-letter", property: "background-image",
+   * pseudo: "::marker" }` — honest-looking name, unique pair, `::first-letter` no longer
+   * read. Exact equality is one line, strictly stronger, and all entries already
+   * satisfied it. 📌 Worth recording why this was only a should-fix: the same repoint
+   * **could not** be exploited on `::before` / `::after`. Repointing `box-shadow on
+   * ::after`'s pseudo, with a painting `li::after` mutant, is still 4 failed — on
+   * `[content on ::after]`, because **any `::after` paint needs `content` to generate
+   * the box at all**, so B1's three `content` entries make the generated-box axis
+   * self-guarding. `::first-letter` needs no `content`, which is exactly where the hole
+   * was.
+   *
+   * **Witnessed rather than argued**, and the mutant is the shape a future row would
+   * actually arrive in — `::marker` added to the `pseudo` union and one entry repointed
+   * onto it, its name untouched: **1 failed / 15 passed**, reading
+   * `"background-image on ::first-letter" reads background-image on ::marker`. The
+   * uniqueness limb cannot cover that one, because the new pair is genuinely new; and
+   * note that with the matrix as full as it now is, every repoint WITHIN the current
+   * union duplicates an existing pair, so the two limbs cover different halves.
    *
    * **Both were then witnessed, separately, because an assertion nobody has seen fire is
    * decoration** (this file's own standard):
@@ -1292,13 +1351,15 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
         "requires the failure to name the channel."
     ).toBe(PAINT_CHANNELS.length);
     expect(
-      PAINT_CHANNELS.filter((channel) => !channel.name.startsWith(channel.property)).map(
-        (channel) => `${channel.name} reads ${channel.property}`
-      ),
-      "A channel's NAME does not begin with the PROPERTY it reads. The list would then be " +
-        "complete and honest to a reader and wrong in what it does: an entry called " +
-        '"box-shadow on its own box" that reads `background-image` leaves box-shadow unread ' +
-        "with nothing missing from the table. Rename the entry or repoint it, but not apart."
+      PAINT_CHANNELS.filter(
+        (channel) => channel.name !== `${channel.property} on ${channel.pseudo ?? "its own box"}`
+      ).map((channel) => `"${channel.name}" reads ${channel.property} on ${channel.pseudo ?? "its own box"}`),
+      "A channel's NAME is not exactly what it READS. The list would then be complete and " +
+        "honest to a reader and wrong in what it does — on either axis: an entry called " +
+        '"box-shadow on its own box" that reads `background-image` leaves box-shadow unread, ' +
+        'and an entry called "background-image on ::first-letter" whose pseudo is `::marker` ' +
+        "leaves ::first-letter unread, both with nothing missing from the table. Rename the " +
+        "entry or repoint it, but not apart."
     ).toEqual([]);
     expect(
       new Set(PAINT_CHANNELS.map((channel) => `${channel.property}|${channel.pseudo}`)).size,
