@@ -48,3 +48,13 @@ decided whether the guard bound.**
 **Two of the four — AC4(iii) and EV-214 AC1 — are the same defect in the same direction: an
 unevidenced NEGATIVE that I wrote.** CLAUDE.md's no-witness rule already forbade it; I was not
 applying it to my own exclusions. See [[feedback-never-assert-an-unprobed-consequence]].
+
+📌 **Clause 1 in a guard's own support code (EV-249, 2026-09-23):** EV-218's pin read the fixture file
+as **text** and checked it said `[3,4,2]`. Breaking the code that honours that value left the pin green
+and the whole gate green on a Monday. A pin on source text stands in for a check on behaviour only if
+something else checks the behaviour. When a guard depends on support code, ask what tests the support
+code's **effect**.
+
+And a small one from the same pass: I wrote an AC from memory of how a derivation works ("two scheduled
+days elapsed") and it was wrong; the code counts elapsed days. Read the code before stating what it
+does, and when the AC depends on it, make the AC measure it.

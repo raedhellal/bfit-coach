@@ -14,10 +14,12 @@
 - [A passing assertion may not bind](feedback-a-passing-assertion-may-not-bind.md) — asText() coerces; assert shape before value; green proves nothing until a mutant kills it
 - [Enumerate deletions, not reverts](feedback-enumerate-deletions-not-reverts.md) — drop-path offers as discrete deletions; grep for readers, not just behaviour tests
 - [Probe the mutant before trusting green](feedback-probe-the-mutant-before-trusting-green.md) — a mutant that never fired proves nothing; an unprobed dud cards a phantom
-- [Guard holes are backlog, not bugs](decision-guard-holes-are-backlog-not-bugs.md) — BUGS.md records what the product does wrong; missing coverage is a row
+- [Guard holes are backlog, not bugs](decision-guard-holes-are-backlog-not-bugs.md) — [GUARD] rows are logged but not counted; the fix is my backlog row
 - [Fix the neighbouring instance](feedback-fix-the-neighbouring-instance.md) — a correction is evidence about how you were reasoning; go find the others
 - [Decision ACs must not bind other ACs](feedback-decision-acs-must-not-bind-other-acs.md) — if one AC defers a choice, the rest must hold under every option
 - [Split on failure mode, not taxonomy](feedback-split-on-failure-mode-not-taxonomy.md) — EV-219 withdrawn; a synthetic-harness witness is not a real-surface witness
 - [Never justify scope with a capability](feedback-never-justify-scope-with-a-capability.md) — a false "cannot" suppresses the experiment that would expose it
 - [Do not size a row across an unrun probe](feedback-do-not-size-a-row-across-an-unrun-probe.md) — no estimate, probe as AC1, named split trigger
 - [Gate condition vs scope bar](decision-a-gate-condition-and-a-scope-bar-are-different-questions.md) — QA's pass stands; only I move my AC enumeration
+- [Re-read the ID counter before allocating](feedback-reread-the-id-counter-before-allocating.md) — other passes allocate in parallel; EV-221 collision caught by the sync assert
+- [Future-dated completions](decision-future-dated-completions.md) — not allowed; backdating is; bound is local-today or server+1 day; EV-248

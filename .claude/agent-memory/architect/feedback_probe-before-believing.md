@@ -44,3 +44,20 @@ and this attribute truncation.
 this reading without the engine doing anything?* Clip geometry, attribute quoting and
 `var()` resolution scope are the three that have actually bitten. A screenshot-vs-control diff is
 necessary, not sufficient — it proves *something* changed, not that **your declaration** changed it.
+
+## Check a reversal trigger when you write it, not only afterwards
+
+A trigger that names an invariant in **another repo** is a claim that the invariant holds today. It
+needs a witness when it is written. ADR-0024's trigger 3 ("the day-unit invariant
+`done − plannedSoFar ≤ 1` changes in `b-fit-api`") was labelled the easiest one to miss, and I did
+not look. It **fired on first inspection**: the API accepts future-dated completions, so the
+invariant was never enforced.
+
+**Why:** the no-witness rule covers "this invariant holds" as much as "this guard catches X". A
+bound that carries an argument has to be traced to its **enforcement point** (validation,
+constraint, query window), not to the comment that describes it. `TraineeAdherenceWeeks.java`'s
+comment said "the day is the unit"; nothing at the write path enforced it.
+
+**How to apply:** for every invariant an ADR's argument rests on, name the line that **enforces**
+it. If none exists, either re-base the argument so it does not need the invariant (which is what
+saved (d)), or record the invariant as assumed. Prefer arguments that need no bound.

@@ -13,3 +13,5 @@
 - [Probe a declaration through the DOM](probe-a-css-declaration-through-the-dom-not-an-html-attribute.md) — a `url("data:…")` in a setContent `style="…"` truncates, and a raw `<svg>` payload fakes the paint
 - [`content` and `::first-letter` are paint channels](content-and-first-letter-are-paint-channels.md) — both paint a proportional bar with the 12-entry table green; `::marker` is a dud on a grid row
 - [A colour can encode a ratio](colour-plus-ratio-padding-is-a-picture.md) — `background-color` + ratio-sized padding on `::first-letter`: proportional bar, guard green
+- [A source pin binds the literal, not its effect](source-pin-binds-the-literal-not-its-effect.md) — break the override mechanism + Monday: gate 263 green; a ratchet in a WORLDS loop cannot hold WORLDS
+- [Invariant cited from an unvalidated write path](invariant-cited-from-code-that-does-not-validate-its-input.md) — `done − plannedSoFar ≤ 1` never held (future-dated completions); open the writer
