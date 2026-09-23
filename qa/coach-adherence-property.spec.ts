@@ -813,26 +813,39 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     attributes read, and the computed channels are `none` for the `Infinity%` value.
  *     Closing it means scanning the ancestor chain or resolving the `var()` — the
  *     general CSS resolver EV-215 rules out by name. Disclosed in EV-215's `✗` block.
- *   · 🔴 **`::first-letter { background-image: … }` — CONSTRUCTED on this surface,
- *     PAINTS a band on every row, and the guard stayed green at 16 passed.** What was
- *     tried: it is readable by exactly the `getComputedStyle` second argument EV-215
- *     established, so closing it is one entry per box in the table above — and it is
- *     deliberately NOT taken here, because a short PSEUDO-ELEMENT list is EV-215's
- *     family and a short PROPERTY list is this row's, and folding the two together is
- *     the neighbouring-shapes error these rows have refused twice. → **`EV-219`**.
- *   · **`::marker { background-image: … }` — DOES NOT REPRODUCE on this surface, which
- *     is not the same as disproven.** What was tried: `list-style: inside disc`, an
- *     overridden `content`, and a coloured `\2588` block to test whether the box exists
- *     at all. Nothing painted — the week rows are `display: grid`, so no marker box is
- *     generated. A change to `display: list-item` would need re-probing. → **`EV-219`**.
- *   · **`-webkit-box-reflect` — RESOLVED, and it does paint**, at `y=17..26` when the
- *     row's box ends at `y=12`: OUTSIDE the element, which is why the first probe (a
- *     screenshot clipped to the element's own box) missed it — the same sampling-geometry
- *     near-miss as this row's `border-image` mutant. But it only MIRRORS existing
- *     content, and the current week draws no bar to mirror, so **no overstatement could
- *     be constructed with it**. Disclosed and carded, not an entry.
+ *   · **`box-shadow`, `border-image-source` and `mask-image` on `::first-letter`** —
+ *     the three EMPTY CELLS of that box's row in the matrix. What was tried: each was
+ *     declared on a week row's figures span, on a row drawing no honest bar so any paint
+ *     is attributable. The first two COMPUTE a non-initial value and **paint nothing**
+ *     (0.007→0.040 and 0.009→0.065 of row width, against controls of 0.049 and 0.069);
+ *     `mask-image` is **dropped on that box entirely**. They are unread deliberately: an
+ *     entry would go red on a declaration that cannot paint there, banning something
+ *     with no witness of harm. If a future engine paints one, it is one line.
+ *   · ⛔ **`::marker { background-image: … }` — COULD NOT CONSTRUCT ONE**, which is the
+ *     honest third answer and not a negative result. What was tried, three ways in this
+ *     app's own DOM: `background-image` on `::marker`; `list-style: inside disc` to give
+ *     the marker a box; and replacing the glyph with a coloured `\2588` block to test
+ *     whether the box exists at all. Nothing painted, because a week row is
+ *     `display: grid` and generates no marker box. **A change to `display: list-item`
+ *     would need this re-probed** — the finding is about this renderer, not about CSS.
+ *   · **`-webkit-box-reflect` — it PAINTS, and no overstatement is reachable with it.**
+ *     Measured at `y=17..26` when the row's box ends at `y=12` — i.e. OUTSIDE the
+ *     element, which is why an element-clipped screenshot missed it first. But it only
+ *     MIRRORS existing content, and the current week draws no bar to mirror, so there is
+ *     nothing for it to overstate. 🔴 **Its value is methodological and it belongs to
+ *     EV-217**: it is a THIRD implicit quantifier beside time and viewport — **the CLIP
+ *     REGION a probe samples**. EV-217's AC has to say which region is sampled, the way
+ *     it already has to say which instant and which width.
  *   · **`::selection` and `::backdrop`** were probed and do **not** paint — duds,
  *     recorded so that nobody spends a second afternoon on them.
+ *
+ * 🔴 **And the check that now precedes all of this, because it killed a row:** *a
+ * witness taken in a synthetic `page.setContent` harness is not a witness on the real
+ * surface.* Two of four reported bypasses did not survive the move into this app's own
+ * DOM — `::marker` needs a box this renderer never generates, and `-webkit-box-reflect`
+ * has nothing here to mirror. Every entry and every line above was re-run against the
+ * running portal. `senior-po` runs this check before allocating an ID to a reported
+ * bypass; run it before believing one.
  *   · ✓ **A `-webkit-mask-image`-only bypass — TRIED, PAINTS, and CAUGHT.** Written with
  *     no unprefixed `mask-image` at all: blue 1.000 across all five scanlines, and red
  *     on the `mask-image` entry, because Blink aliases the prefixed form onto the
@@ -865,8 +878,18 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * One computed read: a CSS property, on one of an element's three boxes, and the value
- * of that property which means *this box paints nothing through this channel*.
+ * One computed read: **one cell of a (box × property) matrix** — a CSS property, on one
+ * of the boxes an element owns, with the value of that property which means *this box
+ * paints nothing through this channel*.
+ *
+ * 🔴 **The matrix is the model, and it is `senior-po`'s correction to its own split of
+ * this work.** EV-215 extended the **box** axis (`::before`, `::after`); EV-216 extended
+ * the **property** axis (`box-shadow`, `border-image-source`, `mask-image`, `content`).
+ * They were carded as different families and they are not: *a short property list and a
+ * short pseudo-element list fail the SAME way — incomplete enumeration.* In its words,
+ * **one enumeration, short on both axes**; the taxonomy was mine and the failure mode is
+ * what matters. So `::first-letter` is an entry here rather than a row of its own, and a
+ * future escape on either axis is one line in the same table.
  *
  * `property` is the KEBAB spelling and is read with `getPropertyValue`, not through the
  * camelCase accessor: an accessor a browser does not implement is `undefined` and reads
@@ -879,7 +902,7 @@ interface PaintChannel {
   name: string;
   property: string;
   /** `null` for the element's own box. */
-  pseudo: "::before" | "::after" | null;
+  pseudo: "::before" | "::after" | "::first-letter" | null;
   /** The property's initial value — what "paints nothing here" computes to. */
   initial: string;
 }
@@ -890,8 +913,13 @@ interface PaintChannel {
  * Adding a channel is one line here. Removing one is visible twice: the entry is gone
  * from a list a reader reads top to bottom, and `PAINT_CHANNELS_EXPECTED` goes red.
  *
- * The five properties, and why each is a channel a proportional bar can be painted
- * through without a layout box of its own:
+ * **It is a SPARSE matrix, and the empty cells are the point.** A cell is present when
+ * the property can paint on that box **and somebody has shown it** — not on symmetry.
+ * Filling a row of the matrix because the other cells in it are filled would ban things
+ * with no witness, which this file treats as the same defect as permitting one; the
+ * empty cells are named in the disclosure with what was tried. The five properties, and
+ * why each is a channel a proportional bar can be painted through without a layout box
+ * of its own:
  *
  *   · `background-image` — EV-214's witnessed bypass (a gradient behind the figures).
  *   · `box-shadow` — EV-216's. `inset ${(done / plannedSoFar) * 100}vw 0 0 0 rgba(79,
@@ -905,6 +933,9 @@ interface PaintChannel {
  *     independently during review and painting a full-width bar beside "2 / 4 sessions"
  *     against this branch with all twelve other channels, both denylists, the geometry
  *     limbs and `minimumBars` green. See its entry below for its two initial values.
+ *
+ * And the fourth BOX, `::first-letter` — `background-image` only, and the "only" is
+ * measured rather than conservative. See the entry.
  *
  * All four are read on the element's own box **and on both generated boxes**. The
  * pseudo-element reads exist because EV-215 was the row that found a `::before`
@@ -1001,18 +1032,40 @@ interface PaintChannel {
  * case 2 and it is a `senior-po` decision if it ever happens, not a silent exception.
  */
 const PAINT_CHANNELS: PaintChannel[] = [
+  // ── box: the element's own ───────────────────────────────────────────────────────
   { name: "background-image on its own box", property: "background-image", pseudo: null, initial: "none" },
-  { name: "background-image on ::before", property: "background-image", pseudo: "::before", initial: "none" },
-  { name: "background-image on ::after", property: "background-image", pseudo: "::after", initial: "none" },
   { name: "box-shadow on its own box", property: "box-shadow", pseudo: null, initial: "none" },
-  { name: "box-shadow on ::before", property: "box-shadow", pseudo: "::before", initial: "none" },
-  { name: "box-shadow on ::after", property: "box-shadow", pseudo: "::after", initial: "none" },
   { name: "border-image-source on its own box", property: "border-image-source", pseudo: null, initial: "none" },
-  { name: "border-image-source on ::before", property: "border-image-source", pseudo: "::before", initial: "none" },
-  { name: "border-image-source on ::after", property: "border-image-source", pseudo: "::after", initial: "none" },
   { name: "mask-image on its own box", property: "mask-image", pseudo: null, initial: "none" },
+  // ── box: ::before ────────────────────────────────────────────────────────────────
+  { name: "background-image on ::before", property: "background-image", pseudo: "::before", initial: "none" },
+  { name: "box-shadow on ::before", property: "box-shadow", pseudo: "::before", initial: "none" },
+  { name: "border-image-source on ::before", property: "border-image-source", pseudo: "::before", initial: "none" },
   { name: "mask-image on ::before", property: "mask-image", pseudo: "::before", initial: "none" },
+  // ── box: ::after ─────────────────────────────────────────────────────────────────
+  { name: "background-image on ::after", property: "background-image", pseudo: "::after", initial: "none" },
+  { name: "box-shadow on ::after", property: "box-shadow", pseudo: "::after", initial: "none" },
+  { name: "border-image-source on ::after", property: "border-image-source", pseudo: "::after", initial: "none" },
   { name: "mask-image on ::after", property: "mask-image", pseudo: "::after", initial: "none" },
+  /**
+   * ── box: ::first-letter ──────────────────────────────────────────────────────────
+   *
+   * 🔴 **One cell, not four, and the three empty ones are a MEASUREMENT.** A
+   * `::first-letter { background-image: linear-gradient(…); padding-right: <ratio>vw }`
+   * on a week row's figures span paints a band **0.871 → 0.924 of the row width beside
+   * "2 / 4 sessions"** (control: 0.068), proportional across the finished weeks. The
+   * other three properties were each tried on `::first-letter`, on rows that draw no
+   * honest bar so any blue is the mutant's:
+   *   · `box-shadow` — COMPUTES `rgba(79,124,255,0.85) 1280px 0px 0px 0px inset` and
+   *     **does not paint** (0.007 → 0.040, control 0.049);
+   *   · `border-image-source` — computes the gradient and **does not paint** (0.009 →
+   *     0.065, control 0.069);
+   *   · `mask-image` — is **dropped entirely**: `none` on this box, nothing to read.
+   * An entry for any of those three would go red on a declaration that cannot paint
+   * there, which is a ban with no witness of harm — the same defect EV-214 refused for
+   * `<canvas>`. They are named in the disclosure instead, with these numbers.
+   */
+  { name: "background-image on ::first-letter", property: "background-image", pseudo: "::first-letter", initial: "none" },
   /**
    * 🔴 `content` — added on `senior-po`'s ruling, not as a disclosure. An image in
    * `content` (`::before { content: linear-gradient(90deg, …); display: block; width:
@@ -1045,7 +1098,7 @@ const PAINT_CHANNELS: PaintChannel[] = [
  * green. Raise it in the same commit that adds a channel; lowering it is a decision
  * somebody has to write down.
  */
-const PAINT_CHANNELS_EXPECTED = 15;
+const PAINT_CHANNELS_EXPECTED = 16;
 
 /** One element inside a week row, as the reads that can reveal a painted picture. */
 interface RowElement {
