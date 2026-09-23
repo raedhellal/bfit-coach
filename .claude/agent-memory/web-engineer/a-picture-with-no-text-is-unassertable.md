@@ -23,8 +23,11 @@ over its parent, which includes transforms and is not clipped by `overflow: hidd
 200 % bar reports 200. `qa/coach-adherence-property.spec.ts` finds bars structurally —
 every text-free *painted* leaf in the row, plus anything carrying `data-fill` even at
 zero width so a genuine 0 % week is still checked — and then holds `data-fill` itself to
-the geometry. It cannot see a picture painted by a background gradient, a canvas or an
-image; that is stated in the file rather than assumed away.
+the geometry. **The blind spot is narrower than "a gradient"** (the staff review probed
+it): a gradient-painted leaf and a bar moved onto the text-bearing label both go red.
+What stays green is a picture painted with **no layout box of its own**, in a row whose
+measurable bars already meet the minimum count — e.g. a gradient behind the figures.
+That is a follow-up row, and it is written in the file rather than assumed away.
 
 Two further things that spec needs:
 - a counter proving it did not pass by finding **no** bars at all;
