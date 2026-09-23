@@ -613,14 +613,19 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * "2 / 4 sessions" — mechanism 2 of EV-210's own table, restored.
  *
  * So this limb is **structural, not geometric**: for every element inside a week row, it
- * **READS**, once, at the default viewport, four channels:
+ * **READS**, once, at the default viewport, two kinds of thing:
  *
- *   1. `getComputedStyle(el).backgroundImage` — the element's own painted image;
- *   2. `getComputedStyle(el, "::before").backgroundImage`;
- *   3. `getComputedStyle(el, "::after").backgroundImage` — the two generated boxes
- *      (**EV-215 AC1**), and a red build names which of the three computed channels
- *      fired;
- *   4. the inline `style` attribute, where **one of four literal spellings** —
+ *   1. 🔴 **the computed channels enumerated in `PAINT_CHANNELS`** (EV-216) — a CSS
+ *      property on one of an element's three boxes, its own and both generated ones,
+ *      asserted equal to that property's initial value, with a red build naming the
+ *      entry that fired. **That table is the ONLY list of covered channels in this
+ *      file, and it is the one to read: this sentence deliberately does not repeat it.**
+ *      It used to, naming three `backgroundImage` reads, and it went on saying "four
+ *      channels" for a whole review after the limb had grown to twelve — the seventh
+ *      falsifiable capability sentence in this file, and the first one ABOVE the banner
+ *      rather than in it. See the EV-216 disclosure above `PaintChannel` for what the
+ *      table reads, when, and what it does not read;
+ *   2. the inline `style` attribute, where **one of four literal spellings** —
  *      `gradient(`, `url(`, `image-set(`, `element(` — appears either in a `background`
  *      / `background-image` value or in a `--…:` declaration in the same attribute
  *      (**EV-215 AC3** — `--adh-paint: linear-gradient(…);
@@ -763,8 +768,9 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * **C2**). AC1 is the three new channels in `PAINT_CHANNELS`; this block is AC3, and
  * `senior-po` calls it the part of the row worth more than the three assertions.
  *
- * **WHAT IT READS.** For **every element inside every week row of the adherence block,
- * the `li` itself included**, two kinds of read:
+ * **WHAT IT READS.** For **every element in the LIGHT DOM inside every week row of the
+ * adherence block, the `li` itself included** — the scan is `querySelectorAll("*")`,
+ * which does not cross a shadow root, and this app opens none — two kinds of read:
  *
  *   1. **The computed channels enumerated in `PAINT_CHANNELS`** — one CSS property on
  *      one of the element's three boxes, asserted equal to that property's initial
@@ -781,11 +787,13 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * One instant, one viewport, one page state.
  *
  * **CHANNELS AND MECHANISMS NOT READ, WITH WHAT WAS TRIED.** Each entry is a mechanism
- * somebody **constructed and ran against this section**, with the row that owns it. It
- * is a list of what has been built, **not** a list of what exists, and it is not a
- * claim that anything absent from it is caught — six totality sentences written about
- * this guard have been falsified by the next person to try one. Later rows append to
- * this list; the entry shape is *mechanism — what was tried — owning row*.
+ * or family this section does not read; **each entry states whether it was constructed
+ * and run, and who owns it**. (The header used to say every entry had been constructed
+ * and run, which was false of two of its own five — nobody has built a `<canvas>` bar,
+ * and a channel-independent detector is not a mechanism anyone built.) It is not a
+ * claim that anything absent from this list is caught — seven totality sentences
+ * written about this guard have now been falsified by the next person to try one.
+ * Later rows append here; the entry shape is *mechanism — what was tried — owning row*.
  *
  *   · **A time-delayed paint** (`animation … 1ms 8s forwards`) and **a viewport-gated
  *     paint** (`@media (max-width: 520px)`, and 320 px is a width this portal is swept
@@ -805,6 +813,30 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     attributes read, and the computed channels are `none` for the `Infinity%` value.
  *     Closing it means scanning the ancestor chain or resolving the `var()` — the
  *     general CSS resolver EV-215 rules out by name. Disclosed in EV-215's `✗` block.
+ *   · 🔴 **Three pseudo-element channels that are NOT `::before` / `::after`, all three
+ *     CONSTRUCTED, all three PAINTING, all three reading `none` on the element and on
+ *     both boxes this table does read** — found during the ADR-0024 challenge:
+ *     an image in `content` (`.k::before{content: linear-gradient(90deg, blue 50%,
+ *     red 50%); display:block; width:100px; height:20px}`), `::first-letter{background-
+ *     image:…}` and `::marker{background-image:…}`. What was tried: the table's `pseudo`
+ *     field would take them in one line each, and they are deliberately NOT being taken
+ *     — this file's precedent, set twice and right both times, is that a constructed
+ *     escape is DISCLOSED in the row that finds it and CARDED, not folded into the row
+ *     that happens to be open (EV-214 did it with the gradient residue, EV-215 with the
+ *     ancestor declaration). `::selection` and `::backdrop` were probed and do **not**
+ *     paint — duds, recorded so nobody re-runs them. → a `senior-po` card.
+ *   · **`-webkit-box-reflect` — UNRESOLVED, not negative.** It probed `paints=no`, but
+ *     that probe clipped its screenshot to the element's own box and a reflection paints
+ *     BELOW it, which is the same near-miss as this row's `border-image` mutant (a full
+ *     bar read as 0.04 because the scanline was in the wrong place). Nobody has sampled
+ *     outside the box yet. What was tried is therefore a probe whose geometry cannot
+ *     answer the question; it is recorded as open rather than as a negative result.
+ *   · ✓ **A `-webkit-mask-image`-only bypass — TRIED, PAINTS, and CAUGHT.** Written with
+ *     no unprefixed `mask-image` at all: blue 1.000 across all five scanlines, and red
+ *     on the `mask-image` entry, because Blink aliases the prefixed form onto the
+ *     computed unprefixed property. Recorded here because it is a RUN answer to the
+ *     standing worry that a computed enumeration is evadable by re-spelling the way a
+ *     text denylist is — for this alias, on this engine, it is not.
  *   · **`<canvas>` and `<img>`.** No witness in either direction: nobody has built one,
  *     and nobody has shown one cannot be built. `senior-po` has declined four times to
  *     fold them in on the strength of neighbouring mechanisms being real. Not a row.
@@ -1095,16 +1127,34 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
 
   /**
    * EV-216 AC3's other half. The disclosure above says the covered channels are listed
-   * in ONE place; that is only true while the list cannot shrink unnoticed, and the
-   * four tests below iterate the table, so they stay green on an emptier one. This is
-   * the assertion that makes a removal a decision: it is two lines to make, and it
-   * fails by naming the channels that are actually in the table.
+   * in ONE place; that is only true while the list cannot shrink — or LIE — unnoticed,
+   * and the four tests below iterate the table, so they stay green on an emptier or a
+   * dishonest one. This is the assertion that makes either a decision.
+   *
+   * 🔴 **The length and the labels are not enough, and the reviewer walked past them
+   * with one token.** Keep the entry, keep its name `"box-shadow on its own box"`, and
+   * repoint its `property` to `"background-image"`: the count is 12, the labels are
+   * unique, no value is empty, and `box-shadow` is not read at all. With M1 planted and
+   * probed painting — Lina's row blue 1.000 on every scanline — that table gave **17
+   * passed**. A DELETED entry leaves a hole a reader can see; a REPOINTED one leaves
+   * the list looking complete to exactly the reader AC3 is written for.
+   *
+   * So the two assertions below bind the entries to what they read. Both are already
+   * true of the table as merged and neither required a rename:
+   *
+   *   · every entry's `name` begins with its `property`, so the label a red build
+   *     prints cannot name a channel the entry does not read;
+   *   · every `(property, pseudo)` pair is unique, so an entry cannot be repointed onto
+   *     a pair another entry already covers and disappear behind it.
+   *
+   * The other direction is run too, and the table fails CLOSED: corrupting an entry's
+   * `initial` on clean code gives 4 failed rather than a quiet pass.
    */
   test("P-ADH C2 (EV-216 AC3): the enumerated channel list has not silently shrunk", () => {
     expect(
       PAINT_CHANNELS.map((channel) => channel.name),
-      `PAINT_CHANNELS holds ${PAINT_CHANNELS.length} channels, not the ${PAINT_CHANNELS_EXPECTED} ` +
-        "this file was merged with. Adding a channel is one line here and one to " +
+      `PAINT_CHANNELS holds ${PAINT_CHANNELS.length} channels, which does not match ` +
+        `PAINT_CHANNELS_EXPECTED (${PAINT_CHANNELS_EXPECTED}). Adding a channel is one line here and one to ` +
         "PAINT_CHANNELS_EXPECTED; removing one needs the same two edits, on purpose, and a note " +
         "in the disclosure block above `PaintChannel` saying what is no longer read."
     ).toHaveLength(PAINT_CHANNELS_EXPECTED);
@@ -1112,6 +1162,21 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
       new Set(PAINT_CHANNELS.map((channel) => channel.name)).size,
       "Two channels share a name, so a red build cannot say which read fired — EV-216 AC1 " +
         "requires the failure to name the channel."
+    ).toBe(PAINT_CHANNELS.length);
+    expect(
+      PAINT_CHANNELS.filter((channel) => !channel.name.startsWith(channel.property)).map(
+        (channel) => `${channel.name} reads ${channel.property}`
+      ),
+      "A channel's NAME does not begin with the PROPERTY it reads. The list would then be " +
+        "complete and honest to a reader and wrong in what it does: an entry called " +
+        '"box-shadow on its own box" that reads `background-image` leaves box-shadow unread ' +
+        "with nothing missing from the table. Rename the entry or repoint it, but not apart."
+    ).toEqual([]);
+    expect(
+      new Set(PAINT_CHANNELS.map((channel) => `${channel.property}|${channel.pseudo}`)).size,
+      "Two entries read the same property on the same box, so one of them is a duplicate — and " +
+        "an entry repointed onto a pair another entry already covers hides behind it, leaving " +
+        "the table the right length with a channel nobody reads."
     ).toBe(PAINT_CHANNELS.length);
   });
 
