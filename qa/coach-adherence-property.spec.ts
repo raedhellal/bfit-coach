@@ -53,19 +53,30 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
  *   ✓ a bar drawn with a `NaN` / `Infinity` / negative / over-100 % width;
  *   ✓ a bar drawn on a row that prints no figures, and a `planned = 0` row that draws
  *     a bar at all (edge case 1: the division-by-zero row);
- *   ✓ a renderer that switched the denominator to `plannedSoFar` while going on
- *     printing `planned` — Ines's current week is seeded `done 1 / planned 3 /
- *     plannedSoFar 0`, so such a renderer produces a number the printed pair cannot
- *     match, every day of the week;
+ *   ✓ a renderer that switched the denominator to `plannedSoFar` **and draws a bar on
+ *     the current week** — Ines's current week is seeded `1 / 3 / 0`, so such a renderer
+ *     produces `Infinity%` there (witnessed);
+ *   ✗ the same swap with the current week still drawing nothing. For a FINISHED week
+ *     `plannedSoFar === planned`, so nothing differs and the suite stays green — the
+ *     staff review ran that exact shape: 11 passed. This file's reach coincides with
+ *     the HARMFUL subset of the substitution, which is the outcome worth having and not
+ *     a sentence to round up to "every day of the week".
  *   ✗ `plannedSoFar` itself. It is never printed and the current week draws nothing, so
  *     it has no DOM representation to assert. What is asserted is that whatever IS
  *     drawn agrees with what IS printed — which is C2, and which is what makes the
- *     substitution detectable, and the last test of AC3 keeps Ines's world stating it.
- *   ✗ a picture drawn by a mechanism that paints nothing measurable — a background
- *     gradient, a canvas, an image. `renderedWeeks` finds text-free painted leaves and
- *     compares boxes, so `scaleX`, `flex-basis`, `border-*-width` and inline `width`
- *     are all caught; a `background: linear-gradient(...)` is not, and would need this
- *     file extended with it.
+ *     harmful half of the substitution detectable, and the last test of AC3 keeps
+ *     Ines's world stating it.
+ *   ✗ **a picture painted with no layout box of its own, in a row whose measurable bars
+ *     already satisfy `minimumBars`.** That is the whole blind spot, and it is narrower
+ *     than "anything drawn with a gradient": the staff review ran both straightforward
+ *     gradient refactors — a gradient-painted leaf replacing the track, and the bar
+ *     moved onto the text-bearing label — and BOTH go red. What stays green is its
+ *     **B3**: one line adding a `background: linear-gradient(...)` BEHIND the current
+ *     week's figures, which gives Ines `Infinity%` and Lina a fully-painted 100 %
+ *     gradient beside "2 / 4 sessions", with the whole suite at 256 passed. B3 is a
+ *     follow-up row with `senior-po`, not a defect in this file: AC3 scopes C2 to a fill
+ *     read as a percentage attribute or an inline width, and B3 is neither.
+ *     `scaleX`, `flex-basis`, `border-*-width` and inline `width` are all caught.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -219,7 +230,15 @@ async function expectPictureEqualsFigures(page: Page, minimumBars: number) {
       const drawn = `<${picture.tag} data-fill="${picture.dataFill}" style="${picture.inlineStyle}"> ` +
         `= ${picture.widthPx.toFixed(2)}px of ${picture.parentWidthPx.toFixed(2)}px`;
 
-      // A width that is NaN, Infinity or negative cannot even be measured as a ratio.
+      /**
+       * ⚠️ **Unreachable today, and kept deliberately.** `drawnPercent` comes from
+       * `getBoundingClientRect().width`, which is always finite — so no renderer can
+       * make this one red, and it is NOT what caught M1. It guards a future
+       * `drawnPercent` read from a non-box source (an attribute, a CSS variable, an SVG
+       * length), where `NaN` becomes reachable and every comparison below it would then
+       * pass silently. The LIVE check for the 1/0 week is the `inlineStyle` one
+       * immediately after: M1 failed on `width:Infinity%`, not here.
+       */
       expect(Number.isFinite(picture.drawnPercent), `${where} draws a non-finite bar: ${drawn}`).toBe(
         true
       );
@@ -503,6 +522,14 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
    * expression contains it), and in `qa/`, occurrences only on lines that assert its
    * absence — with a counter proving at least one such assertion still exists, so this
    * cannot pass by the regression having been deleted.
+   *
+   * 🔴 **This limb is a line grep, and a line grep is not the rule.** An assembled
+   * needle — `["No sessions in the", "last 8 weeks"].join(" ")`, the same trick the
+   * `BANNED` constant above uses — passes it. The staff review ran exactly that, and it
+   * was caught anyway, by the `/session/i` limbs of the DOM tests above. So the PROPERTY
+   * holds and this test alone does not enforce it: it makes the cheap way back
+   * impossible and leaves the expensive ones to the DOM. Do not cite this limb as the
+   * whole of AC4.
    */
   test("the banned sentence is absent from every expression in src/ and unforbidden in qa/", () => {
     const root = join(__dirname, "..");
