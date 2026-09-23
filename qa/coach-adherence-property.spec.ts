@@ -67,16 +67,20 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
  *     harmful half of the substitution detectable, and the last test of AC3 keeps
  *     Ines's world stating it.
  *   ✗ **a picture painted with no layout box of its own, in a row whose measurable bars
- *     already satisfy `minimumBars`.** That is the whole blind spot, and it is narrower
- *     than "anything drawn with a gradient": the staff review ran both straightforward
- *     gradient refactors — a gradient-painted leaf replacing the track, and the bar
- *     moved onto the text-bearing label — and BOTH go red. What stays green is its
+ *     already satisfy `minimumBars`** — the GEOMETRIC limbs in this section cannot see
+ *     one, and that was this file's whole blind spot. It was narrower than "anything
+ *     drawn with a gradient": the staff review ran both straightforward gradient
+ *     refactors — a gradient-painted leaf replacing the track, and the bar moved onto
+ *     the text-bearing label — and BOTH go red (re-run on the EV-214 branch: the leaf is
+ *     caught by the geometry limb at 83.3 % drawn against 100 % printed, the label move
+ *     by `minimumBars` at "no bar was drawn on this page"). What stayed green was its
  *     **B3**: one line adding a `background: linear-gradient(...)` BEHIND the current
  *     week's figures, which gives Ines `Infinity%` and Lina a fully-painted 100 %
- *     gradient beside "2 / 4 sessions", with the whole suite at 256 passed. B3 is a
- *     follow-up row with `senior-po`, not a defect in this file: AC3 scopes C2 to a fill
- *     read as a percentage attribute or an inline width, and B3 is neither.
- *     `scaleX`, `flex-basis`, `border-*-width` and inline `width` are all caught.
+ *     gradient beside "2 / 4 sessions", with the whole suite at 256 passed.
+ *     🔴 **B3 is now CLOSED, by the EV-214 section at the bottom of this file** — a
+ *     structural limb, because a thing with no box cannot be measured by a limb that
+ *     measures boxes. `scaleX`, `flex-basis`, `border-*-width` and inline `width` are
+ *     all caught here, geometrically, as before.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -246,6 +250,16 @@ async function expectPictureEqualsFigures(page: Page, minimumBars: number) {
         picture.inlineStyle,
         `${where} sets a non-numeric width — a 1/0 week reaching the renderer: ${drawn}`
       ).not.toMatch(/NaN|Infinity/i);
+      /**
+       * ⚠️ **Also unreachable today, and also kept deliberately** — the same family as
+       * the `Number.isFinite` limb above, and recorded here (EV-214 fact 3) because the
+       * file did not say so. `getBoundingClientRect().width` is never negative, and
+       * `senior-qa` tried to kill this one: a `scaleX(-2)` mutant reports **+200 %**,
+       * not −200 %, so it is the over-100 % limb below that catches it. *"I could not
+       * construct one"* is the answer behind it. Do not report it as an unkilled mutant,
+       * and do not delete it as dead weight: it guards a future `drawnPercent` read from
+       * a source that CAN be negative (an attribute, a CSS variable, an SVG length).
+       */
       expect(picture.drawnPercent, `${where} draws a NEGATIVE bar: ${drawn}`).toBeGreaterThanOrEqual(
         -1
       );
@@ -569,4 +583,167 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
       "no spec forbids the sentence any more — this scan would now pass on an empty repo"
     ).toBeGreaterThan(0);
   });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-214 — **P-ADH C2: a picture nothing can measure is not allowed to exist.**
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-214-adherence-picture-has-a-measurable-box.md`
+ * (parent: `EV-210-adherence-never-overstates.md`, property **P-ADH**, consequence
+ * **C2 — the picture equals the numbers**).
+ *
+ * 🔴 **The mechanism this forbids: an UNMEASURABLE picture alongside measured ones.**
+ * Everything above this line measures a drawn box against the two figures printed in
+ * its row, and counts the boxes it measured so it cannot pass by finding none. Both
+ * halves are defeated by the same one-line change, which `staff-engineer` constructed
+ * against merged code with the whole suite green (256 passed, 11 EV-210b tests
+ * included): **keep every honest bar, and ADDITIONALLY paint the current week's
+ * progress as a `linear-gradient` behind its own figures.** `minimumBars` is satisfied
+ * by the six honest bars, and the gradient has **no layout box of its own**, so the
+ * geometric limb never sees it. Rendered, that gave Lina a **fully painted** bar beside
+ * "2 / 4 sessions" — mechanism 2 of EV-210's own table, restored.
+ *
+ * So this limb is **structural, not geometric**: inside a week row, nothing paints a
+ * background image at all. A flat `background-color` is untouched (a colour cannot
+ * encode a ratio positionally; only an image can), and the geometry limb, `minimumBars`
+ * and the `overflow:hidden` behaviour are deliberately not touched here — EV-214 is a
+ * different mechanism, not a stronger version of that one.
+ *
+ * **Why TWO reads and not just the computed one the AC names.** AC1 asks for the
+ * computed value, because a gradient can arrive from a stylesheet or a custom property
+ * where no inline attribute exists. But the computed read alone is **green on half of
+ * the bypass**, and this was measured rather than reasoned:
+ *
+ *   · **Lina** — `linear-gradient(90deg, var(--blue-500) 100%, transparent 0%)` computes
+ *     to `linear-gradient(90deg, rgb(79, 124, 255) 100%, rgba(0, 0, 0, 0) 0%)`. Caught.
+ *   · **Ines** — the SAME expression with `done / plannedSoFar = 1 / 0` emits
+ *     `…var(--blue-500) Infinity%…`. `Infinity%` is not a valid `<length-percentage>`,
+ *     so Chrome discards the whole declaration at parse time and
+ *     `getComputedStyle(el).backgroundImage` is **`none`**. Witnessed, not assumed.
+ *
+ * A ban that reads only what painted is therefore weakest exactly where the renderer is
+ * most broken — and the 1/0 row is not benign, because the same expression paints a
+ * flattering 100 % the moment `plannedSoFar` is 1 rather than 0. So the DECLARATION is
+ * banned as well as the paint, and neither read subsumes the other.
+ *
+ * **What this limb does NOT cover, stated rather than assumed:**
+ *   ✗ `<canvas>` and `<img>` as adherence pictures. Nobody has constructed either, and
+ *     a canvas HAS a layout box, so it is a different mechanism with a different answer.
+ *     EV-214 rejects them deliberately: banning a thing with no witness is the same
+ *     defect as permitting one. If someone constructs one, that is its own row.
+ *   ✗ anything outside a week row. A decorative background elsewhere on the page is a
+ *     design decision, not an adherence picture.
+ *   ✗ a background image applied to a PSEUDO-element (`::before` / `::after`) of a row.
+ *     `getComputedStyle(el)` without a pseudo argument does not report it and the
+ *     inline attribute cannot express it. Not constructed here either — recorded so the
+ *     next reader does not have to infer the reach from the assertion.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/** One element inside a week row, as the two reads that can reveal a painted picture. */
+interface RowElement {
+  tag: string;
+  /** `getComputedStyle(el).backgroundImage` — what actually paints. */
+  computed: string;
+  /** The raw inline `style` attribute — what was asked for, valid or not. */
+  inline: string;
+}
+
+interface RowPaint {
+  /** The row's printed week-commencing date, for the failure message. */
+  date: string;
+  /** The row's whole text, so a row whose date column moved is still identifiable. */
+  rowText: string;
+  elements: RowElement[];
+}
+
+/**
+ * A background-image value in an inline `style` attribute.
+ *
+ * It matches the VALUE of a `background` / `background-image` declaration, so the honest
+ * bars — `background:var(--blue-500)` and `background:var(--surface-3)` — do not match,
+ * and a `background-color` never can. `url(`, `image-set(` and `element(` are listed
+ * beside the gradients because they are the other ways a CSS box paints an image; none
+ * of them has been constructed on this surface.
+ */
+const INLINE_BACKGROUND_IMAGE = /background(-image)?\s*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
+
+/** Every element inside every week row — the row itself included — with both reads. */
+async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
+  return region.locator("li").evaluateAll((rows) =>
+    rows.map((row) => ({
+      // The date column is the row's first child. Read from its own element: the row's
+      // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
+      date: (row.firstElementChild?.textContent ?? "").trim(),
+      rowText: (row.textContent ?? "").trim(),
+      // The row itself is included — AC1 says "every element inside it INCLUDING the row
+      // itself", because a gradient on the `li` paints behind all three columns at once.
+      elements: [row, ...Array.from(row.querySelectorAll<HTMLElement>("*"))].map((el) => ({
+        tag: el.tagName.toLowerCase(),
+        computed: getComputedStyle(el).backgroundImage,
+        inline: el.getAttribute("style") ?? "",
+      })),
+    }))
+  );
+}
+
+test.describe("EV-214 AC1 / P-ADH C2 — no week row paints a picture that has no box to measure", () => {
+  /**
+   * EV-210b's own four worlds — AC1 adds no fixture. `minimumElements` is a fact about
+   * the FIXTURE and the row's structure (eight rows, each at least the `li` plus a date
+   * span and a figures span), not about what the renderer chooses to draw: without it an
+   * iteration that found no rows, or rows with no children, would satisfy every
+   * assertion inside the loop. That is the failure mode nine C3 guards shipped with.
+   */
+  const WORLDS: { name: string; id: string; weeks: number; minimumElements: number }[] = [
+    { name: "Ines — the done > plannedSoFar current week (1 / 3, plannedSoFar 0)", id: INES, weeks: 8, minimumElements: 24 },
+    { name: "Lina — a no-plan week mid-window and a partial current week (2 / 4)", id: LINA, weeks: 8, minimumElements: 24 },
+    { name: "Tobias — eight weeks that all had a plan", id: TOBIAS, weeks: 8, minimumElements: 24 },
+    { name: "Noor — eight REAL 0 % weeks", id: NOOR, weeks: 8, minimumElements: 24 },
+  ];
+
+  for (const world of WORLDS) {
+    test(`P-ADH C2 (EV-214): nothing inside a week row paints a background image — ${world.name}`, async ({
+      page,
+    }) => {
+      await signIn(page);
+      await page.goto(`/clients/${world.id}`);
+      await expect(block(page, ADHERENCE)).toBeVisible();
+
+      const rows = await paintedElementsInWeekRows(block(page, ADHERENCE));
+      expect(rows.length, `${world.name}: the adherence block rendered no week rows at all`).toBe(
+        world.weeks
+      );
+
+      const offences: string[] = [];
+      let inspected = 0;
+      for (const row of rows) {
+        for (const element of row.elements) {
+          inspected += 1;
+          const where = `${world.name} — week row "${row.date}" ("${row.rowText}"), <${element.tag}>`;
+          if (element.computed !== "none") {
+            offences.push(`${where} PAINTS background-image: ${element.computed}`);
+          } else if (INLINE_BACKGROUND_IMAGE.test(element.inline)) {
+            // Declared but not painted: an invalid value (`Infinity%`) that Chrome
+            // dropped. Same mechanism, one bad division away from painting.
+            offences.push(`${where} DECLARES a background image: style="${element.inline}"`);
+          }
+        }
+      }
+
+      expect(
+        offences,
+        "A week row paints a picture of adherence that nothing can measure. P-ADH C2 says the " +
+          "picture IS the two numbers printed beside it; a background image has no layout box, " +
+          "so the geometric limb above cannot check it against them — it is the EV-214 bypass " +
+          "(an unmeasurable picture ALONGSIDE bars that already satisfy `minimumBars`). The fix " +
+          "belongs in the renderer: draw the ratio as a measurable box, or draw nothing."
+      ).toEqual([]);
+
+      expect(
+        inspected,
+        `${world.name}: only ${inspected} elements were read inside the week rows, so this ` +
+          `check was very nearly vacuous (the fixture guarantees at least ${world.minimumElements})`
+      ).toBeGreaterThanOrEqual(world.minimumElements);
+    });
+  }
 });

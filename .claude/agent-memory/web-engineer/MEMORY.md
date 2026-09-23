@@ -19,3 +19,4 @@
 - [getByText is a case-insensitive substring](playwright-gettext-is-case-insensitive-substring.md) — "Saved." matches "…Nothing was saved."; scope a locator, never .first()
 - [An empty state names what was absent](an-empty-state-must-name-what-was-absent.md) — a 0/0 gated on a plan row is not "no sessions"; two true blocks can make one false page
 - [A fixture without the shape cannot guard it](a-fixture-without-the-shape-cannot-guard-it.md) — sabotage the branch and watch the guard go red, or it is decoration
+- [An invalid CSS value computes to `none`](an-invalid-css-value-computes-to-none.md) — `Infinity%` kills the declaration; ban the inline value too, not just the painted one
