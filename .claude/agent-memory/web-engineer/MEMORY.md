@@ -19,10 +19,12 @@
 - [getByText is a case-insensitive substring](playwright-gettext-is-case-insensitive-substring.md) — "Saved." matches "…Nothing was saved."; scope a locator, never .first()
 - [An empty state names what was absent](an-empty-state-must-name-what-was-absent.md) — a 0/0 gated on a plan row is not "no sessions"; two true blocks can make one false page
 - [A fixture without the shape cannot guard it](a-fixture-without-the-shape-cannot-guard-it.md) — sabotage the branch and watch the guard go red, or it is decoration
-- [An invalid CSS value computes to `none`](an-invalid-css-value-computes-to-none.md) — `Infinity%` kills the declaration; ban the inline value too, not just the painted one
+- [An invalid CSS value computes to `none`](an-invalid-css-value-computes-to-none.md) — `Infinity%` kills the declaration; close it with a fixture row that parses (ADR-0024), not a text read
 - [A box is not the only way to paint a ratio](a-box-is-not-the-only-way-to-paint-a-ratio.md) — ::before and inset box-shadow draw a full bar past a background-image ban
 - [getComputedStyle takes a second argument](getcomputedstyle-takes-a-second-argument.md) — ::before paints a full bar the default call reports as none; never disclose "the obvious tool does not"
-- [An inline denylist is one var() hop wide](an-inline-denylist-is-one-var-hop-wide.md) — a custom property plus Infinity% blinds both reads, and --é-paint walks past any name charset
+- [An inline denylist is one var() hop wide](an-inline-denylist-is-one-var-hop-wide.md) — HISTORY: four re-spellings walked past it; EV-218 deleted it
 - [Paint channels are a table, not three reads](a-paint-channel-list-is-data-not-three-reads.md) — getPropertyValue + per-entry initial + a pinned count; an accessor a browser lacks reads as a silent pass
 - [Photograph the mutant, on the right scanline](a-paint-probe-must-sample-where-the-channel-paints.md) — a full border-image bar reads 0.04 at mid-row; decode the PNG, scan several lines, control first
 - [A false reason for a boundary](a-false-reason-for-a-boundary-is-worse-than-none.md) — "a colour cannot draw a ratio" was false; the reader who trusts it never tries the construction
+- [A rendered ratchet cannot hold an unprinted field](a-rendered-ratchet-cannot-hold-an-unprinted-field.md) — plannedSoFar is never printed; a check in a table loop dies with the row; state a weekday's tuple to test it
+- [The day-unit bound is not enforced](the-day-unit-bound-is-not-enforced.md) — api takes a future completion date, so done − plannedSoFar ≤ 1 is an assumption, not a constraint

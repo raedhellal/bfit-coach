@@ -1,6 +1,6 @@
 ---
 name: an-invalid-css-value-computes-to-none
-description: A gradient built from a divide-by-zero renders `Infinity%`, which is invalid CSS — Chrome drops the whole declaration and getComputedStyle reports `none`, so a computed-value ban misses it
+description: A divide-by-zero gradient renders `Infinity%`, Chrome drops the declaration and computed reads say `none` — close it with a fixture row that parses, not an inline text read (ADR-0024)
 metadata:
   type: project
 ---
@@ -21,9 +21,10 @@ discarded at parse time and the element paints nothing.
 benign either: the same renderer paints a flattering 100 % as soon as `plannedSoFar`
 is 1 instead of 0, so the day of the week decides whether the guard binds.
 
-**How to apply:** ban the **declaration** as well as the painted result — read
-`getComputedStyle(el).backgroundImage` *and* the inline `style` attribute for a
-background-image value (`gradient`, `url(`, `image-set(`). Neither read subsumes the
-other: the computed read catches a gradient arriving from a stylesheet or a CSS custom
-property, the inline read catches one Chrome refused to parse. Related:
-[[a-picture-with-no-text-is-unassertable]].
+**How to apply (SUPERSEDED 2026-09-23 by ADR-0024 / EV-218):** do NOT answer this with a
+text read of the inline `style` attribute — that denylist was walked past four times by
+re-spelling (`var()` hop, `--é-paint`, `linear-gradi\65 nt(`, `/*;*/`) and EV-218 deleted it.
+Read only post-parse, test presence (`!== initial`) never value text, and close the blind spot
+in the FIXTURE: give a world a row where the hazard expression yields a value that parses
+(Lina `[3, 4, 2]` → 150 %). Related: [[a-picture-with-no-text-is-unassertable]],
+[[a-rendered-ratchet-cannot-hold-an-unprinted-field]].

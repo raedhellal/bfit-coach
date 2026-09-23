@@ -80,7 +80,10 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
  *     🔴 **B3 is now CLOSED, by the EV-214 section at the bottom of this file** — a
  *     structural limb, because a thing with no box cannot be measured by a limb that
  *     measures boxes. `scaleX`, `flex-basis`, `border-*-width` and inline `width` are
- *     all caught here, geometrically, as before.
+ *     all caught here, geometrically, as before. ⚠️ **Since EV-218 the red is on Lina's
+ *     row, not Ines's**: Lina's current week is now `3 / 4` with `plannedSoFar = 2`,
+ *     and B3 re-run there is 3 failed with Ines GREEN — see the EV-218 block below
+ *     before reading that green as a lost witness.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -178,8 +181,10 @@ async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
             paints: box.width > 0.5 && box.height > 0.5,
           };
         })
-        // Not a picture: an empty grid cell holding a column open. It has a width but no
-        // height, so it paints nothing — and it has no `data-fill` either.
+        // Not counted as a picture: an empty grid cell holding a column open, with a width,
+        // no height and no `data-fill`. That is a choice about what this read measures, NOT
+        // a claim that such a box cannot paint — an `outline` around a zero-height box does
+        // paint, and nothing here catches it (BUG-228, carded, not fixed in EV-218).
         .filter((p) => p.paints || p.dataFill !== null)
         .map(({ paints: _paints, ...picture }) => picture);
       return {
@@ -189,6 +194,53 @@ async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
       };
     })
   );
+}
+
+/**
+ * A trainee's `adherenceSeries([...])` tuples, read from the fixture SOURCE, whitespace
+ * removed, oldest first. A source read because nothing else can see `plannedSoFar`: it
+ * is never printed, and `coachApi.fixture.ts` is `import "server-only"` with `PROGRESS`
+ * unexported, so a spec cannot import the derived value.
+ *
+ * ⚠️ Comments are stripped FIRST. The first cut of this guard matched the paragraph in
+ * the fixture that EXPLAINS the tuple, so deleting the tuple left it green — a guard
+ * reading its own documentation back and reporting it as protection. It was caught by
+ * mutating the fixture, which is the only way any of these are caught.
+ *
+ * The PROGRESS entry, not the overview one: both are keyed `[<NAME>_ID]` and only one of
+ * them holds the series. "the part that contains `adherenceSeries(`" is NOT enough — the
+ * part that starts at the OVERVIEW entry runs on to the end of the file and contains
+ * everybody else's series, so it matched, and the guard read LINA's week and went red on
+ * correct code. The entry is the part whose `adherenceSeries([` comes before the NEXT
+ * trainee key — and it is the CALL that is looked for, with its bracket, not the
+ * substring `adherenceSeries(`, which also matches the function's own declaration
+ * several hundred lines earlier.
+ */
+function fixtureSeriesTuples(key: "INES_ID" | "LINA_ID"): string[] {
+  const fixture = readFileSync(join(__dirname, "..", "src", "lib", "coachApi.fixture.ts"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const CALL = "adherenceSeries([";
+  const NEXT_ENTRY = /_ID\]: \(\) => \(\{/;
+  const entry = fixture
+    .split(`[${key}]: () => ({`)
+    .slice(1)
+    .find((part) => {
+      const call = part.indexOf(CALL);
+      const next = part.search(NEXT_ENTRY);
+      return call !== -1 && (next === -1 || call < next);
+    });
+  expect(entry, `${key}'s progress entry was not found in the fixture`).toBeTruthy();
+  const body = entry!.slice(entry!.indexOf(CALL) + CALL.length);
+  return (body.slice(0, body.indexOf("])")).match(/\[[^\]]*\]|null/g) ?? []).map((t) =>
+    t.replace(/\s/g, "")
+  );
+}
+
+/** The LAST tuple of a trainee's fixture series — the only one whose third element counts. */
+function lastFixtureTuple(key: "INES_ID" | "LINA_ID"): string | undefined {
+  const tuples = fixtureSeriesTuples(key);
+  return tuples[tuples.length - 1];
 }
 
 /** The figures printed in the row, or `null` if the row prints none ("No plan"). */
@@ -368,49 +420,16 @@ test.describe("EV-210b AC3 / P-ADH C2 — the bar and the numbers beside it are 
    * `plannedSoFar` has NO rendering — the current week draws no bar and the number is
    * never printed — so the only thing that makes a `plannedSoFar` renderer detectable is
    * a world where `done > plannedSoFar`. The derived value in `adherenceSeries` is
-   * `min(planned, elapsedThisWeek)`, which gives `done > plannedSoFar` on a Monday and
-   * NOT on a Friday: a world relying on it would stop discriminating for three days in
-   * seven, which is precisely the shape of a guard that reads as protection and binds to
+   * `min(planned, elapsedThisWeek)`, which for Ines's `[1, 3]` gives `done > plannedSoFar`
+   * on a Monday ONLY: a world relying on it would stop discriminating six days in seven,
+   * which is precisely the shape of a guard that reads as protection and binds to
    * nothing. So Ines states it, and this asserts she still does.
    */
   test("the hazard world still HAS the hazard — done > plannedSoFar, stated not derived", () => {
-    /**
-     * ⚠️ Comments are stripped FIRST. The first cut of this guard matched the paragraph
-     * in the fixture that EXPLAINS the tuple, so deleting the tuple left it green — a
-     * guard reading its own documentation back and reporting it as protection. It was
-     * caught by mutating the fixture, which is the only way any of these are caught.
-     */
-    const fixture = readFileSync(join(__dirname, "..", "src", "lib", "coachApi.fixture.ts"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
-
-    /**
-     * The PROGRESS entry, not the overview one: both are keyed `[INES_ID]` and only one
-     * of them holds the series. "the part that contains `adherenceSeries(`" is NOT
-     * enough — the part that starts at her OVERVIEW entry runs on to the end of the file
-     * and contains everybody else's series, so it matched, and the guard read LINA's
-     * week and went red on correct code. The entry is the part whose `adherenceSeries([`
-     * comes before the NEXT trainee key — and it is the CALL that is looked for, with
-     * its bracket, not the substring `adherenceSeries(`, which also matches the
-     * function's own declaration several hundred lines earlier.
-     */
-    const CALL = "adherenceSeries([";
-    const NEXT_ENTRY = /_ID\]: \(\) => \(\{/;
-    const entry = fixture
-      .split("[INES_ID]: () => ({")
-      .slice(1)
-      .find((part) => {
-        const call = part.indexOf(CALL);
-        const next = part.search(NEXT_ENTRY);
-        return call !== -1 && (next === -1 || call < next);
-      });
-    expect(entry, "Ines's progress entry was not found in the fixture").toBeTruthy();
-
-    const body = entry!.slice(entry!.indexOf(CALL) + CALL.length);
-    const tuples = body.slice(0, body.indexOf("])")).match(/\[[^\]]*\]|null/g) ?? [];
+    const tuples = fixtureSeriesTuples("INES_ID");
     expect(tuples.length, "Ines's series is no longer eight weeks").toBe(8);
     expect(
-      tuples[tuples.length - 1].replace(/\s/g, ""),
+      tuples[tuples.length - 1],
       "Ines's current week no longer states `[1, 3, 0]` (done 1 / planned 3 / plannedSoFar 0). " +
         "Without done > plannedSoFar on EVERY weekday, nothing on this surface can tell a " +
         "`plannedSoFar` renderer from a `planned` one."
@@ -586,9 +605,9 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * EV-214 / EV-215 / EV-216 — **P-ADH C2: no element in a week row has a non-initial
- * value on any of the paint channels enumerated in `PAINT_CHANNELS`, and none declares
- * an image function in its inline `style` attribute.**
+ * EV-214 / EV-215 / EV-216 / EV-218 — **P-ADH C2: no element in a week row has a
+ * non-initial computed value on any of the paint channels enumerated in
+ * `PAINT_CHANNELS`.**
  *
  * 🔴 **That sentence is the PREDICATE, and it replaced a banner that named the
  * MECHANISM CLASS** ("a picture nothing can measure is not allowed to exist"). The
@@ -613,36 +632,25 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * "2 / 4 sessions" — mechanism 2 of EV-210's own table, restored.
  *
  * So this limb is **structural, not geometric**: for every element inside a week row, it
- * **READS**, once, at the default viewport, two kinds of thing:
+ * **READS**, once, at the default viewport, **one kind of thing — the computed channels
+ * enumerated in `PAINT_CHANNELS`** (EV-216): a CSS property on one of an element's boxes,
+ * asserted equal to that property's initial value, with a red build naming the entry
+ * that fired. **That table is the ONLY list of covered channels in this file, and it is
+ * the one to read: this sentence deliberately does not repeat it.** It used to, naming
+ * three `backgroundImage` reads, and it went on saying "four channels" for a whole review
+ * after the limb had grown to twelve — the seventh falsifiable capability sentence in
+ * this file, and the first one ABOVE the banner rather than in it. See the EV-216
+ * disclosure above `PaintChannel` for what the table reads, when, and what it does not
+ * read.
  *
- *   1. 🔴 **the computed channels enumerated in `PAINT_CHANNELS`** (EV-216) — a CSS
- *      property on one of an element's three boxes, its own and both generated ones,
- *      asserted equal to that property's initial value, with a red build naming the
- *      entry that fired. **That table is the ONLY list of covered channels in this
- *      file, and it is the one to read: this sentence deliberately does not repeat it.**
- *      It used to, naming three `backgroundImage` reads, and it went on saying "four
- *      channels" for a whole review after the limb had grown to twelve — the seventh
- *      falsifiable capability sentence in this file, and the first one ABOVE the banner
- *      rather than in it. See the EV-216 disclosure above `PaintChannel` for what the
- *      table reads, when, and what it does not read;
- *   2. the inline `style` attribute, where **one of four literal spellings** —
- *      `gradient(`, `url(`, `image-set(`, `element(` — appears either in a `background`
- *      / `background-image` value or in a `--…:` declaration in the same attribute
- *      (**EV-215 AC3** — `--adh-paint: linear-gradient(…);
- *      background-image: var(--adh-paint)` puts no such spelling in the property the
- *      first pattern reads).
- *
- *      🔴 **Four spellings, NOT "an image function" — that sentence was falsified.** It
- *      said "an image function" until `senior-qa` wrote
- *      `background-image: linear-gradi\65 nt(90deg, …)`: a CSS ident escape inside the
- *      function name, which Chrome tokenises as `linear-gradient(` and PAINTS. With a
- *      valid ratio the computed channel catches it (4 failed); on Ines's `1 / 0` row the
- *      `Infinity%` value makes the computed read `none` and it is a **total escape — 3
- *      failed, Ines green**. That is the reach of the DENYLIST, unchanged from EV-214
- *      (`INLINE_BACKGROUND_IMAGE` is byte-identical on `dbf3589`, verified with
- *      `git show`), and EV-215 deliberately does not widen it: replacing the denylist
- *      with a resolver is ruled out by name in the card and handed to `EV-216`. It is
- *      carded with QA's two runs as its witnesses.
+ * 🔴 **It does NOT read the inline `style` attribute (EV-218, ADR-0024).** Until EV-218
+ * a second read ran two text patterns over that attribute (`INLINE_BACKGROUND_IMAGE`,
+ * `INLINE_CUSTOM_PROPERTY_IMAGE`) to see a declaration the CSS parser had discarded. It
+ * matched spellings, and four were walked past it — a `var()` hop, `--é-paint`,
+ * `linear-gradi\65 nt(`, and a `;` inside a comment. EV-218 deleted both patterns and
+ * added the fixture row that makes the renderer they were standing in for emit a value
+ * that parses: see the EV-218 block below. The deleted text is at
+ * `969519c:qa/coach-adherence-property.spec.ts`.
  *
  * ⚠️ **That is a statement about what it reads, deliberately, and not about what can be
  * drawn.** Every totality sentence written about this guard has been falsified by the
@@ -675,48 +683,20 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * and the `overflow:hidden` behaviour are deliberately not touched here — EV-214 is a
  * different mechanism, not a stronger version of that one.
  *
- * **Why the INLINE read as well as the computed ones.** EV-214 AC1 asks for the
- * computed value, because a gradient can arrive from a stylesheet or a custom property
- * where no inline attribute exists. But the computed read alone is **green on half of
- * the bypass**, and this was measured rather than reasoned:
+ * **What the computed read cannot see, measured rather than reasoned** — and the reason
+ * EV-214 and EV-215 once added an inline read beside it, which EV-218 removed:
  *
  *   · **Lina** — `linear-gradient(90deg, var(--blue-500) 100%, transparent 0%)` computes
- *     to `linear-gradient(90deg, rgb(79, 124, 255) 100%, rgba(0, 0, 0, 0) 0%)`. Caught.
+ *     to `linear-gradient(90deg, rgb(79, 124, 255) 100%, rgba(0, 0, 0, 0) 0%)`. Read.
  *   · **Ines** — the SAME expression with `done / plannedSoFar = 1 / 0` emits
  *     `…var(--blue-500) Infinity%…`. `Infinity%` is not a valid `<length-percentage>`,
  *     so Chrome discards the whole declaration at parse time and
  *     `getComputedStyle(el).backgroundImage` is **`none`**. Witnessed, not assumed.
  *
- * A ban that reads only what painted is therefore weakest exactly where the renderer is
- * most broken — and the 1/0 row is not benign, because the same expression paints a
- * flattering 100 % the moment `plannedSoFar` is 1 rather than 0. So the DECLARATION is
- * banned as well as the paint, and **neither read subsumes the other — witnessed in BOTH
- * directions**, which is not what the mutants above show on their own: under B3, Lina is
- * caught by the computed clause but would also be caught by the inline one, so two
- * clauses killing the same mutant shows neither to be necessary. The reviewer supplied
- * the missing half by delivering the same gradient from `globals.css` with the ratio in
- * a custom property and **no inline `background` at all** → 4 red, from the computed
- * clause alone.
- *
- * **EV-215 AC3 — and why the custom-property pattern is its own clause with its own
- * witness.** The inline read is a denylist over attribute TEXT, so one hop of `var()`
- * moves the image function out of the declaration it reads. On its own that hop is
- * partial — the computed clause still catches the half that paints — so killing it
- * would show nothing about either clause. Combined with the `Infinity%` shape it is
- * total: `--adh-paint: linear-gradient(90deg, var(--blue-500) <done/plannedSoFar> …);
- * background-image: var(--adh-paint)` on Ines's `1 / 0` row computes to `none` AND
- * declares no image function in a `background` value. That COMBINATION is the mutant
- * carried out for this clause, and it is killed by this clause alone: 4 red, with the
- * three computed channels and `INLINE_BACKGROUND_IMAGE` all green on it. Independence was
- * shown by disabling THIS clause alone against that mutant: Ines goes back to green while
- * the other three worlds stay red, so no other clause kills the combination.
- *
- * 🔴 **And the same mutant with one accent — `--é-paint` — is the witness that killed the
- * FIRST version of this clause.** A pattern pinned to the ASCII spelling of the ident, or
- * to an anchor admitting only whitespace before it, is walked past by a rename or by a
- * `/*comment*\/`, with everything else identical. The pattern now reads `--` to the
- * declaration's colon and neither. Both escapes are recorded at the constant itself,
- * because a sentence describing a regex belongs beside the regex.
+ * A declaration the parser discards leaves nothing on the computed side for this limb to
+ * read, on any channel. EV-214 answered that with a text pattern over the declaration;
+ * EV-218 answers it with a fixture row where the same expression yields a value that
+ * parses. The EV-218 block below says which world carries which witness now.
  *
  * **What this limb does NOT cover, stated rather than assumed:**
  *   ✗ `<canvas>` and `<img>` as adherence pictures. Nobody has constructed either, and
@@ -732,16 +712,18 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     and they are now three of the entries in `PAINT_CHANNELS`. The three mutants and
  *     their independence witnesses are recorded in the EV-216 banner below.
  *   ✓ **`url(` IS witnessed**, by `senior-qa`'s M-Q3: `background: url("data:image/svg+
- *     xml,…") no-repeat 0 0 / <pct>% 100%` goes red in BOTH directions at once — Ines by
- *     the INLINE clause alone (the `Infinity%` size discards the shorthand, so the
- *     computed value is `none`) and Lina by the COMPUTED clause. It is the best witness
- *     this limb has for the two clauses being independently load-bearing.
- *   ✗ `image-set(` and `element(` are in the inline pattern with **no witness in either
- *     direction** — nobody has constructed one and nobody has shown one cannot be built.
- *     They are listed for completeness of the mechanism, not as tested reach.
+ *     xml,…") no-repeat 0 0 / <pct>% 100%`. Until EV-218 it went red in both directions
+ *     at once — Ines by the inline clause alone, Lina by the computed one. Re-run by
+ *     EV-218 with the declaration built by React (no HTML string; the page's `<svg>` count
+ *     equal to the control's, so nothing was injected):
+ *     Lina's current row paints **0.92–1.00 of its width beside "3 / 4 sessions"**
+ *     (control 0.000), computed `url("data:image/svg+xml,…")` — **3 failed, Ines GREEN**,
+ *     because the `Infinity%` size discards the shorthand there and nothing paints.
+ *     (`image-set(` and `element(` were listed in the deleted inline pattern with no
+ *     witness either way; nothing in this file names them any more.)
  *   ⛔ **COULD NOT CONSTRUCT: the image function split across a `var()` boundary.**
- *     `--adh-fn: linear-gradient; background-image: var(--adh-fn)(90deg, …)` would put no
- *     image function in either inline pattern, and it does not paint: Chrome does not
+ *     `--adh-fn: linear-gradient; background-image: var(--adh-fn)(90deg, …)` was built
+ *     against the inline patterns EV-218 deleted, and it does not paint: Chrome does not
  *     re-tokenise a substituted ident into a function token. The reviewer ran it — 15
  *     passed, and **zero `PAINTS` offences anywhere, including the rows that draw
  *     honestly**. A green suite there is CORRECT rather than a miss, and the way to tell
@@ -755,19 +737,17 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     so the EV-214 section is 4 passed; at t=11s Lina's figures span computes
  *     `linear-gradient(90deg, rgb(79, 124, 255) 100%, …)`. The limb samples one instant;
  *     carded as **EV-217**. What was tried: this is the element's OWN `background-image`
- *     on a channel the limb does read, so neither the pseudo argument nor a wider inline
- *     pattern moves it — only reading again at another instant does.
- *   ✗ 🔴 **a custom property declared on an ANCESTOR of the week rows and spent inside
- *     one.** `--adh-paint` on the `<ul>` (`AdherenceSeries.tsx`, one element above the
- *     rows) with `background-image: var(--adh-paint)` on a row's figures span: 3 failed,
- *     **Ines green** — the same total escape as the `1 / 0` combination, one element
- *     higher. Reviewer-constructed. What was tried: nothing here reads it, because the
- *     scan is `region.locator("li")` plus descendants, so the attribute holding the
- *     declaration is never one of the attributes read, and the three computed channels
- *     are `none` for the `Infinity%` value as before. Widening THIS pattern cannot reach
- *     it — closing it means scanning the ancestor chain or resolving the `var()`, which
- *     is the general CSS resolver EV-215 rules out by name. A `senior-po` card, not a
- *     silent widening.
+ *     on a channel the limb does read, so neither the pseudo argument nor another entry
+ *     in `PAINT_CHANNELS` moves it — only reading again at another instant does.
+ *   · **a custom property declared on an ANCESTOR of the week rows and spent inside
+ *     one** — `--adh-paint` on the `<ul>`, `background-image: var(--adh-paint)` inside a
+ *     row. At EV-215: 3 failed, **Ines green** — the ancestor's attribute was never one
+ *     the inline patterns read. EV-218 reads no declaration on any element, the row's or
+ *     an ancestor's; the computed value is read where it is SPENT. Re-run by EV-218 with
+ *     the declaration on the `<ul>` and the `var()` spent on the current week's `li`:
+ *     Lina's row paints **0.92–1.00 beside "3 / 4 sessions"**, computed
+ *     `linear-gradient(… 150% …)` — **3 failed, Ines GREEN**, because on her row the
+ *     spent value holds `Infinity%` and computes to `none`.
  *   ✗ **a viewport-gated paint.** `@media (max-width: 520px)`. Green at the default
  *     viewport; at 320 px a full blue bar sits behind "2 / 4 sessions". The limb samples
  *     one viewport — and 320 px is the width this portal is swept at by name. Carded as
@@ -786,7 +766,7 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *
  * **WHAT IT READS.** For **every element in the LIGHT DOM inside every week row of the
  * adherence block, the `li` itself included** — the scan is `querySelectorAll("*")`,
- * which does not cross a shadow root, and this app opens none — two kinds of read:
+ * which does not cross a shadow root, and this app opens none — one kind of read:
  *
  *   1. **The computed channels enumerated in `PAINT_CHANNELS`** — one CSS property on
  *      one of the element's three boxes, asserted equal to that property's initial
@@ -794,9 +774,30 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *      listed: the read iterates it, the failure message names the entry that fired,
  *      and a ratcheted count (`PAINT_CHANNELS_EXPECTED`) means removing one is a
  *      deliberate two-line edit rather than a silent one. Adding a channel is one line.
- *   2. **The inline `style` attribute**, through `INLINE_BACKGROUND_IMAGE` and
- *      `INLINE_CUSTOM_PROPERTY_IMAGE` — a denylist over attribute TEXT, documented at
- *      the two constants, with its reach (and three witnessed escapes) recorded there.
+ *
+ *      🔴 **EV-218 (ADR-0024) — read this as an instruction.** Each channel is read
+ *      **after** the CSS parser and asserted only `!== initial`. No clause of this limb
+ *      matches a value against any text, so there is no VALUE spelling for a
+ *      construction to vary — and none may be added (the property NAME is still a
+ *      spelling, which is what `PAINT_CHANNELS` enumerates and EV-216's prefixed-spelling
+ *      rule governs): ADR-0024 M3 measured `-webkit-gradient(linear, …)`
+ *      computing with its author's spelling verbatim, so a computed `/gradient\(/` would
+ *      be walked past. Test that a property is present; never match its value.
+ *      It reads **no declaration**: not the inline `style` attribute (EV-218 deleted
+ *      that read), not a custom property on the row or on an ancestor. So it is blind to
+ *      a declaration the parser **discarded** (`Infinity%`, `NaN%`), which contributes
+ *      no computed value to any box. The renderer that emits `Infinity%` on Ines's
+ *      `1 / 0` row is exercised on **Lina's `3 / 4` row** instead, where the same
+ *      expression yields `150 %`, which parses — see the EV-218 block for which world
+ *      carries which witness. What it does not read is the list below. **If you need
+ *      to know whether a NEW mechanism is caught, build it, confirm it paints, and run
+ *      this limb. Do not reason from this paragraph.**
+ *
+ *      ⚠️ **This FILE still contains TWO text matchers, both in the geometry limb.**
+ *      `not.toMatch(/NaN|Infinity/i)` over `inlineStyle` (EV-210b) appears in two tests:
+ *      the per-bar loop of `expectPictureEqualsFigures` and "the 1 / 0 week". ADR-0024 S2
+ *      records the pattern as redundant on the mutant it was written for and defeated
+ *      by `calc(1 / 0 * 100%)`, and rules its removal a separate row.
  *
  * **WHEN, AND AT WHAT CONFIGURATION.** Once per world, immediately after the adherence
  * block becomes visible, at the config's default viewport, in `next dev` fixture mode.
@@ -814,21 +815,20 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *   · **A time-delayed paint** (`animation … 1ms 8s forwards`) and **a viewport-gated
  *     paint** (`@media (max-width: 520px)`, and 320 px is a width this portal is swept
  *     at by name). What was tried: both arrive on channels this section DOES read — the
- *     element's own `background-image` — so neither a further property nor a wider
- *     inline pattern reaches them. Only reading again, at another instant or another
- *     width, does. A **sampling** gap rather than a channel gap. → **EV-217**.
- *   · **A re-spelling of an image function inside the inline denylist's reach** — an
- *     ident escape (`linear-gradi\65 nt(`), a non-ASCII ident (`--é-paint`), a `;`
- *     inside a comment. What was tried: all three are resolved by the CSS parser BEFORE
- *     a computed read can see them, and the computed clauses are green on the ones that
- *     do not paint (`Infinity%`), so no computed channel added here can close a spelling
- *     gap and no wider regex has survived a reviewer yet. → **EV-218**.
- *   · **A custom property declared on an ANCESTOR of the week rows** (`--adh-paint` on
- *     the `<ul>`) and spent inside one. What was tried: the scan is `li` plus its
- *     descendants, so the attribute carrying the declaration is never one of the
- *     attributes read, and the computed channels are `none` for the `Infinity%` value.
- *     Closing it means scanning the ancestor chain or resolving the `var()` — the
- *     general CSS resolver EV-215 rules out by name. Disclosed in EV-215's `✗` block.
+ *     element's own `background-image` — so no further property reaches them. Only
+ *     reading again, at another instant or another width, does. A **sampling** gap rather than a channel gap. → **EV-217**.
+ *   · **A declaration the CSS parser discarded** — `Infinity%` / `NaN%` in any spelling,
+ *     inline, in a custom property, on the row or on an ancestor. Not read: no
+ *     declaration is, only computed values. What was tried: ADR-0024 M1 found no CSSOM
+ *     channel that reports such a declaration except `getAttribute("style")`, the text
+ *     read EV-218 deleted. The renderer that emits one is exercised on Lina's
+ *     `done > plannedSoFar >= 1` row instead, where its value parses. → **EV-218 /
+ *     ADR-0024**, decided; the reversal triggers are in the ADR.
+ *   · **`getComputedStyle(el).getPropertyValue("--…")`** — a custom property's computed
+ *     token stream. Deliberately unused (ADR-0024 M2): ident escapes survive in it
+ *     unresolved, so reading it is text matching again, and `:root` properties inherit
+ *     into every element. A clause with its own witness if anyone wants it, not a quiet
+ *     addition.
  *   · 🔴 **A proportional bar painted with NO image function at all — the ratio in the
  *     BOX, the paint a flat colour**: `::first-letter { padding-right: <ratio>vw;
  *     background-color: rgba(79,124,255,.85) }`. CONSTRUCTED and PAINTING — 1.000 of the
@@ -943,6 +943,125 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * what the reads DO, and none of them is a statement about what can be drawn.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-218 — **The guard stops matching spellings.** ADR-0024, option (d).
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-218-the-guard-stops-matching-spellings.md`.
+ * ADR: `b-fit-mobile/docs/architecture/adr/0024-the-adherence-paint-guard-reads-after-the-parser.md`.
+ *
+ * **What changed.** The two inline text patterns and the inline read were deleted. Lina's
+ * current week went from `[2, 4]` to `[3, 4, 2]` and her *Adherence this week* tile from
+ * `2 / 4` to `3 / 4`. Her row is the fixture's only week with `done > plannedSoFar` AND
+ * `plannedSoFar >= 1`. On it, a renderer drawing `done / plannedSoFar` emits `150 %`,
+ * which parses, so this section reads it. On Ines's `1 / 0` row the same renderer emits
+ * `Infinity%`, which the parser drops.
+ *
+ * **Why one row is enough.** The renderer is ONE expression. On any row with
+ * `plannedSoFar >= 1` and `done > plannedSoFar` it yields a finite percentage over 100,
+ * and a finite percentage parses. Only `plannedSoFar = 0` yields a value the parser drops.
+ * So one row of the first kind puts that expression's output where a post-parse read
+ * sees it. The argument uses no bound on the ratio, and there is none to use: the api
+ * does not hold `done − plannedSoFar ≤ 1`. `LogWorkoutCompletionUseCase.complete` takes
+ * the client's `date` with no future-date check, and the adherence read queries Monday to
+ * SUNDAY of the current week, so a completion dated later this week counts in `done` and
+ * not in `plannedSoFar` (EV-248, reproduced as BUG-225). ADR-0024 stated such a bound in
+ * an earlier draft and has withdrawn it.
+ *
+ * 📌 **Earlier records in this file that say "Lina … 2 / 4 sessions" are HISTORY.** They
+ * describe what was measured at the time and are left as written. Her current week now
+ * prints `3 / 4`. The `DECLARES` offences named in the EV-216 records below came from
+ * the deleted inline clauses.
+ *
+ * ── **WHICH WORLD CARRIES WHICH WITNESS, after this row** (EV-218 AC1) ──────────────
+ *
+ *   · **Lina `[3, 4, 2]` — now carries the `done / plannedSoFar` renderer, on every
+ *     weekday.** Paint limb: that renderer's value parses and paints on her current row.
+ *     Geometry limb: a bar drawn from it is 150 % against a printed 75 %. Held by three
+ *     assertions: `currentWeek` in the loop below, the EV-218 test after the loop (her
+ *     table entry and her last tuple in source), and `coach-monitoring.spec.ts`'s tile
+ *     test (tile equals last row).
+ *     🔴 **Those pins hold the tuple's TEXT, not `adherenceSeries` honouring it.** Break
+ *     the code that applies the override (`plannedSoFar: derivedSoFar`) and leave the
+ *     tuple alone: every pin stays green, and `plannedSoFar` falls back to the weekday.
+ *     Reviewer-constructed: on a simulated Monday with construction 3 planted, the
+ *     WHOLE GATE passed (262 tests, exit 0); on a real Wednesday the same breakage gave
+ *     4 failed, and a simulated Tuesday and Sunday each gave 4 failed (`senior-qa`). So
+ *     under that regression the paint limb is blind only on a **UTC** Monday (the
+ *     fixture reads `getUTCDay`), and only to a renderer whose value the parser DISCARDS
+ *     — there every current week derives `plannedSoFar = 0`. Nothing
+ *     notices the override being ignored either — on a Wednesday Ines's stated `1 / 0`
+ *     silently becomes a derived `1 / 2`. Ines has had the same exposure since EV-210b;
+ *     what is new is that the paint limb now depends on it, because the inline read
+ *     that covered the plain spellings on a Monday is gone. Carded separately (move
+ *     `adherenceSeries` / `WeekSpec` out of the `server-only` module and unit-test that a
+ *     stated last tuple's `plannedSoFar` survives any clock); not built here.
+ *   · **Ines `[1, 3, 0]` — LOSES her C2 paint witness for a `done / plannedSoFar`
+ *     renderer, and only for that.** Her rows are still read by the paint limb on every
+ *     channel like every other world's; it is that renderer which emits `Infinity%` on
+ *     her current row, where nothing paints, every channel computes initial, and her
+ *     world is green BY DESIGN. She KEEPS everything else she had: the EV-210b AC3 geometry
+ *     loop, "the 1 / 0 week" test and her source pin. All three assert **C2**, not C3.
+ *     ⚠️ ADR-0024 and EV-218's amended AC1 say "Ines keeps C3". She has no C3 test, before
+ *     or after this row: the C3 describe (EV-210b AC4) uses Ruben, Elif, Noor and Kaia.
+ *     What she keeps is EV-210b **AC3**, which asserts C2.
+ *   · **Tobias `[0, 3]` and Noor `[0, 3]` — weekday-dependent.** Their `plannedSoFar` is
+ *     derived, `min(3, days elapsed)`. On any day except Monday the renderer emits a
+ *     finite `0 %`: it computes non-`none` and paints nothing visible (ADR-0024 M4), so
+ *     they go red. On a Monday it emits `NaN%` and they are green. Lina's red does not
+ *     depend on the weekday; theirs does.
+ *
+ * ── **The runs behind that, 2026-09-23 (a Wednesday), on this branch** ────────────────
+ *
+ * Every paint mutant sits on the CURRENT week's `li` only, with
+ * `R = (week.done / week.plannedSoFar) * 100`, and was built through React's style object
+ * rather than an HTML string (the page's `<svg>` count matched the control's). PROBE: the
+ * viewport was screenshotted with a clip grown 24 px past the row, never a full-page
+ * capture, and the blue fraction of the row's width was read on scanlines y = 3, 7, 11
+ * and 14 of the 15 px row. Five were requested; two landed on y = 14.
+ * Control on clean code: **0.000 on every scanline of every world's current row**, and
+ * ≈ 0.83 for an honest full bar (the track is ≈ 0.83 of the row).
+ *
+ *   · **All seven painting constructions**, recorded under their spelling:
+ *     `--adh-paint` + `var()`; `--é-paint` + `var()`; `linear-gradi\65 nt(`;
+ *     `--adh-paint:/*;*\/linear-gradient(…)`; plain `background: linear-gradient(…)` (B3
+ *     / M9-family); `url("data:image/svg+xml,…") … / R% 100%` (M-Q3); and
+ *     `-webkit-gradient(linear, …) … / R% 100%`. For each one, PROBE: Lina's current
+ *     row reads **0.962 / 0.943 / 0.923 / 1.000** at y = 3 / 7 / 11 / 14 beside
+ *     "3 / 4 sessions" (the gaps are glyphs), and
+ *     Ines's current row reads 0.000 on every scanline with computed `none`. RESULT for each:
+ *     **3 failed — Lina, Tobias, Noor — Ines green**, and every offence names
+ *     `[background-image on its own box]`. In the computed values the escape, the
+ *     comment and both `var()` hops are resolved: all four compute as
+ *     `linear-gradient(90deg, rgb(79, 124, 255) 150%, …)`. `-webkit-gradient` does not
+ *     normalise. It computes as
+ *     `-webkit-gradient(linear, 0% 0%, 100% 0%, from(rgb(79, 124, 255)), …)` in its
+ *     author's spelling (ADR-0024 M3). That is why the clause tests presence.
+ *   · **EV-215's ancestor declaration** (`--adh-paint` on the `<ul>`, spent on the
+ *     current `li`): the same probe numbers and the same RESULT.
+ *   · **Clause 4, run on the WHOLE GATE.** Construction 3 was planted and painting, and
+ *     the single `background-image on its own box` entry was removed with the pin
+ *     lowered to 18: **262 passed, exit 0**. Nothing else in the gate kills it.
+ *   · **Clause 8 — does the row do the work?** Monday was simulated by STATING
+ *     `plannedSoFar = 0` on every world's current week, with construction 3 planted.
+ *     With Lina's `[3, 4, 2]` kept: **1 failed, Lina alone**. With Lina also at
+ *     `[3, 4, 0]`: **the paint limb is entirely green**, and the only red is the
+ *     EV-218 source pin. PROBE of that run: every current row reads 0.000, computes
+ *     `none`, and declares `Infinity%` or `NaN%`. The renderer is present and nothing
+ *     here reads it.
+ *   · **Geometry limb** — the current week draws a bar `R %` wide. Lina: **"draws a bar
+ *     WIDER than its track"** (150 %), with 0.83 of the row painted beside "3 / 4
+ *     sessions". Ines is caught first by the `NaN|Infinity` text matcher. With both
+ *     text matchers disabled she is still red by measurement: **"prints 1 / 3 (33.3 %)
+ *     and draws 100.0 %"** (ADR-0024 M6).
+ *   · **The ratchets.** Lina removed from `WORLDS`: 1 failed, the EV-218 test. Third
+ *     element dropped (`[3, 4]`): 1 failed, the EV-218 test. The rendered check stays
+ *     green because the row still prints "3 / 4", and on a Wednesday the derived
+ *     `plannedSoFar` is also 2. Tuple swapped with the week before it: 1 failed, the
+ *     EV-218 test. Tile reverted to `2 / 4`: `coach-monitoring.spec.ts` "the current
+ *     week agrees…" red. Series reverted with the tile kept: 3 failed (the loop's
+ *     `currentWeek`, the EV-218 test, the monitoring tile test).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
 /**
  * One computed read: **one cell of a (box × property) matrix** — a CSS property, on one
  * of the boxes an element owns, with the value of that property which means *this box
@@ -997,8 +1116,8 @@ interface PaintChannel {
  *     prose is not a family until somebody builds the other two.
  *   · `content` — an image function in a generated box's `content`, constructed twice
  *     independently during review and painting a full-width bar beside "2 / 4 sessions"
- *     against this branch with all twelve other channels, both denylists, the geometry
- *     limbs and `minimumBars` green. See its entry below for its two initial values.
+ *     against EV-216's branch with all twelve other channels, both denylists it then had,
+ *     the geometry limbs and `minimumBars` green. See its entry below for its two initial values.
  *
  * And the fourth BOX, `::first-letter` — `background-image`, `box-shadow` and
  * `border-image-source`, with ONE cell beside them empty, measured at a stated box AND a
@@ -1064,8 +1183,8 @@ interface PaintChannel {
  *     `li { background: rgba(79,124,255,.85); -webkit-mask-box-image-source:
  *     linear-gradient(90deg, #000 <ratio>%, transparent <ratio>%);
  *     -webkit-mask-box-image-slice: 0 fill }` — M3's mechanism through the masking
- *     BORDER property, so the paint is a flat COLOUR and no image function exists for
- *     either denylist. PROBE: the current row, printing "21 Sept 2026 — 2 / 4 sessions"
+ *     BORDER property, so the paint is a flat COLOUR and no image function existed for
+ *     either denylist EV-216 still had. PROBE: the current row, printing "21 Sept 2026 — 2 / 4 sessions"
  *     and drawing no honest bar, is **0.957 of its width in blue on every scanline**
  *     (control 0.031), proportional at 0.475 on a finished 2/4 and 0.675 on a 3/4, with
  *     `background-image`, `box-shadow`, `border-image-source`, `mask-image` and
@@ -1128,8 +1247,8 @@ interface PaintChannel {
  *     **0.750 / 0.500 on the finished 3 / 4 and 2 / 4 weeks**, so proportional rather
  *     than constant. RESULT: **4 failed**, 32 offences, every one naming
  *     `[content on ::before]`, zero `DECLARES`. Before the channel existed this mutant
- *     was **16 passed** against this branch with all twelve other channels, both
- *     denylists, the geometry limbs and `minimumBars` green on it — EV-210's mechanism 2
+ *     was **16 passed** against EV-216's branch with all twelve other channels, both
+ *     denylists it then had, the geometry limbs and `minimumBars` green on it — EV-210's mechanism 2
  *     restored, which is why `senior-po` ruled it an entry rather than a disclosure.
  *   · **M3 `mask-image`** — `background: rgba(79,124,255,.35)` (a background COLOUR, so
  *     no `background-image` exists for either EV-214 clause to find) revealed only as far
@@ -1152,7 +1271,8 @@ interface PaintChannel {
  * (and `PAINT_CHANNELS_EXPECTED` lowered by one, so the ratchet was not what went red):
  * **16 passed** every time, for all eight — and for M8 the same run was done across the
  * WHOLE GATE, at 261 passed. Nothing else kills any of them — not the geometry limbs,
- * not `minimumBars`, not the two inline denylists, not the other eighteen channels. Two clauses killing one mutant would show neither to be needed, and
+ * not `minimumBars`, not the two inline denylists (deleted since, by EV-218), not the
+ * other eighteen channels. Two clauses killing one mutant would show neither to be needed, and
  * M5's first version was exactly that and was rebuilt rather than reported.
  *
  * **Clause 8 — would it still have gone red if the bug had been the other one?** The
@@ -1182,8 +1302,8 @@ const PAINT_CHANNELS: PaintChannel[] = [
   /**
    * 🔴 **`BUG-221`, and its SPELLING is a measurement, not a preference.** The masking
    * BORDER image is M3's mechanism through a second property: a flat background COLOUR
-   * revealed only as far as the ratio, so no image function exists for either inline
-   * denylist and all five other properties read initial on every element and every box.
+   * revealed only as far as the ratio, so no image function existed for either inline
+   * denylist (both deleted since, by EV-218) and all five other properties read initial on every element and every box.
    * Witnessed painting the current row **end to end — 0.957 of its width on every
    * scanline beside "2 / 4 sessions"** (control 0.031), proportional at 0.475 on a
    * finished 2/4 and 0.675 on a 3/4, with **the whole suite 261 passed, exit 0**.
@@ -1311,8 +1431,6 @@ interface RowElement {
    * line without touching the loop that judges it.
    */
   computed: { channel: string; value: string; initial: string }[];
-  /** The raw inline `style` attribute — what was asked for, valid or not. */
-  inline: string;
 }
 
 interface RowPaint {
@@ -1323,61 +1441,12 @@ interface RowPaint {
   elements: RowElement[];
 }
 
-/**
- * A background-image value in an inline `style` attribute.
- *
- * It matches the VALUE of a `background` / `background-image` declaration, so the honest
- * bars — `background:var(--blue-500)` and `background:var(--surface-3)` — do not match,
- * and a `background-color` never can. `url(`, `image-set(` and `element(` are listed
- * beside the gradients because they are the other ways a CSS box paints an image.
- * `url(` has been constructed on this surface and caught (a `data:image/svg+xml` bar
- * sized `<pct>% 100%` — `senior-qa`'s M-Q3); `image-set(` and `element(` have not.
- */
-const INLINE_BACKGROUND_IMAGE = /background(-image)?\s*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
 
 /**
- * **Any `--…:` declaration in the attribute whose value names an image function** —
- * EV-215 AC3.
- *
- * `background-image: var(--adh-paint)` names no image function, so the pattern above
- * cannot see one: the gradient is in the `--adh-paint` declaration beside it. This reads
- * that declaration rather than resolving the `var()`, which is deliberate — resolving it
- * would be the general CSS resolver EV-215 rules out, and a gradient declared in a week
- * row's own inline style is the mechanism whether or not this attribute is where it is
- * finally spent.
- *
- * 🔴 **It reads `--` to the declaration's colon, with no anchor and no name charset, and
- * both of those are the fix rather than sloppiness.** The first cut of this pattern was
- * `/(^|;)\s*--[A-Za-z0-9_-]+\s*:…/`, and the reviewer walked past it with the AC3 mutant
- * unchanged apart from cosmetics, twice:
- *   · **`--é-paint`** in place of `--adh-paint` — a plain React style object, no special
- *     rendering. CSS idents allow non-ASCII and `[A-Za-z0-9_-]+` does not: 3 failed with
- *     **Ines green**, a total escape on the `1 / 0` row AC3 exists for, while Lina's row
- *     went red with `PAINTS … on its own box` — so Chrome accepts and PAINTS `--é-paint`
- *     and it is not a parser quirk.
- *   · **a CSS comment before the declaration** — `background-image:var(--adh-paint);/*x*\/
- *     --adh-paint:linear-gradient(… Infinity% …)` (it needs `dangerouslySetInnerHTML`,
- *     since React's style object always serialises `;`-separated), which defeats the
- *     `(^|;)\s*` anchor. The anchor bought nothing and cost that.
- * `[^:;]*` is what keeps it inside one declaration **for the false-positive direction**:
- * a `--` appearing inside some other property's value cannot reach a later colon, so the
- * pattern cannot fire on a declaration it is not reading.
- *
- * 🔴 **It does NOT carry in the false-negative direction, and `senior-qa` falsified the
- * sentence that implied it did.** `--adh-paint:/*;*\/linear-gradient(…)` escapes: a `;`
- * inside a comment or a string does not end a declaration, so the CSS parser sees no `;`
- * there and this pattern sees one. Same family as the ident escape above — the reach of a
- * text denylist, `EV-216`'s question, not widened here.
- *
- * It does not fire on the honest bars: `background:var(--blue-500)` has no colon after
- * its `--`, and the palette and `--r-pill` are declared on `:root` in `globals.css`, not
- * in a row's `style` attribute. That direction was checked BY CAUSE and not inferred from
- * a green suite: `grep -rn '\["--' src/` returns nothing — no element in `src/` carries an
- * inline custom property at all.
+ * Every element inside every week row — the row itself included — with every
+ * `PAINT_CHANNELS` read. Computed values only: the inline `style` attribute is not read
+ * (EV-218, ADR-0024).
  */
-const INLINE_CUSTOM_PROPERTY_IMAGE = /--[^:;]*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
-
-/** Every element inside every week row — the row itself included — with all four reads. */
 async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
   return region.locator("li").evaluateAll(
     (rows, channels: PaintChannel[]) =>
@@ -1401,26 +1470,32 @@ async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
             value: getComputedStyle(el, channel.pseudo).getPropertyValue(channel.property),
             initial: channel.initial,
           })),
-          inline: el.getAttribute("style") ?? "",
         })),
       })),
     PAINT_CHANNELS
   );
 }
 
-test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week row has a non-initial value on an enumerated paint channel", () => {
+test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a week row has a non-initial value on an enumerated paint channel", () => {
   /**
-   * EV-210b's own four worlds — AC1 adds no fixture. `minimumElements` is a fact about
-   * the FIXTURE and the row's structure (eight rows, each at least the `li` plus a date
-   * span and a figures span), not about what the renderer chooses to draw: without it an
-   * iteration that found no rows, or rows with no children, would satisfy every
-   * assertion inside the loop. That is the failure mode nine C3 guards shipped with.
+   * EV-210b's own four worlds. `minimumElements` is a fact about the FIXTURE and the
+   * row's structure (eight rows, each at least the `li` plus a date span and a figures
+   * span), not about what the renderer chooses to draw: without it an iteration that
+   * found no rows, or rows with no children, would satisfy every assertion inside the
+   * loop. That is the failure mode nine C3 guards shipped with.
+   *
+   * `currentWeek` is the figures the LAST rendered row must print. For Lina it is the
+   * EV-218 ratchet (ADR-0024 decision 3): her current week is the fixture's one
+   * `done > plannedSoFar >= 1` row, and the assertion that it still renders lives in
+   * the same test that reads its paint. The rendered figures cannot show
+   * `plannedSoFar` — nothing prints it — so the tuple's third element, and Lina's
+   * presence in this table, are held by the EV-218 test after the loop.
    */
-  const WORLDS: { name: string; id: string; weeks: number; minimumElements: number }[] = [
-    { name: "Ines — the done > plannedSoFar current week (1 / 3, plannedSoFar 0)", id: INES, weeks: 8, minimumElements: 24 },
-    { name: "Lina — a no-plan week mid-window and a partial current week (2 / 4)", id: LINA, weeks: 8, minimumElements: 24 },
-    { name: "Tobias — eight weeks that all had a plan", id: TOBIAS, weeks: 8, minimumElements: 24 },
-    { name: "Noor — eight REAL 0 % weeks", id: NOOR, weeks: 8, minimumElements: 24 },
+  const WORLDS: { name: string; id: string; weeks: number; minimumElements: number; currentWeek: string }[] = [
+    { name: "Ines — the done > plannedSoFar current week (1 / 3, plannedSoFar 0)", id: INES, weeks: 8, minimumElements: 24, currentWeek: "1 / 3 sessions" },
+    { name: "Lina — a no-plan week mid-window and the done > plannedSoFar >= 1 current week (3 / 4, plannedSoFar 2)", id: LINA, weeks: 8, minimumElements: 24, currentWeek: "3 / 4 sessions" },
+    { name: "Tobias — eight weeks that all had a plan", id: TOBIAS, weeks: 8, minimumElements: 24, currentWeek: "0 / 3 sessions" },
+    { name: "Noor — eight REAL 0 % weeks", id: NOOR, weeks: 8, minimumElements: 24, currentWeek: "0 / 3 sessions" },
   ];
 
   /**
@@ -1528,6 +1603,15 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
         rows.length,
         `${world.name}: the adherence block did not render the ${world.weeks} week rows this world has`
       ).toBe(world.weeks);
+      // EV-218 / ADR-0024 decision 3 — the rendered ratchet. For Lina this binds the
+      // fixture's `done` and `planned`, her render path, and this test reading her rows
+      // in ONE assertion; `plannedSoFar` is not printed, so it is held separately below.
+      expect(
+        rows[rows.length - 1].rowText,
+        `${world.name}: the current (last) week no longer prints "${world.currentWeek}". For Lina ` +
+          "that row is the fixture's only done > plannedSoFar >= 1 week, the one this section " +
+          "relies on to see a done / plannedSoFar renderer after the parser (ADR-0024)."
+      ).toContain(world.currentWeek);
 
       const offences: string[] = [];
       let inspected = 0;
@@ -1559,23 +1643,11 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
             element.computed.filter((channel) => channel.value.trim() === "").map((c) => c.channel),
             `${where}: a channel returned an empty computed value, so this browser does not report that property — the channel is listed but not read`
           ).toEqual([]);
-          const painting = element.computed.filter((channel) => channel.value !== channel.initial);
-          if (painting.length > 0) {
-            for (const channel of painting) {
-              offences.push(
-                `${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`
-              );
-            }
-          } else if (INLINE_BACKGROUND_IMAGE.test(element.inline)) {
-            // Declared but not painted: an invalid value (`Infinity%`) that Chrome
-            // dropped. Same mechanism, one bad division away from painting.
-            offences.push(`${where} DECLARES a background image: style="${element.inline}"`);
-          } else if (INLINE_CUSTOM_PROPERTY_IMAGE.test(element.inline)) {
-            // EV-215 AC3 — declared in a custom property and spent through `var()`, with
-            // nothing painting because the value is invalid. Neither the three computed
-            // channels nor the pattern above can see this one.
+          // Presence only: the value is compared to the channel's initial and never
+          // matched against any pattern (ADR-0024 — no value text for a spelling to vary).
+          for (const channel of element.computed.filter((c) => c.value !== c.initial)) {
             offences.push(
-              `${where} DECLARES a background image in a custom property: style="${element.inline}"`
+              `${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`
             );
           }
         }
@@ -1584,12 +1656,19 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
       expect(
         offences,
         "An element inside a week row has a non-initial value on one of the channels this " +
-          "section enumerates, or declares an image function in its inline style. P-ADH C2 says " +
-          "the picture IS the two numbers printed beside it; a value on one of these channels " +
-          "paints with no layout box of its own, so the geometric limb above cannot check it " +
-          "against them — that is the EV-214 / EV-216 bypass (an unmeasurable picture ALONGSIDE " +
-          "bars that already satisfy `minimumBars`). " +
-          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS` plus two inline text denylists; it " +
+          "section enumerates. P-ADH C2 says the picture IS the two numbers printed beside it; " +
+          "a value on one of these channels paints with no layout box of its own, so the " +
+          "geometric limb above cannot check it against them — that is the EV-214 / EV-216 " +
+          "bypass (an unmeasurable picture ALONGSIDE bars that already satisfy `minimumBars`). " +
+          (world.id === LINA
+            ? "🔴 If ONLY this world is red, read this first: Lina's current week is the " +
+              "fixture's `done > plannedSoFar >= 1` row (`[3, 4, 2]`, EV-218 / ADR-0024). A " +
+              "renderer dividing by `plannedSoFar` emits a valid 150 % there, which paints and " +
+              "is read here; on Ines's `1 / 0` row the same renderer emits `Infinity%`, which " +
+              "the parser drops, so Ines stays green BY DESIGN — this is where that renderer " +
+              "is caught, not a lost witness. "
+            : "") +
+          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS`, read after the CSS parser; it " +
           "is not a proof that nothing else can paint. What is read, and what is known not to be, " +
           "is disclosed above `PaintChannel`. The fix belongs in the renderer: draw the ratio as " +
           "a measurable box, or draw nothing."
@@ -1602,4 +1681,37 @@ test.describe("EV-214 / EV-215 / EV-216 AC1 / P-ADH C2 — no element in a week 
       ).toBeGreaterThanOrEqual(world.minimumElements);
     });
   }
+
+  /**
+   * 🔴 **EV-218 — what the rendered ratchet in the loop cannot hold.**
+   *
+   * The loop's `currentWeek` assertion lives INSIDE an iteration over `WORLDS`, so deleting
+   * Lina's entry deletes the assertion with it — the way EV-216's predecessor ratchet
+   * stopped catching a deletion once its read iterated a table. And it reads printed
+   * figures, while the hazard is in `plannedSoFar`, which nothing prints: dropping the
+   * tuple's third element, or swapping it with the `[3, 4]` week before it, leaves
+   * "3 / 4 sessions" on screen and takes the hazard away. `plannedSoFar` then comes from
+   * the weekday (`min(planned, elapsed)`), which is `0` every Monday — the day the
+   * renderer's output is dropped by the parser and nothing here reads it.
+   *
+   * So this holds the other two: Lina is in `WORLDS` with that current week, and her
+   * last tuple in the fixture SOURCE still states `plannedSoFar = 2`. A derived-value
+   * check is not available: `coachApi.fixture.ts` is `import "server-only"` and
+   * `PROGRESS` is not exported.
+   */
+  test("P-ADH C2 (EV-218): the done > plannedSoFar >= 1 world is still read, and still states the hazard", () => {
+    expect(
+      WORLDS.filter((world) => world.id === LINA).map((world) => world.currentWeek),
+      "Lina is no longer read by this section with her `3 / 4` current week. She is the only " +
+        "world whose current week makes a done / plannedSoFar renderer emit a value that " +
+        "parses (150 %); without her, that renderer is caught here on no weekday that " +
+        "derives plannedSoFar = 0 (ADR-0024)."
+    ).toEqual(["3 / 4 sessions"]);
+    expect(
+      lastFixtureTuple("LINA_ID"),
+      "Lina's current week no longer states `[3, 4, 2]` (done 3 / planned 4 / plannedSoFar 2) " +
+        "as its LAST tuple. The third element is honoured only there; anywhere else, or " +
+        "absent, plannedSoFar follows the weekday and the hazard is gone on a Monday."
+    ).toBe("[3,4,2]");
+  });
 });

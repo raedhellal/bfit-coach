@@ -23,5 +23,10 @@ guard. If a future design wants to draw the in-progress week, it must **print**
 `plannedSoFar` too: the row is one fact or it is nothing.
 `qa/coach-adherence-property.spec.ts` enforces that (P-ADH C2) against fixture trainee
 Ines (`…0014`), whose current week **states** `[1, 3, 0]` — the derived `plannedSoFar`
-only produces the hazard on some weekdays, so a world relying on it stops discriminating
-by Friday. See [[a-picture-with-no-text-is-unassertable]].
+only produces the hazard while `done` exceeds the days elapsed, so for `[1, 3]` it holds on a
+(UTC) Monday only and a world relying on it stops discriminating from Tuesday. See [[a-picture-with-no-text-is-unassertable]].
+
+**Since EV-218 (2026-09-23):** Lina's current week states `[3, 4, 2]` — the fixture's only
+`done > plannedSoFar >= 1` row, where a `done / plannedSoFar` renderer emits a valid 150 % that
+the post-parse paint read sees. Ines's `1 / 0` row is now green on the paint limb by design.
+And the api's `done − plannedSoFar ≤ 1` is not enforced: see [[the-day-unit-bound-is-not-enforced]].

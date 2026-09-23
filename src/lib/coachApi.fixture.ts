@@ -185,9 +185,9 @@ const NOOR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0013";
  * Today's renderer is safe (it draws no bar for the current week at all), so this world
  * exists for the NEXT one. Ines carries the hazard **every day of the week**, which the
  * derived `plannedSoFar` cannot: seeded from `elapsedThisWeek`, `done > plannedSoFar` is
- * true on a Monday and false by Friday, so a world relying on it would quietly stop
- * discriminating for three days in seven and the guard would read as protection while
- * protecting nothing.
+ * true for her `[1, 3]` on a Monday only and false from Tuesday, so a world relying on it
+ * would quietly stop discriminating six days in seven and the guard would read as
+ * protection while protecting nothing.
  *
  * Her eight weeks also carry, in one page, every shape AC3 enumerates: a past 100 %
  * week, a past 0 % week, a past partial week (2 / 3, the rounding case), a no-plan week,
@@ -350,7 +350,8 @@ const BASE_OVERVIEWS: Record<string, () => ClientOverview> = {
     traineeDisplayName: "Lina M.",
     since: isoInstant(23),
     scopes: ALL_SCOPES,
-    adherenceThisWeek: { done: 2, planned: 4 },
+    // EV-218: equals the last tuple of her series, `[3, 4, 2]` — see PROGRESS[LINA_ID].
+    adherenceThisWeek: { done: 3, planned: 4 },
     currentStreakDays: 4,
     lastSession: { date: isoDate(1), name: "Upper Body A", difficulty: "HARD" },
     weightSeries: weightSeries(),
@@ -793,9 +794,16 @@ function mondayOfWeeksAgo(weeksAgo: number): string {
  *
  * The optional third element **overrides `plannedSoFar`** on the current (partial)
  * week. It exists for EV-210b: the hazard C2 protects against is `done > plannedSoFar`,
- * and the derived value below only produces it on some weekdays (`elapsedThisWeek`
- * moves), so a world seeded with it would stop discriminating from Friday onwards. A
- * world that states `plannedSoFar` outright has the hazard every day of the week.
+ * and the derived value below, `min(planned, elapsedThisWeek)`, only produces it while
+ * `done` exceeds the days elapsed — so a world relying on it stops discriminating part-way
+ * through the week, on a day set by its own tuple: `[1, 3]` from Tuesday, `[3, 4]` from
+ * Thursday. A world that states `plannedSoFar` outright has the hazard every day of the
+ * week.
+ *
+ * 🔴 **It is honoured ONLY on the last tuple** (`partial && plannedSoFarOverride !==
+ * undefined` below). A third element on any earlier week is silently ignored: that week
+ * gets `plannedSoFar = planned`, so a hazard tuple placed mid-series has no hazard in it.
+ * Two worlds use it: Ines `[1, 3, 0]` (EV-210b) and Lina `[3, 4, 2]` (EV-218).
  */
 type WeekSpec = [done: number, planned: number] | [done: number, planned: number, plannedSoFar: number] | null;
 
@@ -891,9 +899,30 @@ const PROGRESS: Record<string, () => TraineeProgress> = {
   [LINA_ID]: () => ({
     clientId: LINA_ID,
     weeks: PROGRESS_WEEKS,
-    // The last week is 2 / 4 — identical to her overview's "Adherence this week"
+    // The last week is 3 / 4 — identical to her overview's "Adherence this week"
     // (AC3's last clause). The 0/0 week is the one before her plan existed.
-    adherence: adherenceSeries([[3, 3], null, [3, 4], [0, 4], [4, 4], [2, 4], [3, 4], [2, 4]]),
+    //
+    // 🔴 EV-218 / ADR-0024 — the last tuple STATES `plannedSoFar = 2`, and it must stay
+    // the LAST tuple (the third element is ignored anywhere else, see `WeekSpec`). It is
+    // the fixture's only week where `done > plannedSoFar` AND `plannedSoFar >= 1`, so a
+    // renderer drawing this week from `done / plannedSoFar` emits 150 % — a finite value
+    // that parses and paints — where Ines's `[1, 3, 0]` emits `Infinity%`, which the CSS
+    // parser discards and nothing paints. `qa/coach-adherence-property.spec.ts` reads
+    // paint after the parser only, so this row is where that renderer is visible to it.
+    //
+    // Why one row: the renderer is ONE expression. On any row with `plannedSoFar >= 1`
+    // and `done > plannedSoFar` it yields a finite percentage over 100, and a finite
+    // percentage parses; only `plannedSoFar = 0` yields a value the parser drops. So one
+    // row of the first kind puts that expression's output where a post-parse read sees
+    // it. The argument uses no bound on the ratio, and the api holds none:
+    // `LogWorkoutCompletionUseCase` takes the client's `date` with no future-date check,
+    // so `done − plannedSoFar` is not limited to 1 (EV-248, reproduced as BUG-225).
+    // ADR-0024 stated a day-unit bound in an earlier draft and has withdrawn it.
+    //
+    // ⚠️ The tuple is stated, not derived: on a Monday or Tuesday no real api could
+    // return `plannedSoFar = 2`. Nothing in the portal renders `plannedSoFar`, and a
+    // world that discriminates every day of the week is the point — same trade as Ines.
+    adherence: adherenceSeries([[3, 3], null, [3, 4], [0, 4], [4, 4], [2, 4], [3, 4], [3, 4, 2]]),
     // 12 completed sessions, capped at 10 server-side. `items[0]` IS her overview's
     // "Last session": 1 day ago, Upper Body A, Hard.
     sessions: sessionHistory([
