@@ -914,10 +914,10 @@ const PROGRESS: Record<string, () => TraineeProgress> = {
     // and `done > plannedSoFar` it yields a finite percentage over 100, and a finite
     // percentage parses; only `plannedSoFar = 0` yields a value the parser drops. So one
     // row of the first kind puts that expression's output where a post-parse read sees
-    // it. ADR-0024 also bounds the reachable ratios at `{∞} ∪ {(n+1)/n}` from the api's
-    // day unit (`TraineeAdherenceWeeks.java:179-186`); that bound holds only while no
-    // completion is dated after today, and `LogWorkoutCompletionUseCase` takes the
-    // client's `date` with no future check — so it is not relied on here.
+    // it. The argument uses no bound on the ratio, and the api holds none:
+    // `LogWorkoutCompletionUseCase` takes the client's `date` with no future-date check,
+    // so `done − plannedSoFar` is not limited to 1 (EV-248, reproduced as BUG-225).
+    // ADR-0024 stated a day-unit bound in an earlier draft and has withdrawn it.
     //
     // ⚠️ The tuple is stated, not derived: on a Monday or Tuesday no real api could
     // return `plannedSoFar = 2`. Nothing in the portal renders `plannedSoFar`, and a

@@ -20,7 +20,9 @@ and her LAST fixture tuple in source (comments stripped) is `[3,4,2]`. Each loss
 
 🔴 **And a source pin holds the TEXT, not the code that honours it** (staff review of EV-218).
 Breaking `adherenceSeries`'s override (`plannedSoFar: derivedSoFar`) with the tuple untouched
-left every pin green; on a simulated Monday with a painting mutant the whole gate was 263 green.
+left every pin green; on a simulated UTC Monday with construction 3 planted the whole gate was
+262 green (senior-qa: Tuesday and Sunday gave 4 failed) — blind only to a renderer whose value
+the parser discards, since every current week then derives `plannedSoFar = 0`.
 My own clause-8 run mutated the DATA and never the CODE that reads it — mutate both sides of a
 fixture→code seam. The real fix is a unit test outside `server-only` (carded, not built).
 

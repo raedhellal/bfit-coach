@@ -21,7 +21,10 @@ Traced 2026-09-23 on EV-218: **the bound holds only if no completion is dated af
 **Why it matters:** the one-row conclusion survives without the bound — any row with
 `plannedSoFar ≥ 1` and `done > plannedSoFar` makes a `done / plannedSoFar` renderer emit a finite
 >100 % value that parses and paints — but the *stated* argument is false as a claim about the
-API, and it was also ADR-0024's reversal trigger 3.
+API. **Update 2026-09-23:** carded as EV-248, reproduced as BUG-225; senior-po ruled future-dated
+completions not allowed; ADR-0024 withdrew the bound. The reviewer's reading: trigger 3 is
+*moot*, not *fired* — the paint predicate tests presence, so the ratio's size never mattered.
+An EV-210a api test currently asserts the bug as correct ("It is done (it happened)").
 
 **How to apply:** when a web guard's sufficiency argument cites an API invariant, read the
 WRITE path too (the endpoint that creates the rows), not only the read-side computation.

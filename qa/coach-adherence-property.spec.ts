@@ -181,8 +181,10 @@ async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
             paints: box.width > 0.5 && box.height > 0.5,
           };
         })
-        // Not a picture: an empty grid cell holding a column open. It has a width but no
-        // height, so it paints nothing — and it has no `data-fill` either.
+        // Not counted as a picture: an empty grid cell holding a column open, with a width,
+        // no height and no `data-fill`. That is a choice about what this read measures, NOT
+        // a claim that such a box cannot paint — an `outline` around a zero-height box does
+        // paint, and nothing here catches it (BUG-228, carded, not fixed in EV-218).
         .filter((p) => p.paints || p.dataFill !== null)
         .map(({ paints: _paints, ...picture }) => picture);
       return {
@@ -791,10 +793,11 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *      to know whether a NEW mechanism is caught, build it, confirm it paints, and run
  *      this limb. Do not reason from this paragraph.**
  *
- *      ⚠️ **This FILE still matches one spelling, in a different limb.** The geometry
- *      limb's `not.toMatch(/NaN|Infinity/i)` over `inlineStyle` (EV-210b) is a text
- *      matcher. ADR-0024 S2 records it as redundant on the mutant it was written for
- *      and defeated by `calc(1 / 0 * 100%)`, and rules its removal a separate row.
+ *      ⚠️ **This FILE still contains TWO text matchers, both in the geometry limb.**
+ *      `not.toMatch(/NaN|Infinity/i)` over `inlineStyle` (EV-210b) appears in two tests:
+ *      the per-bar loop of `expectPictureEqualsFigures` and "the 1 / 0 week". ADR-0024 S2
+ *      records the pattern as redundant on the mutant it was written for and defeated
+ *      by `calc(1 / 0 * 100%)`, and rules its removal a separate row.
  *
  * **WHEN, AND AT WHAT CONFIGURATION.** Once per world, immediately after the adherence
  * block becomes visible, at the config's default viewport, in `next dev` fixture mode.
@@ -957,13 +960,12 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * `plannedSoFar >= 1` and `done > plannedSoFar` it yields a finite percentage over 100,
  * and a finite percentage parses. Only `plannedSoFar = 0` yields a value the parser drops.
  * So one row of the first kind puts that expression's output where a post-parse read
- * sees it. ADR-0024 adds a bound: `done − plannedSoFar ≤ 1` because the api counts days
- * (`TraineeAdherenceWeeks.java:179-186`), so the reachable ratios are `{∞} ∪ {(n+1)/n}`.
- * 🔴 **The argument above does not use that bound, because the bound is not
- * enforced.** `MeWorkoutController.complete` → `LogWorkoutCompletionUseCase.complete`
- * takes the client's `date` with no future-date check. The adherence read queries Monday
- * to SUNDAY of the current week, so a completion dated later this week counts in `done`
- * and not in `plannedSoFar`. Traced in the api source, not constructed end to end.
+ * sees it. The argument uses no bound on the ratio, and there is none to use: the api
+ * does not hold `done − plannedSoFar ≤ 1`. `LogWorkoutCompletionUseCase.complete` takes
+ * the client's `date` with no future-date check, and the adherence read queries Monday to
+ * SUNDAY of the current week, so a completion dated later this week counts in `done` and
+ * not in `plannedSoFar` (EV-248, reproduced as BUG-225). ADR-0024 stated such a bound in
+ * an earlier draft and has withdrawn it.
  *
  * 📌 **Earlier records in this file that say "Lina … 2 / 4 sessions" are HISTORY.** They
  * describe what was measured at the time and are left as written. Her current week now
@@ -982,17 +984,22 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     the code that applies the override (`plannedSoFar: derivedSoFar`) and leave the
  *     tuple alone: every pin stays green, and `plannedSoFar` falls back to the weekday.
  *     Reviewer-constructed: on a simulated Monday with construction 3 planted, the
- *     WHOLE GATE passed (263, exit 0); on a real Wednesday the same breakage gave 4
- *     failed. So under that regression the paint limb is blind on Mondays. Nothing
+ *     WHOLE GATE passed (262 tests, exit 0); on a real Wednesday the same breakage gave
+ *     4 failed, and a simulated Tuesday and Sunday each gave 4 failed (`senior-qa`). So
+ *     under that regression the paint limb is blind only on a **UTC** Monday (the
+ *     fixture reads `getUTCDay`), and only to a renderer whose value the parser DISCARDS
+ *     — there every current week derives `plannedSoFar = 0`. Nothing
  *     notices the override being ignored either — on a Wednesday Ines's stated `1 / 0`
  *     silently becomes a derived `1 / 2`. Ines has had the same exposure since EV-210b;
  *     what is new is that the paint limb now depends on it, because the inline read
  *     that covered the plain spellings on a Monday is gone. Carded separately (move
  *     `adherenceSeries` / `WeekSpec` out of the `server-only` module and unit-test that a
  *     stated last tuple's `plannedSoFar` survives any clock); not built here.
- *   · **Ines `[1, 3, 0]` — LOSES her C2 paint witness.** The renderer emits
- *     `Infinity%`, nothing paints, every channel computes initial, and her world is
- *     green here BY DESIGN. She KEEPS everything else she had: the EV-210b AC3 geometry
+ *   · **Ines `[1, 3, 0]` — LOSES her C2 paint witness for a `done / plannedSoFar`
+ *     renderer, and only for that.** Her rows are still read by the paint limb on every
+ *     channel like every other world's; it is that renderer which emits `Infinity%` on
+ *     her current row, where nothing paints, every channel computes initial, and her
+ *     world is green BY DESIGN. She KEEPS everything else she had: the EV-210b AC3 geometry
  *     loop, "the 1 / 0 week" test and her source pin. All three assert **C2**, not C3.
  *     ⚠️ ADR-0024 and EV-218's amended AC1 say "Ines keeps C3". She has no C3 test, before
  *     or after this row: the C3 describe (EV-210b AC4) uses Ruben, Elif, Noor and Kaia.
