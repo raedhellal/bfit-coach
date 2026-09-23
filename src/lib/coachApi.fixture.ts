@@ -163,10 +163,37 @@ const KAIA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0010";
  *           carry the chart and the headline. Without her the whole-series
  *           `done === 0, planned > 0` shape is absent from the fixture, and a branch
  *           written on `done === 0` alone would pass every other test on this page.
+ *
+ *   Ines  — EV-210b / P-ADH C2: the `done > plannedSoFar` week, stated outright so it
+ *           is true on every weekday, plus all five week shapes AC3 enumerates on one
+ *           page. See `INES_ID`.
  */
 const RUBEN_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0011";
 const ELIF_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0012";
 const NOOR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0013";
+
+/**
+ * EV-210b / P-ADH C2 — **the `1 / 0` week, available on a Wednesday.**
+ *
+ * `done` counts completions dated today *or later*; `plannedSoFar` counts scheduled days
+ * *strictly before* today. Training on a scheduled Monday therefore gives
+ * `done = 1, plannedSoFar = 0` — a literal one over zero. `done <= planned` holds by
+ * construction; **`done <= plannedSoFar` is not an invariant**, and any renderer that
+ * draws a bar from `done / plannedSoFar` renders over 100 % or divides by zero on an
+ * ordinary Monday.
+ *
+ * Today's renderer is safe (it draws no bar for the current week at all), so this world
+ * exists for the NEXT one. Ines carries the hazard **every day of the week**, which the
+ * derived `plannedSoFar` cannot: seeded from `elapsedThisWeek`, `done > plannedSoFar` is
+ * true on a Monday and false by Friday, so a world relying on it would quietly stop
+ * discriminating for three days in seven and the guard would read as protection while
+ * protecting nothing.
+ *
+ * Her eight weeks also carry, in one page, every shape AC3 enumerates: a past 100 %
+ * week, a past 0 % week, a past partial week (2 / 3, the rounding case), a no-plan week,
+ * and the current incomplete one.
+ */
+const INES_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0014";
 
 /** Everything a fully-consented link shares — the shape every EV-183 fixture had. */
 const ALL_SCOPES: CoachAccessScope[] = ["WORKOUTS", "PROGRESS", "NUTRITION", "WEIGH_INS"];
@@ -519,6 +546,19 @@ const BASE_OVERVIEWS: Record<string, () => ClientOverview> = {
     weightSeries: [],
     redFlags: ["MISSED_TWO_OR_MORE_SESSIONS"],
   }),
+  /** EV-210b — the `done > plannedSoFar` world. See `INES_ID`. */
+  [INES_ID]: () => ({
+    clientId: INES_ID,
+    traineeDisplayName: "Ines R.",
+    since: isoInstant(62),
+    scopes: ALL_SCOPES,
+    // Identical to the last week of her series, as every fixture row here is.
+    adherenceThisWeek: { done: 1, planned: 3 },
+    currentStreakDays: 1,
+    lastSession: { date: isoDate(0), name: "Full Body A", difficulty: "OK" },
+    weightSeries: [],
+    redFlags: [],
+  }),
 };
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -608,6 +648,7 @@ const READINGS: Record<string, TraineeReadings> = {
   [RUBEN_ID]: { weights: [], bodyFats: [] },
   [ELIF_ID]: { weights: [], bodyFats: [] },
   [NOOR_ID]: { weights: [], bodyFats: [] },
+  [INES_ID]: { weights: [], bodyFats: [] },
 };
 
 /** What a coach has written. Stored WHOLE, because the PUT replaces the whole thing. */
@@ -747,8 +788,16 @@ function mondayOfWeeksAgo(weeksAgo: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** `[done, planned]`, or `null` for a week in which no plan existed ("No plan"). */
-type WeekSpec = [done: number, planned: number] | null;
+/**
+ * `[done, planned]`, or `null` for a week in which no plan existed ("No plan").
+ *
+ * The optional third element **overrides `plannedSoFar`** on the current (partial)
+ * week. It exists for EV-210b: the hazard C2 protects against is `done > plannedSoFar`,
+ * and the derived value below only produces it on some weekdays (`elapsedThisWeek`
+ * moves), so a world seeded with it would stop discriminating from Friday onwards. A
+ * world that states `plannedSoFar` outright has the hazard every day of the week.
+ */
+type WeekSpec = [done: number, planned: number] | [done: number, planned: number, plannedSoFar: number] | null;
 
 /**
  * Eight `WeekSpec`s, oldest first, → the wire's `AdherenceSeries`.
@@ -762,12 +811,13 @@ function adherenceSeries(specs: WeekSpec[]): AdherenceSeries {
   const weeks: WeekAdherence[] = specs.map((spec, i) => {
     const weeksAgo = specs.length - 1 - i;
     const partial = weeksAgo === 0;
-    const [done, planned] = spec ?? [0, 0];
+    const [done, planned, plannedSoFarOverride] = spec ?? [0, 0];
+    const derivedSoFar = partial ? Math.min(planned, elapsedThisWeek) : planned;
     return {
       weekCommencing: mondayOfWeeksAgo(weeksAgo),
       done,
       planned,
-      plannedSoFar: partial ? Math.min(planned, elapsedThisWeek) : planned,
+      plannedSoFar: partial && plannedSoFarOverride !== undefined ? plannedSoFarOverride : derivedSoFar,
       hasPlan: spec !== null,
       partial,
     };
@@ -985,6 +1035,35 @@ const PROGRESS: Record<string, () => TraineeProgress> = {
     ]),
     sessions: sessionHistory([]),
     redFlags: [missedFlag([[2, "Full Body A"], [4, "Full Body B"]])],
+    scopes: ALL_SCOPES,
+  }),
+  /**
+   * EV-210b / P-ADH C2 — see `INES_ID` for why this world exists.
+   *
+   * 🔴 The last tuple is `[1, 3, 0]`: `done = 1`, `planned = 3`, **`plannedSoFar = 0`**.
+   * A renderer that drew this week from `plannedSoFar` would divide by zero. The rest of
+   * the row is AC3's enumeration on one page — 100 %, 0 %, a 2 / 3 rounding week, a
+   * no-plan week, and the current incomplete one.
+   */
+  [INES_ID]: () => ({
+    clientId: INES_ID,
+    weeks: PROGRESS_WEEKS,
+    adherence: adherenceSeries([
+      [3, 3],
+      [0, 3],
+      [2, 3],
+      null,
+      [1, 3],
+      [3, 3],
+      [2, 3],
+      [1, 3, 0],
+    ]),
+    sessions: sessionHistory([
+      [0, "Full Body A", "OK"],
+      [8, "Full Body B", "OK"],
+      [11, "Full Body A", "EASY"],
+    ]),
+    redFlags: [],
     scopes: ALL_SCOPES,
   }),
   [DANA_ID]: () => ({
