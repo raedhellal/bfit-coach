@@ -603,8 +603,10 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * geometric limb never sees it. Rendered, that gave Lina a **fully painted** bar beside
  * "2 / 4 sessions" — mechanism 2 of EV-210's own table, restored.
  *
- * So this limb is **structural, not geometric**: inside a week row, nothing paints a
- * background image at all. A flat `background-color` is untouched (a colour cannot
+ * So this limb is **structural, not geometric**: inside a week row, no element's **own**
+ * background-image, on either channel. ⚠️ Not "nothing paints a background image at
+ * all" — a `::before` on a week row paints one and this limb stays GREEN (witnessed by
+ * the reviewer, and see the `✗` list below). A flat `background-color` is untouched (a colour cannot
  * encode a ratio positionally; only an image can), and the geometry limb, `minimumBars`
  * and the `overflow:hidden` behaviour are deliberately not touched here — EV-214 is a
  * different mechanism, not a stronger version of that one.
@@ -624,7 +626,13 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * A ban that reads only what painted is therefore weakest exactly where the renderer is
  * most broken — and the 1/0 row is not benign, because the same expression paints a
  * flattering 100 % the moment `plannedSoFar` is 1 rather than 0. So the DECLARATION is
- * banned as well as the paint, and neither read subsumes the other.
+ * banned as well as the paint, and **neither read subsumes the other — witnessed in BOTH
+ * directions**, which is not what the mutants above show on their own: under B3, Lina is
+ * caught by the computed clause but would also be caught by the inline one, so two
+ * clauses killing the same mutant shows neither to be necessary. The reviewer supplied
+ * the missing half by delivering the same gradient from `globals.css` with the ratio in
+ * a custom property and **no inline `background` at all** → 4 red, from the computed
+ * clause alone.
  *
  * **What this limb does NOT cover, stated rather than assumed:**
  *   ✗ `<canvas>` and `<img>` as adherence pictures. Nobody has constructed either, and
@@ -633,10 +641,29 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     defect as permitting one. If someone constructs one, that is its own row.
  *   ✗ anything outside a week row. A decorative background elsewhere on the page is a
  *     design decision, not an adherence picture.
- *   ✗ a background image applied to a PSEUDO-element (`::before` / `::after`) of a row.
- *     `getComputedStyle(el)` without a pseudo argument does not report it and the
- *     inline attribute cannot express it. Not constructed here either — recorded so the
- *     next reader does not have to infer the reach from the assertion.
+ *   ✗ 🔴 a background image applied to a PSEUDO-element (`::before` / `::after`) of a
+ *     row. This limb reads `getComputedStyle(el)` with no pseudo argument, so it does
+ *     not see one, and the inline attribute cannot express one. **The reviewer BUILT
+ *     it: the `::before` bypass paints, and this limb stays green.** It also verified
+ *     that `getComputedStyle(el, "::before")` closes it in one expression (3 failed
+ *     against the bypass, 15 passed against clean code) — so this is a cheap gap, not
+ *     an expensive one. It is a `senior-po` card, NOT a silent widening of EV-214.
+ *   ✗ 🔴 **`box-shadow: inset <pct>vw 0 0 0 rgba(…)`** — a second paint channel nobody
+ *     had named. It draws a full bar beside "2 / 4 sessions" with the suite at 260
+ *     green: no layout box, no background image, so neither clause here sees it.
+ *     `border-image` and `mask-image` are the same family. Reviewer-constructed, with a
+ *     rendered screenshot as the witness; also a `senior-po` card.
+ *   ✗ one hop of `var()` past the INLINE clause. `INLINE_BACKGROUND_IMAGE` matches image
+ *     FUNCTIONS in the attribute text, so `--adh-paint: linear-gradient(… Infinity% …);
+ *     background-image: var(--adh-paint)` puts no function in the attribute and Ines —
+ *     the 1/0 row this clause was added for — goes green again. Partial only: the
+ *     computed clause still catches the half that paints. Left as a disclosure rather
+ *     than widened to "no image function anywhere in the attribute", because that is an
+ *     assertion change and this file's remaining escapes are being carded together
+ *     rather than patched one regex at a time.
+ *   ✗ `url(`, `image-set(` and `element(` are in the inline pattern with **no witness in
+ *     either direction** — nobody has constructed one and nobody has shown one cannot be
+ *     built. They are listed for completeness of the mechanism, not as tested reach.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /** One element inside a week row, as the two reads that can reveal a painted picture. */
