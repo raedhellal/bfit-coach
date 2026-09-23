@@ -26,8 +26,8 @@ it had been green in.
   own computed style is `none` sends the reader nowhere.
 - Every disclosure on this guard states what it **does** — what it reads, when, at what
   configuration — and tells the reader to **build the mechanism and run the limb** rather
-  than reason from the sentence. Four totality sentences have been written about it and all
-  four were falsified by the next person to try one.
+  than reason from the sentence. Five have been written about it so far and every one was
+  falsified by the next person to try one; the count has only ever gone up.
 - Related: [[an-inline-denylist-is-one-var-hop-wide]],
   [[a-fixture-without-the-shape-cannot-guard-it]],
   [[a-picture-with-no-text-is-unassertable]].

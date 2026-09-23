@@ -611,11 +611,24 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *   3. `getComputedStyle(el, "::after").backgroundImage` — the two generated boxes
  *      (**EV-215 AC1**), and a red build names which of the three computed channels
  *      fired;
- *   4. the inline `style` attribute, where an image function appears either in a
- *      `background` / `background-image` value or in a **custom property declared in
- *      the same attribute** (**EV-215 AC3** — `--adh-paint: linear-gradient(…);
- *      background-image: var(--adh-paint)` puts no image function in the property the
+ *   4. the inline `style` attribute, where **one of four literal spellings** —
+ *      `gradient(`, `url(`, `image-set(`, `element(` — appears either in a `background`
+ *      / `background-image` value or in a `--…:` declaration in the same attribute
+ *      (**EV-215 AC3** — `--adh-paint: linear-gradient(…);
+ *      background-image: var(--adh-paint)` puts no such spelling in the property the
  *      first pattern reads).
+ *
+ *      🔴 **Four spellings, NOT "an image function" — that sentence was falsified.** It
+ *      said "an image function" until `senior-qa` wrote
+ *      `background-image: linear-gradi\65 nt(90deg, …)`: a CSS ident escape inside the
+ *      function name, which Chrome tokenises as `linear-gradient(` and PAINTS. With a
+ *      valid ratio the computed channel catches it (4 failed); on Ines's `1 / 0` row the
+ *      `Infinity%` value makes the computed read `none` and it is a **total escape — 3
+ *      failed, Ines green**. That is the reach of the DENYLIST, unchanged from EV-214
+ *      (`INLINE_BACKGROUND_IMAGE` is byte-identical on `dbf3589`, verified with
+ *      `git show`), and EV-215 deliberately does not widen it: replacing the denylist
+ *      with a resolver is ruled out by name in the card and handed to `EV-216`. It is
+ *      carded with QA's two runs as its witnesses.
  *
  * ⚠️ **That is a statement about what it reads, deliberately, and not about what can be
  * drawn.** Every totality sentence written about this guard has been falsified by the
@@ -795,9 +808,15 @@ const INLINE_BACKGROUND_IMAGE = /background(-image)?\s*:[^;]*(gradient\(|url\(|i
  *     --adh-paint:linear-gradient(… Infinity% …)` (it needs `dangerouslySetInnerHTML`,
  *     since React's style object always serialises `;`-separated), which defeats the
  *     `(^|;)\s*` anchor. The anchor bought nothing and cost that.
- * `[^:;]*` is what keeps it inside ONE declaration: it cannot cross the `;` that ends the
- * declaration or the `:` that starts a value, so a `--` appearing inside some other
- * property's value cannot reach a later colon.
+ * `[^:;]*` is what keeps it inside one declaration **for the false-positive direction**:
+ * a `--` appearing inside some other property's value cannot reach a later colon, so the
+ * pattern cannot fire on a declaration it is not reading.
+ *
+ * 🔴 **It does NOT carry in the false-negative direction, and `senior-qa` falsified the
+ * sentence that implied it did.** `--adh-paint:/*;*\/linear-gradient(…)` escapes: a `;`
+ * inside a comment or a string does not end a declaration, so the CSS parser sees no `;`
+ * there and this pattern sees one. Same family as the ident escape above — the reach of a
+ * text denylist, `EV-216`'s question, not widened here.
  *
  * It does not fire on the honest bars: `background:var(--blue-500)` has no colon after
  * its `--`, and the palette and `--r-pill` are declared on `:root` in `globals.css`, not

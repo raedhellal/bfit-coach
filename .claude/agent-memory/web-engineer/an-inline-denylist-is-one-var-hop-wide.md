@@ -33,11 +33,20 @@ name charset. `[^:;]*` is the whole safety: it cannot cross the `;` ending a dec
 the `:` starting a value, so a `--` inside another property's value cannot reach a later
 colon.
 
+🔴 **And `[^:;]*` is a FALSE-POSITIVE argument only.** It does not carry in the
+false-negative direction: a `;` inside a comment or a string does not end a declaration, so
+`--adh-paint:/*;*/linear-gradient(…)` escapes — the parser sees no `;`, the regex sees one.
+Same family as `linear-gradi\65 nt(` (a CSS ident escape Chrome tokenises and paints, which
+walks past the `background`-value pattern too, unchanged since EV-214). Both are the reach of
+a **text denylist**, carded to EV-216, deliberately not widened here.
+
 **How to apply:**
 - In a text-over-CSS guard, match **structure** (`--`, a colon, a value naming an image
   function, inside one declaration) and never an identifier's characters.
-- Check the false-positive direction **by cause**, not by a green suite: `grep -rn '["--' src/`
-  returns 0, i.e. no element in `src/` carries an inline custom property at all.
+- Check the false-positive direction **by cause**, not by a green suite: `grep -rn '\["--' src/`
+  returns 0 — the only `--…` strings in `src/` are the two next/font variables, applied as a
+  **className** on `<html>` and never inline, naming no image function, and there is no
+  `setProperty` and no `dangerouslySetInnerHTML` anywhere in `src/`.
 - **Still open and disclosed, not fixed:** a custom property declared on an ANCESTOR (the
   `<ul>` above the rows) and spent inside a row. The scan is `li` plus descendants, so no
   attribute read holds the declaration; reaching it means the ancestor chain or a real
