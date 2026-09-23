@@ -664,7 +664,16 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * background-image: var(--adh-paint)` on Ines's `1 / 0` row computes to `none` AND
  * declares no image function in a `background` value. That COMBINATION is the mutant
  * carried out for this clause, and it is killed by this clause alone: 4 red, with the
- * three computed channels and `INLINE_BACKGROUND_IMAGE` all green on it.
+ * three computed channels and `INLINE_BACKGROUND_IMAGE` all green on it. Independence was
+ * shown by disabling THIS clause alone against that mutant: Ines goes back to green while
+ * the other three worlds stay red, so no other clause kills the combination.
+ *
+ * 🔴 **And the same mutant with one accent — `--é-paint` — is the witness that killed the
+ * FIRST version of this clause.** A pattern pinned to the ASCII spelling of the ident, or
+ * to an anchor admitting only whitespace before it, is walked past by a rename or by a
+ * `/*comment*\/`, with everything else identical. The pattern now reads `--` to the
+ * declaration's colon and neither. Both escapes are recorded at the constant itself,
+ * because a sentence describing a regex belongs beside the regex.
  *
  * **What this limb does NOT cover, stated rather than assumed:**
  *   ✗ `<canvas>` and `<img>` as adherence pictures. Nobody has constructed either, and
@@ -691,6 +700,13 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *   ✗ `image-set(` and `element(` are in the inline pattern with **no witness in either
  *     direction** — nobody has constructed one and nobody has shown one cannot be built.
  *     They are listed for completeness of the mechanism, not as tested reach.
+ *   ⛔ **COULD NOT CONSTRUCT: the image function split across a `var()` boundary.**
+ *     `--adh-fn: linear-gradient; background-image: var(--adh-fn)(90deg, …)` would put no
+ *     image function in either inline pattern, and it does not paint: Chrome does not
+ *     re-tokenise a substituted ident into a function token. The reviewer ran it — 15
+ *     passed, and **zero `PAINTS` offences anywhere, including the rows that draw
+ *     honestly**. A green suite there is CORRECT rather than a miss, and the way to tell
+ *     those two apart is to run the harmless variant and check it paints nothing.
  *
  *   🔴 And the two the gate found, on the COMPUTED channel of an element's OWN
  *     background-image — i.e. inside what this limb reads, not in any channel disclosed
@@ -702,6 +718,17 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     carded as **EV-217**. What was tried: this is the element's OWN `background-image`
  *     on a channel the limb does read, so neither the pseudo argument nor a wider inline
  *     pattern moves it — only reading again at another instant does.
+ *   ✗ 🔴 **a custom property declared on an ANCESTOR of the week rows and spent inside
+ *     one.** `--adh-paint` on the `<ul>` (`AdherenceSeries.tsx`, one element above the
+ *     rows) with `background-image: var(--adh-paint)` on a row's figures span: 3 failed,
+ *     **Ines green** — the same total escape as the `1 / 0` combination, one element
+ *     higher. Reviewer-constructed. What was tried: nothing here reads it, because the
+ *     scan is `region.locator("li")` plus descendants, so the attribute holding the
+ *     declaration is never one of the attributes read, and the three computed channels
+ *     are `none` for the `Infinity%` value as before. Widening THIS pattern cannot reach
+ *     it — closing it means scanning the ancestor chain or resolving the `var()`, which
+ *     is the general CSS resolver EV-215 rules out by name. A `senior-po` card, not a
+ *     silent widening.
  *   ✗ **a viewport-gated paint.** `@media (max-width: 520px)`. Green at the default
  *     viewport; at 320 px a full blue bar sits behind "2 / 4 sessions". The limb samples
  *     one viewport — and 320 px is the width this portal is swept at by name. Carded as
@@ -745,8 +772,8 @@ interface RowPaint {
 const INLINE_BACKGROUND_IMAGE = /background(-image)?\s*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
 
 /**
- * The same image functions held in a CUSTOM PROPERTY declared in the same inline
- * attribute — EV-215 AC3.
+ * **Any `--…:` declaration in the attribute whose value names an image function** —
+ * EV-215 AC3.
  *
  * `background-image: var(--adh-paint)` names no image function, so the pattern above
  * cannot see one: the gradient is in the `--adh-paint` declaration beside it. This reads
@@ -755,14 +782,32 @@ const INLINE_BACKGROUND_IMAGE = /background(-image)?\s*:[^;]*(gradient\(|url\(|i
  * row's own inline style is the mechanism whether or not this attribute is where it is
  * finally spent.
  *
- * It does not fire on the honest bars: `background:var(--blue-500)` declares no custom
- * property, and the palette and `--r-pill` are declared on `:root` in `globals.css`, not
- * in a row's `style` attribute.
+ * 🔴 **It reads `--` to the declaration's colon, with no anchor and no name charset, and
+ * both of those are the fix rather than sloppiness.** The first cut of this pattern was
+ * `/(^|;)\s*--[A-Za-z0-9_-]+\s*:…/`, and the reviewer walked past it with the AC3 mutant
+ * unchanged apart from cosmetics, twice:
+ *   · **`--é-paint`** in place of `--adh-paint` — a plain React style object, no special
+ *     rendering. CSS idents allow non-ASCII and `[A-Za-z0-9_-]+` does not: 3 failed with
+ *     **Ines green**, a total escape on the `1 / 0` row AC3 exists for, while Lina's row
+ *     went red with `PAINTS … on its own box` — so Chrome accepts and PAINTS `--é-paint`
+ *     and it is not a parser quirk.
+ *   · **a CSS comment before the declaration** — `background-image:var(--adh-paint);/*x*\/
+ *     --adh-paint:linear-gradient(… Infinity% …)` (it needs `dangerouslySetInnerHTML`,
+ *     since React's style object always serialises `;`-separated), which defeats the
+ *     `(^|;)\s*` anchor. The anchor bought nothing and cost that.
+ * `[^:;]*` is what keeps it inside ONE declaration: it cannot cross the `;` that ends the
+ * declaration or the `:` that starts a value, so a `--` appearing inside some other
+ * property's value cannot reach a later colon.
+ *
+ * It does not fire on the honest bars: `background:var(--blue-500)` has no colon after
+ * its `--`, and the palette and `--r-pill` are declared on `:root` in `globals.css`, not
+ * in a row's `style` attribute. That direction was checked BY CAUSE and not inferred from
+ * a green suite: `grep -rn '\["--' src/` returns nothing — no element in `src/` carries an
+ * inline custom property at all.
  */
-const INLINE_CUSTOM_PROPERTY_IMAGE =
-  /(^|;)\s*--[A-Za-z0-9_-]+\s*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
+const INLINE_CUSTOM_PROPERTY_IMAGE = /--[^:;]*:[^;]*(gradient\(|url\(|image-set\(|element\()/i;
 
-/** Every element inside every week row — the row itself included — with both reads. */
+/** Every element inside every week row — the row itself included — with all four reads. */
 async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
   return region.locator("li").evaluateAll((rows) =>
     rows.map((row) => ({
@@ -826,6 +871,16 @@ test.describe("EV-214 AC1 / EV-215 / P-ADH C2 — no week row paints a picture t
         for (const element of row.elements) {
           inspected += 1;
           const where = `${world.name} — week row "${row.date}" ("${row.rowText}"), <${element.tag}>`;
+          /**
+           * The channel list is RATCHETED, because `inspected` counts elements and not
+           * channels: deleting the `::after` read leaves this suite 260 green, which is
+           * the same shape of hole `minimumBars` exists for one section up. A guard that
+           * reads three boxes has to say it reads three boxes somewhere a deletion trips.
+           */
+          expect(
+            element.computed.map((channel) => channel.channel),
+            `${where}: the three computed channels EV-215 AC1 requires were not all read`
+          ).toEqual(["its own box", "::before", "::after"]);
           const painting = element.computed.filter((channel) => channel.value !== "none");
           if (painting.length > 0) {
             for (const channel of painting) {
