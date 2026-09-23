@@ -18,6 +18,12 @@ render path and `done`/`planned`:
 Kept the rendered line, and added one non-loop test: Lina is in `WORLDS` with that `currentWeek`,
 and her LAST fixture tuple in source (comments stripped) is `[3,4,2]`. Each loss went red alone.
 
+🔴 **And a source pin holds the TEXT, not the code that honours it** (staff review of EV-218).
+Breaking `adherenceSeries`'s override (`plannedSoFar: derivedSoFar`) with the tuple untouched
+left every pin green; on a simulated Monday with a painting mutant the whole gate was 263 green.
+My own clause-8 run mutated the DATA and never the CODE that reads it — mutate both sides of a
+fixture→code seam. The real fix is a unit test outside `server-only` (carded, not built).
+
 **Why:** the hazard is in `plannedSoFar`, which nothing prints; a rendered check can only hold
 what is rendered. A check inside an iteration cannot notice the iteration shrinking.
 
