@@ -903,6 +903,29 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     scheduled, this section does not wait on it, and nothing here approves building
  *     one.
  *
+ * 🔴 **THE PREFIXED-SPELLING RULE — read both, enumerate the one that returns a
+ * value.** When a property has a prefixed and an unprefixed name, the entry is chosen by
+ * MEASUREMENT: read both with `getPropertyValue` and take the one the engine reports.
+ * Worked example, and the reason the rule exists (`BUG-221`):
+ * `mask-border-source` returns **`""`** here — not reported, so an entry naming it would
+ * be listed and never read — while `-webkit-mask-box-image-source` returns the value and
+ * is what the table carries. The loop's empty-value assertion is what makes a wrong
+ * choice go red rather than pass vacuously; this rule is what stops it being made.
+ *
+ * ⚠️ **This is NOT EV-218's question, and the distinction is `senior-po`'s** (its third
+ * scope call on this axis, so it is worth stating rather than re-deriving):
+ *
+ *   | | EV-218's spellings | a vendor prefix |
+ *   |---|---|---|
+ *   | who picks it | an **adversary**, to evade a text match | the **platform** — two names, one implemented |
+ *   | bounded? | **no** | **yes** — read both and see which answers |
+ *   | failure | **evasion** | **incomplete enumeration** |
+ *
+ * Incomplete enumeration is this row's own failure mode, so a prefixed spelling belongs
+ * in this table. ADR-0024's *"test property presence, never match the value text"* is
+ * untouched: this is about WHICH SPELLING NAMES THE PROPERTY, on the computed side —
+ * which had been assumed to be an inline-only concern until it was not.
+ *
  * 🔴 **Why the single-source list matters more than any entry in it, in `senior-po`'s
  * words:** *every enumeration in this guard has been short. Channels, spellings,
  * pseudo-elements, properties — **four lists, four times too short.*** That is the
@@ -1009,14 +1032,14 @@ interface PaintChannel {
  * If the design ever needs a decorative shadow INSIDE a row, that is a `senior-po`
  * decision (EV-216 edge cases 1 and 2), not an exception carved here.
  *
- * ── **EV-216 AC2 — the seven mutants, each with the probe that it PAINTED.** ─────────
+ * ── **EV-216 AC2 — the eight mutants, each with the probe that it PAINTED.** ─────────
  *
  * Each was planted in an uncommitted `AdherenceSeries.tsx`, rendered on **Lina**, and
  * photographed before the suite was believed: a screenshot of each week row, PNG-decoded,
  * five scanlines per row, reporting the fraction of the row's width painted blue. The
  * control run (clean code) is the number each is read against. **A green — or a red —
  * under a mutant nobody has watched paint is worth nothing** (clause 7); three of these
- * seven proved it, below — once as a mutant that looked dead and was not, and twice as a
+ * eight proved it, below — once as a mutant that looked dead and was not, and twice as a
  * cell that looked empty and was not. **Each time the probe's geometry was the answer:
  * the scanline, then the box, then the clip.**
  *
@@ -1037,6 +1060,21 @@ interface PaintChannel {
  *     scanlines, the same row reads **blue 1.000 at y=1 and y=7 of 26** — a full bar
  *     beside "2 / 4 sessions" — and 0.75 / 0.50 on the 3 / 4 and 2 / 4 finished weeks.
  *     RESULT: **4 failed**, every offence naming `[border-image-source on its own box]`.
+ *   · **M8 `-webkit-mask-box-image-source` on the element's own box — `BUG-221`.**
+ *     `li { background: rgba(79,124,255,.85); -webkit-mask-box-image-source:
+ *     linear-gradient(90deg, #000 <ratio>%, transparent <ratio>%);
+ *     -webkit-mask-box-image-slice: 0 fill }` — M3's mechanism through the masking
+ *     BORDER property, so the paint is a flat COLOUR and no image function exists for
+ *     either denylist. PROBE: the current row, printing "21 Sept 2026 — 2 / 4 sessions"
+ *     and drawing no honest bar, is **0.957 of its width in blue on every scanline**
+ *     (control 0.031), proportional at 0.475 on a finished 2/4 and 0.675 on a 3/4, with
+ *     `background-image`, `box-shadow`, `border-image-source`, `mask-image` and
+ *     `content` **initial on every element and every box**. Reproduced at the tip before
+ *     the entry: **whole suite 261 passed, exit 0**. RESULT after it: **4 failed**, 30
+ *     offences, all naming `[-webkit-mask-box-image-source on its own box]`, zero
+ *     `DECLARES`. 📌 Independence was run **on the WHOLE GATE** rather than this file:
+ *     with that one cell removed and the mutant still painting, **261 passed** — nothing
+ *     anywhere in the suite kills it, which is a stronger statement than 16 passed here.
  *   · **M7 `border-image-source` on `::first-letter` — `BUG-217`, the second empty cell
  *     that was not empty, and the one that was silent across the WHOLE GATE.**
  *     `::first-letter { padding-right: <ratio*0.5>vw; border-top: 10px solid transparent;
@@ -1112,9 +1150,9 @@ interface PaintChannel {
  * **Independence (clause 4), run per mutant rather than argued.** With the mutant still
  * planted and still painting, its ONE channel entry was deleted from `PAINT_CHANNELS`
  * (and `PAINT_CHANNELS_EXPECTED` lowered by one, so the ratchet was not what went red):
- * **16 passed** every time, for all seven. Nothing else in this file kills any of them —
- * not the geometry limbs, not `minimumBars`, not the two inline denylists, not the other
- * seventeen channels. Two clauses killing one mutant would show neither to be needed, and
+ * **16 passed** every time, for all eight — and for M8 the same run was done across the
+ * WHOLE GATE, at 261 passed. Nothing else kills any of them — not the geometry limbs,
+ * not `minimumBars`, not the two inline denylists, not the other eighteen channels. Two clauses killing one mutant would show neither to be needed, and
  * M5's first version was exactly that and was rebuilt rather than reported.
  *
  * **Clause 8 — would it still have gone red if the bug had been the other one?** The
@@ -1122,8 +1160,9 @@ interface PaintChannel {
  * `box-shadow`, M2 only on `border-image-source`, M3 only on `mask-image`, M4 32 and
  * only on `content on ::before`, M5 58 and only on `background-image on ::first-letter`,
  * M6 12 and only on `box-shadow on ::first-letter`, M7 30 and only on
- * `border-image-source on ::first-letter` — with zero `DECLARES` offences and no other
- * test in this file red under any of them. So each
+ * `border-image-source on ::first-letter`, M8 30 and only on
+ * `-webkit-mask-box-image-source on its own box` — with zero `DECLARES` offences and no
+ * other test in this file red under any of them. So each
  * channel is carrying its own weight and none is riding on another's witness. What the
  * three mutants share is the SHAPE the guard was written for — a bar whose painted
  * length is `done / plannedSoFar`, reading FULL beside a row that prints "2 / 4
@@ -1140,6 +1179,23 @@ const PAINT_CHANNELS: PaintChannel[] = [
   { name: "box-shadow on its own box", property: "box-shadow", pseudo: null, initial: "none" },
   { name: "border-image-source on its own box", property: "border-image-source", pseudo: null, initial: "none" },
   { name: "mask-image on its own box", property: "mask-image", pseudo: null, initial: "none" },
+  /**
+   * 🔴 **`BUG-221`, and its SPELLING is a measurement, not a preference.** The masking
+   * BORDER image is M3's mechanism through a second property: a flat background COLOUR
+   * revealed only as far as the ratio, so no image function exists for either inline
+   * denylist and all five other properties read initial on every element and every box.
+   * Witnessed painting the current row **end to end — 0.957 of its width on every
+   * scanline beside "2 / 4 sessions"** (control 0.031), proportional at 0.475 on a
+   * finished 2/4 and 0.675 on a 3/4, with **the whole suite 261 passed, exit 0**.
+   *
+   * The STANDARD spelling cannot be the entry: `getPropertyValue("mask-border-source")`
+   * returns **`""`** in this Chromium — the property is not reported at all — and the
+   * empty-value assertion in the loop would correctly reject it as *listed but not
+   * read*. `-webkit-mask-box-image-source` returns
+   * `linear-gradient(90deg, rgb(0,0,0) 100%, …)`. Both were read side by side before
+   * this line was written; see the banner's prefixed-spelling rule.
+   */
+  { name: "-webkit-mask-box-image-source on its own box", property: "-webkit-mask-box-image-source", pseudo: null, initial: "none" },
   // ── box: ::before ────────────────────────────────────────────────────────────────
   { name: "background-image on ::before", property: "background-image", pseudo: "::before", initial: "none" },
   { name: "box-shadow on ::before", property: "box-shadow", pseudo: "::before", initial: "none" },
@@ -1238,7 +1294,7 @@ const PAINT_CHANNELS: PaintChannel[] = [
  * green. Raise it in the same commit that adds a channel; lowering it is a decision
  * somebody has to write down.
  */
-const PAINT_CHANNELS_EXPECTED = 18;
+const PAINT_CHANNELS_EXPECTED = 19;
 
 /** One element inside a week row, as the reads that can reveal a painted picture. */
 interface RowElement {
