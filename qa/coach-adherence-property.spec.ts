@@ -938,6 +938,109 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * what the reads DO, and none of them is a statement about what can be drawn.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-218 — **The guard stops matching spellings.** ADR-0024, option (d).
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-218-the-guard-stops-matching-spellings.md`.
+ * ADR: `b-fit-mobile/docs/architecture/adr/0024-the-adherence-paint-guard-reads-after-the-parser.md`.
+ *
+ * **What changed.** The two inline text patterns and the inline read were deleted. Lina's
+ * current week went from `[2, 4]` to `[3, 4, 2]` and her *Adherence this week* tile from
+ * `2 / 4` to `3 / 4`. Her row is the fixture's only week with `done > plannedSoFar` AND
+ * `plannedSoFar >= 1`. On it, a renderer drawing `done / plannedSoFar` emits `150 %`,
+ * which parses, so this section reads it. On Ines's `1 / 0` row the same renderer emits
+ * `Infinity%`, which the parser drops.
+ *
+ * **Why one row is enough.** The renderer is ONE expression. On any row with
+ * `plannedSoFar >= 1` and `done > plannedSoFar` it yields a finite percentage over 100,
+ * and a finite percentage parses. Only `plannedSoFar = 0` yields a value the parser drops.
+ * So one row of the first kind puts that expression's output where a post-parse read
+ * sees it. ADR-0024 adds a bound: `done − plannedSoFar ≤ 1` because the api counts days
+ * (`TraineeAdherenceWeeks.java:179-186`), so the reachable ratios are `{∞} ∪ {(n+1)/n}`.
+ * 🔴 **The argument above does not use that bound, because the bound is not
+ * enforced.** `MeWorkoutController.complete` → `LogWorkoutCompletionUseCase.complete`
+ * takes the client's `date` with no future-date check. The adherence read queries Monday
+ * to SUNDAY of the current week, so a completion dated later this week counts in `done`
+ * and not in `plannedSoFar`. Traced in the api source, not constructed end to end.
+ *
+ * 📌 **Earlier records in this file that say "Lina … 2 / 4 sessions" are HISTORY.** They
+ * describe what was measured at the time and are left as written. Her current week now
+ * prints `3 / 4`. The `DECLARES` offences named in the EV-216 records below came from
+ * the deleted inline clauses.
+ *
+ * ── **WHICH WORLD CARRIES WHICH WITNESS, after this row** (EV-218 AC1) ──────────────
+ *
+ *   · **Lina `[3, 4, 2]` — now carries the `done / plannedSoFar` renderer, on every
+ *     weekday.** Paint limb: that renderer's value parses and paints on her current row.
+ *     Geometry limb: a bar drawn from it is 150 % against a printed 75 %. Held by three
+ *     assertions: `currentWeek` in the loop below, the EV-218 test after the loop (her
+ *     table entry and her last tuple in source), and `coach-monitoring.spec.ts`'s tile
+ *     test (tile equals last row).
+ *   · **Ines `[1, 3, 0]` — LOSES her C2 paint witness.** The renderer emits
+ *     `Infinity%`, nothing paints, every channel computes initial, and her world is
+ *     green here BY DESIGN. She KEEPS everything else she had: the EV-210b AC3 geometry
+ *     loop, "the 1 / 0 week" test and her source pin. All three assert **C2**, not C3.
+ *     ⚠️ ADR-0024 and EV-218's amended AC1 say "Ines keeps C3". She has no C3 test, before
+ *     or after this row: the C3 describe (EV-210b AC4) uses Ruben, Elif, Noor and Kaia.
+ *     What she keeps is EV-210b **AC3**, which asserts C2.
+ *   · **Tobias `[0, 3]` and Noor `[0, 3]` — weekday-dependent.** Their `plannedSoFar` is
+ *     derived, `min(3, days elapsed)`. On any day except Monday the renderer emits a
+ *     finite `0 %`: it computes non-`none` and paints nothing visible (ADR-0024 M4), so
+ *     they go red. On a Monday it emits `NaN%` and they are green. Lina's red does not
+ *     depend on the weekday; theirs does.
+ *
+ * ── **The runs behind that, 2026-09-23 (a Wednesday), on this branch** ────────────────
+ *
+ * Every paint mutant sits on the CURRENT week's `li` only, with
+ * `R = (week.done / week.plannedSoFar) * 100`, and was built through React's style object
+ * rather than an HTML string (the page's `<svg>` count matched the control's). PROBE: the
+ * viewport was screenshotted with a clip grown 24 px past the row, never a full-page
+ * capture, and the blue fraction of the row's width was read on scanlines y = 3, 7, 11
+ * and 14 of the 15 px row. Five were requested; two landed on y = 14.
+ * Control on clean code: **0.000 on every scanline of every world's current row**, and
+ * ≈ 0.83 for an honest full bar (the track is ≈ 0.83 of the row).
+ *
+ *   · **All seven painting constructions**, recorded under their spelling:
+ *     `--adh-paint` + `var()`; `--é-paint` + `var()`; `linear-gradi\65 nt(`;
+ *     `--adh-paint:/*;*\/linear-gradient(…)`; plain `background: linear-gradient(…)` (B3
+ *     / M9-family); `url("data:image/svg+xml,…") … / R% 100%` (M-Q3); and
+ *     `-webkit-gradient(linear, …) … / R% 100%`. For each one, PROBE: Lina's current
+ *     row reads **0.962 / 0.943 / 0.923 / 1.000** at y = 3 / 7 / 11 / 14 beside
+ *     "3 / 4 sessions" (the gaps are glyphs), and
+ *     Ines's current row reads 0.000 on every scanline with computed `none`. RESULT for each:
+ *     **3 failed — Lina, Tobias, Noor — Ines green**, and every offence names
+ *     `[background-image on its own box]`. In the computed values the escape, the
+ *     comment and both `var()` hops are resolved: all four compute as
+ *     `linear-gradient(90deg, rgb(79, 124, 255) 150%, …)`. `-webkit-gradient` does not
+ *     normalise. It computes as
+ *     `-webkit-gradient(linear, 0% 0%, 100% 0%, from(rgb(79, 124, 255)), …)` in its
+ *     author's spelling (ADR-0024 M3). That is why the clause tests presence.
+ *   · **EV-215's ancestor declaration** (`--adh-paint` on the `<ul>`, spent on the
+ *     current `li`): the same probe numbers and the same RESULT.
+ *   · **Clause 4, run on the WHOLE GATE.** Construction 3 was planted and painting, and
+ *     the single `background-image on its own box` entry was removed with the pin
+ *     lowered to 18: **262 passed, exit 0**. Nothing else in the gate kills it.
+ *   · **Clause 8 — does the row do the work?** Monday was simulated by STATING
+ *     `plannedSoFar = 0` on every world's current week, with construction 3 planted.
+ *     With Lina's `[3, 4, 2]` kept: **1 failed, Lina alone**. With Lina also at
+ *     `[3, 4, 0]`: **the paint limb is entirely green**, and the only red is the
+ *     EV-218 source pin. PROBE of that run: every current row reads 0.000, computes
+ *     `none`, and declares `Infinity%` or `NaN%`. The renderer is present and nothing
+ *     here reads it.
+ *   · **Geometry limb** — the current week draws a bar `R %` wide. Lina: **"draws a bar
+ *     WIDER than its track"** (150 %), with 0.83 of the row painted beside "3 / 4
+ *     sessions". Ines is caught first by the `NaN|Infinity` text matcher. With both
+ *     text matchers disabled she is still red by measurement: **"prints 1 / 3 (33.3 %)
+ *     and draws 100.0 %"** (ADR-0024 M6).
+ *   · **The ratchets.** Lina removed from `WORLDS`: 1 failed, the EV-218 test. Third
+ *     element dropped (`[3, 4]`): 1 failed, the EV-218 test. The rendered check stays
+ *     green because the row still prints "3 / 4", and on a Wednesday the derived
+ *     `plannedSoFar` is also 2. Tuple swapped with the week before it: 1 failed, the
+ *     EV-218 test. Tile reverted to `2 / 4`: `coach-monitoring.spec.ts` "the current
+ *     week agrees…" red. Series reverted with the tile kept: 3 failed (the loop's
+ *     `currentWeek`, the EV-218 test, the monitoring tile test).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
 /**
  * One computed read: **one cell of a (box × property) matrix** — a CSS property, on one
  * of the boxes an element owns, with the value of that property which means *this box
@@ -992,8 +1095,8 @@ interface PaintChannel {
  *     prose is not a family until somebody builds the other two.
  *   · `content` — an image function in a generated box's `content`, constructed twice
  *     independently during review and painting a full-width bar beside "2 / 4 sessions"
- *     against this branch with all twelve other channels, both denylists, the geometry
- *     limbs and `minimumBars` green. See its entry below for its two initial values.
+ *     against EV-216's branch with all twelve other channels, both denylists it then had,
+ *     the geometry limbs and `minimumBars` green. See its entry below for its two initial values.
  *
  * And the fourth BOX, `::first-letter` — `background-image`, `box-shadow` and
  * `border-image-source`, with ONE cell beside them empty, measured at a stated box AND a
@@ -1059,8 +1162,8 @@ interface PaintChannel {
  *     `li { background: rgba(79,124,255,.85); -webkit-mask-box-image-source:
  *     linear-gradient(90deg, #000 <ratio>%, transparent <ratio>%);
  *     -webkit-mask-box-image-slice: 0 fill }` — M3's mechanism through the masking
- *     BORDER property, so the paint is a flat COLOUR and no image function exists for
- *     either denylist. PROBE: the current row, printing "21 Sept 2026 — 2 / 4 sessions"
+ *     BORDER property, so the paint is a flat COLOUR and no image function existed for
+ *     either denylist EV-216 still had. PROBE: the current row, printing "21 Sept 2026 — 2 / 4 sessions"
  *     and drawing no honest bar, is **0.957 of its width in blue on every scanline**
  *     (control 0.031), proportional at 0.475 on a finished 2/4 and 0.675 on a 3/4, with
  *     `background-image`, `box-shadow`, `border-image-source`, `mask-image` and
@@ -1123,8 +1226,8 @@ interface PaintChannel {
  *     **0.750 / 0.500 on the finished 3 / 4 and 2 / 4 weeks**, so proportional rather
  *     than constant. RESULT: **4 failed**, 32 offences, every one naming
  *     `[content on ::before]`, zero `DECLARES`. Before the channel existed this mutant
- *     was **16 passed** against this branch with all twelve other channels, both
- *     denylists, the geometry limbs and `minimumBars` green on it — EV-210's mechanism 2
+ *     was **16 passed** against EV-216's branch with all twelve other channels, both
+ *     denylists it then had, the geometry limbs and `minimumBars` green on it — EV-210's mechanism 2
  *     restored, which is why `senior-po` ruled it an entry rather than a disclosure.
  *   · **M3 `mask-image`** — `background: rgba(79,124,255,.35)` (a background COLOUR, so
  *     no `background-image` exists for either EV-214 clause to find) revealed only as far
@@ -1147,7 +1250,8 @@ interface PaintChannel {
  * (and `PAINT_CHANNELS_EXPECTED` lowered by one, so the ratchet was not what went red):
  * **16 passed** every time, for all eight — and for M8 the same run was done across the
  * WHOLE GATE, at 261 passed. Nothing else kills any of them — not the geometry limbs,
- * not `minimumBars`, not the two inline denylists, not the other eighteen channels. Two clauses killing one mutant would show neither to be needed, and
+ * not `minimumBars`, not the two inline denylists (deleted since, by EV-218), not the
+ * other eighteen channels. Two clauses killing one mutant would show neither to be needed, and
  * M5's first version was exactly that and was rebuilt rather than reported.
  *
  * **Clause 8 — would it still have gone red if the bug had been the other one?** The
@@ -1177,8 +1281,8 @@ const PAINT_CHANNELS: PaintChannel[] = [
   /**
    * 🔴 **`BUG-221`, and its SPELLING is a measurement, not a preference.** The masking
    * BORDER image is M3's mechanism through a second property: a flat background COLOUR
-   * revealed only as far as the ratio, so no image function exists for either inline
-   * denylist and all five other properties read initial on every element and every box.
+   * revealed only as far as the ratio, so no image function existed for either inline
+   * denylist (both deleted since, by EV-218) and all five other properties read initial on every element and every box.
    * Witnessed painting the current row **end to end — 0.957 of its width on every
    * scanline beside "2 / 4 sessions"** (control 0.031), proportional at 0.475 on a
    * finished 2/4 and 0.675 on a 3/4, with **the whole suite 261 passed, exit 0**.
