@@ -887,6 +887,60 @@ interface PaintChannel {
  *
  * If the design ever needs a decorative shadow INSIDE a row, that is a `senior-po`
  * decision (EV-216 edge cases 1 and 2), not an exception carved here.
+ *
+ * ── **EV-216 AC2 — the three mutants, each with the probe that it PAINTED.** ──────────
+ *
+ * Each was planted in an uncommitted `AdherenceSeries.tsx`, rendered on **Lina**, and
+ * photographed before the suite was believed: a screenshot of each week row, PNG-decoded,
+ * five scanlines per row, reporting the fraction of the row's width painted blue. The
+ * control run (clean code) is the number each is read against. **A green — or a red —
+ * under a mutant nobody has watched paint is worth nothing** (clause 7); one of these
+ * three proved it, below.
+ *
+ *   · **M1 `box-shadow`** — `inset ${(week.done / week.plannedSoFar) * 100}vw 0 0 0
+ *     rgba(79, 124, 255, .35)` on the `li`, exactly as `staff-engineer` constructed it.
+ *     PROBE: Lina's current row, *"21 Sept 2026 | 2 / 4 sessions"*, went from **blue
+ *     0.068 → 1.000 of the row width**, computed `rgba(79, 124, 255, 0.35) 1280px 0px
+ *     0px 0px inset` — **the row painted end to end beside "2 / 4 sessions"**, which is
+ *     mechanism 2 of EV-210's table. Proportional, not constant: 960 px on a 3 / 4 week,
+ *     640 px on a finished 2 / 4. RESULT: **4 failed**, every offence naming
+ *     `[box-shadow on its own box]`.
+ *   · **M2 `border-image`** — `border-top: 10px solid transparent` +
+ *     `border-image-source: linear-gradient(90deg, rgba(79,124,255,.85) <ratio>%,
+ *     transparent <ratio>%)` + `border-image-slice: 1`. PROBE, and 🔴 **the dud this
+ *     file warns about, met head on**: the first probe sampled the row's vertical MIDDLE
+ *     and reported **blue 0.04** — indistinguishable from "the mutant never fired". A
+ *     border-image paints in a 10 px strip at the TOP of the row. Re-probed across five
+ *     scanlines, the same row reads **blue 1.000 at y=1 and y=7 of 26** — a full bar
+ *     beside "2 / 4 sessions" — and 0.75 / 0.50 on the 3 / 4 and 2 / 4 finished weeks.
+ *     RESULT: **4 failed**, every offence naming `[border-image-source on its own box]`.
+ *   · **M3 `mask-image`** — `background: rgba(79,124,255,.35)` (a background COLOUR, so
+ *     no `background-image` exists for either EV-214 clause to find) revealed only as far
+ *     as the ratio by `mask-image: linear-gradient(90deg, #000 <ratio>%, transparent
+ *     <ratio>%)`. PROBE: the same row **blue 1.000 on every scanline**, page background
+ *     `rgb(181,195,239)` under the figures. RESULT: **4 failed**, every offence naming
+ *     `[mask-image on its own box]`.
+ *
+ * **Independence (clause 4), run per mutant rather than argued.** With the mutant still
+ * planted and still painting, its ONE channel entry was deleted from `PAINT_CHANNELS`
+ * (and `PAINT_CHANNELS_EXPECTED` lowered to 11, so the ratchet was not what went red):
+ * **16 passed** each time. Nothing else in this file kills any of the three — not the
+ * geometry limbs, not `minimumBars`, not the two inline denylists, not the other eleven
+ * channels. Two clauses killing one mutant would show neither to be needed.
+ *
+ * **Clause 8 — would it still have gone red if the bug had been the other one?** The
+ * cross-matrix says no, and that is the point: M1 fired 29 offences and *only* on
+ * `box-shadow`, M2 only on `border-image-source`, M3 only on `mask-image`, with zero
+ * `DECLARES` offences and no other test in this file red under any of them. So each
+ * channel is carrying its own weight and none is riding on another's witness. What the
+ * three mutants share is the SHAPE the guard was written for — a bar whose painted
+ * length is `done / plannedSoFar`, reading FULL beside a row that prints "2 / 4
+ * sessions" — and the probe measured that length rather than assuming it.
+ *
+ * ⚠️ The honest counterpart, stated because it is the enumeration's real cost: this limb
+ * would also go red on a CONSTANT decorative value on any of these properties inside a
+ * row, because a computed read cannot tell a ratio from a constant. That is EV-216 edge
+ * case 2 and it is a `senior-po` decision if it ever happens, not a silent exception.
  */
 const PAINT_CHANNELS: PaintChannel[] = [
   { name: "background-image on its own box", property: "background-image", pseudo: null, initial: "none" },
