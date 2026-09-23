@@ -964,14 +964,14 @@ interface PaintChannel {
  * If the design ever needs a decorative shadow INSIDE a row, that is a `senior-po`
  * decision (EV-216 edge cases 1 and 2), not an exception carved here.
  *
- * ── **EV-216 AC2 — the four mutants, each with the probe that it PAINTED.** ──────────
+ * ── **EV-216 AC2 — the five mutants, each with the probe that it PAINTED.** ──────────
  *
  * Each was planted in an uncommitted `AdherenceSeries.tsx`, rendered on **Lina**, and
  * photographed before the suite was believed: a screenshot of each week row, PNG-decoded,
  * five scanlines per row, reporting the fraction of the row's width painted blue. The
  * control run (clean code) is the number each is read against. **A green — or a red —
  * under a mutant nobody has watched paint is worth nothing** (clause 7); one of these
- * four proved it, below.
+ * five proved it, below.
  *
  *   · **M1 `box-shadow`** — `inset ${(week.done / week.plannedSoFar) * 100}vw 0 0 0
  *     rgba(79, 124, 255, .35)` on the `li`, exactly as `staff-engineer` constructed it.
@@ -990,6 +990,20 @@ interface PaintChannel {
  *     scanlines, the same row reads **blue 1.000 at y=1 and y=7 of 26** — a full bar
  *     beside "2 / 4 sessions" — and 0.75 / 0.50 on the 3 / 4 and 2 / 4 finished weeks.
  *     RESULT: **4 failed**, every offence naming `[border-image-source on its own box]`.
+ *   · **M5 `background-image` on `::first-letter`** — a band on the first letter of a
+ *     week row's span, stretched to the ratio with `padding-right: <ratio>vw`.
+ *     🔴 **Its first version was killed by TWO clauses and therefore witnessed
+ *     neither.** Put on the FIGURES span, the padding widened the `auto` grid track,
+ *     squeezed the bar track, and the geometric limbs went red beside this one: 7
+ *     failed, and a mutant two clauses kill shows neither to be needed. Moved onto the
+ *     DATE span — whose grid track is a fixed `76px`, so the band overflows without
+ *     resizing anything — the geometry is untouched and only this cell fires. PROBE:
+ *     Lina's current row, which draws NO honest bar (control 0.068), reads **0.663 at
+ *     y=1 and 0.729 at mid-height** — two thirds of the row in blue beside "2 / 4
+ *     sessions" — and the band tracks the ratio across the finished weeks (0.334 on a
+ *     2 / 4, 0.496 on a 3 / 4, 0.663 on a 4 / 4). RESULT: **4 failed**, 58 offences,
+ *     every one naming `[background-image on ::first-letter]`, zero `DECLARES`, the
+ *     geometry limbs and `minimumBars` green.
  *   · **M4 `content`** — `li::before { content: linear-gradient(90deg,
  *     rgba(79,124,255,.85) 100%, transparent 0%); display: block; position: absolute;
  *     width: <ratio>%; height: 12px }`, delivered from a `<style>` because React cannot
@@ -1012,15 +1026,16 @@ interface PaintChannel {
  * **Independence (clause 4), run per mutant rather than argued.** With the mutant still
  * planted and still painting, its ONE channel entry was deleted from `PAINT_CHANNELS`
  * (and `PAINT_CHANNELS_EXPECTED` lowered by one, so the ratchet was not what went red):
- * **16 passed** every time, for all four. Nothing else in this file kills any of them —
+ * **16 passed** every time, for all five. Nothing else in this file kills any of them —
  * not the geometry limbs, not `minimumBars`, not the two inline denylists, not the other
- * fourteen channels. Two clauses killing one mutant would show neither to be needed.
+ * fifteen channels. Two clauses killing one mutant would show neither to be needed, and
+ * M5's first version was exactly that and was rebuilt rather than reported.
  *
  * **Clause 8 — would it still have gone red if the bug had been the other one?** The
  * cross-matrix says no, and that is the point: M1 fired 29 offences and *only* on
  * `box-shadow`, M2 only on `border-image-source`, M3 only on `mask-image`, M4 32 and
- * only on `content on ::before` — with zero `DECLARES` offences and no other test in
- * this file red under any of them. So each
+ * only on `content on ::before`, M5 58 and only on `background-image on ::first-letter`
+ * — with zero `DECLARES` offences and no other test in this file red under any of them. So each
  * channel is carrying its own weight and none is riding on another's witness. What the
  * three mutants share is the SHAPE the guard was written for — a bar whose painted
  * length is `done / plannedSoFar`, reading FULL beside a row that prints "2 / 4
