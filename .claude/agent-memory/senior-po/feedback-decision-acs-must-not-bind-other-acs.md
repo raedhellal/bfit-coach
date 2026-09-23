@@ -23,3 +23,8 @@ that row's **other** ACs for anything that would change under each option. **I w
 in one document, on the same day.** *Deferring a decision is not the same as being neutral about it —
 the rest of the row has to be neutral too.* Where a downstream row depends on a pending decision,
 write its `Given` as *"takes the fixture/state as it finds it and names what it found"* (EV-219 AC1).
+
+**Second instance, same day:** EV-217 AC1 said *"EV-214's existing fixture worlds (no new fixture)"*
+while EV-218, sequenced first, changes Lina's last tuple. When a row is sequenced **after** another row
+that changes shared state, its `Given` must take that state as it finds it. **Check every downstream
+row's `Given` whenever I set a sequence**, not only the row I am editing.

@@ -11,3 +11,4 @@
 - [EV-214 gate](project_ev214-gate.md) — 2026-09-23 PASS at 6e5eac8; new mutants + the time and viewport channels that defeat a background-image ban
 - [EV-216 gate](project_ev216-gate.md) — FAIL eadd421, PASS afebbe7 + 7b64a16; clip-region and fullPage-drops-hover probe traps; BUG-222 hover quantifier
 - [GUARD rows vs product rows](feedback_guard-rows-vs-product-rows.md) — a hole in our own guard is a numbered BUGS.md row that is NOT counted; the axis is user-reachable, not merged
+- [EV-218 gate](project_ev218-gate.md) — 2026-09-23 PASS at ab3e134; BUG-227 glyph bar + BUG-228 zero-height outline [GUARD]; weekday-sim + lint-creates-.next traps

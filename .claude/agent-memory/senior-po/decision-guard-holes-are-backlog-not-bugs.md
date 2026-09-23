@@ -17,3 +17,9 @@ hypothetical is missing *coverage*, not evidence of a *defect*.
 are all this shape). If yes, it is a bug and `senior-qa` owns the register line — **I do not write
 `BUGS.md`**. 📌 Contrast [[decision-closing-on-a-deploy-witness]]: BUG-205 *was* a real rendered
 defect, which is why it belonged in the register and on the board.
+
+**Update 2026-09-23:** `senior-qa` settled the convention in `BUGS.md`'s own header: **`[GUARD]` rows**
+are logged in the register but **not counted** in the product-health totals, and their fix is a
+backlog row that I scope. So a guard hole can have a `BUG-` id (BUG-217, BUG-221, BUG-222) without
+distorting the count. When one arrives, find or create the backlog row that fixes it; do not ask QA
+to un-file it.
