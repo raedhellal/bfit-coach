@@ -933,14 +933,14 @@ interface PaintChannel {
  * If the design ever needs a decorative shadow INSIDE a row, that is a `senior-po`
  * decision (EV-216 edge cases 1 and 2), not an exception carved here.
  *
- * ── **EV-216 AC2 — the three mutants, each with the probe that it PAINTED.** ──────────
+ * ── **EV-216 AC2 — the four mutants, each with the probe that it PAINTED.** ──────────
  *
  * Each was planted in an uncommitted `AdherenceSeries.tsx`, rendered on **Lina**, and
  * photographed before the suite was believed: a screenshot of each week row, PNG-decoded,
  * five scanlines per row, reporting the fraction of the row's width painted blue. The
  * control run (clean code) is the number each is read against. **A green — or a red —
  * under a mutant nobody has watched paint is worth nothing** (clause 7); one of these
- * three proved it, below.
+ * four proved it, below.
  *
  *   · **M1 `box-shadow`** — `inset ${(week.done / week.plannedSoFar) * 100}vw 0 0 0
  *     rgba(79, 124, 255, .35)` on the `li`, exactly as `staff-engineer` constructed it.
@@ -959,6 +959,18 @@ interface PaintChannel {
  *     scanlines, the same row reads **blue 1.000 at y=1 and y=7 of 26** — a full bar
  *     beside "2 / 4 sessions" — and 0.75 / 0.50 on the 3 / 4 and 2 / 4 finished weeks.
  *     RESULT: **4 failed**, every offence naming `[border-image-source on its own box]`.
+ *   · **M4 `content`** — `li::before { content: linear-gradient(90deg,
+ *     rgba(79,124,255,.85) 100%, transparent 0%); display: block; position: absolute;
+ *     width: <ratio>%; height: 12px }`, delivered from a `<style>` because React cannot
+ *     style a pseudo-element — which is how it would arrive in production too. PROBE:
+ *     Lina's current row **blue 1.000 at y=1, y=4 and y=8 of 16**, page background under
+ *     the figures `rgb(102,141,252)` — a full-width bar beside "2 / 4 sessions" — and
+ *     **0.750 / 0.500 on the finished 3 / 4 and 2 / 4 weeks**, so proportional rather
+ *     than constant. RESULT: **4 failed**, 32 offences, every one naming
+ *     `[content on ::before]`, zero `DECLARES`. Before the channel existed this mutant
+ *     was **16 passed** against this branch with all twelve other channels, both
+ *     denylists, the geometry limbs and `minimumBars` green on it — EV-210's mechanism 2
+ *     restored, which is why `senior-po` ruled it an entry rather than a disclosure.
  *   · **M3 `mask-image`** — `background: rgba(79,124,255,.35)` (a background COLOUR, so
  *     no `background-image` exists for either EV-214 clause to find) revealed only as far
  *     as the ratio by `mask-image: linear-gradient(90deg, #000 <ratio>%, transparent
@@ -968,15 +980,16 @@ interface PaintChannel {
  *
  * **Independence (clause 4), run per mutant rather than argued.** With the mutant still
  * planted and still painting, its ONE channel entry was deleted from `PAINT_CHANNELS`
- * (and `PAINT_CHANNELS_EXPECTED` lowered to 11, so the ratchet was not what went red):
- * **16 passed** each time. Nothing else in this file kills any of the three — not the
- * geometry limbs, not `minimumBars`, not the two inline denylists, not the other eleven
- * channels. Two clauses killing one mutant would show neither to be needed.
+ * (and `PAINT_CHANNELS_EXPECTED` lowered by one, so the ratchet was not what went red):
+ * **16 passed** every time, for all four. Nothing else in this file kills any of them —
+ * not the geometry limbs, not `minimumBars`, not the two inline denylists, not the other
+ * fourteen channels. Two clauses killing one mutant would show neither to be needed.
  *
  * **Clause 8 — would it still have gone red if the bug had been the other one?** The
  * cross-matrix says no, and that is the point: M1 fired 29 offences and *only* on
- * `box-shadow`, M2 only on `border-image-source`, M3 only on `mask-image`, with zero
- * `DECLARES` offences and no other test in this file red under any of them. So each
+ * `box-shadow`, M2 only on `border-image-source`, M3 only on `mask-image`, M4 32 and
+ * only on `content on ::before` — with zero `DECLARES` offences and no other test in
+ * this file red under any of them. So each
  * channel is carrying its own weight and none is riding on another's witness. What the
  * three mutants share is the SHAPE the guard was written for — a bar whose painted
  * length is `done / plannedSoFar`, reading FULL beside a row that prints "2 / 4
