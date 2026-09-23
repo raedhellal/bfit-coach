@@ -25,3 +25,8 @@ guard. If a future design wants to draw the in-progress week, it must **print**
 Ines (`…0014`), whose current week **states** `[1, 3, 0]` — the derived `plannedSoFar`
 only produces the hazard on some weekdays, so a world relying on it stops discriminating
 by Friday. See [[a-picture-with-no-text-is-unassertable]].
+
+**Since EV-218 (2026-09-23):** Lina's current week states `[3, 4, 2]` — the fixture's only
+`done > plannedSoFar >= 1` row, where a `done / plannedSoFar` renderer emits a valid 150 % that
+the post-parse paint read sees. Ines's `1 / 0` row is now green on the paint limb by design.
+And the api's `done − plannedSoFar ≤ 1` is not enforced: see [[the-day-unit-bound-is-not-enforced]].

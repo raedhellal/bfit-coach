@@ -1,11 +1,16 @@
 ---
 name: an-inline-denylist-is-one-var-hop-wide
-description: A denylist over inline style TEXT is walked past by moving the value into a custom property, and any name charset or anchor in that pattern is walked past by renaming it — match structure, not spelling
+description: HISTORY — the inline-style text denylist was walked past by var() hops and re-spellings four times; EV-218 deleted it for a post-parse read plus a fixture row
 metadata:
   type: project
 ---
 
-`qa/coach-adherence-property.spec.ts` reads a week row's paint on four channels. Two of
+🔴 **SUPERSEDED 2026-09-23 (EV-218, ADR-0024): both inline patterns described below were
+DELETED.** The guard now reads computed values only and the blind spot is closed by Lina's
+`[3, 4, 2]` fixture row. Kept as the record of why a text denylist fails: every escape here
+was a re-spelling, and spellings are unbounded.
+
+`qa/coach-adherence-property.spec.ts` read a week row's paint on four channels. Two of
 them are text patterns over the inline `style` attribute, and a text pattern is **one
 `var()` hop wide**:
 
