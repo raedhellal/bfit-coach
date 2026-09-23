@@ -418,9 +418,9 @@ test.describe("EV-210b AC3 / P-ADH C2 — the bar and the numbers beside it are 
    * `plannedSoFar` has NO rendering — the current week draws no bar and the number is
    * never printed — so the only thing that makes a `plannedSoFar` renderer detectable is
    * a world where `done > plannedSoFar`. The derived value in `adherenceSeries` is
-   * `min(planned, elapsedThisWeek)`, which gives `done > plannedSoFar` on a Monday and
-   * NOT on a Friday: a world relying on it would stop discriminating for three days in
-   * seven, which is precisely the shape of a guard that reads as protection and binds to
+   * `min(planned, elapsedThisWeek)`, which for Ines's `[1, 3]` gives `done > plannedSoFar`
+   * on a Monday ONLY: a world relying on it would stop discriminating six days in seven,
+   * which is precisely the shape of a guard that reads as protection and binds to
    * nothing. So Ines states it, and this asserts she still does.
    */
   test("the hazard world still HAS the hazard — done > plannedSoFar, stated not derived", () => {
@@ -775,8 +775,10 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *
  *      🔴 **EV-218 (ADR-0024) — read this as an instruction.** Each channel is read
  *      **after** the CSS parser and asserted only `!== initial`. No clause of this limb
- *      matches a value against any text, so there is no spelling for a construction to
- *      vary — and none may be added: ADR-0024 M3 measured `-webkit-gradient(linear, …)`
+ *      matches a value against any text, so there is no VALUE spelling for a
+ *      construction to vary — and none may be added (the property NAME is still a
+ *      spelling, which is what `PAINT_CHANNELS` enumerates and EV-216's prefixed-spelling
+ *      rule governs): ADR-0024 M3 measured `-webkit-gradient(linear, …)`
  *      computing with its author's spelling verbatim, so a computed `/gradient\(/` would
  *      be walked past. Test that a property is present; never match its value.
  *      It reads **no declaration**: not the inline `style` attribute (EV-218 deleted
@@ -976,6 +978,18 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     assertions: `currentWeek` in the loop below, the EV-218 test after the loop (her
  *     table entry and her last tuple in source), and `coach-monitoring.spec.ts`'s tile
  *     test (tile equals last row).
+ *     🔴 **Those pins hold the tuple's TEXT, not `adherenceSeries` honouring it.** Break
+ *     the code that applies the override (`plannedSoFar: derivedSoFar`) and leave the
+ *     tuple alone: every pin stays green, and `plannedSoFar` falls back to the weekday.
+ *     Reviewer-constructed: on a simulated Monday with construction 3 planted, the
+ *     WHOLE GATE passed (263, exit 0); on a real Wednesday the same breakage gave 4
+ *     failed. So under that regression the paint limb is blind on Mondays. Nothing
+ *     notices the override being ignored either — on a Wednesday Ines's stated `1 / 0`
+ *     silently becomes a derived `1 / 2`. Ines has had the same exposure since EV-210b;
+ *     what is new is that the paint limb now depends on it, because the inline read
+ *     that covered the plain spellings on a Monday is gone. Carded separately (move
+ *     `adherenceSeries` / `WeekSpec` out of the `server-only` module and unit-test that a
+ *     stated last tuple's `plannedSoFar` survives any clock); not built here.
  *   · **Ines `[1, 3, 0]` — LOSES her C2 paint witness.** The renderer emits
  *     `Infinity%`, nothing paints, every channel computes initial, and her world is
  *     green here BY DESIGN. She KEEPS everything else she had: the EV-210b AC3 geometry

@@ -185,9 +185,9 @@ const NOOR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0013";
  * Today's renderer is safe (it draws no bar for the current week at all), so this world
  * exists for the NEXT one. Ines carries the hazard **every day of the week**, which the
  * derived `plannedSoFar` cannot: seeded from `elapsedThisWeek`, `done > plannedSoFar` is
- * true on a Monday and false by Friday, so a world relying on it would quietly stop
- * discriminating for three days in seven and the guard would read as protection while
- * protecting nothing.
+ * true for her `[1, 3]` on a Monday only and false from Tuesday, so a world relying on it
+ * would quietly stop discriminating six days in seven and the guard would read as
+ * protection while protecting nothing.
  *
  * Her eight weeks also carry, in one page, every shape AC3 enumerates: a past 100 %
  * week, a past 0 % week, a past partial week (2 / 3, the rounding case), a no-plan week,
@@ -794,9 +794,11 @@ function mondayOfWeeksAgo(weeksAgo: number): string {
  *
  * The optional third element **overrides `plannedSoFar`** on the current (partial)
  * week. It exists for EV-210b: the hazard C2 protects against is `done > plannedSoFar`,
- * and the derived value below only produces it on some weekdays (`elapsedThisWeek`
- * moves), so a world seeded with it would stop discriminating from Friday onwards. A
- * world that states `plannedSoFar` outright has the hazard every day of the week.
+ * and the derived value below, `min(planned, elapsedThisWeek)`, only produces it while
+ * `done` exceeds the days elapsed — so a world relying on it stops discriminating part-way
+ * through the week, on a day set by its own tuple: `[1, 3]` from Tuesday, `[3, 4]` from
+ * Thursday. A world that states `plannedSoFar` outright has the hazard every day of the
+ * week.
  *
  * 🔴 **It is honoured ONLY on the last tuple** (`partial && plannedSoFarOverride !==
  * undefined` below). A third element on any earlier week is silently ignored: that week
