@@ -29,6 +29,14 @@ scanlines on the same screenshot read **1.000 at y=1 and y=7 of 26**: a full bar
   `padding-right: 100vw` the same declaration painted **1.000 of the row width**. Before
   concluding a channel *cannot* paint somewhere, **give it a box big enough to show it**
   — and be suspicious whenever a computed value is large and the paint is not.
+- 🔴 **State the BOX and the CLIP an emptiness was measured at, or the next
+  re-measurement fixes one and inherits the other.** This happened: `box-shadow` on
+  `::first-letter` was corrected by widening the *box*, and the same paragraph's
+  `border-image-source` claim then survived that re-measurement because the *clip* was
+  still `locator.screenshot()` — the element's own box — while the band painted in the
+  10 px strip **above** it. 0.053 inside, 0.635 above, whole suite 261 green. Screenshot
+  the page with an explicit clip grown past the element, and report inside/above/below
+  separately.
 - **Sample several scanlines**, not one. `box-shadow: inset` and `mask-image` wash the
   whole box; `border-image` only paints the border strip; a `::before` may paint
   anywhere. Print `y=n/height` beside each number so a dud is visible as a dud.
