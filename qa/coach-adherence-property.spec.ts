@@ -868,11 +868,25 @@ interface PaintChannel {
  *
  * ⚠️ The ban is on the channel, not on a ratio: this limb cannot tell a proportional
  * value from a constant one, so a DECORATIVE shadow inside a week row would be a false
- * positive. There is none today — `AdherenceSeries.tsx` uses `background`, `width` and
- * `border-radius` inside the rows and nothing else — and the honest-row direction is
- * RUN, not assumed, by the four worlds below passing against unmodified code. If the
- * design ever needs one, that is a `senior-po` decision (EV-216 edge cases 1 and 2),
- * not an exception carved here.
+ * positive. The honest direction is RUN (the four worlds below pass against unmodified
+ * code) and it is also argued BY CAUSE, which is the stronger half:
+ *
+ *   · `src/app/globals.css` is the surface's only stylesheet and declares **none** of
+ *     the three properties anywhere — `grep -rn 'box-shadow\|border-image\|mask' ` on
+ *     it exits 1. `--e-1`/`--e-2`/`--e-3`/`--e-card`/`--ring` are shadow VALUES parked
+ *     in custom properties, and a custom property paints nothing until it is spent.
+ *   · `AdherenceSeries.tsx` and `MonitoringBlock.tsx` — the only components that render
+ *     anything inside this region — set none of the three either (same grep, exit 1).
+ *     Inside a row there is `background`, `width`, `height`, `border-radius` and text.
+ *   · 🔴 The near-miss, named because a reader will find it: the block's own card DOES
+ *     carry `box-shadow: var(--e-card)` (`Card` in `ui/kit.tsx`). It is the element the
+ *     `<ul>` sits inside — an ANCESTOR of every row — and `box-shadow` does not inherit,
+ *     so the scan (`li` plus descendants) cannot reach it. A real elevation shadow one
+ *     element above the rows is therefore not a false positive by construction, not by
+ *     luck, and moving a row's content up into the card would be a different guard.
+ *
+ * If the design ever needs a decorative shadow INSIDE a row, that is a `senior-po`
+ * decision (EV-216 edge cases 1 and 2), not an exception carved here.
  */
 const PAINT_CHANNELS: PaintChannel[] = [
   { name: "background-image on its own box", property: "background-image", pseudo: null, initial: "none" },
