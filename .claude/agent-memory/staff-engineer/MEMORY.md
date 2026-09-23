@@ -4,3 +4,5 @@
 - [Defect pattern: a bound that does not bound](defect-pattern-bound-that-does-not-bound.md) — repo defaults, omission-tests and unsized caps are not mitigations
 - [Defect pattern: bar and its own label disagree](bar-and-its-own-label-disagree.md) — two denominators for one period; scrape the rendered `width:` next to the row text, no text assertion spans both
 - [A deleted-string grep forbids its own guard](deleted-string-grep-forbids-its-own-guard.md) — a DoD that greps src/qa for a deleted string is unsatisfiable; grep `.next` instead
+- [A non-vacuity counter does not bind a second picture](non-vacuity-counter-does-not-bind-a-second-picture.md) — honest bars satisfy `minimumBars` while a gradient paints `Infinity%` beside the figures
+- [Run the harmless variant too](harmless-variant-falsifies-the-coverage-claim.md) — it is what falsifies an over-broad "this guard catches X" sentence
