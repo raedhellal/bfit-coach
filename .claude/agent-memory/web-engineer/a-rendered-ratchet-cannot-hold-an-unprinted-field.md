@@ -24,7 +24,7 @@ left every pin green; on a simulated UTC Monday with construction 3 planted the 
 262 green (senior-qa: Tuesday and Sunday gave 4 failed) — blind only to a renderer whose value
 the parser discards, since every current week then derives `plannedSoFar = 0`.
 My own clause-8 run mutated the DATA and never the CODE that reads it — mutate both sides of a
-fixture→code seam. The real fix is a unit test outside `server-only` (carded, not built).
+fixture→code seam. Built as EV-249: `qa/coach-fixture-adherence.spec.ts` calls the function with each weekday. See [[a-server-clock-is-not-a-browser-clock]].
 
 **Why:** the hazard is in `plannedSoFar`, which nothing prints; a rendered check can only hold
 what is rendered. A check inside an iteration cannot notice the iteration shrinking.
