@@ -18,3 +18,6 @@
 - [Fix the neighbouring instance](feedback-fix-the-neighbouring-instance.md) — a correction is evidence about how you were reasoning; go find the others
 - [Decision ACs must not bind other ACs](feedback-decision-acs-must-not-bind-other-acs.md) — if one AC defers a choice, the rest must hold under every option
 - [Split on failure mode, not taxonomy](feedback-split-on-failure-mode-not-taxonomy.md) — EV-219 withdrawn; a synthetic-harness witness is not a real-surface witness
+- [Never justify scope with a capability](feedback-never-justify-scope-with-a-capability.md) — a false "cannot" suppresses the experiment that would expose it
+- [Do not size a row across an unrun probe](feedback-do-not-size-a-row-across-an-unrun-probe.md) — no estimate, probe as AC1, named split trigger
+- [Gate condition vs scope bar](decision-a-gate-condition-and-a-scope-bar-are-different-questions.md) — QA's pass stands; only I move my AC enumeration

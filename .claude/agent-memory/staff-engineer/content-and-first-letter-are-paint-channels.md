@@ -35,5 +35,14 @@ instead of growing it on speculation.
 the pseudos and `::first-letter` before approving the banner — and build every mutant inside
 the **surface's own DOM**, never a synthetic page, because layout (`display:grid` here)
 decides whether the box exists.
+**A "does not paint" number is only as big as the box under test.** EV-216 r2 measured
+`box-shadow` on `::first-letter` at 0.040 of row width (control 0.049) and declared the cell
+empty. With `padding-right: 100vw` on that box — so "does not paint" cannot mean "the box is
+one glyph wide" — the same declaration reads **1.000 on every scanline** beside "2 / 4
+sessions", proportional across weeks (0.894 on 3/4, 0.596 on 2/4, 0.000 on 0/4), guard **16
+passed, exit 0**. `border-image-source` there genuinely does not paint (0.073 vs control
+0.074) and `mask-image` is dropped (computes `none` when declared) — both re-measured and
+confirmed. Third instance of the probe-geometry error class in one file.
+
 Related: [[list-ratchet-binds-length-not-reads]], [[non-vacuity-counter-does-not-bind-a-second-picture]],
 [[normalisation-claim-falsified-by-prefixed-spellings]].
