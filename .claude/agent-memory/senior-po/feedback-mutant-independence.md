@@ -26,3 +26,24 @@ rule: [[feedback-write-acs-against-the-real-surface]].
 Ines via the inline clause alone (the `Infinity%` size discards the shorthand, so computed is `none`),
 Lina via the computed clause. **One construction proving both clauses beats two constructions each
 proving one**, because it cannot be satisfied by a clause that is dead in the other direction.
+
+🔴 **THE TRIO, completed 2026-09-23 — the three are NOT interchangeable:**
+
+| Clause | The mutant… | What is unproven without it |
+|---|---|---|
+| **4** | dies to **two** clauses | that **either** clause is needed |
+| **7** | **never fired** ([[feedback-probe-the-mutant-before-trusting-green]]) | **anything**, in either direction |
+| **8** | fires, but on **a different shape** | that the guard catches **the defect it was written for** |
+
+**A guard is proven only by a mutant that (i) demonstrably did the harmful thing, (ii) is the SHAPE
+the guard was added for, and (iii) is caught by that guard ALONE. An exit code carries none of the
+three.**
+
+**Clause 8's origin:** QA deleted the `::after` line **and the ratchet together** to get 15 passed —
+proving the pre-fix shape was the `minimumBars` hole exactly. The implementer's own run showed the
+ratchet **trips**, not that it trips **on that shape**, and it said so itself: *"that is the check I
+should have run."*
+
+📌 **Clause 8 is the one most likely to pass review**, because a tripping guard *looks* like
+evidence and the reviewer sees red where red was expected. **Ask not "did it go red?" but "would it
+still have gone red if the bug had been the OTHER one?"**

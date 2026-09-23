@@ -13,3 +13,8 @@
 - [Disclosure is an instruction](feedback-disclosure-is-an-instruction.md) — guards say what they DO and how to check more; never what they catch or miss
 - [A passing assertion may not bind](feedback-a-passing-assertion-may-not-bind.md) — asText() coerces; assert shape before value; green proves nothing until a mutant kills it
 - [Enumerate deletions, not reverts](feedback-enumerate-deletions-not-reverts.md) — drop-path offers as discrete deletions; grep for readers, not just behaviour tests
+- [Probe the mutant before trusting green](feedback-probe-the-mutant-before-trusting-green.md) — a mutant that never fired proves nothing; an unprobed dud cards a phantom
+- [Guard holes are backlog, not bugs](decision-guard-holes-are-backlog-not-bugs.md) — BUGS.md records what the product does wrong; missing coverage is a row
+- [Fix the neighbouring instance](feedback-fix-the-neighbouring-instance.md) — a correction is evidence about how you were reasoning; go find the others
+- [Decision ACs must not bind other ACs](feedback-decision-acs-must-not-bind-other-acs.md) — if one AC defers a choice, the rest must hold under every option
+- [Split on failure mode, not taxonomy](feedback-split-on-failure-mode-not-taxonomy.md) — EV-219 withdrawn; a synthetic-harness witness is not a real-surface witness
