@@ -21,3 +21,5 @@
 - [A fixture without the shape cannot guard it](a-fixture-without-the-shape-cannot-guard-it.md) — sabotage the branch and watch the guard go red, or it is decoration
 - [An invalid CSS value computes to `none`](an-invalid-css-value-computes-to-none.md) — `Infinity%` kills the declaration; ban the inline value too, not just the painted one
 - [A box is not the only way to paint a ratio](a-box-is-not-the-only-way-to-paint-a-ratio.md) — ::before and inset box-shadow draw a full bar past a background-image ban
+- [getComputedStyle takes a second argument](getcomputedstyle-takes-a-second-argument.md) — ::before paints a full bar the default call reports as none; never disclose "the obvious tool does not"
+- [An inline denylist is one var() hop wide](an-inline-denylist-is-one-var-hop-wide.md) — a custom property plus Infinity% blinds the text read and the computed read at once; attribute per clause
