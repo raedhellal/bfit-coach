@@ -1794,8 +1794,13 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  * `AdherenceSeries.tsx`, confirm on a screenshot that it paints (the row, a clip grown
  * past it, several scanlines, against a control), and run this file. Do not reason from
  * this paragraph: it says what the check reads, not what text can or cannot draw.
- *
- * ── **Runs, 2026-09-24 (a Thursday, UTC), on this branch** ───────────────────────────
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-251 — **RECORDS.** Runs of 2026-09-24 (a Thursday, UTC) at `58024f8`. These are
+ * what was measured then. They are history, not part of the banner above, and counts
+ * are this section's own ten tests. "Nothing else red" means no test outside this
+ * section failed in the default suite on that run.
  *
  * Every renderer mutant sits in the current week's empty middle cell only
  * (`week.partial && week.hasPlan`), in an uncommitted `AdherenceSeries.tsx`. PROBE: each
@@ -1809,22 +1814,23 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  *     `done / plannedSoFar`, blue text). PROBE: Lina 0.706 beside "3 / 4 sessions" and
  *     Ines 0.706 beside "1 / 3 sessions" on y = 3..11; Dana 0.706, Nils and Omar 0.233
  *     (1 / 3 against a Thursday's derived `plannedSoFar = 3`); Tobias and Noor 0.000
- *     (zero characters, and no text node). WHOLE GATE: **5 failed, 285 passed**. All five
- *     reds are this section (Ines, Lina, Nils, Dana, Omar) and no other test in the gate is
- *     red, so nothing else kills it (clause 4).
+ *     (zero characters, and no text node). This section: **5 failed** (Ines, Lina, Nils,
+ *     Dana, Omar). Nothing else red in the default suite, so nothing else kills it
+ *     (clause 4).
  *   · **The same bar in ASCII `|`.** PROBE: 0.326 at a clamped full ratio, 0.111 at
- *     1 / 3. WHOLE GATE: the same 5 failed, 285 passed.
+ *     1 / 3. This section: the same 5 failed. Nothing else red.
  *   · **A bar of `U+00A0` no-break spaces, drawn by an underline.** PROBE: 0.262 on
- *     y = 9, 11 at full, 0.087 at 1 / 3. WHOLE GATE: 8 failed, which is this section's five
- *     plus three EV-210b geometry tests: that limb counts a leaf whose TRIMMED text is
+ *     y = 9, 11 at full, 0.087 at 1 / 3. This section: 5 failed, AND three EV-210b geometry
+ *     tests red beside it: that limb counts a leaf whose TRIMMED text is
  *     empty as a picture and measures it. Killed by two clauses, so it shows neither is
  *     needed and is recorded rather than cited.
  *   · **The same no-break-space bar with an empty `<i />` inside it**, so the span is no
- *     longer a leaf. PROBE: identical readings. WHOLE GATE: **5 failed, 285 passed**, all
- *     this section.
+ *     longer a leaf. PROBE: identical readings. This section: **5 failed**. Nothing else
+ *     red.
  *   · **This check with whitespace-only text nodes dropped** (a `trim()` filter in
  *     `weekRowTextNodes`). With the previous mutant planted: this section **10 passed**,
- *     and since it was that mutant's only red, the gate is green on it. With the BUG-227
+ *     and since nothing outside this section was red on that mutant, the default suite is
+ *     green on it. With the BUG-227
  *     witness planted: 5 failed. So the witness alone cannot tell the filtered read from
  *     the unfiltered one, and the no-break-space bar is what does. The read is unfiltered
  *     for that reason.
