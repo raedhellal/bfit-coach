@@ -15,3 +15,4 @@
 - [A colour can encode a ratio](colour-plus-ratio-padding-is-a-picture.md) — `background-color` + ratio-sized padding on `::first-letter`: proportional bar, guard green
 - [A source pin binds the literal, not its effect](source-pin-binds-the-literal-not-its-effect.md) — break the override mechanism + Monday: gate 263 green; a ratchet in a WORLDS loop cannot hold WORLDS
 - [Invariant cited from an unvalidated write path](invariant-cited-from-code-that-does-not-validate-its-input.md) — `done − plannedSoFar ≤ 1` never held (future-dated completions); open the writer
+- [Guard on the request field, not the stored value](guard-on-the-request-field-not-the-stored-value.md) — EV-248 bounded `date`; stored date = date + durationSeconds; open the mapper

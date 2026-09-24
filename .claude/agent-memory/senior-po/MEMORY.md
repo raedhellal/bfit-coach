@@ -23,3 +23,6 @@
 - [Gate condition vs scope bar](decision-a-gate-condition-and-a-scope-bar-are-different-questions.md) — QA's pass stands; only I move my AC enumeration
 - [Re-read the ID counter before allocating](feedback-reread-the-id-counter-before-allocating.md) — other passes allocate in parallel; EV-221 collision caught by the sync assert
 - [Future-dated completions](decision-future-dated-completions.md) — not allowed; backdating is; bound is local-today or server+1 day; EV-248
+- [Know where the code runs](feedback-know-where-the-code-runs.md) — a browser clock can't reach a server-side fixture; check the control takes effect
+- [Specify the stored value, not the request](feedback-specify-the-stored-value-not-the-request.md) — read the reader code first; don't cite a fix's effect before it's verified
+- [Missed flags: late, never early](decision-missed-flags-late-not-early.md) — EV-252; store-nothing interim rejected (France +14 h); personal data is Raed's call
