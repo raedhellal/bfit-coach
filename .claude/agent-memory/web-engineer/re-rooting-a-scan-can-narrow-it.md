@@ -6,8 +6,11 @@ metadata:
 ---
 
 EV-253 moved the P-ADH C2 limbs in `qa/coach-adherence-property.spec.ts` from
-`region.locator("li")` to the adherence `<ul>`. That catches anything between the rows
-(BUG-231, BUG-218). It also LOSES something. An `li` rendered in the block after `</ul>`
+`region.locator("li")` to the adherence `<ul>`. That caught BUG-231 and BUG-218. It did
+not catch everything between the rows: AC4's flat-colour span is caught only as an empty
+leaf, and with one empty `<i />` inside it the gate is 290 green (staff, routed to EV-220).
+A sibling of the `<ul>` in the card is not read at all (0.679, green). The re-root also
+LOSES something. An `li` rendered in the block after `</ul>`
 was read by the old root as a ninth row (12 failed at `7bddb7a`). Under the new root it is
 under no list and is read by nothing: the file was 27 passed with that bar painting 0.706.
 The fix is one assertion in `expectOneListHoldingEveryRow`: the count of `li` in the BLOCK

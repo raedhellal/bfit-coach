@@ -968,9 +968,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *   · ~~**An overlay painted from an element that is neither an `li` nor inside one**~~ —
  *     a `ul::after` over the rows, **`BUG-218`: closed by EV-253**, which re-rooted this
  *     scan at the list. The `<ul>` is now one of the elements read, on each box
- *     `PAINT_CHANNELS` names. What was tried: BUG-218's construction, which went red on
- *     `[content on ::after]` of the `<ul>`, in the EV-253 records block at the bottom of
- *     this file. Anything outside the list is still unread.
+ *     `PAINT_CHANNELS` names. What was tried, and its reading: the EV-253 records block
+ *     at the bottom of this file. Anything outside the list is still unread.
  *   · **A table entry RENAMED and REPOINTED together** — not a paint channel but a way
  *     past this section's own integrity assertions: rename `"box-shadow on its own box"`
  *     to `"outline-style on its own box"` *and* repoint the property, and the length,
@@ -1531,7 +1530,11 @@ const PAINT_CHANNELS: PaintChannel[] = [
  */
 const PAINT_CHANNELS_EXPECTED = 19;
 
-/** One element inside a week row, as the reads that can reveal a painted picture. */
+/**
+ * One element of the adherence list, as the reads that can reveal a painted picture:
+ * an element of a week row (`RowPaint.elements`), or the `<ul>` itself or an element under
+ * it in no row (`ListPaint.outsideRows`, EV-253).
+ */
 interface RowElement {
   tag: string;
   /**
@@ -2014,8 +2017,10 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
  * the records).
  *
  * **WHAT IS NOT READ.** Anything outside the adherence list: the block's title and
- * headline, EV-208's sentences, and the rest of the client page. This says what the
- * limbs read. It is not a statement about what that region can or cannot draw.
+ * headline, EV-208's sentences, any element of the card that is not the list, such as a
+ * sibling of the `<ul>` directly under the last row, and the rest of the client page.
+ * This says what the limbs read. It is not a statement about what that region can or
+ * cannot draw.
  *
  * **Edge cases 1 and 4.** If a limb goes red on honest styling of the list (a divider, a
  * border, a gap drawn by an element) or on a legitimate non-row child (a header, an
@@ -2065,8 +2070,10 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
  *     (Tobias, Noor: the span is 0 px wide). 0 console errors. **Geometry section: 2
  *     failed** (Ines, Lina), "draws a picture OUTSIDE every week row … 978.00px of
  *     1074.00px". Paint and text sections: all passed. Nothing else red. **At `7bddb7a`:
- *     nothing red.** Caught, by the geometry limb, so nothing is routed to EV-220 from
- *     this construction.
+ *     nothing red.** Caught by the geometry limb only because the span is an empty LEAF.
+ *     `staff-engineer` at `ef94393`: the same span with one empty `<i />` inside it
+ *     paints a full-width bar in the `<ul>` outside every row, and the gate is 290 green.
+ *     That escape is routed to **EV-220** per AC4 and not built here.
  *   · **AC5: `BUG-218`'s construction** (`ul.qa-mut::after { content: ""; position:
  *     absolute; left: 86px; bottom: 2px; height: 10px; width: calc((100% - 96px) *
  *     <ratio%> / 100); border-radius: 999px; background: var(--blue-500) }`, with
@@ -2078,7 +2085,8 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
  *     section: 4 failed** (all four worlds), each offence
  *     `the adherence list, OUTSIDE every week row, <ul> PAINTS on channel [content on
  *     ::after]: "" (initial: none)`. Geometry and text sections: all passed. Nothing else
- *     red. **At `7bddb7a`: nothing red.** What fired is the `content` that GENERATES the
+ *     red. **At `7bddb7a`: nothing red.** (This is the reading the EV-216 disclosure's
+ *     BUG-218 entry points to.) What fired is the `content` that GENERATES the
  *     box, read on the `<ul>`. Its colour and its width are not read. It fires on Tobias
  *     and Noor too, where the box is 0 px wide.
  *     ⚠️ **A first delivery of this construction was a dud and is not counted.**
