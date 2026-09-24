@@ -169,42 +169,101 @@ interface Picture {
  * A leaf WITH text is not a picture to this read. That is a choice about what it
  * measures, not a claim that text cannot draw a ratio: BUG-227's bar of `█` characters
  * painted 0.706 of Lina's current row beside "3 / 4 sessions" and this read skipped it.
- * A row's text is read by the EV-251 section at the bottom of this file.
+ * The list's text is read by the EV-251 / EV-253 section at the bottom of this file.
+ *
+ * **EV-253 — the ROOT is the adherence LIST, not each row.** Until EV-253 this read was
+ * `region.locator("li")` plus each row's descendants, so a leaf that was a child of the
+ * `<ul>` and inside no `li` was read by nothing (`BUG-231`'s family). It now reads the
+ * list element and every element under it, the `li`s included, and attributes each
+ * picture to the row it sits in or to `outsideRows`. A picture in `outsideRows` has no
+ * figures beside it, and `expectPictureEqualsFigures` fails it for that, the same rule a
+ * bar on a row that prints no figures has always met. See `expectOneListHoldingEveryRow` for
+ * what is asserted about the list before it is trusted.
  */
-async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
-  return region.locator("li").evaluateAll((rows) =>
-    rows.map((row) => {
-      const texts = Array.from(row.querySelectorAll<HTMLElement>("*")).filter(
-        (el) => el.children.length === 0 && (el.textContent ?? "").trim() !== ""
-      );
-      const pictures = Array.from(row.querySelectorAll<HTMLElement>("*"))
-        .filter((el) => el.children.length === 0 && (el.textContent ?? "").trim() === "")
-        .map((el) => {
-          const box = el.getBoundingClientRect();
-          const parentBox = (el.parentElement ?? row).getBoundingClientRect();
-          return {
-            tag: el.tagName.toLowerCase(),
-            dataFill: el.getAttribute("data-fill"),
-            inlineStyle: el.getAttribute("style") ?? "",
-            widthPx: box.width,
-            parentWidthPx: parentBox.width,
-            drawnPercent: parentBox.width > 0 ? (box.width / parentBox.width) * 100 : 0,
-            paints: box.width > 0.5 && box.height > 0.5,
-          };
-        })
-        // Not counted as a picture: an empty grid cell holding a column open, with a width,
-        // no height and no `data-fill`. That is a choice about what this read measures, NOT
-        // a claim that such a box cannot paint — an `outline` around a zero-height box does
-        // paint, and nothing here catches it (BUG-228, carded, not fixed in EV-218).
-        .filter((p) => p.paints || p.dataFill !== null)
-        .map(({ paints: _paints, ...picture }) => picture);
-      return {
-        rowText: (row.textContent ?? "").trim(),
-        label: (texts[texts.length - 1]?.textContent ?? "").trim(),
-        pictures,
-      };
-    })
-  );
+interface RenderedList {
+  /** How many `ul` elements the block holds. The read is only defined for one (or none). */
+  lists: number;
+  /** Every `li` in the BLOCK, so a row rendered outside the list is not silently unread. */
+  rowsInBlock: number;
+  weeks: RenderedWeek[];
+  /** Pictures under the list that are inside no `li`, the list element itself included. */
+  outsideRows: Picture[];
+}
+
+async function renderedWeeks(region: Locator): Promise<RenderedList> {
+  return region.evaluate((blockEl) => {
+    const lists = Array.from(blockEl.querySelectorAll<HTMLElement>("ul"));
+    const list = lists[0];
+    const rows = list ? Array.from(list.querySelectorAll<HTMLElement>("li")) : [];
+    const rowOf = (el: Element) => {
+      const row = el.closest("li");
+      return row && list.contains(row) ? rows.indexOf(row as HTMLElement) : -1;
+    };
+    const pictures = (list ? [list, ...Array.from(list.querySelectorAll<HTMLElement>("*"))] : [])
+      .filter((el) => el.children.length === 0 && (el.textContent ?? "").trim() === "")
+      .map((el) => {
+        const box = el.getBoundingClientRect();
+        const parentBox = (el.parentElement ?? list).getBoundingClientRect();
+        return {
+          row: rowOf(el),
+          tag: el.tagName.toLowerCase(),
+          dataFill: el.getAttribute("data-fill"),
+          inlineStyle: el.getAttribute("style") ?? "",
+          widthPx: box.width,
+          parentWidthPx: parentBox.width,
+          drawnPercent: parentBox.width > 0 ? (box.width / parentBox.width) * 100 : 0,
+          paints: box.width > 0.5 && box.height > 0.5,
+        };
+      })
+      // Not counted as a picture: an empty grid cell holding a column open, with a width,
+      // no height and no `data-fill`. That is a choice about what this read measures, NOT
+      // a claim that such a box cannot paint — an `outline` around a zero-height box does
+      // paint, and nothing here catches it (BUG-228, carded, not fixed in EV-218).
+      .filter((p) => p.paints || p.dataFill !== null);
+    const strip = ({ row: _row, paints: _paints, ...picture }: (typeof pictures)[number]) => picture;
+    return {
+      lists: lists.length,
+      rowsInBlock: blockEl.querySelectorAll("li").length,
+      weeks: rows.map((row, i) => {
+        const texts = Array.from(row.querySelectorAll<HTMLElement>("*")).filter(
+          (el) => el.children.length === 0 && (el.textContent ?? "").trim() !== ""
+        );
+        return {
+          rowText: (row.textContent ?? "").trim(),
+          label: (texts[texts.length - 1]?.textContent ?? "").trim(),
+          pictures: pictures.filter((p) => p.row === i).map(strip),
+        };
+      }),
+      outsideRows: pictures.filter((p) => p.row === -1).map(strip),
+    };
+  });
+}
+
+/**
+ * EV-253 — the two facts every list-rooted read asserts before it trusts itself: the block
+ * holds exactly the one list it reads (none, in a world that renders no rows), and every
+ * `li` in the block is inside that list. Without the second, moving a row out of the
+ * list would take it out of every read that used to see it, which is the opposite of what
+ * re-rooting is for.
+ */
+function expectOneListHoldingEveryRow(
+  where: string,
+  read: { lists: number; rowsInBlock: number },
+  rowsInList: number,
+  expectedLists: 0 | 1
+) {
+  expect(
+    read.lists,
+    `${where}: the adherence block holds ${read.lists} lists and this world renders ${expectedLists}. ` +
+      "The P-ADH C2 reads are rooted at ONE list, the one holding the week rows (none where the " +
+      "world renders EV-208's sentence instead). Another list is a stop-and-ask for senior-po " +
+      "(EV-253 edge case 4), not a second root to add quietly."
+  ).toBe(expectedLists);
+  expect(
+    read.rowsInBlock,
+    `${where}: ${read.rowsInBlock} rows in the block and ${rowsInList} inside the list — a row ` +
+      "outside the list is read by nothing here"
+  ).toBe(rowsInList);
 }
 
 /** The fixture's `PROGRESS` keys whose entry carries an `adherenceSeries([...])` call. */
@@ -286,8 +345,28 @@ function figuresOf(label: string): { done: number; planned: number } | null {
  * is still checked automatically by the loop.
  */
 async function expectPictureEqualsFigures(page: Page, minimumBars: number) {
-  const weeks = await renderedWeeks(block(page, ADHERENCE));
+  const read = await renderedWeeks(block(page, ADHERENCE));
+  const weeks = read.weeks;
   expect(weeks.length, "the adherence block rendered no week rows at all").toBeGreaterThan(0);
+  expectOneListHoldingEveryRow("the geometry limb", read, weeks.length, 1);
+
+  /**
+   * EV-253 — a picture under the list and inside no row. It sits beside no printed
+   * figures, so there is nothing it could equal: the rule a bar on a row that prints no
+   * figures meets below, applied where there is no row at all.
+   */
+  expect(
+    read.outsideRows.map(
+      (picture) =>
+        `<${picture.tag} data-fill="${picture.dataFill}" style="${picture.inlineStyle}"> = ` +
+        `${picture.widthPx.toFixed(2)}px of ${picture.parentWidthPx.toFixed(2)}px ` +
+        `(${picture.drawnPercent.toFixed(1)} %)`
+    ),
+    "The adherence LIST draws a picture OUTSIDE every week row — a painted, text-free leaf " +
+      "under the <ul> that is in no <li>. It has no \"<done> / <planned> sessions\" beside it, " +
+      "so P-ADH C2 has no two numbers for it to equal (EV-253). Draw a week's bar inside its " +
+      "own row, or draw nothing."
+  ).toEqual([]);
 
   let bars = 0;
   for (const [i, week] of weeks.entries()) {
@@ -420,7 +499,7 @@ test.describe("EV-210b AC3 / P-ADH C2 — the bar and the numbers beside it are 
     await signIn(page);
     await page.goto(`/clients/${INES}`);
 
-    const weeks = await renderedWeeks(block(page, ADHERENCE));
+    const { weeks } = await renderedWeeks(block(page, ADHERENCE));
     expect(weeks.length, "eight ISO weeks").toBe(8);
     const current = weeks[weeks.length - 1];
 
@@ -1468,37 +1547,69 @@ interface RowPaint {
   elements: RowElement[];
 }
 
+interface ListPaint {
+  /** How many `ul` elements the block holds; see `expectOneListHoldingEveryRow`. */
+  lists: number;
+  /** Every `li` in the BLOCK, so a row rendered outside the list is not silently unread. */
+  rowsInBlock: number;
+  rows: RowPaint[];
+  /**
+   * EV-253 — every element under the list that is inside no row, **the list element
+   * itself first**. Until EV-253 nothing in this section read these: the scan started at
+   * each `li`, so a `ul::after` over the rows (`BUG-218`) was on a box nobody asked about.
+   */
+  outsideRows: RowElement[];
+}
 
 /**
- * Every element inside every week row — the row itself included — with every
- * `PAINT_CHANNELS` read. Computed values only: the inline `style` attribute is not read
- * (EV-218, ADR-0024).
+ * Every element of the adherence LIST — the `ul` itself, every row, and everything under
+ * either — with every `PAINT_CHANNELS` read. Computed values only: the inline `style`
+ * attribute is not read (EV-218, ADR-0024).
+ *
+ * EV-253 re-rooted this from `region.locator("li")` (it was `paintedElementsInWeekRows`).
+ * The reads per element are unchanged; what changed is which elements are asked.
  */
-async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
-  return region.locator("li").evaluateAll(
-    (rows, channels: PaintChannel[]) =>
-      rows.map((row) => ({
-        // The date column is the row's first child. Read from its own element: the row's
-        // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
-        date: (row.firstElementChild?.textContent ?? "").trim(),
-        rowText: (row.textContent ?? "").trim(),
-        // The row itself is included — AC1 says "every element inside it INCLUDING the
-        // row itself", because a gradient on the `li` paints behind all three columns at
-        // once, and EV-216's `box-shadow: inset …` bypass was constructed ON the row.
-        elements: [row, ...Array.from(row.querySelectorAll<HTMLElement>("*"))].map((el) => ({
-          tag: el.tagName.toLowerCase(),
-          // EV-215 AC1 — the SECOND argument of `getComputedStyle` is half the fix: a
-          // `::before` carrying the picture is a box this element also owns, and the
-          // same call reports it when it is asked to. EV-216 AC1 is the other half: the
-          // PROPERTY is a parameter too, so the set of channels is data rather than
-          // three hand-written reads, and it lives in exactly one place.
-          computed: channels.map((channel) => ({
-            channel: channel.name,
-            value: getComputedStyle(el, channel.pseudo).getPropertyValue(channel.property),
-            initial: channel.initial,
-          })),
+async function paintedElementsInList(region: Locator): Promise<ListPaint> {
+  return region.evaluate(
+    (blockEl, channels: PaintChannel[]) => {
+      const lists = Array.from(blockEl.querySelectorAll<HTMLElement>("ul"));
+      const list = lists[0];
+      const rows = list ? Array.from(list.querySelectorAll<HTMLElement>("li")) : [];
+      const read = (el: Element) => ({
+        tag: el.tagName.toLowerCase(),
+        // EV-215 AC1 — the SECOND argument of `getComputedStyle` is half the fix: a
+        // `::before` carrying the picture is a box this element also owns, and the
+        // same call reports it when it is asked to. EV-216 AC1 is the other half: the
+        // PROPERTY is a parameter too, so the set of channels is data rather than
+        // three hand-written reads, and it lives in exactly one place.
+        computed: channels.map((channel) => ({
+          channel: channel.name,
+          value: getComputedStyle(el, channel.pseudo).getPropertyValue(channel.property),
+          initial: channel.initial,
         })),
-      })),
+      });
+      const all = list ? [list, ...Array.from(list.querySelectorAll<HTMLElement>("*"))] : [];
+      return {
+        lists: lists.length,
+        rowsInBlock: blockEl.querySelectorAll("li").length,
+        rows: rows.map((row) => ({
+          // The date column is the row's first child. Read from its own element: the row's
+          // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
+          date: (row.firstElementChild?.textContent ?? "").trim(),
+          rowText: (row.textContent ?? "").trim(),
+          // The row itself is included — AC1 says "every element inside it INCLUDING the
+          // row itself", because a gradient on the `li` paints behind all three columns at
+          // once, and EV-216's `box-shadow: inset …` bypass was constructed ON the row.
+          elements: [row, ...Array.from(row.querySelectorAll<HTMLElement>("*"))].map(read),
+        })),
+        outsideRows: all
+          .filter((el) => {
+            const row = el.closest("li");
+            return !(row && list.contains(row));
+          })
+          .map(read),
+      };
+    },
     PAINT_CHANNELS
   );
 }
@@ -1615,14 +1726,22 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
   });
 
   for (const world of WORLDS) {
-    test(`P-ADH C2 (EV-216 AC1): no element in a week row paints through one of the ${PAINT_CHANNELS.length} enumerated channels — ${world.name}`, async ({
+    test(`P-ADH C2 (EV-216 AC1, EV-253): no element of the adherence list paints through one of the ${PAINT_CHANNELS.length} enumerated channels — ${world.name}`, async ({
       page,
     }) => {
       await signIn(page);
       await page.goto(`/clients/${world.id}`);
       await expect(block(page, ADHERENCE)).toBeVisible();
 
-      const rows = await paintedElementsInWeekRows(block(page, ADHERENCE));
+      const read = await paintedElementsInList(block(page, ADHERENCE));
+      const rows = read.rows;
+      expectOneListHoldingEveryRow(`${world.name}, the paint limb`, read, rows.length, 1);
+      // EV-253 — the list element itself is read, not only what hangs under it. It is the
+      // first element outside every row by construction; this is what says so.
+      expect(
+        read.outsideRows[0]?.tag,
+        `${world.name}: the paint limb did not read the <ul> itself — it is rooted at the list (EV-253)`
+      ).toBe("ul");
       // "…not the ${world.weeks} this world renders", never "no week rows at all": the
       // assertion is an equality, so SEVEN rows — a week silently dropped, which is the
       // interesting failure — would otherwise be reported as zero.
@@ -1642,10 +1761,14 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
 
       const offences: string[] = [];
       let inspected = 0;
-      for (const row of rows) {
-        for (const element of row.elements) {
+      const groups = [
+        { place: "the adherence list, OUTSIDE every week row", elements: read.outsideRows },
+        ...rows.map((row) => ({ place: `week row "${row.date}" ("${row.rowText}")`, elements: row.elements })),
+      ];
+      for (const group of groups) {
+        for (const element of group.elements) {
           inspected += 1;
-          const where = `${world.name} — week row "${row.date}" ("${row.rowText}"), <${element.tag}>`;
+          const where = `${world.name} — ${group.place}, <${element.tag}>`;
           /**
            * The channel list is RATCHETED against `PAINT_CHANNELS`, because `inspected`
            * counts ELEMENTS and not channels: deleting the `::after` read used to leave
@@ -1682,7 +1805,8 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
 
       expect(
         offences,
-        "An element inside a week row has a non-initial value on one of the channels this " +
+        "An element of the adherence list — a week row, or the list itself or anything under it " +
+          "outside every row (EV-253) — has a non-initial value on one of the channels this " +
           "section enumerates. P-ADH C2 says the picture IS the two numbers printed beside it; " +
           "a value on one of these channels paints with no layout box of its own, so the " +
           "geometric limb above cannot check it against them — that is the EV-214 / EV-216 " +
@@ -1703,7 +1827,7 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
 
       expect(
         inspected,
-        `${world.name}: only ${inspected} elements were read inside the week rows, so this ` +
+        `${world.name}: only ${inspected} elements were read in the adherence list, so this ` +
           `check was very nearly vacuous (the fixture guarantees at least ${world.minimumElements})`
       ).toBeGreaterThanOrEqual(world.minimumElements);
     });
@@ -1839,18 +1963,44 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  *     worlds with a no-plan week. So those rows are compared, not skipped.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/** Every `Text` node under each week row, in document order, exactly as the DOM holds it. */
-async function weekRowTextNodes(region: Locator): Promise<string[][]> {
-  return region.locator("li").evaluateAll((rows) =>
-    rows.map((row) => {
-      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
-      const nodes: string[] = [];
+/** One DOM `Text` node under the adherence list, and the week row it sits in (`-1`: none). */
+interface ListText {
+  row: number;
+  text: string;
+}
+
+/**
+ * Every `Text` node under the adherence LIST, in document order, exactly as the DOM holds
+ * it, each tagged with the index of the week row it sits in, or `-1` for a node under the
+ * list and in no row. EV-253 re-rooted this from `region.locator("li")` (it was
+ * `weekRowTextNodes`, one walk per row): the walk now starts at the `<ul>`, so a node
+ * between the rows is in the list it returns rather than outside every walk.
+ */
+async function listTextNodes(
+  region: Locator
+): Promise<{ lists: number; rowsInBlock: number; rows: number; nodes: ListText[] }> {
+  return region.evaluate((blockEl) => {
+    const lists = Array.from(blockEl.querySelectorAll<HTMLElement>("ul"));
+    const list = lists[0];
+    const rows = list ? Array.from(list.querySelectorAll("li")) : [];
+    const nodes: { row: number; text: string }[] = [];
+    if (list) {
+      const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        nodes.push(node.nodeValue ?? "");
+        const row = node.parentElement?.closest("li") ?? null;
+        nodes.push({
+          row: row && list.contains(row) ? rows.indexOf(row) : -1,
+          text: node.nodeValue ?? "",
+        });
       }
-      return nodes;
-    })
-  );
+    }
+    return { lists: lists.length, rowsInBlock: blockEl.querySelectorAll("li").length, rows: rows.length, nodes };
+  });
+}
+
+/** Expected rows flattened into the shape `listTextNodes` returns: row `i`'s strings, tagged `i`. */
+function flattenRows(rows: string[][]): ListText[] {
+  return rows.flatMap((texts, row) => texts.map((text) => ({ row, text })));
 }
 
 /**
@@ -1870,7 +2020,7 @@ function expectedRowTexts(key: FixtureSeriesKey, now: Date): string[][] {
   ]);
 }
 
-test.describe("EV-251 / P-ADH C2 — a week row's text is exactly what the copy module and the fixture produce", () => {
+test.describe("EV-251 / EV-253 / P-ADH C2 — the adherence list's text is exactly what the copy module and the fixture produce", () => {
   /** `rows` is a fact about the fixture, stated here so an empty read cannot pass. */
   const WORLDS: { key: FixtureSeriesKey; id: string; rows: number }[] = [
     { key: "INES_ID", id: INES, rows: 8 },
@@ -1887,14 +2037,14 @@ test.describe("EV-251 / P-ADH C2 — a week row's text is exactly what the copy 
   ];
 
   for (const world of WORLDS) {
-    test(`P-ADH C2 (EV-251): every text node in a week row is the date or the label the copy module builds — ${world.key}`, async ({
+    test(`P-ADH C2 (EV-251, EV-253): every text node in the adherence list is a row's date or label, in its row — ${world.key}`, async ({
       page,
     }) => {
       await signIn(page);
       const before = new Date();
       await page.goto(`/clients/${world.id}`);
       await expect(block(page, ADHERENCE)).toBeVisible();
-      const actual = await weekRowTextNodes(block(page, ADHERENCE));
+      const actual = await listTextNodes(block(page, ADHERENCE));
       const after = new Date();
 
       /**
@@ -1904,30 +2054,40 @@ test.describe("EV-251 / P-ADH C2 — a week row's text is exactly what the copy 
        */
       const candidates = [expectedRowTexts(world.key, after), expectedRowTexts(world.key, before)];
       const expected =
-        candidates.find((candidate) => JSON.stringify(candidate) === JSON.stringify(actual)) ??
-        candidates[0];
+        candidates.find(
+          (candidate) => JSON.stringify(flattenRows(candidate)) === JSON.stringify(actual.nodes)
+        ) ?? candidates[0];
 
       expect(
         expected.length,
         `${world.key}: the fixture's series and this table disagree on whether week rows render`
       ).toBe(world.rows);
       expect(
-        actual.length,
-        `${world.key}: the adherence block rendered ${actual.length} week rows, and this world has ${world.rows}`
+        actual.rows,
+        `${world.key}: the adherence list rendered ${actual.rows} week rows, and this world has ${world.rows}`
       ).toBe(world.rows);
+      expectOneListHoldingEveryRow(world.key, actual, actual.rows, world.rows > 0 ? 1 : 0);
 
-      for (const [i, nodes] of actual.entries()) {
-        expect(
-          nodes,
-          `${world.key}, week ${i + 1} of ${actual.length}: the row's text nodes are not exactly ` +
-            `[date, label] as the copy module and the fixture produce them. P-ADH C2 says the row ` +
-            `shows the two numbers and nothing that stands for a third, and a text node that is ` +
-            `not one of those two strings is not something this check can tell from a picture. ` +
-            `If it is a legitimate addition (an icon, a separator), that is a stop-and-ask for ` +
-            `senior-po (EV-251 edge case 1), not a carve-out here. Nodes, JSON-quoted: ` +
-            JSON.stringify(nodes)
-        ).toEqual(expected[i]);
-      }
+      /**
+       * ONE equality over the whole list (EV-253). Each expected string is tagged with its
+       * row, so a node in the wrong row, a node added inside a row, and a node under the
+       * list in no row (tagged `-1`, which no expected string carries) all fail it.
+       */
+      const outside = actual.nodes.filter((node) => node.row === -1).map((node) => node.text);
+      expect(
+        actual.nodes,
+        `${world.key}: the adherence list's text nodes are not exactly each week row's ` +
+          `[date, label], in order, as the copy module and the fixture produce them. ` +
+          (outside.length > 0
+            ? `${outside.length} text node(s) sit under the list OUTSIDE every week row ` +
+              `(EV-253 / BUG-231): ${JSON.stringify(outside)}. `
+            : "") +
+          `P-ADH C2 says the list shows each week's two numbers and nothing that stands for a ` +
+          `third, and a text node that is not one of those strings is not something this ` +
+          `check can tell from a picture. If it is a legitimate addition (an icon, a ` +
+          `separator, a header in the list), that is a stop-and-ask for senior-po (EV-251 ` +
+          `edge case 1, EV-253 edge case 4), not a carve-out here.`
+      ).toEqual(flattenRows(expected));
     });
   }
 });
