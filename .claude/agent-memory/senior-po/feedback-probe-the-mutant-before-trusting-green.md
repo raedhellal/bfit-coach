@@ -23,3 +23,8 @@ phantom bypass** as readily as an unprobed hole hides a real one. That dud would
 **card for a bypass that does not exist**. **Carding a phantom is the same defect as missing a real
 one, and it costs a row.** So when a constructed bypass is reported to me, ask whether it was probed
 to paint before I allocate an ID to it.
+
+📌 **A test labelled "current behaviour, known wrong" is worth keeping.** EV-248 pinned the dateless
+path that way, and it passes on both old and new code, so it describes today's behaviour exactly. The
+row that fixes it (EV-250) must **invert** it rather than delete it: it's already the red-before
+witness.

@@ -37,3 +37,10 @@ happened"). I wrote both C1 and the AC that asked for that world.
 - **Past affected rows can't be counted:** `created_at` comes from the client's date. No cleanup.
 - **When a test asserts wrong behaviour, fix the helper that produced the expectation, not only the
   worlds that surfaced it.** World 16 carried the same assumption silently.
+
+**Trainee-side reads (2026-09-23): recorded, not a row.** The trainee's own progress, last workout and
+calendar still show a stored future row. Not built because new rows can't be written, still-future rows
+are countable, and the harm is to the trainee who sent it rather than to a coach being misled about
+someone. **Trigger:** a non-zero count of completions dated after today (third item on BUG-215's
+ops-pass list), or AC5 finding a mobile path that sent future dates. Test for "row or not": who is
+misled, and can the affected population be counted?
