@@ -710,9 +710,11 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * EV-214 / EV-215 / EV-216 / EV-218 — **P-ADH C2: no element in a week row has a
- * non-initial computed value on any of the paint channels enumerated in
- * `PAINT_CHANNELS`.**
+ * EV-214 / EV-215 / EV-216 / EV-218 / EV-253 — **P-ADH C2: no element of the adherence
+ * list (the `<ul>`, its week rows, and everything under either) has a non-initial
+ * computed value on any of the paint channels enumerated in `PAINT_CHANNELS`.**
+ * (Until EV-253 the predicate said "no element in a week row", and the scan started at
+ * each `li`.)
  *
  * 🔴 **That sentence is the PREDICATE, and it replaced a banner that named the
  * MECHANISM CLASS** ("a picture nothing can measure is not allowed to exist"). The
@@ -736,7 +738,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * geometric limb never sees it. Rendered, that gave Lina a **fully painted** bar beside
  * "2 / 4 sessions" — mechanism 2 of EV-210's own table, restored.
  *
- * So this limb is **structural, not geometric**: for every element inside a week row, it
+ * So this limb is **structural, not geometric**: for every element of the adherence list
+ * (EV-253; until then, every element inside a week row), it
  * **READS**, once, at the default viewport, **one kind of thing — the computed channels
  * enumerated in `PAINT_CHANNELS`** (EV-216): a CSS property on one of an element's boxes,
  * asserted equal to that property's initial value, with a red build naming the entry
@@ -808,8 +811,10 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     a canvas HAS a layout box, so it is a different mechanism with a different answer.
  *     EV-214 rejects them deliberately: banning a thing with no witness is the same
  *     defect as permitting one. If someone constructs one, that is its own row.
- *   ✗ anything outside a week row. A decorative background elsewhere on the page is a
- *     design decision, not an adherence picture.
+ *   ✗ anything outside the adherence LIST (EV-253 moved this boundary out from the week
+ *     row to the list): the block's title and headline, the rest of the client page. Not
+ *     read. That is a statement about what this reads, not about what that region can or
+ *     cannot draw.
  *   ✓ 🔴 **`box-shadow: inset <pct>vw 0 0 0 rgba(…)`, `border-image` and `mask-image`**
  *     — a second paint channel nobody had named, which drew a full bar beside
  *     "2 / 4 sessions" with the suite at 260 green. It was `✗` here until **EV-216**,
@@ -869,9 +874,11 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * **C2**). AC1 is the three new channels in `PAINT_CHANNELS`; this block is AC3, and
  * `senior-po` calls it the part of the row worth more than the three assertions.
  *
- * **WHAT IT READS.** For **every element in the LIGHT DOM inside every week row of the
- * adherence block, the `li` itself included** — the scan is `querySelectorAll("*")`,
- * which does not cross a shadow root, and this app opens none — one kind of read:
+ * **WHAT IT READS.** For **every element in the LIGHT DOM of the adherence LIST: the
+ * `<ul>` itself, every week row, and every element under either, including those in no
+ * row** (EV-253; the root was each `li` until then) — the scan is
+ * `[list, ...list.querySelectorAll("*")]`, which does not cross a shadow root, and this
+ * app opens none — one kind of read:
  *
  *   1. **The computed channels enumerated in `PAINT_CHANNELS`** — one CSS property on
  *      one of the element's three boxes, asserted equal to that property's initial
@@ -958,10 +965,12 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     declaration is DISCARDED (`content` does not apply to `::first-letter`), so there
  *     is nothing to read. Carded as **`BUG-220`** so the claim is checked rather than
  *     taken from this sentence.
- *   · **An overlay painted from an element that is neither an `li` nor inside one** — a
- *     `ul::after` over the rows. What was tried: nothing here reaches it, because the
- *     scan is `region.locator("li")` plus descendants, which is the same shape of gap as
- *     EV-215's ancestor declaration. Carded as **`BUG-218`**.
+ *   · ~~**An overlay painted from an element that is neither an `li` nor inside one**~~ —
+ *     a `ul::after` over the rows, **`BUG-218`: closed by EV-253**, which re-rooted this
+ *     scan at the list. The `<ul>` is now one of the elements read, on each box
+ *     `PAINT_CHANNELS` names. What was tried: BUG-218's construction, which went red on
+ *     `[content on ::after]` of the `<ul>`, in the EV-253 records block at the bottom of
+ *     this file. Anything outside the list is still unread.
  *   · **A table entry RENAMED and REPOINTED together** — not a paint channel but a way
  *     past this section's own integrity assertions: rename `"box-shadow on its own box"`
  *     to `"outline-style on its own box"` *and* repoint the property, and the length,
@@ -1614,7 +1623,7 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
   );
 }
 
-test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a week row has a non-initial value on an enumerated paint channel", () => {
+test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no element of the adherence list has a non-initial value on an enumerated paint channel", () => {
   /**
    * EV-210b's own four worlds. `minimumElements` is a fact about the FIXTURE and the
    * row's structure (eight rows, each at least the `li` plus a date span and a figures
@@ -1874,11 +1883,12 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  *
  * Story: `b-fit-mobile/docs/product/stories/EV-251-a-bar-made-of-text.md`.
  *
- * **WHAT IT READS.** For every `li` in the adherence block, **every DOM `Text` node under
- * it, the `li`'s own included, in document order, UNFILTERED**: no trim, no whitespace
- * node dropped, no node skipped for being inside `aria-hidden`. The walk is a
- * `TreeWalker` with `SHOW_TEXT`, so it stays in the light DOM (this app opens no shadow
- * root). It reads no style, no box and no pixel.
+ * **WHAT IT READS.** **Every DOM `Text` node under the adherence LIST (the `<ul>`), in
+ * document order, UNFILTERED**, each tagged with the week row it sits in or with "no
+ * row" (EV-253; until then the walk started at each `li` and a node between the rows was
+ * read by nothing, `BUG-231`). No trim, no whitespace node dropped, no node skipped for
+ * being inside `aria-hidden`. The walk is a `TreeWalker` with `SHOW_TEXT`, so it stays in
+ * the light DOM (this app opens no shadow root). It reads no style, no box and no pixel.
  *
  * **WHAT IT COMPARES THEM TO.** The whole list, as an EQUALITY, against two strings per
  * row: `formatDate(weekCommencing)`, then `copy.client.weekSessions(done, planned)` for a
@@ -1891,13 +1901,22 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  *
  * So this is an allowlist of whole strings, one per cell, and it names no character
  * (EV-251 out of scope; EV-218's lesson): nothing in it matches a pattern against the
- * text. A text node that is not one of the two strings, or a third node, fails the row.
+ * text. Since EV-253 it is ONE equality over the list: the expected rows flattened, each
+ * string tagged with its row. A text node that is not one of the strings, a third node
+ * in a row, or any node in no row fails it.
+ *
+ * **Whitespace (EV-253 edge case 2), decided once.** A whitespace-only text node counts,
+ * in a row or between rows, the same way: it is a node, and the expected rows contain no
+ * whitespace-only string, so it fails. The shipped list renders none (no text node of any
+ * kind outside its rows; see the EV-253 records).
  *
  * **WHAT IT DOES NOT READ.** Anything that is not a `Text` node in the DOM: generated
  * `content` (the paint limb's `content` entries read that), a form control's value, an
  * attribute, `<canvas>` / `<img>` (EV-251 out of scope), and how any text is styled. It
- * reads the week rows only, not the headline or the empty-state sentences of EV-208
- * (EV-251 out of scope: "Only week rows").
+ * reads the adherence list only (EV-253), not the block's title, its headline, or the
+ * empty-state sentences of EV-208, which render in place of a list, and not the rest of
+ * the client page. That is what it reads, not a claim about what those can or cannot
+ * draw.
  *
  * **WHEN.** Once per world, after the block is visible, at the default viewport, in
  * `next dev` fixture mode.
@@ -1961,6 +1980,146 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  *   · **This check's oracle broken on clean code** (`copy.client.weekNoPlan` replaced by
  *     `"No plan."` on the expected side). **3 failed**: Ines, Lina and Nils, the three
  *     worlds with a no-plan week. So those rows are compared, not skipped.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-253 — **The guard reads the whole list, not just the rows.** Fixes `BUG-231`;
+ * closes `BUG-218`.
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-253-the-guard-reads-the-whole-list.md`.
+ *
+ * **WHAT CHANGED: the ROOT of every P-ADH C2 limb that looks for a picture.** What each
+ * limb reads of an element is unchanged. What changed is which elements it asks.
+ *
+ *   | limb | function | root at `7bddb7a` | root after EV-253 |
+ *   |---|---|---|---|
+ *   | text | `listTextNodes` (was `weekRowTextNodes`) | each `li`, via `region.locator("li")`: Text nodes under it | the `<ul>`: every Text node under it, tagged with its row or "no row" |
+ *   | paint | `paintedElementsInList` (was `paintedElementsInWeekRows`) | each `li` and its descendants | the `<ul>` itself, then every element under it, attributed to a row or to `outsideRows` |
+ *   | geometry | `renderedWeeks`, asserted by `expectPictureEqualsFigures` | each `li`'s descendants (not the `li` itself) | the `<ul>` and every element under it, the `li`s included; a picture in no row is in `outsideRows` and fails for having no figures beside it |
+ *
+ * **Left at row scope, deliberately:** "the 1 / 0 week" (EV-210b AC3) reads through the
+ * re-rooted `renderedWeeks` and asserts on the current row only, because it pins the row
+ * where the Monday hazard lives. Ines's pictures outside every row are asserted by
+ * `expectPictureEqualsFigures` in the loop above it. **Not in this file and not a P-ADH C2
+ * limb:** `coach-monitoring.spec.ts`'s EV-187 tests read each row's `[data-fill]` and
+ * compare it to the row's label. They test the shipped bar's attribute, not whether a
+ * picture exists, and EV-253 does not touch them.
+ *
+ * **The precondition all three share, `expectOneListHoldingEveryRow`.** The block holds
+ * exactly the one list these limbs read (none in the three worlds that render EV-208's
+ * sentence), and every `li` in the block is inside it. The second half is there because
+ * re-rooting at the list, alone, NARROWS the read in one place. A row-shaped `li`
+ * rendered in the block after the `</ul>` was read by `region.locator("li")` and is not
+ * under the list. Without the assertion, a bar in such an `li` is read by nothing (see
+ * the records).
+ *
+ * **WHAT IS NOT READ.** Anything outside the adherence list: the block's title and
+ * headline, EV-208's sentences, and the rest of the client page. This says what the
+ * limbs read. It is not a statement about what that region can or cannot draw.
+ *
+ * **Edge cases 1 and 4.** If a limb goes red on honest styling of the list (a divider, a
+ * border, a gap drawn by an element) or on a legitimate non-row child (a header, an
+ * empty-state line inside the list), **stop and ask `senior-po`**. That is not a carve-out
+ * here, and there is no allowance for "the list's own border". The shipped list has
+ * none of these (records).
+ *
+ * **HOW TO FIND OUT WHETHER A CONSTRUCTION IS CAUGHT.** Build it in an uncommitted copy of
+ * `AdherenceSeries.tsx`. Confirm it paints: a viewport screenshot clipped to the LIST
+ * grown 24 px on every side, every scanline, each attributed to its row or to "outside
+ * every row", against a control. Check the browser console too: a hydration error puts
+ * Next's dev overlay on the page, and the overlay can fail tests that have nothing to do
+ * with the construction. Then run the default suite. Do not reason from this block. It
+ * says where the limbs start, not what can be drawn.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-253 — **RECORDS.** Runs of 2026-09-24 (a Thursday, UTC) at `35acdcd` (the re-root,
+ * before this comment was written), `next dev` fixture mode on :3341. These are what was
+ * measured then. They are history, not part of the banner above. Counts are per
+ * section: the geometry section is EV-210b AC3 (6 tests), the paint section is
+ * EV-214..EV-253 (6), the text section is EV-251 / EV-253 (10). "Nothing else red" means
+ * no other test in the default suite failed on that run. "At `7bddb7a`" is the same
+ * construction under the merged guard, in a detached worktree.
+ *
+ * PROBE: the list scrolled into view, a viewport screenshot clipped to the `<ul>` grown
+ * 24 px on every side, decoded in a canvas; per css-px scanline, the fraction of the
+ * list's width within L1 < 90 of computed `--blue-500`, attributed to the `li` it falls
+ * in or to "outside every li". Browser console errors counted. Control on clean code, in
+ * all seven probed worlds: **outside every li 0.000**, the current row 0.000, an honest
+ * full bar 0.833. Under the list and outside every row there is **the `<ul>` itself and
+ * nothing else**: no other element and no Text node. 0 console errors.
+ *
+ * Renderer constructions, each in an uncommitted `AdherenceSeries.tsx`, the ratio being
+ * the current week's `min(1, done / plannedSoFar)`:
+ *
+ *   · **`BUG-231`, verbatim** (BUG-227's `█` span as a child of the `<ul>` after the
+ *     rows, `marginLeft: 86`). PROBE: outside every li 0.706 (Lina, Ines, Dana), 0.233
+ *     (Nils, Omar) on list y = 200..209, directly under the current row; Tobias, Noor
+ *     0.000 (zero characters). Text node outside every row `"█"` x 100 (Lina). 0 console
+ *     errors. **Text section: 5 failed** (Ines, Lina, Nils, Dana, Omar), each naming the
+ *     node "OUTSIDE every week row". Geometry and paint sections: all passed. Nothing else
+ *     red. **At `7bddb7a`: nothing red.**
+ *   · **AC4: an EMPTY `<span>`, flat `background: var(--blue-500)`, `height: 10`,
+ *     `width: calc((100% - 96px) * <ratio%> / 100)`, a child of the `<ul>` after the
+ *     rows.** PROBE: outside every li 0.911 (Lina, Ines, Dana), 0.301 (Nils, Omar), 0.000
+ *     (Tobias, Noor: the span is 0 px wide). 0 console errors. **Geometry section: 2
+ *     failed** (Ines, Lina), "draws a picture OUTSIDE every week row … 978.00px of
+ *     1074.00px". Paint and text sections: all passed. Nothing else red. **At `7bddb7a`:
+ *     nothing red.** Caught, by the geometry limb, so nothing is routed to EV-220 from
+ *     this construction.
+ *   · **AC5: `BUG-218`'s construction** (`ul.qa-mut::after { content: ""; position:
+ *     absolute; left: 86px; bottom: 2px; height: 10px; width: calc((100% - 96px) *
+ *     <ratio%> / 100); border-radius: 999px; background: var(--blue-500) }`, with
+ *     `position: relative` on the list and the `<style>` rendered in the block before
+ *     the headline, outside the list). The ratio is clamped at 100 to keep the box inside
+ *     the track, as BUG-218's repro intends. PROBE: over the current row 0.911 (Lina,
+ *     Ines, Dana) and 0.301 (Nils, Omar) on row y = 3..12, beside "3 / 4 sessions" for
+ *     Lina (control 0.000); Tobias and Noor 0.000 (0 px wide). 0 console errors. **Paint
+ *     section: 4 failed** (all four worlds), each offence
+ *     `the adherence list, OUTSIDE every week row, <ul> PAINTS on channel [content on
+ *     ::after]: "" (initial: none)`. Geometry and text sections: all passed. Nothing else
+ *     red. **At `7bddb7a`: nothing red.** What fired is the `content` that GENERATES the
+ *     box, read on the `<ul>`. Its colour and its width are not read. It fires on Tobias
+ *     and Noor too, where the box is 0 px wide.
+ *     ⚠️ **A first delivery of this construction was a dud and is not counted.**
+ *     `<style>{css}</style>` has SSR escape `""` to `&quot;&quot;`, so hydration fails (21
+ *     console errors over the seven worlds). Next's dev overlay then sat over Save at
+ *     320 px and failed `coach-progress-goal.spec.ts`'s layout test (plus 17 that did not
+ *     run) for a reason that was not the bar. Rebuilt with `dangerouslySetInnerHTML`:
+ *     same CSS, same paint, 0 console errors. The run above is the rebuilt one.
+ *   · **A row-shaped `<li>` holding BUG-227's `█` bar, rendered in the block after the
+ *     `</ul>`** (outside the list). PROBE: 0.706 / 0.233 just below the list (y =
+ *     190..199), 0 console errors. **15 failed: geometry 4, paint 4, text 7**, all on
+ *     `expectOneListHoldingEveryRow`'s "rows in the block and … inside the list". **At
+ *     `7bddb7a`: 12 failed** (the `li`-rooted reads counted it as a ninth row).
+ *   · **Edge case 2: one whitespace-only text node (`{" "}`) under the list, after the
+ *     rows.** It paints nothing. It is the witness that the whitespace rule applies
+ *     between rows. **Text section: 7 failed** (the seven worlds with rows), naming `[" "]`
+ *     outside every row. This file only.
+ *
+ * CHECK mutants: one design choice of EV-253 reverted in the spec, with the construction
+ * it exists for planted. This file only; nothing outside it was red on any of these
+ * constructions at `7bddb7a`.
+ *
+ *   · **Text limb reads rows only** (nodes in no row dropped) + `BUG-231`: **text section
+ *     10 passed**, file 27 passed.
+ *   · **Geometry limb reads rows only** (`outsideRows` emptied) + AC4's span: **geometry
+ *     section 6 passed**, file 27 passed.
+ *   · **Paint limb reads rows only** (`outsideRows` emptied, its `<ul>` assertion
+ *     neutralised) + `BUG-218`: **paint section 6 passed**, file 27 passed.
+ *   · **Paint limb reads what is under the list outside rows, but NOT the `<ul>` itself**
+ *     + `BUG-218`: **paint section 6 passed**, file 27 passed. So reading the list element
+ *     itself, not only its descendants, is what closes BUG-218.
+ *   · **The same, with the "`<ul>` itself was read" assertion kept, on clean code: paint
+ *     section 4 failed**, each on that assertion. So it binds.
+ *   · **"Every `li` in the block is in the list" dropped** + the `<li>` after the
+ *     `</ul>`: **file 27 passed**. Re-rooting alone would have lost that row. The
+ *     assertion is what keeps it read.
+ *
+ * **Clause 8, as a cross-matrix.** Each of the three constructions turned exactly one
+ * section red on the whole gate: `BUG-231` only the text section, AC4's span only the
+ * geometry section, `BUG-218` only the paint section. So none of the three re-roots is
+ * riding on another's witness, and the same three at `7bddb7a` are green.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /** One DOM `Text` node under the adherence list, and the week row it sits in (`-1`: none). */
