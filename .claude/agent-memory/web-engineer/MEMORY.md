@@ -30,3 +30,4 @@
 - [The day-unit bound is not enforced](the-day-unit-bound-is-not-enforced.md) — api takes a future completion date, so done − plannedSoFar ≤ 1 is an assumption, not a constraint
 - [A server clock is not a browser clock](a-server-clock-is-not-a-browser-clock.md) — fixture day is server UTC; call fixtureAdherence.adherenceSeries(specs, now); fake forward only; roster uses COACH_ROSTER_PORT
 - [A witness does not choose between two checks](a-witness-does-not-choose-between-two-checks.md) — mutate the CHECK too; isolate from the geometry limb's trim() with a non-leaf
+- [A Back after a guarded leave can hard-reload](a-back-after-a-guarded-leave-can-hard-reload.md) — BUG-232 is app-side: ~4% Backs reload the editor (RSC abort -> MPA); do not wait it out in the test
