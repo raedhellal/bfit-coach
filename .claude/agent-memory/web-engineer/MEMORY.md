@@ -5,7 +5,7 @@
 - [Next duplicates module state across layers](next-module-state-duplicated-across-layers.md) — server-action writes and page reads hit different copies; use globalThis + Symbol.for
 - [Client islands go stale after a server write](client-islands-go-stale-after-a-server-write.md) — router.refresh() updates props, not useState; re-seed on identity change
 - [Stories carry verbatim copy](stories-carry-verbatim-copy.md) — EV-* ACs are final sentences QA checks character by character; omissions are deliberate too
-- [Worktrees have no node_modules; spec:sync](coach-portal-node-modules-and-spec-sync.md) — resolution walks up to the main checkout; vendor the spec and raise SCHEMAS_EXPECTED
+- [Worktrees have no node_modules; spec:sync](coach-portal-node-modules-and-spec-sync.md) — walks up in-repo; /private/tmp worktrees need a symlink, stage by path
 - [A card located by its text asserts nothing](a-card-located-by-its-text-asserts-nothing.md) — div-filtered-by-text finds the title; give blocks a named landmark
 - [A picture with no text is unassertable](a-picture-with-no-text-is-unassertable.md) — an aria-hidden bar hid a full bar beside "2 / 4"; emit the drawn value as data-*
 - [Copy for a capability that does not exist](copy-for-a-capability-that-does-not-exist.md) — delete the label, guard the concept not one spelling
@@ -29,3 +29,4 @@
 - [A rendered ratchet cannot hold an unprinted field](a-rendered-ratchet-cannot-hold-an-unprinted-field.md) — plannedSoFar is never printed; a check in a table loop dies with the row; state a weekday's tuple to test it
 - [The day-unit bound is not enforced](the-day-unit-bound-is-not-enforced.md) — api takes a future completion date, so done − plannedSoFar ≤ 1 is an assumption, not a constraint
 - [A server clock is not a browser clock](a-server-clock-is-not-a-browser-clock.md) — fixture day is server UTC; call fixtureAdherence.adherenceSeries(specs, now); fake forward only; roster uses COACH_ROSTER_PORT
+- [A witness does not choose between two checks](a-witness-does-not-choose-between-two-checks.md) — mutate the CHECK too; isolate from the geometry limb's trim() with a non-leaf

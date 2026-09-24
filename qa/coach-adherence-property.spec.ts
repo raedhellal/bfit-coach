@@ -1,6 +1,9 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { copy } from "../src/lib/copy";
+import { adherenceSeries, type WeekSpec } from "../src/lib/fixtureAdherence";
+import { formatDate } from "../src/lib/format";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -132,7 +135,10 @@ interface RenderedWeek {
   pictures: Picture[];
 }
 
-/** A text-free painted leaf inside a row — i.e. something drawn rather than written. */
+/**
+ * A text-free painted leaf inside a row: what the geometry limb measures. Written text
+ * can draw too (BUG-227); that is read by the EV-251 section, not here.
+ */
 interface Picture {
   tag: string;
   /** `data-fill`, if the element carries it. Not required, and not trusted alone. */
@@ -159,6 +165,11 @@ interface Picture {
  * of which have been used to slip past a structural assertion in this repo. An element
  * with `data-fill` is included even when it paints nothing, so a genuine 0 % week is
  * checked rather than skipped.
+ *
+ * A leaf WITH text is not a picture to this read. That is a choice about what it
+ * measures, not a claim that text cannot draw a ratio: BUG-227's bar of `█` characters
+ * painted 0.706 of Lina's current row beside "3 / 4 sessions" and this read skipped it.
+ * A row's text is read by the EV-251 section at the bottom of this file.
  */
 async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
   return region.locator("li").evaluateAll((rows) =>
@@ -196,6 +207,19 @@ async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
   );
 }
 
+/** The fixture's `PROGRESS` keys whose entry carries an `adherenceSeries([...])` call. */
+type FixtureSeriesKey =
+  | "INES_ID"
+  | "LINA_ID"
+  | "TOBIAS_ID"
+  | "NOOR_ID"
+  | "NILS_ID"
+  | "DANA_ID"
+  | "OMAR_ID"
+  | "KAIA_ID"
+  | "RUBEN_ID"
+  | "ELIF_ID";
+
 /**
  * A trainee's `adherenceSeries([...])` tuples, read from the fixture SOURCE, whitespace
  * removed, oldest first. This reads the tuple's TEXT. It does not call the function, so
@@ -218,7 +242,7 @@ async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
  * substring `adherenceSeries(`, which matched the function's own declaration while it
  * lived in the fixture (it moved to `src/lib/fixtureAdherence.ts` in EV-249).
  */
-function fixtureSeriesTuples(key: "INES_ID" | "LINA_ID"): string[] {
+function fixtureSeriesTuples(key: FixtureSeriesKey): string[] {
   const fixture = readFileSync(join(__dirname, "..", "src", "lib", "coachApi.fixture.ts"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
@@ -240,7 +264,7 @@ function fixtureSeriesTuples(key: "INES_ID" | "LINA_ID"): string[] {
 }
 
 /** The LAST tuple of a trainee's fixture series — the only one whose third element counts. */
-function lastFixtureTuple(key: "INES_ID" | "LINA_ID"): string | undefined {
+function lastFixtureTuple(key: FixtureSeriesKey): string | undefined {
   const tuples = fixtureSeriesTuples(key);
   return tuples[tuples.length - 1];
 }
@@ -1718,4 +1742,192 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
         "absent, plannedSoFar follows the weekday and the hazard is gone on a Monday."
     ).toBe("[3,4,2]");
   });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-251 — **P-ADH C2: a week row's text is exactly the text the copy module and the
+ * fixture's numbers produce for that week.** Fixes `BUG-227`.
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-251-a-bar-made-of-text.md`.
+ *
+ * **WHAT IT READS.** For every `li` in the adherence block, **every DOM `Text` node under
+ * it, the `li`'s own included, in document order, UNFILTERED**: no trim, no whitespace
+ * node dropped, no node skipped for being inside `aria-hidden`. The walk is a
+ * `TreeWalker` with `SHOW_TEXT`, so it stays in the light DOM (this app opens no shadow
+ * root). It reads no style, no box and no pixel.
+ *
+ * **WHAT IT COMPARES THEM TO.** The whole list, as an EQUALITY, against two strings per
+ * row: `formatDate(weekCommencing)`, then `copy.client.weekSessions(done, planned)` for a
+ * week with a plan or `copy.client.weekNoPlan` for one without. Those inputs come from the
+ * FIXTURE, not from the page: the world's tuples are read from `coachApi.fixture.ts`'s
+ * source (`fixtureSeriesTuples`) and run through `fixtureAdherence.adherenceSeries`, the
+ * function the fixture itself calls. The figures are not parsed back out of the printed
+ * label. A label is compared as a whole string to the one the copy module builds from
+ * the fixture's `done` and `planned`.
+ *
+ * So this is an allowlist of whole strings, one per cell, and it names no character
+ * (EV-251 out of scope; EV-218's lesson): nothing in it matches a pattern against the
+ * text. A text node that is not one of the two strings, or a third node, fails the row.
+ *
+ * **WHAT IT DOES NOT READ.** Anything that is not a `Text` node in the DOM: generated
+ * `content` (the paint limb's `content` entries read that), a form control's value, an
+ * attribute, `<canvas>` / `<img>` (EV-251 out of scope), and how any text is styled. It
+ * reads the week rows only, not the headline or the empty-state sentences of EV-208
+ * (EV-251 out of scope: "Only week rows").
+ *
+ * **WHEN.** Once per world, after the block is visible, at the default viewport, in
+ * `next dev` fixture mode.
+ *
+ * **Every fixture world with a series is read**: the ten `PROGRESS` entries that call
+ * `adherenceSeries`. Seven render eight week rows. Kaia, Ruben and Elif render EV-208's
+ * whole-series sentence and **no week rows**, so in those three worlds this check reads
+ * nothing. It asserts that the block rendered and that there are zero rows, so a row
+ * appearing there is a failure rather than an unread row.
+ *
+ * ⚠️ **Edge cases 1 and 2 of EV-251.** A legitimate character-based element added to a
+ * week row later (an icon glyph, a separator) makes this red. **That is a stop-and-ask for
+ * `senior-po`, not a carve-out here.** A copy change moves both sides together, because
+ * the expected strings are built by the copy module. A copy change that fails here is
+ * doing its job.
+ *
+ * **HOW TO FIND OUT WHETHER A CONSTRUCTION IS CAUGHT.** Build it in an uncommitted copy of
+ * `AdherenceSeries.tsx`, confirm on a screenshot that it paints (the row, a clip grown
+ * past it, several scanlines, against a control), and run this file. Do not reason from
+ * this paragraph: it says what the check reads, not what text can or cannot draw.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-251 — **RECORDS.** Runs of 2026-09-24 (a Thursday, UTC) at `58024f8`. These are
+ * what was measured then. They are history, not part of the banner above, and counts
+ * are this section's own ten tests. "Nothing else red" means no test outside this
+ * section failed in the default suite on that run.
+ *
+ * Every renderer mutant sits in the current week's empty middle cell only
+ * (`week.partial && week.hasPlan`), in an uncommitted `AdherenceSeries.tsx`. PROBE: each
+ * row scrolled into view, a VIEWPORT screenshot clipped to the row grown 24 px on every
+ * side, decoded in a canvas, and the blue fraction of the row's width read on scanlines
+ * y = -6, -2, 1, 3, 5, 7, 9, 11, 14 and 18 of the 15 px row. Control on clean code:
+ * 0.000 on every scanline of every probed world's current row, and 0.83 for an honest
+ * full bar on y = 3..11, which is how the probe is known to see blue at all.
+ *
+ *   · **The BUG-227 witness, verbatim from its repro** (`"█".repeat(...)` from
+ *     `done / plannedSoFar`, blue text). PROBE: Lina 0.706 beside "3 / 4 sessions" and
+ *     Ines 0.706 beside "1 / 3 sessions" on y = 3..11; Dana 0.706, Nils and Omar 0.233
+ *     (1 / 3 against a Thursday's derived `plannedSoFar = 3`); Tobias and Noor 0.000
+ *     (zero characters, and no text node). This section: **5 failed** (Ines, Lina, Nils,
+ *     Dana, Omar). Nothing else red in the default suite, so nothing else kills it
+ *     (clause 4).
+ *   · **The same bar in ASCII `|`.** PROBE: 0.326 at a clamped full ratio, 0.111 at
+ *     1 / 3. This section: the same 5 failed. Nothing else red.
+ *   · **A bar of `U+00A0` no-break spaces, drawn by an underline.** PROBE: 0.262 on
+ *     y = 9, 11 at full, 0.087 at 1 / 3. This section: 5 failed, AND three EV-210b geometry
+ *     tests red beside it: that limb counts a leaf whose TRIMMED text is
+ *     empty as a picture and measures it. Killed by two clauses, so it shows neither is
+ *     needed and is recorded rather than cited.
+ *   · **The same no-break-space bar with an empty `<i />` inside it**, so the span is no
+ *     longer a leaf. PROBE: identical readings. This section: **5 failed**. Nothing else
+ *     red.
+ *   · **This check with whitespace-only text nodes dropped** (a `trim()` filter in
+ *     `weekRowTextNodes`). With the previous mutant planted: this section **10 passed**,
+ *     and since nothing outside this section was red on that mutant, the default suite is
+ *     green on it. With the BUG-227
+ *     witness planted: 5 failed. So the witness alone cannot tell the filtered read from
+ *     the unfiltered one, and the no-break-space bar is what does. The read is unfiltered
+ *     for that reason.
+ *   · **This check's oracle broken on clean code** (`copy.client.weekNoPlan` replaced by
+ *     `"No plan."` on the expected side). **3 failed**: Ines, Lina and Nils, the three
+ *     worlds with a no-plan week. So those rows are compared, not skipped.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Every `Text` node under each week row, in document order, exactly as the DOM holds it. */
+async function weekRowTextNodes(region: Locator): Promise<string[][]> {
+  return region.locator("li").evaluateAll((rows) =>
+    rows.map((row) => {
+      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+      const nodes: string[] = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        nodes.push(node.nodeValue ?? "");
+      }
+      return nodes;
+    })
+  );
+}
+
+/**
+ * What each week row of a world must say, built from the fixture's tuples by the same
+ * function, date formatter and copy module the portal uses. `[]` for a world whose
+ * series renders EV-208's whole-series sentence instead of rows: the renderer's branch
+ * is `planned === 0 && done === 0`, and the world table below states which worlds those
+ * are, so the two are cross-checked rather than one trusted.
+ */
+function expectedRowTexts(key: FixtureSeriesKey, now: Date): string[][] {
+  const specs = fixtureSeriesTuples(key).map((tuple) => JSON.parse(tuple) as WeekSpec);
+  const series = adherenceSeries(specs, now);
+  if (series.planned === 0 && series.done === 0) return [];
+  return series.weeks.map((week) => [
+    formatDate(week.weekCommencing),
+    week.hasPlan ? copy.client.weekSessions(week.done, week.planned) : copy.client.weekNoPlan,
+  ]);
+}
+
+test.describe("EV-251 / P-ADH C2 — a week row's text is exactly what the copy module and the fixture produce", () => {
+  /** `rows` is a fact about the fixture, stated here so an empty read cannot pass. */
+  const WORLDS: { key: FixtureSeriesKey; id: string; rows: number }[] = [
+    { key: "INES_ID", id: INES, rows: 8 },
+    { key: "LINA_ID", id: LINA, rows: 8 },
+    { key: "TOBIAS_ID", id: TOBIAS, rows: 8 },
+    { key: "NOOR_ID", id: NOOR, rows: 8 },
+    { key: "NILS_ID", id: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002", rows: 8 },
+    { key: "DANA_ID", id: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004", rows: 8 },
+    { key: "OMAR_ID", id: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005", rows: 8 },
+    // EV-208: no plan in the window (Kaia, Ruben) and a plan that scheduled nothing (Elif).
+    { key: "KAIA_ID", id: KAIA, rows: 0 },
+    { key: "RUBEN_ID", id: RUBEN, rows: 0 },
+    { key: "ELIF_ID", id: ELIF, rows: 0 },
+  ];
+
+  for (const world of WORLDS) {
+    test(`P-ADH C2 (EV-251): every text node in a week row is the date or the label the copy module builds — ${world.key}`, async ({
+      page,
+    }) => {
+      await signIn(page);
+      const before = new Date();
+      await page.goto(`/clients/${world.id}`);
+      await expect(block(page, ADHERENCE)).toBeVisible();
+      const actual = await weekRowTextNodes(block(page, ADHERENCE));
+      const after = new Date();
+
+      /**
+       * The fixture dates its weeks from the SERVER's UTC day. `before` and `after`
+       * bracket the request, so they differ only if it straddled a Monday 00:00 UTC, and
+       * then the page matches one of them. On every other request they are the same.
+       */
+      const candidates = [expectedRowTexts(world.key, after), expectedRowTexts(world.key, before)];
+      const expected =
+        candidates.find((candidate) => JSON.stringify(candidate) === JSON.stringify(actual)) ??
+        candidates[0];
+
+      expect(
+        expected.length,
+        `${world.key}: the fixture's series and this table disagree on whether week rows render`
+      ).toBe(world.rows);
+      expect(
+        actual.length,
+        `${world.key}: the adherence block rendered ${actual.length} week rows, and this world has ${world.rows}`
+      ).toBe(world.rows);
+
+      for (const [i, nodes] of actual.entries()) {
+        expect(
+          nodes,
+          `${world.key}, week ${i + 1} of ${actual.length}: the row's text nodes are not exactly ` +
+            `[date, label] as the copy module and the fixture produce them. P-ADH C2 says the row ` +
+            `shows the two numbers and nothing that stands for a third, and a text node that is ` +
+            `not one of those two strings is not something this check can tell from a picture. ` +
+            `If it is a legitimate addition (an icon, a separator), that is a stop-and-ask for ` +
+            `senior-po (EV-251 edge case 1), not a carve-out here. Nodes, JSON-quoted: ` +
+            JSON.stringify(nodes)
+        ).toEqual(expected[i]);
+      }
+    });
+  }
 });
