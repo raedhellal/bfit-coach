@@ -51,7 +51,8 @@ import { adherenceSeries, type WeekSpec } from "../src/lib/fixtureAdherence";
  *     component reads it, and the bar is drawn from `done / planned`
  *     (`src/components/client/AdherenceSeries.tsx`). So for a world with no stated value,
  *     a day-to-day change in its current week happens in a field no page prints, and
- *     this file is where that field is read. EV-217 (AC3c) samples pages, not this field.
+ *     this file is where that field is read. (EV-217's AC3c, a page-level weekday check,
+ *     was withdrawn for exactly this reason: no page shows this field.)
  *
  *   · **A client import of `fixtureAdherence` ships the function, not the worlds.**
  *     `staff-engineer`, reviewing EV-249, planted `import { adherenceSeries }` in a
