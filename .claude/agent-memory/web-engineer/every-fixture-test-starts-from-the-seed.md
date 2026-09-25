@@ -31,9 +31,10 @@ state through the UI (routine 1, library 1, nutrition 3, library-apply 5).
   (45d237a). The defect was at test level, not file level. The loop only catches state
   the reset cannot see: worker-process globals, or anything added outside
   `FixtureState`. Its CI job belongs to EV-224's workflow.
-- Pre-existing race, not fixed here: in `coach-progress-goal.spec.ts`, `setLina`'s
-  "Saved." is still on screen when the next save is awaited. With a 1.5 s slow fixture
-  write it is red on main (test at :618). See
-  [[a-notice-already-on-screen-is-not-a-sync-point]].
+- Pre-existing race, fixed on this branch: in `coach-progress-goal.spec.ts`, `setLina`'s
+  "Saved." is still on screen while the next save is pending. Its reload could beat the
+  write. With a 1.5 s slow fixture write it was red on main (:618). With the reset on,
+  :795 failed 3 of 4 full runs. `saveAndSettle` waits for the `next-action` POST
+  response. See [[a-notice-already-on-screen-is-not-a-sync-point]].
 
 See [[coach-portal-fixture-mode]], [[next-module-state-duplicated-across-layers]].
