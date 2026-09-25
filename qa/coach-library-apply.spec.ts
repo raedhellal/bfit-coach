@@ -64,6 +64,20 @@ async function openUseDialog(page: Page, template: string) {
   return page.getByRole("dialog");
 }
 
+/**
+ * EV-223: Yusuf has NO draft in the fixture's seed. The second-apply test, the AC5
+ * tests and the AC2 delete test used to find the draft an EARLIER test had applied, and
+ * were red on their own. Each now applies the template it needs itself, through the same
+ * dialog a coach uses, from the seed.
+ */
+async function applyToYusuf(page: Page, template: string) {
+  const dialog = await openUseDialog(page, template);
+  await dialog.locator("select").selectOption({ label: "Yusuf A." });
+  await dialog.getByRole("button", { name: "Use this template" }).click();
+  await page.waitForURL(`/clients/${YUSUF}/routine`);
+  await expect(page.getByText(`Started from ${template}`, { exact: true })).toBeVisible();
+}
+
 test.describe("AC3 — Use on a trainee", () => {
   test("the picker offers only ACTIVE, WORKOUTS-scoped links", async ({ page }) => {
     await signIn(page);
@@ -134,6 +148,7 @@ test.describe("AC3 — Use on a trainee", () => {
     page,
   }) => {
     await signIn(page);
+    await applyToYusuf(page, SEEDED_A);
     const dialog = await openUseDialog(page, SEEDED_B);
     await dialog.locator("select").selectOption({ label: "Yusuf A." });
 
@@ -175,8 +190,7 @@ test.describe("AC5 — an exercise the catalogue may not recognise", () => {
     page,
   }) => {
     await signIn(page);
-    // The previous describe left "Legacy strength" applied to Yusuf.
-    await page.goto(`/clients/${YUSUF}/routine`);
+    await applyToYusuf(page, SEEDED_B);
 
     // AC5, verbatim — "may", because the matcher is fuzzy.
     await expect(page.getByText(UNBINDABLE_TWO, { exact: true })).toBeVisible();
@@ -207,7 +221,7 @@ test.describe("AC5 — an exercise the catalogue may not recognise", () => {
    */
   test("the marks survive a hard reload, having been stored nowhere", async ({ page }) => {
     await signIn(page);
-    await page.goto(`/clients/${YUSUF}/routine`);
+    await applyToYusuf(page, SEEDED_B);
     await page.reload();
     await expect(page.getByText(UNBINDABLE_TWO, { exact: true })).toBeVisible();
     await expect(page.getByText(NOT_IN_CATALOGUE, { exact: true })).toHaveCount(2);
@@ -217,7 +231,7 @@ test.describe("AC5 — an exercise the catalogue may not recognise", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto(`/clients/${YUSUF}/routine`);
+    await applyToYusuf(page, SEEDED_B);
     await page
       .getByRole("group", { name: "Svend Press", exact: true })
       .getByRole("button", { name: "Remove: Svend Press" })
@@ -236,12 +250,13 @@ test.describe("AC5 — an exercise the catalogue may not recognise", () => {
 });
 
 /**
- * ⚠ TERMINAL for the template store: this deletes the template the draft came from.
+ * This deletes the template the draft came from. It used to be TERMINAL for the template
+ * store; since EV-223 the store is reset to its seed before every test, so it is not.
  */
 test.describe("AC2 — deleting a template changes nothing about what was made from it", () => {
   test("the Started from line goes, and the draft's content does not", async ({ page }) => {
     await signIn(page);
-    await page.goto(`/clients/${YUSUF}/routine`);
+    await applyToYusuf(page, SEEDED_B);
     // Read the draft as it stands, exercise by exercise, BEFORE the delete.
     const before = await readDays(page);
     /**
