@@ -35,4 +35,16 @@ action, a picker dialog and the refusal copy on `/clients/[id]/nutrition`
 - **`Modal`'s Close squeezed to 39 px at 320** under a long title (flex items shrink
   by default); fixed in `kit.tsx` with `flexShrink: 0` + a `minWidth: 0` title block.
 
+- **One 403 body means two things** (recipe deleted / link ended). Saying "not in your
+  library" from the 403 alone flashed that sentence before the /clients/denied redirect
+  in staff's live revoke run. The picker now re-reads the library and only says it when
+  the recipe is really absent; otherwise the neutral `accessDenied` (not story copy).
+- **Mid-session changes are fixture COOKIES, not process state**:
+  `evoli_fixture_placement=off` and `evoli_fixture_link=ended` (read in
+  `coachApi.fixture.ts`) scope a flag flip or a revoke to one browser context;
+  `revokeClient()`'s process-wide flag would poison every later spec.
+- **A mutant with no result line is NOT RUN, never a survivor or a kill.** Under load
+  the webServer timed out (120 s) and the harness printed nothing; classify on
+  "failed"/"passed" explicitly and rerun the NO-RUNs.
+
 See [[recipe-library-portal-facts]], [[coach-editor-client-island-pitfalls]].
