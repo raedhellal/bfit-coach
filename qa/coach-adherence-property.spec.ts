@@ -169,42 +169,101 @@ interface Picture {
  * A leaf WITH text is not a picture to this read. That is a choice about what it
  * measures, not a claim that text cannot draw a ratio: BUG-227's bar of `█` characters
  * painted 0.706 of Lina's current row beside "3 / 4 sessions" and this read skipped it.
- * A row's text is read by the EV-251 section at the bottom of this file.
+ * The list's text is read by the EV-251 / EV-253 section at the bottom of this file.
+ *
+ * **EV-253 — the ROOT is the adherence LIST, not each row.** Until EV-253 this read was
+ * `region.locator("li")` plus each row's descendants, so a leaf that was a child of the
+ * `<ul>` and inside no `li` was read by nothing (`BUG-231`'s family). It now reads the
+ * list element and every element under it, the `li`s included, and attributes each
+ * picture to the row it sits in or to `outsideRows`. A picture in `outsideRows` has no
+ * figures beside it, and `expectPictureEqualsFigures` fails it for that, the same rule a
+ * bar on a row that prints no figures has always met. See `expectOneListHoldingEveryRow` for
+ * what is asserted about the list before it is trusted.
  */
-async function renderedWeeks(region: Locator): Promise<RenderedWeek[]> {
-  return region.locator("li").evaluateAll((rows) =>
-    rows.map((row) => {
-      const texts = Array.from(row.querySelectorAll<HTMLElement>("*")).filter(
-        (el) => el.children.length === 0 && (el.textContent ?? "").trim() !== ""
-      );
-      const pictures = Array.from(row.querySelectorAll<HTMLElement>("*"))
-        .filter((el) => el.children.length === 0 && (el.textContent ?? "").trim() === "")
-        .map((el) => {
-          const box = el.getBoundingClientRect();
-          const parentBox = (el.parentElement ?? row).getBoundingClientRect();
-          return {
-            tag: el.tagName.toLowerCase(),
-            dataFill: el.getAttribute("data-fill"),
-            inlineStyle: el.getAttribute("style") ?? "",
-            widthPx: box.width,
-            parentWidthPx: parentBox.width,
-            drawnPercent: parentBox.width > 0 ? (box.width / parentBox.width) * 100 : 0,
-            paints: box.width > 0.5 && box.height > 0.5,
-          };
-        })
-        // Not counted as a picture: an empty grid cell holding a column open, with a width,
-        // no height and no `data-fill`. That is a choice about what this read measures, NOT
-        // a claim that such a box cannot paint — an `outline` around a zero-height box does
-        // paint, and nothing here catches it (BUG-228, carded, not fixed in EV-218).
-        .filter((p) => p.paints || p.dataFill !== null)
-        .map(({ paints: _paints, ...picture }) => picture);
-      return {
-        rowText: (row.textContent ?? "").trim(),
-        label: (texts[texts.length - 1]?.textContent ?? "").trim(),
-        pictures,
-      };
-    })
-  );
+interface RenderedList {
+  /** How many `ul` elements the block holds. The read is only defined for one (or none). */
+  lists: number;
+  /** Every `li` in the BLOCK, so a row rendered outside the list is not silently unread. */
+  rowsInBlock: number;
+  weeks: RenderedWeek[];
+  /** Pictures under the list that are inside no `li`, the list element itself included. */
+  outsideRows: Picture[];
+}
+
+async function renderedWeeks(region: Locator): Promise<RenderedList> {
+  return region.evaluate((blockEl) => {
+    const lists = Array.from(blockEl.querySelectorAll<HTMLElement>("ul"));
+    const list = lists[0];
+    const rows = list ? Array.from(list.querySelectorAll<HTMLElement>("li")) : [];
+    const rowOf = (el: Element) => {
+      const row = el.closest("li");
+      return row && list.contains(row) ? rows.indexOf(row as HTMLElement) : -1;
+    };
+    const pictures = (list ? [list, ...Array.from(list.querySelectorAll<HTMLElement>("*"))] : [])
+      .filter((el) => el.children.length === 0 && (el.textContent ?? "").trim() === "")
+      .map((el) => {
+        const box = el.getBoundingClientRect();
+        const parentBox = (el.parentElement ?? list).getBoundingClientRect();
+        return {
+          row: rowOf(el),
+          tag: el.tagName.toLowerCase(),
+          dataFill: el.getAttribute("data-fill"),
+          inlineStyle: el.getAttribute("style") ?? "",
+          widthPx: box.width,
+          parentWidthPx: parentBox.width,
+          drawnPercent: parentBox.width > 0 ? (box.width / parentBox.width) * 100 : 0,
+          paints: box.width > 0.5 && box.height > 0.5,
+        };
+      })
+      // Not counted as a picture: an empty grid cell holding a column open, with a width,
+      // no height and no `data-fill`. That is a choice about what this read measures, NOT
+      // a claim that such a box cannot paint — an `outline` around a zero-height box does
+      // paint, and nothing here catches it (BUG-228, carded, not fixed in EV-218).
+      .filter((p) => p.paints || p.dataFill !== null);
+    const strip = ({ row: _row, paints: _paints, ...picture }: (typeof pictures)[number]) => picture;
+    return {
+      lists: lists.length,
+      rowsInBlock: blockEl.querySelectorAll("li").length,
+      weeks: rows.map((row, i) => {
+        const texts = Array.from(row.querySelectorAll<HTMLElement>("*")).filter(
+          (el) => el.children.length === 0 && (el.textContent ?? "").trim() !== ""
+        );
+        return {
+          rowText: (row.textContent ?? "").trim(),
+          label: (texts[texts.length - 1]?.textContent ?? "").trim(),
+          pictures: pictures.filter((p) => p.row === i).map(strip),
+        };
+      }),
+      outsideRows: pictures.filter((p) => p.row === -1).map(strip),
+    };
+  });
+}
+
+/**
+ * EV-253 — the two facts every list-rooted read asserts before it trusts itself: the block
+ * holds exactly the one list it reads (none, in a world that renders no rows), and every
+ * `li` in the block is inside that list. Without the second, moving a row out of the
+ * list would take it out of every read that used to see it, which is the opposite of what
+ * re-rooting is for.
+ */
+function expectOneListHoldingEveryRow(
+  where: string,
+  read: { lists: number; rowsInBlock: number },
+  rowsInList: number,
+  expectedLists: 0 | 1
+) {
+  expect(
+    read.lists,
+    `${where}: the adherence block holds ${read.lists} lists and this world renders ${expectedLists}. ` +
+      "The P-ADH C2 reads are rooted at ONE list, the one holding the week rows (none where the " +
+      "world renders EV-208's sentence instead). Another list is a stop-and-ask for senior-po " +
+      "(EV-253 edge case 4), not a second root to add quietly."
+  ).toBe(expectedLists);
+  expect(
+    read.rowsInBlock,
+    `${where}: ${read.rowsInBlock} rows in the block and ${rowsInList} inside the list — a row ` +
+      "outside the list is read by nothing here"
+  ).toBe(rowsInList);
 }
 
 /** The fixture's `PROGRESS` keys whose entry carries an `adherenceSeries([...])` call. */
@@ -286,8 +345,28 @@ function figuresOf(label: string): { done: number; planned: number } | null {
  * is still checked automatically by the loop.
  */
 async function expectPictureEqualsFigures(page: Page, minimumBars: number) {
-  const weeks = await renderedWeeks(block(page, ADHERENCE));
+  const read = await renderedWeeks(block(page, ADHERENCE));
+  const weeks = read.weeks;
   expect(weeks.length, "the adherence block rendered no week rows at all").toBeGreaterThan(0);
+  expectOneListHoldingEveryRow("the geometry limb", read, weeks.length, 1);
+
+  /**
+   * EV-253 — a picture under the list and inside no row. It sits beside no printed
+   * figures, so there is nothing it could equal: the rule a bar on a row that prints no
+   * figures meets below, applied where there is no row at all.
+   */
+  expect(
+    read.outsideRows.map(
+      (picture) =>
+        `<${picture.tag} data-fill="${picture.dataFill}" style="${picture.inlineStyle}"> = ` +
+        `${picture.widthPx.toFixed(2)}px of ${picture.parentWidthPx.toFixed(2)}px ` +
+        `(${picture.drawnPercent.toFixed(1)} %)`
+    ),
+    "The adherence LIST draws a picture OUTSIDE every week row — a painted, text-free leaf " +
+      "under the <ul> that is in no <li>. It has no \"<done> / <planned> sessions\" beside it, " +
+      "so P-ADH C2 has no two numbers for it to equal (EV-253). Draw a week's bar inside its " +
+      "own row, or draw nothing."
+  ).toEqual([]);
 
   let bars = 0;
   for (const [i, week] of weeks.entries()) {
@@ -420,7 +499,7 @@ test.describe("EV-210b AC3 / P-ADH C2 — the bar and the numbers beside it are 
     await signIn(page);
     await page.goto(`/clients/${INES}`);
 
-    const weeks = await renderedWeeks(block(page, ADHERENCE));
+    const { weeks } = await renderedWeeks(block(page, ADHERENCE));
     expect(weeks.length, "eight ISO weeks").toBe(8);
     const current = weeks[weeks.length - 1];
 
@@ -631,9 +710,11 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * EV-214 / EV-215 / EV-216 / EV-218 — **P-ADH C2: no element in a week row has a
- * non-initial computed value on any of the paint channels enumerated in
- * `PAINT_CHANNELS`.**
+ * EV-214 / EV-215 / EV-216 / EV-218 / EV-253 — **P-ADH C2: no element of the adherence
+ * list (the `<ul>`, its week rows, and everything under either) has a non-initial
+ * computed value on any of the paint channels enumerated in `PAINT_CHANNELS`.**
+ * (Until EV-253 the predicate said "no element in a week row", and the scan started at
+ * each `li`.)
  *
  * 🔴 **That sentence is the PREDICATE, and it replaced a banner that named the
  * MECHANISM CLASS** ("a picture nothing can measure is not allowed to exist"). The
@@ -657,7 +738,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * geometric limb never sees it. Rendered, that gave Lina a **fully painted** bar beside
  * "2 / 4 sessions" — mechanism 2 of EV-210's own table, restored.
  *
- * So this limb is **structural, not geometric**: for every element inside a week row, it
+ * So this limb is **structural, not geometric**: for every element of the adherence list
+ * (EV-253; until then, every element inside a week row), it
  * **READS**, once, at the default viewport, **one kind of thing — the computed channels
  * enumerated in `PAINT_CHANNELS`** (EV-216): a CSS property on one of an element's boxes,
  * asserted equal to that property's initial value, with a red build naming the entry
@@ -729,8 +811,10 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     a canvas HAS a layout box, so it is a different mechanism with a different answer.
  *     EV-214 rejects them deliberately: banning a thing with no witness is the same
  *     defect as permitting one. If someone constructs one, that is its own row.
- *   ✗ anything outside a week row. A decorative background elsewhere on the page is a
- *     design decision, not an adherence picture.
+ *   ✗ anything outside the adherence LIST (EV-253 moved this boundary out from the week
+ *     row to the list): the block's title and headline, the rest of the client page. Not
+ *     read. That is a statement about what this reads, not about what that region can or
+ *     cannot draw.
  *   ✓ 🔴 **`box-shadow: inset <pct>vw 0 0 0 rgba(…)`, `border-image` and `mask-image`**
  *     — a second paint channel nobody had named, which drew a full bar beside
  *     "2 / 4 sessions" with the suite at 260 green. It was `✗` here until **EV-216**,
@@ -790,9 +874,11 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * **C2**). AC1 is the three new channels in `PAINT_CHANNELS`; this block is AC3, and
  * `senior-po` calls it the part of the row worth more than the three assertions.
  *
- * **WHAT IT READS.** For **every element in the LIGHT DOM inside every week row of the
- * adherence block, the `li` itself included** — the scan is `querySelectorAll("*")`,
- * which does not cross a shadow root, and this app opens none — one kind of read:
+ * **WHAT IT READS.** For **every element in the LIGHT DOM of the adherence LIST: the
+ * `<ul>` itself, every week row, and every element under either, including those in no
+ * row** (EV-253; the root was each `li` until then) — the scan is
+ * `[list, ...list.querySelectorAll("*")]`, which does not cross a shadow root, and this
+ * app opens none — one kind of read:
  *
  *   1. **The computed channels enumerated in `PAINT_CHANNELS`** — one CSS property on
  *      one of the element's three boxes, asserted equal to that property's initial
@@ -879,10 +965,11 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     declaration is DISCARDED (`content` does not apply to `::first-letter`), so there
  *     is nothing to read. Carded as **`BUG-220`** so the claim is checked rather than
  *     taken from this sentence.
- *   · **An overlay painted from an element that is neither an `li` nor inside one** — a
- *     `ul::after` over the rows. What was tried: nothing here reaches it, because the
- *     scan is `region.locator("li")` plus descendants, which is the same shape of gap as
- *     EV-215's ancestor declaration. Carded as **`BUG-218`**.
+ *   · ~~**An overlay painted from an element that is neither an `li` nor inside one**~~ —
+ *     a `ul::after` over the rows, **`BUG-218`: closed by EV-253**, which re-rooted this
+ *     scan at the list. The `<ul>` is now one of the elements read, on each box
+ *     `PAINT_CHANNELS` names. What was tried, and its reading: the EV-253 records block
+ *     at the bottom of this file. Anything outside the list is still unread.
  *   · **A table entry RENAMED and REPOINTED together** — not a paint channel but a way
  *     past this section's own integrity assertions: rename `"box-shadow on its own box"`
  *     to `"outline-style on its own box"` *and* repoint the property, and the length,
@@ -1443,7 +1530,11 @@ const PAINT_CHANNELS: PaintChannel[] = [
  */
 const PAINT_CHANNELS_EXPECTED = 19;
 
-/** One element inside a week row, as the reads that can reveal a painted picture. */
+/**
+ * One element of the adherence list, as the reads that can reveal a painted picture:
+ * an element of a week row (`RowPaint.elements`), or the `<ul>` itself or an element under
+ * it in no row (`ListPaint.outsideRows`, EV-253).
+ */
 interface RowElement {
   tag: string;
   /**
@@ -1468,42 +1559,74 @@ interface RowPaint {
   elements: RowElement[];
 }
 
+interface ListPaint {
+  /** How many `ul` elements the block holds; see `expectOneListHoldingEveryRow`. */
+  lists: number;
+  /** Every `li` in the BLOCK, so a row rendered outside the list is not silently unread. */
+  rowsInBlock: number;
+  rows: RowPaint[];
+  /**
+   * EV-253 — every element under the list that is inside no row, **the list element
+   * itself first**. Until EV-253 nothing in this section read these: the scan started at
+   * each `li`, so a `ul::after` over the rows (`BUG-218`) was on a box nobody asked about.
+   */
+  outsideRows: RowElement[];
+}
 
 /**
- * Every element inside every week row — the row itself included — with every
- * `PAINT_CHANNELS` read. Computed values only: the inline `style` attribute is not read
- * (EV-218, ADR-0024).
+ * Every element of the adherence LIST — the `ul` itself, every row, and everything under
+ * either — with every `PAINT_CHANNELS` read. Computed values only: the inline `style`
+ * attribute is not read (EV-218, ADR-0024).
+ *
+ * EV-253 re-rooted this from `region.locator("li")` (it was `paintedElementsInWeekRows`).
+ * The reads per element are unchanged; what changed is which elements are asked.
  */
-async function paintedElementsInWeekRows(region: Locator): Promise<RowPaint[]> {
-  return region.locator("li").evaluateAll(
-    (rows, channels: PaintChannel[]) =>
-      rows.map((row) => ({
-        // The date column is the row's first child. Read from its own element: the row's
-        // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
-        date: (row.firstElementChild?.textContent ?? "").trim(),
-        rowText: (row.textContent ?? "").trim(),
-        // The row itself is included — AC1 says "every element inside it INCLUDING the
-        // row itself", because a gradient on the `li` paints behind all three columns at
-        // once, and EV-216's `box-shadow: inset …` bypass was constructed ON the row.
-        elements: [row, ...Array.from(row.querySelectorAll<HTMLElement>("*"))].map((el) => ({
-          tag: el.tagName.toLowerCase(),
-          // EV-215 AC1 — the SECOND argument of `getComputedStyle` is half the fix: a
-          // `::before` carrying the picture is a box this element also owns, and the
-          // same call reports it when it is asked to. EV-216 AC1 is the other half: the
-          // PROPERTY is a parameter too, so the set of channels is data rather than
-          // three hand-written reads, and it lives in exactly one place.
-          computed: channels.map((channel) => ({
-            channel: channel.name,
-            value: getComputedStyle(el, channel.pseudo).getPropertyValue(channel.property),
-            initial: channel.initial,
-          })),
+async function paintedElementsInList(region: Locator): Promise<ListPaint> {
+  return region.evaluate(
+    (blockEl, channels: PaintChannel[]) => {
+      const lists = Array.from(blockEl.querySelectorAll<HTMLElement>("ul"));
+      const list = lists[0];
+      const rows = list ? Array.from(list.querySelectorAll<HTMLElement>("li")) : [];
+      const read = (el: Element) => ({
+        tag: el.tagName.toLowerCase(),
+        // EV-215 AC1 — the SECOND argument of `getComputedStyle` is half the fix: a
+        // `::before` carrying the picture is a box this element also owns, and the
+        // same call reports it when it is asked to. EV-216 AC1 is the other half: the
+        // PROPERTY is a parameter too, so the set of channels is data rather than
+        // three hand-written reads, and it lives in exactly one place.
+        computed: channels.map((channel) => ({
+          channel: channel.name,
+          value: getComputedStyle(el, channel.pseudo).getPropertyValue(channel.property),
+          initial: channel.initial,
         })),
-      })),
+      });
+      const all = list ? [list, ...Array.from(list.querySelectorAll<HTMLElement>("*"))] : [];
+      return {
+        lists: lists.length,
+        rowsInBlock: blockEl.querySelectorAll("li").length,
+        rows: rows.map((row) => ({
+          // The date column is the row's first child. Read from its own element: the row's
+          // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
+          date: (row.firstElementChild?.textContent ?? "").trim(),
+          rowText: (row.textContent ?? "").trim(),
+          // The row itself is included — AC1 says "every element inside it INCLUDING the
+          // row itself", because a gradient on the `li` paints behind all three columns at
+          // once, and EV-216's `box-shadow: inset …` bypass was constructed ON the row.
+          elements: [row, ...Array.from(row.querySelectorAll<HTMLElement>("*"))].map(read),
+        })),
+        outsideRows: all
+          .filter((el) => {
+            const row = el.closest("li");
+            return !(row && list.contains(row));
+          })
+          .map(read),
+      };
+    },
     PAINT_CHANNELS
   );
 }
 
-test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a week row has a non-initial value on an enumerated paint channel", () => {
+test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no element of the adherence list has a non-initial value on an enumerated paint channel", () => {
   /**
    * EV-210b's own four worlds. `minimumElements` is a fact about the FIXTURE and the
    * row's structure (eight rows, each at least the `li` plus a date span and a figures
@@ -1615,14 +1738,22 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
   });
 
   for (const world of WORLDS) {
-    test(`P-ADH C2 (EV-216 AC1): no element in a week row paints through one of the ${PAINT_CHANNELS.length} enumerated channels — ${world.name}`, async ({
+    test(`P-ADH C2 (EV-216 AC1, EV-253): no element of the adherence list paints through one of the ${PAINT_CHANNELS.length} enumerated channels — ${world.name}`, async ({
       page,
     }) => {
       await signIn(page);
       await page.goto(`/clients/${world.id}`);
       await expect(block(page, ADHERENCE)).toBeVisible();
 
-      const rows = await paintedElementsInWeekRows(block(page, ADHERENCE));
+      const read = await paintedElementsInList(block(page, ADHERENCE));
+      const rows = read.rows;
+      expectOneListHoldingEveryRow(`${world.name}, the paint limb`, read, rows.length, 1);
+      // EV-253 — the list element itself is read, not only what hangs under it. It is the
+      // first element outside every row by construction; this is what says so.
+      expect(
+        read.outsideRows[0]?.tag,
+        `${world.name}: the paint limb did not read the <ul> itself — it is rooted at the list (EV-253)`
+      ).toBe("ul");
       // "…not the ${world.weeks} this world renders", never "no week rows at all": the
       // assertion is an equality, so SEVEN rows — a week silently dropped, which is the
       // interesting failure — would otherwise be reported as zero.
@@ -1642,10 +1773,14 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
 
       const offences: string[] = [];
       let inspected = 0;
-      for (const row of rows) {
-        for (const element of row.elements) {
+      const groups = [
+        { place: "the adherence list, OUTSIDE every week row", elements: read.outsideRows },
+        ...rows.map((row) => ({ place: `week row "${row.date}" ("${row.rowText}")`, elements: row.elements })),
+      ];
+      for (const group of groups) {
+        for (const element of group.elements) {
           inspected += 1;
-          const where = `${world.name} — week row "${row.date}" ("${row.rowText}"), <${element.tag}>`;
+          const where = `${world.name} — ${group.place}, <${element.tag}>`;
           /**
            * The channel list is RATCHETED against `PAINT_CHANNELS`, because `inspected`
            * counts ELEMENTS and not channels: deleting the `::after` read used to leave
@@ -1682,7 +1817,8 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
 
       expect(
         offences,
-        "An element inside a week row has a non-initial value on one of the channels this " +
+        "An element of the adherence list — a week row, or the list itself or anything under it " +
+          "outside every row (EV-253) — has a non-initial value on one of the channels this " +
           "section enumerates. P-ADH C2 says the picture IS the two numbers printed beside it; " +
           "a value on one of these channels paints with no layout box of its own, so the " +
           "geometric limb above cannot check it against them — that is the EV-214 / EV-216 " +
@@ -1703,7 +1839,7 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
 
       expect(
         inspected,
-        `${world.name}: only ${inspected} elements were read inside the week rows, so this ` +
+        `${world.name}: only ${inspected} elements were read in the adherence list, so this ` +
           `check was very nearly vacuous (the fixture guarantees at least ${world.minimumElements})`
       ).toBeGreaterThanOrEqual(world.minimumElements);
     });
@@ -1750,11 +1886,12 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  *
  * Story: `b-fit-mobile/docs/product/stories/EV-251-a-bar-made-of-text.md`.
  *
- * **WHAT IT READS.** For every `li` in the adherence block, **every DOM `Text` node under
- * it, the `li`'s own included, in document order, UNFILTERED**: no trim, no whitespace
- * node dropped, no node skipped for being inside `aria-hidden`. The walk is a
- * `TreeWalker` with `SHOW_TEXT`, so it stays in the light DOM (this app opens no shadow
- * root). It reads no style, no box and no pixel.
+ * **WHAT IT READS.** **Every DOM `Text` node under the adherence LIST (the `<ul>`), in
+ * document order, UNFILTERED**, each tagged with the week row it sits in or with "no
+ * row" (EV-253; until then the walk started at each `li` and a node between the rows was
+ * read by nothing, `BUG-231`). No trim, no whitespace node dropped, no node skipped for
+ * being inside `aria-hidden`. The walk is a `TreeWalker` with `SHOW_TEXT`, so it stays in
+ * the light DOM (this app opens no shadow root). It reads no style, no box and no pixel.
  *
  * **WHAT IT COMPARES THEM TO.** The whole list, as an EQUALITY, against two strings per
  * row: `formatDate(weekCommencing)`, then `copy.client.weekSessions(done, planned)` for a
@@ -1767,13 +1904,22 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  *
  * So this is an allowlist of whole strings, one per cell, and it names no character
  * (EV-251 out of scope; EV-218's lesson): nothing in it matches a pattern against the
- * text. A text node that is not one of the two strings, or a third node, fails the row.
+ * text. Since EV-253 it is ONE equality over the list: the expected rows flattened, each
+ * string tagged with its row. A text node that is not one of the strings, a third node
+ * in a row, or any node in no row fails it.
+ *
+ * **Whitespace (EV-253 edge case 2), decided once.** A whitespace-only text node counts,
+ * in a row or between rows, the same way: it is a node, and the expected rows contain no
+ * whitespace-only string, so it fails. The shipped list renders none (no text node of any
+ * kind outside its rows; see the EV-253 records).
  *
  * **WHAT IT DOES NOT READ.** Anything that is not a `Text` node in the DOM: generated
  * `content` (the paint limb's `content` entries read that), a form control's value, an
  * attribute, `<canvas>` / `<img>` (EV-251 out of scope), and how any text is styled. It
- * reads the week rows only, not the headline or the empty-state sentences of EV-208
- * (EV-251 out of scope: "Only week rows").
+ * reads the adherence list only (EV-253), not the block's title, its headline, or the
+ * empty-state sentences of EV-208, which render in place of a list, and not the rest of
+ * the client page. That is what it reads, not a claim about what those can or cannot
+ * draw.
  *
  * **WHEN.** Once per world, after the block is visible, at the default viewport, in
  * `next dev` fixture mode.
@@ -1839,18 +1985,189 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / P-ADH C2 — no element in a 
  *     worlds with a no-plan week. So those rows are compared, not skipped.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/** Every `Text` node under each week row, in document order, exactly as the DOM holds it. */
-async function weekRowTextNodes(region: Locator): Promise<string[][]> {
-  return region.locator("li").evaluateAll((rows) =>
-    rows.map((row) => {
-      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
-      const nodes: string[] = [];
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-253 — **The guard reads the whole list, not just the rows.** Fixes `BUG-231`;
+ * closes `BUG-218`.
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-253-the-guard-reads-the-whole-list.md`.
+ *
+ * **WHAT CHANGED: the ROOT of every P-ADH C2 limb that looks for a picture.** What each
+ * limb reads of an element is unchanged. What changed is which elements it asks.
+ *
+ *   | limb | function | root at `7bddb7a` | root after EV-253 |
+ *   |---|---|---|---|
+ *   | text | `listTextNodes` (was `weekRowTextNodes`) | each `li`, via `region.locator("li")`: Text nodes under it | the `<ul>`: every Text node under it, tagged with its row or "no row" |
+ *   | paint | `paintedElementsInList` (was `paintedElementsInWeekRows`) | each `li` and its descendants | the `<ul>` itself, then every element under it, attributed to a row or to `outsideRows` |
+ *   | geometry | `renderedWeeks`, asserted by `expectPictureEqualsFigures` | each `li`'s descendants (not the `li` itself) | the `<ul>` and every element under it, the `li`s included; a picture in no row is in `outsideRows` and fails for having no figures beside it |
+ *
+ * **Left at row scope, deliberately:** "the 1 / 0 week" (EV-210b AC3) reads through the
+ * re-rooted `renderedWeeks` and asserts on the current row only, because it pins the row
+ * where the Monday hazard lives. Ines's pictures outside every row are asserted by
+ * `expectPictureEqualsFigures` in the loop above it. **Not in this file and not a P-ADH C2
+ * limb:** `coach-monitoring.spec.ts`'s EV-187 tests read each row's `[data-fill]` and
+ * compare it to the row's label. They test the shipped bar's attribute, not whether a
+ * picture exists, and EV-253 does not touch them.
+ *
+ * **The precondition all three share, `expectOneListHoldingEveryRow`.** The block holds
+ * exactly the one list these limbs read (none in the three worlds that render EV-208's
+ * sentence), and every `li` in the block is inside it. The second half is there because
+ * re-rooting at the list, alone, NARROWS the read in one place. A row-shaped `li`
+ * rendered in the block after the `</ul>` was read by `region.locator("li")` and is not
+ * under the list. Without the assertion, a bar in such an `li` is read by nothing (see
+ * the records).
+ *
+ * **WHAT IS NOT READ.** Anything outside the adherence list: the block's title and
+ * headline, EV-208's sentences, any element of the card that is not the list, such as a
+ * sibling of the `<ul>` directly under the last row, and the rest of the client page.
+ * This says what the limbs read. It is not a statement about what that region can or
+ * cannot draw.
+ *
+ * **Edge cases 1 and 4.** If a limb goes red on honest styling of the list (a divider, a
+ * border, a gap drawn by an element) or on a legitimate non-row child (a header, an
+ * empty-state line inside the list), **stop and ask `senior-po`**. That is not a carve-out
+ * here, and there is no allowance for "the list's own border". The shipped list has
+ * none of these (records).
+ *
+ * **HOW TO FIND OUT WHETHER A CONSTRUCTION IS CAUGHT.** Build it in an uncommitted copy of
+ * `AdherenceSeries.tsx`. Confirm it paints: a viewport screenshot clipped to the LIST
+ * grown 24 px on every side, every scanline, each attributed to its row or to "outside
+ * every row", against a control. Check the browser console too: a hydration error puts
+ * Next's dev overlay on the page, and the overlay can fail tests that have nothing to do
+ * with the construction. Then run the default suite. Do not reason from this block. It
+ * says where the limbs start, not what can be drawn.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-253 — **RECORDS.** Runs of 2026-09-24 (a Thursday, UTC) at `35acdcd` (the re-root,
+ * before this comment was written), `next dev` fixture mode on :3341. These are what was
+ * measured then. They are history, not part of the banner above. Counts are per
+ * section: the geometry section is EV-210b AC3 (6 tests), the paint section is
+ * EV-214..EV-253 (6), the text section is EV-251 / EV-253 (10). "Nothing else red" means
+ * no other test in the default suite failed on that run. "At `7bddb7a`" is the same
+ * construction under the merged guard, in a detached worktree.
+ *
+ * PROBE: the list scrolled into view, a viewport screenshot clipped to the `<ul>` grown
+ * 24 px on every side, decoded in a canvas; per css-px scanline, the fraction of the
+ * list's width within L1 < 90 of computed `--blue-500`, attributed to the `li` it falls
+ * in or to "outside every li". Browser console errors counted. Control on clean code, in
+ * all seven probed worlds: **outside every li 0.000**, the current row 0.000, an honest
+ * full bar 0.833. Under the list and outside every row there is **the `<ul>` itself and
+ * nothing else**: no other element and no Text node. 0 console errors.
+ *
+ * Renderer constructions, each in an uncommitted `AdherenceSeries.tsx`, the ratio being
+ * the current week's `min(1, done / plannedSoFar)`:
+ *
+ *   · **`BUG-231`, verbatim** (BUG-227's `█` span as a child of the `<ul>` after the
+ *     rows, `marginLeft: 86`). PROBE: outside every li 0.706 (Lina, Ines, Dana), 0.233
+ *     (Nils, Omar) on list y = 200..209, directly under the current row; Tobias, Noor
+ *     0.000 (zero characters). Text node outside every row `"█"` x 100 (Lina). 0 console
+ *     errors. **Text section: 5 failed** (Ines, Lina, Nils, Dana, Omar), each naming the
+ *     node "OUTSIDE every week row". Geometry and paint sections: all passed. Nothing else
+ *     red. **At `7bddb7a`: nothing red.**
+ *   · **AC4: an EMPTY `<span>`, flat `background: var(--blue-500)`, `height: 10`,
+ *     `width: calc((100% - 96px) * <ratio%> / 100)`, a child of the `<ul>` after the
+ *     rows.** PROBE: outside every li 0.911 (Lina, Ines, Dana), 0.301 (Nils, Omar), 0.000
+ *     (Tobias, Noor: the span is 0 px wide). 0 console errors. **Geometry section: 2
+ *     failed** (Ines, Lina), "draws a picture OUTSIDE every week row … 978.00px of
+ *     1074.00px". Paint and text sections: all passed. Nothing else red. **At `7bddb7a`:
+ *     nothing red.** Caught by the geometry limb only because the span is an empty LEAF.
+ *     `staff-engineer` at `ef94393`: the same span with one empty `<i />` inside it
+ *     paints a full-width bar in the `<ul>` outside every row, and the gate is 290 green.
+ *     That escape is routed to **EV-220** per AC4 and not built here.
+ *   · **AC5: `BUG-218`'s construction** (`ul.qa-mut::after { content: ""; position:
+ *     absolute; left: 86px; bottom: 2px; height: 10px; width: calc((100% - 96px) *
+ *     <ratio%> / 100); border-radius: 999px; background: var(--blue-500) }`, with
+ *     `position: relative` on the list and the `<style>` rendered in the block before
+ *     the headline, outside the list). The ratio is clamped at 100 to keep the box inside
+ *     the track, as BUG-218's repro intends. PROBE: over the current row 0.911 (Lina,
+ *     Ines, Dana) and 0.301 (Nils, Omar) on row y = 3..12, beside "3 / 4 sessions" for
+ *     Lina (control 0.000); Tobias and Noor 0.000 (0 px wide). 0 console errors. **Paint
+ *     section: 4 failed** (all four worlds), each offence
+ *     `the adherence list, OUTSIDE every week row, <ul> PAINTS on channel [content on
+ *     ::after]: "" (initial: none)`. Geometry and text sections: all passed. Nothing else
+ *     red. **At `7bddb7a`: nothing red.** (This is the reading the EV-216 disclosure's
+ *     BUG-218 entry points to.) What fired is the `content` that GENERATES the
+ *     box, read on the `<ul>`. Its colour and its width are not read. It fires on Tobias
+ *     and Noor too, where the box is 0 px wide.
+ *     ⚠️ **A first delivery of this construction was a dud and is not counted.**
+ *     `<style>{css}</style>` has SSR escape `""` to `&quot;&quot;`, so hydration fails (21
+ *     console errors over the seven worlds). Next's dev overlay then sat over Save at
+ *     320 px and failed `coach-progress-goal.spec.ts`'s layout test (plus 17 that did not
+ *     run) for a reason that was not the bar. Rebuilt with `dangerouslySetInnerHTML`:
+ *     same CSS, same paint, 0 console errors. The run above is the rebuilt one.
+ *   · **A row-shaped `<li>` holding BUG-227's `█` bar, rendered in the block after the
+ *     `</ul>`** (outside the list). PROBE: 0.706 / 0.233 just below the list (y =
+ *     190..199), 0 console errors. **15 failed: geometry 4, paint 4, text 7**, all on
+ *     `expectOneListHoldingEveryRow`'s "rows in the block and … inside the list". **At
+ *     `7bddb7a`: 12 failed** (the `li`-rooted reads counted it as a ninth row).
+ *   · **Edge case 2: one whitespace-only text node (`{" "}`) under the list, after the
+ *     rows.** It paints nothing. It is the witness that the whitespace rule applies
+ *     between rows. **Text section: 7 failed** (the seven worlds with rows), naming `[" "]`
+ *     outside every row. This file only.
+ *
+ * CHECK mutants: one design choice of EV-253 reverted in the spec, with the construction
+ * it exists for planted. This file only; nothing outside it was red on any of these
+ * constructions at `7bddb7a`.
+ *
+ *   · **Text limb reads rows only** (nodes in no row dropped) + `BUG-231`: **text section
+ *     10 passed**, file 27 passed.
+ *   · **Geometry limb reads rows only** (`outsideRows` emptied) + AC4's span: **geometry
+ *     section 6 passed**, file 27 passed.
+ *   · **Paint limb reads rows only** (`outsideRows` emptied, its `<ul>` assertion
+ *     neutralised) + `BUG-218`: **paint section 6 passed**, file 27 passed.
+ *   · **Paint limb reads what is under the list outside rows, but NOT the `<ul>` itself**
+ *     + `BUG-218`: **paint section 6 passed**, file 27 passed. So reading the list element
+ *     itself, not only its descendants, is what closes BUG-218.
+ *   · **The same, with the "`<ul>` itself was read" assertion kept, on clean code: paint
+ *     section 4 failed**, each on that assertion. So it binds.
+ *   · **"Every `li` in the block is in the list" dropped** + the `<li>` after the
+ *     `</ul>`: **file 27 passed**. Re-rooting alone would have lost that row. The
+ *     assertion is what keeps it read.
+ *
+ * **Clause 8, as a cross-matrix.** Each of the three constructions turned exactly one
+ * section red on the whole gate: `BUG-231` only the text section, AC4's span only the
+ * geometry section, `BUG-218` only the paint section. So none of the three re-roots is
+ * riding on another's witness, and the same three at `7bddb7a` are green.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/** One DOM `Text` node under the adherence list, and the week row it sits in (`-1`: none). */
+interface ListText {
+  row: number;
+  text: string;
+}
+
+/**
+ * Every `Text` node under the adherence LIST, in document order, exactly as the DOM holds
+ * it, each tagged with the index of the week row it sits in, or `-1` for a node under the
+ * list and in no row. EV-253 re-rooted this from `region.locator("li")` (it was
+ * `weekRowTextNodes`, one walk per row): the walk now starts at the `<ul>`, so a node
+ * between the rows is in the list it returns rather than outside every walk.
+ */
+async function listTextNodes(
+  region: Locator
+): Promise<{ lists: number; rowsInBlock: number; rows: number; nodes: ListText[] }> {
+  return region.evaluate((blockEl) => {
+    const lists = Array.from(blockEl.querySelectorAll<HTMLElement>("ul"));
+    const list = lists[0];
+    const rows = list ? Array.from(list.querySelectorAll("li")) : [];
+    const nodes: { row: number; text: string }[] = [];
+    if (list) {
+      const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        nodes.push(node.nodeValue ?? "");
+        const row = node.parentElement?.closest("li") ?? null;
+        nodes.push({
+          row: row && list.contains(row) ? rows.indexOf(row) : -1,
+          text: node.nodeValue ?? "",
+        });
       }
-      return nodes;
-    })
-  );
+    }
+    return { lists: lists.length, rowsInBlock: blockEl.querySelectorAll("li").length, rows: rows.length, nodes };
+  });
+}
+
+/** Expected rows flattened into the shape `listTextNodes` returns: row `i`'s strings, tagged `i`. */
+function flattenRows(rows: string[][]): ListText[] {
+  return rows.flatMap((texts, row) => texts.map((text) => ({ row, text })));
 }
 
 /**
@@ -1870,7 +2187,7 @@ function expectedRowTexts(key: FixtureSeriesKey, now: Date): string[][] {
   ]);
 }
 
-test.describe("EV-251 / P-ADH C2 — a week row's text is exactly what the copy module and the fixture produce", () => {
+test.describe("EV-251 / EV-253 / P-ADH C2 — the adherence list's text is exactly what the copy module and the fixture produce", () => {
   /** `rows` is a fact about the fixture, stated here so an empty read cannot pass. */
   const WORLDS: { key: FixtureSeriesKey; id: string; rows: number }[] = [
     { key: "INES_ID", id: INES, rows: 8 },
@@ -1887,14 +2204,14 @@ test.describe("EV-251 / P-ADH C2 — a week row's text is exactly what the copy 
   ];
 
   for (const world of WORLDS) {
-    test(`P-ADH C2 (EV-251): every text node in a week row is the date or the label the copy module builds — ${world.key}`, async ({
+    test(`P-ADH C2 (EV-251, EV-253): every text node in the adherence list is a row's date or label, in its row — ${world.key}`, async ({
       page,
     }) => {
       await signIn(page);
       const before = new Date();
       await page.goto(`/clients/${world.id}`);
       await expect(block(page, ADHERENCE)).toBeVisible();
-      const actual = await weekRowTextNodes(block(page, ADHERENCE));
+      const actual = await listTextNodes(block(page, ADHERENCE));
       const after = new Date();
 
       /**
@@ -1904,30 +2221,40 @@ test.describe("EV-251 / P-ADH C2 — a week row's text is exactly what the copy 
        */
       const candidates = [expectedRowTexts(world.key, after), expectedRowTexts(world.key, before)];
       const expected =
-        candidates.find((candidate) => JSON.stringify(candidate) === JSON.stringify(actual)) ??
-        candidates[0];
+        candidates.find(
+          (candidate) => JSON.stringify(flattenRows(candidate)) === JSON.stringify(actual.nodes)
+        ) ?? candidates[0];
 
       expect(
         expected.length,
         `${world.key}: the fixture's series and this table disagree on whether week rows render`
       ).toBe(world.rows);
       expect(
-        actual.length,
-        `${world.key}: the adherence block rendered ${actual.length} week rows, and this world has ${world.rows}`
+        actual.rows,
+        `${world.key}: the adherence list rendered ${actual.rows} week rows, and this world has ${world.rows}`
       ).toBe(world.rows);
+      expectOneListHoldingEveryRow(world.key, actual, actual.rows, world.rows > 0 ? 1 : 0);
 
-      for (const [i, nodes] of actual.entries()) {
-        expect(
-          nodes,
-          `${world.key}, week ${i + 1} of ${actual.length}: the row's text nodes are not exactly ` +
-            `[date, label] as the copy module and the fixture produce them. P-ADH C2 says the row ` +
-            `shows the two numbers and nothing that stands for a third, and a text node that is ` +
-            `not one of those two strings is not something this check can tell from a picture. ` +
-            `If it is a legitimate addition (an icon, a separator), that is a stop-and-ask for ` +
-            `senior-po (EV-251 edge case 1), not a carve-out here. Nodes, JSON-quoted: ` +
-            JSON.stringify(nodes)
-        ).toEqual(expected[i]);
-      }
+      /**
+       * ONE equality over the whole list (EV-253). Each expected string is tagged with its
+       * row, so a node in the wrong row, a node added inside a row, and a node under the
+       * list in no row (tagged `-1`, which no expected string carries) all fail it.
+       */
+      const outside = actual.nodes.filter((node) => node.row === -1).map((node) => node.text);
+      expect(
+        actual.nodes,
+        `${world.key}: the adherence list's text nodes are not exactly each week row's ` +
+          `[date, label], in order, as the copy module and the fixture produce them. ` +
+          (outside.length > 0
+            ? `${outside.length} text node(s) sit under the list OUTSIDE every week row ` +
+              `(EV-253 / BUG-231): ${JSON.stringify(outside)}. `
+            : "") +
+          `P-ADH C2 says the list shows each week's two numbers and nothing that stands for a ` +
+          `third, and a text node that is not one of those strings is not something this ` +
+          `check can tell from a picture. If it is a legitimate addition (an icon, a ` +
+          `separator, a header in the list), that is a stop-and-ask for senior-po (EV-251 ` +
+          `edge case 1, EV-253 edge case 4), not a carve-out here.`
+      ).toEqual(flattenRows(expected));
     });
   }
 });
