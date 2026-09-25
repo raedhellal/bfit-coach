@@ -1,6 +1,6 @@
 ---
 name: the-card-frame-trips-a-card-rooted-scan
-description: Rooting the P-ADH C2 paint or geometry limb at the adherence card's <section> goes red on shipped code, on the kit Card's box-shadow and the CardHead icon's <path>; only the text limb re-roots clean
+description: Rooting the P-ADH C2 paint or geometry limb at the adherence card's <section> goes red on shipped code (Card box-shadow, CardHead icon <path>); ruled text-only at the card, paint/geometry stay at the list
 metadata:
   type: project
 ---
@@ -30,8 +30,13 @@ system's frame, and the frame paints on channels the enumerated limbs ban. The s
 forbids a carve-out, so the boundary is `senior-po`'s decision.
 
 **How to apply:** before proposing any wider root for these limbs, first list what the
-wider region renders, with its computed shadow and background and every leaf. The
-measurement patch and probe from that run were parked in the session scratchpad
-`ev259-out/`, which is not durable, so rebuild them from this note if they are gone.
+wider region renders, with its computed shadow and background and every leaf. 
+**Ruled 2026-09-25 (senior-po, option 1):** only the text limb moved to the card
+(`cardTextNodes`, where the expected content is title + headline + rows, or title + EV-208
+sentence). Paint and geometry stay at the `<ul>`. Geometry-at-card plus BUG-236 went to
+EV-220 AC3d. Paint-at-card has no row until someone builds a witness. A narrower root that
+skips the frame ("the card body") was refused as a renamed carve-out. That shape of
+answer is the one to reuse: leave a limb whole at a smaller root, and name the unread
+region.
 Related: [[re-rooting-a-scan-can-narrow-it]],
 [[a-mutant-can-fail-the-gate-through-the-dev-overlay]].
