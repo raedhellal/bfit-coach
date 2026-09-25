@@ -18,6 +18,11 @@ import type {
   CoachTemplateFromRoutineRequest,
   CoachTemplateList,
   CoachTemplateSaveRequest,
+  CoachIngredientOption,
+  CoachRecipe,
+  CoachRecipeList,
+  CoachRecipeSaveRequest,
+  RecipeUnit,
   CoachTargetsRequest,
   CoachTargetsResult,
   InviteResponse,
@@ -53,6 +58,8 @@ import type {
 import { copy } from "./copy";
 // The pure series builder (EV-249). Only the function lives there; every tuple is here.
 import { adherenceSeries } from "./fixtureAdherence";
+// EV-256b — the fixture's own copy of the recipe bounds (see that module for why).
+import { FIXTURE_RECIPE_BOUNDS as B } from "./fixtureRecipeBounds";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
@@ -1229,6 +1236,330 @@ async function assertScope(id: string, required: CoachAccessScope): Promise<void
   }
 }
 
+// ── EV-256b: the coach's recipe library ─────────────────────────────────────
+
+/**
+ * The api's recipe rules, PORTED FROM THE JAVA — `CoachRecipeSaveRequest`'s Bean
+ * Validation, then `CoachRecipeRules` in its own order (name, steps, ingredients,
+ * macros), then the cap and the name under the lock. Written here from the api source
+ * at b-fit-api `a3249bd`, and deliberately NOT by importing the portal's own
+ * `src/lib/recipeDocument.ts`: a fixture that checks with the subject's rules agrees
+ * with the subject by construction and can witness nothing. If the editor's local
+ * check and this port ever disagree, a spec sees a refusal the portal did not expect.
+ *
+ * Both refusal SHAPES are reproduced, because the portal has to read both:
+ *   · Bean Validation → `VALIDATION_ERROR`, NO details, `message = "<field> <text>"`
+ *     (`RestExceptionHandler.handleValidation` takes the first field error);
+ *   · `CoachRecipeRules` → `VALIDATION_ERROR` + `details.field`, or
+ *     `COACH_RECIPE_UNKNOWN_INGREDIENT` + `details.{key, field}`, or
+ *     `COACH_RECIPE_MACROS_INCONSISTENT` + `details.computedKcal`.
+ */
+const RECIPE_LIMIT = 100; // CoachRecipeUseCase.MAX_RECIPES_PER_COACH
+const INGREDIENT_SEARCH_MAX = 20; // CoachRecipeUseCase.MAX_SEARCH_RESULTS
+const KEY_PATTERN = /^[a-z][a-z0-9_]{1,63}$/; // IngredientVocabulary.KEY_PATTERN
+const NO_CONTROL = new RegExp("^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029]*$");
+
+/**
+ * `src/main/resources/nutrition/ingredient-keys.csv` at b-fit-api `a3249bd`, the keys
+ * only, in file order — all 105. Copied rather than abridged, so a search here returns
+ * what the api's would (`q=chick` finds `chicken`, `chicken_breast`, `chicken_sausage`
+ * and `chickpeas`, not a hand-picked subset). `tahini` is not in it; that is AC3.
+ */
+const VOCABULARY: readonly string[] = [
+  "beef", "pork", "chicken", "turkey", "lamb", "veal", "duck", "bacon", "ham",
+  "pork_sausage", "beef_sausage", "chicken_sausage", "prosciutto", "pepperoni", "salami",
+  "chorizo", "lard", "pancetta", "fish", "salmon", "tuna", "cod", "shrimp", "prawn",
+  "shellfish", "anchovy", "sardine", "seafood", "lobster", "crab", "oyster", "mussel",
+  "clam", "squid", "octopus", "eel", "egg", "milk", "cheese", "yogurt", "butter", "cream",
+  "honey", "whey", "alcohol", "wine", "beer", "rum", "brandy", "liqueur", "mirin", "sake",
+  "gelatin", "almonds", "apple", "avocado", "banana", "bell_pepper", "broccoli", "carrot",
+  "cherry_tomato", "chicken_breast", "chickpeas", "coconut_curry_sauce", "cod_fillet",
+  "couscous", "cucumber", "edamame", "falafel", "greek_yogurt", "halloumi", "hummus",
+  "lean_beef", "lentils", "mixed_berries", "mixed_greens", "mixed_vegetables", "noodles",
+  "oat_drink", "oats", "olive_oil", "onion", "pasta", "peanut_butter", "potato", "quinoa",
+  "rice", "salmon_fillet", "soy_sauce", "spinach", "sweet_potato", "sweetcorn", "tofu",
+  "tomato_passata", "tortilla", "turkey_breast", "turkey_mince", "white_beans",
+  "whole_grain_bread", "zucchini", "garlic", "salt", "black_pepper", "lemon", "water",
+];
+const VOCABULARY_SET = new Set(VOCABULARY);
+
+/** `IngredientLabels.of` — the api's one label function. */
+function ingredientLabel(key: string): string {
+  return key.replace(/_/g, " ");
+}
+
+/** Sorted by label once, as the use case builds `optionsByLabel` once. */
+const OPTIONS_BY_LABEL: CoachIngredientOption[] = VOCABULARY.map((key) => ({
+  key,
+  label: ingredientLabel(key),
+})).sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+
+/** `CoachTemplateNames.normalise`, from the Java: Zs → " ", Cf removed, `strip()`. */
+function javaNormalise(raw: string): string | null {
+  let folded = "";
+  for (const ch of raw) {
+    if (/\p{Zs}/u.test(ch)) folded += " ";
+    else if (/\p{Cf}/u.test(ch)) continue;
+    else folded += ch;
+  }
+  const stripped = javaStripFixture(folded);
+  return stripped === "" ? null : stripped;
+}
+
+/** `String.strip()`: `Character.isWhitespace`, which excludes U+00A0, U+2007, U+202F. */
+function javaStripFixture(value: string): string {
+  const isWs = (ch: string) => {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c === 0x00a0 || c === 0x2007 || c === 0x202f) return false;
+    return (
+      (c >= 0x09 && c <= 0x0d) ||
+      (c >= 0x1c && c <= 0x1f) ||
+      /[\p{Zs}\u2028\u2029]/u.test(ch)
+    );
+  };
+  const chars = Array.from(value);
+  let start = 0;
+  let end = chars.length;
+  while (start < end && isWs(chars[start])) start += 1;
+  while (end > start && isWs(chars[end - 1])) end -= 1;
+  return chars.slice(start, end).join("");
+}
+
+/** The stored row: keys, never labels (ADR-0026 D26.1 — a label is derived on read). */
+interface StoredRecipe {
+  id: string;
+  name: string;
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  ingredients: { key: string; quantity: number; unit: RecipeUnit }[];
+  steps: string[];
+}
+
+function toRecipeResponse(row: StoredRecipe): CoachRecipe {
+  return {
+    id: row.id,
+    name: row.name,
+    kcal: row.kcal,
+    proteinG: row.proteinG,
+    carbsG: row.carbsG,
+    fatG: row.fatG,
+    ingredients: row.ingredients.map((line) => ({ ...line, label: ingredientLabel(line.key) })),
+    steps: [...row.steps],
+    // D26.2 (a): a retired key never breaks a read; it is reported.
+    unknownKeys: row.ingredients.map((l) => l.key).filter((key) => !VOCABULARY_SET.has(key)),
+  };
+}
+
+/**
+ * Three seeded recipes. "Chicken rice bowl" is EV-256a AC1's own example, verbatim.
+ * "Quark pancakes" holds `quark`, a key that is NOT in the vocabulary — it stands for a
+ * key the api RETIRED after the recipe was saved (vocabulary rule 4.7.2), which is the
+ * only way a portal whose ingredients all come from search results can meet
+ * `COACH_RECIPE_UNKNOWN_INGREDIENT`. Seeded because the editor cannot produce one.
+ */
+function seedRecipes(): StoredRecipe[] {
+  return [
+    {
+      id: "8e3f1b22-0000-4000-8000-0000000000c1",
+      name: "Chicken rice bowl",
+      kcal: 560,
+      proteinG: 50,
+      carbsG: 62,
+      fatG: 12,
+      ingredients: [
+        { key: "chicken_breast", quantity: 150, unit: "g" },
+        { key: "rice", quantity: 80, unit: "g" },
+        { key: "olive_oil", quantity: 10, unit: "ml" },
+      ],
+      steps: ["Cook the rice.", "Grill the chicken."],
+    },
+    {
+      id: "8e3f1b22-0000-4000-8000-0000000000c2",
+      name: "Overnight oats",
+      kcal: 390,
+      proteinG: 20,
+      carbsG: 60,
+      fatG: 8,
+      ingredients: [
+        { key: "oats", quantity: 60, unit: "g" },
+        { key: "greek_yogurt", quantity: 150, unit: "g" },
+        { key: "mixed_berries", quantity: 80, unit: "g" },
+      ],
+      steps: ["Mix everything the night before.", "Keep it in the fridge."],
+    },
+    {
+      id: "8e3f1b22-0000-4000-8000-0000000000c3",
+      name: "Quark pancakes",
+      kcal: 340,
+      proteinG: 35,
+      carbsG: 30,
+      fatG: 9,
+      // `quark` is at index 1, NOT 0, on purpose: a refusal addressed to "the first line"
+      // by accident would still land on the right row if the retired key came first.
+      ingredients: [
+        { key: "egg", quantity: 2, unit: "piece" },
+        { key: "quark", quantity: 200, unit: "g" },
+        { key: "oats", quantity: 40, unit: "g" },
+      ],
+      steps: ["Blend everything.", "Cook in a hot pan."],
+    },
+  ];
+}
+
+/** `listByCoachId` — alphabetical by name. */
+function recipesByName(): StoredRecipe[] {
+  return [...state().recipes.values()].sort((a, b) =>
+    a.name.toLowerCase() < b.name.toLowerCase() ? -1 : a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0
+  );
+}
+
+async function ownedRecipe(id: string): Promise<StoredRecipe> {
+  // The api's `{id}` is a `UUID` path variable: a malformed one never reaches the guard,
+  // it is `MethodArgumentTypeMismatchException` → 400 INVALID_REQUEST
+  // (`RestExceptionHandler.handleTypeMismatch`). Reproduced so the portal's own guard
+  // for it is under test and not flattered by the fixture's map lookup.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    await fail(400, "INVALID_REQUEST", "Invalid value for 'id'.");
+  }
+  const found = state().recipes.get(id);
+  // AC6 — one body for foreign, unknown and deleted.
+  if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  return found as StoredRecipe;
+}
+
+/** Bean Validation's refusal: no details, the field leads the message. */
+async function beanRefusal(field: string, text: string): Promise<never> {
+  return fail(400, "VALIDATION_ERROR", `${field} ${text}`);
+}
+
+/** `CoachRecipeFieldInvalidException`: VALIDATION_ERROR with `details.field`. */
+async function fieldRefusal(field: string, text: string): Promise<never> {
+  return failWithDetails(400, "VALIDATION_ERROR", text, { field });
+}
+
+function isWholeNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value);
+}
+
+/** Digits(integer = 4, fraction = 2) on the number as JSON wrote it. */
+function hasAtMostTwoDecimals(value: number): boolean {
+  const text = String(value);
+  const dot = text.indexOf(".");
+  return !text.includes("e") && (dot === -1 || text.length - dot - 1 <= 2);
+}
+
+/** The whole save check, in the api's order. Returns the values the api would store. */
+async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRecipe, "id">> {
+  // ── 1. Bean Validation (`@Valid CoachRecipeSaveRequest`) ────────────────────
+  if (typeof body.name !== "string") await beanRefusal("name", "is required");
+  if (!NO_CONTROL.test(body.name)) {
+    await beanRefusal("name", "must not contain a control character or a line break");
+  }
+  if (
+    !Array.isArray(body.ingredients) ||
+    body.ingredients.length < B.ingredientsMin ||
+    body.ingredients.length > B.ingredientsMax
+  ) {
+    await beanRefusal("ingredients", `must hold between ${B.ingredientsMin} and ${B.ingredientsMax} ingredients`);
+  }
+  for (const field of ["kcal", "proteinG", "carbsG", "fatG"] as const) {
+    const value = body[field] as unknown;
+    if (typeof value !== "number") await beanRefusal(field, "is required");
+    if (!isWholeNumber(value)) await beanRefusal(field, "must be a whole number");
+    const [min, max] = field === "kcal" ? [B.kcalMin, B.kcalMax] : [B.macroMin, B.macroMax];
+    if ((value as number) < min || (value as number) > max) {
+      await beanRefusal(field, `must be between ${min} and ${max}`);
+    }
+  }
+  if (!Array.isArray(body.steps) || body.steps.length > B.stepsMax) {
+    await beanRefusal("steps", `must hold at most ${B.stepsMax} steps`);
+  }
+  for (let i = 0; i < body.steps.length; i += 1) {
+    const step = body.steps[i];
+    if (typeof step !== "string") await beanRefusal(`steps[${i}]`, "is required");
+    if (step.length > B.stepMaxLength) {
+      await beanRefusal(`steps[${i}]`, `must be at most ${B.stepMaxLength} characters`);
+    }
+    if (!NO_CONTROL.test(step)) {
+      await beanRefusal(`steps[${i}]`, "must not contain a control character or a line break");
+    }
+  }
+  for (let i = 0; i < body.ingredients.length; i += 1) {
+    const line = body.ingredients[i];
+    const q = line.quantity as unknown;
+    if (typeof q !== "number") await beanRefusal(`ingredients[${i}].quantity`, "is required");
+    if ((q as number) <= 0) await beanRefusal(`ingredients[${i}].quantity`, "must be greater than 0");
+    if ((q as number) > B.quantityMax) {
+      await beanRefusal(`ingredients[${i}].quantity`, `must be at most ${B.quantityMax}`);
+    }
+    if (!hasAtMostTwoDecimals(q as number)) {
+      await beanRefusal(`ingredients[${i}].quantity`, "must have at most 2 decimal places");
+    }
+    if (line.unit !== "g" && line.unit !== "ml" && line.unit !== "piece") {
+      await beanRefusal(`ingredients[${i}].unit`, "must be one of g, ml, piece");
+    }
+  }
+
+  // ── 2. CoachRecipeRules: name, steps, ingredients, macros ───────────────────
+  const name = javaNormalise(body.name);
+  if (name === null || name.length > B.nameMax) {
+    await fieldRefusal("name", "must be between 1 and 80 characters");
+  }
+  const steps: string[] = [];
+  for (let i = 0; i < body.steps.length; i += 1) {
+    if (javaNormalise(body.steps[i]) === null) {
+      await fieldRefusal(`steps[${i}]`, "must be between 1 and 300 characters");
+    }
+    steps.push(javaStripFixture(body.steps[i]));
+  }
+  const seen = new Set<string>();
+  for (let i = 0; i < body.ingredients.length; i += 1) {
+    const key = body.ingredients[i].key;
+    const field = `ingredients[${i}].key`;
+    // RAW, as sent — not trimmed, not lower-cased (ADR-0026 F1).
+    if (typeof key !== "string" || !KEY_PATTERN.test(key) || !VOCABULARY_SET.has(key)) {
+      await failWithDetails(400, "COACH_RECIPE_UNKNOWN_INGREDIENT", "Unknown ingredient", {
+        key: typeof key === "string" ? key : null,
+        field,
+      });
+    }
+    if (seen.has(key)) {
+      await fieldRefusal(field, "is already in this recipe; each ingredient may appear once");
+    }
+    seen.add(key);
+  }
+  const computed = 4 * body.proteinG + 4 * body.carbsG + 9 * body.fatG;
+  if (100 * Math.abs(body.kcal - computed) > Math.max(100 * 50, 15 * body.kcal)) {
+    await failWithDetails(
+      400,
+      "COACH_RECIPE_MACROS_INCONSISTENT",
+      `The macros add up to ${computed} kcal, not ${body.kcal}`,
+      { computedKcal: computed }
+    );
+  }
+
+  return {
+    name: name as string,
+    kcal: body.kcal,
+    proteinG: body.proteinG,
+    carbsG: body.carbsG,
+    fatG: body.fatG,
+    ingredients: body.ingredients.map((l) => ({ key: l.key, quantity: l.quantity, unit: l.unit })),
+    steps,
+  };
+}
+
+/** `nameExistsByCoachId` — the unique index is on `lower(btrim(name))`. */
+function recipeNameTaken(name: string, exceptId: string | null): boolean {
+  const key = name.trim().toLowerCase();
+  for (const row of state().recipes.values()) {
+    if (row.id !== exceptId && row.name.trim().toLowerCase() === key) return true;
+  }
+  return false;
+}
+
 // ── the exercise catalog ────────────────────────────────────────────────────
 
 /**
@@ -2072,6 +2403,8 @@ interface FixtureState {
    * `ON DELETE SET NULL` in the api. A hand-built draft has no entry.
    */
   draftTemplate: Map<string, string>;
+  /** EV-256b — the coach's recipes, keyed by id. Keys only; labels derive on read. */
+  recipes: Map<string, StoredRecipe>;
   nutrition: Map<string, NutritionState>;
   /**
    * EV-202b. Keyed by the `coach_clients` row id here, where the api keys the row by
@@ -2105,6 +2438,7 @@ function freshState(): FixtureState {
     pendingDigest: new Map(),
     templates: new Map(seedTemplates().map((t) => [t.id, t])),
     draftTemplate: new Map(),
+    recipes: new Map(seedRecipes().map((r) => [r.id, r])),
     nutrition: new Map(),
     /**
      * Four seeded goals, each reaching a state the others cannot:
@@ -2690,6 +3024,75 @@ export const fixtureCoachApi: CoachApi = {
     };
     state().templates.set(created.id, created);
     return created;
+  },
+
+  // ── EV-256b the coach's recipe library ────────────────────────────────────
+
+  async listRecipes(): Promise<CoachRecipeList> {
+    const rows = recipesByName();
+    return {
+      recipes: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        kcal: row.kcal,
+        proteinG: row.proteinG,
+        carbsG: row.carbsG,
+        fatG: row.fatG,
+        ingredientCount: row.ingredients.length,
+      })),
+      limit: RECIPE_LIMIT,
+      remaining: Math.max(0, RECIPE_LIMIT - rows.length),
+    };
+  },
+
+  async getRecipe(id: string): Promise<CoachRecipe> {
+    return toRecipeResponse(await ownedRecipe(id));
+  },
+
+  async createRecipe(body: CoachRecipeSaveRequest): Promise<CoachRecipe> {
+    // The api's order: the rules (400s) BEFORE the cap and the name (409s).
+    const checked = await checkRecipe(body);
+    if (state().recipes.size >= RECIPE_LIMIT) {
+      await fail(409, "COACH_RECIPE_LIMIT_REACHED", "Recipe limit reached");
+    }
+    if (recipeNameTaken(checked.name, null)) {
+      await fail(409, "COACH_RECIPE_NAME_TAKEN", "You already have a recipe with that name");
+    }
+    const created: StoredRecipe = { id: crypto.randomUUID(), ...checked };
+    state().recipes.set(created.id, created);
+    return toRecipeResponse(created);
+  },
+
+  async updateRecipe(id: string, body: CoachRecipeSaveRequest): Promise<CoachRecipe> {
+    const existing = await ownedRecipe(id);
+    const checked = await checkRecipe(body);
+    // Keeping or re-casing its own name is not a collision with itself.
+    if (
+      checked.name.toLowerCase() !== existing.name.toLowerCase() &&
+      recipeNameTaken(checked.name, id)
+    ) {
+      await fail(409, "COACH_RECIPE_NAME_TAKEN", "You already have a recipe with that name");
+    }
+    const saved: StoredRecipe = { id, ...checked };
+    state().recipes.set(id, saved);
+    return toRecipeResponse(saved);
+  },
+
+  async deleteRecipe(id: string): Promise<void> {
+    await ownedRecipe(id);
+    state().recipes.delete(id);
+  },
+
+  async searchIngredients(q: string): Promise<CoachIngredientOption[]> {
+    if (q.length > 100) await beanRefusal("q", "size must be between 0 and 100");
+    // An underscore is a space: a pasted key finds itself.
+    const needle = javaStripFixture(q.replace(/_/g, " ")).toLowerCase();
+    if (needle === "") return OPTIONS_BY_LABEL.slice(0, INGREDIENT_SEARCH_MAX);
+    const prefix = OPTIONS_BY_LABEL.filter((o) => o.label.startsWith(needle));
+    const inner = OPTIONS_BY_LABEL.filter(
+      (o) => !o.label.startsWith(needle) && o.label.includes(needle)
+    );
+    return [...prefix, ...inner].slice(0, INGREDIENT_SEARCH_MAX);
   },
 
   // ── EV-185b nutrition ─────────────────────────────────────────────────────

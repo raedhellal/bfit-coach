@@ -10,7 +10,8 @@ import { SignOutButton } from "./SignOutButton";
  * width), and the portal has two destinations.
  *
  * EV-188 AC1 asks for Templates to be reachable "from the portal's main navigation",
- * so the header grew one — two links, both always visible, `nav` landmarked. The
+ * so the header grew one — `nav` landmarked, every link always visible. EV-256b AC1
+ * added Recipes next to Templates, making it three. The
  * current section is marked with `aria-current` rather than only with a colour.
  *
  * ⚠ The links sit BEFORE the `flex: 1` spacer and each is `whiteSpace: nowrap`, so
@@ -27,7 +28,7 @@ export function CoachShell({
 }: {
   coachName?: string | null;
   /** Which nav entry is the page under this shell. Undefined on a trainee screen. */
-  section?: "roster" | "templates";
+  section?: "roster" | "templates" | "recipes";
   children: React.ReactNode;
 }) {
   return (
@@ -64,6 +65,10 @@ export function CoachShell({
             </ShellLink>
             <ShellLink href="/templates" current={section === "templates"}>
               {copy.templates.nav}
+            </ShellLink>
+            {/* EV-256b AC1 — Recipes sits next to Templates. */}
+            <ShellLink href="/recipes" current={section === "recipes"}>
+              {copy.recipes.nav}
             </ShellLink>
           </nav>
           <div style={{ flex: 1 }} />

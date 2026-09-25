@@ -1129,8 +1129,14 @@ paths:
   /me/workout/complete:
     post:
       summary: Complete workout
+      description: >-
+        Also served at `/me/workouts/complete`. A client-sent `date` may not be in the future
+        (EV-248): see `X-Timezone` for the bound. Past dates are accepted. With no `date` the
+        session is dated the server's (UTC) today, as before.
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CompletionTimeZoneHeader"
       requestBody:
         required: true
         content:
@@ -1165,7 +1171,11 @@ paths:
                   longestStreakDays: 6
                   lastCompletedAt: "2026-01-11T19:00:00Z"
         "400":
-          description: Invalid request
+          description: >-
+            Invalid request, or `COMPLETION_DATE_IN_FUTURE`: `date`, or the day the session is
+            recorded as ending (`date` 00:00 UTC + `durationSeconds`, for a date other than the
+            server's today), is after the caller's local today (readable `X-Timezone`) or after the
+            server's today + 1 day (no readable `X-Timezone`). Nothing is written.
           content:
             application/json:
               schema:
@@ -1312,6 +1322,9 @@ paths:
   /me/workouts/{workoutId}/complete:
     post:
       summary: Complete workout by id
+      description: >-
+        Also served at `/me/workout/{workoutId}/complete`. A client-sent `date` may not be in the
+        future (EV-248): see `X-Timezone` for the bound.
       security:
         - bearerAuth: []
       parameters:
@@ -1321,6 +1334,7 @@ paths:
           schema:
             type: string
             format: uuid
+        - $ref: "#/components/parameters/CompletionTimeZoneHeader"
       requestBody:
         required: true
         content:
@@ -1346,7 +1360,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkoutCompletionLogResponse"
         "400":
-          description: Invalid request
+          description: >-
+            Invalid request, or `COMPLETION_DATE_IN_FUTURE`: `date`, or the day the session is
+            recorded as ending (`date` 00:00 UTC + `durationSeconds`, for a date other than the
+            server's today), is after the caller's local today (readable `X-Timezone`) or after the
+            server's today + 1 day (no readable `X-Timezone`). Nothing is written.
           content:
             application/json:
               schema:
@@ -3673,6 +3691,257 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /coach-portal/recipes:
+    get:
+      summary: The coach's own recipe library
+      description: >-
+        EV-256a / ADR-0026 D26.1. Alphabetical by name; each row carries the name, the macros and
+        the ingredient count. Unpaged because the cap is 100 recipes per coach, enforced at the
+        write under the coach-profile row lock and repeated as the query's LIMIT, so it is a bounded
+        collection rather than an unbounded query. A second coach sees an EMPTY library, never this
+        one's. Not behind the placement flag (EV-256 ruling R5).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The library
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachRecipeListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Create a recipe
+      description: >-
+        EV-256a AC1. One serving. Every ingredient key must be exactly one returned by
+        `GET /coach-portal/ingredients`: the key is checked AS SENT against
+        `^[a-z][a-z0-9_]{1,63}$` and then against the vocabulary, so `Chicken_Breast` and
+        `" chicken_breast "` are refused even though they would normalise to a known key. Nothing is
+        checked against any trainee here: a recipe belongs to no trainee, and a trainee's food rules
+        are checked when a recipe is placed on their plan (EV-256c).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachRecipeSaveRequest"
+      responses:
+        "201":
+          description: Created. The same body `GET /coach-portal/recipes/{id}` returns.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachRecipeResponse"
+        "400":
+          description: >-
+            `COACH_RECIPE_UNKNOWN_INGREDIENT` with `details.key` (as sent) and `details.field`, for
+            a key that is blank, has upper case, does not match the pattern, or is not in the
+            vocabulary. `COACH_RECIPE_MACROS_INCONSISTENT` with `details.computedKcal` when
+            `|kcal − (4·P + 4·C + 9·F)| > max(50, 0.15 × kcal)`. `VALIDATION_ERROR` for every
+            other bound, naming the field in `details.field` or at the start of `message`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `COACH_RECIPE_NAME_TAKEN` (this coach already has the name, ignoring case and
+            surrounding spaces), or `COACH_RECIPE_LIMIT_REACHED` at 100 recipes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/recipes/{id}:
+    get:
+      summary: One recipe
+      description: >-
+        EV-256a AC6. Every denial on this mapping is ONE body: a recipe belonging to another coach,
+        an id that never existed and a recipe deleted in another tab are the same branch of
+        `requireOwnedRecipe`. A recipe has no status column and is not soft-deleted.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The recipe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachRecipeResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      summary: Replace a recipe
+      description: >-
+        EV-256a AC7. Replaces the whole recipe and applies every save rule again, including the
+        name rule against this coach's OTHER recipes (keeping or re-casing its own name is not a
+        collision). No versioning and no history. A meal the recipe was already placed on keeps the
+        version that was placed (EV-256 default D-f).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachRecipeSaveRequest"
+      responses:
+        "200":
+          description: The saved recipe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachRecipeResponse"
+        "400":
+          description: As for POST /coach-portal/recipes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_RECIPE_NAME_TAKEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Delete a recipe
+      description: >-
+        EV-256a AC7. After it, the id answers the same 403 body as a foreign or random id. A meal
+        the recipe was already placed on is a copy and is unchanged.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/ingredients:
+    get:
+      summary: Search the ingredients a recipe may use
+      description: >-
+        EV-256a AC8 / ADR-0026 D26.2. An in-memory filter over the canonical ingredient vocabulary;
+        only vocabulary keys can be returned. At most 20 entries whose label contains the trimmed
+        `q` (an underscore counts as a space, so a pasted key finds itself), ignoring case: labels
+        that START with `q` first, then the rest, each group
+        alphabetical. A blank or absent `q` gives the first 20 by label, alphabetically. A search
+        with no result answers `[]` and is logged as `coach_recipe_ingredient_search_empty` (the
+        demand list for new vocabulary keys). Labels are English, derived from the key.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+            default: ""
+      responses:
+        "200":
+          description: Matching ingredients, possibly none
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 20
+                items:
+                  $ref: "#/components/schemas/CoachIngredientOption"
+        "400":
+          description: VALIDATION_ERROR, q longer than 100 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /coach-portal/catalog/exercises:
     get:
       summary: The exercise catalog the coach picks from
@@ -4322,6 +4591,53 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /me/progress-goal:
+    get:
+      summary: The milestone weight the trainee's coach set for them
+      description: >-
+        EV-202e AC12–AC15. **The trainee's own read of a number written about their body by someone
+        else.** EV-202a shipped the progress goal on the coach-portal surface only; this is the only
+        channel by which its subject can see it (`EV-041` is `DELETE /me/account`, i.e. erasure, not
+        access), which is what makes that write defensible under the consent posture EV-197 and
+        EV-202c established.
+        **It addresses nothing.** No path parameter and no query parameter of any kind: the subject
+        is the caller, resolved from the authentication, so there is no id to pass and none to
+        tamper with.
+        **A deliberate SUBSET of the coach's block, and the list is closed** — four fields, no more
+        and no fewer. `startedOn`, `startedOnSource`, the four derived readings, both deltas and
+        above all `weightToGoKg` are absent by design: "to go" is a SIGNED number (a trainee bulking
+        toward a higher milestone and one cutting toward a lower one both have one, and neither is a
+        failure), and it is what a progress bar, a percentage and an ETA are made of.
+        🔴 **G-GOAL**: the milestone is a NARRATIVE number. No routine generator, no nutrition target
+        calculation, no prompt and no policy reads it, and no client renders it as a number the app
+        is working toward.
+        **Absence is a 200 with a null milestone — never a 404 and never a 403** — and it is ONE
+        answer for FOUR different facts: no coach at all, a link with no goal row, a link whose
+        `WEIGH_INS` scope is missing, and a coach who cleared the milestone. A status code that
+        varied with whether a coach exists, or with which scopes a link carries, would be a
+        disclosure oracle on the trainee's own prefix.
+        ⚠ `WEIGH_INS` deliberately does NOT gate this read. That scope governs what the COACH may
+        see of the trainee's data; it is not a lock on the subject's own record, and a trainee who
+        has revoked entirely still reads the row (edge case 12) with the attribution naming the
+        coach who set it.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: >-
+            The trainee's milestone, or the same body with a null milestone when there is nothing
+            to show.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraineeMilestone"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
 components:
   parameters:
     TimeZoneHeader:
@@ -4336,6 +4652,24 @@ components:
         the client's zone catalog and the server's tzdata are independently versioned, so a hard
         400 would turn catalog skew into a dead surface fixable only by an app-store release.
         See ADR-0011.
+      schema:
+        type: string
+        example: Europe/Paris
+    CompletionTimeZoneHeader:
+      name: X-Timezone
+      in: header
+      required: false
+      description: >-
+        IANA time zone of the caller's device. On the completion routes it is used ONLY to bound a
+        client-sent `date` (EV-248 / BUG-225), and is not read at all when no `date` is sent. The
+        bound applies both to `date` and to the day the session is recorded as ending (`date` 00:00
+        UTC + `durationSeconds`, for a date other than the server's today). Present and resolvable:
+        either one after the caller's local today is rejected with 400 `COMPLETION_DATE_IN_FUTURE`.
+        Absent, blank or unresolvable: either one after the server's (UTC) today + 1 day is
+        rejected — NOT the strict UTC today the
+        other routes fall back to, because no zone is more than 14 hours ahead of UTC and a strict
+        UTC bound would refuse genuine sessions logged after local midnight east of UTC. With no
+        `date` in the body the header changes nothing.
       schema:
         type: string
         example: Europe/Paris
@@ -4931,6 +5265,51 @@ components:
       required:
         - startedOn
         - startedOnSource
+    TraineeMilestone:
+      type: object
+      description: >-
+        EV-202e. The TRAINEE's own view of the milestone weight a coach set for them — a deliberate
+        subset of `TraineeProgressGoal`, not an unfinished superset.
+        **Four fields and the list is closed.** The coach reads a progress report because they are
+        assessing the work; the trainee is told one fact — a number someone else set about their
+        body, and who set it. `weightToGoKg` in particular is absent on purpose: it is SIGNED, a
+        bulk and a cut both have one and neither is a failure, and a field that is not on the wire
+        cannot be rendered by a later edit.
+        🔴 **G-GOAL**: `milestoneWeightKg` is a NARRATIVE number. Nothing generates from it and
+        nothing renders it as a number the app is working toward.
+        **All four keys are always present, nulls included.** `milestoneSetByName` is three-way for
+        the client — a name, `null` (the coach's account was erased, the number is unchanged, "set
+        by a coach who has left"), or ABSENT (an older server said nothing). This endpoint never
+        produces the third, which is exactly why it must not suppress the second.
+      properties:
+        milestoneWeightKg:
+          type: number
+          format: double
+          nullable: true
+          example: 80.0
+          description: >-
+            🔴 G-GOAL — narrative. 25.00..300.00 kg as written by the coach. Null renders NO row at
+            all on the trainee's screen: no empty state, no "not set" placeholder, no call to
+            action.
+        milestoneSetByName:
+          type: string
+          nullable: true
+          description: >-
+            The coach's display name, by the same rule as the `/me/plan` byline. Null WITH a
+            milestone present is "set by a coach who has left".
+        milestoneSource:
+          type: string
+          nullable: true
+          enum: [COACH, SELF]
+          description: >-
+            Served verbatim, never normalised. No trainee writer exists, so SELF is unreachable
+            today; a client that has no honest sentence for a milestone a coach did not set must be
+            able to RECOGNISE the source in order to refuse to describe it.
+        milestoneUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the goal row was last written. Null when there is no milestone.
     TraineeProgressReading:
       type: object
       description: >-
@@ -5663,6 +6042,170 @@ components:
           description: >-
             Whether the catalogue check could run. FALSE with an empty list is "not checked", which
             is not the same fact as "checked and clean".
+    CoachRecipeSaveRequest:
+      type: object
+      description: >-
+        A recipe to create or replace. One serving. Unknown properties are ignored and never
+        stored: the stored document is built from these fields only.
+      required: [name, ingredients, kcal, proteinG, carbsG, fatG, steps]
+      properties:
+        name:
+          type: string
+          description: >-
+            1..80 characters AFTER trimming (Unicode spaces fold, zero-width characters are
+            removed). No control character or line break. Unique per coach, ignoring case and
+            surrounding spaces.
+          example: Chicken rice bowl
+        ingredients:
+          type: array
+          minItems: 1
+          maxItems: 25
+          description: Each key at most once.
+          items:
+            $ref: "#/components/schemas/CoachRecipeIngredientRequest"
+        kcal:
+          type: integer
+          minimum: 1
+          maximum: 3000
+          description: >-
+            Must be within max(50, 15%) of 4·proteinG + 4·carbsG + 9·fatG. kcal and the three
+            macros must be whole numbers: a fractional value (300.9, 559.99) is refused with
+            VALIDATION_ERROR naming the field, never truncated; 50.0 is accepted.
+        proteinG:
+          type: integer
+          minimum: 0
+          maximum: 300
+        carbsG:
+          type: integer
+          minimum: 0
+          maximum: 300
+        fatG:
+          type: integer
+          minimum: 0
+          maximum: 300
+        steps:
+          type: array
+          maxItems: 15
+          items:
+            type: string
+            maxLength: 300
+            description: Not blank once trimmed. No control character or line break.
+    CoachRecipeIngredientRequest:
+      type: object
+      required: [key, quantity, unit]
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z][a-z0-9_]{1,63}$"
+          description: >-
+            A canonical ingredient key exactly as `GET /coach-portal/ingredients` returned it. A key
+            that is blank, has upper case, fails the pattern or is not in the vocabulary is refused
+            with COACH_RECIPE_UNKNOWN_INGREDIENT (not VALIDATION_ERROR).
+          example: chicken_breast
+        quantity:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 5000
+          description: Greater than 0, at most 5000, at most 2 decimal places.
+          example: 150
+        unit:
+          type: string
+          enum: [g, ml, piece]
+    CoachRecipeResponse:
+      type: object
+      description: >-
+        A recipe in the coach's private library. No timestamps: no client reads one, and the
+        library is alphabetical.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kcal:
+          type: integer
+        proteinG:
+          type: integer
+        carbsG:
+          type: integer
+        fatG:
+          type: integer
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachRecipeIngredientResponse"
+        steps:
+          type: array
+          items:
+            type: string
+        unknownKeys:
+          type: array
+          items:
+            type: string
+          description: >-
+            Keys in this recipe that are no longer in the vocabulary (a key can be retired after the
+            recipe was saved). The recipe still reads. Empty in the normal case.
+    CoachRecipeIngredientResponse:
+      type: object
+      properties:
+        key:
+          type: string
+          example: chicken_breast
+        label:
+          type: string
+          description: Derived from the key on every read (underscores become spaces); never stored.
+          example: chicken breast
+        quantity:
+          type: number
+          example: 150
+        unit:
+          type: string
+          enum: [g, ml, piece]
+    CoachRecipeSummaryResponse:
+      type: object
+      description: One row of the recipe library.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kcal:
+          type: integer
+        proteinG:
+          type: integer
+        carbsG:
+          type: integer
+        fatG:
+          type: integer
+        ingredientCount:
+          type: integer
+    CoachRecipeListResponse:
+      type: object
+      description: The coach's recipe library, alphabetical by name.
+      properties:
+        recipes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachRecipeSummaryResponse"
+        limit:
+          type: integer
+          description: The product cap on recipes per coach (100), so the portal can show "{n} of 100".
+          example: 100
+        remaining:
+          type: integer
+          description: How many more this coach may create.
+    CoachIngredientOption:
+      type: object
+      description: An ingredient a coach may put in a recipe.
+      properties:
+        key:
+          type: string
+          example: chicken_breast
+        label:
+          type: string
+          example: chicken breast
     CoachPublishPreviewResponse:
       type: object
       description: What publishing this draft would change, and the token that acknowledges it.
@@ -7003,6 +7546,12 @@ components:
           type: string
           format: date
           nullable: true
+          description: >-
+            The day the workout happened. Omitted: the server's (UTC) today. May be in the past; may
+            not be in the future (EV-248, 400 `COMPLETION_DATE_IN_FUTURE`; see the `X-Timezone`
+            parameter for the exact bound). For a date other than the server's today the session is
+            recorded as ending at `date` 00:00 UTC + `durationSeconds`, and that end may not fall in
+            the future either.
         durationSeconds:
           type: integer
           nullable: true

@@ -1037,6 +1037,146 @@ export const copy = {
     notInCatalogue: "Not found in the catalogue",
   },
 
+  /* ══ EV-256b — the coach's recipe library ══════════════════════════════════════
+   *
+   * Sentences marked "AC" are verbatim EV-256 (hub `docs/product/stories/
+   * EV-256-coach-recipes.md`, section EV-256b). Straight apostrophes and CURLY double
+   * quotes, exactly as the story writes them.
+   *
+   * Deliberately absent: any sentence saying a recipe is checked against a trainee's
+   * allergies or food rules. Nothing in this row checks anything about a trainee — a
+   * recipe belongs to no trainee (EV-256a AC9) — and the checks at placement are
+   * EV-256c's, behind a production flag that is OFF. A reassuring "safe for your
+   * trainees" here would be a claim with no code behind it.
+   */
+  recipes: {
+    nav: "Recipes", // AC1 — next to Templates in the portal nav
+    title: "Recipes",
+    /**
+     * Not "for any trainee": putting a recipe on a trainee's meal is EV-256c/e and is OFF
+     * in production until EV-256f ships (ruling R5). The subtitle says what the page does
+     * today.
+     */
+    subtitle: "Meals you write once.",
+    /** Stated once, on the library page. EV-256a AC9: a recipe holds no trainee data. */
+    private: "Recipes are yours. No trainee sees your library.",
+    /** AC1, verbatim. */
+    count: (n: number, limit: number) => `${n} of ${limit} recipes`,
+    /** AC1, verbatim. */
+    emptyTitle: "No recipes yet.",
+    emptyBody: "Write a recipe once, with its ingredients, macros and steps.",
+    create: "New recipe", // AC1, verbatim
+    loadError: "Your recipes could not be loaded.",
+    /** The editor's read failed for a reason that is not the AC6 denial (api down, a 400). */
+    recipeLoadError: "This recipe could not be loaded.",
+    /** ONE sentence for a foreign, an unknown and a deleted recipe (EV-256a AC6). */
+    notYours: "That recipe is not in your library.",
+    backToLibrary: "Back to recipes",
+    limitReached: (limit: number) =>
+      `You can keep up to ${limit} recipes. Delete one to make room.`,
+
+    /* ── a library row ────────────────────────────────────────────────────── */
+    macroLine: (kcal: number, p: number, c: number, f: number) =>
+      `${kcal} kcal · P ${p} g · C ${c} g · F ${f} g`,
+    ingredientCount: (n: number) => `${n} ingredient${n === 1 ? "" : "s"}`,
+    edit: "Edit",
+    remove: "Delete",
+
+    /* ── delete (AC5) ─────────────────────────────────────────────────────── */
+    deleteTitle: "Delete recipe?",
+    /** AC5, verbatim. Default D-f: a placed meal is a snapshot. */
+    deleteBody: (name: string) =>
+      `Delete “${name}”? Meals you already put on a trainee's plan keep this recipe.`,
+    deleteFailed: "The recipe could not be deleted.",
+    cancel: "Cancel",
+
+    /* ── the editor (AC2) ─────────────────────────────────────────────────── */
+    newTitle: "New recipe",
+    editTitle: "Edit recipe",
+    /** AC6, verbatim — above the form, on an existing recipe only. */
+    futureUsesOnly:
+      "Changes apply to future uses only. Meals you already placed keep the version you placed.",
+    nameLabel: "Recipe name",
+    ingredientsHeading: "Ingredients",
+    ingredientsNote: "One serving. Pick each ingredient from Evoli's list.",
+    searchLabel: "Find an ingredient",
+    searchPlaceholder: "Chicken, rice, oats…",
+    searching: "Searching…",
+    /** The search's one announced line (role="status"); the result buttons are not live. */
+    found: (n: number) => `${n} ingredient${n === 1 ? "" : "s"} found`,
+    /** AC3, verbatim. The query is shown as the coach typed it, trimmed. */
+    noIngredientMatch: (query: string) =>
+      `Evoli only lists ingredients it can safety-check, and “${query}” isn't one yet.`,
+    searchFailed: "The ingredient list could not be searched. Try again.",
+    alreadyAdded: "Added",
+    addIngredientNamed: (label: string) => `Add ${label}`,
+    quantityLabel: "Quantity",
+    unitLabel: "Unit",
+    unitNames: { g: "g", ml: "ml", piece: "piece" } as Record<string, string>,
+    removeIngredient: "Remove",
+    removeIngredientNamed: (label: string) => `Remove ${label}`,
+    ingredientsFull: "A recipe has at most 25 ingredients.",
+    macrosHeading: "Macros per serving",
+    kcalLabel: "Calories (kcal)",
+    proteinLabel: "Protein (g)",
+    carbsLabel: "Carbs (g)",
+    fatLabel: "Fat (g)",
+    stepsHeading: "Steps",
+    stepsNote: "Optional. They keep the order you write them in.",
+    stepLabel: (n: number) => `Step ${n}`,
+    addStep: "Add a step",
+    removeStep: "Remove",
+    removeStepNamed: (n: number) => `Remove step ${n}`,
+    stepsFull: "A recipe has at most 15 steps.",
+    save: "Save recipe",
+    saving: "Saving…",
+    saved: "Recipe saved.",
+    saveFailed: "The recipe could not be saved.",
+    unsavedBadge: "Unsaved changes",
+    notReady: "Complete the fields marked above to save.",
+
+    /* ── local refusals, each shown beside its field ──────────────────────── */
+    required: "Required.",
+    nameRequired: "Give the recipe a name.",
+    nameTooLong: "A recipe name is at most 80 characters.",
+    nameInvalid: "Check the name: 1 to 80 characters, on one line.",
+    noLineBreaks: "Keep this on one line, with no special characters.",
+    ingredientsRequired: "Add at least one ingredient.",
+    quantityRequired: "Enter a quantity.",
+    quantityRange: "A quantity is more than 0 and at most 5000, with up to 2 decimals.",
+    /** The EV-256a review's rule: 50.7 is refused, never truncated. */
+    wholeNumbersOnly: (below: number, above: number) =>
+      `Whole numbers only. Use ${below} or ${above}.`,
+    numberRange: (label: string, min: number, max: number) =>
+      `${label}: a whole number from ${min} to ${max}.`,
+    stepEmpty: "Write this step or remove it.",
+    stepTooLong: "A step is at most 300 characters.",
+    stepInvalid: "Check this step: 1 to 300 characters, on one line.",
+
+    /* ── server refusals (AC4), each shown beside its field ───────────────── */
+    /** AC4, verbatim. */
+    macrosInconsistent: (computedKcal: number, kcal: number) =>
+      `These macros add up to ${computedKcal} kcal, not ${kcal}. Check the numbers.`,
+    nameTaken: "You already have a recipe called that.",
+    /**
+     * `COACH_RECIPE_UNKNOWN_INGREDIENT` on a line the coach did not type: every line
+     * comes from a search result, so the only way to meet this is a key the api has
+     * RETIRED since the recipe was saved. The same sentence marks such a line on load.
+     */
+    ingredientRetired: (label: string) =>
+      `“${label}” is no longer on Evoli's ingredient list. Remove it to save.`,
+    /**
+     * The mark a line carries ON LOAD when the api reports its key in `unknownKeys`.
+     * Shorter than `ingredientRetired` on purpose: that sentence is the SAVE refusal,
+     * and the two must be distinguishable so a spec can tell "the api refused this line"
+     * from "the read said this key is retired".
+     */
+    retiredBadge: "No longer on Evoli's list",
+    ingredientTwice: "This ingredient is already in the recipe.",
+    ingredientInvalid: "Check this ingredient's quantity and unit.",
+    ingredientsBound: "A recipe has between 1 and 25 ingredients.",
+  },
+
   common: {
     loading: "Loading…",
     // The route-level error boundary catches renders from every page, not just the
