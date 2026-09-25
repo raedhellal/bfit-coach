@@ -54,7 +54,8 @@ function refusalSentence(
     case "PLACEMENT_OFF":
       return t.placementOff;
     case "ACCESS_DENIED":
-      return t.recipeGone;
+      // Never `recipeGone` from the 403 alone — see `place()`.
+      return t.accessDenied(first);
     case "FAILED":
       return t.failed;
   }
@@ -98,7 +99,6 @@ export function RecipePickerDialog({
     null
   );
   const [pending, startTransition] = useTransition();
-  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -115,7 +115,7 @@ export function RecipePickerDialog({
     return () => {
       live = false;
     };
-  }, [reloads]);
+  }, []);
 
   function choose(recipe: CoachRecipeSummary) {
     setRefusal(null);
@@ -140,17 +140,33 @@ export function RecipePickerDialog({
         return;
       }
       setChosen(null);
+      if (failure.code === "ACCESS_DENIED") {
+        /**
+         * ONE 403 body covers "that recipe is not yours any more" (deleted in another
+         * tab) and "the link ended" (the trainee revoked). Saying the first on the
+         * strength of the 403 alone put "That recipe is not in your library any more."
+         * on screen for a revoke, just before the redirect (staff review, live run).
+         * So: refresh the page — an ended link redirects to /clients/denied — and
+         * re-read the library, which is the coach's own and answers regardless of the
+         * link. Only a list that no longer holds the recipe earns `recipeGone`;
+         * anything else gets the neutral sentence.
+         */
+        onRefresh();
+        const fresh = await settled(recipeChoicesAction(), { ok: false, code: "FAILED" } as const);
+        const gone = fresh.ok && !fresh.recipes.some((r) => r.id === recipe.id);
+        if (fresh.ok) setRecipes(fresh.recipes);
+        setRefusal({
+          text: gone ? copy.placement.recipeGone : copy.placement.accessDenied(firstName),
+          retiredRecipeId: null,
+        });
+        return;
+      }
       setRefusal({
         text: refusalSentence(failure, recipe.name, firstName, target.weekday),
         retiredRecipeId: failure.code === "RETIRED_INGREDIENT" ? recipe.id : null,
       });
-      if (failure.code === "ACCESS_DENIED") {
-        // One 403 body for "that recipe is gone" and "the link ended". Re-read the list
-        // (the first case) and refresh the page (the second: the layout redirects).
-        setRecipes(null);
-        setReloads((n) => n + 1);
-        onRefresh();
-      }
+      // The flag was switched off after the page loaded: the refresh re-reads
+      // `recipePlacementEnabled` and the action disappears from every meal.
       if (failure.code === "PLACEMENT_OFF") onRefresh();
     });
   }

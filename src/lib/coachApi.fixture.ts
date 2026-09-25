@@ -1285,7 +1285,7 @@ async function failWithDetails(
  */
 async function assertScope(id: string, required: CoachAccessScope): Promise<void> {
   const overview = OVERVIEWS[id];
-  if (state().revoked || !overview || !overview().scopes.includes(required)) {
+  if (state().revoked || (await linkEnded()) || !overview || !overview().scopes.includes(required)) {
     await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
   }
 }
@@ -2504,6 +2504,36 @@ const HALAL_NAME_WORDS = ["pork", "bacon", "ham", "wine", "beer", "rum"];
  */
 const PLACEMENT_OFF_IDS = new Set([PIA_ID]);
 
+/**
+ * EV-256e — two fixture-only switches a Playwright context can throw MID-SESSION, for
+ * the two things that change under an open picker on the real api:
+ *
+ *   `evoli_fixture_placement=off` — the server-wide flag was switched off after the page
+ *                                   loaded: the placement POST is 404 and the next read
+ *                                   serves `recipePlacementEnabled: false`.
+ *   `evoli_fixture_link=ended`    — the trainee revoked: every read and write about a
+ *                                   trainee is the guard's 403.
+ *
+ * A COOKIE, not process state, so the switch is scoped to the browser context that set
+ * it: the suite shares one dev server, and `revokeClient()`'s process-wide flag is
+ * exactly the terminal-for-everyone behaviour these tests must not have. Read only
+ * here, only in fixture mode; `live` never imports this file.
+ */
+async function fixtureSwitch(name: string): Promise<string | null> {
+  try {
+    const { cookies } = await import("next/headers");
+    return cookies().get(name)?.value ?? null;
+  } catch {
+    return null; // outside a request (nothing in the fixture calls it there)
+  }
+}
+async function placementOff(id: string): Promise<boolean> {
+  return PLACEMENT_OFF_IDS.has(id) || (await fixtureSwitch("evoli_fixture_placement")) === "off";
+}
+async function linkEnded(): Promise<boolean> {
+  return (await fixtureSwitch("evoli_fixture_link")) === "ended";
+}
+
 type SeededNutrition = Omit<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords"> &
   Partial<Pick<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords">>;
 
@@ -2914,7 +2944,7 @@ export const fixtureCoachApi: CoachApi = {
 
   async getClient(id: string): Promise<ClientOverview> {
     const known = OVERVIEWS[id];
-    if (!known || state().revoked) {
+    if (!known || state().revoked || (await linkEnded())) {
       const { ApiError } = await import("./apiFetch");
       throw new ApiError(403, "Forbidden", "COACH_ACCESS_DENIED");
     }
@@ -3454,7 +3484,7 @@ export const fixtureCoachApi: CoachApi = {
       dietProfile: state.dietProfile,
       // ON for everyone but the placement-off world (see PLACEMENT_OFF_IDS) — the
       // value the api's `local` profile and staging carry.
-      recipePlacementEnabled: !PLACEMENT_OFF_IDS.has(id),
+      recipePlacementEnabled: !(await placementOff(id)),
     };
   },
 
@@ -3604,7 +3634,7 @@ export const fixtureCoachApi: CoachApi = {
    * The write keeps the meal's id, slot and day, and touches no other meal.
    */
   async placeRecipe(id: string, mealId: string, recipeId: string): Promise<MealWeekView> {
-    if (PLACEMENT_OFF_IDS.has(id)) await fail(404, "NOT_FOUND", "Not found");
+    if (await placementOff(id)) await fail(404, "NOT_FOUND", "Not found");
     await assertScope(id, "NUTRITION");
     const recipe = await ownedRecipe(recipeId);
     const state = nutritionState(id);

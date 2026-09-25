@@ -901,6 +901,13 @@ export const copy = {
      * is refreshed as well, so an ended link still lands on /clients/denied.
      */
     recipeGone: "That recipe is not in your library any more.",
+    /**
+     * ⚠ NOT story copy — flagged for senior-po. The 403 whose cause the portal could
+     * NOT confirm (the re-read library still holds the recipe, or could not be read):
+     * most often the trainee ended the link, and the page refresh that runs beside it
+     * redirects to /clients/denied. It claims neither cause.
+     */
+    accessDenied: (first: string) => `This recipe could not be used for ${first}.`,
     /** 404 `NOT_FOUND`: the flag was switched off after the page loaded (edge case 14). */
     placementOff: "Recipes can't be put on meals right now.",
     failed: "The recipe could not be used. Try again.",
