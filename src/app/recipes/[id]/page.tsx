@@ -3,7 +3,7 @@ import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { RecipeEditor } from "@/components/recipes/RecipeEditor";
 import { PageHead } from "@/components/ui/kit";
-import { coachApi, isForbidden, type CoachRecipe } from "@/lib/coachApi";
+import { ApiError, coachApi, isForbidden, type CoachRecipe } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
 import { fromRecipe } from "@/lib/recipeDocument";
 import { copy } from "@/lib/copy";
@@ -23,11 +23,21 @@ import { copy } from "@/lib/copy";
  */
 export const dynamic = "force-dynamic";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function RecipePage({ params }: { params: { id: string } }) {
+  /**
+   * A path segment that is not a UUID is not the id of any recipe, so it is answered
+   * with the AC6 sentence WITHOUT an api call. Sent on, the live api's UUID conversion
+   * refuses it with a 400 and the coach would read "could not be loaded" for a URL that
+   * was simply never a recipe.
+   */
+  const wellFormed = UUID.test(params.id);
   const [me, loaded] = await Promise.all([
     readCoachMe(),
-    coachApi
-      .getRecipe(params.id)
+    (wellFormed
+      ? coachApi.getRecipe(params.id)
+      : Promise.reject(new ApiError(403, "Not a recipe id", "COACH_ACCESS_DENIED")))
       .then((recipe): { recipe: CoachRecipe | null; forbidden: boolean } => ({
         recipe,
         forbidden: false,
@@ -53,7 +63,10 @@ export default async function RecipePage({ params }: { params: { id: string } })
           unknownKeys={loaded.recipe.unknownKeys}
         />
       ) : (
-        <ClientNotice message={loaded.forbidden ? copy.recipes.notYours : copy.recipes.loadError} />
+        <ClientNotice
+          message={loaded.forbidden ? copy.recipes.notYours : copy.recipes.recipeLoadError}
+          back={{ href: "/recipes", label: copy.recipes.backToLibrary }}
+        />
       )}
     </CoachShell>
   );

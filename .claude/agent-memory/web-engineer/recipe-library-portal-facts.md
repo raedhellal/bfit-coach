@@ -39,5 +39,15 @@ Placement on a trainee is EV-256e, not here.
   `recipeFieldOf` directly — a Playwright file with no `page`, importing a pure module.
   That only works while every `coachApi` import in `recipeDocument.ts` is `import type`.
 
+- **Bounds are held equal in THREE places** by `qa/coach-recipe-bounds.spec.ts`: the
+  vendored spec's `maxItems`/`maxLength`/`maximum`, `recipeDocument.ts`, and
+  `src/lib/fixtureRecipeBounds.ts`. `contract-drift` compares NAMES only — staff loosened
+  every recipe bound in the spec and 91 tests stayed green before this existed.
+- **A row-addressing test needs the subject at index ≠ 0.** A mutant hardcoding
+  `"ingredients.0"` passed 31/31 while the seeded retired key sat at index 0; it now sits
+  at index 1. Same shape as a `.first()` locator: position 0 hides "always the first".
+- **The fixture now 400s a non-UUID id** like the api (`INVALID_REQUEST`, type
+  mismatch); a map-lookup 403 flattered the page's missing UUID guard.
+
 See [[template-library-portal-facts]] for the create-without-remount rule this editor
 reuses, and [[unicode-escapes-in-written-source]].

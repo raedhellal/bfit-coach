@@ -167,6 +167,19 @@ test.describe("every server refusal is addressed to its field (AC4)", () => {
     });
   });
 
+  test("…and a refusal on line 1 lands on line 1, labelled with THAT line (not the first)", () => {
+    const failure: RecipeFailure = {
+      code: "UNKNOWN_INGREDIENT",
+      field: "ingredients[1].key",
+      key: "oats",
+      computedKcal: null,
+    };
+    expect(serverProblem(failure, sent)).toEqual({
+      at: "ingredients.1",
+      message: "“oats” is no longer on Evoli's ingredient list. Remove it to save.",
+    });
+  });
+
   test("the macro refusal is AC4's sentence, with computedKcal and the kcal SENT", () => {
     expect(
       serverProblem({ code: "MACROS_INCONSISTENT", ...none, computedKcal: 680 }, sent)

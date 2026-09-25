@@ -58,6 +58,8 @@ import type {
 import { copy } from "./copy";
 // The pure series builder (EV-249). Only the function lives there; every tuple is here.
 import { adherenceSeries } from "./fixtureAdherence";
+// EV-256b — the fixture's own copy of the recipe bounds (see that module for why).
+import { FIXTURE_RECIPE_BOUNDS as B } from "./fixtureRecipeBounds";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
@@ -1394,9 +1396,11 @@ function seedRecipes(): StoredRecipe[] {
       proteinG: 35,
       carbsG: 30,
       fatG: 9,
+      // `quark` is at index 1, NOT 0, on purpose: a refusal addressed to "the first line"
+      // by accident would still land on the right row if the retired key came first.
       ingredients: [
-        { key: "quark", quantity: 200, unit: "g" },
         { key: "egg", quantity: 2, unit: "piece" },
+        { key: "quark", quantity: 200, unit: "g" },
         { key: "oats", quantity: 40, unit: "g" },
       ],
       steps: ["Blend everything.", "Cook in a hot pan."],
@@ -1412,6 +1416,13 @@ function recipesByName(): StoredRecipe[] {
 }
 
 async function ownedRecipe(id: string): Promise<StoredRecipe> {
+  // The api's `{id}` is a `UUID` path variable: a malformed one never reaches the guard,
+  // it is `MethodArgumentTypeMismatchException` → 400 INVALID_REQUEST
+  // (`RestExceptionHandler.handleTypeMismatch`). Reproduced so the portal's own guard
+  // for it is under test and not flattered by the fixture's map lookup.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    await fail(400, "INVALID_REQUEST", "Invalid value for 'id'.");
+  }
   const found = state().recipes.get(id);
   // AC6 — one body for foreign, unknown and deleted.
   if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
@@ -1446,25 +1457,31 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
   if (!NO_CONTROL.test(body.name)) {
     await beanRefusal("name", "must not contain a control character or a line break");
   }
-  if (!Array.isArray(body.ingredients) || body.ingredients.length < 1 || body.ingredients.length > 25) {
-    await beanRefusal("ingredients", "must hold between 1 and 25 ingredients");
+  if (
+    !Array.isArray(body.ingredients) ||
+    body.ingredients.length < B.ingredientsMin ||
+    body.ingredients.length > B.ingredientsMax
+  ) {
+    await beanRefusal("ingredients", `must hold between ${B.ingredientsMin} and ${B.ingredientsMax} ingredients`);
   }
   for (const field of ["kcal", "proteinG", "carbsG", "fatG"] as const) {
     const value = body[field] as unknown;
     if (typeof value !== "number") await beanRefusal(field, "is required");
     if (!isWholeNumber(value)) await beanRefusal(field, "must be a whole number");
-    const [min, max] = field === "kcal" ? [1, 3000] : [0, 300];
+    const [min, max] = field === "kcal" ? [B.kcalMin, B.kcalMax] : [B.macroMin, B.macroMax];
     if ((value as number) < min || (value as number) > max) {
       await beanRefusal(field, `must be between ${min} and ${max}`);
     }
   }
-  if (!Array.isArray(body.steps) || body.steps.length > 15) {
-    await beanRefusal("steps", "must hold at most 15 steps");
+  if (!Array.isArray(body.steps) || body.steps.length > B.stepsMax) {
+    await beanRefusal("steps", `must hold at most ${B.stepsMax} steps`);
   }
   for (let i = 0; i < body.steps.length; i += 1) {
     const step = body.steps[i];
     if (typeof step !== "string") await beanRefusal(`steps[${i}]`, "is required");
-    if (step.length > 300) await beanRefusal(`steps[${i}]`, "must be at most 300 characters");
+    if (step.length > B.stepMaxLength) {
+      await beanRefusal(`steps[${i}]`, `must be at most ${B.stepMaxLength} characters`);
+    }
     if (!NO_CONTROL.test(step)) {
       await beanRefusal(`steps[${i}]`, "must not contain a control character or a line break");
     }
@@ -1474,7 +1491,9 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
     const q = line.quantity as unknown;
     if (typeof q !== "number") await beanRefusal(`ingredients[${i}].quantity`, "is required");
     if ((q as number) <= 0) await beanRefusal(`ingredients[${i}].quantity`, "must be greater than 0");
-    if ((q as number) > 5000) await beanRefusal(`ingredients[${i}].quantity`, "must be at most 5000");
+    if ((q as number) > B.quantityMax) {
+      await beanRefusal(`ingredients[${i}].quantity`, `must be at most ${B.quantityMax}`);
+    }
     if (!hasAtMostTwoDecimals(q as number)) {
       await beanRefusal(`ingredients[${i}].quantity`, "must have at most 2 decimal places");
     }
@@ -1485,7 +1504,7 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
 
   // ── 2. CoachRecipeRules: name, steps, ingredients, macros ───────────────────
   const name = javaNormalise(body.name);
-  if (name === null || name.length > 80) {
+  if (name === null || name.length > B.nameMax) {
     await fieldRefusal("name", "must be between 1 and 80 characters");
   }
   const steps: string[] = [];

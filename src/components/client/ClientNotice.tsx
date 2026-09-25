@@ -11,7 +11,14 @@ import { copy } from "@/lib/copy";
  * two cannot drift apart visually — they differ in one sentence and in the HTTP status
  * they are served under, and nothing else.
  */
-export function ClientNotice({ message }: { message: string }) {
+export function ClientNotice({
+  message,
+  back,
+}: {
+  message: string;
+  /** Where "back" goes. The roster unless the notice is inside another section. */
+  back?: { href: string; label: string };
+}) {
   return (
     <Card>
       <div
@@ -28,9 +35,9 @@ export function ClientNotice({ message }: { message: string }) {
         <div style={{ fontSize: 14.5, color: "var(--ink-2)", maxWidth: 380, lineHeight: 1.5 }}>
           {message}
         </div>
-        <Link href="/">
+        <Link href={back?.href ?? "/"}>
           <Button variant="secondary" icon="arrowL">
-            {copy.shell.backToRoster}
+            {back?.label ?? copy.shell.backToRoster}
           </Button>
         </Link>
       </div>

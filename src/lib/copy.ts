@@ -1052,7 +1052,12 @@ export const copy = {
   recipes: {
     nav: "Recipes", // AC1 — next to Templates in the portal nav
     title: "Recipes",
-    subtitle: "Meals you write once, for any trainee.",
+    /**
+     * Not "for any trainee": putting a recipe on a trainee's meal is EV-256c/e and is OFF
+     * in production until EV-256f ships (ruling R5). The subtitle says what the page does
+     * today.
+     */
+    subtitle: "Meals you write once.",
     /** Stated once, on the library page. EV-256a AC9: a recipe holds no trainee data. */
     private: "Recipes are yours. No trainee sees your library.",
     /** AC1, verbatim. */
@@ -1062,6 +1067,8 @@ export const copy = {
     emptyBody: "Write a recipe once, with its ingredients, macros and steps.",
     create: "New recipe", // AC1, verbatim
     loadError: "Your recipes could not be loaded.",
+    /** The editor's read failed for a reason that is not the AC6 denial (api down, a 400). */
+    recipeLoadError: "This recipe could not be loaded.",
     /** ONE sentence for a foreign, an unknown and a deleted recipe (EV-256a AC6). */
     notYours: "That recipe is not in your library.",
     backToLibrary: "Back to recipes",
@@ -1095,6 +1102,8 @@ export const copy = {
     searchLabel: "Find an ingredient",
     searchPlaceholder: "Chicken, rice, oats…",
     searching: "Searching…",
+    /** The search's one announced line (role="status"); the result buttons are not live. */
+    found: (n: number) => `${n} ingredient${n === 1 ? "" : "s"} found`,
     /** AC3, verbatim. The query is shown as the coach typed it, trimmed. */
     noIngredientMatch: (query: string) =>
       `Evoli only lists ingredients it can safety-check, and “${query}” isn't one yet.`,

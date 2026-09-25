@@ -177,6 +177,13 @@ test.describe("AC2 / AC3 — the editor: ingredients only from search results", 
     await search.press("Enter");
     await expect(lines).toHaveCount(0);
 
+    // ONE announced line per search, and the result list is not itself a live region.
+    await expect(page.getByRole("status").filter({ hasText: "ingredients found" })).toHaveText(
+      "4 ingredients found"
+    );
+    await expect(page.getByTestId("ingredient-results")).not.toHaveAttribute("aria-live", /.*/);
+    await expect(page.locator('[aria-live] button, [role="status"] button')).toHaveCount(0);
+
     // The results are exactly the api's matches — prefix matches first, and `_` is a space.
     const offered = await page.getByTestId("ingredient-results").getByRole("button").allInnerTexts();
     expect(offered).toEqual(["chicken", "chicken breast", "chicken sausage", "chickpeas"]);
@@ -203,6 +210,8 @@ test.describe("AC2 / AC3 — the editor: ingredients only from search results", 
     await firstEdit(page, page.getByLabel("Recipe name"), "Zero results");
     await page.getByLabel("Find an ingredient").fill("  tahini ");
     await expect(page.getByText(TAHINI, { exact: true })).toBeVisible();
+    // …and it is the search's one announced line.
+    await expect(page.getByRole("status").filter({ hasText: "tahini" })).toHaveText(TAHINI);
   });
 
   test("a new recipe is written, saved, and every value — steps in order — survives a reload", async ({ page }) => {
@@ -372,6 +381,16 @@ test.describe("AC6 and the by-id denial", () => {
     const res = await page.goto("/recipes/00000000-0000-4000-8000-000000000000");
     expect(res?.status()).toBe(200);
     await expect(page.getByText("That recipe is not in your library.", { exact: true })).toBeVisible();
+    // The way back is to the recipes, not the roster.
+    await expect(page.getByRole("link", { name: "Back to recipes" }).last()).toHaveAttribute("href", "/recipes");
+  });
+
+  test("a path that is not a recipe id reads the same sentence, not a load error", async ({ page }) => {
+    await signIn(page);
+    const res = await page.goto("/recipes/not-a-recipe");
+    expect(res?.status()).toBe(200);
+    await expect(page.getByText("That recipe is not in your library.", { exact: true })).toBeVisible();
+    await expect(page.getByText(/could not be loaded/)).toHaveCount(0);
   });
 });
 

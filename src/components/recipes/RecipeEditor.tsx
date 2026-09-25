@@ -121,6 +121,13 @@ export function RecipeEditor({
       (address) => address === ingredientAddress(index)
     );
   }
+  /*
+   * While a save is in flight, the controls that ADD or REMOVE a line or a step are
+   * disabled (`pending`): the server addresses a refusal by the INDEX it was sent
+   * (`ingredients[2].key`, `steps[1]`), so a line removed mid-flight would put the
+   * refusal on its neighbour. Typing into an existing field shifts no index and stays
+   * open.
+   */
   function removeLine(index: number) {
     // Removing a line renumbers the ones after it, so every per-line refusal is stale.
     edit({ ...draft, ingredients: draft.ingredients.filter((_, i) => i !== index) }, isLine);
@@ -274,6 +281,7 @@ export function RecipeEditor({
                     onQuantity={(quantity) => setLine(index, { quantity })}
                     onUnit={(unit) => setLine(index, { unit })}
                     onRemove={() => removeLine(index)}
+                    locked={pending}
                   />
                 </li>
               ))}
@@ -283,7 +291,7 @@ export function RecipeEditor({
           {full ? (
             <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)" }}>{copy.recipes.ingredientsFull}</p>
           ) : (
-            <IngredientSearch picked={draft.ingredients.map((l) => l.key)} onPick={pick} />
+            <IngredientSearch picked={draft.ingredients.map((l) => l.key)} onPick={pick} locked={pending} />
           )}
           <FieldMessage problem={problemAt("ingredients")} />
         </div>
@@ -358,6 +366,7 @@ export function RecipeEditor({
                         size="sm"
                         icon="x"
                         ariaLabel={copy.recipes.removeStepNamed(index + 1)}
+                        disabled={pending}
                         onClick={() => edit({ ...draft, steps: draft.steps.filter((_, i) => i !== index) }, isStep)}
                         style={{ marginTop: 22 }}
                       >
@@ -373,7 +382,7 @@ export function RecipeEditor({
           <Button
             variant="soft"
             icon="plus"
-            disabled={draft.steps.length >= MAX_STEPS}
+            disabled={pending || draft.steps.length >= MAX_STEPS}
             title={draft.steps.length >= MAX_STEPS ? copy.recipes.stepsFull : undefined}
             onClick={() => edit({ ...draft, steps: [...draft.steps, ""] }, isStep)}
           >
@@ -466,7 +475,9 @@ function IngredientRow({
   onQuantity,
   onUnit,
   onRemove,
+  locked,
 }: {
+  locked: boolean;
   line: IngredientLine;
   index: number;
   retired: boolean;
@@ -509,7 +520,7 @@ function IngredientRow({
             ))}
           </select>
         </label>
-        <Button variant="ghost" size="sm" icon="x" ariaLabel={copy.recipes.removeIngredientNamed(line.label)} onClick={onRemove}>
+        <Button variant="ghost" size="sm" icon="x" ariaLabel={copy.recipes.removeIngredientNamed(line.label)} onClick={onRemove} disabled={locked}>
           {copy.recipes.removeIngredient}
         </Button>
       </div>
@@ -532,9 +543,12 @@ function IngredientRow({
 function IngredientSearch({
   picked,
   onPick,
+  locked,
 }: {
   picked: string[];
   onPick: (option: CoachIngredientOption) => void;
+  /** A save is in flight: no line may be added until its refusal (if any) is addressed. */
+  locked: boolean;
 }) {
   const [q, setQ] = useState("");
   const [options, setOptions] = useState<CoachIngredientOption[] | null>(null);
@@ -547,8 +561,11 @@ function IngredientSearch({
 
   useEffect(() => {
     const query = q.trim();
+    // Every keystroke takes a new ticket NOW, not when the debounce fires: a request
+    // already in flight for "chi" is superseded the moment "chic" is typed, so its late
+    // answer can never be painted under a box that no longer says "chi".
+    const ticket = ++latest.current;
     if (query === "") {
-      latest.current += 1;
       setOptions(null);
       setFailed(false);
       setSearching(false);
@@ -556,7 +573,6 @@ function IngredientSearch({
     }
     setSearching(true);
     const timer = setTimeout(async () => {
-      const ticket = ++latest.current;
       const result = await settled(searchIngredientsAction(query), { ok: false, code: "FAILED" } as const);
       if (ticket !== latest.current) return;
       setSearching(false);
@@ -585,21 +601,40 @@ function IngredientSearch({
           if (e.key === "Enter") e.preventDefault();
         }}
       />
-      <div aria-live="polite" data-testid="ingredient-results" style={{ marginTop: 10 }}>
-        {searching && options === null && !failed && (
-          <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)" }}>{copy.recipes.searching}</p>
-        )}
-        {failed && (
+      {/*
+        ONE announced line per search (role="status"): the count, the searching note, or
+        AC3's sentence. The result buttons themselves are NOT in a live region — a live
+        list re-read up to 20 labels on every keystroke to a screen-reader user.
+      */}
+      <div style={{ marginTop: 10 }}>
+        {failed ? (
           <p role="alert" style={{ margin: 0, fontSize: 12.5, color: "var(--err-ink)" }}>
             {copy.recipes.searchFailed}
           </p>
-        )}
-        {!failed && options !== null && options.length === 0 && (
-          // AC3, verbatim.
-          <p style={{ margin: 0, fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5, overflowWrap: "anywhere" }}>
-            {copy.recipes.noIngredientMatch(answered)}
+        ) : (
+          <p
+            role="status"
+            data-testid="ingredient-status"
+            style={{
+              margin: 0,
+              fontSize: options !== null && options.length === 0 ? 13 : 12.5,
+              color: options !== null && options.length === 0 ? "var(--ink-2)" : "var(--ink-3)",
+              lineHeight: 1.5,
+              overflowWrap: "anywhere",
+            }}
+          >
+            {searching && options === null
+              ? copy.recipes.searching
+              : options === null
+                ? ""
+                : options.length === 0
+                  ? // AC3, verbatim.
+                    copy.recipes.noIngredientMatch(answered)
+                  : copy.recipes.found(options.length)}
           </p>
         )}
+      </div>
+      <div data-testid="ingredient-results" style={{ marginTop: 8 }}>
         {!failed && options !== null && options.length > 0 && (
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexWrap: "wrap", gap: 8 }}>
             {options.map((option) => {
@@ -608,7 +643,7 @@ function IngredientSearch({
                 <li key={option.key}>
                   <button
                     type="button"
-                    disabled={already}
+                    disabled={already || locked}
                     aria-label={already ? `${option.label}: ${copy.recipes.alreadyAdded}` : copy.recipes.addIngredientNamed(option.label)}
                     onClick={() => {
                       onPick(option);
