@@ -36,3 +36,4 @@
 - [Recipe library (EV-256b)](recipe-library-portal-facts.md) — two 400 shapes (details.field vs field-leading message); a retired key is the only reachable unknown-ingredient
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
+- [Recipe placement (EV-256e)](recipe-placement-portal-facts.md) — no `eaten` on the coach wire; flag server-wide, per-trainee in fixture; fail-open read is fixture-blind
