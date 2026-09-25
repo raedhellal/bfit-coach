@@ -145,3 +145,16 @@ input::placeholder { color:var(--ink-3); }
     flex-basis: 100%;
   }
 }
+
+/* EV-256b — the recipe editor's four macro inputs: two columns on a phone, four from
+   720 px. A class, not inline, because the column count changes with the width. */
+.recipe-macros {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (min-width: 720px) {
+  .recipe-macros {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

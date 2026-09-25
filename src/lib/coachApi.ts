@@ -1120,6 +1120,162 @@ export interface CoachTemplateApplyResult {
   catalogChecked: boolean;
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-256b — THE COACH'S RECIPE LIBRARY. Typed against b-fit-api `a3249bd` (main, the
+ * `--no-ff` merge of EV-256a), whose `openapi.yaml` is vendored byte-identical in
+ * `spec/b-fit-api.openapi.yaml`. So, unlike EV-188b on the day it shipped, these five
+ * mappings are LIVE on the api the portal is typed against.
+ *
+ *   GET    /coach-portal/recipes              → CoachRecipeListResponse
+ *   POST   /coach-portal/recipes              ← CoachRecipeSaveRequest → 201
+ *   GET    /coach-portal/recipes/{id}         → CoachRecipeResponse | 403
+ *   PUT    /coach-portal/recipes/{id}         ← CoachRecipeSaveRequest
+ *   DELETE /coach-portal/recipes/{id}         → 204
+ *   GET    /coach-portal/ingredients?q=       → CoachIngredientOption[] (≤ 20)
+ *
+ * WHAT THE PORTAL MUST NOT ASSUME, from the api's own review (EV-256a):
+ *   · **kcal and the three macros are WHOLE numbers.** The request type is
+ *     `BigDecimal + @WholeNumber`, so `50.7` is a 400 VALIDATION_ERROR naming the
+ *     field — never truncated — and `50.0` is accepted. The editor refuses a fraction
+ *     locally with the same rule (`src/lib/recipeDocument.ts`).
+ *   · **The name is 1..80 UTF-16 units AFTER `CoachTemplateNames.normalise`** (Unicode
+ *     spaces fold to a space, zero-width format characters are removed, then
+ *     `strip()`), and Java's `String.length()` counts UTF-16 units — the same unit as
+ *     JavaScript's `.length`. The portal counts after the same normalisation, so the two
+ *     refusals agree character for character, emoji included.
+ *   · **An ingredient key is checked RAW** against `^[a-z][a-z0-9_]{1,63}$` and then
+ *     against the vocabulary. The portal never builds a key: every ingredient line comes
+ *     from a search RESULT, so the only key it can send is one the api returned (AC2's
+ *     "there is no free-text path"). The one exception is a key the api has since
+ *     RETIRED — a stored recipe still reads (`unknownKeys`) and its save is refused with
+ *     `COACH_RECIPE_UNKNOWN_INGREDIENT` + `details.field`, which the editor puts on the
+ *     row it names.
+ *   · **Two refusal shapes carry the field differently.** The rules the request type
+ *     cannot state (name after trimming, blank step, a key twice) answer
+ *     `VALIDATION_ERROR` with `details.field`; Bean Validation's own refusals (bounds,
+ *     whole numbers, sizes) answer `VALIDATION_ERROR` with NO details and the field at
+ *     the START of `message` (`RestExceptionHandler.handleValidation`). The portal reads
+ *     both — see `recipeFieldOf` in `src/lib/recipeDocument.ts`.
+ *   · Search matches the LABEL (`key` with `_` → space), ignoring case, and treats a
+ *     typed `_` as a space; labels that START with the query come first.
+ *   · The denial on a by-id route is ONE body for a foreign, an unknown and a deleted
+ *     recipe (AC6). The portal renders one sentence for all three.
+ *   · No timestamps on the wire, by the api's decision (no client reads one; the list
+ *     is alphabetical). The library row therefore shows no "updated" date — unlike a
+ *     template row — and must not grow one without a new api field.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** `CoachRecipeIngredientRequest.unit` — the api's closed set, exactly. */
+export type RecipeUnit = "g" | "ml" | "piece";
+
+/**
+ * 🔌 WIRE — one result of `GET /coach-portal/ingredients?q=`.
+ *
+ * `label` is `key` with underscores as spaces, derived by the api on every read
+ * (`IngredientLabels.of`). The portal shows the label and sends the key; it never
+ * derives one from the other itself.
+ *
+ * @wire CoachIngredientOption
+ */
+export interface CoachIngredientOption {
+  key: string;
+  label: string;
+}
+
+/**
+ * 🔌 WIRE — one ingredient line of a save body.
+ *
+ * `quantity` is > 0, ≤ 5000, at most 2 decimal places (`@Digits(integer = 4,
+ * fraction = 2)`, which also refuses `150.000`: a known api flaw the editor sidesteps by
+ * refusing a third decimal itself).
+ *
+ * @wire CoachRecipeIngredientRequest
+ */
+export interface CoachRecipeIngredientRequest {
+  key: string;
+  quantity: number;
+  unit: RecipeUnit;
+}
+
+/**
+ * 🔌 WIRE — the body of `POST /coach-portal/recipes` and `PUT …/recipes/{id}`. One
+ * serving. The PUT replaces the WHOLE recipe, so this is always the whole thing: there
+ * is no partial update to get wrong.
+ *
+ * @wire CoachRecipeSaveRequest
+ */
+export interface CoachRecipeSaveRequest {
+  name: string;
+  ingredients: CoachRecipeIngredientRequest[];
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  steps: string[];
+}
+
+/**
+ * 🔌 WIRE — one ingredient line of a stored recipe, with the api's derived label.
+ *
+ * @wire CoachRecipeIngredientResponse
+ */
+export interface CoachRecipeIngredient {
+  key: string;
+  label: string;
+  quantity: number;
+  unit: RecipeUnit;
+}
+
+/**
+ * 🔌 WIRE — `CoachRecipeResponse`: a recipe in the coach's private library.
+ *
+ * `unknownKeys` is the api's answer to vocabulary rule 4.7.2 (keys are retired as a
+ * matter of routine): a recipe holding a retired key still READS, so the library never
+ * breaks, and the editor marks the line so the coach can remove it before saving.
+ *
+ * @wire CoachRecipeResponse
+ */
+export interface CoachRecipe {
+  id: string;
+  name: string;
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  ingredients: CoachRecipeIngredient[];
+  steps: string[];
+  unknownKeys: string[];
+}
+
+/**
+ * 🔌 WIRE — one row of `GET /coach-portal/recipes`: name, macros and the ingredient
+ * count. The list does not carry ingredients or steps, which is what keeps a 100-row
+ * library one small read.
+ *
+ * @wire CoachRecipeSummaryResponse
+ */
+export interface CoachRecipeSummary {
+  id: string;
+  name: string;
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  ingredientCount: number;
+}
+
+/**
+ * 🔌 WIRE — `GET /coach-portal/recipes`, alphabetical by name. `limit` is served so AC1's
+ * "{n} of 100 recipes" does not hardcode the 100.
+ *
+ * @wire CoachRecipeListResponse
+ */
+export interface CoachRecipeList {
+  recipes: CoachRecipeSummary[];
+  limit: number;
+  remaining: number;
+}
+
 /**
  * One line of the publish preview — **a whole sentence, in the engine's own words**.
  *
@@ -1585,6 +1741,29 @@ export function isWeekOutOfRange(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_WEEK_OUT_OF_RANGE";
 }
 
+/* ── EV-256a's refusals, as the recipe editor reads them ─────────────────────── */
+
+/** 400 — a key that is not, exactly as sent, a vocabulary key. `details.key` + `.field`. */
+export function isRecipeUnknownIngredient(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_RECIPE_UNKNOWN_INGREDIENT";
+}
+/** 400 — `|kcal − (4P + 4C + 9F)| > max(50, 15 %)`. `details.computedKcal`. */
+export function isRecipeMacrosInconsistent(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_RECIPE_MACROS_INCONSISTENT";
+}
+/** 409 — the coach already has this name, ignoring case and surrounding spaces. */
+export function isRecipeNameTaken(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_RECIPE_NAME_TAKEN";
+}
+/** 409 — the 101st recipe. */
+export function isRecipeLimitReached(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_RECIPE_LIMIT_REACHED";
+}
+/** 400 — any other bound. The field is in `details.field` OR leads `message`. */
+export function isValidationError(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "VALIDATION_ERROR";
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-202b — where the trainee started, where they are, and where they are going.
  *
@@ -1886,6 +2065,41 @@ const liveCoachApi = {
       method: "POST",
       body: JSON.stringify(body),
     });
+  },
+
+  // ── EV-256b the coach's recipe library (b-fit-api a3249bd, merged) ─────────
+
+  listRecipes(): Promise<CoachRecipeList> {
+    return apiFetch<CoachRecipeList>("/coach-portal/recipes");
+  },
+  getRecipe(id: string): Promise<CoachRecipe> {
+    return apiFetch<CoachRecipe>(`/coach-portal/recipes/${encodeURIComponent(id)}`);
+  },
+  createRecipe(body: CoachRecipeSaveRequest): Promise<CoachRecipe> {
+    return apiFetch<CoachRecipe>("/coach-portal/recipes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  updateRecipe(id: string, body: CoachRecipeSaveRequest): Promise<CoachRecipe> {
+    return apiFetch<CoachRecipe>(`/coach-portal/recipes/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+  async deleteRecipe(id: string): Promise<void> {
+    // 204 No Content.
+    await apiFetch<void>(`/coach-portal/recipes/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+  /**
+   * AC8's search. `q` is capped at the api's `maxLength: 100` here as well as on the
+   * control, so a pasted paragraph is a narrower search rather than a 400.
+   */
+  searchIngredients(q: string): Promise<CoachIngredientOption[]> {
+    const query = new URLSearchParams({ q: q.slice(0, 100) });
+    return apiFetch<CoachIngredientOption[]>(`/coach-portal/ingredients?${query.toString()}`);
   },
 
   // ── EV-185b nutrition (PROVISIONAL paths) ─────────────────────────────────
