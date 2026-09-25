@@ -2495,8 +2495,52 @@ function freshState(): FixtureState {
 
 function state(): FixtureState {
   const g = globalThis as GlobalWithFixture;
-  if (!g[FIXTURE_STATE_KEY]) g[FIXTURE_STATE_KEY] = freshState();
+  if (!g[FIXTURE_STATE_KEY]) seed();
   return g[FIXTURE_STATE_KEY] as FixtureState;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-223 — RESET, FOR THE TEST SUITE ONLY.
+ *
+ * The Playwright gate used to share this store across every test in the run, so a
+ * test could pass because an EARLIER test had left a draft behind — the Publish
+ * modal test was red 3/3 on its own. `qa/fixture-test.ts` now resets the store
+ * before every test through `src/app/api/fixture/state/route.ts`, which answers 404
+ * unless `COACH_API_MODE=fixture`.
+ *
+ * `SEED_KEY` holds the canonical serialisation of the state as it was created, so
+ * "is the store still at its seed?" is a comparison against the seed actually handed
+ * out rather than against a second `freshState()` (whose relative dates would drift
+ * by the milliseconds between the two calls).
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const SEED_KEY = Symbol.for("evoli.coach.fixture.seed");
+type GlobalWithSeed = typeof globalThis & Record<symbol, string | undefined>;
+
+/** Maps become key-sorted entry lists, so insertion order is not a difference. */
+function canonical(value: FixtureState): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v instanceof Map
+      ? [...v.entries()].sort(([a], [b]) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0))
+      : v
+  );
+}
+
+function seed(): void {
+  const fresh = freshState();
+  (globalThis as GlobalWithFixture)[FIXTURE_STATE_KEY] = fresh;
+  (globalThis as GlobalWithSeed)[SEED_KEY] = canonical(fresh);
+}
+
+/** Throw the whole store away and start again from `freshState()`. */
+export function resetFixtureState(): void {
+  seed();
+}
+
+/** True when nothing has been written (or read-with-side-effect) since the last seed. */
+export function fixtureStateIsPristine(): boolean {
+  const current = state();
+  return canonical(current) === (globalThis as GlobalWithSeed)[SEED_KEY];
 }
 
 function nutritionState(id: string): NutritionState {

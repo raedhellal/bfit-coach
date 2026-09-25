@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 
 /**
  * EV-188b AC3 and AC5 — putting a template on a trainee, and what the trainee's editor

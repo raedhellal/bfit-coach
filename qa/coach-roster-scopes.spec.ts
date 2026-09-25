@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 
 /**
  * The roster under partial consent — ADR-0015 D5/S1. Runs against the POPULATED

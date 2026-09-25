@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./fixture-test";
 
 /**
  * EV-183 edge case 3 / ADR-0012 D5 — the invite landing page at /i/<token>.
