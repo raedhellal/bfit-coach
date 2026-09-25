@@ -169,7 +169,7 @@ interface Picture {
  * A leaf WITH text is not a picture to this read. That is a choice about what it
  * measures, not a claim that text cannot draw a ratio: BUG-227's bar of `█` characters
  * painted 0.706 of Lina's current row beside "3 / 4 sessions" and this read skipped it.
- * The list's text is read by the EV-251 / EV-253 section at the bottom of this file.
+ * The card's text is read by the EV-251 / EV-253 / EV-259 section at the bottom of this file.
  *
  * **EV-253 — the ROOT is the adherence LIST, not each row.** Until EV-253 this read was
  * `region.locator("li")` plus each row's descendants, so a leaf that was a child of the
@@ -179,6 +179,13 @@ interface Picture {
  * figures beside it, and `expectPictureEqualsFigures` fails it for that, the same rule a
  * bar on a row that prints no figures has always met. See `expectOneListHoldingEveryRow` for
  * what is asserted about the list before it is trusted.
+ *
+ * **EV-259 left this read at the list, deliberately.** Rooted at the card, it fails on the
+ * shipped card, on the title icon's `<path>` (a text-free painted leaf, 15.83 of 19 px,
+ * with no figures beside it). Making it pass there changes what counts as a picture, not
+ * where the scan starts, so it is `EV-220`'s (AC3d, with `BUG-236`). **This read does not
+ * read the card outside the list:** the title row, the headline and any sibling of the
+ * `<ul>` are not asked.
  */
 interface RenderedList {
   /** How many `ul` elements the block holds. The read is only defined for one (or none). */
@@ -812,9 +819,13 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     EV-214 rejects them deliberately: banning a thing with no witness is the same
  *     defect as permitting one. If someone constructs one, that is its own row.
  *   ✗ anything outside the adherence LIST (EV-253 moved this boundary out from the week
- *     row to the list): the block's title and headline, the rest of the client page. Not
- *     read. That is a statement about what this reads, not about what that region can or
- *     cannot draw.
+ *     row to the list, and EV-259 left it there): **this section does not read the card
+ *     outside the list**, so the card's frame, its title row, its headline, any sibling of
+ *     the `<ul>` and the rest of the client page are not asked. Why it stayed at the list:
+ *     rooted at the card, it fails on the shipped `Card` frame's own `box-shadow`
+ *     (`--e-card`), which is a non-initial value on `box-shadow on its own box`. Making
+ *     it pass there changes what counts as a picture, not where the scan starts. That is
+ *     a statement about what this reads, not about what that region can or cannot draw.
  *   ✓ 🔴 **`box-shadow: inset <pct>vw 0 0 0 rgba(…)`, `border-image` and `mask-image`**
  *     — a second paint channel nobody had named, which drew a full bar beside
  *     "2 / 4 sessions" with the suite at 260 green. It was `✗` here until **EV-216**,
@@ -969,7 +980,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     a `ul::after` over the rows, **`BUG-218`: closed by EV-253**, which re-rooted this
  *     scan at the list. The `<ul>` is now one of the elements read, on each box
  *     `PAINT_CHANNELS` names. What was tried, and its reading: the EV-253 records block
- *     at the bottom of this file. Anything outside the list is still unread.
+ *     at the bottom of this file. Anything outside the list is still unread by this section
+ *     (EV-259 moved only the text limb to the card; see its banner).
  *   · **A table entry RENAMED and REPOINTED together** — not a paint channel but a way
  *     past this section's own integrity assertions: rename `"box-shadow on its own box"`
  *     to `"outline-style on its own box"` *and* repoint the property, and the length,
@@ -1881,54 +1893,61 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * EV-251 — **P-ADH C2: a week row's text is exactly the text the copy module and the
- * fixture's numbers produce for that week.** Fixes `BUG-227`.
+ * EV-251 / EV-259 — **P-ADH C2: the adherence card's text is exactly the text the copy
+ * module and the fixture's numbers produce for it.** Fixes `BUG-227` (EV-251), `BUG-231`
+ * (EV-253) and `BUG-235` (EV-259).
  *
  * Story: `b-fit-mobile/docs/product/stories/EV-251-a-bar-made-of-text.md`.
  *
- * **WHAT IT READS.** **Every DOM `Text` node under the adherence LIST (the `<ul>`), in
- * document order, UNFILTERED**, each tagged with the week row it sits in or with "no
- * row" (EV-253; until then the walk started at each `li` and a node between the rows was
- * read by nothing, `BUG-231`). No trim, no whitespace node dropped, no node skipped for
+ * **WHAT IT READS.** **Every DOM `Text` node in the adherence CARD (the region element the
+ * guard locates the block by, and everything under it), in document order, UNFILTERED**,
+ * each tagged with its place: a week row, "list, no row", or "card, outside the list"
+ * (EV-259; from EV-253 the walk started at the `<ul>`, and a node in the card outside the
+ * list, `BUG-235`, was read by nothing; before EV-253 it started at each `li`, `BUG-231`). No trim, no whitespace node dropped, no node skipped for
  * being inside `aria-hidden`. The walk is a `TreeWalker` with `SHOW_TEXT`, so it stays in
  * the light DOM (this app opens no shadow root). It reads no style, no box and no pixel.
  *
- * **WHAT IT COMPARES THEM TO.** The whole list, as an EQUALITY, against two strings per
+ * **WHAT IT COMPARES THEM TO.** The whole card, as an EQUALITY, against what the card is
+ * expected to say (`expectedCardTexts`): its title `copy.client.adherenceSeries`, then its
+ * headline `copy.client.adherenceSeriesHeadline(done, planned)` of the whole series, both
+ * tagged "card, outside the list", then two strings per
  * row: `formatDate(weekCommencing)`, then `copy.client.weekSessions(done, planned)` for a
  * week with a plan or `copy.client.weekNoPlan` for one without. Those inputs come from the
  * FIXTURE, not from the page: the world's tuples are read from `coachApi.fixture.ts`'s
  * source (`fixtureSeriesTuples`) and run through `fixtureAdherence.adherenceSeries`, the
  * function the fixture itself calls. The figures are not parsed back out of the printed
  * label. A label is compared as a whole string to the one the copy module builds from
- * the fixture's `done` and `planned`.
+ * the fixture's `done` and `planned`. In the three EV-208 worlds the card is expected to say
+ * its title and one sentence, `nothingScheduledIn8Weeks` if a week of the fixture's series
+ * had a plan and `noPlanInWindow` otherwise.
  *
  * So this is an allowlist of whole strings, one per cell, and it names no character
  * (EV-251 out of scope; EV-218's lesson): nothing in it matches a pattern against the
- * text. Since EV-253 it is ONE equality over the list: the expected rows flattened, each
- * string tagged with its row. A text node that is not one of the strings, a third node
- * in a row, or any node in no row fails it.
+ * text. Since EV-259 it is ONE equality over the card: title, headline, then the expected
+ * rows flattened, each string tagged with its place. A text node that is not one of the
+ * strings, a third node in a row, a node under the list in no row, or any other node in
+ * the card fails it.
  *
- * **Whitespace (EV-253 edge case 2), decided once.** A whitespace-only text node counts,
- * in a row or between rows, the same way: it is a node, and the expected rows contain no
- * whitespace-only string, so it fails. The shipped list renders none (no text node of any
- * kind outside its rows; see the EV-253 records).
+ * **Whitespace (EV-253 edge case 2, EV-259 edge case 4), decided once.** A whitespace-only
+ * text node counts wherever it is in the card, in a row, between rows or between the
+ * card's children, the same way: it is a node, and the expected content contains no
+ * whitespace-only string, so it fails. The shipped card renders none (see the EV-259
+ * records: its text nodes are exactly the expected ones).
  *
  * **WHAT IT DOES NOT READ.** Anything that is not a `Text` node in the DOM: generated
  * `content` (the paint limb's `content` entries read that), a form control's value, an
  * attribute, `<canvas>` / `<img>` (EV-251 out of scope), and how any text is styled. It
- * reads the adherence list only (EV-253), not the block's title, its headline, or the
- * empty-state sentences of EV-208, which render in place of a list, and not the rest of
- * the client page. That is what it reads, not a claim about what those can or cannot
- * draw.
+ * reads the adherence card only (EV-259), not the rest of the client page. That is what it
+ * reads, not a claim about what the rest of the page can or cannot draw.
  *
  * **WHEN.** Once per world, after the block is visible, at the default viewport, in
  * `next dev` fixture mode.
  *
  * **Every fixture world with a series is read**: the ten `PROGRESS` entries that call
  * `adherenceSeries`. Seven render eight week rows. Kaia, Ruben and Elif render EV-208's
- * whole-series sentence and **no week rows**, so in those three worlds this check reads
- * nothing. It asserts that the block rendered and that there are zero rows, so a row
- * appearing there is a failure rather than an unread row.
+ * whole-series sentence and **no week rows**. Since EV-259 this check reads the card in
+ * those three worlds too (title and sentence). It also asserts that there are zero rows,
+ * so a row appearing there is a failure rather than an unread row.
  *
  * ⚠️ **Edge cases 1 and 2 of EV-251.** A legitimate character-based element added to a
  * week row later (an icon glyph, a separator) makes this red. **That is a stop-and-ask for
@@ -2020,7 +2039,8 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
  * headline, EV-208's sentences, any element of the card that is not the list, such as a
  * sibling of the `<ul>` directly under the last row, and the rest of the client page.
  * This says what the limbs read. It is not a statement about what that region can or
- * cannot draw.
+ * cannot draw. ⚠️ **Superseded for the TEXT limb by EV-259**, which reads the whole card
+ * (see the EV-259 banner below). Paint and geometry are still as this paragraph says.
  *
  * **Edge cases 1 and 4.** If a limb goes red on honest styling of the list (a divider, a
  * border, a gap drawn by an element) or on a legitimate non-row child (a header, an
@@ -2130,44 +2150,201 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
  * riding on another's witness, and the same three at `7bddb7a` are green.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/** One DOM `Text` node under the adherence list, and the week row it sits in (`-1`: none). */
-interface ListText {
-  row: number;
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-259 — **The text limb reads the whole adherence card, not just the list.** Closes
+ * `BUG-235`.
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-259-the-guard-reads-the-whole-card.md`
+ * (ruled 2026-09-25: option (1), the text limb alone).
+ *
+ * **EACH LIMB'S ROOT.** What each limb reads of an element is unchanged.
+ *
+ *   | limb | function | root at `f92b63c` | root after EV-259 |
+ *   |---|---|---|---|
+ *   | text | `cardTextNodes` (was `listTextNodes`) | the `<ul>`: every Text node under it | **the card**: the region element and every Text node under it, tagged with its row, "list, no row" or "card, outside the list" |
+ *   | paint | `paintedElementsInList` | the `<ul>` and every element under it | **the `<ul>`, unchanged, deliberately** |
+ *   | geometry | `renderedWeeks` / `expectPictureEqualsFigures` | the `<ul>` and every element under it | **the `<ul>`, unchanged, deliberately** |
+ *
+ * **Why paint and geometry stay at the list.** Rooted at the card, each fails on the
+ * shipped card, on something honest that the card draws and that is not a picture of
+ * adherence: paint on the kit `Card` frame's own `box-shadow` (`--e-card`, non-initial on
+ * `box-shadow on its own box`), and geometry on the title icon's `<path>` (a text-free
+ * painted leaf, 15.83 of 19 px, with no figures beside it). Making either pass there
+ * changes what the limb counts as a picture, not where the scan starts, and this row is
+ * about the root. Geometry at the card is `EV-220`'s AC3d. Paint at the card has no row.
+ *
+ * **WHAT IS READ, AND WHAT IS NOT.**
+ *   · The TEXT limb reads the adherence card: its region element and everything under it.
+ *   · 🔴 **The PAINT and GEOMETRY limbs do not read the card outside the list.** The card's
+ *     frame, its title row, its headline and any sibling of the `<ul>` are not asked by
+ *     either of them.
+ *   · The rest of the client page is read by no limb in this file.
+ * This says what the limbs read. It is not a statement about what any unread region can or
+ * cannot draw.
+ *
+ * **What this closes and what it does not.** `BUG-235` (BUG-231's `█` glyphs as a `<div>`
+ * sibling of the `<ul>`) is closed by the text limb. `BUG-236` (an empty flat-colour `<div>`
+ * sibling, sized by the ratio) is read by neither limb that stays at the list, and passes
+ * this file. It is **routed to `EV-220` AC3d**. That green is expected, recorded below, and
+ * not a defect of this row.
+ *
+ * **Whitespace (edge case 4)** is decided the way EV-253 decided it for the list; see the
+ * EV-251 banner. A whitespace-only text node between the card's children fails.
+ *
+ * **Edge cases 1 and 2.** If the text limb goes red on the shipped card, or the card gains a
+ * legitimate new text child (a legend, a tooltip, a footnote), **stop and ask
+ * `senior-po`**. No carve-out here.
+ *
+ * **HOW TO FIND OUT WHETHER A CONSTRUCTION IS CAUGHT.** Build it in an uncommitted copy of
+ * `AdherenceSeries.tsx`. Confirm it paints: a viewport screenshot clipped to the CARD grown
+ * 24 px on every side, every scanline attributed to a row, to the list outside every row, or
+ * to the card outside the list, against a control, with console errors counted. Then run the
+ * default suite. Do not reason from this block.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-259 — **RECORDS.** Runs of 2026-09-25 (a Friday, UTC) on branch
+ * `test/ev259-whole-card`, base `f92b63c`, with this change uncommitted, in `next dev`
+ * fixture mode on :3391. These are what was measured then. They are history, not part of
+ * the banner above. Counts are per section: geometry is EV-210b AC3 (6 tests), paint is
+ * EV-214..EV-253 (6), text is EV-251 / EV-253 / EV-259 (10). The file has 27 tests.
+ *
+ * PROBE: the card scrolled into view, a viewport screenshot clipped to the CARD grown 24 px
+ * on every side, decoded in a canvas. For each css-px scanline, the fraction of the `<ul>`'s
+ * width within L1 < 90 of computed `--blue-500`, attributed to an `li`, to the `<ul>` outside
+ * every `li`, or to the card outside the `<ul>`. Browser console errors counted.
+ *
+ *   · **Control, clean code, seven worlds.** The `<ul>` outside every `li` is 0.000. The card
+ *     outside the `<ul>` is **0.016**: the title icon's blue stroke. The current row is
+ *     0.000, and an honest full bar is 0.833. 0 console errors. Outside the `<ul>`, the card
+ *     renders the `section`, the `Card` div (white, 1 px border, `--e-card` shadow), the
+ *     title row (a div > div > 36 px icon box filled `--blue-50` > `svg` > `path`, and the
+ *     title div "Adherence, last 8 weeks"), and the headline `<p>` (Lina: "18 of 27 planned
+ *     sessions in the last 8 weeks"). There are no other elements, and no text node other
+ *     than the title and headline. The three EV-208 worlds render the title and one
+ *     sentence instead of the headline and the list.
+ *   · **The stop, measured before the ruling:** with all three limbs at the card, the file on
+ *     clean code was **8 failed / 19 passed**: geometry 4 (the icon `<path>`, one offence per
+ *     world), paint 4 (the `Card` div's `box-shadow`, one offence per world), and text 0.
+ *   · **Shipped code, this change:** file **27 passed**; default suite **290 passed, exit 0**.
+ *
+ * Renderer constructions, each in an uncommitted `AdherenceSeries.tsx`, with the ratio
+ * being the current week's `min(1, done / plannedSoFar)`:
+ *
+ *   · **`BUG-235`, verbatim** (BUG-231's `█` glyphs in a `<div>` after `</ul>`,
+ *     `marginTop: -4`). PROBE: card outside the `<ul>` **0.706** (Lina, Ines, Dana) and
+ *     0.233 (Nils, Omar) on scanlines 1..5 px below the `<ul>`, and the same on the current
+ *     row's own bottom scanlines. Tobias and Noor 0.016 (zero characters, icon only).
+ *     0 console errors. **Text 5 failed** (Ines, Lina, Nils, Dana, Omar), each naming the
+ *     node `card, outside the list: "███…"`. Geometry and paint all passed. File 5 failed /
+ *     22 passed. **Default suite 5 failed / 285 passed**: those five and nothing else.
+ *   · **`BUG-236`, verbatim** (an empty `<div>` after `</ul>`, flat `--blue-500`, width
+ *     sized by the ratio, `marginTop: 4`). PROBE: card outside the `<ul>` **0.911** (Lina,
+ *     Ines, Dana) and 0.301 (Nils, Omar) on scanlines 4..13 px below it. 0 console errors.
+ *     **File 27 passed.** This is the expected green: `BUG-236` is `EV-220`'s AC3d. With every
+ *     limb at the card (before the ruling), geometry listed this `<div>` (978 of 1116 px,
+ *     87.6 %, Ines and Lina) beside the icon `<path>`. That catch could not be attributed.
+ *   · **Nothing the list root read is lost: `BUG-231`, verbatim** (the glyph `<span>` as a
+ *     child of the `<ul>` after the rows). **Text 5 failed** (the same five), each naming
+ *     `list, no row: "███…"`. File 5 failed / 22 passed. The pin that every `li` of the block
+ *     is inside the list (EV-253) is unchanged and still asserted by this limb.
+ *   · **Edge case 4: one whitespace-only text node (`{" "}`) after `</ul>`,** between the
+ *     card's children. It paints nothing. **Text 7 failed** (the seven worlds with rows),
+ *     naming `card, outside the list: " "`. File 7 failed / 20 passed.
+ *
+ * CHECK mutant: **the text limb put back at the list** (walk root = the `<ul>`; expected
+ * content = rows only, as at `f92b63c`). On clean code the file is 27 passed, so the mutant
+ * runs. With `BUG-235` planted the file is **27 passed**, so the card root is what catches
+ * `BUG-235`. (The text section of `f92b63c`'s own spec on the same construction: 10 passed.)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * One DOM `Text` node in the adherence card, and where it sits: `"row N"` (the week row at
+ * index N of the list), `"list, no row"` (under the `<ul>` and in no `li`), or
+ * `"card, outside the list"` (anywhere else in the card, the title and headline included).
+ */
+interface CardText {
+  place: string;
   text: string;
 }
 
+const OUTSIDE_LIST = "card, outside the list";
+const IN_LIST_NO_ROW = "list, no row";
+const rowPlace = (row: number) => `row ${row}`;
+
 /**
- * Every `Text` node under the adherence LIST, in document order, exactly as the DOM holds
- * it, each tagged with the index of the week row it sits in, or `-1` for a node under the
- * list and in no row. EV-253 re-rooted this from `region.locator("li")` (it was
- * `weekRowTextNodes`, one walk per row): the walk now starts at the `<ul>`, so a node
- * between the rows is in the list it returns rather than outside every walk.
+ * Every `Text` node in the adherence CARD, in document order, exactly as the DOM holds it,
+ * each tagged with its place. The walk starts at the card's region element (the
+ * `<section aria-label>` the guard locates the block by), so the card's title, its
+ * headline, the list and anything else in the card are one walk.
+ *
+ * EV-259 re-rooted this from the `<ul>` (it was `listTextNodes`, EV-253), which had
+ * re-rooted it from each `li` (`weekRowTextNodes`). The new root contains the old one: the
+ * `<ul>` is located INSIDE the region, so every node the list walk read is still read, with
+ * the same row tag, and `expectOneListHoldingEveryRow` still pins every `li` of the block
+ * to the list (the EV-253 narrowing).
  */
-async function listTextNodes(
+async function cardTextNodes(
   region: Locator
-): Promise<{ lists: number; rowsInBlock: number; rows: number; nodes: ListText[] }> {
-  return region.evaluate((blockEl) => {
-    const lists = Array.from(blockEl.querySelectorAll<HTMLElement>("ul"));
-    const list = lists[0];
-    const rows = list ? Array.from(list.querySelectorAll("li")) : [];
-    const nodes: { row: number; text: string }[] = [];
-    if (list) {
-      const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT);
+): Promise<{ lists: number; rowsInBlock: number; rows: number; nodes: CardText[] }> {
+  return region.evaluate(
+    (blockEl, labels) => {
+      const lists = Array.from(blockEl.querySelectorAll<HTMLElement>("ul"));
+      const list = lists[0];
+      const rows = list ? Array.from(list.querySelectorAll("li")) : [];
+      const nodes: { place: string; text: string }[] = [];
+      const walker = document.createTreeWalker(blockEl, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const row = node.parentElement?.closest("li") ?? null;
-        nodes.push({
-          row: row && list.contains(row) ? rows.indexOf(row) : -1,
-          text: node.nodeValue ?? "",
-        });
+        const place =
+          list && row && list.contains(row)
+            ? `row ${rows.indexOf(row)}`
+            : list && list.contains(node)
+              ? labels.inListNoRow
+              : labels.outsideList;
+        nodes.push({ place, text: node.nodeValue ?? "" });
       }
-    }
-    return { lists: lists.length, rowsInBlock: blockEl.querySelectorAll("li").length, rows: rows.length, nodes };
-  });
+      return { lists: lists.length, rowsInBlock: blockEl.querySelectorAll("li").length, rows: rows.length, nodes };
+    },
+    { inListNoRow: IN_LIST_NO_ROW, outsideList: OUTSIDE_LIST }
+  );
 }
 
-/** Expected rows flattened into the shape `listTextNodes` returns: row `i`'s strings, tagged `i`. */
-function flattenRows(rows: string[][]): ListText[] {
-  return rows.flatMap((texts, row) => texts.map((text) => ({ row, text })));
+/** Expected rows flattened into the shape `cardTextNodes` returns: row `i`'s strings, tagged `row i`. */
+function flattenRows(rows: string[][]): CardText[] {
+  return rows.flatMap((texts, row) => texts.map((text) => ({ place: rowPlace(row), text })));
+}
+
+/**
+ * EV-259 — what the adherence CARD must say, in document order, built from the fixture's
+ * tuples and the copy module, never from the page:
+ *
+ *   · a world that renders rows: the card's title, its headline
+ *     (`copy.client.adherenceSeriesHeadline(done, planned)` of the whole series), then every
+ *     row's `[date, label]` (`expectedRowTexts`);
+ *   · a world that renders EV-208's whole-series sentence: the title, then that sentence,
+ *     `nothingScheduledIn8Weeks` if any week of the series had a plan, else
+ *     `noPlanInWindow`.
+ *
+ * The EV-208 choice restates the renderer's branch on the fixture's own series. That is a
+ * derivation of the expectation, the way `expectedRowTexts` derives the rows. It is not
+ * read back from the page.
+ */
+function expectedCardTexts(key: FixtureSeriesKey, now: Date): CardText[] {
+  const specs = fixtureSeriesTuples(key).map((tuple) => JSON.parse(tuple) as WeekSpec);
+  const series = adherenceSeries(specs, now);
+  const title = { place: OUTSIDE_LIST, text: copy.client.adherenceSeries };
+  if (series.planned === 0 && series.done === 0) {
+    const sentence = series.weeks.some((week) => week.hasPlan)
+      ? copy.client.nothingScheduledIn8Weeks
+      : copy.client.noPlanInWindow;
+    return [title, { place: OUTSIDE_LIST, text: sentence }];
+  }
+  return [
+    title,
+    { place: OUTSIDE_LIST, text: copy.client.adherenceSeriesHeadline(series.done, series.planned) },
+    ...flattenRows(expectedRowTexts(key, now)),
+  ];
 }
 
 /**
@@ -2187,7 +2364,7 @@ function expectedRowTexts(key: FixtureSeriesKey, now: Date): string[][] {
   ]);
 }
 
-test.describe("EV-251 / EV-253 / P-ADH C2 — the adherence list's text is exactly what the copy module and the fixture produce", () => {
+test.describe("EV-251 / EV-253 / EV-259 / P-ADH C2 — the adherence card's text is exactly what the copy module and the fixture produce", () => {
   /** `rows` is a fact about the fixture, stated here so an empty read cannot pass. */
   const WORLDS: { key: FixtureSeriesKey; id: string; rows: number }[] = [
     { key: "INES_ID", id: INES, rows: 8 },
@@ -2204,14 +2381,14 @@ test.describe("EV-251 / EV-253 / P-ADH C2 — the adherence list's text is exact
   ];
 
   for (const world of WORLDS) {
-    test(`P-ADH C2 (EV-251, EV-253): every text node in the adherence list is a row's date or label, in its row — ${world.key}`, async ({
+    test(`P-ADH C2 (EV-251, EV-253, EV-259): every text node in the adherence card is its title, its headline or a row's date or label, in place — ${world.key}`, async ({
       page,
     }) => {
       await signIn(page);
       const before = new Date();
       await page.goto(`/clients/${world.id}`);
       await expect(block(page, ADHERENCE)).toBeVisible();
-      const actual = await listTextNodes(block(page, ADHERENCE));
+      const actual = await cardTextNodes(block(page, ADHERENCE));
       const after = new Date();
 
       /**
@@ -2219,14 +2396,13 @@ test.describe("EV-251 / EV-253 / P-ADH C2 — the adherence list's text is exact
        * bracket the request, so they differ only if it straddled a Monday 00:00 UTC, and
        * then the page matches one of them. On every other request they are the same.
        */
-      const candidates = [expectedRowTexts(world.key, after), expectedRowTexts(world.key, before)];
+      const candidates = [expectedCardTexts(world.key, after), expectedCardTexts(world.key, before)];
       const expected =
-        candidates.find(
-          (candidate) => JSON.stringify(flattenRows(candidate)) === JSON.stringify(actual.nodes)
-        ) ?? candidates[0];
+        candidates.find((candidate) => JSON.stringify(candidate) === JSON.stringify(actual.nodes)) ??
+        candidates[0];
 
       expect(
-        expected.length,
+        expected.filter((node) => node.place !== OUTSIDE_LIST).length / 2,
         `${world.key}: the fixture's series and this table disagree on whether week rows render`
       ).toBe(world.rows);
       expect(
@@ -2236,25 +2412,29 @@ test.describe("EV-251 / EV-253 / P-ADH C2 — the adherence list's text is exact
       expectOneListHoldingEveryRow(world.key, actual, actual.rows, world.rows > 0 ? 1 : 0);
 
       /**
-       * ONE equality over the whole list (EV-253). Each expected string is tagged with its
-       * row, so a node in the wrong row, a node added inside a row, and a node under the
-       * list in no row (tagged `-1`, which no expected string carries) all fail it.
+       * ONE equality over the whole card (EV-259). Each expected string is tagged with its
+       * place, so a node in the wrong row, a node added inside a row, a node under the list
+       * in no row, and a node anywhere else in the card that is not the title, the
+       * headline or EV-208's sentence all fail it.
        */
-      const outside = actual.nodes.filter((node) => node.row === -1).map((node) => node.text);
+      const unexpected = actual.nodes
+        .filter((node) => !expected.some((e) => e.place === node.place && e.text === node.text))
+        .map((node) => `${node.place}: ${JSON.stringify(node.text)}`);
       expect(
         actual.nodes,
-        `${world.key}: the adherence list's text nodes are not exactly each week row's ` +
-          `[date, label], in order, as the copy module and the fixture produce them. ` +
-          (outside.length > 0
-            ? `${outside.length} text node(s) sit under the list OUTSIDE every week row ` +
-              `(EV-253 / BUG-231): ${JSON.stringify(outside)}. `
+        `${world.key}: the adherence card's text nodes are not exactly its title, its headline ` +
+          `(or EV-208's sentence) and each week row's [date, label], in order, as the copy ` +
+          `module and the fixture produce them. ` +
+          (unexpected.length > 0
+            ? `${unexpected.length} text node(s) in the card are none of those strings in that ` +
+              `place (EV-259 / BUG-235; EV-253 / BUG-231): ${JSON.stringify(unexpected)}. `
             : "") +
-          `P-ADH C2 says the list shows each week's two numbers and nothing that stands for a ` +
-          `third, and a text node that is not one of those strings is not something this ` +
-          `check can tell from a picture. If it is a legitimate addition (an icon, a ` +
-          `separator, a header in the list), that is a stop-and-ask for senior-po (EV-251 ` +
-          `edge case 1, EV-253 edge case 4), not a carve-out here.`
-      ).toEqual(flattenRows(expected));
+          `P-ADH C2 says the card shows its figures and nothing that stands for a third ` +
+          `number, and a text node that is not one of those strings is not something this ` +
+          `check can tell from a picture. If it is a legitimate addition (an icon glyph, a ` +
+          `legend, a footnote), that is a stop-and-ask for senior-po (EV-251 edge case 1, ` +
+          `EV-259 edge case 2), not a carve-out here.`
+      ).toEqual(expected);
     });
   }
 });
