@@ -546,8 +546,12 @@ test.describe("EV-256e AC2 — the picker with no recipes (after the terminal de
     await signIn(page);
     // Dana: the flag is on and her meals are unlocked.
     await page.goto("/clients/6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004/nutrition");
-    await page.getByRole("button", { name: /^Use one of my recipes: / }).first().click();
-    const dialog = page.getByRole("dialog");
+    // Retried until the dialog answers: a click before hydration is a no-op.
+    const dialog = page.getByRole("dialog", { name: "Use one of my recipes" });
+    await expect(async () => {
+      await page.getByRole("button", { name: /^Use one of my recipes: / }).first().click();
+      await expect(dialog).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
     await expect(dialog.getByText("You have no recipes yet.", { exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: /^Choose / })).toHaveCount(0);
     await dialog.getByRole("link", { name: NEW_RECIPE }).click();

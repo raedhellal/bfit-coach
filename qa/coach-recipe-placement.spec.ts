@@ -547,6 +547,63 @@ test.describe("Edge cases", () => {
     await context.close();
   });
 
+  test("14 — the flag is switched off while the picker is open: the sentence, then no action anywhere", async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await signIn(page);
+    await openNutrition(page, DANA);
+    await expect(page.getByRole("button", { name: new RegExp(`^${ACTION}: `) })).toHaveCount(28);
+    const row = meal(page, "Wednesday Snack");
+    const target = await mealName(row);
+    const dialog = await openPicker(page, row);
+    await choose(dialog, OATS);
+
+    // The api's flag goes off (fixture switch, this context only): the POST is now an
+    // unmapped 404 and the next read serves `recipePlacementEnabled: false`.
+    await context.addCookies([{ name: "evoli_fixture_placement", value: "off", url: page.url() }]);
+    await dialog.getByRole("button", { name: "Replace", exact: true }).click();
+
+    await expect(dialog.getByRole("alert")).toHaveText("Recipes can't be put on meals right now.");
+    // The refresh re-read the flag: the action is gone from EVERY meal, dialog or not.
+    await expect(page.getByRole("button", { name: new RegExp(`^${ACTION}: `) })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    expect(await mealName(row), "nothing was written").toBe(target);
+    await page.reload();
+    await expect(page.getByRole("button", { name: /^Swap meal: / })).toHaveCount(28);
+    await expect(page.getByRole("button", { name: new RegExp(`^${ACTION}`) })).toHaveCount(0);
+    await context.close();
+  });
+
+  test("a 403 because the LINK ended never says the recipe is gone; the page leaves for /clients/denied", async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await signIn(page);
+    await openNutrition(page, DANA);
+    // Record every sentence the dialog ever shows, however briefly (the staff run saw
+    // the wrong one FLASH before the redirect).
+    // Collected on the NODE side, so a navigation cannot erase what was seen.
+    const seen: string[] = [];
+    await page.exposeFunction("__sawRefusal", (text: string) => void seen.push(text));
+    await page.evaluate(() => {
+      const report = (window as unknown as { __sawRefusal: (t: string) => void }).__sawRefusal;
+      new MutationObserver(() => {
+        document
+          .querySelectorAll('[data-testid="placement-refusal"]')
+          .forEach((el) => report(el.textContent ?? ""));
+      }).observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
+    const dialog = await openPicker(page, meal(page, "Thursday Dinner"));
+    await choose(dialog, OATS);
+
+    // The trainee revokes (fixture switch, this context only): every trainee read is 403.
+    await context.addCookies([{ name: "evoli_fixture_link", value: "ended", url: page.url() }]);
+    await dialog.getByRole("button", { name: "Replace", exact: true }).click();
+
+    await page.waitForURL("**/clients/denied");
+    expect(seen.join(" | ")).not.toContain("That recipe is not in your library any more.");
+    await context.close();
+  });
+
   test("AC5 singular: one recipe meal reads 'up to 1 meal'", async ({ page }) => {
     await signIn(page);
     await openNutrition(page, DANA);
