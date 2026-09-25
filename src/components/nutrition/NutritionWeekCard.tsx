@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { RecipePickerDialog, type PlacementTarget } from "@/components/nutrition/RecipePickerDialog";
 import { copy } from "@/lib/copy";
-import { formatDate, formatWeekday, truncateName } from "@/lib/format";
+import { firstName, formatDate, formatWeekday, truncateName } from "@/lib/format";
 import {
   applySwapAction,
   applyWeekAction,
@@ -12,7 +13,33 @@ import {
   swapOptionsAction,
 } from "@/lib/nutritionActions";
 import { settled } from "@/lib/settled";
-import type { MealWeekView, SwapCandidate } from "@/lib/coachApi";
+import type { MealWeekView, PlannedMealView, SwapCandidate } from "@/lib/coachApi";
+
+/**
+ * EV-256e AC5's n: this week's meals placed from a coach recipe that the trainee has
+ * NOT locked — the ones an apply can replace. Eaten ones are kept too, but the coach
+ * wire has no `eaten`, which is why the sentence says "up to".
+ */
+export function replaceableRecipeMeals(week: MealWeekView | null): number {
+  if (!week) return 0;
+  return week.days
+    .flatMap((d) => d.meals)
+    .filter((m) => m.provenance === "COACH_RECIPE" && !m.locked).length;
+}
+
+/** EV-256e AC4 — the marker, from the two served fields and nothing else. */
+function RecipeMarker({ meal }: { meal: PlannedMealView }) {
+  if (meal.provenance !== "COACH_RECIPE") return null;
+  return meal.placedByYou === true ? (
+    <Badge tone="blue" title={copy.placement.yourRecipeTitle}>
+      {copy.placement.yourRecipe}
+    </Badge>
+  ) : (
+    <Badge tone="purple" title={copy.placement.coachRecipeTitle}>
+      {copy.placement.coachRecipe}
+    </Badge>
+  );
+}
 
 /**
  * EV-185b AC3 — the meal week.
@@ -40,21 +67,45 @@ export function NutritionWeekCard({
   traineeDisplayName,
   week: initialWeek,
   currentWeekStart,
+  recipePlacementEnabled,
 }: {
   clientId: string;
   traineeDisplayName: string;
   week: MealWeekView | null;
   currentWeekStart: string;
+  /**
+   * EV-256e AC1 — `CoachNutritionResponse.recipePlacementEnabled`, passed as
+   * `=== true` by the page. False in production until EV-256f ships: then NO meal has
+   * the action — hidden, not disabled, because a disabled control would advertise a
+   * feature the trainee's app cannot yet show honestly.
+   */
+  recipePlacementEnabled: boolean;
 }) {
   const router = useRouter();
   const [week, setWeek] = useState<MealWeekView | null>(initialWeek);
+  /**
+   * The server's week wins when it changes. `router.refresh()` re-renders the page with
+   * a fresh `week` prop, and without this the card kept showing the week it was first
+   * given — which is what edge case 6 needs NOT to happen: after a 404 the portal
+   * "re-fetches the week", and a re-fetch the card ignores is no re-fetch.
+   */
+  const [seenInitial, setSeenInitial] = useState<MealWeekView | null>(initialWeek);
+  if (initialWeek !== seenInitial) {
+    setSeenInitial(initialWeek);
+    setWeek(initialWeek);
+  }
   const [confirming, setConfirming] = useState(false);
   const [swapping, setSwapping] = useState<{ mealId: string; mealName: string } | null>(null);
   const [candidates, setCandidates] = useState<SwapCandidate[] | null>(null);
+  /** AC7 — a Swap refusal is shown IN the swap dialog, which stays open. */
+  const [swapError, setSwapError] = useState<string | null>(null);
+  const [placing, setPlacing] = useState<PlacementTarget | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const trainee = truncateName(traineeDisplayName);
+  const first = firstName(traineeDisplayName);
+  const recipeMeals = replaceableRecipeMeals(week);
 
   /**
    * A write answered 403 — the link ended under the coach (the trainee revoked, in
@@ -119,6 +170,7 @@ export function NutritionWeekCard({
   function openSwap(mealId: string, mealName: string) {
     setSwapping({ mealId, mealName });
     setCandidates(null);
+    setSwapError(null);
     startTransition(async () => {
       const result = await settled(swapOptionsAction(clientId, mealId), {
         ok: false,
@@ -140,6 +192,17 @@ export function NutritionWeekCard({
         applySwapAction(clientId, target.mealId, candidateIndex),
         { ok: false, code: "FAILED" } as const
       );
+      if (!result.ok && (result.code === "MEAL_EATEN" || result.code === "MEAL_LOCKED")) {
+        // EV-256e AC7 (BUG-245): the trainee owns this meal. Nothing was written, so
+        // the week on screen is left exactly as it is, and the sentence goes in the
+        // dialog the coach is looking at.
+        setSwapError(
+          result.code === "MEAL_EATEN"
+            ? copy.placement.mealEaten(first)
+            : copy.placement.mealLocked(first)
+        );
+        return;
+      }
       setSwapping(null);
       setCandidates(null);
       if (!result.ok) {
@@ -229,6 +292,11 @@ export function NutritionWeekCard({
                   {day.meals.map((meal) => (
                     <div
                       key={meal.mealId}
+                      data-meal-id={meal.mealId}
+                      role="group"
+                      aria-label={`${formatWeekday(day.date)} ${
+                        copy.nutrition.mealSlots[meal.slot] ?? meal.slot
+                      }`}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -237,14 +305,30 @@ export function NutritionWeekCard({
                         flexWrap: "wrap",
                       }}
                     >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ minWidth: 0, flex: "1 1 200px" }}>
+                        {/* flex-wrap: a slot badge, a 40-character name and TWO markers
+                            do not fit one line at 320 px (BUG-243's shape). */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            minWidth: 0,
+                          }}
+                        >
                           <Badge tone="neutral">
                             {copy.nutrition.mealSlots[meal.slot] ?? meal.slot}
                           </Badge>
                           <span
                             title={meal.name}
-                            style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}
+                            style={{
+                              fontSize: 13.5,
+                              fontWeight: 600,
+                              color: "var(--ink)",
+                              overflowWrap: "anywhere",
+                              minWidth: 0,
+                            }}
                           >
                             {truncateName(meal.name)}
                           </span>
@@ -256,6 +340,7 @@ export function NutritionWeekCard({
                               {copy.nutrition.mealKept}
                             </Badge>
                           )}
+                          <RecipeMarker meal={meal} />
                         </div>
                         <div
                           className="tnum"
@@ -269,16 +354,41 @@ export function NutritionWeekCard({
                           )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon="refresh"
-                        ariaLabel={`${copy.nutrition.swap}: ${meal.name}`}
-                        onClick={() => openSwap(meal.mealId, meal.name)}
-                        disabled={pending}
-                      >
-                        {copy.nutrition.swap}
-                      </Button>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="refresh"
+                          ariaLabel={`${copy.nutrition.swap}: ${meal.name}`}
+                          onClick={() => openSwap(meal.mealId, meal.name)}
+                          disabled={pending}
+                        >
+                          {copy.nutrition.swap}
+                        </Button>
+                        {/* EV-256e AC1: only while the flag is on, and never on a meal
+                            the trainee LOCKED — that one is theirs. An eaten meal DOES
+                            get it: the coach wire has no `eaten`, so the api's 409 is
+                            what tells the coach (AC3). */}
+                        {recipePlacementEnabled && !meal.locked && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon="file"
+                            ariaLabel={copy.placement.actionNamed(meal.name)}
+                            onClick={() => {
+                              setError(null);
+                              setPlacing({
+                                mealId: meal.mealId,
+                                mealName: meal.name,
+                                weekday: formatWeekday(day.date),
+                              });
+                            }}
+                            disabled={pending}
+                          >
+                            {copy.placement.action}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -346,6 +456,15 @@ export function NutritionWeekCard({
         <p style={{ margin: "8px 0 0", fontSize: 13.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
           {copy.nutrition.lockedMealsKept}
         </p>
+        {/* EV-256e AC5 — only when the week holds a replaceable recipe meal. */}
+        {recipeMeals >= 1 && (
+          <p
+            data-testid="apply-recipe-warning"
+            style={{ margin: "8px 0 0", fontSize: 13.5, color: "var(--warn-ink)", lineHeight: 1.55 }}
+          >
+            {copy.placement.applyWarning(recipeMeals, first)}
+          </p>
+        )}
       </Modal>
 
       <Modal
@@ -356,6 +475,15 @@ export function NutritionWeekCard({
         icon="apple"
         width={520}
       >
+        {swapError && (
+          <p
+            role="alert"
+            data-testid="swap-refusal"
+            style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)", lineHeight: 1.5 }}
+          >
+            {swapError}
+          </p>
+        )}
         {candidates === null ? (
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
             {copy.nutrition.swapLoading}
@@ -403,6 +531,29 @@ export function NutritionWeekCard({
           </div>
         )}
       </Modal>
+
+      {placing && (
+        <RecipePickerDialog
+          key={placing.mealId}
+          clientId={clientId}
+          firstName={first}
+          target={placing}
+          onClose={() => setPlacing(null)}
+          onPlaced={(placed) => {
+            setPlacing(null);
+            setError(null);
+            setWeek(placed);
+            router.refresh();
+          }}
+          onMealChanged={() => {
+            // Edge case 6: the meal is gone. Close, say so, and re-read the week.
+            setPlacing(null);
+            setError(copy.placement.mealChanged);
+            router.refresh();
+          }}
+          onRefresh={() => router.refresh()}
+        />
+      )}
     </Card>
   );
 }

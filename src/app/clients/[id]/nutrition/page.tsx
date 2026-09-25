@@ -102,6 +102,9 @@ export default async function NutritionPage({ params }: { params: { id: string }
             traineeDisplayName={displayName}
             week={nutrition.week}
             currentWeekStart={nutrition.currentWeekStart}
+            // EV-256e AC1: `=== true`, so an api that predates the field (or sends
+            // anything but a boolean true) hides the action — the production default.
+            recipePlacementEnabled={nutrition.recipePlacementEnabled === true}
           />
         </>
       )}

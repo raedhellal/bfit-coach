@@ -837,6 +837,84 @@ export const copy = {
   },
 
   /**
+   * EV-256e — "Use one of my recipes" on the meal week. Every sentence marked AC is the
+   * story's, VERBATIM (hub `32d2657`), and QA checks them character by character.
+   * `{FirstName}` is `firstName(traineeDisplayName)`; `{recipe}` and `{meal name}` are
+   * the coach's and the engine's text exactly as served, never truncated INSIDE a
+   * sentence (the element wraps instead — BUG-243/244).
+   */
+  placement: {
+    /** AC1, verbatim — the meal action. Only while `recipePlacementEnabled` is true. */
+    action: "Use one of my recipes",
+    actionNamed: (meal: string) => `Use one of my recipes: ${meal}`,
+    title: "Use one of my recipes",
+    filterLabel: "Filter your recipes",
+    filterPlaceholder: "Recipe name",
+    loading: "Loading your recipes…",
+    loadFailed: "Your recipes could not be loaded.",
+    /** AC2, verbatim — the empty library, with a link to `/recipes/new`. */
+    empty: "You have no recipes yet.",
+    emptyLink: "New recipe",
+    noMatch: (query: string) => `None of your recipes match “${query}”.`,
+    macroLine: (kcal: number, p: number, c: number, f: number) =>
+      `${kcal} kcal · P ${p} g · C ${c} g · F ${f} g`,
+    chooseNamed: (recipe: string) => `Choose ${recipe}`,
+    /** AC2, verbatim — the confirm. */
+    confirm: (meal: string, recipe: string, weekday: string) =>
+      `Replace “${meal}” with “${recipe}” on ${weekday}?`,
+    confirmButton: "Replace",
+    back: "Choose another recipe",
+    placing: "Replacing…",
+    cancel: "Cancel",
+
+    /* ── AC4, verbatim — the markers ─────────────────────────────────────────── */
+    yourRecipe: "Your recipe",
+    coachRecipe: "Coach recipe",
+    yourRecipeTitle: "You put one of your recipes on this meal",
+    coachRecipeTitle: "Another coach put one of their recipes on this meal",
+
+    /* ── AC3, verbatim — the refusals, shown with the dialog left open ───────── */
+    excludedIngredient: (recipe: string, first: string, value: string) =>
+      `“${recipe}” can't be used for ${first}: ${value} conflicts with their dietary settings.`,
+    excludedName: (recipe: string, first: string) =>
+      `“${recipe}” can't be used for ${first}: its name contains a word that conflicts with their dietary settings. Rename the recipe and try again.`,
+    ruleUncheckable: (first: string) =>
+      `Recipes can't be used for ${first} yet: Evoli can't check a hand-written recipe for kosher meat-and-dairy combinations. Their generated meals are not affected.`,
+    allergiesUncheckable: (first: string) =>
+      `Recipes can't be used for ${first} yet: Evoli can't safety-check a hand-written recipe against their dietary settings. Their generated meals are not affected.`,
+    belowFloor: (first: string, weekday: string, dayKcalAfter: number, floorKcal: number) =>
+      `This would bring ${first}'s ${weekday} to ${dayKcalAfter} kcal, below their minimum of ${floorKcal} kcal. Choose a recipe with more calories.`,
+    /** AC3 + AC7, verbatim — shared by the placement dialog and the Swap dialog. */
+    mealEaten: (first: string) => `${first} has already eaten this meal, so it can't be replaced.`,
+    mealLocked: (first: string) => `${first} has already locked this meal, so it can't be replaced.`,
+    /** AC3 (ADR-0026 A3), verbatim — a key retired since the recipe was saved. */
+    retiredIngredient: (recipe: string) =>
+      `“${recipe}” uses an ingredient Evoli no longer offers. Open the recipe to replace it, then try again.`,
+    openRecipe: "Open the recipe",
+    /** Edge case 6, verbatim — the meal was regenerated after the page loaded (404). */
+    mealChanged: "This meal changed. Pick it again.",
+
+    /* ── states the story does not word (not AC copy; senior-po may reword) ──── */
+    /**
+     * 403 on the placement: the recipe is not in the coach's library any more (deleted
+     * in another tab), or the link ended. The api answers one body for both. The page
+     * is refreshed as well, so an ended link still lands on /clients/denied.
+     */
+    recipeGone: "That recipe is not in your library any more.",
+    /** 404 `NOT_FOUND`: the flag was switched off after the page loaded (edge case 14). */
+    placementOff: "Recipes can't be put on meals right now.",
+    failed: "The recipe could not be used. Try again.",
+
+    /**
+     * AC5, verbatim, inside the existing apply-week confirm, only when n ≥ 1 (n = this
+     * week's COACH_RECIPE meals that are not locked). The story writes "meal(s)"; the
+     * portal renders the correct singular or plural.
+     */
+    applyWarning: (n: number, first: string) =>
+      `This replaces up to ${n} ${n === 1 ? "meal" : "meals"} placed from coach recipes. Meals ${first} has eaten are kept.`,
+  },
+
+  /**
    * EV-188b — the coach's routine library. Sentences marked AC are verbatim story text
    * and `senior-qa` checks them character by character; rewording one is a story change.
    *
