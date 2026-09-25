@@ -9,6 +9,7 @@ import { Card, EmptyState } from "@/components/ui/kit";
 import { coachApi, hasScope, isForbidden } from "@/lib/coachApi";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
+import { recipePlacementOn } from "@/lib/recipePlacement";
 
 /**
  * /clients/[id]/nutrition — EV-185b.
@@ -102,9 +103,9 @@ export default async function NutritionPage({ params }: { params: { id: string }
             traineeDisplayName={displayName}
             week={nutrition.week}
             currentWeekStart={nutrition.currentWeekStart}
-            // EV-256e AC1: `=== true`, so an api that predates the field (or sends
-            // anything but a boolean true) hides the action — the production default.
-            recipePlacementEnabled={nutrition.recipePlacementEnabled === true}
+            // EV-256e AC1: only a literal `true` — an api that predates the field, or
+            // sends anything else, hides the action (the production default).
+            recipePlacementEnabled={recipePlacementOn(nutrition)}
           />
         </>
       )}

@@ -49,7 +49,8 @@ const OVEN = "Oven-baked sweet potato and chickpea traybake with spinach, lemon 
 const ACTION = "Use one of my recipes";
 const confirmSentence = (meal: string, recipe: string, weekday: string) =>
   `Replace “${meal}” with “${recipe}” on ${weekday}?`;
-const EMPTY = "You have no recipes yet.";
+// AC2's empty library ("You have no recipes yet.") is asserted in coach-recipes.spec.ts,
+// after its terminal delete — the only point in the run where the library IS empty.
 const excludedIngredient = (recipe: string, first: string, value: string) =>
   `“${recipe}” can't be used for ${first}: ${value} conflicts with their dietary settings.`;
 const excludedName = (recipe: string, first: string) =>
