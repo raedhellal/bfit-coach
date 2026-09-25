@@ -1,0 +1,29 @@
+// EV-222 AC4 — a SYNTHETIC portal module, read as TEXT by qa/contract-drift.spec.ts's
+// self-test through the same wireInterfaces() parser that reads src/lib/coachApi.ts.
+// Kept as .txt so tsc and next lint do not treat it as source.
+
+/**
+ * @wire WidgetRequest
+ */
+export interface WidgetRequest {
+  name: string;
+  part: WidgetPart;
+}
+
+/**
+ * Nested, so reachable only through WidgetRequest's $ref.
+ *
+ * @wire WidgetPart
+ */
+export interface WidgetPart {
+  partId: string;
+}
+
+/**
+ * Response-only: `secret` is required by the api and unread here, which is harmless.
+ *
+ * @wire WidgetView
+ */
+export interface WidgetView {
+  id: string;
+}

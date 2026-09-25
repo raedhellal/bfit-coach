@@ -1,0 +1,61 @@
+# EV-222 AC4 — a SYNTHETIC spec, read only by qa/contract-drift.spec.ts's self-test.
+# Shaped like spec/b-fit-api.openapi.yaml (same indentation, both `required` spellings,
+# a requestBody at path level, a nested $ref, a response-only schema) so the parsers the
+# real cases use are the parsers under test. Not an api; nothing serves it.
+openapi: 3.0.3
+paths:
+  /widgets:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WidgetView"
+components:
+  parameters:
+    Zone:
+      name: X-Zone
+      in: header
+      required: false
+      schema:
+        type: string
+  schemas:
+    WidgetRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+          description: Required, and the synthetic portal type below does not carry it.
+        colour:
+          type: string
+          description: Optional, registered as missing, and must stay green (AC2).
+        part:
+          $ref: "#/components/schemas/WidgetPart"
+      required: [name, size, part]
+    WidgetPart:
+      type: object
+      properties:
+        partId:
+          type: string
+        qty:
+          type: integer
+      required:
+        - partId
+        - qty
+    WidgetView:
+      type: object
+      properties:
+        id:
+          type: string
+        secret:
+          type: string
+      required: [id, secret]
