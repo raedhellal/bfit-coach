@@ -25,6 +25,8 @@ const PASSWORD = "Password123!";
 const BOWL = "Chicken rice bowl";
 const OATS = "Overnight oats";
 const QUARK = "Quark pancakes";
+/** BUG-244 — a realistic long name (64 characters), the kind senior-qa measured with. */
+const LONG_NAME = "Slow-roasted chicken thighs with lemon, garlic and herbed quinoa";
 const QUARK_ID = "8e3f1b22-0000-4000-8000-0000000000c3";
 
 /* ── AC sentences, verbatim, as literals ──────────────────────────────────── */
@@ -395,6 +397,50 @@ test.describe("AC6 and the by-id denial", () => {
 });
 
 test.describe("layout and touch targets", () => {
+  /**
+   * BUG-244 — a realistic long name widened the list's grid track to the UNWRAPPED
+   * title, so the page scrolled sideways (55 px at 320) and every card was clipped on
+   * its right edge. The seeded names are short, which is why the sweep below was green;
+   * this test inserts the name senior-qa measured with, through the editor.
+   */
+  test("BUG-244: a long recipe name neither scrolls the list sideways nor clips a card", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/recipes/new");
+    await firstEdit(page, page.getByLabel("Recipe name"), LONG_NAME);
+    await addIngredient(page, "chicken", "chicken breast", "150");
+    await fillMacros(page, "560", "50", "62", "12");
+    await page.getByRole("button", { name: "Save recipe" }).click();
+    await expect(page.getByText("Recipe saved.", { exact: true })).toBeVisible();
+
+    await page.goto("/recipes");
+    await expect(row(page, LONG_NAME)).toBeVisible();
+    await atEachWidth(page, async (width) => {
+      await expectNoSidewaysScroll(page, "library with a long name");
+      // No card extends past the viewport: a clipped card is the same defect even where
+      // the document happens not to scroll.
+      const overhang = await page
+        .getByRole("list")
+        .locator(":scope > li")
+        .evaluateAll((items) =>
+          items.map((li) => li.getBoundingClientRect().right - document.documentElement.clientWidth)
+        );
+      expect(overhang.length).toBeGreaterThan(0);
+      expect(Math.max(...overhang), `a card overhangs the viewport at ${width}px`).toBeLessThanOrEqual(0.5);
+      const long = row(page, LONG_NAME);
+      await expectUnoccluded(page, long.getByRole("button", { name: "Delete" }), {
+        over: long.getByRole("link", { name: "Edit" }),
+        label: "long-name row Delete",
+      });
+    });
+
+    // The editor titles the page with the same name.
+    await row(page, LONG_NAME).getByRole("link", { name: "Edit" }).click();
+    await expect(page.getByRole("heading", { name: LONG_NAME, level: 1 })).toBeVisible();
+    await atEachWidth(page, async () => {
+      await expectNoSidewaysScroll(page, "editor with a long name");
+    });
+  });
+
   test("no control under 44 px on the library, the editor and its search results, at 390 px", async ({ page }) => {
     page.on("dialog", (d) => d.accept());
     await page.setViewportSize({ width: 390, height: 844 });

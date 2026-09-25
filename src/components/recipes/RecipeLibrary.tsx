@@ -68,7 +68,23 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
               </span>
             )}
           </div>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 12 }}>
+          {/*
+            BUG-244: `minmax(0, 1fr)`, not the implicit `auto` track. An auto track sizes to
+            its widest item's min-content, which for a `nowrap` title is the WHOLE title:
+            a 64-character name pushed the track 64 px past a 320 px viewport and clipped
+            every card. A 0 minimum lets the track follow the viewport and the title
+            ellipsise inside it.
+          */}
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr)",
+              gap: 12,
+            }}
+          >
             {library.recipes.map((recipe) => (
               <li key={recipe.id}>
                 <RecipeRow recipe={recipe} onDelete={() => setDeleting(recipe)} />
