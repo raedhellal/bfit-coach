@@ -2508,14 +2508,20 @@ function state(): FixtureState {
  * before every test through `src/app/api/fixture/state/route.ts`, which answers 404
  * unless `COACH_API_MODE=fixture`.
  *
- * `SEED_KEY` holds the canonical serialisation of the state as it was created, so
- * "is the store still at its seed?" is a comparison against the seed actually handed
- * out rather than against a second `freshState()` (whose relative dates would drift
- * by the milliseconds between the two calls).
+ * The seed is built ONCE per process, as the store always was, and kept aside. A
+ * reset is a deep copy of that one object — not a second `freshState()`, whose
+ * relative dates and instants would differ by however long the run has taken — and
+ * "is the store at its seed?" compares against that same first seed. So a reset that
+ * restored only part of the store cannot also redefine what the seed was.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 const SEED_KEY = Symbol.for("evoli.coach.fixture.seed");
-type GlobalWithSeed = typeof globalThis & Record<symbol, string | undefined>;
+interface Seed {
+  /** Never handed out: every reset copies it. */
+  pristine: FixtureState;
+  canonical: string;
+}
+type GlobalWithSeed = typeof globalThis & Record<symbol, Seed | undefined>;
 
 /** Maps become key-sorted entry lists, so insertion order is not a difference. */
 function canonical(value: FixtureState): string {
@@ -2527,20 +2533,25 @@ function canonical(value: FixtureState): string {
 }
 
 function seed(): void {
-  const fresh = freshState();
-  (globalThis as GlobalWithFixture)[FIXTURE_STATE_KEY] = fresh;
-  (globalThis as GlobalWithSeed)[SEED_KEY] = canonical(fresh);
+  const g = globalThis as GlobalWithSeed;
+  if (!g[SEED_KEY]) {
+    const pristine = freshState();
+    g[SEED_KEY] = { pristine, canonical: canonical(pristine) };
+  }
+  (globalThis as GlobalWithFixture)[FIXTURE_STATE_KEY] = structuredClone(
+    (g[SEED_KEY] as Seed).pristine
+  );
 }
 
-/** Throw the whole store away and start again from `freshState()`. */
+/** Throw the whole store away and start again from this process's seed. */
 export function resetFixtureState(): void {
   seed();
 }
 
-/** True when nothing has been written (or read-with-side-effect) since the last seed. */
+/** True when nothing has been written (or read-with-side-effect) since the last reset. */
 export function fixtureStateIsPristine(): boolean {
   const current = state();
-  return canonical(current) === (globalThis as GlobalWithSeed)[SEED_KEY];
+  return canonical(current) === (globalThis as GlobalWithSeed)[SEED_KEY]?.canonical;
 }
 
 function nutritionState(id: string): NutritionState {
