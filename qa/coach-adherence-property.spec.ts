@@ -1935,8 +1935,9 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
  * records: its text nodes are exactly the expected ones).
  *
  * **WHAT IT DOES NOT READ.** Anything that is not a `Text` node in the DOM: generated
- * `content` (the paint limb's `content` entries read that), a form control's value, an
- * attribute, `<canvas>` / `<img>` (EV-251 out of scope), and how any text is styled. It
+ * `content` (the paint limb's `content` entries read that inside the <ul> only; generated
+ * content in the card outside the list is read by no limb, see the EV-259 banner), a form
+ * control's value, an attribute, `<canvas>` / `<img>` (EV-251 out of scope), and how any text is styled. It
  * reads the adherence card only (EV-259), not the rest of the client page. That is what it
  * reads, not a claim about what the rest of the page can or cannot draw.
  *
