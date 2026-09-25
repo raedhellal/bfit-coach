@@ -70,7 +70,8 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
 
 test("every spec file on the fixture server uses the resetting test", () => {
   const qa = __dirname;
-  const plain = readdirSync(qa)
+  // RECURSIVE, like Playwright's own `testDir`: a spec in a subfolder is still run.
+  const plain = readdirSync(qa, { recursive: true, encoding: "utf8" })
     .filter((f) => f.endsWith(".spec.ts"))
     .filter((f) => !/import \{ test \} from "\.\/fixture-test";/.test(readFileSync(join(qa, f), "utf8")))
     .sort();

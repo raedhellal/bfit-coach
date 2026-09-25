@@ -36,7 +36,8 @@ function filesFor(config) {
   }
   const files = new Set();
   for (const line of listed.stdout.split("\n")) {
-    const m = /(?:^|\s)([\w.-]+\.spec\.ts):\d+:\d+/.exec(line);
+    // The path is relative to testDir and may contain a subfolder (testDir is recursive).
+    const m = /(?:^|\s)([\w./-]+\.spec\.ts):\d+:\d+/.exec(line);
     if (m) files.add(`qa/${m[1]}`);
   }
   if (files.size === 0) throw new Error(`${config} listed no spec files — refusing to report green on nothing`);

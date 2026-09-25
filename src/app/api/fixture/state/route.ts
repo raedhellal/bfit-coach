@@ -15,10 +15,13 @@ import { COACH_API_MODE } from "@/lib/env";
  * unsigned session for any email (`/api/auth/login`), so this route grants nothing
  * that mode does not; a deployment in fixture mode is the incident, not this file.
  *
- * It is NOT a public route: it sits inside the middleware matcher like every other
- * page, so it needs a (fixture) coach session. `qa/fixture-test.ts` signs in first and
- * refuses to follow a redirect, so an unauthenticated call is a failed test rather
- * than a 200 from the login page.
+ * **The mode check is the ONLY guard.** The route sits inside the middleware matcher, so a
+ * request with no session cookie is redirected to /login — but middleware decodes the
+ * token without verifying its signature (b-fit-api owns verification), so a forged
+ * COACH cookie passes it. In `live` mode that forged request still gets the 404 above,
+ * which `staff-engineer` witnessed against a production build; nothing else here stops
+ * it. `qa/fixture-test.ts` signs in first and refuses to follow a redirect, so in the
+ * suite an unauthenticated call is a failed test rather than a 200 from the login page.
  */
 
 export const dynamic = "force-dynamic";

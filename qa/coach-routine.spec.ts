@@ -360,7 +360,14 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
     ]);
   });
 
-  test("Cancel publishes nothing and leaves the draft as it was", async ({ page }) => {
+  /**
+   * EV-223: from the seed Dana has no draft; pressing Publish SAVES the editor's plan as
+   * a draft before previewing (`previewPublishAction`). So what this checks is that
+   * Cancel publishes nothing and repairs nothing in the draft that save created.
+   */
+  test("Cancel publishes nothing, and the draft Publish saved keeps its unrepaired exercises", async ({
+    page,
+  }) => {
     await signIn(page);
     await page.goto(`/clients/${DANA}/routine`);
 
