@@ -20,17 +20,25 @@ cannot break a call. The allowance and the defect looked identical to the test.
   BUG-195 is about is a `Routine`. 16 interfaces today, pinned as
   `REQUEST_FACING_EXPECTED`; the spec has both `required: [a, b]` and block-list
   `required:` spellings, and `required: false` on parameters above `schemas:`.
-- A known-red case is `test.fail(title, { annotation: { type: "issue", description:
-  "BUG-…" } }, body)` via `KNOWN_REQUIRED_OMISSIONS`. It fails the run the day the
-  case passes, so the fix (BUG-195c) must delete the marker AND the now-stale
-  register entries in the same commit, or the name check goes red on "stale".
-- Blind spot, stated in the spec: an UNTAGGED type nested in a body
-  (`RoutineDayEntry` inside `CoachRoutineDraftRequest.trainingDays`) is not checked.
-- No "server-resolved" allowance on purpose: under ADR-0018 D1 (1-D) the four
-  subject-owned fields are SENT and overwritten; `Routine.goal/level` are
-  `@NotBlank`, so omitting one is a 400 however the server would resolve it.
-- The synthetic fixture under `qa/fixtures/contract-drift/` keeps a known omission
-  in front of the parsers after BUG-195 closes; it is the only clause that sees a
-  broken block-list parser (mutant M4).
+- `checkRequired(spec, entry, register)` is the ONE omission computation, called by the
+  live cases and by the synthetic self-test WITH a register that excuses the omitted
+  field. The first cut fed the fixture's register only to the message, so a check that
+  filtered by the register passed the synthetic test; staff showed marker-deleted +
+  filter = 77/77 green with five required fields omitted. Hand the synthetic run the
+  same inputs as the real one, or it certifies a different function.
+- A second, independent rule reads the REGISTER: no `missingInPortal` key may be a field
+  the request schema requires. It is what survives BUG-195c deleting the marker.
+- Known-red cases use `test.fail(title, { annotation: { type: "issue", description:
+  "BUG-…" } }, body)` via `KNOWN_REQUIRED_OMISSIONS`. They fail the run the day the case
+  passes, so BUG-195c must delete the marker AND the register entries together.
+- Top-level coverage: every `/coach-portal` requestBody root must have an `@wire`
+  interface or an `UNTAGGED_REQUEST_ROOTS` entry (today `CoachPublishRequest`, sent
+  inline as `{ digest }`). Nested untagged types (`RoutineDayEntry`) are still unchecked.
+- Pin names, not counts (`REQUEST_FACING_EXPECTED` is the 16 sorted names): a count
+  passes a swap.
+- No "server-resolved" allowance. Cite the api (`Routine.goal/level` `@NotBlank`), not
+  ADR-0018, which is PROPOSED.
+- `git checkout -- qa` to restore after a mutant also wipes your UNCOMMITTED fix. Commit
+  before mutating (lost one edit round this way on 2026-09-25).
 
 See [[a-fixture-without-the-shape-cannot-guard-it]], [[a-witness-does-not-choose-between-two-checks]].

@@ -36,4 +36,4 @@
 - [Recipe library (EV-256b)](recipe-library-portal-facts.md) — two 400 shapes (details.field vs field-leading message); a retired key is the only reachable unknown-ingredient
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
-- [An allowance cannot excuse a required field](an-allowance-cannot-excuse-a-required-field.md) — EV-222: request-facing = requestBody refs + closure; test.fail marker for BUG-195; nested untagged types unchecked
+- [An allowance cannot excuse a required field](an-allowance-cannot-excuse-a-required-field.md) — EV-222: one checkRequired fed the register in both real and synthetic runs; register-side rule; untagged-root coverage
