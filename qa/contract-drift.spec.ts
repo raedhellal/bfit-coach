@@ -132,6 +132,31 @@ function schemaRequired(spec: string, name: string): string[] {
 const SCHEMA_REF = /\$ref:\s*["']#\/components\/schemas\/([A-Za-z0-9_]+)["']/;
 
 /**
+ * Every `$ref` directly under a `requestBody`, with the path it sits under (indent 2 in
+ * `paths:`). The roots of `requestSchemas`, and what the coverage test reads.
+ */
+function requestRoots(spec: string): { path: string; schema: string }[] {
+  const lines = spec.split("\n");
+  const roots: { path: string; schema: string }[] = [];
+  const end = lines.findIndex((l) => l === "components:");
+  let path = "";
+  for (let i = 0; i < (end === -1 ? lines.length : end); i += 1) {
+    const key = /^ {2}(\/[^:]*):\s*$/.exec(lines[i]);
+    if (key) path = key[1];
+    const rb = /^(\s*)requestBody:\s*$/.exec(lines[i]);
+    if (!rb) continue;
+    const indent = rb[1].length;
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const line = lines[j];
+      if (line.trim() !== "" && line.length - line.trimStart().length <= indent) break;
+      const ref = SCHEMA_REF.exec(line);
+      if (ref) roots.push({ path, schema: ref[1] });
+    }
+  }
+  return roots;
+}
+
+/**
  * Every schema the api can RECEIVE: each one a `requestBody` references under `paths`,
  * plus everything reachable from those through `$ref` (a `Routine` body carries
  * `TrainingDay`s, which carry `RoutineExercise`s — an omission at any depth is the same
@@ -142,22 +167,8 @@ const SCHEMA_REF = /\$ref:\s*["']#\/components\/schemas\/([A-Za-z0-9_]+)["']/;
  * that is the one this row exists for.
  */
 function requestSchemas(spec: string): Set<string> {
-  const lines = spec.split("\n");
-  const roots: string[] = [];
-  const end = lines.findIndex((l) => l === "components:");
-  for (let i = 0; i < (end === -1 ? lines.length : end); i += 1) {
-    const rb = /^(\s*)requestBody:\s*$/.exec(lines[i]);
-    if (!rb) continue;
-    const indent = rb[1].length;
-    for (let j = i + 1; j < lines.length; j += 1) {
-      const line = lines[j];
-      if (line.trim() !== "" && line.length - line.trimStart().length <= indent) break;
-      const ref = SCHEMA_REF.exec(line);
-      if (ref) roots.push(ref[1]);
-    }
-  }
   const seen = new Set<string>();
-  const queue = [...roots];
+  const queue = requestRoots(spec).map((r) => r.schema);
   while (queue.length > 0) {
     const name = queue.shift() as string;
     if (seen.has(name)) continue;
@@ -171,13 +182,55 @@ function requestSchemas(spec: string): Set<string> {
 }
 
 /**
- * The fields `schema` requires that the portal type does not declare. The register in
- * `qa/contract-deviations.ts` is deliberately NOT consulted: `missingInPortal` is an
- * allowance for an OPTIONAL field the portal chooses not to send, and no allowance can
- * make the api accept a body without a field it requires.
+ * THE check, in one place: the live cases and the synthetic self-test both call it.
+ *
+ * `omitted` is every field `entry.schema` requires that the portal type does not
+ * declare. The register is TAKEN, so that a synthetic run can hand it the very allowance
+ * that hid BUG-195 and assert it changes nothing, and it is used ONLY to name that
+ * allowance in the message. `missingInPortal` is an allowance for an OPTIONAL field the
+ * portal chooses not to send; no allowance can make the api accept a body without a
+ * field it requires.
  */
-function requiredOmissions(spec: string, entry: { schema: string; fields: string[] }): string[] {
-  return schemaRequired(spec, entry.schema).filter((f) => !entry.fields.includes(f));
+function checkRequired(
+  spec: string,
+  entry: { name: string; schema: string; fields: string[] },
+  register: Record<string, SchemaDeviation>
+): { omitted: string[]; message: string } {
+  const omitted = schemaRequired(spec, entry.schema).filter((f) => !entry.fields.includes(f));
+  const registered = Object.keys(register[entry.name]?.missingInPortal ?? {});
+  return { omitted, message: requiredOmissionMessage(entry, omitted, registered) };
+}
+
+/**
+ * The register side of the same rule: the `missingInPortal` entries of `entry` that name
+ * a field its schema REQUIRES. Independent of `checkRequired` on purpose (it reads the
+ * register, not the portal type), so a regression that lets the register excuse a
+ * required field inside the check is still red here, marker or no marker.
+ */
+function registeredRequired(
+  spec: string,
+  entry: { name: string; schema: string },
+  register: Record<string, SchemaDeviation>
+): string[] {
+  const required = schemaRequired(spec, entry.schema);
+  return Object.keys(register[entry.name]?.missingInPortal ?? {}).filter((f) => required.includes(f));
+}
+
+/** The failure text. Names the interface, the schema and every omitted field (AC1). */
+function requiredOmissionMessage(
+  entry: { name: string; schema: string },
+  omitted: string[],
+  registered: string[]
+): string {
+  const excused = omitted.filter((f) => registered.includes(f));
+  return (
+    `${entry.schema} requires ${omitted.join(", ")}, which ${entry.name} does not carry — a body ` +
+    `without a required field is a 400 from the api. ` +
+    (excused.length > 0
+      ? `qa/contract-deviations.ts registers ${excused.join(", ")} as missingInPortal, which is an ` +
+        `allowance for an OPTIONAL field and does not excuse a required one.`
+      : `Carry the field, or get the api to stop requiring it.`)
+  );
 }
 
 /**
@@ -307,17 +360,19 @@ for (const entry of interfaces) {
  * `requestSchemas`). What it does NOT prove, stated:
  *   ✗ that a field declared on the type is actually put on the body at runtime, or
  *     declared non-optional — it reads names, like the rest of this file;
- *   ✗ anything about a request the portal builds from an UNTAGGED type. The editor's
- *     `RoutineDayEntry` rides inside `CoachRoutineDraftRequest.trainingDays` with no
- *     `@wire` tag, so the nested half of BUG-195 is invisible here; the top-level half
- *     is enough to hold the case red.
+ *   ✗ a body the portal builds from an UNTAGGED type. At the TOP level this is bounded:
+ *     every `/coach-portal` requestBody root must have an `@wire` interface or a written
+ *     exemption (`UNTAGGED_REQUEST_ROOTS`; one today, `CoachPublishRequest`, sent inline
+ *     as `{ digest }`). NESTED types are not bounded: the editor's `RoutineDayEntry` rides
+ *     inside `CoachRoutineDraftRequest.trainingDays` with no tag, so the nested half of
+ *     BUG-195 is invisible here; the top-level half is enough to hold the case red.
  *
- * NO SERVER-RESOLVED ALLOWANCE, deliberately. ADR-0018 D3 has the server overwrite four
- * subject-owned fields (`goal`, `level`, `constraints.equipment`,
- * `constraints.injuries`), but under its chosen shape (D1, option 1-D) the portal still
- * SENDS them — the whole `Routine` is `@Valid`, and `Routine.goal` / `.level` are
- * `@NotBlank` on b-fit-api main, so an omitted one is a 400 however the server would
- * have resolved it. An allowance here would be a green line about a request the api
+ * NO SERVER-RESOLVED ALLOWANCE, deliberately. The authority is the api, not a design
+ * record: on b-fit-api main `Routine.goal` / `.level` are `@NotBlank` and
+ * `weeklyProgression` / `constraints` are `@NotNull`, and the spec lists all of them as
+ * `required`, so an omitted one is a 400 however the server might later resolve it.
+ * (ADR-0018 D3, still PROPOSED, would have the server overwrite four subject-owned
+ * fields, but under its option 1-D the portal still SENDS them.) An allowance here would be a green line about a request the api
  * refuses, which is the defect this block exists to end. If the api ever stops
  * requiring one of them, the spec stops listing it as `required` and this check follows
  * the spec — nothing to register.
@@ -334,11 +389,38 @@ const KNOWN_REQUIRED_OMISSIONS: Record<string, string> = {
 };
 
 /**
- * How many `@wire` interfaces face a schema the api can receive. Pinned for the same
- * reason as `SCHEMAS_EXPECTED`: a `requestSchemas` that silently stopped matching would
- * make every case below vanish and the suite pass by checking nothing.
+ * The `@wire` interfaces that face a schema the api can receive, BY NAME. Pinned for the
+ * same reason as `SCHEMAS_EXPECTED`, and by name rather than count so that losing one
+ * interface and gaining another is not a silent swap.
  */
-const REQUEST_FACING_EXPECTED = 16;
+const REQUEST_FACING_EXPECTED = [
+  "CoachApplySwapRequest",
+  "CoachApplyWeekRequest",
+  "CoachProgressGoalRequest",
+  "CoachRecipeIngredientRequest",
+  "CoachRecipeSaveRequest",
+  "CoachRoutineDraftRequest",
+  "CoachTargetsRequest",
+  "CoachTemplateApplyRequest",
+  "CoachTemplateFromRoutineRequest",
+  "CoachTemplateRenameRequest",
+  "CoachTemplateSaveRequest",
+  "ProgressionRule",
+  "Routine",
+  "RoutineConstraints",
+  "RoutineExercise",
+  "RoutineTrainingDay",
+];
+
+/**
+ * `/coach-portal` requestBody roots the portal sends WITHOUT an `@wire` interface, each
+ * with why. Anything else there must be tagged, or the required-field check never sees
+ * it. The comparison is exact, so an entry that gains a tag goes stale and red.
+ */
+const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
+  CoachPublishRequest:
+    "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
+};
 
 const receivable = requestSchemas(spec);
 const requestFacing = interfaces.filter((entry) => receivable.has(entry.schema));
@@ -347,7 +429,7 @@ test("every interface the api receives is checked for required fields", () => {
   expect(
     requestFacing.map((e) => e.name).sort(),
     "the set of @wire interfaces facing a request schema changed — or requestSchemas() stopped matching"
-  ).toHaveLength(REQUEST_FACING_EXPECTED);
+  ).toEqual(REQUEST_FACING_EXPECTED);
   for (const name of Object.keys(KNOWN_REQUIRED_OMISSIONS)) {
     expect(
       requestFacing.some((e) => e.name === name),
@@ -356,33 +438,38 @@ test("every interface the api receives is checked for required fields", () => {
   }
 });
 
-/** The failure text. Names the interface, the schema and every omitted field (AC1). */
-function requiredOmissionMessage(
-  entry: { name: string; schema: string },
-  omitted: string[],
-  registered: string[]
-): string {
-  const excused = omitted.filter((f) => registered.includes(f));
-  return (
-    `${entry.schema} requires ${omitted.join(", ")}, which ${entry.name} does not carry — a body ` +
-    `without a required field is a 400 from the api. ` +
-    (excused.length > 0
-      ? `qa/contract-deviations.ts registers ${excused.join(", ")} as missingInPortal, which is an ` +
-        `allowance for an OPTIONAL field and does not excuse a required one.`
-      : `Carry the field, or get the api to stop requiring it.`)
-  );
-}
+test("every /coach-portal request body is a tagged interface, or a written exemption", () => {
+  const tagged = new Set(interfaces.map((e) => e.schema));
+  const roots = requestRoots(spec).filter((r) => r.path.startsWith("/coach-portal/"));
+  expect(roots.length, "requestRoots() found no /coach-portal request bodies").toBeGreaterThan(0);
+  const untagged = [...new Set(roots.filter((r) => !tagged.has(r.schema)).map((r) => r.schema))].sort();
+  expect(
+    untagged,
+    "a /coach-portal request body has no @wire interface, so its required fields are never checked. Tag the type, or record why in UNTAGGED_REQUEST_ROOTS"
+  ).toEqual(Object.keys(UNTAGGED_REQUEST_ROOTS).sort());
+});
 
 for (const entry of requestFacing) {
-  const title = `${entry.name} carries every field ${entry.schema} requires`;
-  const body = () => {
-    const omitted = requiredOmissions(spec, entry);
-    const registered = Object.keys(DEVIATIONS[entry.name]?.missingInPortal ?? {});
-    expect(omitted, requiredOmissionMessage(entry, omitted, registered)).toEqual([]);
-  };
   const bug = KNOWN_REQUIRED_OMISSIONS[entry.name];
-  if (bug) test.fail(title, { annotation: { type: "issue", description: bug } }, body);
-  else test(title, body);
+  const known = (title: string, body: () => void) =>
+    bug ? test.fail(title, { annotation: { type: "issue", description: bug } }, body) : test(title, body);
+
+  known(`${entry.name} carries every field ${entry.schema} requires`, () => {
+    const { omitted, message } = checkRequired(spec, entry, DEVIATIONS);
+    expect(omitted, message).toEqual([]);
+  });
+
+  if (Object.keys(DEVIATIONS[entry.name]?.missingInPortal ?? {}).length > 0) {
+    known(`the register excuses no field ${entry.schema} requires, on ${entry.name}`, () => {
+      const excused = registeredRequired(spec, entry, DEVIATIONS);
+      expect(
+        excused,
+        `qa/contract-deviations.ts registers ${excused.join(", ")} on ${entry.name} as missingInPortal, but ${
+          entry.schema
+        } REQUIRES them. An allowance is for an optional field; a required one omitted is a 400.`
+      ).toEqual([]);
+    });
+  }
 }
 
 /**
@@ -406,20 +493,23 @@ test("the required-field check fires on a synthetic request schema, and only the
   expect([...requestSchemas(fakeSpec)].sort()).toEqual(["WidgetPart", "WidgetRequest"]);
   expect(schemaRequired(fakeSpec, "WidgetPart"), "block-spelled required: list").toEqual(["partId", "qty"]);
 
-  const found = Object.fromEntries(
+  // The SAME function the live cases call, handed the register that excuses `size`.
+  const results = Object.fromEntries(
     fakeClient
       .filter((e) => requestSchemas(fakeSpec).has(e.schema))
-      .map((e) => [e.name, requiredOmissions(fakeSpec, e)])
+      .map((e) => [e.name, checkRequired(fakeSpec, e, fakeRegister)])
   );
-  expect(found).toEqual({ WidgetRequest: ["size"], WidgetPart: ["qty"] });
+  expect(
+    Object.fromEntries(Object.entries(results).map(([k, r]) => [k, r.omitted])),
+    "a registered allowance must not remove a required field from the omissions; an optional one (colour) is never reported"
+  ).toEqual({ WidgetRequest: ["size"], WidgetPart: ["qty"] });
+  expect(results.WidgetRequest.message).toContain("WidgetRequest requires size");
+  expect(results.WidgetRequest.message).toContain("registers size as missingInPortal");
 
-  const message = requiredOmissionMessage(
-    { name: "WidgetRequest", schema: "WidgetRequest" },
-    found.WidgetRequest,
-    Object.keys(fakeRegister.WidgetRequest.missingInPortal ?? {})
-  );
-  expect(message).toContain("WidgetRequest requires size");
-  expect(message).toContain("registers size as missingInPortal");
+  // And the register-side rule sees the same allowance, and not the optional one.
+  const widget = fakeClient.find((e) => e.name === "WidgetRequest");
+  expect(widget).toBeDefined();
+  expect(registeredRequired(fakeSpec, widget!, fakeRegister)).toEqual(["size"]);
 });
 
 /*
