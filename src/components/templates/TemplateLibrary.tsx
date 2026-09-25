@@ -155,7 +155,13 @@ export function TemplateLibrary({
           />
         </Card>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
+        /*
+          BUG-243: `minmax(0, 1fr)`, not the implicit `auto` track. An auto track sizes to
+          its widest item's min-content, which for a `nowrap` title is the WHOLE title: a
+          66-character name pushed the page 62 px sideways at 320 px and clipped every
+          card. A 0 minimum lets the track follow the viewport and the title ellipsise.
+        */
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
           {library.templates.map((template) => (
             <TemplateRow
               key={template.id}
