@@ -35,6 +35,8 @@ const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
 
 const SEEDED_A = "Upper / Lower split";
 const SEEDED_B = "Legacy strength";
+/** BUG-243 — a realistic long name (66 characters), the kind senior-qa measured with. */
+const LONG_NAME = "Five-day upper/lower hypertrophy block for returning intermediates";
 
 /* ── AC sentences, verbatim, as literals ──────────────────────────────────── */
 const PRIVATE = "Templates are yours. No trainee ever sees them.";
@@ -388,6 +390,50 @@ test.describe("AC3 — a coach with no writable trainees is told so, not shown a
     await row(page, SEEDED_A).getByRole("button", { name: "Use on a trainee" }).click();
     await expect(page.getByText(NO_TRAINEES, { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Use this template" })).toBeDisabled();
+  });
+});
+
+/**
+ * BUG-243 — a realistic long template name widened the list's grid track to the
+ * UNWRAPPED title (the implicit `auto` track sizes to min-content, and the title is
+ * `nowrap`), so the library scrolled sideways at 320/360 and every card was clipped on
+ * its right edge. The seeded names are short, which is why the sweep above was green.
+ * The name is put there through Rename; the terminal describe below deletes it with
+ * everything else.
+ */
+test.describe("BUG-243 — a long template name", () => {
+  test("neither scrolls the library sideways nor clips a card, at 320 / 360 / 390 / 414", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/templates");
+    await row(page, SEEDED_B).getByRole("button", { name: "Rename" }).click();
+    await page.getByLabel("Template name").fill(LONG_NAME);
+    await page.getByRole("dialog").getByRole("button", { name: "Rename" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.reload();
+    await expect(row(page, LONG_NAME)).toBeVisible();
+
+    await atEachWidth(page, async (width) => {
+      await expectNoSidewaysScroll(page, "library with a long name");
+      // No card past the viewport: a clipped card is the same defect even where the
+      // document happens not to scroll. The card is the row group's parent.
+      const overhang = await page
+        .getByRole("group")
+        .evaluateAll((groups) =>
+          groups.map(
+            (g) =>
+              (g.parentElement ?? g).getBoundingClientRect().right -
+              document.documentElement.clientWidth
+          )
+        );
+      expect(overhang.length).toBeGreaterThan(0);
+      expect(Math.max(...overhang), `a card overhangs the viewport at ${width}px`).toBeLessThanOrEqual(0.5);
+      const long = row(page, LONG_NAME);
+      await expectUnoccluded(page, long.getByRole("button", { name: "Use on a trainee" }), {
+        label: "long-name row Use on a trainee",
+      });
+    });
   });
 });
 
