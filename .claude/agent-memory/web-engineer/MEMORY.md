@@ -36,3 +36,4 @@
 - [Recipe library (EV-256b)](recipe-library-portal-facts.md) — two 400 shapes (details.field vs field-leading message); a retired key is the only reachable unknown-ingredient
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
+- [Every fixture test starts from the seed](every-fixture-test-starts-from-the-seed.md) — EV-223: import test from qa/fixture-test.ts; seed cloned once per process; file-alone loop was green on main

@@ -24,9 +24,9 @@ fixture.
   `COACH_FIXTURE_SCENARIO=empty` only controls the roster.
 - Playwright runs in fixture mode with `workers: 1`. The fixture is one mutable in-memory
   store and the specs deliberately write to it (a draft must survive a reload), so
-  parallel workers produce ordering artefacts, not findings. Within a file use
-  `test.describe.configure({ mode: "serial" })` and put read-only assertions for a trainee
-  before anything that writes to that trainee.
+  parallel workers produce ordering artefacts, not findings. SUPERSEDED in part by
+  EV-223: the store is now reset to its seed before every test, so no test may rely on
+  an earlier one's writes. See [[every-fixture-test-starts-from-the-seed]].
 - The fixture's mutable state must live on `globalThis` — see
   [[next-module-state-duplicated-across-layers]].
 - Login works in fixture mode: `/api/auth/login` mints a local unsigned token when the
