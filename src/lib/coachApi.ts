@@ -1894,6 +1894,20 @@ export function isValidationError(err: unknown): boolean {
  *      missing", while `0.0` is a real delta of zero. A null `milestoneWeightKg` is no
  *      milestone at all.
  *
+ * ── EV-274b, against b-fit-api `18fbcab` (EV-274a, merged and deployed) ──────────
+ *
+ *   5. **`milestoneBodyFatPct` breaks rule 2, on purpose (EV-274 B4).** For that one
+ *      key: ABSENT → unchanged, `null` → cleared, a number → set. A portal tab loaded
+ *      before this field existed sends only the two old keys and cannot erase a body-fat
+ *      milestone it never displayed. So the key is OPTIONAL in the request type, and
+ *      `buildProgressGoalRequest` puts it on the body exactly when the coach has touched
+ *      the field — never "always", which would let a stale tab overwrite another tab's
+ *      value with the one it happened to load.
+ *   6. **`bodyFatToGoPts` is ABSENT, not null, when there is no body-fat reading**
+ *      (`@JsonInclude(NON_NULL)`, EV-274a AC4) — the only key on the block that is
+ *      omitted rather than null. Read it as `undefined`; `progressGoal.ts` checks
+ *      `typeof … === "number"` so a null from any other deployment reads the same.
+ *
  * 🔴 **G-GOAL (EV-202 Ruling 2) binds this surface too.** The milestone is a NARRATIVE
  * number: nothing generates from it, and nothing on this screen may imply that it
  * does. No projection, no progress bar toward it, no "at this rate", and it is never
@@ -1938,7 +1952,20 @@ export interface TraineeProgressGoal {
   startedOnSource: "COACH" | "SELF" | "LINK_DEFAULT";
   /** 🔴 G-GOAL — narrative. 25.00..300.00 kg on write; outside that, a 400 and no write. */
   milestoneWeightKg: number | null;
-  /** Null WITH a milestone present = "set by a coach who has left" (`ON DELETE SET NULL`). */
+  /**
+   * EV-274a. 🔴 G-GOAL — narrative, percentage points, 3.0..60.0 with one decimal on
+   * write. Null = none set.
+   *
+   * ⚠ Optional in the TYPE, always present on b-fit-api `18fbcab`: an api that predates
+   * EV-274a sends no such key, and absent must read as "no body-fat milestone", never as
+   * a crash in a server component's render (the 2026-09-16 lesson).
+   */
+  milestoneBodyFatPct?: number | null;
+  /**
+   * Null WITH a milestone present = "set by a coach who has left" (`ON DELETE SET NULL`).
+   * Since EV-274a it is resolved for a row carrying EITHER milestone: one PUT writes both,
+   * so they share one attribution.
+   */
   milestoneSetByName: string | null;
   milestoneSource: "COACH" | "SELF" | null;
   milestoneUpdatedAt: string | null;
@@ -1954,6 +1981,13 @@ export interface TraineeProgressGoal {
   bodyFatDeltaPts: number | null;
   /** 🔴 SIGNED: milestone − current. Positive is a bulk, negative a cut. */
   weightToGoKg: number | null;
+  /**
+   * EV-274a. 🔴 SIGNED like `weightToGoKg`: body-fat milestone − current body fat, in
+   * percentage POINTS (20.0 − 24.0 → −4.0). **ABSENT — not null, not 0 — unless there is
+   * both a body-fat milestone and a body-fat reading** (EV-274a AC4). Rendered only by
+   * `src/lib/progressGoal.ts`.
+   */
+  bodyFatToGoPts?: number;
 }
 
 /**
@@ -1966,10 +2000,11 @@ export interface TraineeProgressGoal {
  * constructs one, and `qa/coach-progress-goal.spec.ts` pins the key set in all four
  * branches AND drives the property end-to-end through the form.
  *
- * There is deliberately no field for a start weight, a current weight, a body fat, a
- * milestone body fat, a milestone waist or a milestone DATE: each was ruled out by
- * name in EV-202, and a request type with no field for a number is the only way "the
- * coach cannot type that number" survives the next refactor.
+ * There is deliberately no field for a start weight, a current weight, a body-fat
+ * READING, a milestone waist or a milestone DATE: each was ruled out by name in EV-202
+ * (and body fat stays the trainee's own measurement, EV-274 B1), and a request type with
+ * no field for a number is the only way "the coach cannot type that number" survives the
+ * next refactor. The body-fat MILESTONE is the one addition (EV-274, at Raed's ask).
  *
  * @wire CoachProgressGoalRequest
  */
@@ -1978,6 +2013,16 @@ export interface CoachProgressGoalRequest {
   startedOn: string | null;
   /** kg, or null to clear. Never clamped here — 25..300 is the api's refusal to make. */
   milestoneWeightKg: number | null;
+  /**
+   * EV-274a/b. Percentage points, 3.0..60.0 with at most one decimal.
+   *
+   * 🔴 **The one OPTIONAL key, and the optionality is the contract (EV-274 B4):** absent
+   * = UNCHANGED, `null` = CLEARED, a number = SET. `buildProgressGoalRequest` sends it
+   * exactly when the coach has touched the field since the last successful save. The
+   * range is checked in the browser too (EV-274b AC1, "no request is sent"), with the
+   * api's own bounds — the api still refuses with `COACH_MILESTONE_OUT_OF_RANGE`.
+   */
+  milestoneBodyFatPct?: number | null;
 }
 
 /**
@@ -2034,8 +2079,9 @@ const liveCoachApi = {
    * EV-202b — the ONE write this story adds, and the only non-GET mapping under
    * `/coach-portal/clients/{id}` outside the routine and nutrition tabs.
    *
-   * `body` is a whole representation: both fields are sent on every call, including
-   * the one the coach did not touch. See `CoachProgressGoalRequest`.
+   * `body` is a whole representation for the two EV-202 fields: both are sent on every
+   * call, including the one the coach did not touch. `milestoneBodyFatPct` is the
+   * exception — absent means unchanged (EV-274 B4). See `CoachProgressGoalRequest`.
    */
   setProgressGoal(id: string, body: CoachProgressGoalRequest): Promise<TraineeProgressGoal> {
     return apiFetch<TraineeProgressGoal>(`${client(id)}/progress-goal`, {

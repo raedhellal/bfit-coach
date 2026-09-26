@@ -21,6 +21,7 @@ import {
   seedFormState,
   startedOnLine,
   storedValues,
+  type ProgressGoalInputError,
 } from "@/lib/progressGoal";
 import { settled } from "@/lib/settled";
 import type { TraineeProgressGoal } from "@/lib/coachApi";
@@ -28,12 +29,13 @@ import type { TraineeProgressGoal } from "@/lib/coachApi";
 /**
  * EV-202b — where the trainee started, where they are, and where they are going.
  *
- * TWO fields and four derived numbers. AC2 asserts the absence of the other four
- * controls by counting: "the block contains exactly two form fields". That is a real
- * property of this component and not a convention — the coach types a start date and a
- * milestone, and start weight, current weight, start body fat and current body fat
- * come from the trainee's own rows (EV-202 Ruling 1). There is no third input, and
- * `CoachProgressGoalRequest` has no field one could be wired to.
+ * THREE fields and four derived numbers. EV-202 AC2 asserted the absence of the other
+ * four controls by counting "exactly two form fields"; EV-274b AC1 makes it three — the
+ * coach types a start date, a milestone weight and (EV-274) a milestone body fat — and
+ * the absence check for the four derived values is unchanged. Start weight, current
+ * weight, start body fat and current body fat come from the trainee's own rows (EV-202
+ * Ruling 1, EV-274 B1). There is no fourth input, and `CoachProgressGoalRequest` has no
+ * field one could be wired to.
  *
  * 🔴 **G-GOAL (Ruling 2) constrains the LAYOUT of this block, not just the api.** The
  * milestone must not look like an input to anything:
@@ -90,7 +92,7 @@ export function ProgressGoalBlock({
    * `reseedPreservingEdits` skips a field the coach has touched since the last save
    * was sent. `src/lib/progressGoal.ts` carries the measurement behind that rule.
    */
-  const signature = `${incoming.startedOn}|${incoming.startedOnSource}|${incoming.milestoneWeightKg}|${incoming.milestoneUpdatedAt}`;
+  const signature = `${incoming.startedOn}|${incoming.startedOnSource}|${incoming.milestoneWeightKg}|${incoming.milestoneBodyFatPct ?? null}|${incoming.milestoneUpdatedAt}`;
   const [propSignature, setPropSignature] = useState(signature);
   const [goal, setGoal] = useState(incoming);
   const [fields, setFields] = useState(() => seedFormState(incoming));
@@ -106,7 +108,7 @@ export function ProgressGoalBlock({
 
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invalid, setInvalid] = useState<"DATE" | "MILESTONE" | null>(null);
+  const [invalid, setInvalid] = useState<ProgressGoalInputError | null>(null);
   const [pending, startTransition] = useTransition();
 
   const name = firstName(traineeDisplayName);
@@ -130,14 +132,20 @@ export function ProgressGoalBlock({
 
   function save() {
     /**
-     * 🔴 ONE call site, and it passes the CONTENTS OF BOTH FIELDS — never "the one
-     * that changed". The PUT is a whole representation: a body carrying only the
-     * edited value clears the other, silently, and a cleared start date comes back as
-     * the link date, which renders as a plausible wrong date rather than as a blank.
-     * `buildProgressGoalRequest` is the only place a body is constructed and its
-     * return type makes both fields required.
+     * 🔴 ONE call site, and it passes the CONTENTS OF BOTH EV-202 FIELDS — never "the
+     * one that changed". The PUT is a whole representation for those two: a body
+     * carrying only the edited value clears the other, silently, and a cleared start
+     * date comes back as the link date, which renders as a plausible wrong date rather
+     * than as a blank. `buildProgressGoalRequest` is the only place a body is
+     * constructed and its return type makes both fields required.
+     *
+     * The body fat is passed WITH whether the coach touched it, because on that key the
+     * api reads absent as "unchanged" (EV-274 B4) and the builder decides the key.
      */
-    const built = buildProgressGoalRequest(fields.startedOn, fields.milestone);
+    const built = buildProgressGoalRequest(fields.startedOn, fields.milestone, {
+      text: fields.bodyFat,
+      touched: fields.bodyFatTouched,
+    });
     if (!built.ok) {
       // Rejected here; NO request is sent, which is why the sentence names what to do.
       setInvalid(built.reason);
@@ -200,6 +208,9 @@ export function ProgressGoalBlock({
         clientId,
         hasStartDate: body.startedOn !== null,
         hasMilestone: body.milestoneWeightKg !== null,
+        // The STORED value, as the api's own log line reports it: an untouched field
+        // sends no key, and the milestone it left in place is still a milestone.
+        hasBodyFatMilestone: (result.goal.milestoneBodyFatPct ?? null) !== null,
         changed,
       });
       /**
@@ -281,7 +292,7 @@ export function ProgressGoalBlock({
         </p>
       )}
 
-      {/* ── the edit form: exactly two fields (AC2 counts them) ──────────────── */}
+      {/* ── the edit form: exactly three fields (EV-274b AC1 counts them) ──────── */}
       <div
         style={{
           display: "flex",
@@ -332,6 +343,22 @@ export function ProgressGoalBlock({
             onChange={(e) =>
               setFields((current) => editField(current, "milestone", e.target.value))
             }
+          />
+        </div>
+        <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+          <Input
+            label={copy.progressGoal.bodyFatMilestoneLabel}
+            full
+            value={fields.bodyFat}
+            error={invalid === "BODY_FAT" ? copy.progressGoal.invalidBodyFat : undefined}
+            /**
+             * EV-274b AC1. TEXT, like the weight beside it, and range-checked in the
+             * browser by `parseBodyFatMilestone` with the api's own rule — not by
+             * `min`/`max`/`step`, which would have the browser quietly withhold the
+             * request instead of saying the story's sentence. The G-GOAL note under the
+             * weight field covers both numbers; for this one its witness is EV-274a AC7.
+             */
+            onChange={(e) => setFields((current) => editField(current, "bodyFat", e.target.value))}
           />
         </div>
       </div>
