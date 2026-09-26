@@ -1,4 +1,5 @@
 import { expect, test as base } from "@playwright/test";
+import { refuseParallelFixtureRun } from "./fixture-single-worker";
 
 /**
  * EV-223 — every fixture-mode test starts from the fixture's SEED.
@@ -25,9 +26,24 @@ import { expect, test as base } from "@playwright/test";
  * the reset's status check would pass on the login screen and the failure would only
  * surface one step later, as a JSON parse error on the seed check.
  */
-export const test = base.extend<{ fixtureAtSeed: void }>({
+export const test = base.extend<{ fixtureAtSeed: void }, { oneWorkerPerFixtureServer: void }>({
+  /**
+   * BUG-249 — the reset below wipes the WHOLE server's store, so it is only sound with one
+   * worker per fixture server. Both fixture configs already refuse a parallel run in their
+   * first `globalSetup` (`qa/fixture-single-worker.ts`); this worker-scoped auto fixture is
+   * the backstop for any config that imports this `test` without that setup. Worker
+   * fixtures are set up before test fixtures, so a parallel run fails HERE, naming the
+   * cause, before any reset is sent.
+   */
+  oneWorkerPerFixtureServer: [
+    async ({}, use, workerInfo) => {
+      refuseParallelFixtureRun(workerInfo.config);
+      await use();
+    },
+    { scope: "worker", auto: true },
+  ],
   fixtureAtSeed: [
-    async ({ playwright, baseURL }, use) => {
+    async ({ playwright, baseURL, oneWorkerPerFixtureServer: _ }, use) => {
       const api = await playwright.request.newContext({ baseURL });
       try {
         const login = await api.post("/api/auth/login", {
