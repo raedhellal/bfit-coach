@@ -470,6 +470,33 @@ test.describe("AC5 — Show suggestions", () => {
   });
 });
 
+test.describe("Edge case 4 — an eaten meal (the coach wire has no `eaten`)", () => {
+  test("the sheet opens normally; a recipe AND a suggestion are each answered by COACH_MEAL_EATEN inside the open sheet", async ({ page }) => {
+    const eaten = "Tess has already eaten this meal, so it can't be replaced.";
+    await signIn(page, C1);
+    await openNutrition(page, TESS);
+    const row = meal(page, "Tuesday Breakfast");
+    const target = await mealName(row);
+    const sheet = await openSheet(page, row);
+    await expect(recipeRows(sheet)).toHaveCount(6);
+
+    await sheet.getByRole("button", { name: "Choose Overnight oats", exact: true }).click();
+    await sheet.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(sheet.getByTestId("placement-refusal")).toHaveText(eaten);
+    await expect(recipeRows(sheet)).toHaveCount(6);
+
+    await suggestions(sheet).getByRole("button", { name: SHOW }).click();
+    await suggestions(sheet).locator("button[title]").first().click();
+    await expect(sheet.getByTestId("swap-refusal")).toHaveText(eaten);
+    await expect(sheet).toBeVisible();
+    // Still on the suggestions (two: a breakfast is never offered itself).
+    await expect(suggestions(sheet).locator("button[title]")).toHaveCount(2);
+    expect(await mealName(row)).toBe(target);
+    await page.reload();
+    expect(await mealName(meal(page, "Tuesday Breakfast")), "nothing was written").toBe(target);
+  });
+});
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * AC6 — a meal the trainee locked
  * ═══════════════════════════════════════════════════════════════════════════ */

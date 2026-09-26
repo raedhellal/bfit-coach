@@ -2736,6 +2736,9 @@ function seedNutrition(id: string): SeededNutrition {
       seeds: [0, 0, 0, 0, 0, 0, 0],
       floorCalories: 1200,
       dietProfile: { allergies: [], rules: [], dislikes: [] },
+      // EV-272 edge case 4: Tuesday breakfast she ATE. Invisible to the coach; the
+      // sheet opens normally and the api's 409 answers a recipe or a suggestion.
+      eaten: new Set([mealAt(tess, 1, "BREAKFAST").mealId]),
       pool: VEG_POOL,
       excludedKeys: VEGETARIAN_EXCLUDED_KEYS,
       excludedNameWords: VEGETARIAN_NAME_WORDS,
