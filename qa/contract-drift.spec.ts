@@ -284,7 +284,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 58;
+const SCHEMAS_EXPECTED = 59;
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -396,6 +396,7 @@ const KNOWN_REQUIRED_OMISSIONS: Record<string, string> = {
 const REQUEST_FACING_EXPECTED = [
   "CoachApplySwapRequest",
   "CoachApplyWeekRequest",
+  "CoachPlaceRecipeRequest",
   "CoachProgressGoalRequest",
   "CoachRecipeIngredientRequest",
   "CoachRecipeSaveRequest",

@@ -1468,7 +1468,32 @@ export interface PlannedMealView {
    * did not generate and cannot tell which parts of it are the trainee's.
    */
   locked: boolean;
+  /**
+   * EV-256c AC10 (ADR-0026 D26.9, b-fit-api `6a76d92`). Who wrote THIS meal's content:
+   * the meal engine, or a coach who put one of their recipes on it. Required on the
+   * wire; read defensively (`=== "COACH_RECIPE"`) so an older api that omits it renders
+   * no marker rather than a wrong one.
+   */
+  provenance: MealProvenance;
+  /**
+   * True exactly when the VIEWING coach placed this recipe ("Your recipe"). A
+   * `COACH_RECIPE` meal with this false is "Coach recipe": another coach placed it, or
+   * one whose account is gone. The api derives it from `set_by == principal` and serves
+   * the boolean only — no user id, and no name (story R4: the coach wire carries no
+   * `recipeByName`, because two coaches can share a display name).
+   */
+  placedByYou: boolean;
 }
+
+/**
+ * `PlannedMeal.provenance` — ADR-0026 D26.9, story R4's names.
+ *
+ * ⚠ There is NO `eaten` on the coach's meal, on purpose (EV-256 catch-up ruling: a
+ * trainee's food log is not the coach's to see before `D-CNS-1`). So the portal can
+ * never hide an action on an eaten meal; it offers it and renders the api's 409
+ * `COACH_MEAL_EATEN`. Do not add a client-side guess at "eaten".
+ */
+export type MealProvenance = "ENGINE" | "COACH_RECIPE";
 
 /**
  * `WeeklyMealPlan.PlannedDay`. `index` is 0–6 from the week start.
@@ -1535,6 +1560,15 @@ export interface CoachNutritionResponse {
    */
   currentWeekStart: string;
   dietProfile: TraineeDietProfile;
+  /**
+   * EV-256c AC15 (story R5). Whether "Use one of my recipes" exists at all. It is
+   * `false` in PRODUCTION until EV-256f is in the trainees' build (an older app shows a
+   * coach's recipe with the AI pill and a stock photo), and while it is false the
+   * placement POST is an unmapped 404. The portal HIDES the action — it does not
+   * disable it — and reads the value as `=== true`, so an api that predates the field
+   * fails closed.
+   */
+  recipePlacementEnabled: boolean;
 }
 
 /**
@@ -1609,6 +1643,16 @@ export interface SwapOptions {
  */
 export interface CoachApplySwapRequest {
   candidateIndex: number;
+}
+
+/**
+ * `POST …/nutrition/week/meals/{mealId}/recipe` — EV-256c. The only field: the trainee
+ * is the path's `{id}` and the meal its `{mealId}`.
+ *
+ * @wire CoachPlaceRecipeRequest
+ */
+export interface CoachPlaceRecipeRequest {
+  recipeId: string;
 }
 
 // ── error helpers ────────────────────────────────────────────────────────────
@@ -1759,6 +1803,63 @@ export function isRecipeNameTaken(err: unknown): boolean {
 export function isRecipeLimitReached(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_RECIPE_LIMIT_REACHED";
 }
+/* ── EV-256c's placement refusals (b-fit-api `6a76d92`), as EV-256e reads them ──
+ *
+ * The order the api checks them in, under the plan lock against the meal AS IT IS NOW:
+ * eaten / locked → typed allergy / KOSHER → a retired key → each ingredient and the
+ * NAME through the trainee's exclusions → the day floor. The portal decides none of
+ * them in advance: it has no `eaten`, no ingredient categories and no floor, and a
+ * refusal it guessed at would disagree with the server's.
+ */
+
+/**
+ * 409 — the trainee marked this meal eaten. On the placement route since EV-256c; on
+ * the coach's SWAP route only once BUG-245 merges (b-fit-api
+ * `fix/bug245-coach-swap-keeps-eaten`, unmerged at `105c25b`, not in the vendored
+ * spec). Matched by CODE on any route, so the swap handles it the day it arrives.
+ */
+export function isMealEaten(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_MEAL_EATEN";
+}
+/** 409 — the trainee locked this meal. Same two routes and the same caveat as above. */
+export function isMealLocked(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_MEAL_LOCKED";
+}
+/**
+ * 422 — an ingredient or the recipe's NAME conflicts with the trainee's rules.
+ * `details` is `{field: "ingredient", value: <label>}` or exactly `{field: "name"}`;
+ * it never names the rule or the category.
+ */
+export function isRecipeExcluded(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_RECIPE_EXCLUDED";
+}
+/** 422 — the trainee has a typed allergy the system cannot check a recipe against. */
+export function isRecipeAllergiesUncheckable(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_RECIPE_ALLERGIES_UNCHECKABLE";
+}
+/** 422 — `{rule: "KOSHER"}`: meat-and-dairy combinations cannot be checked yet. */
+export function isRecipeRuleUncheckable(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_RECIPE_RULE_UNCHECKABLE";
+}
+/** 400 — `{floorKcal, dayKcalBefore, dayKcalAfter}`: the day would go under the floor. */
+export function isRecipeBelowFloor(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_RECIPE_BELOW_FLOOR";
+}
+/**
+ * 404 `NUTRITION_NOT_FOUND` — no such meal for this trainee any more: a regeneration
+ * replaced it between the portal's read and the coach's confirm (edge case 6).
+ */
+export function isNutritionNotFound(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404 && err.code === "NUTRITION_NOT_FOUND";
+}
+/**
+ * 404 that is NOT `NUTRITION_NOT_FOUND` — the placement route is unmapped because the
+ * flag was switched off after the page loaded (edge case 14).
+ */
+export function isRouteNotFound(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404 && err.code !== "NUTRITION_NOT_FOUND";
+}
+
 /** 400 — any other bound. The field is in `details.field` OR leads `message`. */
 export function isValidationError(err: unknown): boolean {
   return err instanceof ApiError && err.code === "VALIDATION_ERROR";
@@ -2135,6 +2236,18 @@ const liveCoachApi = {
     const body: CoachApplySwapRequest = { candidateIndex };
     return apiFetch<MealWeekView>(
       `${client(id)}/nutrition/week/meals/${encodeURIComponent(mealId)}/swap`,
+      { method: "POST", body: JSON.stringify(body) }
+    );
+  },
+  /**
+   * EV-256c / EV-256e — put one of the coach's recipes on one meal. Answers the whole
+   * week. Registered by the api ONLY while `bfit.coach.recipes.placement.enabled` is
+   * true; the portal never calls it unless `recipePlacementEnabled` said so.
+   */
+  placeRecipe(id: string, mealId: string, recipeId: string): Promise<MealWeekView> {
+    const body: CoachPlaceRecipeRequest = { recipeId };
+    return apiFetch<MealWeekView>(
+      `${client(id)}/nutrition/week/meals/${encodeURIComponent(mealId)}/recipe`,
       { method: "POST", body: JSON.stringify(body) }
     );
   },

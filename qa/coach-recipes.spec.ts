@@ -6,12 +6,14 @@ import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout"
  * EV-256b — the coach's recipe library, in **fixture mode** (playwright.config.ts).
  *
  * The fixture ports b-fit-api `a3249bd`'s recipe rules from the Java (see the EV-256b
- * block in `src/lib/coachApi.fixture.ts`) and seeds three recipes:
+ * block in `src/lib/coachApi.fixture.ts`) and seeds five recipes:
  *   · "Chicken rice bowl" — EV-256a AC1's own example;
  *   · "Overnight oats";
  *   · "Quark pancakes" — holds `quark`, a key NOT in the vocabulary, standing for one the
  *     api retired after the recipe was saved. It is the only way a portal whose lines all
  *     come from search results can meet `COACH_RECIPE_UNKNOWN_INGREDIENT`.
+ *   · "Wine-braised lentils" and an 80-character traybake — added by EV-256e for the
+ *     placement refusals and the long-name layout (`coach-recipe-placement.spec.ts`).
  *
  * Every AC sentence is a LITERAL here, never imported from `copy.ts`.
  *
@@ -26,6 +28,9 @@ const PASSWORD = "Password123!";
 const BOWL = "Chicken rice bowl";
 const OATS = "Overnight oats";
 const QUARK = "Quark pancakes";
+/** EV-256e's two seeds. */
+const OVEN = "Oven-baked sweet potato and chickpea traybake with spinach, lemon and garlic oil";
+const WINE = "Wine-braised lentils";
 /** BUG-244 — a realistic long name (64 characters), the kind senior-qa measured with. */
 const LONG_NAME = "Slow-roasted chicken thighs with lemon, garlic and herbed quinoa";
 const QUARK_ID = "8e3f1b22-0000-4000-8000-0000000000c3";
@@ -137,16 +142,16 @@ test.describe("AC1 — Recipes is in the nav, and the library lists the coach's 
     });
   });
 
-  test("rows are alphabetical with name, kcal, P/C/F and ingredient count, under '3 of 100 recipes'", async ({ page }) => {
+  test("rows are alphabetical with name, kcal, P/C/F and ingredient count, under '5 of 100 recipes'", async ({ page }) => {
     await signIn(page);
     const res = await page.goto("/recipes");
     expect(res?.status()).toBe(200);
 
-    await expect(page.getByText("3 of 100 recipes", { exact: true })).toBeVisible();
+    await expect(page.getByText("5 of 100 recipes", { exact: true })).toBeVisible();
     const order = await page
       .getByRole("group")
       .evaluateAll((groups) => groups.map((g) => g.getAttribute("aria-label") ?? ""));
-    expect(order).toEqual([BOWL, OATS, QUARK]);
+    expect(order).toEqual([BOWL, OVEN, OATS, QUARK, WINE]);
 
     const bowl = row(page, BOWL);
     await expect(bowl.getByText(BOWL, { exact: true })).toBeVisible();
@@ -265,7 +270,7 @@ test.describe("AC2 / AC3 — the editor: ingredients only from search results", 
     ]);
 
     await page.goto("/recipes");
-    await expect(page.getByText("4 of 100 recipes", { exact: true })).toBeVisible();
+    await expect(page.getByText("6 of 100 recipes", { exact: true })).toBeVisible();
     await expect(row(page, "Salmon quinoa").getByText("520 kcal · P 42 g · C 48 g · F 18 g")).toBeVisible();
   });
 });
@@ -527,6 +532,41 @@ test.describe("AC5 — delete (TERMINAL: empties the library)", () => {
     await expect(page.getByText(EMPTY, { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: NEW_RECIPE })).toBeVisible();
     await page.getByRole("button", { name: NEW_RECIPE }).click();
+    await page.waitForURL("/recipes/new");
+  });
+});
+
+/**
+ * EV-256e AC2's empty branch. The store is re-seeded before every test (EV-223), so this
+ * test EMPTIES the library itself, through the same Delete the coach uses, and asserts
+ * it is empty before it opens the picker — the empty state is this test's own write,
+ * not an earlier test's.
+ */
+test.describe("EV-256e AC2 — the picker with no recipes", () => {
+  test("says 'You have no recipes yet.' and links to /recipes/new", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/recipes");
+    const rows = page.getByRole("group");
+    await expect(rows).toHaveCount(5); // the seed
+    while ((await rows.count()) > 0) {
+      const before = await rows.count();
+      await rows.first().getByRole("button", { name: "Delete" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+      await expect(rows).toHaveCount(before - 1);
+    }
+    await expect(page.getByText(EMPTY, { exact: true })).toBeVisible();
+
+    // Dana: the flag is on and her meals are unlocked.
+    await page.goto("/clients/6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004/nutrition");
+    // Retried until the dialog answers: a click before hydration is a no-op.
+    const dialog = page.getByRole("dialog", { name: "Use one of my recipes" });
+    await expect(async () => {
+      await page.getByRole("button", { name: /^Use one of my recipes: / }).first().click();
+      await expect(dialog).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(dialog.getByText("You have no recipes yet.", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /^Choose / })).toHaveCount(0);
+    await dialog.getByRole("link", { name: NEW_RECIPE }).click();
     await page.waitForURL("/recipes/new");
   });
 });

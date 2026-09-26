@@ -476,21 +476,24 @@ export function Modal({
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(16,23,41,0.45)", backdropFilter: "blur(2px)" }} />
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ position: "relative", width: `min(${width}px, 100vw - 24px)`, maxWidth: "100%", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: "var(--surface)", borderRadius: "var(--r-2xl)", boxShadow: "var(--e-3)", border: "1px solid var(--border)", overflow: "hidden" }}>
         <div style={{ padding: "22px 24px 0", flexShrink: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
+          {/* EV-256e: at 320 px a title as wide as "Use one of my recipes" squeezed the
+              Close button to 39 px — a flex item shrinks by default. The title block is
+              the one that gives (min-width 0, it wraps); the icon and Close never do. */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+            <div style={{ display: "flex", gap: 13, alignItems: "center", minWidth: 0, flex: "1 1 auto" }}>
               {icon && (
-                <div style={{ width: 42, height: 42, borderRadius: "var(--r-md)", background: tone[0], display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: 42, height: 42, flexShrink: 0, borderRadius: "var(--r-md)", background: tone[0], display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <UiIcon name={icon} size={22} color={tone[1]} />
                 </div>
               )}
-              <div>
+              <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                 <div id={titleId} className="dt" style={{ fontWeight: 600, fontSize: 18, color: "var(--ink)", letterSpacing: -0.3 }}>{title}</div>
                 {sub && <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 3 }}>{sub}</div>}
               </div>
             </div>
             {/* EV-190c: was 32 px square — the smallest target in the portal, and the
                 one every modal puts in a corner. Both axes now meet the floor. */}
-            <button onClick={onClose} aria-label="Close" style={{ width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button onClick={onClose} aria-label="Close" style={{ width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, flexShrink: 0, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <UiIcon name="x" size={17} color="var(--ink-2)" />
             </button>
           </div>

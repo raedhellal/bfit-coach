@@ -202,6 +202,35 @@ const NOOR_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0013";
  */
 const INES_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0014";
 
+/**
+ * EV-256e — four trainees for the recipe-placement world, overview-only and
+ * NUTRITION-only (Petra's shape), because each refusal the api makes is decided by a
+ * fact about ONE trainee that no existing row could take on without breaking what it
+ * already demonstrates:
+ *
+ *   Vera  — the story's T-veg: a VEGETARIAN pattern the coach is NOT shown (the pattern
+ *           is `D-CNS-1`'s, not on the coach wire), no allergies, no rules. The happy
+ *           path, the ingredient refusal, and the week that carries every marker state:
+ *           a meal she LOCKED (no action), a meal she ATE (the action is offered and
+ *           the api answers 409 — the coach wire has no `eaten`), a recipe ANOTHER
+ *           coach placed ("Coach recipe"), and one THIS coach placed from a recipe since
+ *           deleted ("Your recipe", AC4).
+ *   Kofi  — T-kosher: KOSHER, no allergies. `COACH_RECIPE_RULE_UNCHECKABLE`.
+ *   Fay   — T-floor: female (floor 1200) with two low days, one that a recipe would
+ *           take UNDER the floor (refused) and one already under it that a recipe
+ *           RAISES (accepted: the rule refuses only a placement that lowers the day).
+ *   Pia   — placement switched OFF. See `PLACEMENT_OFF_IDS` for why a server-wide flag
+ *           is keyed to one trainee here, and why she carries a recipe placed before
+ *           the switch (edge case 14).
+ *
+ * The story's T-allergy is Lina (a typed allergy, "Peanuts") and its T-halal is Omar
+ * (HALAL, no allergies) — both already true of them.
+ */
+const VERA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0015";
+const KOFI_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0016";
+const FAY_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0017";
+const PIA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0018";
+
 /** Everything a fully-consented link shares — the shape every EV-183 fixture had. */
 const ALL_SCOPES: CoachAccessScope[] = ["WORKOUTS", "PROGRESS", "NUTRITION", "WEIGH_INS"];
 
@@ -464,6 +493,31 @@ const BASE_OVERVIEWS: Record<string, () => ClientOverview> = {
     weightSeries: null,
     redFlags: null,
   }),
+  // EV-256e's placement world — see the block above `VERA_ID`. NUTRITION only, like
+  // Petra: every other block is "not shared", and none of them is a zero.
+  ...Object.fromEntries(
+    (
+      [
+        [VERA_ID, "Vera G.", 18],
+        [KOFI_ID, "Kofi A.", 26],
+        [FAY_ID, "Fay R.", 11],
+        [PIA_ID, "Pia O.", 33],
+      ] as const
+    ).map(([id, name, days]) => [
+      id,
+      (): ClientOverview => ({
+        clientId: id,
+        traineeDisplayName: name,
+        since: isoInstant(days),
+        scopes: ["NUTRITION"],
+        adherenceThisWeek: null,
+        currentStreakDays: null,
+        lastSession: null,
+        weightSeries: null,
+        redFlags: null,
+      }),
+    ])
+  ),
   /**
    * EV-187b. Both live rules fired for one trainee — the page that has to render two
    * evidence shapes at once, and the roster row that reads "2 flags".
@@ -1231,7 +1285,7 @@ async function failWithDetails(
  */
 async function assertScope(id: string, required: CoachAccessScope): Promise<void> {
   const overview = OVERVIEWS[id];
-  if (state().revoked || !overview || !overview().scopes.includes(required)) {
+  if (state().revoked || (await linkEnded()) || !overview || !overview().scopes.includes(required)) {
     await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
   }
 }
@@ -1404,6 +1458,47 @@ function seedRecipes(): StoredRecipe[] {
         { key: "oats", quantity: 40, unit: "g" },
       ],
       steps: ["Blend everything.", "Cook in a hot pan."],
+    },
+    /**
+     * EV-256e. EV-256c AC4's own example: every ingredient is excluded by NO rule, and
+     * the NAME carries a word a HALAL trainee's rules refuse — so placing it for Omar is
+     * `COACH_RECIPE_EXCLUDED {field: "name"}`, and for Vera it is accepted.
+     */
+    {
+      id: "8e3f1b22-0000-4000-8000-0000000000c4",
+      name: "Wine-braised lentils",
+      kcal: 410,
+      proteinG: 24,
+      carbsG: 60,
+      fatG: 8,
+      ingredients: [
+        { key: "lentils", quantity: 90, unit: "g" },
+        { key: "onion", quantity: 1, unit: "piece" },
+        { key: "tomato_passata", quantity: 150, unit: "g" },
+      ],
+      steps: ["Soften the onion.", "Simmer the lentils in the passata."],
+    },
+    /**
+     * EV-256e — an 80-character name, the api's maximum, so the picker, the confirm and
+     * the "Your recipe" row are measured with the longest name a coach can save
+     * (BUG-243 / BUG-244 were both a long name pushing a row past a 320 px viewport).
+     */
+    {
+      id: "8e3f1b22-0000-4000-8000-0000000000c5",
+      name: "Oven-baked sweet potato and chickpea traybake with spinach, lemon and garlic oil",
+      kcal: 500,
+      proteinG: 18,
+      carbsG: 70,
+      fatG: 16,
+      ingredients: [
+        { key: "sweet_potato", quantity: 250, unit: "g" },
+        { key: "chickpeas", quantity: 120, unit: "g" },
+        { key: "spinach", quantity: 60, unit: "g" },
+        { key: "lemon", quantity: 1, unit: "piece" },
+        { key: "garlic", quantity: 2, unit: "piece" },
+        { key: "olive_oil", quantity: 10, unit: "ml" },
+      ],
+      steps: ["Roast the sweet potato and chickpeas.", "Wilt the spinach and dress with lemon."],
     },
   ];
 }
@@ -2162,15 +2257,40 @@ const MEAL_POOL: { slot: MealSlot; name: string; kcal: number; p: number; c: num
   { slot: "SNACK", name: "Chocolate whey shake", kcal: 220, p: 26, c: 18, f: 4 },
 ];
 
+/**
+ * EV-256e — Vera's pool. She is VEGETARIAN, and the engine would never serve her the
+ * chicken, tuna, beef, salmon or turkey in `MEAL_POOL`; a fixture week that did would
+ * make her the one trainee whose generated meals the exclusion rules had "missed".
+ */
+const VEG_POOL: typeof MEAL_POOL = [
+  { slot: "BREAKFAST", name: "Greek yogurt with berries and oats", kcal: 420, p: 32, c: 52, f: 9 },
+  { slot: "BREAKFAST", name: "Scrambled eggs with spinach and rye toast", kcal: 450, p: 30, c: 38, f: 18 },
+  { slot: "BREAKFAST", name: "Banana and whey porridge", kcal: 410, p: 29, c: 60, f: 7 },
+  { slot: "LUNCH", name: "Halloumi, quinoa and roasted vegetables", kcal: 610, p: 30, c: 58, f: 26 },
+  { slot: "LUNCH", name: "Chickpea and white bean salad", kcal: 540, p: 24, c: 70, f: 16 },
+  { slot: "LUNCH", name: "Tofu and brown rice bowl", kcal: 590, p: 30, c: 76, f: 17 },
+  { slot: "DINNER", name: "Lentil and vegetable stew with flatbread", kcal: 580, p: 30, c: 82, f: 13 },
+  { slot: "DINNER", name: "Spinach and ricotta wholewheat pasta", kcal: 620, p: 28, c: 84, f: 18 },
+  { slot: "DINNER", name: "Sweet potato and black bean chilli", kcal: 560, p: 22, c: 88, f: 12 },
+  { slot: "SNACK", name: "Cottage cheese with pineapple", kcal: 210, p: 22, c: 20, f: 4 },
+  { slot: "SNACK", name: "Apple and pumpkin seeds", kcal: 190, p: 6, c: 26, f: 8 },
+  { slot: "SNACK", name: "Chocolate whey shake", kcal: 220, p: 26, c: 18, f: 4 },
+];
+
 const SLOT_ORDER: MealSlot[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
 
 /**
  * Deterministic from (weekStart, dayIndex, seed): the same week renders the same meals
  * on every request, and "Regenerate day" moves the seed so the day visibly changes.
  */
-function buildDay(weekStart: string, index: number, seed: number): PlannedDayView {
+function buildDay(
+  weekStart: string,
+  index: number,
+  seed: number,
+  pool: typeof MEAL_POOL = MEAL_POOL
+): PlannedDayView {
   const meals: PlannedMealView[] = SLOT_ORDER.map((slot, slotIndex) => {
-    const options = MEAL_POOL.filter((m) => m.slot === slot);
+    const options = pool.filter((m) => m.slot === slot);
     // `index * 2`, not `index * 3`: there are exactly three options per slot, so a
     // multiple of three made every day of the week identical — a seven-day plan that
     // repeats one day is not a week, and it made "Regenerate day" impossible to see.
@@ -2186,6 +2306,10 @@ function buildDay(weekStart: string, index: number, seed: number): PlannedDayVie
       // Locking is the TRAINEE's act, in their own app: a generated meal is never
       // born locked, and nothing in this portal can set the flag.
       locked: false,
+      // EV-256c: every meal the engine writes is ENGINE, and "placed by you" is false
+      // for it by definition — only a recipe placement is attributed to a coach.
+      provenance: "ENGINE",
+      placedByYou: false,
     };
   });
   return {
@@ -2197,8 +2321,80 @@ function buildDay(weekStart: string, index: number, seed: number): PlannedDayVie
   };
 }
 
-function buildWeek(weekStart: string, seeds: number[]): MealWeekView {
-  return { weekStart, days: seeds.map((seed, i) => buildDay(weekStart, i, seed)) };
+function buildWeek(
+  weekStart: string,
+  seeds: number[],
+  pool: typeof MEAL_POOL = MEAL_POOL
+): MealWeekView {
+  return { weekStart, days: seeds.map((seed, i) => buildDay(weekStart, i, seed, pool)) };
+}
+
+/** Rewrite one slot on one day. Fixture seeding only. */
+function patchMeal(
+  week: MealWeekView,
+  dayIndex: number,
+  slot: MealSlot,
+  patch: Partial<Omit<PlannedMealView, "mealId" | "slot">>
+): MealWeekView {
+  return {
+    ...week,
+    days: week.days.map((day) =>
+      day.index === dayIndex
+        ? { ...day, meals: day.meals.map((m) => (m.slot === slot ? { ...m, ...patch } : m)) }
+        : day
+    ),
+  };
+}
+
+function mealAt(week: MealWeekView, dayIndex: number, slot: MealSlot): PlannedMealView {
+  const meal = week.days.find((d) => d.index === dayIndex)?.meals.find((m) => m.slot === slot);
+  if (!meal) throw new Error(`fixture: no ${slot} on day ${dayIndex}`);
+  return meal;
+}
+
+/**
+ * Fay's two low days, written out rather than drawn from a pool, because the floor
+ * cases need EXACT totals (EV-256c AC6; floor 1200 for a female profile):
+ *
+ *   Monday  300 + 450 + 400 + 90  = 1240. "Overnight oats" (390) on the 450 lunch →
+ *           1180: under 1200 AND lower than before → 400 COACH_RECIPE_BELOW_FLOOR.
+ *   Tuesday 200 + 300 + 300 + 100 =  900. "Overnight oats" (390) on the 300 lunch →
+ *            990: still under 1200 but HIGHER than before → accepted.
+ */
+function fayWeek(weekStart: string): MealWeekView {
+  const low: Record<number, [string, number, number, number, number][]> = {
+    0: [
+      ["Egg white omelette with tomato", 300, 26, 14, 14],
+      ["Tuna and white bean salad", 450, 38, 36, 16],
+      ["Cod with steamed greens", 400, 44, 20, 14],
+      ["Apple", 90, 0, 22, 0],
+    ],
+    1: [
+      ["Plain yogurt and berries", 200, 14, 24, 5],
+      ["Vegetable broth with lentils", 300, 18, 42, 5],
+      ["Grilled chicken and salad leaves", 300, 40, 8, 10],
+      ["Rice cakes", 100, 2, 22, 1],
+    ],
+  };
+  const week = buildWeek(weekStart, [0, 0, 0, 0, 0, 0, 0]);
+  return {
+    ...week,
+    days: week.days.map((day) => {
+      const meals = low[day.index];
+      if (!meals) return day;
+      return {
+        ...day,
+        meals: day.meals.map((m, i) => ({
+          ...m,
+          name: meals[i][0],
+          kcal: meals[i][1],
+          proteinG: meals[i][2],
+          carbsG: meals[i][3],
+          fatG: meals[i][4],
+        })),
+      };
+    }),
+  };
 }
 
 /** Mark one slot on one day as locked by the trainee. Fixture seeding only. */
@@ -2227,7 +2423,11 @@ function lock(week: MealWeekView, dayIndex: number, slot: MealSlot): MealWeekVie
  * in a smaller window. Flagged in the contract as an api question rather than assumed
  * to be free.
  */
-function carryLockedForward(previous: MealWeekView, next: MealWeekView): MealWeekView {
+function carryLockedForward(
+  previous: MealWeekView,
+  next: MealWeekView,
+  eaten: ReadonlySet<string> = new Set()
+): MealWeekView {
   return {
     ...next,
     days: next.days.map((day) => {
@@ -2236,7 +2436,12 @@ function carryLockedForward(previous: MealWeekView, next: MealWeekView): MealWee
       return {
         ...day,
         meals: day.meals.map((meal) => {
-          const kept = before.meals.find((m) => m.slot === meal.slot && m.locked);
+          // EV-256c AC14: an apply keeps the meals the trainee LOCKED and the ones they
+          // ATE (`WeeklyMealPlanService:1562`). A kept recipe meal stays COACH_RECIPE —
+          // the whole row is carried, provenance and all (AC13, AC16).
+          const kept = before.meals.find(
+            (m) => m.slot === meal.slot && (m.locked || eaten.has(m.mealId))
+          );
           return kept ?? meal;
         }),
       };
@@ -2252,10 +2457,180 @@ interface NutritionState {
   /** `NutritionService`'s floor for this trainee's profile sex: 1500 male / 1200 female. */
   floorCalories: number;
   dietProfile: TraineeDietProfile;
+  /**
+   * EV-256e — the trainee's "I ate this" marks, by meal id. HIDDEN: the coach's week
+   * carries no `eaten` (EV-256 catch-up ruling), so the fixture keeps the fact where the
+   * api keeps it — server-side — and it surfaces only as a 409.
+   */
+  eaten: Set<string>;
+  /** The meal pool this trainee's generated days are drawn from. */
+  pool: typeof MEAL_POOL;
+  /**
+   * What the trainee's rules exclude, as the api's `ExclusionGate` sees them — a
+   * FIXTURE SUBSET, not a port. The api decides with the vocabulary's categories
+   * (`ingredient-keys.csv`) and its display-name words; the portal decides nothing,
+   * and these two lists exist only so every refusal the portal must render is
+   * reachable. Neither is on the coach wire (the pattern is `D-CNS-1`'s).
+   */
+  excludedKeys: ReadonlySet<string>;
+  excludedNameWords: readonly string[];
 }
 
+/**
+ * The api's MEAT category from `ingredient-keys.csv` (a VEGETARIAN pattern excludes
+ * MEAT and FISH). Only the keys a seeded recipe can reach are listed.
+ */
+const VEGETARIAN_EXCLUDED_KEYS: ReadonlySet<string> = new Set([
+  "beef", "pork", "chicken", "turkey", "lamb", "veal", "duck", "bacon", "ham",
+  "chicken_breast", "lean_beef", "turkey_breast", "turkey_mince", "chicken_sausage",
+  "fish", "salmon", "tuna", "cod", "cod_fillet", "salmon_fillet", "shrimp", "prawn",
+]);
+/** Display-name words — the subset a seeded recipe name can reach. */
+const VEGETARIAN_NAME_WORDS = ["chicken", "beef", "pork", "fish", "tuna", "salmon"];
+const HALAL_EXCLUDED_KEYS: ReadonlySet<string> = new Set([
+  "pork", "bacon", "ham", "pork_sausage", "lard", "wine", "beer", "rum", "alcohol", "gelatin",
+]);
+const HALAL_NAME_WORDS = ["pork", "bacon", "ham", "wine", "beer", "rum"];
+
+/**
+ * EV-256e — the trainees for whom recipe placement is OFF.
+ *
+ * ⚠ A fixture affordance of the Omar kind, and not a claim about the api. The real
+ * flag (`bfit.coach.recipes.placement.enabled`) is SERVER-WIDE: one value for every
+ * trainee, `false` in production until EV-256f ships. Keying it to one trainee here is
+ * what lets one dev server — and one Playwright gate — reach both values of AC1, the
+ * rule that matters most in production, without a second server boot. Do not carry
+ * the per-trainee shape into the api.
+ */
+const PLACEMENT_OFF_IDS = new Set([PIA_ID]);
+
+/**
+ * EV-256e — two fixture-only switches a Playwright context can throw MID-SESSION, for
+ * the two things that change under an open picker on the real api:
+ *
+ *   `evoli_fixture_placement=off` — the server-wide flag was switched off after the page
+ *                                   loaded: the placement POST is 404 and the next read
+ *                                   serves `recipePlacementEnabled: false`.
+ *   `evoli_fixture_link=ended`    — the trainee revoked: every read and write about a
+ *                                   trainee is the guard's 403.
+ *
+ * A COOKIE, not process state, so the switch is scoped to the browser context that set
+ * it: the suite shares one dev server, and `revokeClient()`'s process-wide flag is
+ * exactly the terminal-for-everyone behaviour these tests must not have. Read only
+ * here, only in fixture mode; `live` never imports this file.
+ */
+async function fixtureSwitch(name: string): Promise<string | null> {
+  try {
+    const { cookies } = await import("next/headers");
+    return cookies().get(name)?.value ?? null;
+  } catch {
+    return null; // outside a request (nothing in the fixture calls it there)
+  }
+}
+async function placementOff(id: string): Promise<boolean> {
+  return PLACEMENT_OFF_IDS.has(id) || (await fixtureSwitch("evoli_fixture_placement")) === "off";
+}
+async function linkEnded(): Promise<boolean> {
+  return (await fixtureSwitch("evoli_fixture_link")) === "ended";
+}
+
+type SeededNutrition = Omit<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords"> &
+  Partial<Pick<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords">>;
+
+/**
+ * Every trainee's starting state, with the EV-256e fields defaulted: nothing eaten,
+ * the ordinary pool, and exclusions derived from the rules the coach CAN see (HALAL).
+ * A pattern the coach cannot see (Vera's VEGETARIAN) is passed explicitly.
+ */
 function initialNutrition(id: string): NutritionState {
+  const seeded = seedNutrition(id);
+  const halal = seeded.dietProfile.rules.includes("HALAL");
+  return {
+    ...seeded,
+    eaten: seeded.eaten ?? new Set(),
+    pool: seeded.pool ?? MEAL_POOL,
+    excludedKeys: seeded.excludedKeys ?? (halal ? HALAL_EXCLUDED_KEYS : new Set()),
+    excludedNameWords: seeded.excludedNameWords ?? (halal ? HALAL_NAME_WORDS : []),
+  };
+}
+
+function seedNutrition(id: string): SeededNutrition {
   const week = currentWeekStart();
+  if (id === VERA_ID) {
+    // Seeds chosen so the four marked meals sit on four different days.
+    let vera = buildWeek(week, [0, 0, 0, 0, 0, 0, 0], VEG_POOL);
+    vera = lock(vera, 0, "LUNCH"); // Monday lunch: SHE locked it → no action.
+    vera = patchMeal(vera, 2, "DINNER", {
+      // Wednesday dinner: placed by her PREVIOUS coach → "Coach recipe".
+      name: "Lentil bowl",
+      kcal: 520,
+      proteinG: 28,
+      carbsG: 72,
+      fatG: 12,
+      provenance: "COACH_RECIPE",
+      placedByYou: false,
+    });
+    vera = patchMeal(vera, 3, "LUNCH", {
+      // Thursday lunch: placed by THIS coach from a recipe since deleted → "Your
+      // recipe" (AC4: the marker survives the recipe; placement is a snapshot, D-f).
+      name: "Chickpea and feta salad",
+      kcal: 480,
+      proteinG: 22,
+      carbsG: 46,
+      fatG: 22,
+      provenance: "COACH_RECIPE",
+      placedByYou: true,
+    });
+    return {
+      targets: null,
+      week: vera,
+      seeds: [0, 0, 0, 0, 0, 0, 0],
+      floorCalories: 1200,
+      dietProfile: { allergies: [], rules: [], dislikes: [] },
+      // Tuesday breakfast: she marked it EATEN in her app. Invisible to the coach.
+      eaten: new Set([mealAt(vera, 1, "BREAKFAST").mealId]),
+      pool: VEG_POOL,
+      excludedKeys: VEGETARIAN_EXCLUDED_KEYS,
+      excludedNameWords: VEGETARIAN_NAME_WORDS,
+    };
+  }
+  if (id === KOFI_ID) {
+    return {
+      targets: null,
+      week: buildWeek(week, [1, 1, 1, 1, 1, 1, 1]),
+      seeds: [1, 1, 1, 1, 1, 1, 1],
+      floorCalories: 1500,
+      dietProfile: { allergies: [], rules: ["KOSHER"], dislikes: [] },
+    };
+  }
+  if (id === FAY_ID) {
+    return {
+      targets: null,
+      week: fayWeek(week),
+      seeds: [0, 0, 0, 0, 0, 0, 0],
+      floorCalories: 1200,
+      dietProfile: { allergies: [], rules: [], dislikes: [] },
+    };
+  }
+  if (id === PIA_ID) {
+    // Edge case 14: this coach placed a recipe BEFORE placement was switched off. The
+    // meal stays exactly as it is and keeps its marker; only new placements stop.
+    return {
+      targets: null,
+      week: patchMeal(buildWeek(week, [2, 2, 2, 2, 2, 2, 2]), 2, "LUNCH", {
+        name: "Chicken rice bowl",
+        kcal: 560,
+        proteinG: 50,
+        carbsG: 62,
+        fatG: 12,
+        provenance: "COACH_RECIPE",
+        placedByYou: true,
+      }),
+      seeds: [2, 2, 2, 2, 2, 2, 2],
+      floorCalories: 1200,
+      dietProfile: { allergies: [], rules: [], dislikes: [] },
+    };
+  }
   if (id === LINA_ID) {
     return {
       targets: {
@@ -2624,7 +2999,7 @@ export const fixtureCoachApi: CoachApi = {
 
   async getClient(id: string): Promise<ClientOverview> {
     const known = OVERVIEWS[id];
-    if (!known || state().revoked) {
+    if (!known || state().revoked || (await linkEnded())) {
       const { ApiError } = await import("./apiFetch");
       throw new ApiError(403, "Forbidden", "COACH_ACCESS_DENIED");
     }
@@ -3162,6 +3537,9 @@ export const fixtureCoachApi: CoachApi = {
       week: state.week,
       currentWeekStart: currentWeekStart(),
       dietProfile: state.dietProfile,
+      // ON for everyone but the placement-off world (see PLACEMENT_OFF_IDS) — the
+      // value the api's `local` profile and staging carry.
+      recipePlacementEnabled: !(await placementOff(id)),
     };
   },
 
@@ -3208,9 +3586,9 @@ export const fixtureCoachApi: CoachApi = {
     // AC3: applying twice REPLACES the week; it never accumulates.
     const previous = state.week;
     state.seeds = state.seeds.map(() => state.seeds[0] + 1);
-    const fresh = buildWeek(weekStart, state.seeds);
+    const fresh = buildWeek(weekStart, state.seeds, state.pool);
     // D6.7: "idempotent replace" is true of the row and false of the locked meals.
-    state.week = previous ? carryLockedForward(previous, fresh) : fresh;
+    state.week = previous ? carryLockedForward(previous, fresh, state.eaten) : fresh;
     return state.week;
   },
 
@@ -3220,7 +3598,14 @@ export const fixtureCoachApi: CoachApi = {
     if (!state.week) await fail(400, "COACH_WEEK_OUT_OF_RANGE", "No week");
     const week = state.week as MealWeekView;
     state.seeds = state.seeds.map((s, i) => (i === index ? s + 1 : s));
-    state.week = carryLockedForward(week, buildWeek(week.weekStart, state.seeds));
+    const regenerated = buildWeek(week.weekStart, state.seeds, state.pool);
+    // Only the regenerated day changes: every other day keeps its meals — ids, recipe
+    // meals and all — exactly as they were (the api regenerates ONE day).
+    const onlyThatDay: MealWeekView = {
+      ...regenerated,
+      days: regenerated.days.map((day, i) => (i === index ? day : week.days[i])),
+    };
+    state.week = carryLockedForward(week, onlyThatDay, state.eaten);
     return state.week;
   },
 
@@ -3229,7 +3614,7 @@ export const fixtureCoachApi: CoachApi = {
     const state = nutritionState(id);
     const meal = state.week?.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
     if (!meal) return { mealId, candidates: [] };
-    const candidates = MEAL_POOL.filter((m) => m.slot === meal.slot && m.name !== meal.name).map(
+    const candidates = state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name).map(
       (m, index) => ({
         index,
         name: m.name,
@@ -3250,7 +3635,16 @@ export const fixtureCoachApi: CoachApi = {
     const current = week as MealWeekView;
     const meal = current.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
     if (!meal) return current;
-    const options = MEAL_POOL.filter((m) => m.slot === meal.slot && m.name !== meal.name);
+    /**
+     * BUG-245 (EV-256e AC7): what the trainee owns is refused and nothing is written —
+     * eaten first, then locked. ⚠ This is the api AFTER BUG-245, which is NOT merged
+     * (b-fit-api `fix/bug245-coach-swap-keeps-eaten` at `105c25b`); `6a76d92`'s coach
+     * swap still overwrites an eaten meal and replaces a locked one. The portal handles
+     * the two codes by name on any route, so it is correct against both.
+     */
+    if (state.eaten.has(mealId)) await fail(409, "COACH_MEAL_EATEN", "Meal already eaten");
+    if (meal.locked) await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    const options = state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name);
     const chosen = options[candidateIndex];
     if (!chosen) return current;
     state.week = {
@@ -3266,6 +3660,106 @@ export const fixtureCoachApi: CoachApi = {
                 proteinG: chosen.p,
                 carbsG: chosen.c,
                 fatG: chosen.f,
+                // The new meal is the engine's (BUG-245 / EV-256c AC13): a swap away from
+                // a recipe clears its provenance and its "placed by you".
+                provenance: "ENGINE",
+                placedByYou: false,
+              }
+            : m
+        ),
+      })),
+    };
+    return state.week;
+  },
+
+  /**
+   * EV-256c — `POST …/nutrition/week/meals/{mealId}/recipe`, in the api's order.
+   *
+   *   0. The route does not EXIST while the flag is off: 404 `NOT_FOUND`, before the
+   *      guard, like any unmapped path.
+   *   1. The link guard (403), then the recipe must be the coach's own (403, ONE body
+   *      for foreign, deleted and never-existed), then the meal must be this trainee's
+   *      (404 `NUTRITION_NOT_FOUND` — including one a regeneration replaced).
+   *   2. What the trainee owns: eaten (409), then locked (409).
+   *   3. What the system cannot check: a typed allergy, then KOSHER (422).
+   *   4. A key retired since the recipe was saved (400, EV-256a's code, ADR-0026 A3).
+   *   5. Each ingredient, then the NAME, through the exclusions (422, no rule named).
+   *   6. The day floor: refused only if the day ends under it AND lower than before.
+   *
+   * The write keeps the meal's id, slot and day, and touches no other meal.
+   */
+  async placeRecipe(id: string, mealId: string, recipeId: string): Promise<MealWeekView> {
+    if (await placementOff(id)) await fail(404, "NOT_FOUND", "Not found");
+    await assertScope(id, "NUTRITION");
+    const recipe = await ownedRecipe(recipeId);
+    const state = nutritionState(id);
+    const week = state.week;
+    const day = week?.days.find((d) => d.meals.some((m) => m.mealId === mealId));
+    const meal = day?.meals.find((m) => m.mealId === mealId);
+    if (!week || !day || !meal) {
+      await fail(404, "NUTRITION_NOT_FOUND", "No such meal");
+      throw new Error("unreachable");
+    }
+
+    if (state.eaten.has(mealId)) await fail(409, "COACH_MEAL_EATEN", "Meal already eaten");
+    if (meal.locked) await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+
+    if (state.dietProfile.allergies.some((a) => a.trim() !== "")) {
+      await fail(422, "COACH_RECIPE_ALLERGIES_UNCHECKABLE", "Allergies cannot be checked");
+    }
+    if (state.dietProfile.rules.includes("KOSHER")) {
+      await failWithDetails(422, "COACH_RECIPE_RULE_UNCHECKABLE", "Rule cannot be checked", {
+        rule: "KOSHER",
+      });
+    }
+
+    const retired = recipe.ingredients.findIndex((line) => !VOCABULARY_SET.has(line.key));
+    if (retired !== -1) {
+      await failWithDetails(400, "COACH_RECIPE_UNKNOWN_INGREDIENT", "Unknown ingredient", {
+        key: recipe.ingredients[retired].key,
+        field: `ingredients[${retired}].key`,
+      });
+    }
+
+    for (const line of recipe.ingredients) {
+      if (state.excludedKeys.has(line.key)) {
+        await failWithDetails(422, "COACH_RECIPE_EXCLUDED", "Excluded", {
+          field: "ingredient",
+          value: ingredientLabel(line.key),
+        });
+      }
+    }
+    const lowered = recipe.name.toLowerCase();
+    if (state.excludedNameWords.some((word) => lowered.includes(word))) {
+      await failWithDetails(422, "COACH_RECIPE_EXCLUDED", "Excluded", { field: "name" });
+    }
+
+    const dayKcalBefore = day.meals.reduce((sum, m) => sum + m.kcal, 0);
+    const dayKcalAfter = dayKcalBefore - meal.kcal + recipe.kcal;
+    if (dayKcalAfter < state.floorCalories && dayKcalAfter < dayKcalBefore) {
+      await failWithDetails(400, "COACH_RECIPE_BELOW_FLOOR", "Below the floor", {
+        floorKcal: state.floorCalories,
+        dayKcalBefore,
+        dayKcalAfter,
+      });
+    }
+
+    state.week = {
+      ...week,
+      days: week.days.map((d) => ({
+        ...d,
+        meals: d.meals.map((m) =>
+          m.mealId === mealId
+            ? {
+                ...m,
+                name: recipe.name,
+                kcal: recipe.kcal,
+                proteinG: recipe.proteinG,
+                carbsG: recipe.carbsG,
+                fatG: recipe.fatG,
+                locked: false,
+                provenance: "COACH_RECIPE",
+                placedByYou: true,
               }
             : m
         ),

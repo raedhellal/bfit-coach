@@ -925,6 +925,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
         - name: month
           in: query
           required: false
@@ -991,6 +992,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
         - name: month
           in: query
           required: true
@@ -1076,6 +1078,8 @@ paths:
       summary: Current week progression adjustment
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
       responses:
         "200":
           description: Progression adjustment
@@ -1107,6 +1111,8 @@ paths:
       summary: Recompute current week progression adjustment
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
       responses:
         "200":
           description: Progression adjustment
@@ -1132,7 +1138,11 @@ paths:
       description: >-
         Also served at `/me/workouts/complete`. A client-sent `date` may not be in the future
         (EV-248): see `X-Timezone` for the bound. Past dates are accepted. With no `date` the
-        session is dated the server's (UTC) today, as before.
+        session is filed under the day it started in the `X-Timezone` zone (completion time minus
+        `durationSeconds`), never more than one day before the day it ended; UTC when the header is
+        absent or unresolvable (EV-250 / ADR-0025). The completion time recorded is always the
+        moment of the request. A re-post of the same workout filed on the same day updates that
+        session rather than adding one.
       security:
         - bearerAuth: []
       parameters:
@@ -1533,6 +1543,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
         - name: workoutId
           in: query
           required: true
@@ -1906,6 +1917,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
         - name: weekStart
           in: query
           required: false
@@ -4487,6 +4499,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/nutrition/week/meals/{mealId}/recipe:
+    post:
+      summary: Put one of the coach's recipes on one meal of the trainee's week
+      description: >-
+        EV-256c (ADR-0026 D26.4, D26.5). The meal keeps its id, slot, position and day; its content
+        becomes a COPY of the recipe (editing or deleting the recipe later changes nothing already
+        placed), with provenance COACH_RECIPE, no image, unlocked and uneaten. Every other meal in
+        the week is untouched. Checked under the plan lock against the meal as it is now, in this
+        order: an eaten or trainee-locked meal is refused; a trainee with any typed allergy, or the
+        KOSHER rule, is refused (the system cannot check either against a recipe yet); a key
+        retired from the vocabulary since the recipe was saved is refused; every ingredient and the
+        recipe's NAME go through the trainee's exclusions exactly as a generated meal's do (the
+        steps are not checked); a placement that would take the day under the calorie floor (1500
+        kcal for a male profile, 1200 otherwise) AND lower it is refused. No model call, no credit,
+        no regeneration spent. REGISTERED ONLY while bfit.coach.recipes.placement.enabled is true;
+        otherwise this path is a 404 NOT_FOUND like any unmapped one, and GET
+        /coach-portal/clients/{id}/nutrition carries recipePlacementEnabled false.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: mealId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachPlaceRecipeRequest"
+      responses:
+        "200":
+          description: The week, with the recipe on that meal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachMealWeek"
+        "400":
+          description: >-
+            VALIDATION_ERROR (no recipeId); COACH_RECIPE_BELOW_FLOOR, details {floorKcal,
+            dayKcalBefore, dayKcalAfter}; COACH_RECIPE_UNKNOWN_INGREDIENT, details {key, field},
+            when the recipe holds a key retired since it was saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            COACH_ACCESS_DENIED. See GET /coach-portal/clients/{id}/nutrition for the link; or a
+            recipe that is another coach's, deleted, or never existed (one body for all three)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            NUTRITION_NOT_FOUND: no such meal for this trainee (including another trainee's meal,
+            and one a regeneration replaced since the portal loaded). NOT_FOUND: placement is off
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_MEAL_EATEN; COACH_MEAL_LOCKED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: >-
+            COACH_RECIPE_EXCLUDED, details {field: ingredient, value: <label>} or exactly {field:
+            name}, never a rule or category; COACH_RECIPE_ALLERGIES_UNCHECKABLE, no details;
+            COACH_RECIPE_RULE_UNCHECKABLE, details {rule: KOSHER}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /me/my-coach:
     get:
       summary: The trainee's current coach, or null
@@ -4660,16 +4763,19 @@ components:
       in: header
       required: false
       description: >-
-        IANA time zone of the caller's device. On the completion routes it is used ONLY to bound a
-        client-sent `date` (EV-248 / BUG-225), and is not read at all when no `date` is sent. The
-        bound applies both to `date` and to the day the session is recorded as ending (`date` 00:00
-        UTC + `durationSeconds`, for a date other than the server's today). Present and resolvable:
-        either one after the caller's local today is rejected with 400 `COMPLETION_DATE_IN_FUTURE`.
-        Absent, blank or unresolvable: either one after the server's (UTC) today + 1 day is
-        rejected — NOT the strict UTC today the
-        other routes fall back to, because no zone is more than 14 hours ahead of UTC and a strict
-        UTC bound would refuse genuine sessions logged after local midnight east of UTC. With no
-        `date` in the body the header changes nothing.
+        IANA time zone of the caller's device. On the completion routes it does two things.
+        (1) With no `date` in the body it FILES the session (EV-250 / ADR-0025): under the day the
+        session started in this zone (completion time minus `durationSeconds`), never more than one
+        day before the day it ended; this is the zone `GET /me/today-workout` uses to choose the
+        workout, so the two agree. Absent, blank or unresolvable: UTC. (2) It BOUNDS the day
+        (EV-248 / BUG-225): the filed day, and for a client-sent `date` also the day the session is
+        recorded as ending (`date` 00:00 UTC + `durationSeconds`, for a date other than the
+        server's today). Present and resolvable: a day after the caller's local today is rejected
+        with 400 `COMPLETION_DATE_IN_FUTURE`. Absent, blank or unresolvable: a day after the
+        server's (UTC) today + 1 day is rejected — NOT the strict UTC today the other routes fall
+        back to, because no zone is more than 14 hours ahead of UTC and a strict UTC bound would
+        refuse genuine sessions logged after local midnight east of UTC. A dateless completion is
+        never refused by this bound.
       schema:
         type: string
         example: Europe/Paris
@@ -5660,7 +5766,20 @@ components:
             The TRAINEE locked this meal (by swapping it). An apply reuses the plan row and carries
             locked meals forward, so without this flag the confirm dialog's promise — "meals the
             trainee has locked are kept" — is unverifiable on the screen that follows it.
-      required: [mealId, slot, name, kcal, proteinG, carbsG, fatG, locked]
+        provenance:
+          type: string
+          enum: [ENGINE, COACH_RECIPE]
+          description: >-
+            EV-256c AC10 (ADR-0026 D26.9). Who wrote THIS meal's content. ENGINE = the meal engine;
+            COACH_RECIPE = a coach placed one of their recipes on it.
+        placedByYou:
+          type: boolean
+          description: >-
+            EV-256c AC10 (story R4). True exactly when the VIEWING coach placed this recipe
+            ("Your recipe"); a COACH_RECIPE meal with this false is "Coach recipe" (another coach, or
+            an erased one). Always false on an ENGINE meal. Derived server-side; no user id is
+            served.
+      required: [mealId, slot, name, kcal, proteinG, carbsG, fatG, locked, provenance, placedByYou]
     CoachTraineeDietProfile:
       type: object
       description: >-
@@ -5707,7 +5826,13 @@ components:
           description: The Monday the SERVER considers current. The portal never computes its own.
         dietProfile:
           $ref: "#/components/schemas/CoachTraineeDietProfile"
-      required: [clientId, currentWeekStart, dietProfile]
+        recipePlacementEnabled:
+          type: boolean
+          description: >-
+            EV-256c AC15 (story R5). Whether "Use one of my recipes" is available. False while
+            bfit.coach.recipes.placement.enabled is off; the portal hides the action and the
+            placement POST answers 404.
+      required: [clientId, currentWeekStart, dietProfile, recipePlacementEnabled]
     CoachApplyWeekRequest:
       type: object
       properties:
@@ -5763,6 +5888,15 @@ components:
         fatG:
           type: integer
       required: [index, name, kcal, proteinG, carbsG, fatG]
+    CoachPlaceRecipeRequest:
+      type: object
+      description: EV-256c. The only field; the trainee is the path's id and the meal its mealId.
+      properties:
+        recipeId:
+          type: string
+          format: uuid
+          description: One of the calling coach's own recipes.
+      required: [recipeId]
     CoachApplySwapRequest:
       type: object
       properties:
@@ -7547,7 +7681,8 @@ components:
           format: date
           nullable: true
           description: >-
-            The day the workout happened. Omitted: the server's (UTC) today. May be in the past; may
+            The day the workout happened. Omitted: the day the session started in the `X-Timezone`
+            zone (UTC without one), never more than one day before the day it ended. May be in the past; may
             not be in the future (EV-248, 400 `COMPLETION_DATE_IN_FUTURE`; see the `X-Timezone`
             parameter for the exact bound). For a date other than the server's today the session is
             recorded as ending at `date` 00:00 UTC + `durationSeconds`, and that end may not fall in
@@ -9036,6 +9171,20 @@ components:
           description: A locked meal is carried forward by a day regeneration and by a coach re-apply.
         eaten:
           type: boolean
+        provenance:
+          type: string
+          enum: [ENGINE, COACH_RECIPE]
+          description: >-
+            EV-256c AC10 (ADR-0026 D26.9). Who wrote THIS meal. Beside the week's `source`, never
+            instead of it: `source` says which engine; this says whether an engine wrote this meal
+            at all. EV-256f draws the AI pill per meal from it.
+        recipeByName:
+          type: string
+          nullable: true
+          description: >-
+            EV-256c AC10. Only on a COACH_RECIPE meal, with the week-level setByName's three states:
+            the key is ABSENT on an ENGINE meal; null once the coach who placed it has been erased;
+            otherwise the coach's display name (kept after the link is revoked).
       required:
         - id
         - slot
@@ -9049,6 +9198,7 @@ components:
         - prepSteps
         - locked
         - eaten
+        - provenance
     WeeklyPlanIngredient:
       type: object
       properties:
