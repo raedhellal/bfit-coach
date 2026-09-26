@@ -50,6 +50,11 @@ npm run dev                    # http://localhost:3300
 scope-filtered nulls need rows. Both are gates — there is no CI here, so this table is
 the checklist.
 
+**One worker per fixture server, enforced.** Every fixture test resets the server's whole
+in-memory store first (EV-223), so both fixture suites refuse `--workers` above 1 before any
+test runs (`qa/fixture-single-worker.ts`, BUG-249). To go faster, run more servers
+(`--shard`, one job each), not more workers.
+
 **Demo on `npm run dev`, not `npm run start`.** A production build served over plain
 http on the LAN sets `Secure` cookies (`NODE_ENV=production`), the browser drops them,
 and sign-in fails silently — the form posts, the api answers 200, and the coach lands
