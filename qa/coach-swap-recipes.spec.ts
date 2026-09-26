@@ -77,7 +77,8 @@ const SWAP_NONE = "No swap options are available for this meal.";
 const applyWarning1 = (first: string) =>
   `This replaces up to 1 meal placed from coach recipes. Meals ${first} has eaten are kept.`;
 
-test.describe.configure({ mode: "serial" });
+// NOT serial: every test starts from the seed (./fixture-test), so one red test must
+// not hide the others behind "did not run".
 
 async function signIn(page: Page, email: string) {
   await page.goto("/login");
