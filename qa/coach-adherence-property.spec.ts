@@ -1752,7 +1752,103 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * EV-217 — **RECORDS.** RECORDS_PLACEHOLDER
+ * EV-217 — **RECORDS.** Runs of 2026-09-26 (a Saturday, UTC) on branch
+ * `test/ev217-settled-instant-and-320`, base `25d939d`, at `8a2d3f3` (the sampling and
+ * the banner, before this block was written), in `next dev` fixture mode: this file on
+ * :3641, the default suite on :3642. These are what was measured then. They are history,
+ * not part of the banner above. Counts are per section: geometry is EV-210b AC3 (6 tests),
+ * C3 is EV-210b AC4 (5), paint is EV-214..EV-217 (7: four worlds, the table test, the
+ * EV-217 AC4 test, the EV-218 test), text is EV-251 / EV-253 / EV-259 (10). The file has 28
+ * tests. "At `25d939d`" is the same construction under that commit's spec.
+ *
+ * PROBE: an uncommitted Playwright harness. Each world loaded afresh per sample: 1280 px
+ * read on load, 1280 px read 9.5 s after the block was visible, 320 px read on load. Each
+ * week row scrolled into view, a VIEWPORT screenshot (never full-page) clipped to the row
+ * grown 24 px on every side, decoded in a canvas on a separate blank page, and the
+ * fraction of the row's width within L1 < 90 of `rgb(79, 124, 255)` read on every css-px
+ * scanline from 6 px above the row to 6 px below it. "Inside" is the row's own scanlines
+ * 1 .. h − 2. `document.getAnimations()` and `prefers-reduced-motion` read at each sample.
+ *
+ *   · **Control, clean code, Ines / Lina / Tobias / Noor.** The current row reads 0.000 at
+ *     all three samples, and computes `background-image: none`. An honest full bar reads
+ *     0.833 at 1280 px and 0.284 at 320 px (the track is narrower there). No animation in
+ *     the document at any sample. Reduced motion not emulated.
+ *   · **Clean code, this change:** file **28 passed**; paint **7 passed**. Default suite
+ *     **360 passed, exit 0** (3.9 m). `25d939d` lists 359; the one added is the AC4 test.
+ *
+ * Renderer constructions, each in an uncommitted `AdherenceSeries.tsx`, on the CURRENT
+ * week's `li` only, with `--adh-r` set inline to `done / plannedSoFar × 100 %` (Lina 150 %,
+ * Ines `Infinity%`, Tobias and Noor 0 % on a Saturday). The CSS is a `<style>` rendered
+ * through `dangerouslySetInnerHTML` as a SIBLING of the card, so its text is outside every
+ * limb's root. `G` below is `linear-gradient(90deg, var(--blue-500) var(--adh-r),
+ * transparent 0)`.
+ *
+ *   · **M-Q1, the time witness:** `@keyframes qaMq1 { to { background-image: G } }` and
+ *     `animation: qaMq1 1ms 8s forwards`. PROBE: Lina's current row, beside "3 / 4
+ *     sessions", **0.000 on load, 0.926 → 1.000 inside at +9.5 s** (computed
+ *     `linear-gradient(90deg, rgb(79, 124, 255) 150%, …)`), **0.000 at 320 px on load**.
+ *     Ines computes `none` at all three. Tobias and Noor compute a 0 % gradient at +9.5 s
+ *     and paint nothing visible. **At `25d939d`: file 27 passed.** Here: **paint 3 failed**
+ *     (Lina, Tobias, Noor), three offences, each `<li> … [background-image on its own
+ *     box]`, and every red names **only** the sample `settled (7935..8018 ms after the
+ *     on-load read; … @keyframes qaMq1 on <li>), at 1280 px`. Geometry, C3 and text all
+ *     passed. **Default suite: 3 failed / 357 passed**, those three.
+ *   · **M-Q5, the width witness:** `@media (max-width: 520px) { background-image: G }`.
+ *     PROBE: Lina's current row **0.000 at 1280 px on load and at +9.5 s, 0.684 → 1.000
+ *     inside at 320 px** beside "3 / 4 sessions". **At `25d939d`: file 27 passed.** Here:
+ *     **paint 3 failed** (Lina, Tobias, Noor), each naming **only** `on load, at 320 px`.
+ *     Geometry, C3 and text all passed. **Default suite: 3 failed / 357 passed**, those
+ *     three.
+ *   · **M-Q1 driven from an ANCESTOR.** `*:has(> ul.qa-anc) { animation: qaAnc 1ms 8s forwards }`
+ *     with `@keyframes qaAnc { to { --adh-on: 1 } }` (unregistered), and the row spending
+ *     `linear-gradient(90deg, var(--blue-500) calc(var(--adh-on) * var(--adh-r)),
+ *     transparent 0)`. Until the ancestor sets it, `--adh-on` is unset, so the row's
+ *     declaration is invalid at computed-value time and computes `none`. Nothing on the
+ *     list or under it animates. PROBE: Lina 0.000 on load, **0.926 → 1.000 at +9.5 s**,
+ *     0.000 at 320 px; the animation's target is a `<div>`, the list's parent. Here:
+ *     **paint 3 failed**, named `settled (…; @keyframes qaAnc on <div>), at 1280 px`.
+ *   · **A paint only WHILE an animation runs:** `@keyframes qaMq1n { from, to {
+ *     background-image: G } }`, `animation: qaMq1n 2s 8s` (no fill). PROBE: Lina 0.000 on
+ *     load, **0.926 → 1.000 at ≈ +10.0 s**, 0.000 and computed `none` at ≈ +12 s. Here:
+ *     **file 28 passed.** Visible to neither sample: the settled read is taken after it
+ *     ends. Disclosed in the banner; no row.
+ *   · **An animation that never ends:** `animation: qaInf 1s infinite`, painting `G` in
+ *     its second half. Here: **paint 5 failed.** All four worlds on "does not end within
+ *     20000 ms", Ines on that alone; Lina, Tobias and Noor also on the on-load sample,
+ *     whose read fell in a painting half, and the AC4 test for the same reason. This shows
+ *     the unsettleable branch fires. It is not an attribution witness.
+ *
+ * CHECK mutants: one EV-217 design choice reverted in the spec, with the construction it
+ * exists for planted. This file only.
+ *
+ *   · **Settled sample removed** + M-Q1: **file 28 passed.** **320 px sample removed** +
+ *     M-Q5: **file 28 passed.** So each witness gets through without its own sample.
+ *   · **320 px sample removed** + M-Q1: paint 3 failed, settled only. **Settled sample
+ *     removed** + M-Q5: paint 3 failed, 320 px only. So neither witness is caught by the
+ *     other's sample.
+ *   · **The derived wait replaced by the margin alone** (250 ms), the finished-check kept,
+ *     + M-Q1: paint **4 failed**, each on "has still not finished" (Ines included). The
+ *     same with the finished-check also removed: **file 28 passed.** So a fixed short wait
+ *     lets M-Q1 through, and the finished-check is what turns a wait that is too short into
+ *     a red build rather than an early read.
+ *   · **Ancestors dropped from the animation scope** (the list and under it only) + the
+ *     ancestor construction: **file 28 passed.** So the ancestor half of the scope is what
+ *     sees it.
+ *   · **`reducedMotion: "reduce"` emulated**, clean code: paint 4 failed, each on the
+ *     reduced-motion assertion.
+ *   · **The pointer park removed**, clean code: file 28 passed. The sign-in click does not
+ *     leave the pointer over the list today, so the park has no witness of its own. It is
+ *     kept so the at-rest assertion does not depend on where the login button is.
+ *     **The current row hovered before the first read**, clean code: paint 4 failed, each
+ *     on the at-rest assertion.
+ *   · **`background-color` added to `PAINT_CHANNELS`** (ratchet raised to 20), clean code:
+ *     paint **5 failed**, the AC4 test among them, and the four worlds at all three samples.
+ *
+ * **Runtime.** Two runs each on clean code, same server, this file: the paint section's
+ * tests summed **2.5 / 2.6 s** under `25d939d`'s spec (6 tests) and **5.5 / 5.9 s** here (7;
+ * the AC4 test is ≈ 0.7 s of it); the file **15.7 / 17.6 s** against **18.0 / 19.1 s**. So
+ * ≈ 0.6 s per world: the 250 ms margin and a second navigation at 320 px. A page with a
+ * declared animation pays its remaining time as well (M-Q1: ≈ 8 s per world).
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
