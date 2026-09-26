@@ -56,8 +56,10 @@ test.describe("EV-224 CI workflow", () => {
   });
 
   test("AC3 — references no secret, no token, no URL and no seeded credential", () => {
-    expect(text).not.toMatch(/secrets\s*[.[]/i);
-    expect(text).not.toMatch(/github\.token|GITHUB_TOKEN/);
+    // Executed lines only for the context names: Actions expressions are case-insensitive,
+    // and the header comment says "NO SECRETS." in prose.
+    expect(code).not.toMatch(/secrets\s*[.[]/i);
+    expect(code).not.toMatch(/github\.token|GITHUB_TOKEN/i);
     expect(text).not.toMatch(/https?:\/\//);
     expect(text).not.toMatch(/API_BASE_URL|COACH_API_MODE\s*:\s*live/);
     expect(text).not.toMatch(/Password123|@evoli\.fit/);
