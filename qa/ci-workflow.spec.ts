@@ -149,6 +149,14 @@ test.describe("EV-224 CI workflow", () => {
 
   test("EV-235 boundary — exactly one excluded test, the one that needs the private b-fit-api", () => {
     expect(code.match(/--grep-invert/g)).toHaveLength(1);
+
+    // AC1a: the comment block directly above the exclusion names the row that removes it.
+    const all = text.split("\n");
+    const at = all.findIndex((l) => l.includes("--grep-invert"));
+    let first = at;
+    while (first > 0 && /^\s*#/.test(all[first - 1])) first--;
+    expect(first, "no comment directly above the --grep-invert line").toBeLessThan(at);
+    expect(all.slice(first, at).join("\n")).toContain("EV-235");
     expect(code.match(/--grep(?!-invert)|--test-ignore|--last-failed|--only-changed/g)).toBeNull();
 
     /**
