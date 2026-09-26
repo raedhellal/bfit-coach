@@ -8,7 +8,7 @@ metadata:
 EV-272 (`feat/ev272-swap-searches-my-recipes`, off b-fit-coach `ab14f02`) replaced
 EV-256e's "Use one of my recipes" button with a recipes-first Swap sheet
 (`components/nutrition/SwapSheet.tsx`; the recipe half is still in
-`RecipePickerDialog.tsx`, which keeps its name; pure rules in `lib/recipeSearch.ts`).
+`RecipePicker.tsx`, renamed from `RecipePickerDialog.tsx`; pure rules in `lib/recipeSearch.ts`).
 Flag off = the old sheet, same DOM (`SuggestionRow` is shared by both).
 
 - **An "exactly one request on open" AC cannot be met from a mount effect in `next dev`.**
@@ -31,9 +31,14 @@ Flag off = the old sheet, same DOM (`SuggestionRow` is shared by both).
 - **The sheet's mode is fixed when it opens** (`recipeSwap` vs `swapping`). Edge case 2
   refreshes the page under an open sheet. If the mode were read from the prop, the sheet
   would turn into the other sheet mid-choice.
-- **Placement MEAL_LOCKED is now unreachable from the UI.** A locked meal's sheet asks
-  nothing (AC6), so the 409 branch only fires if the trainee locks the meal after the
-  sheet opened. It is kept.
+- **COACH_MEAL_LOCKED is reachable only via a stale page when the flag is on**, and
+  directly when it is off. With the flag off, Swap on a locked meal still posts and the
+  api answers 409. With the flag on, the page's `locked` can be older than the trainee's
+  lock (EV-256 NOT-list 5). I first called it "unreachable" and rewrote its only test
+  into AC6. Staff's mutants S1/S2/S3/S9 then left the suite green. Keep a test on every
+  refusal branch that is still reachable. The fixture switch
+  `evoli_fixture_lock=<mealId>` makes a swap or placement 409 while the week still reads
+  the meal as unlocked.
 - The EV-256e specs were serial, so one red test hid 50 others as "did not run". The red
   run used a throwaway copy with serial lifted. The new spec is not serial.
 

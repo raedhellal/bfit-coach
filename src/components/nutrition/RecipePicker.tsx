@@ -8,9 +8,8 @@ import type { CoachRecipeSummary } from "@/lib/coachApi";
 
 /**
  * EV-256e's recipe picker — since EV-272 the RECIPE HALF of the Swap sheet
- * (`SwapSheet.tsx`), no longer a dialog of its own. The file keeps its name so the
- * history of the picker stays in one place; EV-272 R1 removed the separate "Use one of
- * my recipes" button that used to open it.
+ * (`SwapSheet.tsx`), no longer a dialog of its own (it was `RecipePickerDialog.tsx`;
+ * EV-272 R1 removed the separate "Use one of my recipes" button that opened it).
  *
  * Presentational: the sheet owns the library, the query and the choice, because the
  * query must survive the confirm's Cancel (EV-272 AC4) and a refusal (the sheet stays

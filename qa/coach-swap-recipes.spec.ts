@@ -497,6 +497,56 @@ test.describe("Edge case 4 — an eaten meal (the coach wire has no `eaten`)", (
   });
 });
 
+test.describe("A stale page — the trainee locked M after the coach's page loaded (EV-256 NOT-list 5)", () => {
+  test("flag on: a recipe AND a suggestion are each answered by COACH_MEAL_LOCKED inside the open sheet, the refusal scrolled into view at 320 px; week unchanged", async ({ page, context }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await signIn(page, C1);
+    await openNutrition(page, TESS);
+    const row = meal(page, M_ROW);
+    const mealId = (await row.getAttribute("data-meal-id")) as string;
+    // The page still shows M unlocked; the api's row is locked (fixture switch).
+    await context.addCookies([{ name: "evoli_fixture_lock", value: mealId, url: page.url() }]);
+    await expect(row.getByText("Kept", { exact: true })).toHaveCount(0);
+    const sheet = await openSheet(page, row);
+    await expect(recipeRows(sheet)).toHaveCount(6);
+
+    await sheet.getByRole("button", { name: "Choose Lentil bowl", exact: true }).click();
+    await sheet.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(sheet.getByTestId("placement-refusal")).toHaveText(lockedSentence("Tess"));
+    await expect(recipeRows(sheet)).toHaveCount(6);
+
+    await suggestions(sheet).getByRole("button", { name: SHOW }).click();
+    const last = suggestions(sheet).locator("button[title]").last();
+    await last.scrollIntoViewIfNeeded();
+    await last.click();
+    const refusal = sheet.getByTestId("swap-refusal");
+    await expect(refusal).toHaveText(lockedSentence("Tess"));
+    await expect(refusal, "the refusal is scrolled into view").toBeInViewport();
+    await expect(sheet).toBeVisible();
+    await expect(suggestions(sheet).locator("button[title]")).toHaveCount(3);
+    expect(await mealName(row)).toBe(M_NAME);
+    expect((await calls(page)).filter((c) => c.startsWith("POST ")).length, "both writes were asked").toBe(2);
+    await page.reload();
+    expect(await mealName(meal(page, M_ROW)), "nothing was written").toBe(M_NAME);
+  });
+});
+
+test.describe("AC5 — the suggestions read fails", () => {
+  test("a 500 on Show suggestions: today's swapNone in the Suggestions area, the sheet and the recipes stay", async ({ page, context }) => {
+    await signIn(page, C1);
+    await openNutrition(page, TESS);
+    await context.addCookies([{ name: "evoli_fixture_swap", value: "fail", url: page.url() }]);
+    const sheet = await openSheet(page, meal(page, M_ROW));
+    await expect(recipeRows(sheet)).toHaveCount(6);
+    await suggestions(sheet).getByRole("button", { name: SHOW }).click();
+    await expect(suggestions(sheet).getByText(SWAP_NONE, { exact: true })).toBeVisible();
+    await expect(sheet).toBeVisible();
+    await expect(recipeRows(sheet)).toHaveCount(6);
+    await expect(page.getByText("The meal could not be swapped.")).toHaveCount(0);
+    expect((await calls(page)).filter(isSwapRead)).toHaveLength(1);
+  });
+});
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * AC6 — a meal the trainee locked
  * ═══════════════════════════════════════════════════════════════════════════ */

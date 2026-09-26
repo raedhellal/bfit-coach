@@ -2658,6 +2658,15 @@ async function placementOff(id: string): Promise<boolean> {
 async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
 }
+/**
+ * EV-272 (staff review) — the STALE PAGE: `evoli_fixture_lock=<mealId>` means the
+ * trainee locked that meal after the coach's page loaded. The week read still shows it
+ * unlocked; the swap and placement writes answer 409 `COACH_MEAL_LOCKED`, as the api
+ * does against its own row. One browser context only.
+ */
+async function lockedSince(mealId: string): Promise<boolean> {
+  return (await fixtureSwitch("evoli_fixture_lock")) === mealId;
+}
 
 type SeededNutrition = Omit<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords"> &
   Partial<Pick<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords">>;
@@ -3798,6 +3807,10 @@ export const fixtureCoachApi: CoachApi = {
 
   async getSwapOptions(id: string, mealId: string): Promise<SwapOptions> {
     recordCall(`GET /coach-portal/clients/${id}/nutrition/week/meals/${mealId}/swap`);
+    // EV-272 (staff review) — the suggestions read fails (one browser context only).
+    if ((await fixtureSwitch("evoli_fixture_swap")) === "fail") {
+      await fail(500, "INTERNAL_ERROR", "Internal error");
+    }
     await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     const meal = state.week?.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
@@ -3832,7 +3845,9 @@ export const fixtureCoachApi: CoachApi = {
      * the two codes by name on any route, so it is correct against both.
      */
     if (state.eaten.has(mealId)) await fail(409, "COACH_MEAL_EATEN", "Meal already eaten");
-    if (meal.locked) await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    if (meal.locked || (await lockedSince(mealId))) {
+      await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    }
     const options = state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name);
     const chosen = options[candidateIndex];
     if (!chosen) return current;
@@ -3892,7 +3907,9 @@ export const fixtureCoachApi: CoachApi = {
     }
 
     if (state.eaten.has(mealId)) await fail(409, "COACH_MEAL_EATEN", "Meal already eaten");
-    if (meal.locked) await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    if (meal.locked || (await lockedSince(mealId))) {
+      await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    }
 
     if (state.dietProfile.allergies.some((a) => a.trim() !== "")) {
       await fail(422, "COACH_RECIPE_ALLERGIES_UNCHECKABLE", "Allergies cannot be checked");

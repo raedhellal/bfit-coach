@@ -490,6 +490,28 @@ test.describe("AC7 — the Swap refuses what the trainee owns", () => {
     expect(await mealName(row)).toBe(target);
   });
 
+  test("409 COACH_MEAL_LOCKED, flag OFF (production's path): the old sheet, the locked sentence, week unchanged", async ({ page, context }) => {
+    await signIn(page);
+    // The server-wide flag is off, as in production today (fixture switch, this context).
+    await context.addCookies([{ name: "evoli_fixture_placement", value: "off", url: page.url() }]);
+    await openNutrition(page, VERA);
+    const row = meal(page, "Monday Lunch");
+    await expect(row.getByText("Kept", { exact: true })).toBeVisible();
+    const target = await mealName(row);
+    const before = await weekNames(page);
+    const dialog = await openPicker(page, row);
+    // The flag-off sheet: suggestions at once, and a locked meal is still offered them.
+    await expect(dialog.getByLabel(SEARCH_LABEL)).toHaveCount(0);
+    await dialog.locator("button[title]").first().click();
+    await expect(dialog.getByTestId("swap-refusal")).toHaveText(locked("Vera"));
+    await expect(dialog).toBeVisible();
+    expect(await weekNames(page)).toEqual(before);
+    expect(await mealName(row)).toBe(target);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    expect(await weekNames(page), "nothing was written").toEqual(before);
+  });
+
   test("AC4: swapping a recipe meal away leaves an engine meal with no marker", async ({ page }) => {
     await signIn(page);
     await openNutrition(page, VERA);

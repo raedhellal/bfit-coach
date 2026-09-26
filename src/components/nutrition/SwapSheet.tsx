@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Button, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import {
@@ -8,7 +8,7 @@ import {
   refusalSentence,
   type LibraryState,
   type PlacementTarget,
-} from "@/components/nutrition/RecipePickerDialog";
+} from "@/components/nutrition/RecipePicker";
 import { copy } from "@/lib/copy";
 import { truncateName } from "@/lib/format";
 import {
@@ -136,6 +136,15 @@ export function SwapSheet({
   const [suggestions, setSuggestions] = useState<"loading" | SwapCandidate[] | null>(null);
   const [pending, startTransition] = useTransition();
   const headingId = useId();
+  /**
+   * The refusal sits at the TOP of the sheet's scrolling body; a coach who chose a
+   * suggestion at the bottom of a long list at 320 px would not see it. So it is
+   * scrolled into view whenever a new one appears (staff review, EV-272).
+   */
+  const refusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (refusal) refusalRef.current?.scrollIntoView({ block: "nearest" });
+  }, [refusal]);
 
   useEffect(() => {
     const read = target.library;
@@ -279,6 +288,7 @@ export function SwapSheet({
         <>
           {refusal && (
             <div
+              ref={refusalRef}
               role="alert"
               data-testid={refusal.from === "swap" ? "swap-refusal" : "placement-refusal"}
               style={{
