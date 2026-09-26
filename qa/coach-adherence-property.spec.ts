@@ -1585,6 +1585,13 @@ interface ListPaint {
    * each `li`, so a `ul::after` over the rows (`BUG-218`) was on a box nobody asked about.
    */
   outsideRows: RowElement[];
+  /**
+   * EV-217 â€” the interaction state the read was taken in: whether the pointer is over the
+   * list (`ul:hover`) and whether focus is inside it (`ul:focus-within`). The paint section
+   * asserts both false, so "read at rest" is a checked fact about each sample and not an
+   * assumption about where the last click left the mouse.
+   */
+  interaction: { hovered: boolean; focusWithin: boolean };
 }
 
 /**
@@ -1618,6 +1625,10 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
       return {
         lists: lists.length,
         rowsInBlock: blockEl.querySelectorAll("li").length,
+        interaction: {
+          hovered: list ? list.matches(":hover") : false,
+          focusWithin: list ? list.matches(":focus-within") : false,
+        },
         rows: rows.map((row) => ({
           // The date column is the row's first child. Read from its own element: the row's
           // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
@@ -1923,6 +1934,11 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / EV-217 / P-ADH C2 â€
     const read = await paintedElementsInList(block(page, ADHERENCE));
     const rows = read.rows;
     const at = `${world.name} [sample: ${sample}]`;
+    expect(
+      read.interaction,
+      `${at}: the list was read with the pointer over it or focus inside it. Every sample in this ` +
+        "section is read AT REST (EV-217 banner); a hovered or focused read is a different sample."
+    ).toEqual({ hovered: false, focusWithin: false });
     expectOneListHoldingEveryRow(`${at}, the paint limb`, read, rows.length, 1);
     // EV-253 â€” the list element itself is read, not only what hangs under it. It is the
     // first element outside every row by construction; this is what says so.
@@ -1986,6 +2002,9 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / EV-217 / P-ADH C2 â€
       page,
     }) => {
       await signIn(page);
+      // At rest: the pointer is parked at the viewport's top-left corner, off the list, so
+      // no sample is taken with a row hovered by wherever the sign-in click left it.
+      await page.mouse.move(0, 0);
       const defaultViewport = page.viewportSize();
       expect(defaultViewport, "the config sets no viewport, so the default-width sample has no width").not.toBeNull();
       const defaultWidth = `${defaultViewport!.width} px`;
