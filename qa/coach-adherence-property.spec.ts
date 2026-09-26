@@ -749,7 +749,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *
  * So this limb is **structural, not geometric**: for every element of the adherence list
  * (EV-253; until then, every element inside a week row), it
- * **READS**, once, at the default viewport, **one kind of thing — the computed channels
+ * **READS**, at the three samples the EV-217 banner lists (on load, settled, and at
+ * 320 px; until EV-217, once, on load, at the default viewport), **one kind of thing — the computed channels
  * enumerated in `PAINT_CHANNELS`** (EV-216): a CSS property on one of an element's boxes,
  * asserted equal to that property's initial value, with a red build naming the entry
  * that fired. **That table is the ONLY list of covered channels in this file, and it is
@@ -775,9 +776,11 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * and "the element's own background-image, on either channel" died TWICE on the computed
  * channel alone — to a gradient applied after an `animation` delay (`none` at t=0, a full
  * bar behind "2 / 4 sessions" at t=11s) and to one behind `@media (max-width: 520px)`,
- * which paints at the 320 px width `qa/layout.ts` sweeps this portal at. Both are
- * `senior-po` cards. A reader who needs to know whether a NEW mechanism is caught should
- * build it and run this limb, not reason from a sentence here.
+ * which paints at the 320 px width `qa/layout.ts` sweeps this portal at. Both were one
+ * card, EV-217, which added a read at a settled instant and a read at 320 px (see its
+ * banner for when the limb reads, and its records for what was run). A reader who needs
+ * to know whether a NEW mechanism is caught should build it and run this limb, not
+ * reason from a sentence here.
  *
  * 🔴 **A flat `background-color` is untouched as a SCOPE DECISION inherited from
  * EV-214 — NOT because a colour cannot draw a proportion.** It can, when the **box**
@@ -854,14 +857,16 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *
  *   🔴 And the two the gate found, on the COMPUTED channel of an element's OWN
  *     background-image — i.e. inside what this limb reads, not in any channel disclosed
- *     above. Both are `senior-po` cards:
- *   ✗ **a time-shifted paint.** `@keyframes` + `animation: … 1ms 8s forwards`, the ratio
+ *     above. Both were carded as **EV-217**, which is a change to WHEN this limb reads,
+ *     not to what it reads (see the EV-217 banner and records):
+ *   · **a time-shifted paint.** `@keyframes` + `animation: … 1ms 8s forwards`, the ratio
  *     in an inline custom property. Every computed `background-image` is `none` at t=0,
- *     so the EV-214 section is 4 passed; at t=11s Lina's figures span computes
- *     `linear-gradient(90deg, rgb(79, 124, 255) 100%, …)`. The limb samples one instant;
- *     carded as **EV-217**. What was tried: this is the element's OWN `background-image`
+ *     so the EV-214 section was 4 passed; at t=11s Lina's figures span computes
+ *     `linear-gradient(90deg, rgb(79, 124, 255) 100%, …)`. At the time the limb sampled
+ *     one instant. What was tried: this is the element's OWN `background-image`
  *     on a channel the limb does read, so neither the pseudo argument nor another entry
- *     in `PAINT_CHANNELS` moves it — only reading again at another instant does.
+ *     in `PAINT_CHANNELS` moves it — only reading again at another instant does, which is
+ *     EV-217's settled sample.
  *   · **a custom property declared on an ANCESTOR of the week rows and spent inside
  *     one** — `--adh-paint` on the `<ul>`, `background-image: var(--adh-paint)` inside a
  *     row. At EV-215: 3 failed, **Ines green** — the ancestor's attribute was never one
@@ -871,11 +876,12 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     Lina's row paints **0.92–1.00 beside "3 / 4 sessions"**, computed
  *     `linear-gradient(… 150% …)` — **3 failed, Ines GREEN**, because on her row the
  *     spent value holds `Infinity%` and computes to `none`.
- *   ✗ **a viewport-gated paint.** `@media (max-width: 520px)`. Green at the default
- *     viewport; at 320 px a full blue bar sits behind "2 / 4 sessions". The limb samples
- *     one viewport — and 320 px is the width this portal is swept at by name. Carded as
- *     **EV-217** with the one above: the same channel and the same reason, a SAMPLING
- *     gap rather than a channel gap, so widening the property list closes neither.
+ *   · **a viewport-gated paint.** `@media (max-width: 520px)`. Green at the default
+ *     viewport; at 320 px a full blue bar sits behind "2 / 4 sessions". At the time the
+ *     limb sampled one viewport, and 320 px is the width this portal is swept at by name.
+ *     Carded as **EV-217** with the one above: the same channel and the same reason, a
+ *     SAMPLING gap rather than a channel gap, so widening the property list closes
+ *     neither. EV-217's 320 px sample is the read added for it.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -924,9 +930,13 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *      records the pattern as redundant on the mutant it was written for and defeated
  *      by `calc(1 / 0 * 100%)`, and rules its removal a separate row.
  *
- * **WHEN, AND AT WHAT CONFIGURATION.** Once per world, immediately after the adherence
- * block becomes visible, at the config's default viewport, in `next dev` fixture mode.
- * One instant, one viewport, one page state.
+ * **WHEN, AND AT WHAT CONFIGURATION.** Three times per world, in `next dev` fixture mode,
+ * all at rest (pointer off the list, nothing focused in it, asserted): on load at the
+ * config's default viewport; at a settled instant derived from the page's own animations,
+ * same viewport; and on a fresh load at 320 px. One extra sample per condition, not a
+ * cross product. **The EV-217 banner is where the samples are defined, with what each
+ * does not cover; this paragraph does not repeat it.** (Until EV-217: once, on load, at
+ * the default viewport.)
  *
  * **CHANNELS AND MECHANISMS NOT READ, WITH WHAT WAS TRIED.** Each entry is a mechanism
  * or family this section does not read; **each entry states whether it was constructed
@@ -937,11 +947,12 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * written about this guard have now been falsified by the next person to try one.
  * Later rows append here; the entry shape is *mechanism — what was tried — owning row*.
  *
- *   · **A time-delayed paint** (`animation … 1ms 8s forwards`) and **a viewport-gated
- *     paint** (`@media (max-width: 520px)`, and 320 px is a width this portal is swept
- *     at by name). What was tried: both arrive on channels this section DOES read — the
- *     element's own `background-image` — so no further property reaches them. Only
- *     reading again, at another instant or another width, does. A **sampling** gap rather than a channel gap. → **EV-217**.
+ *   · **A paint at an instant, a width or an interaction state this section does not
+ *     sample.** Not a channel: a SAMPLING condition. What is sampled, and each condition
+ *     it leaves unread with what was tried there (a paint only while an animation runs,
+ *     constructed; a script-timed change, other widths and media conditions, not
+ *     constructed; `:hover` / `:focus`, `BUG-222`), is in the EV-217 banner. → **EV-217**
+ *     (AC3b owns hover and focus).
  *   · **A declaration the CSS parser discarded** — `Infinity%` / `NaN%` in any spelling,
  *     inline, in a custom property, on the row or on an ancestor. Not read: no
  *     declaration is, only computed values. What was tried: ADR-0024 M1 found no CSSOM
@@ -1005,7 +1016,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     nothing for it to overstate. 🔴 **Its value is methodological and it belongs to
  *     EV-217**: it is a THIRD implicit quantifier beside time and viewport — **the CLIP
  *     REGION a probe samples**. EV-217's AC has to say which region is sampled, the way
- *     it already has to say which instant and which width.
+ *     it already has to say which instant and which width; its banner does (this section
+ *     reads computed values per element, so it has no clip region; the probes do).
  *   · **`::selection` and `::backdrop`** were probed and do **not** paint — duds,
  *     recorded so that nobody spends a second afternoon on them.
  *
@@ -1650,6 +1662,98 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
     PAINT_CHANNELS
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-217 — **WHEN, AT WHAT WIDTH, AND IN WHAT STATE the P-ADH C2 limbs read the page.**
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-217-the-guard-samples-more-than-one-instant.md`
+ * (parent: `EV-210-adherence-never-overstates.md`, property **P-ADH**, consequence **C2**).
+ *
+ * Every assertion over a rendered page reads it at some instant, some width and some
+ * interaction state. A sentence that does not say which reads as "all", and means "the one
+ * the test happened to see". So this block says which, per limb. It changes WHEN the paint
+ * limb reads, not WHAT it reads: `PAINT_CHANNELS` and the list root are untouched.
+ *
+ * ── **THE PAINT LIMB** (the section below: `expectNoPaintInList`) ──────────────────────
+ *
+ * The whole predicate, per world, at **three samples**, each named in any red it produces:
+ *
+ *   1. **On load, at the config's default width** (1280 px, Desktop Chrome): right after
+ *      the adherence block is visible. The sample this limb always took.
+ *   2. **Settled, at the default width**, on the same page. `waitUntilSettled` derives the
+ *      wait from the page: `document.getAnimations()`, kept to animations and transitions
+ *      whose target is the list, an element under it, or an ANCESTOR of it; the longest
+ *      remaining `endTime − currentTime`, plus `SETTLE_MARGIN_MS`. Then it asserts every one
+ *      of them has finished. With nothing animating, the wait is the margin alone and the
+ *      read still happens. It asserts the runner does not emulate
+ *      `prefers-reduced-motion: reduce`, and it fails, rather than skips, an animation that
+ *      never ends or ends past `SETTLE_BUDGET_MS`.
+ *      📌 The story's AC1 names "the longest `animation-*` / `transition-*` duration + delay
+ *      among the elements read". This reads the same quantity from the animation objects
+ *      the engine built from those declarations, over a wider scope: an ancestor's
+ *      animation reaches the list through an inherited custom property, and a read of the
+ *      list's own declarations would not see it (records).
+ *   3. **On load, at 320 px**: a fresh navigation with the viewport at 320 px wide and the
+ *      default height, read right after the block is visible. 320 px is `qa/layout.ts`'s
+ *      `WIDTHS[0]`, imported, because it is the width this portal is already swept at by
+ *      name.
+ *
+ * **One extra sample per condition, not a cross product (AC5).** There is no "settled at
+ * 320 px" read. A construction that needs two conditions at once is a new row with a
+ * witness.
+ *
+ * **Interaction state: AT REST, one sample, on purpose.** The pointer is parked at (0, 0)
+ * before the first sample, and each sample asserts `ul:hover` and `ul:focus-within` are
+ * both false. No row is hovered and nothing is focused in any sample, so a paint that
+ * exists only under `:hover` or `:focus` is not read here (`BUG-222`, `senior-qa`'s
+ * witness; the hovered and focused samples are EV-217 AC3b, not built on this branch).
+ *
+ * **Clip region: none, because nothing here reads pixels.** Each read is
+ * `getComputedStyle` on each element of the list and on its three boxes, so a paint on a
+ * read channel is read wherever it lands on screen, inside the element's box or outside
+ * it. What is NOT read is a channel outside `PAINT_CHANNELS` (the EV-216 disclosure above,
+ * where `-webkit-box-reflect` is listed). The pixel probes in the records have a clip, and
+ * each one states it.
+ *
+ * **Other media conditions: the runner's defaults, one sample each.** Colour scheme,
+ * reduced motion (asserted `no-preference` in sample 2), pointer and hover capability,
+ * print, and every width other than the two above are read at whatever the config gives.
+ * Nothing was constructed against them. That is what this reads, not a claim about them.
+ *
+ * **What the settled sample does not wait for.** A change made by SCRIPT later (a timer, a
+ * fetch, a state update) declares no animation, so nothing here can derive its instant;
+ * none was constructed. And a paint that exists only WHILE an animation runs and is gone
+ * when it ends (`animation-fill-mode: none`) is visible to neither sample: constructed,
+ * painting, and green (records).
+ *
+ * **The weekday: NOT sampled, and on purpose (AC3c).** The suite reads the page on
+ * whatever day it runs. The weekday changes only the fixture's derived `plannedSoFar`, and
+ * nothing rendered reads `plannedSoFar` (the bar is drawn from `done / planned`,
+ * `AdherenceSeries.tsx`). Weekday coverage comes from Lina's STATED `[3, 4, 2]` (the EV-218
+ * block) and from `qa/coach-fixture-adherence.spec.ts`'s seven-weekday test (EV-249), not
+ * from sampling the page. **Revisit if anything rendered starts reading `plannedSoFar` or
+ * the clock's weekday.**
+ *
+ * ── **THE OTHER LIMBS IN THIS FILE: ONE SAMPLE EACH, stated** ───────────────────────────
+ *
+ * The geometry limb (EV-210b AC3), the C3 section (EV-210b AC4) and the text limb (EV-251 /
+ * EV-253 / EV-259) each read **once: on load, at the default width, with the pointer
+ * wherever the sign-in click left it**, which none of them asserts. That is one sample,
+ * not a claim about the others. EV-217 moved the paint limb only, because both of its
+ * witnesses were on that limb's own channel; nobody has constructed a time- or width-gated
+ * escape from the other three.
+ *
+ * **HOW TO FIND OUT WHETHER A CONSTRUCTION IS CAUGHT.** Build it in an uncommitted copy of
+ * `AdherenceSeries.tsx`. Confirm it paints AT THE INSTANT AND WIDTH IT IS MEANT TO: a
+ * viewport screenshot of the row with the clip grown past it, several scanlines, against
+ * a control, at each of the three samples. Then run this file and read which sample
+ * named it. Do not reason from this block: it says when the limb reads, not what can be
+ * drawn at another time.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-217 — **RECORDS.** RECORDS_PLACEHOLDER
+ * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
  * Every non-initial `PAINT_CHANNELS` value in one read of the list, as a message line, and
