@@ -5,6 +5,7 @@ import { test } from "./fixture-test";
 import { copy } from "../src/lib/copy";
 import { adherenceSeries, type WeekSpec } from "../src/lib/fixtureAdherence";
 import { formatDate } from "../src/lib/format";
+import { WIDTHS } from "./layout";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -1639,7 +1640,166 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
   );
 }
 
-test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no element of the adherence list has a non-initial value on an enumerated paint channel", () => {
+/**
+ * Every non-initial `PAINT_CHANNELS` value in one read of the list, as a message line, and
+ * how many elements were read. The two ratchets that make a read a read (every channel
+ * asked, no empty value) are asserted here, per element.
+ */
+function paintOffences(read: ListPaint, at: string): { offences: string[]; inspected: number } {
+  const offences: string[] = [];
+  let inspected = 0;
+  const groups = [
+    { place: "the adherence list, OUTSIDE every week row", elements: read.outsideRows },
+    ...read.rows.map((row) => ({ place: `week row "${row.date}" ("${row.rowText}")`, elements: row.elements })),
+  ];
+  for (const group of groups) {
+    for (const element of group.elements) {
+      inspected += 1;
+      const where = `${at} — ${group.place}, <${element.tag}>`;
+      /**
+       * The channel list is RATCHETED against `PAINT_CHANNELS`, because `inspected`
+       * counts ELEMENTS and not channels: deleting the `::after` read used to leave
+       * this suite 260 green, which is the same shape of hole `minimumBars` exists
+       * for one section up. This asserts the browser was actually asked for every
+       * channel the table lists; `PAINT_CHANNELS_EXPECTED` is what stops the table
+       * itself from shrinking.
+       */
+      expect(
+        element.computed.map((channel) => channel.channel),
+        `${where}: the channels read do not match PAINT_CHANNELS — a channel in the table was not read`
+      ).toEqual(PAINT_CHANNELS.map((channel) => channel.name));
+      /**
+       * A computed read of a property this browser does not report returns `""`,
+       * which is neither the initial value nor a paint — it is a channel that is not
+       * a read at all, and it would pass the loop below in silence. `mask-image` is
+       * the live example: it is unprefixed in this Chromium (verified), and a
+       * browser where it is not would otherwise be a suite that quietly stopped
+       * checking one of EV-216's three channels.
+       */
+      expect(
+        element.computed.filter((channel) => channel.value.trim() === "").map((c) => c.channel),
+        `${where}: a channel returned an empty computed value, so this browser does not report that property — the channel is listed but not read`
+      ).toEqual([]);
+      // Presence only: the value is compared to the channel's initial and never
+      // matched against any pattern (ADR-0024 — no value text for a spelling to vary).
+      for (const channel of element.computed.filter((c) => c.value !== c.initial)) {
+        offences.push(`${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`);
+      }
+    }
+  }
+  return { offences, inspected };
+}
+
+/**
+ * EV-217 AC2 — the second width. 320 px because `qa/layout.ts` already sweeps this portal
+ * at 320 px by name (`WIDTHS[0]`), so it is a width this repo has decided it cares about,
+ * not a number picked to catch one construction. Imported rather than restated, so the two
+ * cannot drift apart.
+ */
+const NARROW_WIDTH = WIDTHS[0];
+
+/**
+ * EV-217 AC1 — the margin added to the derived settle instant, and the budget past which
+ * the page is declared unsettleable rather than waited for.
+ *
+ * The margin absorbs timer skew between the test's clock and the page's animation
+ * timeline. It is not what makes the sample safe: the assertion after the wait (every
+ * animation in scope has FINISHED) is, so a margin that turns out too short is a red
+ * build naming the animation, not a read taken too early.
+ *
+ * The budget exists because a derived wait is only bounded by the page. Past it, the
+ * sample fails and says why (EV-217 edge case 3: report the cost, never drop the sample).
+ */
+const SETTLE_MARGIN_MS = 250;
+const SETTLE_BUDGET_MS = 20_000;
+
+/**
+ * 🔴 **EV-217 AC1 — wait until the page has SETTLED, for as long as the page says.**
+ *
+ * The instant is DERIVED FROM THE PAGE, never a fixed sleep: `document.getAnimations()` is
+ * read, and every CSS animation or transition whose target is the adherence list, an
+ * element under it, or an ANCESTOR of it is kept (an ancestor's animated custom property
+ * reaches the list by inheritance, so an ancestor is in scope). Each one's remaining time
+ * is `getComputedTiming().endTime − currentTime`, which is its `delay + duration ×
+ * iterations + end-delay` as the engine computed it from the declared
+ * `animation-*` / `transition-*` values, less what has already elapsed. The wait is the
+ * longest of those plus `SETTLE_MARGIN_MS`. With nothing running it is the margin alone,
+ * and the second read still happens (edge case 1).
+ *
+ * It then ASSERTS the result, rather than trusting the arithmetic:
+ *   · the runner is not emulating `prefers-reduced-motion: reduce` (edge case 2 — a
+ *     runner that suppressed motion would make this sample read the same page as the
+ *     first, which is a finding and not a pass);
+ *   · no animation in scope has an infinite end or ends past `SETTLE_BUDGET_MS`
+ *     (unsettleable: the sample cannot be taken, so it fails and says so);
+ *   · after the wait, every animation in scope has `playState === "finished"` (a paused
+ *     animation, or one started after the first read, fails here by name).
+ *
+ * What it does NOT wait for: a change made by SCRIPT at some later time (a timer, a
+ * fetch). Nothing declares one, so nothing here can derive it. Stated in the banner.
+ */
+async function waitUntilSettled(page: Page, region: Locator): Promise<{ waitedMs: number; describe: string }> {
+  const inScope = () =>
+    region.evaluate((blockEl) => {
+      const root = blockEl.querySelector("ul") ?? blockEl;
+      return document
+        .getAnimations()
+        .filter((animation) => {
+          const target = (animation.effect as KeyframeEffect | null)?.target ?? null;
+          return target !== null && (target === root || root.contains(target) || target.contains(root));
+        })
+        .map((animation) => {
+          const effect = animation.effect as KeyframeEffect;
+          const end = Number(effect.getComputedTiming().endTime);
+          const now = Number(animation.currentTime ?? 0);
+          const name =
+            "animationName" in animation
+              ? `@keyframes ${(animation as CSSAnimation).animationName}`
+              : "transitionProperty" in animation
+                ? `transition of ${(animation as CSSTransition).transitionProperty}`
+                : animation.constructor.name;
+          return {
+            name: `${name} on <${effect.target!.tagName.toLowerCase()}>${effect.pseudoElement ?? ""}`,
+            remainingMs: end - now,
+            playState: animation.playState,
+          };
+        });
+    });
+
+  expect(
+    await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+    "The runner emulates prefers-reduced-motion: reduce. An animation the page suppresses under it would " +
+      "never run here, so the settled sample would read the on-load page again. That is a finding (EV-217 " +
+      "edge case 2), not a pass: stop and ask senior-po."
+  ).toBe(false);
+
+  const before = await inScope();
+  const unsettleable = before.filter((a) => !Number.isFinite(a.remainingMs) || a.remainingMs > SETTLE_BUDGET_MS);
+  expect(
+    unsettleable.map((a) => `${a.name}: ends in ${a.remainingMs} ms`),
+    `An animation on the adherence list, under it or on an ancestor of it does not end within ` +
+      `${SETTLE_BUDGET_MS} ms, so the settled sample cannot be taken (EV-217 AC1). The sample is not ` +
+      "dropped: this is red. If the design needs such an animation, stop and ask senior-po."
+  ).toEqual([]);
+
+  const waitedMs = Math.ceil(Math.max(0, ...before.map((a) => a.remainingMs))) + SETTLE_MARGIN_MS;
+  await page.waitForTimeout(waitedMs);
+
+  const after = await inScope();
+  expect(
+    after.filter((a) => a.playState !== "finished").map((a) => `${a.name}: ${a.playState}, ${a.remainingMs} ms left`),
+    `${waitedMs} ms after the on-load read, an animation in scope has still not finished, so the ` +
+      "page has not settled and the second sample would not be a settled read (EV-217 AC1)."
+  ).toEqual([]);
+
+  const describe =
+    before.length === 0
+      ? "no animation or transition in scope, so the margin alone"
+      : `the longest of ${before.length} animation(s) in scope plus the margin: ${before.map((a) => a.name).join(", ")}`;
+  return { waitedMs, describe };
+}
+
+test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / EV-217 / P-ADH C2 — no element of the adherence list has a non-initial value on an enumerated paint channel, at any of three samples", () => {
   /**
    * EV-210b's own four worlds. `minimumElements` is a fact about the FIXTURE and the
    * row's structure (eight rows, each at least the `li` plus a date span and a figures
@@ -1750,87 +1910,49 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
     ).toBe(PAINT_CHANNELS.length);
   });
 
-  for (const world of WORLDS) {
-    test(`P-ADH C2 (EV-216 AC1, EV-253): no element of the adherence list paints through one of the ${PAINT_CHANNELS.length} enumerated channels — ${world.name}`, async ({
-      page,
-    }) => {
-      await signIn(page);
-      await page.goto(`/clients/${world.id}`);
-      await expect(block(page, ADHERENCE)).toBeVisible();
+  /**
+   * One SAMPLE of the paint limb: the whole predicate, read once, at the page state the
+   * caller has put the page in. Every message carries `sample`, so a red build says WHEN
+   * and AT WHAT WIDTH it read the page (EV-217 AC3), not only what it found.
+   *
+   * The offences are asserted SOFT, so a red sample does not stop the later samples from
+   * being read: that is what lets a failure show which sample caught a construction and
+   * which did not, and it is how EV-217's independence runs were read (records).
+   */
+  async function expectNoPaintInList(page: Page, world: (typeof WORLDS)[number], sample: string) {
+    const read = await paintedElementsInList(block(page, ADHERENCE));
+    const rows = read.rows;
+    const at = `${world.name} [sample: ${sample}]`;
+    expectOneListHoldingEveryRow(`${at}, the paint limb`, read, rows.length, 1);
+    // EV-253 — the list element itself is read, not only what hangs under it. It is the
+    // first element outside every row by construction; this is what says so.
+    expect(
+      read.outsideRows[0]?.tag,
+      `${at}: the paint limb did not read the <ul> itself — it is rooted at the list (EV-253)`
+    ).toBe("ul");
+    // "…not the ${world.weeks} this world renders", never "no week rows at all": the
+    // assertion is an equality, so SEVEN rows — a week silently dropped, which is the
+    // interesting failure — would otherwise be reported as zero.
+    expect(rows.length, `${at}: the adherence block did not render the ${world.weeks} week rows this world has`).toBe(
+      world.weeks
+    );
+    // EV-218 / ADR-0024 decision 3 — the rendered ratchet. For Lina this binds the
+    // fixture's `done` and `planned`, her render path, and this test reading her rows
+    // in ONE assertion; `plannedSoFar` is not printed, so it is held separately below.
+    expect(
+      rows[rows.length - 1].rowText,
+      `${at}: the current (last) week no longer prints "${world.currentWeek}". For Lina ` +
+        "that row is the fixture's only done > plannedSoFar >= 1 week, the one this section " +
+        "relies on to see a done / plannedSoFar renderer after the parser (ADR-0024)."
+    ).toContain(world.currentWeek);
 
-      const read = await paintedElementsInList(block(page, ADHERENCE));
-      const rows = read.rows;
-      expectOneListHoldingEveryRow(`${world.name}, the paint limb`, read, rows.length, 1);
-      // EV-253 — the list element itself is read, not only what hangs under it. It is the
-      // first element outside every row by construction; this is what says so.
-      expect(
-        read.outsideRows[0]?.tag,
-        `${world.name}: the paint limb did not read the <ul> itself — it is rooted at the list (EV-253)`
-      ).toBe("ul");
-      // "…not the ${world.weeks} this world renders", never "no week rows at all": the
-      // assertion is an equality, so SEVEN rows — a week silently dropped, which is the
-      // interesting failure — would otherwise be reported as zero.
-      expect(
-        rows.length,
-        `${world.name}: the adherence block did not render the ${world.weeks} week rows this world has`
-      ).toBe(world.weeks);
-      // EV-218 / ADR-0024 decision 3 — the rendered ratchet. For Lina this binds the
-      // fixture's `done` and `planned`, her render path, and this test reading her rows
-      // in ONE assertion; `plannedSoFar` is not printed, so it is held separately below.
-      expect(
-        rows[rows.length - 1].rowText,
-        `${world.name}: the current (last) week no longer prints "${world.currentWeek}". For Lina ` +
-          "that row is the fixture's only done > plannedSoFar >= 1 week, the one this section " +
-          "relies on to see a done / plannedSoFar renderer after the parser (ADR-0024)."
-      ).toContain(world.currentWeek);
+    const { offences, inspected } = paintOffences(read, at);
 
-      const offences: string[] = [];
-      let inspected = 0;
-      const groups = [
-        { place: "the adherence list, OUTSIDE every week row", elements: read.outsideRows },
-        ...rows.map((row) => ({ place: `week row "${row.date}" ("${row.rowText}")`, elements: row.elements })),
-      ];
-      for (const group of groups) {
-        for (const element of group.elements) {
-          inspected += 1;
-          const where = `${world.name} — ${group.place}, <${element.tag}>`;
-          /**
-           * The channel list is RATCHETED against `PAINT_CHANNELS`, because `inspected`
-           * counts ELEMENTS and not channels: deleting the `::after` read used to leave
-           * this suite 260 green, which is the same shape of hole `minimumBars` exists
-           * for one section up. This asserts the browser was actually asked for every
-           * channel the table lists; `PAINT_CHANNELS_EXPECTED` is what stops the table
-           * itself from shrinking.
-           */
-          expect(
-            element.computed.map((channel) => channel.channel),
-            `${where}: the channels read do not match PAINT_CHANNELS — a channel in the table was not read`
-          ).toEqual(PAINT_CHANNELS.map((channel) => channel.name));
-          /**
-           * A computed read of a property this browser does not report returns `""`,
-           * which is neither the initial value nor a paint — it is a channel that is not
-           * a read at all, and it would pass the loop below in silence. `mask-image` is
-           * the live example: it is unprefixed in this Chromium (verified), and a
-           * browser where it is not would otherwise be a suite that quietly stopped
-           * checking one of EV-216's three channels.
-           */
-          expect(
-            element.computed.filter((channel) => channel.value.trim() === "").map((c) => c.channel),
-            `${where}: a channel returned an empty computed value, so this browser does not report that property — the channel is listed but not read`
-          ).toEqual([]);
-          // Presence only: the value is compared to the channel's initial and never
-          // matched against any pattern (ADR-0024 — no value text for a spelling to vary).
-          for (const channel of element.computed.filter((c) => c.value !== c.initial)) {
-            offences.push(
-              `${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`
-            );
-          }
-        }
-      }
-
-      expect(
+    expect
+      .soft(
         offences,
-        "An element of the adherence list — a week row, or the list itself or anything under it " +
+        `SAMPLE: ${sample}. ` +
+          "An element of the adherence list — a week row, or the list itself or anything under it " +
           "outside every row (EV-253) — has a non-initial value on one of the channels this " +
           "section enumerates. P-ADH C2 says the picture IS the two numbers printed beside it; " +
           "a value on one of these channels paints with no layout box of its own, so the " +
@@ -1844,19 +1966,104 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
               "the parser drops, so Ines stays green BY DESIGN — this is where that renderer " +
               "is caught, not a lost witness. "
             : "") +
-          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS`, read after the CSS parser; it " +
-          "is not a proof that nothing else can paint. What is read, and what is known not to be, " +
-          "is disclosed above `PaintChannel`. The fix belongs in the renderer: draw the ratio as " +
-          "a measurable box, or draw nothing."
-      ).toEqual([]);
+          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS`, read after the CSS parser, at the " +
+          "samples listed in the EV-217 banner; it is not a proof that nothing else can paint, " +
+          "or that nothing paints at another instant or width. What is read, and when, is " +
+          "disclosed above `PaintChannel` and in the EV-217 banner. The fix belongs in the " +
+          "renderer: draw the ratio as a measurable box, or draw nothing."
+      )
+      .toEqual([]);
 
+    expect(
+      inspected,
+      `${at}: only ${inspected} elements were read in the adherence list, so this ` +
+        `check was very nearly vacuous (the fixture guarantees at least ${world.minimumElements})`
+    ).toBeGreaterThanOrEqual(world.minimumElements);
+  }
+
+  for (const world of WORLDS) {
+    test(`P-ADH C2 (EV-216 AC1, EV-253, EV-217): no element of the adherence list paints through one of the ${PAINT_CHANNELS.length} enumerated channels, on load, settled and at ${NARROW_WIDTH} px — ${world.name}`, async ({
+      page,
+    }) => {
+      await signIn(page);
+      const defaultViewport = page.viewportSize();
+      expect(defaultViewport, "the config sets no viewport, so the default-width sample has no width").not.toBeNull();
+      const defaultWidth = `${defaultViewport!.width} px`;
+
+      // ── Sample 1: on load, at the config's default width. ─────────────────────────
+      await page.goto(`/clients/${world.id}`);
+      await expect(block(page, ADHERENCE)).toBeVisible();
+      await expectNoPaintInList(page, world, `on load, at ${defaultWidth}`);
+
+      // ── Sample 2 (EV-217 AC1): the same page, SETTLED, at the same width. ─────────
+      const settled = await waitUntilSettled(page, block(page, ADHERENCE));
+      await expectNoPaintInList(
+        page,
+        world,
+        `settled (${settled.waitedMs} ms after the on-load read; ${settled.describe}), at ${defaultWidth}`
+      );
+
+      // ── Sample 3 (EV-217 AC2): a fresh load at 320 px, read on load. ──────────────
+      // Only the width changes; the height is the default's, so this is one condition
+      // moved, not two (AC5).
+      await page.setViewportSize({ width: NARROW_WIDTH, height: defaultViewport!.height });
+      await page.goto(`/clients/${world.id}`);
+      await expect(block(page, ADHERENCE)).toBeVisible();
       expect(
-        inspected,
-        `${world.name}: only ${inspected} elements were read in the adherence list, so this ` +
-          `check was very nearly vacuous (the fixture guarantees at least ${world.minimumElements})`
-      ).toBeGreaterThanOrEqual(world.minimumElements);
+        await page.evaluate(() => window.innerWidth),
+        `the ${NARROW_WIDTH} px sample did not render at ${NARROW_WIDTH} px`
+      ).toBe(NARROW_WIDTH);
+      await expectNoPaintInList(page, world, `on load, at ${NARROW_WIDTH} px`);
     });
   }
+
+  /**
+   * 📌 **EV-217 AC4 — the non-false-positive property, as a test you can point at.**
+   *
+   * Until EV-217, "a flat `background-color` inside a week row is not reported" was true
+   * only because the suite was green on the shipped bars, which paint with exactly that.
+   * A real check, but nobody could name the assertion. This is the assertion.
+   *
+   * It reads Lina's shipped page: at least six elements in her week rows carry a
+   * non-transparent `background-color` (one fill per drawn bar, EV-210b's `minimumBars`
+   * for her world, plus the tracks), the paint limb reports nothing on that page, and
+   * `background-color` is not a `PAINT_CHANNELS` property. The last clause is the SCOPE
+   * DECISION the EV-214 banner records (a colour is untouched by choice, not because a
+   * colour cannot draw a ratio). Adding it to the table is a `senior-po` call, and this
+   * test goes red to make it one.
+   */
+  test("P-ADH C2 (EV-217 AC4): a flat background-color on a week row is PERMITTED — the shipped bars paint with one and the paint limb reports nothing", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+    await expect(block(page, ADHERENCE)).toBeVisible();
+
+    const coloured = await block(page, ADHERENCE).evaluate((blockEl) => {
+      const list = blockEl.querySelector("ul");
+      if (!list) return [];
+      return Array.from(list.querySelectorAll<HTMLElement>("li, li *"))
+        .map((el) => getComputedStyle(el).backgroundColor)
+        .filter((colour) => colour !== "rgba(0, 0, 0, 0)" && colour !== "transparent");
+    });
+    expect(
+      coloured.length,
+      "Lina's week rows no longer carry a flat background-color on at least six elements (one per drawn bar), " +
+        "so this test no longer shows a colour being permitted — it would pass on a page with none"
+    ).toBeGreaterThanOrEqual(6);
+
+    const { offences } = paintOffences(await paintedElementsInList(block(page, ADHERENCE)), "Lina");
+    expect(
+      offences,
+      "The paint limb reported the shipped page, whose rows paint with a flat background-color and " +
+        "nothing else. A colour is PERMITTED (EV-214 scope decision, EV-217 AC4)."
+    ).toEqual([]);
+    expect(
+      PAINT_CHANNELS.filter((channel) => channel.property === "background-color").map((channel) => channel.name),
+      "PAINT_CHANNELS reads background-color. That bans the colour every shipped bar is drawn with; " +
+        "it is a senior-po scope decision (EV-214, EV-220), not a line to add here."
+    ).toEqual([]);
+  });
 
   /**
    * 🔴 **EV-218 — what the rendered ratchet in the loop cannot hold.**
