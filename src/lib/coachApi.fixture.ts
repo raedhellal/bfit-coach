@@ -231,6 +231,17 @@ const KOFI_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0016";
 const FAY_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0017";
 const PIA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0018";
 
+/**
+ * EV-272 — the story's T-veg for the Swap sheet, a trainee of her own rather than Vera,
+ * because EV-272's ACs need facts Vera's week cannot carry without breaking EV-256e's:
+ * NO recipe meal at all (AC9's apply warning must read "up to 1 meal" after ONE
+ * placement; Vera already has two), Wednesday lunch M at exactly 600 kcal (AC2's order
+ * is the distance to it), and Thursday dinner L locked (AC6). VEGETARIAN, no allergies,
+ * NUTRITION only — Vera's shape. The story's C1 and C0 both open her (the fixture's
+ * links are not per coach; see `COACH_LIBRARIES`).
+ */
+const TESS_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0019";
+
 /** Everything a fully-consented link shares — the shape every EV-183 fixture had. */
 const ALL_SCOPES: CoachAccessScope[] = ["WORKOUTS", "PROGRESS", "NUTRITION", "WEIGH_INS"];
 
@@ -502,6 +513,7 @@ const BASE_OVERVIEWS: Record<string, () => ClientOverview> = {
         [KOFI_ID, "Kofi A.", 26],
         [FAY_ID, "Fay R.", 11],
         [PIA_ID, "Pia O.", 33],
+        [TESS_ID, "Tess V.", 21],
       ] as const
     ).map(([id, name, days]) => [
       id,
@@ -1503,9 +1515,122 @@ function seedRecipes(): StoredRecipe[] {
   ];
 }
 
+/**
+ * EV-272 — the story's coach C1: EXACTLY these six recipes, in the story's words
+ * (AC fixtures). Kcal is what the sheet's order is judged on (distance to the
+ * 600 kcal meal M); the macros are chosen to add up, like a recipe the api accepts.
+ * One name carries accents on purpose (AC3's `crepe`).
+ */
+function seedC1Recipes(): StoredRecipe[] {
+  const row = (
+    n: number,
+    name: string,
+    kcal: number,
+    proteinG: number,
+    carbsG: number,
+    fatG: number,
+    ingredients: StoredRecipe["ingredients"]
+  ): StoredRecipe => ({
+    id: `8e3f1b22-0000-4000-8000-0000000272${String(n).padStart(2, "0")}`,
+    name,
+    kcal,
+    proteinG,
+    carbsG,
+    fatG,
+    ingredients,
+    steps: ["Prepare everything.", "Cook and serve."],
+  });
+  return [
+    row(1, "Salmon quinoa", 610, 42, 50, 26, [
+      { key: "salmon_fillet", quantity: 150, unit: "g" },
+      { key: "quinoa", quantity: 70, unit: "g" },
+    ]),
+    row(2, "Tofu stir-fry", 560, 30, 60, 22, [
+      { key: "tofu", quantity: 200, unit: "g" },
+      { key: "noodles", quantity: 80, unit: "g" },
+      { key: "soy_sauce", quantity: 15, unit: "ml" },
+    ]),
+    row(3, "Chicken rice", 650, 52, 70, 18, [
+      { key: "chicken_breast", quantity: 160, unit: "g" },
+      { key: "rice", quantity: 90, unit: "g" },
+    ]),
+    row(4, "Lentil bowl", 520, 28, 72, 13, [
+      { key: "lentils", quantity: 90, unit: "g" },
+      { key: "rice", quantity: 50, unit: "g" },
+      { key: "spinach", quantity: 60, unit: "g" },
+    ]),
+    row(5, "Crêpes aux épinards", 430, 22, 48, 16, [
+      { key: "egg", quantity: 2, unit: "piece" },
+      { key: "milk", quantity: 150, unit: "ml" },
+      { key: "spinach", quantity: 80, unit: "g" },
+    ]),
+    row(6, "Overnight oats", 380, 20, 56, 8, [
+      { key: "oats", quantity: 60, unit: "g" },
+      { key: "greek_yogurt", quantity: 150, unit: "g" },
+    ]),
+  ];
+}
+
+/**
+ * EV-272 edge case 5 — a library at EV-256a's cap (100), so "typing stays responsive"
+ * is measured on the largest list a coach can have. Names are distinct and sortable.
+ */
+function seedCapRecipes(): StoredRecipe[] {
+  return Array.from({ length: RECIPE_LIMIT }, (_, i) => ({
+    id: `8e3f1b22-0000-4000-8000-000000273${String(i).padStart(3, "0")}`,
+    name: `Batch recipe ${String(i + 1).padStart(3, "0")}`,
+    kcal: 300 + i * 5,
+    proteinG: 20,
+    carbsG: 30,
+    fatG: 10,
+    ingredients: [{ key: "rice", quantity: 100, unit: "g" as RecipeUnit }],
+    steps: ["Cook."],
+  }));
+}
+
+/**
+ * EV-272 — ⚠ a FIXTURE AFFORDANCE, not an api shape. The api keys a library by the
+ * signed-in coach's user id (`listByCoachId`). The fixture has one coach identity for
+ * everything else (one roster, one link per trainee), so a second and third LIBRARY are
+ * keyed by the signed-in email instead: sign in as one of these and the recipe reads and
+ * writes go to that library; any other email is the seeded coach's. The story's C1 has
+ * six recipes, C0 none; `c100` is edge case 5's full library.
+ */
+const DEFAULT_LIBRARY = "default";
+const COACH_LIBRARIES: Record<string, () => StoredRecipe[]> = {
+  "coach.c1@evoli.fit": seedC1Recipes,
+  "coach.c0@evoli.fit": () => [],
+  "coach.c100@evoli.fit": seedCapRecipes,
+};
+
+function seedLibraries(): Map<string, Map<string, StoredRecipe>> {
+  return new Map([
+    [DEFAULT_LIBRARY, new Map(seedRecipes().map((r) => [r.id, r]))],
+    ...Object.entries(COACH_LIBRARIES).map(
+      ([email, rows]) => [email, new Map(rows().map((r) => [r.id, r]))] as const
+    ),
+  ]);
+}
+
+/** The signed-in coach's library — see `COACH_LIBRARIES`. */
+async function library(): Promise<Map<string, StoredRecipe>> {
+  let email = "";
+  try {
+    const { readSessionEmail } = await import("./session");
+    email = (readSessionEmail() ?? "").toLowerCase();
+  } catch {
+    email = ""; // outside a request (nothing in the fixture calls it there)
+  }
+  const all = state().recipes;
+  return (all.get(email in COACH_LIBRARIES ? email : DEFAULT_LIBRARY) ?? new Map()) as Map<
+    string,
+    StoredRecipe
+  >;
+}
+
 /** `listByCoachId` — alphabetical by name. */
-function recipesByName(): StoredRecipe[] {
-  return [...state().recipes.values()].sort((a, b) =>
+async function recipesByName(): Promise<StoredRecipe[]> {
+  return [...(await library()).values()].sort((a, b) =>
     a.name.toLowerCase() < b.name.toLowerCase() ? -1 : a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0
   );
 }
@@ -1518,7 +1643,7 @@ async function ownedRecipe(id: string): Promise<StoredRecipe> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     await fail(400, "INVALID_REQUEST", "Invalid value for 'id'.");
   }
-  const found = state().recipes.get(id);
+  const found = (await library()).get(id);
   // AC6 — one body for foreign, unknown and deleted.
   if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
   return found as StoredRecipe;
@@ -1647,9 +1772,9 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
 }
 
 /** `nameExistsByCoachId` — the unique index is on `lower(btrim(name))`. */
-function recipeNameTaken(name: string, exceptId: string | null): boolean {
+async function recipeNameTaken(name: string, exceptId: string | null): Promise<boolean> {
   const key = name.trim().toLowerCase();
-  for (const row of state().recipes.values()) {
+  for (const row of (await library()).values()) {
     if (row.id !== exceptId && row.name.trim().toLowerCase() === key) return true;
   }
   return false;
@@ -2533,6 +2658,15 @@ async function placementOff(id: string): Promise<boolean> {
 async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
 }
+/**
+ * EV-272 (staff review) — the STALE PAGE: `evoli_fixture_lock=<mealId>` means the
+ * trainee locked that meal after the coach's page loaded. The week read still shows it
+ * unlocked; the swap and placement writes answer 409 `COACH_MEAL_LOCKED`, as the api
+ * does against its own row. One browser context only.
+ */
+async function lockedSince(mealId: string): Promise<boolean> {
+  return (await fixtureSwitch("evoli_fixture_lock")) === mealId;
+}
 
 type SeededNutrition = Omit<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords"> &
   Partial<Pick<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords">>;
@@ -2589,6 +2723,31 @@ function seedNutrition(id: string): SeededNutrition {
       dietProfile: { allergies: [], rules: [], dislikes: [] },
       // Tuesday breakfast: she marked it EATEN in her app. Invisible to the coach.
       eaten: new Set([mealAt(vera, 1, "BREAKFAST").mealId]),
+      pool: VEG_POOL,
+      excludedKeys: VEGETARIAN_EXCLUDED_KEYS,
+      excludedNameWords: VEGETARIAN_NAME_WORDS,
+    };
+  }
+  if (id === TESS_ID) {
+    let tess = buildWeek(week, [0, 0, 0, 0, 0, 0, 0], VEG_POOL);
+    tess = patchMeal(tess, 2, "LUNCH", {
+      // M — EV-272's 600 kcal meal.
+      name: "Halloumi and chickpea wrap",
+      kcal: 600,
+      proteinG: 28,
+      carbsG: 62,
+      fatG: 26,
+    });
+    tess = lock(tess, 3, "DINNER"); // L — Thursday dinner, locked by her.
+    return {
+      targets: null,
+      week: tess,
+      seeds: [0, 0, 0, 0, 0, 0, 0],
+      floorCalories: 1200,
+      dietProfile: { allergies: [], rules: [], dislikes: [] },
+      // EV-272 edge case 4: Tuesday breakfast she ATE. Invisible to the coach; the
+      // sheet opens normally and the api's 409 answers a recipe or a suggestion.
+      eaten: new Set([mealAt(tess, 1, "BREAKFAST").mealId]),
       pool: VEG_POOL,
       excludedKeys: VEGETARIAN_EXCLUDED_KEYS,
       excludedNameWords: VEGETARIAN_NAME_WORDS,
@@ -2778,8 +2937,11 @@ interface FixtureState {
    * `ON DELETE SET NULL` in the api. A hand-built draft has no entry.
    */
   draftTemplate: Map<string, string>;
-  /** EV-256b — the coach's recipes, keyed by id. Keys only; labels derive on read. */
-  recipes: Map<string, StoredRecipe>;
+  /**
+   * EV-256b — the coach's recipes, keyed by id. Keys only; labels derive on read.
+   * EV-272: one library per fixture coach (see `COACH_LIBRARIES`), keyed by library.
+   */
+  recipes: Map<string, Map<string, StoredRecipe>>;
   nutrition: Map<string, NutritionState>;
   /**
    * EV-202b. Keyed by the `coach_clients` row id here, where the api keys the row by
@@ -2813,7 +2975,7 @@ function freshState(): FixtureState {
     pendingDigest: new Map(),
     templates: new Map(seedTemplates().map((t) => [t.id, t])),
     draftTemplate: new Map(),
-    recipes: new Map(seedRecipes().map((r) => [r.id, r])),
+    recipes: seedLibraries(),
     nutrition: new Map(),
     /**
      * Four seeded goals, each reaching a state the others cannot:
@@ -2918,9 +3080,37 @@ function seed(): void {
   );
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-272 — THE CALL JOURNAL, FOR THE TEST SUITE ONLY.
+ *
+ * The browser never sees an api path: every read and write is a server action, a POST
+ * to the page's own URL. So "opening the sheet sends zero `GET …/meals/{M}/swap`"
+ * (AC2, AC5, AC6, R5) cannot be witnessed from the network log alone; it is witnessed
+ * HERE, where the fixture stands in for the api. Each recipe/swap operation appends the
+ * api request it stands for. Read through `GET /api/fixture/calls` (404 unless
+ * `COACH_API_MODE=fixture`) and emptied by every reset.
+ *
+ * Deliberately OUTSIDE `FixtureState`: a read is not a write, and the seed check must
+ * not turn red because a test read the library.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const CALLS_KEY = Symbol.for("evoli.coach.fixture.calls");
+type GlobalWithCalls = typeof globalThis & Record<symbol, string[] | undefined>;
+
+function recordCall(call: string): void {
+  const g = globalThis as GlobalWithCalls;
+  (g[CALLS_KEY] ??= []).push(call);
+}
+
+/** Every api request the fixture has answered since the last reset, in order. */
+export function fixtureCalls(): string[] {
+  return [...((globalThis as GlobalWithCalls)[CALLS_KEY] ?? [])];
+}
+
 /** Throw the whole store away and start again from this process's seed. */
 export function resetFixtureState(): void {
   seed();
+  (globalThis as GlobalWithCalls)[CALLS_KEY] = [];
 }
 
 /** True when nothing has been written (or read-with-side-effect) since the last reset. */
@@ -3459,7 +3649,12 @@ export const fixtureCoachApi: CoachApi = {
   // ── EV-256b the coach's recipe library ────────────────────────────────────
 
   async listRecipes(): Promise<CoachRecipeList> {
-    const rows = recipesByName();
+    recordCall("GET /coach-portal/recipes");
+    // EV-272 AC7 — the library read fails (this browser context only).
+    if ((await fixtureSwitch("evoli_fixture_recipes")) === "fail") {
+      await fail(500, "INTERNAL_ERROR", "Internal error");
+    }
+    const rows = await recipesByName();
     return {
       recipes: rows.map((row) => ({
         id: row.id,
@@ -3482,14 +3677,15 @@ export const fixtureCoachApi: CoachApi = {
   async createRecipe(body: CoachRecipeSaveRequest): Promise<CoachRecipe> {
     // The api's order: the rules (400s) BEFORE the cap and the name (409s).
     const checked = await checkRecipe(body);
-    if (state().recipes.size >= RECIPE_LIMIT) {
+    const mine = await library();
+    if (mine.size >= RECIPE_LIMIT) {
       await fail(409, "COACH_RECIPE_LIMIT_REACHED", "Recipe limit reached");
     }
-    if (recipeNameTaken(checked.name, null)) {
+    if (await recipeNameTaken(checked.name, null)) {
       await fail(409, "COACH_RECIPE_NAME_TAKEN", "You already have a recipe with that name");
     }
     const created: StoredRecipe = { id: crypto.randomUUID(), ...checked };
-    state().recipes.set(created.id, created);
+    mine.set(created.id, created);
     return toRecipeResponse(created);
   },
 
@@ -3499,18 +3695,18 @@ export const fixtureCoachApi: CoachApi = {
     // Keeping or re-casing its own name is not a collision with itself.
     if (
       checked.name.toLowerCase() !== existing.name.toLowerCase() &&
-      recipeNameTaken(checked.name, id)
+      (await recipeNameTaken(checked.name, id))
     ) {
       await fail(409, "COACH_RECIPE_NAME_TAKEN", "You already have a recipe with that name");
     }
     const saved: StoredRecipe = { id, ...checked };
-    state().recipes.set(id, saved);
+    (await library()).set(id, saved);
     return toRecipeResponse(saved);
   },
 
   async deleteRecipe(id: string): Promise<void> {
     await ownedRecipe(id);
-    state().recipes.delete(id);
+    (await library()).delete(id);
   },
 
   async searchIngredients(q: string): Promise<CoachIngredientOption[]> {
@@ -3610,6 +3806,11 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getSwapOptions(id: string, mealId: string): Promise<SwapOptions> {
+    recordCall(`GET /coach-portal/clients/${id}/nutrition/week/meals/${mealId}/swap`);
+    // EV-272 (staff review) — the suggestions read fails (one browser context only).
+    if ((await fixtureSwitch("evoli_fixture_swap")) === "fail") {
+      await fail(500, "INTERNAL_ERROR", "Internal error");
+    }
     await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     const meal = state.week?.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
@@ -3628,6 +3829,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async applySwap(id: string, mealId: string, candidateIndex: number): Promise<MealWeekView> {
+    recordCall(`POST /coach-portal/clients/${id}/nutrition/week/meals/${mealId}/swap`);
     await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     const week = state.week;
@@ -3643,7 +3845,9 @@ export const fixtureCoachApi: CoachApi = {
      * the two codes by name on any route, so it is correct against both.
      */
     if (state.eaten.has(mealId)) await fail(409, "COACH_MEAL_EATEN", "Meal already eaten");
-    if (meal.locked) await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    if (meal.locked || (await lockedSince(mealId))) {
+      await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    }
     const options = state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name);
     const chosen = options[candidateIndex];
     if (!chosen) return current;
@@ -3689,6 +3893,7 @@ export const fixtureCoachApi: CoachApi = {
    * The write keeps the meal's id, slot and day, and touches no other meal.
    */
   async placeRecipe(id: string, mealId: string, recipeId: string): Promise<MealWeekView> {
+    recordCall(`POST /coach-portal/clients/${id}/nutrition/week/meals/${mealId}/recipe ${recipeId}`);
     if (await placementOff(id)) await fail(404, "NOT_FOUND", "Not found");
     await assertScope(id, "NUTRITION");
     const recipe = await ownedRecipe(recipeId);
@@ -3702,7 +3907,9 @@ export const fixtureCoachApi: CoachApi = {
     }
 
     if (state.eaten.has(mealId)) await fail(409, "COACH_MEAL_EATEN", "Meal already eaten");
-    if (meal.locked) await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    if (meal.locked || (await lockedSince(mealId))) {
+      await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
+    }
 
     if (state.dietProfile.allergies.some((a) => a.trim() !== "")) {
       await fail(422, "COACH_RECIPE_ALLERGIES_UNCHECKABLE", "Allergies cannot be checked");

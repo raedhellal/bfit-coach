@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+⚠ SINCE EV-272 the separate button and its dialog are GONE: a recipe is chosen in the
+Swap sheet. See [[swap-sheet-portal-facts]]. The facts below about the wire, the flag and
+the refusals still hold.
+
 EV-256e (`feat/ev256e-use-a-recipe`, against b-fit-api `6a76d92`, on main) put a meal
 action, a picker dialog and the refusal copy on `/clients/[id]/nutrition`
 (`components/nutrition/RecipePickerDialog.tsx`, `NutritionWeekCard.tsx`,

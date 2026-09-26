@@ -252,11 +252,20 @@ test("AC5 — a swap leaves the trainee's day-regeneration counter where it was"
   await swapButton.click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  // EV-272: while the api's placement flag is on (its `local` profile), the sheet opens
+  // on the coach's recipes and loads suggestions only when asked; with it off, at once.
+  const show = dialog.getByRole("button", { name: "Show suggestions", exact: true });
+  await expect(show.or(dialog.locator("button[title]")).first()).toBeVisible();
+  if (await show.isVisible()) await show.click();
   // A meal with no cached alternatives proves nothing either way — fail loudly instead.
   await expect(dialog.getByText("No swap options are available for this meal.")).toHaveCount(0);
   // A candidate row is the only button in this dialog carrying a `title` — the modal's
   // own "Close" control does not, and clicking that proves nothing.
-  const candidate = dialog.locator("button[title]").first();
+  // Scoped past the recipe rows, which carry a `title` too while the flag is on.
+  const suggestionsRegion = dialog.getByRole("region", { name: "Suggestions" });
+  const candidate = ((await suggestionsRegion.count()) > 0 ? suggestionsRegion : dialog)
+    .locator("button[title]")
+    .first();
   await expect(candidate).toBeVisible();
   const chosen = (await candidate.innerText()).split("\n")[0];
   await candidate.click();

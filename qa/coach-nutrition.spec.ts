@@ -378,10 +378,15 @@ test.describe("AC3 — the coach shapes the meal week through the existing engin
 
     const modal = page.getByRole("dialog");
     await expect(modal).toHaveAccessibleName("Swap meal");
+    // EV-272: with the placement flag on (the fixture's default) the sheet opens on the
+    // coach's recipes and loads the suggestions only when asked.
+    const region = modal.getByRole("region", { name: "Suggestions" });
+    await region.getByRole("button", { name: "Show suggestions", exact: true }).click();
     // Each candidate carries its own macros, which is what distinguishes a candidate
     // row from the dialog's Close and from its subtitle (the subtitle names the meal
-    // being swapped, so it is NOT evidence that the meal is offered to itself).
-    const candidates = modal.getByRole("button").filter({ hasText: /kcal · / });
+    // being swapped, so it is NOT evidence that the meal is offered to itself). Scoped
+    // to the Suggestions region: the recipe rows carry macros too.
+    const candidates = region.getByRole("button").filter({ hasText: /kcal · / });
     await expect(candidates.first()).toBeVisible();
 
     const offered = await candidates.evaluateAll((els) =>

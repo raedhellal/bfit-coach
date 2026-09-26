@@ -537,7 +537,8 @@ test.describe("AC5 — delete (TERMINAL: empties the library)", () => {
 });
 
 /**
- * EV-256e AC2's empty branch. The store is re-seeded before every test (EV-223), so this
+ * EV-256e AC2's empty branch — since EV-272 inside the Swap sheet, which is where a
+ * recipe is chosen now (the separate button is gone). The store is re-seeded before every test (EV-223), so this
  * test EMPTIES the library itself, through the same Delete the coach uses, and asserts
  * it is empty before it opens the picker — the empty state is this test's own write,
  * not an earlier test's.
@@ -559,9 +560,9 @@ test.describe("EV-256e AC2 — the picker with no recipes", () => {
     // Dana: the flag is on and her meals are unlocked.
     await page.goto("/clients/6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004/nutrition");
     // Retried until the dialog answers: a click before hydration is a no-op.
-    const dialog = page.getByRole("dialog", { name: "Use one of my recipes" });
+    const dialog = page.getByRole("dialog", { name: "Swap meal" });
     await expect(async () => {
-      await page.getByRole("button", { name: /^Use one of my recipes: / }).first().click();
+      await page.getByRole("button", { name: /^Swap meal: / }).first().click();
       await expect(dialog).toBeVisible({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
     await expect(dialog.getByText("You have no recipes yet.", { exact: true })).toBeVisible();

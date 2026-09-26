@@ -5,7 +5,12 @@ import { test } from "./fixture-test";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
 /**
- * EV-256e — "Use one of my recipes" on the portal's meal week, in **fixture mode**.
+ * EV-256e — placing one of the coach's recipes on a meal, in **fixture mode**.
+ *
+ * ⚠ EV-272 moved the action: the separate "Use one of my recipes" button is GONE (R1)
+ * and a recipe is chosen in the **Swap meal** sheet, which opens on the coach's recipes
+ * while the flag is on. Every refusal branch this file drove through the old button is
+ * driven through the sheet (EV-272 AC10). The sentences are unchanged.
  *
  * The fixture's placement world (see the block above `VERA_ID` in
  * `src/lib/coachApi.fixture.ts`), each trainee standing for one of the story's:
@@ -47,7 +52,9 @@ const WINE = "Wine-braised lentils";
 const OVEN = "Oven-baked sweet potato and chickpea traybake with spinach, lemon and garlic oil";
 
 /* ── AC sentences, verbatim ─────────────────────────────────────────────── */
-const ACTION = "Use one of my recipes";
+/** The retired button (EV-272 R1): asserted ABSENT everywhere. */
+const OLD_ACTION = "Use one of my recipes";
+const SEARCH_LABEL = "Search your recipes";
 const confirmSentence = (meal: string, recipe: string, weekday: string) =>
   `Replace “${meal}” with “${recipe}” on ${weekday}?`;
 // AC2's empty library ("You have no recipes yet.") is asserted in coach-recipes.spec.ts,
@@ -104,19 +111,19 @@ async function weekNames(page: Page): Promise<string[]> {
     .evaluateAll((els) => els.map((el) => (el.getAttribute("aria-label") ?? "").replace("Swap meal: ", "")));
 }
 
-function actionIn(row: Locator): Locator {
-  return row.getByRole("button", { name: new RegExp(`^${ACTION}: `) });
+function swapIn(row: Locator): Locator {
+  return row.getByRole("button", { name: /^Swap meal: / });
 }
 
 /**
- * Open the picker on one meal. Retried until the dialog answers, because a click
- * before hydration is a no-op (qa/warm-routes.ts) and would read as "the action does
- * nothing".
+ * Open the Swap sheet on one meal — since EV-272 the one way to put a recipe on it.
+ * Retried until the dialog answers, because a click before hydration is a no-op
+ * (qa/warm-routes.ts) and would read as "the action does nothing".
  */
 async function openPicker(page: Page, row: Locator): Promise<Locator> {
-  const dialog = page.getByRole("dialog", { name: ACTION });
+  const dialog = page.getByRole("dialog", { name: "Swap meal" });
   await expect(async () => {
-    await actionIn(row).click();
+    await swapIn(row).click();
     await expect(dialog).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 20_000 });
   return dialog;
@@ -129,7 +136,16 @@ async function choose(dialog: Locator, recipe: string) {
 /** Choose, then confirm. */
 async function place(dialog: Locator, recipe: string) {
   await choose(dialog, recipe);
-  await dialog.getByRole("button", { name: "Replace", exact: true }).click();
+  await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
+}
+
+/** EV-272 AC5 — the suggestions load only when asked. */
+async function showSuggestions(dialog: Locator): Promise<Locator> {
+  const region = dialog.getByRole("region", { name: "Suggestions" });
+  await region.getByRole("button", { name: "Show suggestions", exact: true }).click();
+  const candidates = region.locator("button[title]");
+  await expect(candidates.first()).toBeVisible();
+  return candidates;
 }
 
 function shotDir(): string | null {
@@ -148,35 +164,44 @@ async function shoot(page: Page, name: string) {
  * READS on Vera — before anything writes to her week.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-test.describe("AC1 — which meals have the action", () => {
-  test("flag on: every meal the trainee has not locked has it; her locked one does not", async ({ page }) => {
+test.describe("AC1 — which meals offer a recipe (EV-272: through Swap)", () => {
+  test("flag on: every meal has ONE replace action, Swap; the old button is gone; an eaten meal's sheet offers recipes", async ({ page }) => {
     await signIn(page);
     await openNutrition(page, VERA);
 
-    // 7 days × 4 meals, one of them locked by Vera.
+    // 7 days × 4 meals, one of them locked by Vera — and each has only Swap (EV-272 R1).
     await expect(page.getByRole("button", { name: /^Swap meal: / })).toHaveCount(28);
-    await expect(page.getByRole("button", { name: new RegExp(`^${ACTION}: `) })).toHaveCount(27);
+    await expect(page.getByRole("button", { name: new RegExp(`^${OLD_ACTION}`) })).toHaveCount(0);
+    await expect(page.getByText(OLD_ACTION)).toHaveCount(0);
 
     const mondayLunch = meal(page, "Monday Lunch");
     await expect(mondayLunch.getByText("Kept", { exact: true })).toBeVisible();
-    await expect(actionIn(mondayLunch)).toHaveCount(0);
-    // The locked meal keeps its Swap (AC7 is how a Swap on it is answered).
-    await expect(mondayLunch.getByRole("button", { name: /^Swap meal: / })).toHaveCount(1);
+    await expect(swapIn(mondayLunch)).toHaveCount(1);
 
-    // The EATEN meal (Tuesday breakfast) has the action: the coach wire has no `eaten`.
-    await expect(actionIn(meal(page, "Tuesday Breakfast"))).toHaveCount(1);
-    // The action names its own meal, so a screen reader hears which one.
+    // The EATEN meal (Tuesday breakfast) opens on the recipes: the coach wire has no
+    // `eaten`, so the api's 409 is what tells the coach (AC3).
+    const dialog = await openPicker(page, meal(page, "Tuesday Breakfast"));
+    await expect(dialog.getByLabel(SEARCH_LABEL)).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /^Choose / })).toHaveCount(5);
+    // Swap names its own meal, so a screen reader hears which one.
+    await dialog.getByRole("button", { name: "Close" }).click();
     const name = await mealName(meal(page, "Friday Dinner"));
-    await expect(actionIn(meal(page, "Friday Dinner"))).toHaveAccessibleName(`${ACTION}: ${name}`);
+    await expect(swapIn(meal(page, "Friday Dinner"))).toHaveAccessibleName(`Swap meal: ${name}`);
   });
 
-  test("flag off: no meal has it, and a recipe placed before the switch stays as it was (edge case 14)", async ({ page }) => {
+  test("flag off: no meal offers a recipe, and a recipe placed before the switch stays as it was (edge case 14)", async ({ page }) => {
     await signIn(page);
     await openNutrition(page, PIA);
 
     await expect(page.getByRole("button", { name: /^Swap meal: / })).toHaveCount(28);
-    await expect(page.getByRole("button", { name: new RegExp(`^${ACTION}`) })).toHaveCount(0);
-    await expect(page.getByText(ACTION, { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: new RegExp(`^${OLD_ACTION}`) })).toHaveCount(0);
+    await expect(page.getByText(OLD_ACTION, { exact: true })).toHaveCount(0);
+    // EV-272 AC1: the sheet is the old one — suggestions at once, no recipe search.
+    const dialog = await openPicker(page, meal(page, "Monday Lunch"));
+    await expect(dialog.locator("button[title]").first()).toBeVisible();
+    await expect(dialog.getByLabel(SEARCH_LABEL)).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: /^Choose / })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Close" }).click();
 
     const placed = meal(page, "Wednesday Lunch");
     expect(await mealName(placed)).toBe(BOWL);
@@ -236,27 +261,29 @@ test.describe("AC2 — the picker", () => {
   test("lists the coach's recipes with name, kcal and P/C/F, and filters by name", async ({ page }) => {
     await signIn(page);
     await openNutrition(page, VERA);
-    const dialog = await openPicker(page, meal(page, "Friday Dinner"));
+    const row = meal(page, "Friday Dinner");
+    await expect(row.getByText(/^620 kcal · /)).toBeVisible();
+    const dialog = await openPicker(page, row);
 
     const choices = dialog.getByRole("button", { name: /^Choose / });
     await expect(choices).toHaveCount(5);
-    // As the api serves them: alphabetical.
+    // EV-272 AC2: nearest in kcal to the 620 kcal meal first — 560, 500, 410, 390, 340.
     expect(await choices.evaluateAll((els) => els.map((el) => el.getAttribute("title")))).toEqual([
       BOWL,
       OVEN,
+      WINE,
       OATS,
       QUARK,
-      WINE,
     ]);
     const bowl = dialog.getByRole("button", { name: `Choose ${BOWL}`, exact: true });
-    await expect(bowl).toContainText("560 kcal · P 50 g · C 62 g · F 12 g");
+    await expect(bowl).toContainText("560 kcal · 50 g protein · 62 g carbs · 12 g fat");
 
-    await dialog.getByLabel("Filter your recipes").fill("LENTIL");
+    await dialog.getByLabel(SEARCH_LABEL).fill("LENTIL");
     await expect(choices).toHaveCount(1);
     await expect(dialog.getByRole("button", { name: `Choose ${WINE}`, exact: true })).toBeVisible();
-    await dialog.getByLabel("Filter your recipes").fill("tahini");
+    await dialog.getByLabel(SEARCH_LABEL).fill("tahini");
     await expect(choices).toHaveCount(0);
-    await expect(dialog.getByText("None of your recipes match “tahini”.")).toBeVisible();
+    await expect(dialog.getByText("No recipe matches “tahini”.")).toBeVisible();
   });
 
   test("choosing asks AC2's question; Replace puts the recipe on THAT meal, marked 'Your recipe', and nothing else moves", async ({ page }) => {
@@ -276,8 +303,8 @@ test.describe("AC2 — the picker", () => {
     await expect(dialog.locator(`[title="${target}"]`)).toBeVisible();
     await choose(dialog, WINE);
     await expect(dialog.getByText(confirmSentence(target, WINE, "Friday"), { exact: true })).toBeVisible();
-    // "Choose another recipe" goes back without writing anything.
-    await dialog.getByRole("button", { name: "Choose another recipe" }).click();
+    // "Cancel" goes back to the list without writing anything (EV-272 AC4).
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(dialog.getByRole("button", { name: /^Choose / })).toHaveCount(5);
     await place(dialog, WINE);
 
@@ -306,7 +333,7 @@ test.describe("AC2 — the picker", () => {
     const dialog = await openPicker(page, row);
     await choose(dialog, OVEN);
     await expect(dialog.getByText(confirmSentence(target, OVEN, "Saturday"), { exact: true })).toBeVisible();
-    await dialog.getByRole("button", { name: "Replace", exact: true }).click();
+    await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
 
     await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(await mealName(row)).toBe(OVEN);
@@ -340,7 +367,7 @@ async function expectRefused(page: Page, where: string, recipe: string, sentence
   await expect(dialog.getByRole("button", { name: /^Choose / }).first()).toBeVisible();
 
   expect(await weekNames(page)).toEqual(before);
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await dialog.getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.reload();
   expect(await weekNames(page), "nothing was written").toEqual(before);
@@ -430,12 +457,8 @@ async function expectSwapRefused(page: Page, where: string, sentence: string) {
   const row = meal(page, where);
   const target = await mealName(row);
   const before = await weekNames(page);
-  const dialog = page.getByRole("dialog", { name: "Swap meal" });
-  await expect(async () => {
-    await row.getByRole("button", { name: /^Swap meal: / }).click();
-    await expect(dialog).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 20_000 });
-  const candidate = dialog.locator("button[title]").first();
+  const dialog = await openPicker(page, row);
+  const candidate = (await showSuggestions(dialog)).first();
   await candidate.click();
   await expect(dialog.getByRole("alert")).toHaveText(sentence);
   await expect(dialog).toBeVisible();
@@ -453,10 +476,40 @@ test.describe("AC7 — the Swap refuses what the trainee owns", () => {
     await expectSwapRefused(page, "Tuesday Breakfast", eaten("Vera"));
   });
 
-  test("409 COACH_MEAL_LOCKED in the swap dialog, week unchanged", async ({ page }) => {
+  test("a meal she LOCKED: the sheet says so without asking the api (EV-272 AC6 — the 409's sentence)", async ({ page }) => {
     await signIn(page);
     await openNutrition(page, VERA);
-    await expectSwapRefused(page, "Monday Lunch", locked("Vera"));
+    const row = meal(page, "Monday Lunch");
+    const target = await mealName(row);
+    const dialog = await openPicker(page, row);
+    await expect(dialog.getByText(locked("Vera"), { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel(SEARCH_LABEL)).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Show suggestions" })).toHaveCount(0);
+    await expect(dialog.locator("button[title]")).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    expect(await mealName(row)).toBe(target);
+  });
+
+  test("409 COACH_MEAL_LOCKED, flag OFF (production's path): the old sheet, the locked sentence, week unchanged", async ({ page, context }) => {
+    await signIn(page);
+    // The server-wide flag is off, as in production today (fixture switch, this context).
+    await context.addCookies([{ name: "evoli_fixture_placement", value: "off", url: page.url() }]);
+    await openNutrition(page, VERA);
+    const row = meal(page, "Monday Lunch");
+    await expect(row.getByText("Kept", { exact: true })).toBeVisible();
+    const target = await mealName(row);
+    const before = await weekNames(page);
+    const dialog = await openPicker(page, row);
+    // The flag-off sheet: suggestions at once, and a locked meal is still offered them.
+    await expect(dialog.getByLabel(SEARCH_LABEL)).toHaveCount(0);
+    await dialog.locator("button[title]").first().click();
+    await expect(dialog.getByTestId("swap-refusal")).toHaveText(locked("Vera"));
+    await expect(dialog).toBeVisible();
+    expect(await weekNames(page)).toEqual(before);
+    expect(await mealName(row)).toBe(target);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    expect(await weekNames(page), "nothing was written").toEqual(before);
   });
 
   test("AC4: swapping a recipe meal away leaves an engine meal with no marker", async ({ page }) => {
@@ -464,12 +517,11 @@ test.describe("AC7 — the Swap refuses what the trainee owns", () => {
     await openNutrition(page, VERA);
     const row = meal(page, "Thursday Lunch");
     await expect(row.getByText("Your recipe", { exact: true })).toBeVisible();
-    const dialog = page.getByRole("dialog", { name: "Swap meal" });
-    await expect(async () => {
-      await row.getByRole("button", { name: /^Swap meal: / }).click();
-      await expect(dialog).toBeVisible({ timeout: 1_000 });
-    }).toPass({ timeout: 20_000 });
-    await dialog.locator("button[title]").first().click();
+    const dialog = await openPicker(page, row);
+    // EV-272 edge case 3: a recipe meal's sheet still lists the recipes, and its
+    // suggestions are the catalogue's (EV-256d AC2).
+    await expect(dialog.getByRole("button", { name: /^Choose / })).toHaveCount(5);
+    await (await showSuggestions(dialog)).first().click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(row.getByText(/recipe$/)).toHaveCount(0);
     expect(await mealName(row)).not.toBe("Chickpea and feta salad");
@@ -499,7 +551,7 @@ test.describe("Edge cases", () => {
     }).toPass({ timeout: 20_000 });
     const regenerated = await weekNames(b);
 
-    await dialog.getByRole("button", { name: "Replace", exact: true }).click();
+    await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(a.getByRole("dialog")).toHaveCount(0);
     // Filtered: Next's route announcer is also a `role="alert"` on every page.
     await expect(a.getByRole("alert").filter({ hasText: MEAL_CHANGED })).toHaveText(MEAL_CHANGED);
@@ -548,12 +600,11 @@ test.describe("Edge cases", () => {
     await context.close();
   });
 
-  test("14 — the flag is switched off while the picker is open: the sentence, then no action anywhere", async ({ browser }) => {
+  test("14 — the flag is switched off while the sheet is open: the sentence, then the next load renders EV-272 AC1", async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
     await signIn(page);
     await openNutrition(page, DANA);
-    await expect(page.getByRole("button", { name: new RegExp(`^${ACTION}: `) })).toHaveCount(28);
     const row = meal(page, "Wednesday Snack");
     const target = await mealName(row);
     const dialog = await openPicker(page, row);
@@ -562,16 +613,18 @@ test.describe("Edge cases", () => {
     // The api's flag goes off (fixture switch, this context only): the POST is now an
     // unmapped 404 and the next read serves `recipePlacementEnabled: false`.
     await context.addCookies([{ name: "evoli_fixture_placement", value: "off", url: page.url() }]);
-    await dialog.getByRole("button", { name: "Replace", exact: true }).click();
+    await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
 
     await expect(dialog.getByRole("alert")).toHaveText("Recipes can't be put on meals right now.");
-    // The refresh re-read the flag: the action is gone from EVERY meal, dialog or not.
-    await expect(page.getByRole("button", { name: new RegExp(`^${ACTION}: `) })).toHaveCount(0);
-    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await dialog.getByRole("button", { name: "Close" }).click();
     expect(await mealName(row), "nothing was written").toBe(target);
     await page.reload();
     await expect(page.getByRole("button", { name: /^Swap meal: / })).toHaveCount(28);
-    await expect(page.getByRole("button", { name: new RegExp(`^${ACTION}`) })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: new RegExp(`^${OLD_ACTION}`) })).toHaveCount(0);
+    // The next page load: the sheet as it was — suggestions at once, no recipes.
+    const again = await openPicker(page, meal(page, "Wednesday Snack"));
+    await expect(again.locator("button[title]").first()).toBeVisible();
+    await expect(again.getByLabel(SEARCH_LABEL)).toHaveCount(0);
     await context.close();
   });
 
@@ -598,7 +651,7 @@ test.describe("Edge cases", () => {
 
     // The trainee revokes (fixture switch, this context only): every trainee read is 403.
     await context.addCookies([{ name: "evoli_fixture_link", value: "ended", url: page.url() }]);
-    await dialog.getByRole("button", { name: "Replace", exact: true }).click();
+    await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
 
     await page.waitForURL("**/clients/denied");
     expect(seen.join(" | ")).not.toContain("That recipe is not in your library any more.");
@@ -670,13 +723,10 @@ test.describe("Layout — no sideways scroll, 44 px targets, nothing painted ove
       }
     };
 
-    // The week: the row with the long name, its marker and its two actions.
+    // The week: the row with the long name, its marker and its one action.
     await sweep(async (width) => {
       await check("the meal week");
-      await expectUnoccluded(page, actionIn(row), {
-        over: row.getByRole("button", { name: /^Swap meal: / }),
-        label: `${ACTION} beside Swap`,
-      });
+      await expectUnoccluded(page, swapIn(row), { label: "Swap on the long-name row" });
       await expectUnoccluded(page, row.getByText("Your recipe", { exact: true }), {
         over: row.locator("span[title]").first(),
         label: "the marker beside the long name",
@@ -684,7 +734,7 @@ test.describe("Layout — no sideways scroll, 44 px targets, nothing painted ove
       if (width === 390 || width === 1440) await shoot(page, `week-${width}`);
     });
 
-    // The picker list, with the 80-character name in it.
+    // The sheet's recipe list, with the 80-character name in it.
     const dialog = await openPicker(page, meal(page, "Sunday Lunch"));
     await sweep(async (width) => {
       await check("the picker");
@@ -698,13 +748,13 @@ test.describe("Layout — no sideways scroll, 44 px targets, nothing painted ove
     await choose(dialog, OVEN);
     await sweep(async (width) => {
       await check("the confirm");
-      await expectUnoccluded(page, dialog.getByRole("button", { name: "Replace", exact: true }), {
-        over: dialog.getByRole("button", { name: "Choose another recipe" }),
-        label: "Replace beside Choose another recipe",
+      await expectUnoccluded(page, dialog.getByRole("button", { name: "Confirm", exact: true }), {
+        over: dialog.getByRole("button", { name: "Cancel", exact: true }),
+        label: "Confirm beside Cancel",
       });
       if (width === 390 || width === 1440) await shoot(page, `confirm-${width}`);
     });
-    await dialog.getByRole("button", { name: "Choose another recipe" }).click();
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
     // A refusal naming a recipe (the chicken one, for a vegetarian).
     await place(dialog, BOWL);
