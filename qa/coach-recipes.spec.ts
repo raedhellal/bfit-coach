@@ -537,14 +537,25 @@ test.describe("AC5 — delete (TERMINAL: empties the library)", () => {
 });
 
 /**
- * EV-256e AC2's empty branch — here because this is the one place in the suite where
- * the coach's library is EMPTY: the describe above deleted every recipe. Placing a
- * recipe reads a trainee, which this file otherwise never does; it still sorts before
- * `coach-routine.spec.ts`'s process-wide revoke, so the read is not refused.
+ * EV-256e AC2's empty branch. The store is re-seeded before every test (EV-223), so this
+ * test EMPTIES the library itself, through the same Delete the coach uses, and asserts
+ * it is empty before it opens the picker — the empty state is this test's own write,
+ * not an earlier test's.
  */
-test.describe("EV-256e AC2 — the picker with no recipes (after the terminal delete)", () => {
+test.describe("EV-256e AC2 — the picker with no recipes", () => {
   test("says 'You have no recipes yet.' and links to /recipes/new", async ({ page }) => {
     await signIn(page);
+    await page.goto("/recipes");
+    const rows = page.getByRole("group");
+    await expect(rows).toHaveCount(5); // the seed
+    while ((await rows.count()) > 0) {
+      const before = await rows.count();
+      await rows.first().getByRole("button", { name: "Delete" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+      await expect(rows).toHaveCount(before - 1);
+    }
+    await expect(page.getByText(EMPTY, { exact: true })).toBeVisible();
+
     // Dana: the flag is on and her meals are unlocked.
     await page.goto("/clients/6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004/nutrition");
     // Retried until the dialog answers: a click before hydration is a no-op.

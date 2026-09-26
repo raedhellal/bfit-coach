@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
 /**
@@ -18,10 +19,10 @@ import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout"
  *
  * Every AC sentence is a LITERAL here, never imported from `copy.ts`.
  *
- * ⚠ SERIAL, and ordered: the READ tests on Vera run before anything writes to her
- * week. This file sorts before `coach-recipes.spec.ts` (which empties the library) and
- * before `coach-routine.spec.ts` (whose revoke is process-wide), and it leaves the
- * library as it found it — the one recipe it creates, it deletes.
+ * Every test starts from the fixture's SEED (`./fixture-test`, EV-223), so no test here
+ * relies on another's writes. The mid-session switches (`evoli_fixture_placement`,
+ * `evoli_fixture_link`) are COOKIES on one browser context, not store state: the reset
+ * does not touch them, and they cannot leak into the next test's fresh context.
  *
  * `EV256E_SHOTS=<dir>` writes the evidence screenshots (390 and 1440) there.
  */

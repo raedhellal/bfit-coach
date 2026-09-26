@@ -396,6 +396,7 @@ const KNOWN_REQUIRED_OMISSIONS: Record<string, string> = {
 const REQUEST_FACING_EXPECTED = [
   "CoachApplySwapRequest",
   "CoachApplyWeekRequest",
+  "CoachPlaceRecipeRequest",
   "CoachProgressGoalRequest",
   "CoachRecipeIngredientRequest",
   "CoachRecipeSaveRequest",
