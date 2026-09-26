@@ -44,7 +44,10 @@ export type PortalEvent =
       clientId: string;
       hasStartDate: boolean;
       hasMilestone: boolean;
-      changed: "start" | "milestone" | "both" | "cleared" | "unchanged";
+      /** EV-274. The STORED body-fat milestone after the save, like the api's log line. */
+      hasBodyFatMilestone: boolean;
+      /** EV-274 adds `bodyfat`; `both` means more than one of the three moved. */
+      changed: "start" | "milestone" | "bodyfat" | "both" | "cleared" | "unchanged";
     }
   | { event: "coach_progress_block_empty"; coachId: string | null; clientId: string }
   | { event: "coach_progress_bodyfat_absent"; coachId: string | null; clientId: string };

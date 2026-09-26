@@ -19,12 +19,72 @@ import { formatDate, formatKg, formatKgDelta, formatPct, formatPtsDelta } from "
  *      delta CELL for the first and a "0.0 kg" cell for the second;
  *   4. "not recorded" (no body fat exists) and "no reading on or after {date}" (the
  *      start date is later than every reading) are different facts too.
+ *
+ * EV-274b adds a fifth, and it runs the OTHER way from the first:
+ *   5. `milestoneBodyFatPct` is sent only when the coach has TOUCHED the field, because
+ *      on that one key "absent" means "unchanged" (EV-274 B4) — `buildProgressGoalRequest`
+ *      and `ProgressGoalFormState.bodyFatTouched`.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 /* ── 1. the request ─────────────────────────────────────────────────────────── */
 
-export type ProgressGoalInputError = "DATE" | "MILESTONE";
+export type ProgressGoalInputError = "DATE" | "MILESTONE" | "BODY_FAT";
+
+/**
+ * The body-fat field as the builder needs it: its text, and whether that text is the
+ * COACH'S (typed since the field was last seeded from the server) or the server's.
+ */
+export interface BodyFatInput {
+  text: string;
+  touched: boolean;
+}
+
+/** EV-274 B2 — the api's own bounds, in percentage points. Inclusive at both ends. */
+export const BODY_FAT_MILESTONE_MIN = 3;
+export const BODY_FAT_MILESTONE_MAX = 60;
+
+/**
+ * Digits, then at most ONE SIGNIFICANT decimal: `20.1`, `20.10` and `60.00` pass,
+ * `20.05` does not. The api judges the VALUE (`stripTrailingZeros().scale() > 1`), not
+ * the text, so trailing zeros are the same number and must be accepted — the first cut
+ * of this regex (`\.\d`) refused `20.10`, `60.00` and `3.00`, which the api takes.
+ *
+ * Refused ON PURPOSE although the api would take the value they denote: exponent
+ * notation (`1e1`, `2e1` — a number to `Number`, a typo to a coach), a leading `+`, and
+ * a trailing or bare point. A minus sign is refused by both (every negative is below 3).
+ */
+const AT_MOST_ONE_DECIMAL = /^\d+(?:\.\d0*)?$/;
+
+/**
+ * EV-274b AC1 — the body-fat milestone, checked in the browser against the api's rule:
+ * 3.0..60.0 inclusive, at most one significant decimal. It matches the api on every
+ * plain decimal, except exponent notation, a leading `+` and a trailing point, which are
+ * refused on purpose (see `AT_MOST_ONE_DECIMAL`). Anything refused gets "Enter a
+ * percentage between 3 and 60." and NO request is sent.
+ *
+ * ⚠ Unlike the weight, this one IS range-checked here, because the AC says so. The api
+ * still refuses those values with `COACH_MILESTONE_OUT_OF_RANGE` — the browser check
+ * is the coach's earlier answer, not the enforcement.
+ *
+ * **A decimal comma is accepted** (`20,5` → 20.5), and that is EV-274 edge case 6's own
+ * conditional, not a liberty: *"refused … unless the weight field accepts a comma, in
+ * which case both must behave the same."* The weight field has accepted one since
+ * EV-202b (`replace(",", ".")` below), so the two fields share the rule. The comma is
+ * turned into a point BEFORE the one-decimal check, so `20,55` is still refused.
+ *
+ * An empty field is a CLEAR (`null`), which the builder sends only if touched.
+ */
+export function parseBodyFatMilestone(
+  input: string
+): { ok: true; value: number | null } | { ok: false } {
+  const text = input.trim().replace(",", ".");
+  if (text === "") return { ok: true, value: null };
+  if (!AT_MOST_ONE_DECIMAL.test(text)) return { ok: false };
+  const value = Number(text);
+  if (value < BODY_FAT_MILESTONE_MIN || value > BODY_FAT_MILESTONE_MAX) return { ok: false };
+  return { ok: true, value };
+}
 
 export type BuiltProgressGoalRequest =
   | { ok: true; body: CoachProgressGoalRequest }
@@ -64,7 +124,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  */
 export function buildProgressGoalRequest(
   startedOnInput: string,
-  milestoneInput: string
+  milestoneInput: string,
+  bodyFat: BodyFatInput
 ): BuiltProgressGoalRequest {
   const date = startedOnInput.trim();
   if (date !== "" && !ISO_DATE.test(date)) return { ok: false, reason: "DATE" };
@@ -77,11 +138,33 @@ export function buildProgressGoalRequest(
     milestoneWeightKg = parsed;
   }
 
-  return {
-    ok: true,
+  const body: CoachProgressGoalRequest = {
     // Both keys, every time. See the block above before touching this object.
-    body: { startedOn: date === "" ? null : date, milestoneWeightKg },
+    startedOn: date === "" ? null : date,
+    milestoneWeightKg,
   };
+
+  /**
+   * 🔴 EV-274 B4 — **the body-fat key travels exactly when the coach has touched the
+   * field, and then ALWAYS, including as `null` to clear.**
+   *
+   * On this one key the api reads ABSENT as UNCHANGED. So sending it untouched would let
+   * a tab opened before another tab set a body-fat milestone overwrite that value with
+   * the one it happened to load (EV-274b AC4: the other tab's value survives "only if
+   * [this] form still showed the old value"). And omitting it once touched would drop the
+   * coach's edit — or their clear — without a word.
+   *
+   * "Touched" is reset only when the field is re-seeded from the server, never by
+   * sending: a save the api refuses (a weight out of range) leaves the body fat the
+   * coach typed in the field AND still owed to the next save.
+   */
+  if (bodyFat.touched) {
+    const parsed = parseBodyFatMilestone(bodyFat.text);
+    if (!parsed.ok) return { ok: false, reason: "BODY_FAT" };
+    body.milestoneBodyFatPct = parsed.value;
+  }
+
+  return { ok: true, body };
 }
 
 /**
@@ -95,14 +178,36 @@ export function buildProgressGoalRequest(
  * exists to measure. The story's four values are unchanged and still exhaustive over
  * the saves that changed something.
  */
-export type ProgressGoalChange = "start" | "milestone" | "both" | "cleared" | "unchanged";
+export type ProgressGoalChange =
+  | "start"
+  | "milestone"
+  | "bodyfat"
+  | "both"
+  | "cleared"
+  | "unchanged";
 
+/**
+ * EV-274 adds `bodyfat` (only the body-fat milestone moved) and widens `both` to "more
+ * than one of the three moved" — the api's own reading of the same word in its
+ * `coach_progress_goal_set` log line at `18fbcab`, kept rather than renamed so an existing
+ * query still counts the multi-field saves. An ABSENT body-fat key is "unchanged" (B4),
+ * so it is compared as the stored value.
+ */
 export function describeChange(
-  before: { startedOn: string | null; milestoneWeightKg: number | null },
+  before: {
+    startedOn: string | null;
+    milestoneWeightKg: number | null;
+    milestoneBodyFatPct?: number | null;
+  },
   after: CoachProgressGoalRequest
 ): ProgressGoalChange {
+  const bodyFatBefore = before.milestoneBodyFatPct ?? null;
+  const bodyFatAfter =
+    after.milestoneBodyFatPct === undefined ? bodyFatBefore : after.milestoneBodyFatPct;
   const startChanged = before.startedOn !== after.startedOn;
   const milestoneChanged = before.milestoneWeightKg !== after.milestoneWeightKg;
+  const bodyFatChanged = bodyFatBefore !== bodyFatAfter;
+  const moved = [startChanged, milestoneChanged, bodyFatChanged].filter(Boolean).length;
   /**
    * ⚠ "Nothing changed" is asked FIRST, before "both are now empty".
    *
@@ -111,10 +216,32 @@ export function describeChange(
    * nothing was cleared because there was nothing there. That is the same falsity
    * `unchanged` was added to avoid, surviving one branch higher up.
    */
-  if (!startChanged && !milestoneChanged) return "unchanged";
-  if (after.startedOn === null && after.milestoneWeightKg === null) return "cleared";
-  if (startChanged && milestoneChanged) return "both";
-  return startChanged ? "start" : "milestone";
+  if (moved === 0) return "unchanged";
+  if (after.startedOn === null && after.milestoneWeightKg === null && bodyFatAfter === null) {
+    return "cleared";
+  }
+  if (moved > 1) return "both";
+  if (startChanged) return "start";
+  return milestoneChanged ? "milestone" : "bodyfat";
+}
+
+/** EV-202 edge case 6 — the api's weight bounds, used ONLY to name a 400's cause. */
+const WEIGHT_MILESTONE_MIN = 25;
+const WEIGHT_MILESTONE_MAX = 300;
+
+/**
+ * Which value a 400 `COACH_MILESTONE_OUT_OF_RANGE` refused. The code is the same for
+ * both milestones and `message` is never copy (BUG-173), so the cause is worked out from
+ * what was SENT: the api checks the weight first, so a weight outside 25..300 is the
+ * answer whenever there is one. Otherwise a body fat on the request is the only other
+ * candidate. The browser refuses a bad body fat before sending, so that branch is
+ * reached only if the two rules drift — and then the sentence names the right number.
+ */
+export function refusedMilestone(body: CoachProgressGoalRequest): "WEIGHT" | "BODY_FAT" {
+  const w = body.milestoneWeightKg;
+  if (w !== null && (w < WEIGHT_MILESTONE_MIN || w > WEIGHT_MILESTONE_MAX)) return "WEIGHT";
+  if (body.milestoneBodyFatPct !== undefined && body.milestoneBodyFatPct !== null) return "BODY_FAT";
+  return "WEIGHT";
 }
 
 /* ── 2. the signed "to go" figure ───────────────────────────────────────────── */
@@ -143,6 +270,19 @@ export function toGoValue(weightToGoKg: number): string {
   const rounded = Number(weightToGoKg.toFixed(1));
   if (rounded < 0) return formatKg(Math.abs(rounded));
   return formatKgDelta(rounded);
+}
+
+/**
+ * EV-274b AC2 — the same rule in percentage POINTS, for `bodyFatToGoPts`, which the api
+ * signs exactly as it signs `weightToGoKg` (milestone − current): a milestone below the
+ * current reading prints its magnitude ("4.0 pts to go"), one above keeps its plus
+ * ("+2.0 pts to go"), and an exact hit is "0.0 pts to go" (edge case 2 of EV-274).
+ */
+export function bodyFatToGoValue(bodyFatToGoPts: number): string {
+  const rounded = Number(bodyFatToGoPts.toFixed(1));
+  // U+00A0 between number and unit, as `formatPtsDelta` does: they never wrap apart.
+  if (rounded < 0) return `${Math.abs(rounded).toFixed(1)}\u00a0pts`;
+  return formatPtsDelta(rounded);
 }
 
 /* ── 3 + 4. the two metric rows ─────────────────────────────────────────────── */
@@ -234,9 +374,21 @@ function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): Goa
   const current = isWeight ? goal.currentWeight : goal.currentBodyFat;
   const delta = isWeight ? goal.weightDeltaKg : goal.bodyFatDeltaPts;
 
+  const bodyFatMilestone = isWeight ? null : (goal.milestoneBodyFatPct ?? null);
+
   // AC4: "Body fat — Not recorded". Never `0 %`, never a dash, never an empty row.
   if (start === null && current === null) {
-    return { metric, label, cells: [{ key: "absent", text: copy.progressGoal.notRecorded }] };
+    const cells: GoalCell[] = [{ key: "absent", text: copy.progressGoal.notRecorded }];
+    /**
+     * EV-274b AC3, verbatim: "Body fat — Not recorded · Milestone 22.0 %", and no "to
+     * go" — there is no reading to measure a distance from, and the api sends no
+     * `bodyFatToGoPts` for it. The milestone is still a number the coach wrote, so it is
+     * still shown.
+     */
+    if (bodyFatMilestone !== null) {
+      cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatPct(bodyFatMilestone)) });
+    }
+    return { metric, label, cells };
   }
 
   const text = (reading: TraineeProgressReading, column: "start" | "current"): string =>
@@ -273,15 +425,26 @@ function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): Goa
   }
 
   /**
-   * 🔴 The milestone is on the WEIGHT row and nowhere else. AC2: body fat has "no
-   * milestone cell", and EV-202 rules a milestone for body fat, waist or anything but
-   * weight out of scope by name — one number was asked for, and four more would be
-   * four more "who owns this" questions and a units problem.
+   * 🔴 Two milestones, and no third. EV-202 ruled a milestone for anything but weight
+   * out of scope by name; EV-274 reverses that for BODY FAT ONLY, at Raed's explicit
+   * ask. Waist, chest, hips, arm and thigh stay out on EV-202's original reasoning.
    */
   if (isWeight && goal.milestoneWeightKg !== null) {
     cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatKg(goal.milestoneWeightKg)) });
     if (goal.weightToGoKg !== null) {
       cells.push({ key: "toGo", text: copy.progressGoal.toGo(toGoValue(goal.weightToGoKg)) });
+    }
+  }
+  /**
+   * EV-274b AC2: "… · Milestone 20.0 % · 4.0 pts to go". The "to go" is the API's
+   * `bodyFatToGoPts`, never recomputed here, and it is ABSENT rather than null when it
+   * cannot be computed — so it is read by `typeof`, which also treats a null from any
+   * other deployment as the absence it is.
+   */
+  if (!isWeight && bodyFatMilestone !== null) {
+    cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatPct(bodyFatMilestone)) });
+    if (typeof goal.bodyFatToGoPts === "number") {
+      cells.push({ key: "toGo", text: copy.progressGoal.toGo(bodyFatToGoValue(goal.bodyFatToGoPts)) });
     }
   }
 
@@ -320,9 +483,13 @@ export function startedOnLine(goal: TraineeProgressGoal): string {
  * Null when there is no milestone: no empty state, no "not set" placeholder and no
  * call to action (AC10's rule, applied on this side of the wire too). A `SELF`
  * milestone yields no line, for the same reason `startedOnLine` withholds one.
+ *
+ * EV-274: EITHER milestone earns the line. One PUT writes both, so they share one
+ * `set_by` and one `updated_at`, and the api resolves `milestoneSetByName` for a row
+ * carrying only a body-fat milestone too (b-fit-api `18fbcab`, `hasMilestone()`).
  */
 export function milestoneAttribution(goal: TraineeProgressGoal): string | null {
-  if (goal.milestoneWeightKg === null) return null;
+  if (goal.milestoneWeightKg === null && (goal.milestoneBodyFatPct ?? null) === null) return null;
   if (goal.milestoneSource === "SELF") return null;
   if (goal.milestoneSetByName === null) return copy.progressGoal.milestoneSetByGone;
   return copy.progressGoal.milestoneSetBy(
@@ -344,10 +511,13 @@ export function milestoneAttribution(goal: TraineeProgressGoal): string | null {
 export function seedFields(goal: TraineeProgressGoal): {
   startedOn: string;
   milestone: string;
+  bodyFat: string;
 } {
+  const bodyFat = goal.milestoneBodyFatPct ?? null;
   return {
     startedOn: goal.startedOnSource === "LINK_DEFAULT" ? "" : goal.startedOn.slice(0, 10),
     milestone: goal.milestoneWeightKg === null ? "" : String(goal.milestoneWeightKg),
+    bodyFat: bodyFat === null ? "" : String(bodyFat),
   };
 }
 
@@ -376,16 +546,35 @@ export function seedFields(goal: TraineeProgressGoal): {
  * of them precisely because it fires.
  * ═══════════════════════════════════════════════════════════════════════════
  */
+export type ProgressGoalField = "startedOn" | "milestone" | "bodyFat";
+
 export interface ProgressGoalFormState {
   startedOn: string;
   milestone: string;
+  bodyFat: string;
   /** Touched since the last settled save. Not rendered — it decides re-seeding only. */
-  dirty: { startedOn: boolean; milestone: boolean };
+  dirty: { startedOn: boolean; milestone: boolean; bodyFat: boolean };
+  /**
+   * EV-274 B4 — is the body-fat TEXT the coach's rather than the server's? Decides
+   * whether `milestoneBodyFatPct` goes on the request at all.
+   *
+   * ⚠ Not the same flag as `dirty.bodyFat`, and the difference is a lost edit. `dirty` is
+   * cleared when a save is SENT (`markSent`) so the reply may re-seed the field; this is
+   * cleared only when the field IS re-seeded from the server. Between the two sits a save
+   * the api refused — a weight out of range — after which the field still holds the body
+   * fat the coach typed, and the next save must still carry it. Driving the key off
+   * `dirty` would send nothing, answer "Saved." and keep the old value.
+   */
+  bodyFatTouched: boolean;
 }
 
-/** A clean form, seeded from the server. Both fields track the server again. */
+/** A clean form, seeded from the server. Every field tracks the server again. */
 export function seedFormState(goal: TraineeProgressGoal): ProgressGoalFormState {
-  return { ...seedFields(goal), dirty: { startedOn: false, milestone: false } };
+  return {
+    ...seedFields(goal),
+    dirty: { startedOn: false, milestone: false, bodyFat: false },
+    bodyFatTouched: false,
+  };
 }
 
 /**
@@ -403,31 +592,44 @@ export function reseedPreservingEdits(
   return {
     startedOn: current.dirty.startedOn ? current.startedOn : seeded.startedOn,
     milestone: current.dirty.milestone ? current.milestone : seeded.milestone,
+    bodyFat: current.dirty.bodyFat ? current.bodyFat : seeded.bodyFat,
     dirty: current.dirty,
+    // Re-seeded ⇒ the text is the server's again ⇒ the key stays off the next request.
+    bodyFatTouched: current.dirty.bodyFat ? current.bodyFatTouched : false,
   };
 }
 
 /** One field edited by the coach — which marks it dirty and nothing else. */
 export function editField(
   current: ProgressGoalFormState,
-  field: "startedOn" | "milestone",
+  field: ProgressGoalField,
   value: string
 ): ProgressGoalFormState {
-  return { ...current, [field]: value, dirty: { ...current.dirty, [field]: true } };
+  return {
+    ...current,
+    [field]: value,
+    dirty: { ...current.dirty, [field]: true },
+    bodyFatTouched: current.bodyFatTouched || field === "bodyFat",
+  };
 }
 
-/** A save has been sent: both fields are the coach's settled intent until re-touched. */
+/**
+ * A save has been sent: every field is the coach's settled intent until re-touched.
+ * `bodyFatTouched` is deliberately left as it is — see its jsdoc.
+ */
 export function markSent(current: ProgressGoalFormState): ProgressGoalFormState {
-  return { ...current, dirty: { startedOn: false, milestone: false } };
+  return { ...current, dirty: { startedOn: false, milestone: false, bodyFat: false } };
 }
 
 /** What `describeChange` compares against — the stored values, not the field text. */
 export function storedValues(goal: TraineeProgressGoal): {
   startedOn: string | null;
   milestoneWeightKg: number | null;
+  milestoneBodyFatPct: number | null;
 } {
   return {
     startedOn: goal.startedOnSource === "LINK_DEFAULT" ? null : goal.startedOn.slice(0, 10),
     milestoneWeightKg: goal.milestoneWeightKg,
+    milestoneBodyFatPct: goal.milestoneBodyFatPct ?? null,
   };
 }

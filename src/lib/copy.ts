@@ -431,7 +431,7 @@ export const copy = {
     milestoneSetBy: (name: string, date: string) => `Milestone set by ${name} on ${date}`,
     milestoneSetByGone: "Milestone set by a coach who has left",
 
-    /* ── the edit form: TWO fields, and there is no third ────────────────────
+    /* ── the edit form: THREE fields since EV-274b, and there is no fourth ────
      *
      * There is no heading key here. The form sits under the block's own title inside
      * one card, so a second heading would name nothing the region is not already
@@ -445,6 +445,8 @@ export const copy = {
      */
     startDateHint: "Clear it to fall back to the date the link was accepted.",
     milestoneLabel: "Milestone weight (kg)",
+    /** EV-274b AC1, verbatim. Beside the weight milestone, in the same form. */
+    bodyFatMilestoneLabel: "Milestone body fat (%)",
     /** 🔴 G-GOAL. Witnessed by EV-202 AC8's two release-blocking api runs. */
     milestoneNote:
       "A number you and your trainee agreed. Plans and nutrition targets are not calculated from it.",
@@ -454,8 +456,23 @@ export const copy = {
     /** Client-side, and no request is sent. */
     invalidMilestone: "Enter a milestone weight in kilograms, or leave it empty.",
     invalidDate: "Enter the start date as a calendar date, or leave it empty.",
+    /**
+     * EV-274b AC1, verbatim. Client-side, and no request is sent: outside 3.0-60.0, more
+     * than one significant decimal, or not a plain decimal. The bounds are the api's own
+     * (EV-274 B2), and the rule matches the api's except exponent notation, a leading `+`
+     * and a trailing point, which are refused here on purpose (`parseBodyFatMilestone`).
+     */
+    invalidBodyFat: "Enter a percentage between 3 and 60.",
     /** Edge case 6's 400, rendered rather than pre-empted: the api refuses, we report. */
     outOfRange: "A milestone weight must be between 25 and 300 kg. Nothing was saved.",
+    /**
+     * EV-274a's 400 for the body fat, rendered rather than assumed away. The browser
+     * refuses the same values first, so this is reached only if the two rules ever
+     * drift apart — and then the coach must not be told it was the WEIGHT.
+     * `refusedMilestone` in src/lib/progressGoal.ts picks between the two.
+     */
+    outOfRangeBodyFat:
+      "A milestone body fat must be between 3 and 60 %, with one decimal. Nothing was saved.",
     failed: "The start date and milestone could not be saved.",
   },
 
