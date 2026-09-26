@@ -30,6 +30,14 @@ one (weight 500 → 400, fix weight, Save → "Saved." and the typed body fat ne
 - The sticky `.shell-bar` can sit over a row after a viewport resize; centre the
   subject (`scrollIntoView({block:"center"})`) before `expectUnoccluded`, since
   `scrollIntoViewIfNeeded` leaves an "already visible" element under it.
+- **A browser check that "matches the api" must match the api's VALUE rule, not a text
+  shape.** The first cut's regex `\.\d` refused `20.10`, `60.00` and `3.00`, which the api
+  (`stripTrailingZeros().scale() > 1`) accepts; staff found it by sending 675 inputs to both.
+  Now `\.\d0*`. Exponent, a leading `+` and a trailing point stay refused on purpose, and
+  every "matches" claim says so. Before writing "exactly", diff the two rules on a generated
+  input set rather than on the story's list.
+- Units are joined by U+00A0 (`formatPct`, `formatPtsDelta`). Playwright's string
+  `toHaveText` normalises it to a space, a REGEX expectation does not — pin ` ` there.
 - Never stash `src/` for a red-first run: a pause left the whole implementation in a
   stash. Run main in a separate `worktree add --detach … origin/main`, with the spec copied in.
 
