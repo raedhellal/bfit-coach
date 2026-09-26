@@ -55,6 +55,15 @@ test.describe("EV-224 CI workflow", () => {
     expect(code).toContain('if [ "$r" != "success" ]');
   });
 
+  test("EV-235 boundary — exactly one test is excluded, the one that needs the private b-fit-api", () => {
+    const inverts = [...code.matchAll(/--grep-invert\s+"([^"]*)"/g)].map((m) => m[1]);
+    expect(inverts).toEqual(["the vendored api commit's merge state"]);
+    expect(code.match(/--grep(?!-invert)|--test-ignore|--last-failed|--only-changed/g)).toBeNull();
+    // Without full history there is no origin/main and api-merge-condition's main limb fails.
+    const e2e = code.slice(code.indexOf("\n  e2e-fixture:"), code.indexOf("\n  e2e-roster:"));
+    expect(e2e).toMatch(/fetch-depth:\s*0/);
+  });
+
   test("AC3 — references no secret, no token, no URL and no seeded credential", () => {
     // Executed lines only for the context names: Actions expressions are case-insensitive,
     // and the header comment says "NO SECRETS." in prose.
