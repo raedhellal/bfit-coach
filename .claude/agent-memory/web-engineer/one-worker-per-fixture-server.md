@@ -29,6 +29,12 @@ parallelism. Per-worker stores were ruled out by senior-po (more than the row is
   ran" witness). Never start a second `next dev` in the same checkout to test this: it
   would share `.next`. Probe files are `*.probe.ts` so no suite's default testMatch and
   not `fixture-isolation.spec.ts`'s `.spec.ts` scan picks them up.
+- "No request was sent" needs a COUNTING listener the test owns on port 0, never the
+  absence of ECONNREFUSED on a fixed port. The first cut used :3689, inside the range
+  other sessions run fixture servers on: staff-engineer showed that gate could reset
+  ANOTHER session's store, and a refusal-after-DELETE mutant survived. Spawn the child
+  with async `spawn` — `spawnSync` blocks the parent's event loop, so its own listener
+  cannot answer.
 - A second run on an occupied port fails with "is already used" (`reuseExistingServer:
   false`), witnessed 2026-09-26. So two RUNS cannot share one fixture server either.
 
