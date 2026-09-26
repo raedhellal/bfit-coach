@@ -3905,6 +3905,251 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /coach-portal/nutrition-templates:
+    get:
+      summary: The coach's own nutrition template library
+      description: >-
+        EV-273a / ADR-0016b. Newest-updated first. Unpaged because the cap is 50 templates per
+        coach, enforced at the write under the coach-profile row lock and repeated as the query's
+        LIMIT, so it is a bounded collection rather than an unbounded query. A second coach sees an
+        EMPTY library, never this one's. Nothing here is visible to a trainee.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The library
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Create a nutrition template
+      description: >-
+        EV-273a AC1. Absolute targets with `PUT /coach-portal/clients/{id}/nutrition/targets`'s
+        bounds exactly, and an optional meal structure (omitted = the trainee's own). The calorie
+        floor is NOT applied here: a template has no sex; it applies when the template is used,
+        through the existing targets write. Every key the request does not declare, at any depth,
+        is refused with `COACH_FIELD_NOT_ACCEPTED` (EV-273a AC2); `recipePins` is such a key until
+        EV-273c. Applying a template is the portal sending the existing coach writes: no endpoint
+        takes a template id and writes anyone's data (ADR-0016b D16b.7).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NutritionTemplateSaveRequest"
+      responses:
+        "201":
+          description: Created. The same body `GET /coach-portal/nutrition-templates/{id}` returns.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateResponse"
+        "400":
+          description: >-
+            `COACH_FIELD_NOT_ACCEPTED` naming an undeclared key at any depth. `VALIDATION_ERROR`
+            naming the field (at the start of `message`) for a missing, fractional or out-of-bound
+            target, a `mealStructure` without both of its fields, or a name that is empty or over
+            80 characters after trimming. `COACH_MEAL_STRUCTURE_OUT_OF_RANGE` for `mealsPerDay`
+            outside 1-6.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `COACH_NUTRITION_TEMPLATE_NAME_TAKEN` (this coach already has a nutrition template with
+            the name, ignoring case and surrounding spaces; a routine template with it is fine), or
+            `COACH_NUTRITION_TEMPLATE_LIMIT_REACHED` at 50
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/nutrition-templates/{id}:
+    get:
+      summary: One nutrition template
+      description: >-
+        EV-273a AC4. Every denial on this mapping is ONE body, `code` included: a template belonging
+        to another coach, an id that never existed and one deleted in another tab are the same
+        branch of `requireOwnedNutritionTemplate`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: COACH_ACCESS_DENIED. Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      summary: Replace a nutrition template
+      description: >-
+        EV-273a. Replaces the whole template and applies every save rule again, including the name
+        rule against this coach's OTHER nutrition templates (keeping or re-casing its own name is
+        not a collision). Trainees it was already used on keep their targets and meals.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NutritionTemplateSaveRequest"
+      responses:
+        "200":
+          description: The saved template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateResponse"
+        "400":
+          description: As for POST /coach-portal/nutrition-templates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: COACH_ACCESS_DENIED. Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_NUTRITION_TEMPLATE_NAME_TAKEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Delete a nutrition template
+      description: >-
+        EV-273a. After it, the id answers the same 403 body as a foreign or random id. Trainees it
+        was already used on keep their targets and meals.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: COACH_ACCESS_DENIED. Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/nutrition-templates/{id}/duplicate:
+    post:
+      summary: Duplicate a nutrition template
+      description: >-
+        EV-273a. The copy is named "{name} (copy)", then "(copy 2)" and so on up to "(copy 20)",
+        with the same targets and meal structure. The original is shortened when needed so the
+        suffix always fits in 80 characters.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: The copy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: COACH_ACCESS_DENIED. Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `COACH_NUTRITION_TEMPLATE_LIMIT_REACHED` at 50, or `COACH_NUTRITION_TEMPLATE_NAME_TAKEN`
+            when "(copy)" to "(copy 20)" are all taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /coach-portal/ingredients:
     get:
       summary: Search the ingredients a recipe may use
@@ -4140,22 +4385,28 @@ paths:
                 $ref: "#/components/schemas/ApiError"
   /coach-portal/clients/{id}/progress-goal:
     put:
-      summary: Set the trainee's programme start date and milestone weight
+      summary: Set the trainee's programme start date, milestone weight and milestone body fat
       description: >-
-        EV-202a AC1. **TWO values, and there is no third.** Start weight, current weight, start body
-        fat and current body fat are DERIVED from the trainee's own `weigh_ins` and
-        `body_measurements` rows — the trainee owns their body data and already records it, a
-        coach-typed baseline would be a second writer on it, and a derived one cannot go stale
-        against the chart printed below it. No field on this request could carry one.
-        A **PUT of the whole representation**: an omitted value CLEARS that value, which is an
-        explicit write and not a no-op — the row survives with a null milestone, `set_by` updated,
-        and the trainee's milestone row disappears from their Measurements screen.
-        Last write wins. Two scalars, one actor, no trainee writer.
+        EV-202a AC1, extended by EV-274a. **Three values: a start date, a milestone weight and a
+        milestone body fat.** Start weight, current weight, start body fat and current body fat are
+        DERIVED from the trainee's own `weigh_ins` and `body_measurements` rows — the trainee owns
+        their body data and already records it, a coach-typed baseline would be a second writer on
+        it, and a derived one cannot go stale against the chart printed below it. No field on this
+        request could carry one; the coach never enters a body-fat MEASUREMENT (EV-274 B1).
+        For `startedOn` and `milestoneWeightKg`, a **PUT of the whole representation**: an omitted
+        value CLEARS that value, which is an explicit write and not a no-op — the row survives with
+        a null milestone, `set_by` updated.
+        **For `milestoneBodyFatPct` only (EV-274 B4): key ABSENT → UNCHANGED; key present with
+        `null` → cleared; a number → set.** A client that predates the field — a portal tab loaded
+        before EV-274b — sends only the two old keys and cannot erase a body-fat milestone it never
+        displayed. Every accepted PUT still moves `set_by` and `updated_at` to its writer: both
+        milestones share one attribution.
+        Last write wins. One actor, no trainee writer.
         The response is the SAME block `GET /coach-portal/clients/{id}` embeds, recomputed from the
         trainee's readings, so the portal needs no refetch.
-        🔴 **G-GOAL**: the milestone weight is a NARRATIVE number. No routine generator, no
-        nutrition target calculation, no prompt and no policy reads it. A coach typing 60 here does
-        not move a calorie target by one kilocalorie.
+        🔴 **G-GOAL**: both milestones are NARRATIVE numbers. No routine generator, no nutrition
+        target calculation, no prompt and no policy reads them. A coach typing 60 kg or 8 % here
+        does not move a calorie target by one kilocalorie.
       security:
         - bearerAuth: []
       parameters:
@@ -4180,9 +4431,11 @@ paths:
                 $ref: "#/components/schemas/TraineeProgressGoal"
         "400":
           description: >-
-            COACH_MILESTONE_OUT_OF_RANGE — the milestone is outside 25..300 kg. NOTHING is written,
-            including the start date that arrived in the same body, and the value is never clamped.
-            Or VALIDATION_ERROR for a number that does not fit NUMERIC(5,2).
+            COACH_MILESTONE_OUT_OF_RANGE — the milestone weight is outside 25..300 kg, or the
+            milestone body fat is outside 3.0-60.0 % or has more than one decimal (the message names
+            `milestoneBodyFatPct` and `3.0-60.0`). NOTHING is written, including the other values
+            that arrived in the same body, and the value is never clamped or rounded.
+            Or VALIDATION_ERROR for a weight that does not fit NUMERIC(5,2).
           content:
             application/json:
               schema:
@@ -4444,9 +4697,15 @@ paths:
     post:
       summary: Swap one meal for a cached candidate
       description: >-
-        EV-185 AC3. Day-level, so the week's attribution is carried forward unchanged. The swapped
-        meal is marked LOCKED by the engine, exactly as the trainee's own swap is — which is why the
-        next apply keeps it.
+        EV-185 AC3. Day-level, so the week's attribution is carried forward unchanged. The new meal
+        is the engine's (provenance ENGINE). A coach's swap does NOT lock the meal, because a lock
+        means the trainee chose the meal (BUG-245 ruling Q2). So the coach's next apply or
+        regenerate replaces a meal the coach swapped, like any other unlocked meal. What the trainee
+        owns is refused and nothing is written (BUG-245): a meal they marked eaten answers 409
+        COACH_MEAL_EATEN (only the trainee may erase their own "I ate this"), and a meal they
+        locked answers 409 COACH_MEAL_LOCKED, the same rule as placement, apply and regenerate.
+        Eaten is checked first. Both checks run under the plan lock against the meal as it is now,
+        so a mark or a lock made after the portal loaded the week is seen too.
       security:
         - bearerAuth: []
       parameters:
@@ -4495,6 +4754,14 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: NUTRITION_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            COACH_MEAL_EATEN — the trainee has marked this meal eaten; COACH_MEAL_LOCKED — the
+            trainee locked this meal
           content:
             application/json:
               schema:
@@ -4696,7 +4963,7 @@ paths:
 
   /me/progress-goal:
     get:
-      summary: The milestone weight the trainee's coach set for them
+      summary: The milestones (weight and body fat) the trainee's coach set for them
       description: >-
         EV-202e AC12–AC15. **The trainee's own read of a number written about their body by someone
         else.** EV-202a shipped the progress goal on the coach-portal surface only; this is the only
@@ -4706,19 +4973,21 @@ paths:
         **It addresses nothing.** No path parameter and no query parameter of any kind: the subject
         is the caller, resolved from the authentication, so there is no id to pass and none to
         tamper with.
-        **A deliberate SUBSET of the coach's block, and the list is closed** — four fields, no more
-        and no fewer. `startedOn`, `startedOnSource`, the four derived readings, both deltas and
-        above all `weightToGoKg` are absent by design: "to go" is a SIGNED number (a trainee bulking
+        **A deliberate SUBSET of the coach's block, and the list is closed** — five fields, no more
+        and no fewer (EV-274a AC6 added `milestoneBodyFatPct` to EV-202e's four). `startedOn`,
+        `startedOnSource`, the four derived readings, both deltas and above all `weightToGoKg` and
+        `bodyFatToGoPts` are absent by design: "to go" is a SIGNED number (a trainee bulking
         toward a higher milestone and one cutting toward a lower one both have one, and neither is a
         failure), and it is what a progress bar, a percentage and an ETA are made of.
         🔴 **G-GOAL**: the milestone is a NARRATIVE number. No routine generator, no nutrition target
         calculation, no prompt and no policy reads it, and no client renders it as a number the app
         is working toward.
-        **Absence is a 200 with a null milestone — never a 404 and never a 403** — and it is ONE
+        **Absence is a 200 with null milestones — never a 404 and never a 403** — and it is ONE
         answer for FOUR different facts: no coach at all, a link with no goal row, a link whose
-        `WEIGH_INS` scope is missing, and a coach who cleared the milestone. A status code that
-        varied with whether a coach exists, or with which scopes a link carries, would be a
-        disclosure oracle on the trainee's own prefix.
+        `WEIGH_INS` scope is missing, and a coach who cleared both milestones. A row with only a
+        body-fat milestone is NOT absence: it answers `milestoneWeightKg: null` with the body fat.
+        A status code that varied with whether a coach exists, or with which scopes a link
+        carries, would be a disclosure oracle on the trainee's own prefix.
         ⚠ `WEIGH_INS` deliberately does NOT gate this read. That scope governs what the COACH may
         see of the trainee's data; it is not a lock on the subject's own record, and a trainee who
         has revoked entirely still reads the row (edge case 12) with the attribution naming the
@@ -4809,7 +5078,7 @@ components:
         capacity:
           type: integer
           description: How many ACTIVE links the tier allows. A constant in code, keyed off the column.
-          example: 2
+          example: 10
       required: [coachId, displayName, tier, active, capacity]
     CoachClientSummaryResponse:
       type: object
@@ -4885,7 +5154,7 @@ components:
     CoachClientPageResponse:
       type: object
       description: >-
-        A page of roster rows. The roster is small today (STARTER allows 2) but every collection
+        A page of roster rows. The roster is small today (STARTER allows 10) but every collection
         endpoint paginates without exception — the tier ladder already contemplates 100 profiles.
       properties:
         items:
@@ -5276,14 +5545,15 @@ components:
     TraineeProgressGoal:
       type: object
       description: >-
-        EV-202a. **Two values are written by the coach** (`startedOn`, `milestoneWeightKg`) and four
-        are DERIVED from the trainee's own `weigh_ins` / `body_measurements` rows. There is no write
+        EV-202a + EV-274a. **Three values are written by the coach** (`startedOn`,
+        `milestoneWeightKg`, `milestoneBodyFatPct`) and the readings are DERIVED from the
+        trainee's own `weigh_ins` / `body_measurements` rows. There is no write
         path for a start weight, a current weight, a start body fat or a current body fat, and no
         request field that could carry one: the trainee owns their body data and already records it,
         and a derived baseline cannot go stale against the chart printed below it.
-        🔴 **G-GOAL**: `milestoneWeightKg` is a NARRATIVE number. No routine generator, no nutrition
-        target calculation, no prompt and no policy reads it — enforced by two release-blocking
-        tests, a static one and a difference-of-zero one. A coach typing 60 here moves nobody's
+        🔴 **G-GOAL**: `milestoneWeightKg` and `milestoneBodyFatPct` are NARRATIVE numbers. No
+        routine generator, no nutrition target calculation, no prompt and no policy reads them —
+        enforced by two release-blocking tests, a static one and a difference-of-zero one. A coach typing 60 here moves nobody's
         calorie target by one kilocalorie.
         **Null is a fact, and there are three different ones.** A null `Reading` is "no reading on
         or after the start date" or "not recorded", never 0. A null delta is "one end is missing",
@@ -5311,12 +5581,23 @@ components:
           description: >-
             🔴 G-GOAL — narrative. 25.00..300.00 kg on write; outside that, 400
             COACH_MILESTONE_OUT_OF_RANGE and NOTHING is written, never a silent clamp.
+        milestoneBodyFatPct:
+          type: number
+          format: double
+          nullable: true
+          example: 20.0
+          description: >-
+            EV-274a. 🔴 G-GOAL — narrative. The body-fat milestone in percentage points, 3.0..60.0
+            with one decimal on write; outside that, 400 COACH_MILESTONE_OUT_OF_RANGE and NOTHING is
+            written, never a silent clamp. Null = none set. Shares `milestoneSetByName` and
+            `milestoneUpdatedAt` with the weight: one PUT writes both.
         milestoneSetByName:
           type: string
           nullable: true
           description: >-
-            Who set the milestone. Null WITH a milestone present is "set by a coach who has left" —
-            the `ON DELETE SET NULL` fired and the number is unchanged.
+            Who set the milestones. Null WITH either milestone present is "set by a coach who has
+            left" — the `ON DELETE SET NULL` fired and the numbers are unchanged. Null with both
+            milestones null is simply nothing set.
         milestoneSource:
           type: string
           nullable: true
@@ -5368,22 +5649,32 @@ components:
           description: >-
             milestone − current weight. Positive is a bulk and negative a cut; no direction is
             assumed and no warning fires. 0.0 is an exact hit, with no celebration and no event.
+        bodyFatToGoPts:
+          type: number
+          format: double
+          example: -4.0
+          description: >-
+            EV-274a. `milestoneBodyFatPct` − `currentBodyFat.value`, in percentage POINTS — the same
+            sign convention as `weightToGoKg` (20.0 milestone, 24.0 current → -4.0). No direction is
+            assumed and no warning fires; 0.0 is an exact hit. **ABSENT from the body — not null
+            and not 0 — unless there is both a body-fat milestone and a body-fat reading** (EV-274a
+            AC4). The only key on this schema that is omitted rather than null.
       required:
         - startedOn
         - startedOnSource
     TraineeMilestone:
       type: object
       description: >-
-        EV-202e. The TRAINEE's own view of the milestone weight a coach set for them — a deliberate
-        subset of `TraineeProgressGoal`, not an unfinished superset.
-        **Four fields and the list is closed.** The coach reads a progress report because they are
-        assessing the work; the trainee is told one fact — a number someone else set about their
-        body, and who set it. `weightToGoKg` in particular is absent on purpose: it is SIGNED, a
-        bulk and a cut both have one and neither is a failure, and a field that is not on the wire
+        EV-202e + EV-274a. The TRAINEE's own view of the milestones a coach set for them — a
+        deliberate subset of `TraineeProgressGoal`, not an unfinished superset.
+        **Five fields and the list is closed** (EV-274a AC6 amended EV-202 AC12 from four to
+        five). The coach reads a progress report because they are assessing the work; the trainee is told one fact — a number someone else set about their
+        body, and who set it. `weightToGoKg` and `bodyFatToGoPts` in particular are absent on
+        purpose: each is SIGNED, a bulk and a cut both have one and neither is a failure, and a field that is not on the wire
         cannot be rendered by a later edit.
-        🔴 **G-GOAL**: `milestoneWeightKg` is a NARRATIVE number. Nothing generates from it and
-        nothing renders it as a number the app is working toward.
-        **All four keys are always present, nulls included.** `milestoneSetByName` is three-way for
+        🔴 **G-GOAL**: `milestoneWeightKg` and `milestoneBodyFatPct` are NARRATIVE numbers. Nothing
+        generates from them and nothing renders them as numbers the app is working toward.
+        **All five keys are always present, nulls included.** `milestoneSetByName` is three-way for
         the client — a name, `null` (the coach's account was erased, the number is unchanged, "set
         by a coach who has left"), or ABSENT (an older server said nothing). This endpoint never
         produces the third, which is exactly why it must not suppress the second.
@@ -5397,6 +5688,15 @@ components:
             🔴 G-GOAL — narrative. 25.00..300.00 kg as written by the coach. Null renders NO row at
             all on the trainee's screen: no empty state, no "not set" placeholder, no call to
             action.
+        milestoneBodyFatPct:
+          type: number
+          format: double
+          nullable: true
+          example: 20.0
+          description: >-
+            EV-274a. 🔴 G-GOAL — narrative. The body-fat milestone, 3.0..60.0 percentage points as
+            written by the coach. Null renders no body-fat row. A row with only this milestone has
+            `milestoneWeightKg: null` and is NOT the absence answer.
         milestoneSetByName:
           type: string
           nullable: true
@@ -5415,7 +5715,8 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: When the goal row was last written. Null when there is no milestone.
+          description: >-
+            When the goal row was last written. Null when there is no milestone of either kind.
     TraineeProgressReading:
       type: object
       description: >-
@@ -5608,12 +5909,14 @@ components:
     CoachProgressGoalRequest:
       type: object
       description: >-
-        EV-202a. The two values a coach types. Both are optional and both are CLEARED by omitting
-        them — see the endpoint's description for why an omission is a write.
-        There is deliberately no field for a start weight, a current weight, a body-fat value, a
-        milestone body fat, a milestone waist or a milestone DATE: each was ruled out by name, and
-        a request type with no field for a number is the only way "the coach cannot type that
-        number" survives the next refactor.
+        EV-202a + EV-274a. The values a coach types. All are optional. `startedOn` and
+        `milestoneWeightKg` are CLEARED by omitting them; `milestoneBodyFatPct` is left UNCHANGED by
+        omitting it and cleared only by an explicit null (EV-274 B4) — see the endpoint's
+        description.
+        There is deliberately no field for a start weight, a current weight, a body-fat READING, a
+        milestone waist or a milestone DATE: each was ruled out by name, and a request type with no
+        field for a number is the only way "the coach cannot type that number" survives the next
+        refactor.
       properties:
         startedOn:
           type: string
@@ -5631,6 +5934,16 @@ components:
           description: >-
             🔴 G-GOAL — narrative. 25.00..300.00 kg; outside that, 400 COACH_MILESTONE_OUT_OF_RANGE
             and nothing is written. Never clamped.
+        milestoneBodyFatPct:
+          type: number
+          format: double
+          nullable: true
+          example: 20.0
+          description: >-
+            EV-274a. 🔴 G-GOAL — narrative. The body-fat milestone in percentage points, 3.0..60.0
+            with at most one decimal; outside that (e.g. 2.9, 60.1, -1, 200, 20.05), 400
+            COACH_MILESTONE_OUT_OF_RANGE naming `milestoneBodyFatPct` and `3.0-60.0`, and nothing is
+            written. Never clamped, never rounded. **Omitted = UNCHANGED; `null` = CLEARED.**
 
     CoachTargetsRequest:
       type: object
@@ -6327,6 +6640,122 @@ components:
           type: integer
           description: The product cap on recipes per coach (100), so the portal can show "{n} of 100".
           example: 100
+        remaining:
+          type: integer
+          description: How many more this coach may create.
+    NutritionTemplateSaveRequest:
+      type: object
+      description: >-
+        A nutrition template to create or replace (EV-273a). A closed key list at every depth: any
+        other key is refused with COACH_FIELD_NOT_ACCEPTED.
+      required: [name, targets]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: >-
+            1..80 characters after trimming, no control character or line break. Unique per coach
+            among nutrition templates, ignoring case and surrounding spaces.
+          example: Cut 1800
+        targets:
+          $ref: "#/components/schemas/NutritionTemplateTargetsRequest"
+        mealStructure:
+          allOf:
+            - $ref: "#/components/schemas/NutritionTemplateMealStructureRequest"
+          nullable: true
+          description: Omit (or null) to use the trainee's own meal structure when the template is applied.
+    NutritionTemplateTargetsRequest:
+      type: object
+      description: Absolute daily targets, whole numbers, with CoachTargetsRequest's bounds.
+      required: [calories, proteinG, carbsG, fatG]
+      additionalProperties: false
+      properties:
+        calories:
+          type: integer
+          minimum: 800
+          maximum: 8000
+          example: 1800
+        proteinG:
+          type: integer
+          minimum: 0
+          maximum: 500
+          example: 150
+        carbsG:
+          type: integer
+          minimum: 0
+          maximum: 1200
+          example: 170
+        fatG:
+          type: integer
+          minimum: 0
+          maximum: 400
+          example: 60
+    NutritionTemplateMealStructureRequest:
+      type: object
+      description: One fact, so both fields are required when the object is sent.
+      required: [mealsPerDay, snacksEnabled]
+      additionalProperties: false
+      properties:
+        mealsPerDay:
+          type: integer
+          description: 1-6 inclusive, else 400 COACH_MEAL_STRUCTURE_OUT_OF_RANGE (never clamped).
+          example: 4
+        snacksEnabled:
+          type: boolean
+          example: false
+    NutritionTemplateResponse:
+      type: object
+      description: A nutrition template. No recipe pins until EV-273c.
+      required: [id, name, targets, mealStructure, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        targets:
+          $ref: "#/components/schemas/NutritionTemplateTargets"
+        mealStructure:
+          allOf:
+            - $ref: "#/components/schemas/NutritionTemplateMealStructure"
+          nullable: true
+          description: Always present; null = use the trainee's own meal structure.
+        updatedAt:
+          type: string
+          format: date-time
+    NutritionTemplateTargets:
+      type: object
+      required: [calories, proteinG, carbsG, fatG]
+      properties:
+        calories:
+          type: integer
+        proteinG:
+          type: integer
+        carbsG:
+          type: integer
+        fatG:
+          type: integer
+    NutritionTemplateMealStructure:
+      type: object
+      required: [mealsPerDay, snacksEnabled]
+      properties:
+        mealsPerDay:
+          type: integer
+        snacksEnabled:
+          type: boolean
+    NutritionTemplateListResponse:
+      type: object
+      description: The coach's nutrition template library, newest-updated first.
+      required: [templates, limit, remaining]
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/NutritionTemplateResponse"
+        limit:
+          type: integer
+          description: The cap on nutrition templates per coach (50).
+          example: 50
         remaining:
           type: integer
           description: How many more this coach may create.
