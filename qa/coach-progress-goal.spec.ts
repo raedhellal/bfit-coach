@@ -1114,6 +1114,33 @@ test.describe("EV-274b AC4 — a tab that never showed the body fat cannot erase
     await other.close();
   });
 
+  test("after its own successful save, a tab's body fat is the server's again and is not re-sent", async ({
+    page,
+    context,
+  }) => {
+    await signIn(page);
+    // Tab A sets 20.0 itself. Its reply re-seeds the field: the text is the server's now.
+    await setLinaBodyFat(page, "20.0");
+
+    // Tab B moves it to 21.0.
+    const other = await context.newPage();
+    await other.goto(`/clients/${LINA}`);
+    await bodyFatField(other).fill("21.0");
+    await saveAndSettle(other);
+    await expect(block(other).getByText(SAVED, { exact: true })).toBeVisible();
+
+    // Tab A, still showing 20, saves a weight change. It must not write its stale 20 back.
+    const sent = recordSaves(page);
+    await milestoneField(page).fill("66");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    expect(Object.keys(sent[0])).not.toContain("milestoneBodyFatPct");
+
+    await other.reload();
+    await expect(cell(other, "bodyFat", "milestone")).toHaveText("Milestone 21.0 %");
+    await other.close();
+  });
+
   test("a body fat typed before a refused save is still sent by the next one", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${LINA}`);
@@ -1229,6 +1256,15 @@ test.describe("EV-274b — the pure rules", () => {
     };
     delete b.bodyFatToGoPts;
     expect(text(b)).toBe("Body fat — Not recorded · Milestone 22.0 %");
+
+    /**
+     * A milestone AND a reading, with `bodyFatToGoPts` absent: the portal never computes
+     * or zeroes the figure itself — the api owns the arithmetic, and a missing figure is
+     * a missing cell, never "0.0 pts to go" (the story's exact-hit sentence).
+     */
+    const noFigure: TraineeProgressGoal = { ...traineeA() };
+    delete noFigure.bodyFatToGoPts;
+    expect(text(noFigure)).toBe("Body fat — Start 28.0 % · Current 24.0 % · −4.0 pts · Milestone 20.0 %");
 
     // An api older than EV-274a sends neither key: no cell, no crash.
     const legacy: TraineeProgressGoal = { ...traineeA() };
