@@ -15,7 +15,8 @@
     "test:e2e:roster": "playwright test --config playwright.roster.config.ts",
     "test:e2e:refresh": "playwright test --config playwright.refresh.config.ts",
     "test:e2e:legacy": "playwright test --config playwright.legacy.config.ts",
-    "test:e2e:alone": "node scripts/each-spec-alone.mjs"
+    "test:e2e:alone": "node scripts/each-spec-alone.mjs",
+    "test:contract": "playwright test --config playwright.contract.config.ts"
   },
   "dependencies": {
     "next": "^14.2.35",

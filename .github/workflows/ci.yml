@@ -1,0 +1,142 @@
+# EV-224 — b-fit-coach CI.
+#
+# ADVISORY UNTIL R10. This workflow is NOT a required check and nothing here gates
+# Vercel: a push to `main` deploys to production whatever colour this run ends. Making it
+# required (branch protection) or wiring Vercel's "Ignored Build Step" to it is R10,
+# Raed's repo setting, and is deliberately out of this file.
+#
+# NO SECRETS. Every job runs in fixture mode (`COACH_API_MODE=fixture`, set by the
+# Playwright configs' own `webServer.env`) or reads files only. No repository secret, no api
+# URL, no credential is referenced here; `qa/ci-workflow.spec.ts` fails if one appears.
+# The live suite (EV-225) and the cross-repo spec check (EV-235) are not in this file.
+#
+# PARALLELISM IS MORE SERVERS, NEVER MORE WORKERS (BUG-249). The fixture store is one
+# in-memory object in one `next dev` process and every test resets all of it, so both
+# fixture configs pin `workers: 1` and `qa/fixture-single-worker.ts` refuses any run
+# that resolves to more. The default suite is therefore split with `--shard`, one shard
+# per job, each job on its own runner booting its own dev server on its own port. Never
+# add `--workers`/`-j` below: the run would refuse to start, by design.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  static:
+    name: lint · typecheck · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  contract-drift:
+    name: contract drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Reads spec/b-fit-api.openapi.yaml and src/lib/coachApi.ts. No browser, no server.
+      - run: npm run test:contract
+
+  e2e-fixture:
+    name: e2e fixture (shard ${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # One shard per job = one runner = one `next dev` on one port (BUG-249).
+        # Raise the shard count here, never the worker count.
+        include:
+          - shard: 1
+            port: "3311"
+          - shard: 2
+            port: "3312"
+    env:
+      COACH_PORT: ${{ matrix.port }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/2
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-fixture-shard-${{ matrix.shard }}-test-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  e2e-roster:
+    name: e2e fixture (populated roster)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COACH_ROSTER_PORT: "3321"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:roster
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-roster-test-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # One check that is red if ANY job above is red, skipped or cancelled — the name R10
+  # would make required, so the required-check list never has to track the shard count.
+  ci:
+    name: ci
+    if: always()
+    needs: [static, contract-drift, e2e-fixture, e2e-roster]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then
+              echo "::error::a CI job ended '$r' — this commit is red (advisory until R10)"
+              exit 1
+            fi
+          done
