@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 
 /**
  * EV-187 AC2 — the roster tells the coach who to open first.

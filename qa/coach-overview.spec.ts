@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 
 /**
  * The trainee overview: the status a denied read is served with (BUG-139) and block

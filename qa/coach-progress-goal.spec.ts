@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import {
   buildProgressGoalRequest,
@@ -110,6 +111,26 @@ function milestoneField(page: Page) {
 
 async function save(page: Page) {
   await block(page).getByRole("button", { name: "Save" }).click();
+}
+
+/**
+ * Save, and wait for THIS save's server action to answer.
+ *
+ * After `setLina` the block already reads "Saved." — from setLina's own save — and the
+ * notice stays up while the next save is pending (it is set inside the transition), so
+ * `expect(SAVED).toBeVisible()` resolves at once and the `reload()` after it can beat
+ * the write. With a 1.5 s delay in the fixture's `setProgressGoal` that made
+ * ":618 editing only the milestone…" red on main 45d237a; once EV-223's per-test reset
+ * was on, ":795 clearing the start date…" failed in 3 of 4 full runs with no probe at
+ * all. Only for a save that is expected to REACH the server — a refusal in the browser
+ * sends nothing and this would wait forever.
+ */
+async function saveAndSettle(page: Page) {
+  const answered = page.waitForResponse(
+    (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+  );
+  await save(page);
+  await answered;
 }
 
 /** Put Lina back to a known state before a write test, so the file order is not a trap. */
@@ -573,7 +594,7 @@ test.describe("AC1 and AC3 — the two values persist, and the baseline moves wi
     // baseline is the first reading ON OR AFTER the start date, so it must become that
     // reading and not stay at the earliest of all time.
     await startDateField(page).fill(isoDate(22));
-    await save(page);
+    await saveAndSettle(page);
     await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
 
     await expect(cell(page, "weight", "start")).toHaveText(/^Start 70\.9 kg \(.+\)$/);
@@ -590,7 +611,7 @@ test.describe("AC1 and AC3 — the two values persist, and the baseline moves wi
     // Edge case 3: a start date in the future is allowed (a programme starting Monday).
     const future = isoDate(-30);
     await startDateField(page).fill(future);
-    await save(page);
+    await saveAndSettle(page);
     await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
 
     // AC3, verbatim.
@@ -626,7 +647,7 @@ test.describe("🔴 the edit form always sends BOTH fields", () => {
     // which clears what it is not sent, exactly as the api does — would drop the start
     // date, and the provenance line would fall back to the link-date clause.
     await milestoneField(page).fill("66");
-    await save(page);
+    await saveAndSettle(page);
     await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
     await page.reload();
 
@@ -644,7 +665,7 @@ test.describe("🔴 the edit form always sends BOTH fields", () => {
     await setLina(page, isoDate(50), "65");
 
     await startDateField(page).fill(isoDate(22));
-    await save(page);
+    await saveAndSettle(page);
     await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
     await page.reload();
 
@@ -779,7 +800,7 @@ test.describe("edge cases 6 and 7 — a refused number, and a deliberate clear",
 
     // Edge case 7: an explicit null is a write, not a no-op.
     await milestoneField(page).fill("");
-    await save(page);
+    await saveAndSettle(page);
     await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
     await page.reload();
 
@@ -804,7 +825,7 @@ test.describe("edge cases 6 and 7 — a refused number, and a deliberate clear",
      * set. The clause is what turns a silent wipe into a visible one.
      */
     await startDateField(page).fill("");
-    await save(page);
+    await saveAndSettle(page);
     await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
     await page.reload();
 

@@ -146,3 +146,17 @@ test("the roster renders a legacy payload without a bare null", async ({ page })
   await expect(body).not.toContainText("NaN");
   await expect(body).not.toContainText("Application error");
 });
+
+/**
+ * EV-223 — `src/app/api/fixture/state` ships in every build, including the Vercel
+ * deployment, and must be inert there. This config is the only one in the repo that runs
+ * the portal in `COACH_API_MODE=live` without a real api, so the witness lives here: a
+ * SIGNED-IN coach (past the middleware) gets 404 for both the read and the reset.
+ */
+test("outside fixture mode the fixture reset route is a 404 to a signed-in coach", async ({ page }) => {
+  await signIn(page);
+  for (const method of ["GET", "DELETE"] as const) {
+    const res = await page.request.fetch("/api/fixture/state", { method, maxRedirects: 0 });
+    expect(res.status(), `${method} /api/fixture/state in live mode`).toBe(404);
+  }
+});

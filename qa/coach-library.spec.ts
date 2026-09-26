@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
 /**
@@ -227,21 +228,26 @@ test.describe("AC2 — the library list", () => {
   }) => {
     await signIn(page);
     await page.goto("/templates");
-    await row(page, `${SEEDED_A} (copy 2)`).getByRole("button", { name: "Delete" }).click();
+    // EV-223: this test used to delete the "(copy 2)" the Duplicate test above had left
+    // behind, and was red on its own. It deletes a SEEDED template now, so it depends on
+    // nothing but the fixture's seed (and not on Duplicate working).
+    await row(page, SEEDED_B).getByRole("button", { name: "Delete" }).click();
 
     await expect(
       page.getByText(
-        `“${SEEDED_A} (copy 2)” is deleted from your library. Every plan and every draft you made from it is unchanged.`,
+        `“${SEEDED_B}” is deleted from your library. Every plan and every draft you made from it is unchanged.`,
         { exact: true }
       )
     ).toBeVisible();
 
     await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-    await expect(page.getByText(`${SEEDED_A} (copy 2)`, { exact: true })).toHaveCount(0);
+    await expect(page.getByText(SEEDED_B, { exact: true })).toHaveCount(0);
 
     // And it is gone from the SERVER, not only from this client's state.
     await page.reload();
-    await expect(page.getByText(`${SEEDED_A} (copy 2)`, { exact: true })).toHaveCount(0);
+    await expect(page.getByText(SEEDED_B, { exact: true })).toHaveCount(0);
+    // The other seeded template is untouched: the delete took one row, not the list.
+    await expect(page.getByText(SEEDED_A, { exact: true })).toBeVisible();
   });
 });
 

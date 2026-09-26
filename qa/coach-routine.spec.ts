@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 
 /**
  * EV-184b — the coach's Routine tab, in **fixture mode** (see playwright.config.ts).
@@ -314,6 +315,17 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
   }) => {
     await signIn(page);
     await page.goto(`/clients/${DANA}/routine`);
+    /**
+     * EV-223: this test used to find "Draft — not yet published" because the AC2 test
+     * above had left a draft for Dana in the fixture, and was red 3/3 on its own. It now
+     * starts from the seed (Dana's PUBLISHED plan, no draft) and makes its own edit in
+     * the editor, so what it publishes is a coach's edited draft by the same path a coach
+     * takes — not a draft planted by the test. Publish saves the editor's plan before it
+     * previews (`previewPublishAction`), so nothing else is needed.
+     */
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByText("Draft — not yet published")).toHaveCount(0);
+    await exerciseRow(page, LONG_EXERCISE).getByLabel("Sets").fill("5");
     await expect(page.getByText("Draft — not yet published")).toBeVisible();
 
     await page.getByRole("button", { name: "Publish", exact: true }).click();
@@ -348,7 +360,14 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
     ]);
   });
 
-  test("Cancel publishes nothing and leaves the draft as it was", async ({ page }) => {
+  /**
+   * EV-223: from the seed Dana has no draft; pressing Publish SAVES the editor's plan as
+   * a draft before previewing (`previewPublishAction`). So what this checks is that
+   * Cancel publishes nothing and repairs nothing in the draft that save created.
+   */
+  test("Cancel publishes nothing, and the draft Publish saved keeps its unrepaired exercises", async ({
+    page,
+  }) => {
     await signIn(page);
     await page.goto(`/clients/${DANA}/routine`);
 
