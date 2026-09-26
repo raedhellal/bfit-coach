@@ -17,9 +17,10 @@ import rosterConfig from "../../playwright.roster.config";
  *   else — "no marker" is the witness that no test body ran.
  *
  * `PROBE_MODE=backstop` drops the `globalSetup` entirely (a config that forgot the guard)
- * and runs a probe that imports the resetting `test`, against a port nothing listens on:
- * if the per-test reset ran before the refusal, the child's error is a refused
- * connection, not BUG-249's message.
+ * and runs a probe that imports the resetting `test` against `PROBE_BASE_URL`: a
+ * request-counting listener the PARENT test owns on an OS-assigned port. Never a fixed
+ * port — a fixed one in the range other sessions use for fixture servers would let this
+ * probe sign in to, and reset, someone else's store (the very BUG-249 harm).
  */
 const ROOT = resolve(__dirname, "../..");
 const base = process.env.PROBE_BASE === "roster" ? rosterConfig : mainConfig;
@@ -34,5 +35,5 @@ export default defineConfig({
   globalSetup: backstop ? undefined : setups,
   outputDir: process.env.PROBE_OUTPUT_DIR,
   reporter: [["list"]],
-  use: { baseURL: backstop ? `http://localhost:${process.env.PROBE_DEAD_PORT}` : undefined },
+  use: { baseURL: backstop ? process.env.PROBE_BASE_URL : undefined },
 });
