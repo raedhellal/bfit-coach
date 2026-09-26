@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./fixture-test";
 
 /**
  * EV-183 WP-4 smoke — login redirect, the roster empty state, and the invite modal.

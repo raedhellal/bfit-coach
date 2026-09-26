@@ -2495,8 +2495,63 @@ function freshState(): FixtureState {
 
 function state(): FixtureState {
   const g = globalThis as GlobalWithFixture;
-  if (!g[FIXTURE_STATE_KEY]) g[FIXTURE_STATE_KEY] = freshState();
+  if (!g[FIXTURE_STATE_KEY]) seed();
   return g[FIXTURE_STATE_KEY] as FixtureState;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-223 — RESET, FOR THE TEST SUITE ONLY.
+ *
+ * The Playwright gate used to share this store across every test in the run, so a
+ * test could pass because an EARLIER test had left a draft behind — the Publish
+ * modal test was red 3/3 on its own. `qa/fixture-test.ts` now resets the store
+ * before every test through `src/app/api/fixture/state/route.ts`, which answers 404
+ * unless `COACH_API_MODE=fixture`.
+ *
+ * The seed is built ONCE per process, as the store always was, and kept aside. A
+ * reset is a deep copy of that one object — not a second `freshState()`, whose
+ * relative dates and instants would differ by however long the run has taken — and
+ * "is the store at its seed?" compares against that same first seed. So a reset that
+ * restored only part of the store cannot also redefine what the seed was.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const SEED_KEY = Symbol.for("evoli.coach.fixture.seed");
+interface Seed {
+  /** Never handed out: every reset copies it. */
+  pristine: FixtureState;
+  canonical: string;
+}
+type GlobalWithSeed = typeof globalThis & Record<symbol, Seed | undefined>;
+
+/** Maps become key-sorted entry lists, so insertion order is not a difference. */
+function canonical(value: FixtureState): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v instanceof Map
+      ? [...v.entries()].sort(([a], [b]) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0))
+      : v
+  );
+}
+
+function seed(): void {
+  const g = globalThis as GlobalWithSeed;
+  if (!g[SEED_KEY]) {
+    const pristine = freshState();
+    g[SEED_KEY] = { pristine, canonical: canonical(pristine) };
+  }
+  (globalThis as GlobalWithFixture)[FIXTURE_STATE_KEY] = structuredClone(
+    (g[SEED_KEY] as Seed).pristine
+  );
+}
+
+/** Throw the whole store away and start again from this process's seed. */
+export function resetFixtureState(): void {
+  seed();
+}
+
+/** True when nothing has been written (or read-with-side-effect) since the last reset. */
+export function fixtureStateIsPristine(): boolean {
+  const current = state();
+  return canonical(current) === (globalThis as GlobalWithSeed)[SEED_KEY]?.canonical;
 }
 
 function nutritionState(id: string): NutritionState {

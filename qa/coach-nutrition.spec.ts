@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 
 /**
  * EV-185b — the coach's Nutrition tab, in **fixture mode** (see playwright.config.ts).
@@ -278,6 +279,17 @@ test.describe("AC2 — the coach sets macro targets, and the safety floor holds"
   });
 });
 
+/**
+ * EV-223: Nils has NO meal week in the fixture's seed. The three tests after the first
+ * Apply below used to find the week the Apply test had left behind, and were red on
+ * their own. Each now applies its own first week through the same control a coach uses.
+ */
+async function applyFirstWeek(page: Page) {
+  await page.getByRole("button", { name: "Apply to Nils K." }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(7);
+}
+
 test.describe("AC3 — the coach shapes the meal week through the existing engine", () => {
   test("Apply names the trainee and the week start, and says the trainee sees it now", async ({
     page,
@@ -310,6 +322,7 @@ test.describe("AC3 — the coach shapes the meal week through the existing engin
   }) => {
     await signIn(page);
     await page.goto(`/clients/${NILS}/nutrition`);
+    await applyFirstWeek(page);
 
     const meals = () =>
       page
@@ -334,6 +347,7 @@ test.describe("AC3 — the coach shapes the meal week through the existing engin
   test("Regenerate day changes that day and leaves the others alone", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${NILS}/nutrition`);
+    await applyFirstWeek(page);
 
     const meals = () =>
       page
@@ -353,6 +367,7 @@ test.describe("AC3 — the coach shapes the meal week through the existing engin
   test("Swap meal offers options and replaces the one meal", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${NILS}/nutrition`);
+    await applyFirstWeek(page);
 
     const firstSwap = page.getByRole("button", { name: /^Swap meal: / }).first();
     const swappedName = (await firstSwap.getAttribute("aria-label"))!.replace(

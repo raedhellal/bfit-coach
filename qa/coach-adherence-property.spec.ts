@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
 import { copy } from "../src/lib/copy";
 import { adherenceSeries, type WeekSpec } from "../src/lib/fixtureAdherence";
 import { formatDate } from "../src/lib/format";
