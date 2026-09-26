@@ -284,7 +284,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 59;
+const SCHEMAS_EXPECTED = 64; // EV-273b: +5 nutrition-template types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -406,6 +406,8 @@ const REQUEST_FACING_EXPECTED = [
   "CoachTemplateFromRoutineRequest",
   "CoachTemplateRenameRequest",
   "CoachTemplateSaveRequest",
+  "NutritionTemplateSaveRequest",
+  "NutritionTemplateTargetsRequest",
   "ProgressionRule",
   "Routine",
   "RoutineConstraints",

@@ -110,6 +110,46 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
     },
   },
 
+  /* ── EV-273b: nutrition templates ship TARGETS ONLY (EV-273 N6) ─────────────
+   * The api stores and serves an optional meal structure (EV-273a). The portal neither
+   * sends it nor reads it until EV-190's N1 control has met its release conditions
+   * (ADR-0016b D16b.11): EV-190d's kill-clause PASS in AI-EVAL-LOG.md, then EV-190e,
+   * then EV-273e, which is the row that deletes these two entries.
+   * ---------------------------------------------------------------------- */
+  NutritionTemplateSaveRequest: {
+    missingInPortal: {
+      mealStructure:
+        "EV-273 N6 — OPTIONAL on the wire (omitted = the trainee's own structure). The first portal control to send it would be N1's, which has not cleared. EV-273b AC5/AC2's key-set assertions hold it off the wire; EV-273e adds it.",
+    },
+  },
+  NutritionTemplate: {
+    missingInPortal: {
+      mealStructure:
+        "EV-273 N6 / AC1 — 'No meal structure is shown, even for a template that has one stored through the api.' Not declared, so nothing can render it. EV-273e adds it.",
+    },
+  },
+
+  /* ── EV-274a, landing on another branch ──────────────────────────────────
+   * The spec vendored for EV-273b (b-fit-api 8b23d45) carries EV-274a's body-fat
+   * milestone. The portal half is `feat/ev274b-portal-body-fat` (b-fit-coach, in QA),
+   * which declares these fields on these types. Registered here so this branch's guard
+   * is green WITHOUT editing that branch's types. 🔴 WHICHEVER OF THE TWO MERGES SECOND
+   * DELETES THESE ENTRIES: once EV-274b's fields are on main, the "register cannot rot"
+   * check turns them red, which is the reminder.
+   * ---------------------------------------------------------------------- */
+  TraineeProgressGoal: {
+    missingInPortal: {
+      milestoneBodyFatPct: "EV-274a — owned by feat/ev274b-portal-body-fat.",
+      bodyFatToGoPts: "EV-274a — owned by feat/ev274b-portal-body-fat.",
+    },
+  },
+  CoachProgressGoalRequest: {
+    missingInPortal: {
+      milestoneBodyFatPct:
+        "EV-274a — OPTIONAL, and ABSENT means UNCHANGED (EV-274 B4), so a portal that omits it cannot erase a body-fat milestone. Owned by feat/ev274b-portal-body-fat.",
+    },
+  },
+
   CoachApplyWeekRequest: {
     missingInPortal: {
       mealStructure:

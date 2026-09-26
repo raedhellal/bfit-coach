@@ -5,10 +5,12 @@ import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { NutritionTargetsCard } from "@/components/nutrition/NutritionTargetsCard";
 import { NutritionWeekCard } from "@/components/nutrition/NutritionWeekCard";
+import { TemplateUseOutcome } from "@/components/nutritionTemplates/TemplateUseOutcome";
 import { Card, EmptyState } from "@/components/ui/kit";
 import { coachApi, hasScope, isForbidden } from "@/lib/coachApi";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
+import { firstName } from "@/lib/format";
 import { recipePlacementOn } from "@/lib/recipePlacement";
 
 /**
@@ -71,6 +73,9 @@ export default async function NutritionPage({ params }: { params: { id: string }
         <ClientNotice message={message ?? copy.nutrition.loadError} />
       ) : (
         <>
+          {/* EV-273b AC5 — what "Use on a trainee" observed, above what the api holds. */}
+          <TemplateUseOutcome clientId={params.id} firstName={firstName(displayName)} />
+
           {nothingSetUp && (
             <Card style={{ marginBottom: 18 }}>
               <EmptyState

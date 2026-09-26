@@ -116,7 +116,7 @@ export async function applyWeekAction(
   weekStart: string
 ): Promise<WeekResult> {
   try {
-    const week = await coachApi.applyMealWeek(clientId, weekStart);
+    const week = await coachApi.applyMealWeek(clientId, { weekStart });
     revalidateNutrition(clientId);
     return { ok: true, week };
   } catch (err) {

@@ -143,6 +143,10 @@ input::placeholder { color:var(--ink-3); }
   .shell-nav {
     order: 3;
     flex-basis: 100%;
+    /* EV-273b: four links need two lines at 320 px. Wrapping keeps every link whole
+       and on screen; without it "Nutrition templates" ran 90 px past the viewport. */
+    flex-wrap: wrap;
+    row-gap: 2px;
   }
 }
 

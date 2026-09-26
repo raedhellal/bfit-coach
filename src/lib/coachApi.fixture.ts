@@ -25,10 +25,14 @@ import type {
   RecipeUnit,
   CoachTargetsRequest,
   CoachTargetsResult,
+  CoachApplyWeekRequest,
   InviteResponse,
   MealSlot,
   MealWeekView,
   NutritionTargets,
+  NutritionTemplate,
+  NutritionTemplateList,
+  NutritionTemplateSaveRequest,
   PlannedDayView,
   PlannedMealView,
   PublishPreview,
@@ -2893,6 +2897,217 @@ function seedNutrition(id: string): SeededNutrition {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
+ * EV-273b — the coach's nutrition template library, as b-fit-api 8b23d45 serves it.
+ *
+ * PORTED from `CoachNutritionTemplateUseCase` and `NutritionTemplateSaveRequest` at
+ * that commit, not derived from the portal's own editor rules, so a portal bug that
+ * sent a body the api refuses shows up here as the api's refusal:
+ *   · a closed key list at EVERY depth → 400 `COACH_FIELD_NOT_ACCEPTED` naming the key;
+ *   · name 1..80 after trimming, no control character → 400 `VALIDATION_ERROR`;
+ *   · whole-number targets within `CoachTargetsRequest`'s bounds → 400 `VALIDATION_ERROR`
+ *     naming the field at the start of `message`. The FLOOR is not applied here;
+ *   · the cap (50) and the folded name → 409 `COACH_NUTRITION_TEMPLATE_*`;
+ *   · duplicate names "(copy)", then "(copy 2)" … "(copy 20)", shortening the original so
+ *     the suffix fits in 80, and 409 NAME_TAKEN past 20.
+ *
+ * The stored row KEEPS `mealStructure`, and the response SERVES it, because the api
+ * does: edge case 9 is a template whose structure was stored through the api directly,
+ * and the portal must neither show it nor send it. "Cut 1800" is that template.
+ *
+ * Seeded in the POPULATED scenario only. The empty scenario is the coach who has never
+ * made one, which is AC1's empty state.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const NUTRITION_TEMPLATE_LIMIT = 50; // CoachNutritionTemplateUseCase.MAX_TEMPLATES_PER_COACH
+const NUTRITION_COPY_SUFFIX_MAX = 20; // CoachNutritionTemplateUseCase.MAX_COPY_SUFFIX
+const LIBRARY_NAME_MAX = 80; // CoachTemplateNames.MAX_LENGTH
+
+interface StoredNutritionTemplate extends NutritionTemplate {
+  /** Stored and served (the api does both); never read by the portal (EV-273 N6). */
+  mealStructure: { mealsPerDay: number; snacksEnabled: boolean } | null;
+}
+
+function seedNutritionTemplates(): StoredNutritionTemplate[] {
+  if (SCENARIO === "empty") return [];
+  const now = Date.now();
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
+  return [
+    {
+      id: "5e1a7c00-0000-4000-8000-0000000000d1",
+      name: "Cut 1800",
+      targets: { calories: 1800, proteinG: 150, carbsG: 170, fatG: 60 },
+      // Edge case 9 — stored through the api directly. Not shown, not sent.
+      mealStructure: { mealsPerDay: 4, snacksEnabled: false },
+      updatedAt: at(60 * 3),
+    },
+    {
+      id: "5e1a7c00-0000-4000-8000-0000000000d2",
+      name: "Lean 1300",
+      targets: { calories: 1300, proteinG: 110, carbsG: 120, fatG: 40 },
+      mealStructure: null,
+      updatedAt: at(60 * 24 * 2),
+    },
+    {
+      id: "5e1a7c00-0000-4000-8000-0000000000d3",
+      name: "Reset 1100",
+      targets: { calories: 1100, proteinG: 90, carbsG: 110, fatG: 35 },
+      mealStructure: null,
+      updatedAt: at(60 * 24 * 6),
+    },
+  ];
+}
+
+function nutritionTemplatesNewestFirst(): StoredNutritionTemplate[] {
+  return [...state().nutritionTemplates.values()].sort((a, b) =>
+    a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0
+  );
+}
+
+async function ownedNutritionTemplate(id: string): Promise<StoredNutritionTemplate> {
+  const found = state().nutritionTemplates.get(id);
+  // AC4 of EV-273a — ONE body for foreign, unknown and deleted.
+  if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  return found as StoredNutritionTemplate;
+}
+
+/**
+ * The api's JSON round trip, then the key set as it would be READ off the wire, sorted:
+ * `{name,targets}`. What the journal records, so a key the portal put on a body is
+ * visible to the gate whatever the portal's own type says.
+ */
+function wireKeys(body: unknown): string {
+  const onWire = JSON.parse(JSON.stringify(body ?? null)) as unknown;
+  if (!onWire || typeof onWire !== "object" || Array.isArray(onWire)) return "{}";
+  return `{${Object.keys(onWire).sort().join(",")}}`;
+}
+
+const NUTRITION_TEMPLATE_KEYS = ["name", "targets", "mealStructure"];
+const NUTRITION_TARGET_KEYS = ["calories", "proteinG", "carbsG", "fatG"];
+const MEAL_STRUCTURE_KEYS = ["mealsPerDay", "snacksEnabled"];
+const TEMPLATE_TARGET_BOUNDS: Record<string, [number, number]> = {
+  calories: [800, 8000],
+  proteinG: [0, 500],
+  carbsG: [0, 1200],
+  fatG: [0, 400],
+};
+
+async function refuseUnknownKeys(value: unknown, allowed: string[]): Promise<void> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) {
+      await failWithDetails(400, "COACH_FIELD_NOT_ACCEPTED", `${key} is not accepted`, { field: key });
+    }
+  }
+}
+
+/** `CoachNutritionTemplateUseCase.check` + the request's Bean Validation, in that shape. */
+async function checkNutritionTemplate(body: NutritionTemplateSaveRequest): Promise<{
+  name: string;
+  targets: NutritionTemplate["targets"];
+  mealStructure: StoredNutritionTemplate["mealStructure"];
+}> {
+  const raw = JSON.parse(JSON.stringify(body)) as Record<string, unknown>;
+  await refuseUnknownKeys(raw, NUTRITION_TEMPLATE_KEYS);
+  await refuseUnknownKeys(raw.targets, NUTRITION_TARGET_KEYS);
+  await refuseUnknownKeys(raw.mealStructure, MEAL_STRUCTURE_KEYS);
+
+  const name = typeof raw.name === "string" ? raw.name.trim() : null;
+  if (name === null) await fail(400, "VALIDATION_ERROR", "name is required");
+  const trimmed = name as string;
+  if (trimmed.length < 1 || trimmed.length > LIBRARY_NAME_MAX || !NO_CONTROL.test(trimmed)) {
+    await fail(400, "VALIDATION_ERROR", "name must be 1 to 80 characters");
+  }
+
+  const targets = raw.targets as Record<string, unknown> | null | undefined;
+  if (!targets || typeof targets !== "object") await fail(400, "VALIDATION_ERROR", "targets is required");
+  const t = targets as Record<string, unknown>;
+  for (const field of NUTRITION_TARGET_KEYS) {
+    const v = t[field];
+    if (v === undefined || v === null) await fail(400, "VALIDATION_ERROR", `${field} is required`);
+    if (!isWholeNumber(v)) await fail(400, "VALIDATION_ERROR", `${field} must be a whole number`);
+    const [lo, hi] = TEMPLATE_TARGET_BOUNDS[field];
+    if ((v as number) < lo || (v as number) > hi) {
+      await fail(400, "VALIDATION_ERROR", `${field} must be between ${lo} and ${hi}`);
+    }
+  }
+
+  let mealStructure: StoredNutritionTemplate["mealStructure"] = null;
+  const ms = raw.mealStructure as Record<string, unknown> | null | undefined;
+  if (ms) {
+    if (ms.mealsPerDay === undefined || ms.snacksEnabled === undefined) {
+      await fail(400, "VALIDATION_ERROR", "mealStructure needs mealsPerDay and snacksEnabled");
+    }
+    const n = ms.mealsPerDay as number;
+    if (!isWholeNumber(n) || n < 1 || n > 6) {
+      await fail(400, "COACH_MEAL_STRUCTURE_OUT_OF_RANGE", "mealsPerDay must be between 1 and 6");
+    }
+    mealStructure = { mealsPerDay: n, snacksEnabled: ms.snacksEnabled === true };
+  }
+
+  return {
+    name: trimmed,
+    targets: {
+      calories: t.calories as number,
+      proteinG: t.proteinG as number,
+      carbsG: t.carbsG as number,
+      fatG: t.fatG as number,
+    },
+    mealStructure,
+  };
+}
+
+async function assertNutritionNameFree(name: string, exceptId: string | null): Promise<void> {
+  const key = nameKey(name);
+  for (const template of state().nutritionTemplates.values()) {
+    if (template.id !== exceptId && nameKey(template.name) === key) {
+      await fail(409, "COACH_NUTRITION_TEMPLATE_NAME_TAKEN", "Name taken");
+    }
+  }
+}
+
+async function assertNutritionRoom(): Promise<void> {
+  if (state().nutritionTemplates.size >= NUTRITION_TEMPLATE_LIMIT) {
+    await fail(409, "COACH_NUTRITION_TEMPLATE_LIMIT_REACHED", "Nutrition template limit reached");
+  }
+}
+
+/** `CoachNutritionTemplateUseCase.withSuffix` — the original is shortened, never the suffix. */
+function withCopySuffix(original: string, suffix: string): string {
+  const room = LIBRARY_NAME_MAX - suffix.length;
+  if (original.length <= room) return original + suffix;
+  const cut = /[\uD800-\uDBFF]/.test(original.charAt(room - 1)) ? room - 1 : room;
+  return original.slice(0, cut).trim() + suffix;
+}
+
+async function nutritionCopyName(original: string): Promise<string> {
+  const taken = new Set([...state().nutritionTemplates.values()].map((t) => nameKey(t.name)));
+  for (let suffix = 1; suffix <= NUTRITION_COPY_SUFFIX_MAX; suffix += 1) {
+    const candidate = withCopySuffix(original, suffix === 1 ? " (copy)" : ` (copy ${suffix})`);
+    if (!taken.has(nameKey(candidate))) return candidate;
+  }
+  return fail(409, "COACH_NUTRITION_TEMPLATE_NAME_TAKEN", "Name taken");
+}
+
+/**
+ * EV-273b — two fixture-only switches for the outcomes "Use on a trainee" must word,
+ * each a COOKIE scoped to the browser context that sets it (see `fixtureSwitch`):
+ *
+ *   `evoli_fixture_targets=refused`  — the targets write answers 500 (a RECEIVED error).
+ *   `evoli_fixture_week=rate_limited` — the week apply answers 429 `COACH_WEEK_APPLY_RATE_LIMIT`
+ *                                      (D6.6's one-apply-per-day cap, already used today);
+ *   `evoli_fixture_week=out_of_range` — the week apply answers 400 `COACH_WEEK_OUT_OF_RANGE`
+ *                                      (edge case 10, the Monday rollover).
+ *
+ * The "no answer" outcomes need no switch: the gate aborts the browser's request.
+ */
+async function targetsRefused(): Promise<boolean> {
+  return (await fixtureSwitch("evoli_fixture_targets")) === "refused";
+}
+async function weekSwitch(): Promise<string | null> {
+  return fixtureSwitch("evoli_fixture_week");
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
  * FIXTURE STATE — process-wide, deliberately.
  *
  * Every mutable thing the fixture owns lives in ONE object hung off `globalThis`,
@@ -2951,6 +3166,8 @@ interface FixtureState {
    * inventing a user id this surface is never given.
    */
   progressGoals: Map<string, ProgressGoalRecord>;
+  /** EV-273b — the coach's nutrition templates, keyed by id. See `seedNutritionTemplates`. */
+  nutritionTemplates: Map<string, StoredNutritionTemplate>;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -2977,6 +3194,7 @@ function freshState(): FixtureState {
     draftTemplate: new Map(),
     recipes: seedLibraries(),
     nutrition: new Map(),
+    nutritionTemplates: new Map(seedNutritionTemplates().map((t) => [t.id, t])),
     /**
      * Four seeded goals, each reaching a state the others cannot:
      *   Lina   — a coach-set start date and a milestone BELOW her current weight: the
@@ -3721,9 +3939,84 @@ export const fixtureCoachApi: CoachApi = {
     return [...prefix, ...inner].slice(0, INGREDIENT_SEARCH_MAX);
   },
 
+  // ── EV-273b the coach's nutrition template library ────────────────────────
+
+  async listNutritionTemplates(): Promise<NutritionTemplateList> {
+    const templates = nutritionTemplatesNewestFirst().map((t) => structuredClone(t));
+    return {
+      templates,
+      limit: NUTRITION_TEMPLATE_LIMIT,
+      remaining: Math.max(0, NUTRITION_TEMPLATE_LIMIT - templates.length),
+    };
+  },
+
+  async getNutritionTemplate(id: string): Promise<NutritionTemplate> {
+    return structuredClone(await ownedNutritionTemplate(id));
+  },
+
+  async createNutritionTemplate(body: NutritionTemplateSaveRequest): Promise<NutritionTemplate> {
+    recordCall(`POST /coach-portal/nutrition-templates ${wireKeys(body)}`);
+    const checked = await checkNutritionTemplate(body);
+    await assertNutritionRoom();
+    await assertNutritionNameFree(checked.name, null);
+    const created: StoredNutritionTemplate = {
+      id: crypto.randomUUID(),
+      ...checked,
+      updatedAt: new Date().toISOString(),
+    };
+    state().nutritionTemplates.set(created.id, created);
+    return structuredClone(created);
+  },
+
+  async updateNutritionTemplate(
+    id: string,
+    body: NutritionTemplateSaveRequest
+  ): Promise<NutritionTemplate> {
+    recordCall(`PUT /coach-portal/nutrition-templates/${id} ${wireKeys(body)}`);
+    const existing = await ownedNutritionTemplate(id);
+    const checked = await checkNutritionTemplate(body);
+    // Keeping (or re-casing) its own name is not a collision with itself.
+    if (nameKey(checked.name) !== nameKey(existing.name)) {
+      await assertNutritionNameFree(checked.name, id);
+    }
+    // A PUT replaces the WHOLE template, as the api's does: a body with no
+    // `mealStructure` clears a stored one. (EV-273b never sends it, so an edit in the
+    // portal clears edge case 9's structure — the api's semantics, recorded.)
+    const saved: StoredNutritionTemplate = {
+      ...existing,
+      ...checked,
+      updatedAt: new Date().toISOString(),
+    };
+    state().nutritionTemplates.set(id, saved);
+    return structuredClone(saved);
+  },
+
+  async duplicateNutritionTemplate(id: string): Promise<NutritionTemplate> {
+    recordCall(`POST /coach-portal/nutrition-templates/${id}/duplicate`);
+    const source = await ownedNutritionTemplate(id);
+    await assertNutritionRoom();
+    const copy: StoredNutritionTemplate = {
+      ...structuredClone(source),
+      id: crypto.randomUUID(),
+      name: await nutritionCopyName(source.name),
+      updatedAt: new Date().toISOString(),
+    };
+    state().nutritionTemplates.set(copy.id, copy);
+    return structuredClone(copy);
+  },
+
+  async deleteNutritionTemplate(id: string): Promise<void> {
+    recordCall(`DELETE /coach-portal/nutrition-templates/${id}`);
+    await ownedNutritionTemplate(id);
+    // A snapshot (EV-273 N5): nothing about any trainee is touched.
+    state().nutritionTemplates.delete(id);
+  },
+
   // ── EV-185b nutrition ─────────────────────────────────────────────────────
 
   async getNutrition(id: string): Promise<CoachNutritionResponse> {
+    // EV-273b AC4: the dialog-open read is witnessed here, where the api would see it.
+    recordCall(`GET /coach-portal/clients/${id}/nutrition`);
     await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     return {
@@ -3743,7 +4036,9 @@ export const fixtureCoachApi: CoachApi = {
     id: string,
     body: CoachTargetsRequest
   ): Promise<CoachTargetsResult> {
+    recordCall(`PUT /coach-portal/clients/${id}/nutrition/targets ${wireKeys(body)}`);
     await assertScope(id, "NUTRITION");
+    if (await targetsRefused()) await fail(500, "INTERNAL_ERROR", "Targets write failed");
     const state = nutritionState(id);
     // `NutritionService.setManual` clamps CALORIES ONLY — protein and fat are
     // untouched, which is exactly what the standing sentence on the page says.
@@ -3764,9 +4059,14 @@ export const fixtureCoachApi: CoachApi = {
     return { targets, floorCalories: floored ? state.floorCalories : null };
   },
 
-  async applyMealWeek(id: string, weekStart: string): Promise<MealWeekView> {
+  async applyMealWeek(id: string, body: CoachApplyWeekRequest): Promise<MealWeekView> {
+    recordCall(`POST /coach-portal/clients/${id}/nutrition/week/apply ${wireKeys(body)}`);
     await assertScope(id, "NUTRITION");
+    const { weekStart } = body;
     const state = nutritionState(id);
+    const forced = await weekSwitch();
+    if (forced === "rate_limited") await fail(429, "COACH_WEEK_APPLY_RATE_LIMIT", "Rate limited");
+    if (forced === "out_of_range") await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");
     if (weekStart !== currentWeekStart()) {
       // Edge case 3: slice 1 applies the current week only.
       await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");

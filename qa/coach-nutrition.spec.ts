@@ -171,7 +171,7 @@ test.describe("AC1 — the coach opens Nutrition and sees the live targets and w
       page.getByText("This trainee has not shared their nutrition with you.")
     ).toBeVisible();
     // The tab stays: a withheld scope must not read as a missing product feature.
-    await expect(page.getByRole("link", { name: "Nutrition" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Nutrition", exact: true })).toBeVisible();
     await expect(page.locator("body")).not.toContainText(
       "This trainee is not on your roster"
     );

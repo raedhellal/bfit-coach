@@ -179,7 +179,7 @@ test.describe("ADR-0015 D5 — the overview blanks per block, from `scopes`", ()
     await expect(streak).not.toContainText("0 days");
 
     // The tab is still there (EV-184b's decision), and it leads somewhere that works.
-    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.getByRole("link", { name: "Nutrition", exact: true }).click();
     await page.waitForURL(`/clients/${PETRA}/nutrition`);
     await expect(page.getByRole("button", { name: "Save targets" })).toBeVisible();
     await expect(page.locator("body")).not.toContainText(

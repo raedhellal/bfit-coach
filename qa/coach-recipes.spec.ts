@@ -120,8 +120,9 @@ test.describe("AC1 — Recipes is in the nav, and the library lists the coach's 
   test("Recipes sits next to Templates and opens the library", async ({ page }) => {
     await signIn(page);
     const nav = page.getByRole("navigation", { name: "Portal" });
-    // "next to Templates": adjacent, immediately after it.
-    await expect(nav.getByRole("link")).toHaveText(["Roster", "Templates", "Recipes"]);
+    // "next to Templates": adjacent, immediately after it. (EV-273b added Nutrition
+    // templates AFTER Recipes, so this adjacency still holds.)
+    await expect(nav.getByRole("link")).toHaveText(["Roster", "Templates", "Recipes", "Nutrition templates"]);
 
     await nav.getByRole("link", { name: "Recipes" }).click();
     await page.waitForURL("/recipes");
@@ -136,7 +137,7 @@ test.describe("AC1 — Recipes is in the nav, and the library lists the coach's 
     const signOut = page.getByRole("button", { name: "Sign out" });
     await atEachWidth(page, async () => {
       for (const name of ["Templates", "Recipes"]) {
-        await expectUnoccluded(page, nav.getByRole("link", { name }), { over: signOut, label: `${name} nav link` });
+        await expectUnoccluded(page, nav.getByRole("link", { name, exact: true }), { over: signOut, label: `${name} nav link` });
       }
       await expectNoSidewaysScroll(page, "the recipe library");
     });
