@@ -5,6 +5,7 @@ import { test } from "./fixture-test";
 import { copy } from "../src/lib/copy";
 import { adherenceSeries, type WeekSpec } from "../src/lib/fixtureAdherence";
 import { formatDate } from "../src/lib/format";
+import { WIDTHS } from "./layout";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -748,7 +749,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *
  * So this limb is **structural, not geometric**: for every element of the adherence list
  * (EV-253; until then, every element inside a week row), it
- * **READS**, once, at the default viewport, **one kind of thing — the computed channels
+ * **READS**, at the three samples the EV-217 banner lists (on load, settled, and at
+ * 320 px; until EV-217, once, on load, at the default viewport), **one kind of thing — the computed channels
  * enumerated in `PAINT_CHANNELS`** (EV-216): a CSS property on one of an element's boxes,
  * asserted equal to that property's initial value, with a red build naming the entry
  * that fired. **That table is the ONLY list of covered channels in this file, and it is
@@ -774,9 +776,11 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * and "the element's own background-image, on either channel" died TWICE on the computed
  * channel alone — to a gradient applied after an `animation` delay (`none` at t=0, a full
  * bar behind "2 / 4 sessions" at t=11s) and to one behind `@media (max-width: 520px)`,
- * which paints at the 320 px width `qa/layout.ts` sweeps this portal at. Both are
- * `senior-po` cards. A reader who needs to know whether a NEW mechanism is caught should
- * build it and run this limb, not reason from a sentence here.
+ * which paints at the 320 px width `qa/layout.ts` sweeps this portal at. Both were one
+ * card, EV-217, which added a read at a settled instant and a read at 320 px (see its
+ * banner for when the limb reads, and its records for what was run). A reader who needs
+ * to know whether a NEW mechanism is caught should build it and run this limb, not
+ * reason from a sentence here.
  *
  * 🔴 **A flat `background-color` is untouched as a SCOPE DECISION inherited from
  * EV-214 — NOT because a colour cannot draw a proportion.** It can, when the **box**
@@ -853,14 +857,16 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *
  *   🔴 And the two the gate found, on the COMPUTED channel of an element's OWN
  *     background-image — i.e. inside what this limb reads, not in any channel disclosed
- *     above. Both are `senior-po` cards:
- *   ✗ **a time-shifted paint.** `@keyframes` + `animation: … 1ms 8s forwards`, the ratio
+ *     above. Both were carded as **EV-217**, which is a change to WHEN this limb reads,
+ *     not to what it reads (see the EV-217 banner and records):
+ *   · **a time-shifted paint.** `@keyframes` + `animation: … 1ms 8s forwards`, the ratio
  *     in an inline custom property. Every computed `background-image` is `none` at t=0,
- *     so the EV-214 section is 4 passed; at t=11s Lina's figures span computes
- *     `linear-gradient(90deg, rgb(79, 124, 255) 100%, …)`. The limb samples one instant;
- *     carded as **EV-217**. What was tried: this is the element's OWN `background-image`
+ *     so the EV-214 section was 4 passed; at t=11s Lina's figures span computes
+ *     `linear-gradient(90deg, rgb(79, 124, 255) 100%, …)`. At the time the limb sampled
+ *     one instant. What was tried: this is the element's OWN `background-image`
  *     on a channel the limb does read, so neither the pseudo argument nor another entry
- *     in `PAINT_CHANNELS` moves it — only reading again at another instant does.
+ *     in `PAINT_CHANNELS` moves it — only reading again at another instant does, which is
+ *     EV-217's settled sample.
  *   · **a custom property declared on an ANCESTOR of the week rows and spent inside
  *     one** — `--adh-paint` on the `<ul>`, `background-image: var(--adh-paint)` inside a
  *     row. At EV-215: 3 failed, **Ines green** — the ancestor's attribute was never one
@@ -870,11 +876,12 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     Lina's row paints **0.92–1.00 beside "3 / 4 sessions"**, computed
  *     `linear-gradient(… 150% …)` — **3 failed, Ines GREEN**, because on her row the
  *     spent value holds `Infinity%` and computes to `none`.
- *   ✗ **a viewport-gated paint.** `@media (max-width: 520px)`. Green at the default
- *     viewport; at 320 px a full blue bar sits behind "2 / 4 sessions". The limb samples
- *     one viewport — and 320 px is the width this portal is swept at by name. Carded as
- *     **EV-217** with the one above: the same channel and the same reason, a SAMPLING
- *     gap rather than a channel gap, so widening the property list closes neither.
+ *   · **a viewport-gated paint.** `@media (max-width: 520px)`. Green at the default
+ *     viewport; at 320 px a full blue bar sits behind "2 / 4 sessions". At the time the
+ *     limb sampled one viewport, and 320 px is the width this portal is swept at by name.
+ *     Carded as **EV-217** with the one above: the same channel and the same reason, a
+ *     SAMPLING gap rather than a channel gap, so widening the property list closes
+ *     neither. EV-217's 320 px sample is the read added for it.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -923,9 +930,13 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *      records the pattern as redundant on the mutant it was written for and defeated
  *      by `calc(1 / 0 * 100%)`, and rules its removal a separate row.
  *
- * **WHEN, AND AT WHAT CONFIGURATION.** Once per world, immediately after the adherence
- * block becomes visible, at the config's default viewport, in `next dev` fixture mode.
- * One instant, one viewport, one page state.
+ * **WHEN, AND AT WHAT CONFIGURATION.** Three times per world, in `next dev` fixture mode,
+ * all at rest (pointer off the list, nothing focused in it, asserted): on load at the
+ * config's default viewport; at a settled instant derived from the page's own animations,
+ * same viewport; and on a fresh load at 320 px. One extra sample per condition, not a
+ * cross product. **The EV-217 banner is where the samples are defined, with what each
+ * does not cover; this paragraph does not repeat it.** (Until EV-217: once, on load, at
+ * the default viewport.)
  *
  * **CHANNELS AND MECHANISMS NOT READ, WITH WHAT WAS TRIED.** Each entry is a mechanism
  * or family this section does not read; **each entry states whether it was constructed
@@ -936,11 +947,12 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  * written about this guard have now been falsified by the next person to try one.
  * Later rows append here; the entry shape is *mechanism — what was tried — owning row*.
  *
- *   · **A time-delayed paint** (`animation … 1ms 8s forwards`) and **a viewport-gated
- *     paint** (`@media (max-width: 520px)`, and 320 px is a width this portal is swept
- *     at by name). What was tried: both arrive on channels this section DOES read — the
- *     element's own `background-image` — so no further property reaches them. Only
- *     reading again, at another instant or another width, does. A **sampling** gap rather than a channel gap. → **EV-217**.
+ *   · **A paint at an instant, a width or an interaction state this section does not
+ *     sample.** Not a channel: a SAMPLING condition. What is sampled, and each condition
+ *     it leaves unread with what was tried there (a paint only while an animation runs,
+ *     constructed; a script-timed change, other widths and media conditions, not
+ *     constructed; `:hover` / `:focus`, `BUG-222`), is in the EV-217 banner. → **EV-270**
+ *     (hover, focus, and the paint that exists only while an animation runs).
  *   · **A declaration the CSS parser discarded** — `Infinity%` / `NaN%` in any spelling,
  *     inline, in a custom property, on the row or on an ancestor. Not read: no
  *     declaration is, only computed values. What was tried: ADR-0024 M1 found no CSSOM
@@ -1004,7 +1016,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     nothing for it to overstate. 🔴 **Its value is methodological and it belongs to
  *     EV-217**: it is a THIRD implicit quantifier beside time and viewport — **the CLIP
  *     REGION a probe samples**. EV-217's AC has to say which region is sampled, the way
- *     it already has to say which instant and which width.
+ *     it already has to say which instant and which width; its banner does (this section
+ *     reads computed values per element, so it has no clip region; the probes do).
  *   · **`::selection` and `::backdrop`** were probed and do **not** paint — duds,
  *     recorded so that nobody spends a second afternoon on them.
  *
@@ -1584,6 +1597,13 @@ interface ListPaint {
    * each `li`, so a `ul::after` over the rows (`BUG-218`) was on a box nobody asked about.
    */
   outsideRows: RowElement[];
+  /**
+   * EV-217 — the interaction state the read was taken in: whether the pointer is over the
+   * list (`ul:hover`) and whether focus is inside it (`ul:focus-within`). The paint section
+   * asserts both false, so "read at rest" is a checked fact about each sample and not an
+   * assumption about where the last click left the mouse.
+   */
+  interaction: { hovered: boolean; focusWithin: boolean };
 }
 
 /**
@@ -1617,6 +1637,10 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
       return {
         lists: lists.length,
         rowsInBlock: blockEl.querySelectorAll("li").length,
+        interaction: {
+          hovered: list ? list.matches(":hover") : false,
+          focusWithin: list ? list.matches(":focus-within") : false,
+        },
         rows: rows.map((row) => ({
           // The date column is the row's first child. Read from its own element: the row's
           // textContent runs "21 Sept 2026" straight into "1 / 3 sessions".
@@ -1639,7 +1663,398 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
   );
 }
 
-test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no element of the adherence list has a non-initial value on an enumerated paint channel", () => {
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-217 — **WHEN, AT WHAT WIDTH, AND IN WHAT STATE the P-ADH C2 limbs read the page.**
+ *
+ * Story: `b-fit-mobile/docs/product/stories/EV-217-the-guard-samples-more-than-one-instant.md`
+ * (parent: `EV-210-adherence-never-overstates.md`, property **P-ADH**, consequence **C2**).
+ *
+ * Every assertion over a rendered page reads it at some instant, some width and some
+ * interaction state. A sentence that does not say which reads as "all", and means "the one
+ * the test happened to see". So this block says which, per limb. It changes WHEN the paint
+ * limb reads, not WHAT it reads: `PAINT_CHANNELS` and the list root are untouched.
+ *
+ * ── **THE PAINT LIMB** (the section below: `expectNoPaintInList`) ──────────────────────
+ *
+ * The whole predicate, per world, at **three samples**, each named in any red it produces:
+ *
+ *   1. **On load, at the config's default width** (1280 px, Desktop Chrome): right after
+ *      the adherence block is visible. The sample this limb always took.
+ *   2. **Settled, at the default width**, on the same page. `waitUntilSettled` derives the
+ *      wait from the page: EVERY animation and transition in `document.getAnimations()`,
+ *      wherever its target is; the longest remaining `endTime − currentTime`, plus
+ *      `SETTLE_MARGIN_MS`. Then it asserts every one of them has finished. With nothing
+ *      animating, the wait is the margin alone and the read still happens. It asserts the
+ *      runner does not emulate `prefers-reduced-motion: reduce`, and it fails, rather than
+ *      skips, an animation that never ends or ends past `SETTLE_BUDGET_MS`. Those three
+ *      are SOFT: a failed precondition skips the settled read and fails the test, and the
+ *      320 px sample still runs, so one construction cannot hide the width sample.
+ *      📌 AC1 as re-worded on 2026-09-26: "every animation and transition that can affect
+ *      the elements under test has finished". **Which ones can is not a DOM relation.** An
+ *      ancestor's animation reaches the list through an inherited custom property; a
+ *      SIBLING's reaches it through layout, e.g. a sibling of the card growing in a flex
+ *      row until a container query on the list fires. The scope was list + descendants +
+ *      ancestors at `7bdfcba`, and `staff-engineer`'s sibling construction walked past it
+ *      (records). So the scope is the whole document: the clean page runs no animation at
+ *      all (records), and any animation anywhere that does not end within the budget
+ *      turns this limb red, which is the behaviour `senior-po` ruled for.
+ *   3. **On load, at 320 px**: a fresh navigation with the viewport at 320 px wide and the
+ *      default height, read right after the block is visible. 320 px is the narrowest of
+ *      `qa/layout.ts`'s `WIDTHS`, imported, because it is the width this portal is already
+ *      swept at by name.
+ *
+ * **One extra sample per condition, not a cross product (AC5).** There is no "settled at
+ * 320 px" read. A construction that needs two conditions at once is a new row with a
+ * witness.
+ *
+ * **Interaction state: AT REST, one sample, on purpose.** The pointer is parked at (0, 0)
+ * before the first sample, and each sample asserts `ul:hover` and `ul:focus-within` are
+ * both false. No row is hovered and nothing is focused in any sample, so a paint that
+ * exists only under `:hover` or `:focus` is not read here (`BUG-222`, `senior-qa`'s
+ * witness). The hovered and focused samples are **EV-270** (split from EV-217 AC3b).
+ *
+ * **Clip region: none, because nothing here reads pixels.** Each read is
+ * `getComputedStyle` on each element of the list and on its three boxes, so a paint on a
+ * read channel is read wherever it lands on screen, inside the element's box or outside
+ * it. What is NOT read is a channel outside `PAINT_CHANNELS` (the EV-216 disclosure above,
+ * where `-webkit-box-reflect` is listed). The pixel probes in the records have a clip, and
+ * each one states it.
+ *
+ * **Other media conditions: the runner's defaults, one sample each.** Colour scheme,
+ * reduced motion (asserted `no-preference` in sample 2), pointer and hover capability,
+ * print, and every width other than the two above are read at whatever the config gives.
+ * Nothing was constructed against them. That is what this reads, not a claim about them.
+ *
+ * **What the settled sample does not wait for.** A change made by SCRIPT later (a timer, a
+ * fetch, a state update) declares no animation, so nothing here can derive its instant
+ * (`staff-engineer` constructed one with `setTimeout` in the review of `7bdfcba`; not
+ * re-run on this branch). And a paint that exists only WHILE an animation runs and is gone
+ * when it ends (`animation-fill-mode: none`) is visible to neither sample: constructed,
+ * painting, and green (records). → **EV-270** AC3.
+ *
+ * **The weekday: NOT sampled, and on purpose (AC3c).** The suite reads the page on
+ * whatever day it runs. The weekday changes only the fixture's derived `plannedSoFar`, and
+ * nothing rendered reads `plannedSoFar` (the bar is drawn from `done / planned`,
+ * `AdherenceSeries.tsx`). Weekday coverage comes from Lina's STATED `[3, 4, 2]` (the EV-218
+ * block) and from `qa/coach-fixture-adherence.spec.ts`'s seven-weekday test (EV-249), not
+ * from sampling the page. **Revisit if anything rendered starts reading `plannedSoFar` or
+ * the clock's weekday.**
+ *
+ * ── **THE OTHER LIMBS IN THIS FILE: ONE SAMPLE EACH, stated** ───────────────────────────
+ *
+ * The geometry limb (EV-210b AC3), the C3 section (EV-210b AC4) and the text limb (EV-251 /
+ * EV-253 / EV-259) each read **once: on load, at the default width, with the pointer
+ * wherever the sign-in click left it**, which none of them asserts. That is one sample,
+ * not a claim about the others. EV-217 moved the paint limb only, because both of its
+ * witnesses were on that limb's own channel; nobody has constructed a time- or width-gated
+ * escape from the other three.
+ *
+ * **HOW TO FIND OUT WHETHER A CONSTRUCTION IS CAUGHT.** Build it in an uncommitted copy of
+ * `AdherenceSeries.tsx`. Confirm it paints AT THE INSTANT AND WIDTH IT IS MEANT TO: a
+ * viewport screenshot of the row with the clip grown past it, several scanlines, against
+ * a control, at each of the three samples. Then run this file and read which sample
+ * named it. Do not reason from this block: it says when the limb reads, not what can be
+ * drawn at another time.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EV-217 — **RECORDS.** Runs of 2026-09-26 (a Saturday, UTC) on branch
+ * `test/ev217-settled-instant-and-320`, base `25d939d`, in `next dev` fixture mode: this
+ * file on :3641, the default suite on :3642. First at `8a2d3f3` (the sampling and the
+ * banner, before this block was written); then, after `staff-engineer`'s REQUEST CHANGES
+ * on `7bdfcba`, every file-level run below was repeated at `3c1b4f1` (the whole-document
+ * scope and the soft preconditions) and the readings here are that second run's. The
+ * default-suite counts under a construction are from `8a2d3f3`. These are what was
+ * measured then. They are history,
+ * not part of the banner above. Counts are per section: geometry is EV-210b AC3 (6 tests),
+ * C3 is EV-210b AC4 (5), paint is EV-214..EV-217 (7: four worlds, the table test, the
+ * EV-217 AC4 test, the EV-218 test), text is EV-251 / EV-253 / EV-259 (10). The file has 28
+ * tests. "At `25d939d`" is the same construction under that commit's spec.
+ *
+ * PROBE: an uncommitted Playwright harness. Each world loaded afresh per sample: 1280 px
+ * read on load, 1280 px read 9.5 s after the block was visible, 320 px read on load. Each
+ * week row scrolled into view, a VIEWPORT screenshot (never full-page) clipped to the row
+ * grown 24 px on every side, decoded in a canvas on a separate blank page, and the
+ * fraction of the row's width within L1 < 90 of `rgb(79, 124, 255)` read on every css-px
+ * scanline from 6 px above the row to 6 px below it. "Inside" is the row's own scanlines
+ * 1 .. h − 2. `document.getAnimations()` and `prefers-reduced-motion` read at each sample.
+ *
+ *   · **Control, clean code, Ines / Lina / Tobias / Noor.** The current row reads 0.000 at
+ *     all three samples, and computes `background-image: none`. An honest full bar reads
+ *     0.833 at 1280 px and 0.284 at 320 px (the track is narrower there). No animation in
+ *     the document at any sample. Reduced motion not emulated.
+ *   · **Clean code, this change:** file **28 passed**; paint **7 passed**. Default suite
+ *     **360 passed, exit 0** (3.9 m). `25d939d` lists 359; the one added is the AC4 test.
+ *
+ * Renderer constructions, each in an uncommitted `AdherenceSeries.tsx`, on the CURRENT
+ * week's `li` only, with `--adh-r` set inline to `done / plannedSoFar × 100 %` (Lina 150 %,
+ * Ines `Infinity%`, Tobias and Noor 0 % on a Saturday). The CSS is a `<style>` rendered
+ * through `dangerouslySetInnerHTML` as a SIBLING of the card, so its text is outside every
+ * limb's root. `G` below is `linear-gradient(90deg, var(--blue-500) var(--adh-r),
+ * transparent 0)`.
+ *
+ *   · **M-Q1, the time witness:** `@keyframes qaMq1 { to { background-image: G } }` and
+ *     `animation: qaMq1 1ms 8s forwards`. PROBE: Lina's current row, beside "3 / 4
+ *     sessions", **0.000 on load, 0.926 → 1.000 inside at +9.5 s** (computed
+ *     `linear-gradient(90deg, rgb(79, 124, 255) 150%, …)`), **0.000 at 320 px on load**.
+ *     Ines computes `none` at all three. Tobias and Noor compute a 0 % gradient at +9.5 s
+ *     and paint nothing visible. **At `25d939d`: file 27 passed.** Here: **paint 3 failed**
+ *     (Lina, Tobias, Noor), three offences, each `<li> … [background-image on its own
+ *     box]`, and every red names **only** the sample `settled (7935..8018 ms after the
+ *     on-load read; … @keyframes qaMq1 on <li>), at 1280 px`. Geometry, C3 and text all
+ *     passed. **Default suite: 3 failed / 357 passed**, those three.
+ *   · **M-Q5, the width witness:** `@media (max-width: 520px) { background-image: G }`.
+ *     PROBE: Lina's current row **0.000 at 1280 px on load and at +9.5 s, 0.684 → 1.000
+ *     inside at 320 px** beside "3 / 4 sessions". **At `25d939d`: file 27 passed.** Here:
+ *     **paint 3 failed** (Lina, Tobias, Noor), each naming **only** `on load, at 320 px`.
+ *     Geometry, C3 and text all passed. **Default suite: 3 failed / 357 passed**, those
+ *     three.
+ *   · **M-Q1 driven from an ANCESTOR.** `*:has(> ul.qa-anc) { animation: qaAnc 1ms 8s forwards }`
+ *     with `@keyframes qaAnc { to { --adh-on: 1 } }` (unregistered), and the row spending
+ *     `linear-gradient(90deg, var(--blue-500) calc(var(--adh-on) * var(--adh-r)),
+ *     transparent 0)`. Until the ancestor sets it, `--adh-on` is unset, so the row's
+ *     declaration is invalid at computed-value time and computes `none`. Nothing on the
+ *     list or under it animates. PROBE: Lina 0.000 on load, **0.926 → 1.000 at +9.5 s**,
+ *     0.000 at 320 px; the animation's target is a `<div>`, the list's parent. Here:
+ *     **paint 3 failed**, named `settled (…; @keyframes qaAnc on <div>), at 1280 px`.
+ *   · 🔴 **`qaGrow`, a SIBLING of the card (`staff-engineer`, review of `7bdfcba`).** The
+ *     card sits in a flex wrapper after a `<div class="qa-sib">` with `animation: qaGrow
+ *     1ms 8s forwards` (`width: 0 → 1100px`); the `<ul>` has `container-type:
+ *     inline-size`, and `@container (max-width: 150px)` gives the current row `G`. Nothing
+ *     on the list, under it or above it animates. PROBE: Lina 0.000 on load (list 1074 px
+ *     wide) and at 320 px (250 px), **0.544 → 1.000 inside at +9.5 s** beside "3 / 4
+ *     sessions" with the list at 0 px (staff read 0.683). **Under the `7bdfcba` scope (the
+ *     list, under it, its ancestors): file 28 passed.** Here: **paint 3 failed** (Lina,
+ *     Tobias, Noor), named `settled (…; @keyframes qaGrow on <div>), at 1280 px`. This is
+ *     why the scope is the whole document and no DOM relation.
+ *   · **A paint only WHILE an animation runs:** `@keyframes qaMq1n { from, to {
+ *     background-image: G } }`, `animation: qaMq1n 2s 8s` (no fill). PROBE: Lina 0.000 on
+ *     load, **0.926 → 1.000 at ≈ +10.0 s**, 0.000 and computed `none` at ≈ +12 s. Here:
+ *     **file 28 passed.** Visible to neither sample: the settled read is taken after it
+ *     ends. → **EV-270** AC3 (`senior-po`, ruling 4 of 2026-09-26).
+ *   · **An animation that never ends:** `animation: qaInf 1s infinite`, painting `G` in
+ *     its second half. Here: **paint 5 failed.** All four worlds on "does not end within
+ *     20000 ms", Ines on that alone; Lina, Tobias and Noor also on the on-load samples
+ *     (1280 and 320 px), whose reads fell in a painting half, and the AC4 test for the
+ *     same reason. This shows the unsettleable branch fires. It is not an attribution
+ *     witness.
+ *   · **M-Q5 plus an unrelated never-ending animation on `<body>`** (`qaSpin 1s infinite`,
+ *     opacity only, a stand-in for a spinner). Here: **paint 4 failed**: all four on "does
+ *     not end within 20000 ms", and Lina, Tobias and Noor ALSO naming `on load, at 320 px`.
+ *     So an unsettleable page skips only the settled read and the width sample still
+ *     runs (the preconditions are soft since `3c1b4f1`; at `7bdfcba` they were hard and
+ *     ended the test before the 320 px sample, which is `staff-engineer`'s nit; that
+ *     version was not re-run here).
+ *
+ * CHECK mutants: one EV-217 design choice reverted in the spec, with the construction it
+ * exists for planted. This file only.
+ *
+ *   · **Settled sample removed** + M-Q1: **file 28 passed.** **320 px sample removed** +
+ *     M-Q5: **file 28 passed.** So each witness gets through without its own sample.
+ *   · **320 px sample removed** + M-Q1: paint 3 failed, settled only. **Settled sample
+ *     removed** + M-Q5: paint 3 failed, 320 px only. So neither witness is caught by the
+ *     other's sample.
+ *   · **The derived wait replaced by the margin alone** (250 ms), the finished-check kept,
+ *     + M-Q1: paint **4 failed**, each on "has still not finished" (Ines included). The
+ *     same with the finished-check also removed: **file 28 passed.** So a fixed short wait
+ *     lets M-Q1 through, and the finished-check is what turns a wait that is too short into
+ *     a red build rather than an early read.
+ *   · **The scope put back to `7bdfcba`'s DOM filter** (the list, under it, its ancestors)
+ *     + `qaGrow`: **file 28 passed**; + the ancestor construction: paint 3 failed. **The
+ *     same filter without ancestors** (the list and under it) + the ancestor construction:
+ *     **file 28 passed.** So a DOM-relation scope misses the sibling, and a narrower one
+ *     misses the ancestor too; the whole-document scope is what sees both.
+ *   · **`reducedMotion: "reduce"` emulated**, clean code: paint 4 failed, each on the
+ *     reduced-motion assertion.
+ *   · **The pointer park removed**, clean code: file 28 passed. The sign-in click does not
+ *     leave the pointer over the list today, so the park has no witness of its own. It is
+ *     kept so the at-rest assertion does not depend on where the login button is.
+ *     **The current row hovered before the first read**, clean code: paint 4 failed, each
+ *     on the at-rest assertion.
+ *   · **`background-color` added to `PAINT_CHANNELS`** (ratchet raised to 20), clean code:
+ *     paint **5 failed**, the AC4 test among them, and the four worlds at all three samples.
+ *
+ * **Runtime.** Two runs each on clean code, same server, this file: the paint section's
+ * tests summed **2.5 / 2.6 s** under `25d939d`'s spec (6 tests) and **5.5 / 5.9 s** here (7;
+ * the AC4 test is ≈ 0.7 s of it); the file **15.7 / 17.6 s** against **18.0 / 19.1 s**. So
+ * ≈ 0.6 s per world: the 250 ms margin and a second navigation at 320 px. A page with a
+ * declared animation pays its remaining time as well (M-Q1: ≈ 8 s per world).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Every non-initial `PAINT_CHANNELS` value in one read of the list, as a message line, and
+ * how many elements were read. The two ratchets that make a read a read (every channel
+ * asked, no empty value) are asserted here, per element.
+ */
+function paintOffences(read: ListPaint, at: string): { offences: string[]; inspected: number } {
+  const offences: string[] = [];
+  let inspected = 0;
+  const groups = [
+    { place: "the adherence list, OUTSIDE every week row", elements: read.outsideRows },
+    ...read.rows.map((row) => ({ place: `week row "${row.date}" ("${row.rowText}")`, elements: row.elements })),
+  ];
+  for (const group of groups) {
+    for (const element of group.elements) {
+      inspected += 1;
+      const where = `${at} — ${group.place}, <${element.tag}>`;
+      /**
+       * The channel list is RATCHETED against `PAINT_CHANNELS`, because `inspected`
+       * counts ELEMENTS and not channels: deleting the `::after` read used to leave
+       * this suite 260 green, which is the same shape of hole `minimumBars` exists
+       * for one section up. This asserts the browser was actually asked for every
+       * channel the table lists; `PAINT_CHANNELS_EXPECTED` is what stops the table
+       * itself from shrinking.
+       */
+      expect(
+        element.computed.map((channel) => channel.channel),
+        `${where}: the channels read do not match PAINT_CHANNELS — a channel in the table was not read`
+      ).toEqual(PAINT_CHANNELS.map((channel) => channel.name));
+      /**
+       * A computed read of a property this browser does not report returns `""`,
+       * which is neither the initial value nor a paint — it is a channel that is not
+       * a read at all, and it would pass the loop below in silence. `mask-image` is
+       * the live example: it is unprefixed in this Chromium (verified), and a
+       * browser where it is not would otherwise be a suite that quietly stopped
+       * checking one of EV-216's three channels.
+       */
+      expect(
+        element.computed.filter((channel) => channel.value.trim() === "").map((c) => c.channel),
+        `${where}: a channel returned an empty computed value, so this browser does not report that property — the channel is listed but not read`
+      ).toEqual([]);
+      // Presence only: the value is compared to the channel's initial and never
+      // matched against any pattern (ADR-0024 — no value text for a spelling to vary).
+      for (const channel of element.computed.filter((c) => c.value !== c.initial)) {
+        offences.push(`${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`);
+      }
+    }
+  }
+  return { offences, inspected };
+}
+
+/**
+ * EV-217 AC2 — the second width. 320 px because `qa/layout.ts` already sweeps this portal
+ * at 320 px by name (the narrowest of its `WIDTHS`; the test asserts it is 320), so it is a width this repo has decided it cares about,
+ * not a number picked to catch one construction. Imported rather than restated, so the two
+ * cannot drift apart.
+ */
+const NARROW_WIDTH = Math.min(...WIDTHS);
+
+/**
+ * EV-217 AC1 — the margin added to the derived settle instant, and the budget past which
+ * the page is declared unsettleable rather than waited for.
+ *
+ * The margin absorbs timer skew between the test's clock and the page's animation
+ * timeline. It is not what makes the sample safe: the assertion after the wait (every
+ * animation in scope has FINISHED) is, so a margin that turns out too short is a red
+ * build naming the animation, not a read taken too early.
+ *
+ * The budget exists because a derived wait is only bounded by the page. Past it, the
+ * sample fails and says why (EV-217 edge case 3: report the cost, never drop the sample).
+ */
+const SETTLE_MARGIN_MS = 250;
+const SETTLE_BUDGET_MS = 20_000;
+
+/**
+ * 🔴 **EV-217 AC1 — wait until the page has SETTLED, for as long as the page says.**
+ *
+ * The instant is DERIVED FROM THE PAGE, never a fixed sleep: `document.getAnimations()` is
+ * read, and EVERY animation or transition with a target is kept, wherever that target is.
+ * Influence on the list is not a DOM relation: an ancestor reaches it by inheritance, and a
+ * sibling of the card reaches it through layout (a container query; `staff-engineer`'s
+ * `qaGrow`, records). A DOM-relation filter was the scope at `7bdfcba` and missed the
+ * sibling. The clean page runs no animation anywhere, so the whole document costs nothing
+ * there. Each one's remaining time
+ * is `getComputedTiming().endTime − currentTime`, which is its `delay + duration ×
+ * iterations + end-delay` as the engine computed it from the declared
+ * `animation-*` / `transition-*` values, less what has already elapsed. The wait is the
+ * longest of those plus `SETTLE_MARGIN_MS`. With nothing running it is the margin alone,
+ * and the second read still happens (edge case 1).
+ *
+ * It then ASSERTS the result, rather than trusting the arithmetic, SOFTLY: a failed
+ * precondition returns `settled: false` so the caller skips the settled read (it would not
+ * be one) and still takes the 320 px sample, and the soft failure fails the test:
+ *   · the runner is not emulating `prefers-reduced-motion: reduce` (edge case 2 — a
+ *     runner that suppressed motion would make this sample read the same page as the
+ *     first, which is a finding and not a pass);
+ *   · no animation in scope has an infinite end or ends past `SETTLE_BUDGET_MS`
+ *     (unsettleable: the sample cannot be taken, so it fails and says so);
+ *   · after the wait, every animation in scope has `playState === "finished"` (a paused
+ *     animation, or one started after the first read, fails here by name).
+ *
+ * What it does NOT wait for: a change made by SCRIPT at some later time (a timer, a
+ * fetch). Nothing declares one, so nothing here can derive it. Stated in the banner.
+ */
+async function waitUntilSettled(page: Page): Promise<{ settled: boolean; waitedMs: number; describe: string }> {
+  const inScope = () =>
+    page.evaluate(() => {
+      return document
+        .getAnimations()
+        .filter((animation) => {
+          // The whole document. See the doc comment: a DOM-relation filter here was walked
+          // past by a sibling whose growth fired a container query on the list.
+          const target = (animation.effect as KeyframeEffect | null)?.target ?? null;
+          return target !== null;
+        })
+        .map((animation) => {
+          const effect = animation.effect as KeyframeEffect;
+          const end = Number(effect.getComputedTiming().endTime);
+          const now = Number(animation.currentTime ?? 0);
+          const name =
+            "animationName" in animation
+              ? `@keyframes ${(animation as CSSAnimation).animationName}`
+              : "transitionProperty" in animation
+                ? `transition of ${(animation as CSSTransition).transitionProperty}`
+                : animation.constructor.name;
+          return {
+            name: `${name} on <${effect.target!.tagName.toLowerCase()}>${effect.pseudoElement ?? ""}`,
+            remainingMs: end - now,
+            playState: animation.playState,
+          };
+        });
+    });
+
+  const reduced = await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  expect.soft(
+    reduced,
+    "The runner emulates prefers-reduced-motion: reduce. An animation the page suppresses under it would " +
+      "never run here, so the settled sample would read the on-load page again. That is a finding (EV-217 " +
+      "edge case 2), not a pass: stop and ask senior-po."
+  ).toBe(false);
+
+  const before = await inScope();
+  const unsettleable = before.filter((a) => !Number.isFinite(a.remainingMs) || a.remainingMs > SETTLE_BUDGET_MS);
+  expect.soft(
+    unsettleable.map((a) => `${a.name}: ends in ${a.remainingMs} ms`),
+    `An animation on the page does not end within ` +
+      `${SETTLE_BUDGET_MS} ms, so the settled sample cannot be taken (EV-217 AC1). The sample is not ` +
+      "dropped: this is red. If the design needs such an animation, stop and ask senior-po."
+  ).toEqual([]);
+  if (reduced || unsettleable.length > 0) return { settled: false, waitedMs: 0, describe: "not settleable" };
+
+  const waitedMs = Math.ceil(Math.max(0, ...before.map((a) => a.remainingMs))) + SETTLE_MARGIN_MS;
+  await page.waitForTimeout(waitedMs);
+
+  const after = await inScope();
+  const running = after
+    .filter((a) => a.playState !== "finished")
+    .map((a) => `${a.name}: ${a.playState}, ${a.remainingMs} ms left`);
+  expect
+    .soft(
+      running,
+      `${waitedMs} ms after the on-load read, an animation on the page has still not finished, so the ` +
+        "page has not settled and the second sample would not be a settled read (EV-217 AC1)."
+    )
+    .toEqual([]);
+  if (running.length > 0) return { settled: false, waitedMs, describe: "not settled" };
+
+  const describe =
+    before.length === 0
+      ? "no animation or transition on the page, so the margin alone"
+      : `the longest of ${before.length} animation(s) on the page plus the margin: ${before.map((a) => a.name).join(", ")}`;
+  return { settled: true, waitedMs, describe };
+}
+
+test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / EV-217 / P-ADH C2 — no element of the adherence list has a non-initial value on an enumerated paint channel, at any of three samples", () => {
   /**
    * EV-210b's own four worlds. `minimumElements` is a fact about the FIXTURE and the
    * row's structure (eight rows, each at least the `li` plus a date span and a figures
@@ -1750,87 +2165,54 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
     ).toBe(PAINT_CHANNELS.length);
   });
 
-  for (const world of WORLDS) {
-    test(`P-ADH C2 (EV-216 AC1, EV-253): no element of the adherence list paints through one of the ${PAINT_CHANNELS.length} enumerated channels — ${world.name}`, async ({
-      page,
-    }) => {
-      await signIn(page);
-      await page.goto(`/clients/${world.id}`);
-      await expect(block(page, ADHERENCE)).toBeVisible();
+  /**
+   * One SAMPLE of the paint limb: the whole predicate, read once, at the page state the
+   * caller has put the page in. Every message carries `sample`, so a red build says WHEN
+   * and AT WHAT WIDTH it read the page (EV-217 AC3), not only what it found.
+   *
+   * The offences are asserted SOFT, so a red sample does not stop the later samples from
+   * being read: that is what lets a failure show which sample caught a construction and
+   * which did not, and it is how EV-217's independence runs were read (records).
+   */
+  async function expectNoPaintInList(page: Page, world: (typeof WORLDS)[number], sample: string) {
+    const read = await paintedElementsInList(block(page, ADHERENCE));
+    const rows = read.rows;
+    const at = `${world.name} [sample: ${sample}]`;
+    expect(
+      read.interaction,
+      `${at}: the list was read with the pointer over it or focus inside it. Every sample in this ` +
+        "section is read AT REST (EV-217 banner); a hovered or focused read is a different sample."
+    ).toEqual({ hovered: false, focusWithin: false });
+    expectOneListHoldingEveryRow(`${at}, the paint limb`, read, rows.length, 1);
+    // EV-253 — the list element itself is read, not only what hangs under it. It is the
+    // first element outside every row by construction; this is what says so.
+    expect(
+      read.outsideRows[0]?.tag,
+      `${at}: the paint limb did not read the <ul> itself — it is rooted at the list (EV-253)`
+    ).toBe("ul");
+    // "…not the ${world.weeks} this world renders", never "no week rows at all": the
+    // assertion is an equality, so SEVEN rows — a week silently dropped, which is the
+    // interesting failure — would otherwise be reported as zero.
+    expect(rows.length, `${at}: the adherence block did not render the ${world.weeks} week rows this world has`).toBe(
+      world.weeks
+    );
+    // EV-218 / ADR-0024 decision 3 — the rendered ratchet. For Lina this binds the
+    // fixture's `done` and `planned`, her render path, and this test reading her rows
+    // in ONE assertion; `plannedSoFar` is not printed, so it is held separately below.
+    expect(
+      rows[rows.length - 1].rowText,
+      `${at}: the current (last) week no longer prints "${world.currentWeek}". For Lina ` +
+        "that row is the fixture's only done > plannedSoFar >= 1 week, the one this section " +
+        "relies on to see a done / plannedSoFar renderer after the parser (ADR-0024)."
+    ).toContain(world.currentWeek);
 
-      const read = await paintedElementsInList(block(page, ADHERENCE));
-      const rows = read.rows;
-      expectOneListHoldingEveryRow(`${world.name}, the paint limb`, read, rows.length, 1);
-      // EV-253 — the list element itself is read, not only what hangs under it. It is the
-      // first element outside every row by construction; this is what says so.
-      expect(
-        read.outsideRows[0]?.tag,
-        `${world.name}: the paint limb did not read the <ul> itself — it is rooted at the list (EV-253)`
-      ).toBe("ul");
-      // "…not the ${world.weeks} this world renders", never "no week rows at all": the
-      // assertion is an equality, so SEVEN rows — a week silently dropped, which is the
-      // interesting failure — would otherwise be reported as zero.
-      expect(
-        rows.length,
-        `${world.name}: the adherence block did not render the ${world.weeks} week rows this world has`
-      ).toBe(world.weeks);
-      // EV-218 / ADR-0024 decision 3 — the rendered ratchet. For Lina this binds the
-      // fixture's `done` and `planned`, her render path, and this test reading her rows
-      // in ONE assertion; `plannedSoFar` is not printed, so it is held separately below.
-      expect(
-        rows[rows.length - 1].rowText,
-        `${world.name}: the current (last) week no longer prints "${world.currentWeek}". For Lina ` +
-          "that row is the fixture's only done > plannedSoFar >= 1 week, the one this section " +
-          "relies on to see a done / plannedSoFar renderer after the parser (ADR-0024)."
-      ).toContain(world.currentWeek);
+    const { offences, inspected } = paintOffences(read, at);
 
-      const offences: string[] = [];
-      let inspected = 0;
-      const groups = [
-        { place: "the adherence list, OUTSIDE every week row", elements: read.outsideRows },
-        ...rows.map((row) => ({ place: `week row "${row.date}" ("${row.rowText}")`, elements: row.elements })),
-      ];
-      for (const group of groups) {
-        for (const element of group.elements) {
-          inspected += 1;
-          const where = `${world.name} — ${group.place}, <${element.tag}>`;
-          /**
-           * The channel list is RATCHETED against `PAINT_CHANNELS`, because `inspected`
-           * counts ELEMENTS and not channels: deleting the `::after` read used to leave
-           * this suite 260 green, which is the same shape of hole `minimumBars` exists
-           * for one section up. This asserts the browser was actually asked for every
-           * channel the table lists; `PAINT_CHANNELS_EXPECTED` is what stops the table
-           * itself from shrinking.
-           */
-          expect(
-            element.computed.map((channel) => channel.channel),
-            `${where}: the channels read do not match PAINT_CHANNELS — a channel in the table was not read`
-          ).toEqual(PAINT_CHANNELS.map((channel) => channel.name));
-          /**
-           * A computed read of a property this browser does not report returns `""`,
-           * which is neither the initial value nor a paint — it is a channel that is not
-           * a read at all, and it would pass the loop below in silence. `mask-image` is
-           * the live example: it is unprefixed in this Chromium (verified), and a
-           * browser where it is not would otherwise be a suite that quietly stopped
-           * checking one of EV-216's three channels.
-           */
-          expect(
-            element.computed.filter((channel) => channel.value.trim() === "").map((c) => c.channel),
-            `${where}: a channel returned an empty computed value, so this browser does not report that property — the channel is listed but not read`
-          ).toEqual([]);
-          // Presence only: the value is compared to the channel's initial and never
-          // matched against any pattern (ADR-0024 — no value text for a spelling to vary).
-          for (const channel of element.computed.filter((c) => c.value !== c.initial)) {
-            offences.push(
-              `${where} PAINTS on channel [${channel.channel}]: ${channel.value} (initial: ${channel.initial})`
-            );
-          }
-        }
-      }
-
-      expect(
+    expect
+      .soft(
         offences,
-        "An element of the adherence list — a week row, or the list itself or anything under it " +
+        `SAMPLE: ${sample}. ` +
+          "An element of the adherence list — a week row, or the list itself or anything under it " +
           "outside every row (EV-253) — has a non-initial value on one of the channels this " +
           "section enumerates. P-ADH C2 says the picture IS the two numbers printed beside it; " +
           "a value on one of these channels paints with no layout box of its own, so the " +
@@ -1844,19 +2226,111 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / P-ADH C2 — no elem
               "the parser drops, so Ines stays green BY DESIGN — this is where that renderer " +
               "is caught, not a lost witness. "
             : "") +
-          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS`, read after the CSS parser; it " +
-          "is not a proof that nothing else can paint. What is read, and what is known not to be, " +
-          "is disclosed above `PaintChannel`. The fix belongs in the renderer: draw the ratio as " +
-          "a measurable box, or draw nothing."
-      ).toEqual([]);
+          "⚠️ This is an ENUMERATED ban over `PAINT_CHANNELS`, read after the CSS parser, at the " +
+          "samples listed in the EV-217 banner; it is not a proof that nothing else can paint, " +
+          "or that nothing paints at another instant or width. What is read, and when, is " +
+          "disclosed above `PaintChannel` and in the EV-217 banner. The fix belongs in the " +
+          "renderer: draw the ratio as a measurable box, or draw nothing."
+      )
+      .toEqual([]);
 
+    expect(
+      inspected,
+      `${at}: only ${inspected} elements were read in the adherence list, so this ` +
+        `check was very nearly vacuous (the fixture guarantees at least ${world.minimumElements})`
+    ).toBeGreaterThanOrEqual(world.minimumElements);
+  }
+
+  for (const world of WORLDS) {
+    test(`P-ADH C2 (EV-216 AC1, EV-253, EV-217): no element of the adherence list paints through one of the ${PAINT_CHANNELS.length} enumerated channels, on load, settled and at ${NARROW_WIDTH} px — ${world.name}`, async ({
+      page,
+    }) => {
+      await signIn(page);
+      // At rest: the pointer is parked at the viewport's top-left corner, off the list, so
+      // no sample is taken with a row hovered by wherever the sign-in click left it.
+      await page.mouse.move(0, 0);
+      const defaultViewport = page.viewportSize();
+      expect(defaultViewport, "the config sets no viewport, so the default-width sample has no width").not.toBeNull();
+      const defaultWidth = `${defaultViewport!.width} px`;
+
+      // ── Sample 1: on load, at the config's default width. ─────────────────────────
+      await page.goto(`/clients/${world.id}`);
+      await expect(block(page, ADHERENCE)).toBeVisible();
+      await expectNoPaintInList(page, world, `on load, at ${defaultWidth}`);
+
+      // ── Sample 2 (EV-217 AC1): the same page, SETTLED, at the same width. ─────────
+      // A failed precondition has already failed the test (softly) and skips only this read.
+      const settled = await waitUntilSettled(page);
+      if (settled.settled) {
+        await expectNoPaintInList(
+          page,
+          world,
+          `settled (${settled.waitedMs} ms after the on-load read; ${settled.describe}), at ${defaultWidth}`
+        );
+      }
+
+      // ── Sample 3 (EV-217 AC2): a fresh load at 320 px, read on load. ──────────────
+      // Only the width changes; the height is the default's, so this is one condition
+      // moved, not two (AC5).
+      expect(NARROW_WIDTH, "qa/layout.ts's narrowest width is no longer 320 px; EV-217 AC2 names 320").toBe(320);
+      await page.setViewportSize({ width: NARROW_WIDTH, height: defaultViewport!.height });
+      await page.goto(`/clients/${world.id}`);
+      await expect(block(page, ADHERENCE)).toBeVisible();
       expect(
-        inspected,
-        `${world.name}: only ${inspected} elements were read in the adherence list, so this ` +
-          `check was very nearly vacuous (the fixture guarantees at least ${world.minimumElements})`
-      ).toBeGreaterThanOrEqual(world.minimumElements);
+        await page.evaluate(() => window.innerWidth),
+        `the ${NARROW_WIDTH} px sample did not render at ${NARROW_WIDTH} px`
+      ).toBe(NARROW_WIDTH);
+      await expectNoPaintInList(page, world, `on load, at ${NARROW_WIDTH} px`);
     });
   }
+
+  /**
+   * 📌 **EV-217 AC4 — the non-false-positive property, as a test you can point at.**
+   *
+   * Until EV-217, "a flat `background-color` inside a week row is not reported" was true
+   * only because the suite was green on the shipped bars, which paint with exactly that.
+   * A real check, but nobody could name the assertion. This is the assertion.
+   *
+   * It reads Lina's shipped page: at least six elements in her week rows carry a
+   * non-transparent `background-color` (one fill per drawn bar, EV-210b's `minimumBars`
+   * for her world, plus the tracks), the paint limb reports nothing on that page, and
+   * `background-color` is not a `PAINT_CHANNELS` property. The last clause is the SCOPE
+   * DECISION the EV-214 banner records (a colour is untouched by choice, not because a
+   * colour cannot draw a ratio). Adding it to the table is a `senior-po` call, and this
+   * test goes red to make it one.
+   */
+  test("P-ADH C2 (EV-217 AC4): a flat background-color on a week row is PERMITTED — the shipped bars paint with one and the paint limb reports nothing", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+    await expect(block(page, ADHERENCE)).toBeVisible();
+
+    const coloured = await block(page, ADHERENCE).evaluate((blockEl) => {
+      const list = blockEl.querySelector("ul");
+      if (!list) return [];
+      return Array.from(list.querySelectorAll<HTMLElement>("li, li *"))
+        .map((el) => getComputedStyle(el).backgroundColor)
+        .filter((colour) => colour !== "rgba(0, 0, 0, 0)" && colour !== "transparent");
+    });
+    expect(
+      coloured.length,
+      "Lina's week rows no longer carry a flat background-color on at least six elements (one per drawn bar), " +
+        "so this test no longer shows a colour being permitted — it would pass on a page with none"
+    ).toBeGreaterThanOrEqual(6);
+
+    const { offences } = paintOffences(await paintedElementsInList(block(page, ADHERENCE)), "Lina");
+    expect(
+      offences,
+      "The paint limb reported the shipped page, whose rows paint with a flat background-color and " +
+        "nothing else. A colour is PERMITTED (EV-214 scope decision, EV-217 AC4)."
+    ).toEqual([]);
+    expect(
+      PAINT_CHANNELS.filter((channel) => channel.property === "background-color").map((channel) => channel.name),
+      "PAINT_CHANNELS reads background-color. That bans the colour every shipped bar is drawn with; " +
+        "it is a senior-po scope decision (EV-214, EV-220), not a line to add here."
+    ).toEqual([]);
+  });
 
   /**
    * 🔴 **EV-218 — what the rendered ratchet in the loop cannot hold.**
