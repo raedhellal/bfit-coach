@@ -458,12 +458,21 @@ export const copy = {
     invalidDate: "Enter the start date as a calendar date, or leave it empty.",
     /**
      * EV-274b AC1, verbatim. Client-side, and no request is sent: outside 3.0-60.0, more
-     * than one decimal, or not a number. The bounds are the api's own (EV-274 B2), so the
-     * browser refuses exactly what `COACH_MILESTONE_OUT_OF_RANGE` would.
+     * than one significant decimal, or not a plain decimal. The bounds are the api's own
+     * (EV-274 B2), and the rule matches the api's except exponent notation, a leading `+`
+     * and a trailing point, which are refused here on purpose (`parseBodyFatMilestone`).
      */
     invalidBodyFat: "Enter a percentage between 3 and 60.",
     /** Edge case 6's 400, rendered rather than pre-empted: the api refuses, we report. */
     outOfRange: "A milestone weight must be between 25 and 300 kg. Nothing was saved.",
+    /**
+     * EV-274a's 400 for the body fat, rendered rather than assumed away. The browser
+     * refuses the same values first, so this is reached only if the two rules ever
+     * drift apart — and then the coach must not be told it was the WEIGHT.
+     * `refusedMilestone` in src/lib/progressGoal.ts picks between the two.
+     */
+    outOfRangeBodyFat:
+      "A milestone body fat must be between 3 and 60 %, with one decimal. Nothing was saved.",
     failed: "The start date and milestone could not be saved.",
   },
 

@@ -9,6 +9,7 @@ import {
   markSent,
   parseBodyFatMilestone,
   progressRows,
+  refusedMilestone,
   reseedPreservingEdits,
   seedFormState,
   toGoValue,
@@ -256,8 +257,8 @@ test.describe("edge cases 2, 4 and 5 — dates that differ, a bulk, and an exact
     // Edge case 2: the two columns resolve independently and may name different days.
     // Tobias's body fats were recorded on days his weights were not, so each cell
     // prints its own date rather than the screen printing one heading date.
-    await expect(cell(page, "bodyFat", "start")).toHaveText(/^Start 26\.0 % \(.+\)$/);
-    await expect(cell(page, "bodyFat", "current")).toHaveText(/^Current 25\.2 % \(.+\)$/);
+    await expect(cell(page, "bodyFat", "start")).toHaveText(/^Start 26\.0\u00a0% \(.+\)$/);
+    await expect(cell(page, "bodyFat", "current")).toHaveText(/^Current 25\.2\u00a0% \(.+\)$/);
     await expect(cell(page, "bodyFat", "delta")).toHaveText("−0.8 pts");
   });
 
@@ -942,6 +943,9 @@ test.describe("EV-274b AC1 — the body-fat field refuses what the api refuses, 
     for (const [typed, wire] of [
       ["3", 3],
       ["60.0", 60],
+      ["60.00", 60],
+      ["3.00", 3],
+      ["20.10", 20.1],
       ["20.5", 20.5],
       ["20,5", 20.5],
     ] as const) {
@@ -1047,6 +1051,35 @@ test.describe("EV-274b AC2 — the Body fat row", () => {
     await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
     await expect.poll(() => events.length).toBe(1);
     expect(events[0]).toMatchObject({ hasBodyFatMilestone: true, changed: "bodyfat" });
+  });
+
+  test("an untouched body fat already stored is still reported, from the reply and not the request", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await setLinaBodyFat(page, "20.0");
+    // A fresh load: the body-fat field is the server's text, untouched, so no key is sent.
+    await page.reload();
+    const events: Record<string, unknown>[] = [];
+    page.on("console", (message) => {
+      if (message.type() !== "info") return;
+      try {
+        const parsed = JSON.parse(message.text()) as Record<string, unknown>;
+        if (parsed.event === "coach_progress_goal_set") events.push(parsed);
+      } catch {
+        /* not an event line */
+      }
+    });
+    const sent = recordSaves(page);
+
+    await milestoneField(page).fill("66");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+
+    expect(Object.keys(sent[0])).not.toContain("milestoneBodyFatPct");
+    await expect.poll(() => events.length).toBe(1);
+    // The milestone is still stored, so the event must say so; the request cannot.
+    expect(events[0]).toMatchObject({ hasBodyFatMilestone: true, changed: "milestone" });
   });
 });
 
@@ -1239,7 +1272,9 @@ test.describe("EV-274b — the pure rules", () => {
     const text = (goal: TraineeProgressGoal) =>
       progressRows(goal)
         .filter((r) => r.metric === "bodyFat")
-        .map((r) => `${r.label} — ${r.cells.map((c) => c.text).join(" · ")}`)[0];
+        .map((r) => `${r.label} — ${r.cells.map((c) => c.text).join(" · ")}`)[0]
+        // U+00A0 (see `formatPct`) read as a space, so the story's line compares verbatim.
+        .replace(/\u00a0/g, " ");
 
     expect(text(traineeA())).toBe(
       "Body fat — Start 28.0 % · Current 24.0 % · −4.0 pts · Milestone 20.0 % · 4.0 pts to go"
@@ -1274,19 +1309,54 @@ test.describe("EV-274b — the pure rules", () => {
   });
 
   test("the body-fat figure to go renders in all three directions", () => {
-    expect(bodyFatToGoValue(-4)).toBe("4.0 pts");
-    expect(bodyFatToGoValue(2)).toBe("+2.0 pts");
-    expect(bodyFatToGoValue(0)).toBe("0.0 pts");
+    expect(bodyFatToGoValue(-4)).toBe("4.0\u00a0pts");
+    expect(bodyFatToGoValue(2)).toBe("+2.0\u00a0pts");
+    expect(bodyFatToGoValue(0)).toBe("0.0\u00a0pts");
   });
 
-  test("the browser's rule is the api's rule: 3.0-60.0, at most one decimal", () => {
-    for (const ok of ["3", "3.0", "60", "60.0", "20.5", "20,5", " 20 ", ""]) {
+  test("the browser's rule matches the api's, except exponent, a leading + and a trailing point, refused on purpose", () => {
+    /**
+     * The api judges the VALUE (`stripTrailingZeros().scale() > 1`), so trailing zeros
+     * are the same number: `20.50`, `60.00`, `3.00` and `20.10` are accepted there, and
+     * must be here. staff-engineer's 675-input probe found the first cut refusing them.
+     */
+    for (const ok of [
+      "3", "3.0", "3.00", "60", "60.0", "60.00", "20.5", "20.50", "20.10", "20,5", "20,50", " 20 ", "",
+    ]) {
       expect(parseBodyFatMilestone(ok).ok, `${ok} should be accepted`).toBe(true);
     }
-    for (const bad of ["2.9", "60.1", "-1", "200", "20.05", "20,55", "abc", "20.", ".5", "2e1", "+20"]) {
+    expect(parseBodyFatMilestone("20.10")).toEqual({ ok: true, value: 20.1 });
+    expect(parseBodyFatMilestone("60.00")).toEqual({ ok: true, value: 60 });
+    expect(parseBodyFatMilestone("20,50")).toEqual({ ok: true, value: 20.5 });
+    // The api's refusals, refused here too: a second SIGNIFICANT decimal is still one too many.
+    for (const bad of ["2.9", "60.1", "-1", "200", "20.05", "20.051", "20,55", "60.01", "abc", ".5"]) {
       expect(parseBodyFatMilestone(bad).ok, `${bad} should be refused`).toBe(false);
     }
+    // Refused ON PURPOSE though the api would take the value: text that is not a plain decimal.
+    for (const deliberate of ["1e1", "2e1", "+20", "20."]) {
+      expect(parseBodyFatMilestone(deliberate).ok, `${deliberate} is refused on purpose`).toBe(false);
+    }
     expect(parseBodyFatMilestone("")).toEqual({ ok: true, value: null });
+  });
+
+  test("a 400 names the milestone that was refused, never the weight by default", () => {
+    // The api checks the weight first, so a weight outside 25..300 is always the cause.
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: 500, milestoneBodyFatPct: 20 })).toBe("WEIGHT");
+    // A valid weight and a body fat on the request: the body fat is the only candidate.
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: 80, milestoneBodyFatPct: 20 })).toBe("BODY_FAT");
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: null, milestoneBodyFatPct: 61 })).toBe("BODY_FAT");
+    // No body fat on the request (absent or a clear): it can only have been the weight.
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: 20 })).toBe("WEIGHT");
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: 20, milestoneBodyFatPct: null })).toBe("WEIGHT");
+  });
+
+  test("a number and its unit are joined by a no-break space, so they never wrap apart", () => {
+    expect(bodyFatToGoValue(-4)).toBe("4.0\u00a0pts");
+    const cells = progressRows(traineeA()).find((r) => r.metric === "bodyFat")!.cells;
+    expect(cells.length).toBe(5);
+    for (const c of cells) {
+      expect(c.text, `${c.key} has a breakable space before its unit`).not.toMatch(/\d (%|pts)/);
+    }
   });
 
   test("the key travels exactly when the field was touched — null to clear", () => {

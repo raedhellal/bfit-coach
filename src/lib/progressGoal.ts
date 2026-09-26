@@ -45,18 +45,26 @@ export const BODY_FAT_MILESTONE_MIN = 3;
 export const BODY_FAT_MILESTONE_MAX = 60;
 
 /**
- * Digits, then at most ONE decimal. No sign (−1 is refused by the api too), no exponent
- * (`2e1` is 20 to `Number` and a typo to a coach), no bare or trailing point.
+ * Digits, then at most ONE SIGNIFICANT decimal: `20.1`, `20.10` and `60.00` pass,
+ * `20.05` does not. The api judges the VALUE (`stripTrailingZeros().scale() > 1`), not
+ * the text, so trailing zeros are the same number and must be accepted — the first cut
+ * of this regex (`\.\d`) refused `20.10`, `60.00` and `3.00`, which the api takes.
+ *
+ * Refused ON PURPOSE although the api would take the value they denote: exponent
+ * notation (`1e1`, `2e1` — a number to `Number`, a typo to a coach), a leading `+`, and
+ * a trailing or bare point. A minus sign is refused by both (every negative is below 3).
  */
-const AT_MOST_ONE_DECIMAL = /^\d+(?:\.\d)?$/;
+const AT_MOST_ONE_DECIMAL = /^\d+(?:\.\d0*)?$/;
 
 /**
- * EV-274b AC1 — the body-fat milestone, checked in the browser against the api's rule
- * EXACTLY: 3.0..60.0 inclusive, at most one decimal. Anything else is refused with
- * "Enter a percentage between 3 and 60." and NO request is sent.
+ * EV-274b AC1 — the body-fat milestone, checked in the browser against the api's rule:
+ * 3.0..60.0 inclusive, at most one significant decimal. It matches the api on every
+ * plain decimal, except exponent notation, a leading `+` and a trailing point, which are
+ * refused on purpose (see `AT_MOST_ONE_DECIMAL`). Anything refused gets "Enter a
+ * percentage between 3 and 60." and NO request is sent.
  *
  * ⚠ Unlike the weight, this one IS range-checked here, because the AC says so. The api
- * still refuses the same values with `COACH_MILESTONE_OUT_OF_RANGE` — the browser check
+ * still refuses those values with `COACH_MILESTONE_OUT_OF_RANGE` — the browser check
  * is the coach's earlier answer, not the enforcement.
  *
  * **A decimal comma is accepted** (`20,5` → 20.5), and that is EV-274 edge case 6's own
@@ -217,6 +225,25 @@ export function describeChange(
   return milestoneChanged ? "milestone" : "bodyfat";
 }
 
+/** EV-202 edge case 6 — the api's weight bounds, used ONLY to name a 400's cause. */
+const WEIGHT_MILESTONE_MIN = 25;
+const WEIGHT_MILESTONE_MAX = 300;
+
+/**
+ * Which value a 400 `COACH_MILESTONE_OUT_OF_RANGE` refused. The code is the same for
+ * both milestones and `message` is never copy (BUG-173), so the cause is worked out from
+ * what was SENT: the api checks the weight first, so a weight outside 25..300 is the
+ * answer whenever there is one. Otherwise a body fat on the request is the only other
+ * candidate. The browser refuses a bad body fat before sending, so that branch is
+ * reached only if the two rules drift — and then the sentence names the right number.
+ */
+export function refusedMilestone(body: CoachProgressGoalRequest): "WEIGHT" | "BODY_FAT" {
+  const w = body.milestoneWeightKg;
+  if (w !== null && (w < WEIGHT_MILESTONE_MIN || w > WEIGHT_MILESTONE_MAX)) return "WEIGHT";
+  if (body.milestoneBodyFatPct !== undefined && body.milestoneBodyFatPct !== null) return "BODY_FAT";
+  return "WEIGHT";
+}
+
 /* ── 2. the signed "to go" figure ───────────────────────────────────────────── */
 
 /**
@@ -253,7 +280,8 @@ export function toGoValue(weightToGoKg: number): string {
  */
 export function bodyFatToGoValue(bodyFatToGoPts: number): string {
   const rounded = Number(bodyFatToGoPts.toFixed(1));
-  if (rounded < 0) return `${Math.abs(rounded).toFixed(1)} pts`;
+  // U+00A0 between number and unit, as `formatPtsDelta` does: they never wrap apart.
+  if (rounded < 0) return `${Math.abs(rounded).toFixed(1)}\u00a0pts`;
   return formatPtsDelta(rounded);
 }
 

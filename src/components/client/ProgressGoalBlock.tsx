@@ -17,6 +17,7 @@ import {
   markSent,
   milestoneAttribution,
   progressRows,
+  refusedMilestone,
   reseedPreservingEdits,
   seedFormState,
   startedOnLine,
@@ -185,7 +186,11 @@ export function ProgressGoalBlock({
           return;
         }
         setError(
-          result.code === "OUT_OF_RANGE" ? copy.progressGoal.outOfRange : copy.progressGoal.failed
+          result.code === "OUT_OF_RANGE"
+            ? refusedMilestone(body) === "BODY_FAT"
+              ? copy.progressGoal.outOfRangeBodyFat
+              : copy.progressGoal.outOfRange
+            : copy.progressGoal.failed
         );
         return;
       }
@@ -355,8 +360,13 @@ export function ProgressGoalBlock({
              * EV-274b AC1. TEXT, like the weight beside it, and range-checked in the
              * browser by `parseBodyFatMilestone` with the api's own rule — not by
              * `min`/`max`/`step`, which would have the browser quietly withhold the
-             * request instead of saying the story's sentence. The G-GOAL note under the
-             * weight field covers both numbers; for this one its witness is EV-274a AC7.
+             * request instead of saying the story's sentence.
+             *
+             * ⚠ It carries NO G-GOAL note. The note renders as the WEIGHT field's hint
+             * and speaks of "a number", so on screen it sits under one field only; it is
+             * not a statement about this one. Whether the body fat should say it too is
+             * copy for senior-po. The G-GOAL property itself holds for this number, and
+             * its witness is api-side (EV-274a AC7), not anything rendered here.
              */
             onChange={(e) => setFields((current) => editField(current, "bodyFat", e.target.value))}
           />
