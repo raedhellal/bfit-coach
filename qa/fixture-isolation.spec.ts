@@ -66,6 +66,7 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
   "refresh-single-flight.spec.ts": "refresh config: COACH_API_MODE=live against qa/stub-api.mjs",
   "contract-drift.spec.ts": "reads two files from disk; never calls the dev server",
   "api-merge-condition.spec.ts": "reads git and a file from disk; never calls the dev server",
+  "ci-workflow.spec.ts": "reads .github/workflows/ci.yml from disk; never calls the dev server",
 };
 
 test("every spec file on the fixture server uses the resetting test", () => {
