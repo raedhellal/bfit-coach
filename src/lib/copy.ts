@@ -844,28 +844,23 @@ export const copy = {
    * sentence (the element wraps instead — BUG-243/244).
    */
   placement: {
-    /** AC1, verbatim — the meal action. Only while `recipePlacementEnabled` is true. */
-    action: "Use one of my recipes",
-    actionNamed: (meal: string) => `Use one of my recipes: ${meal}`,
-    title: "Use one of my recipes",
-    filterLabel: "Filter your recipes",
-    filterPlaceholder: "Recipe name",
+    /*
+     * EV-272 R1: the separate "Use one of my recipes" button, its dialog title and its
+     * filter strings are GONE — a recipe is chosen in the Swap sheet (`swapSheet`
+     * below). What stays here is what EV-272 re-uses verbatim: the confirm, the
+     * refusals, the markers and the apply warning.
+     */
     loading: "Loading your recipes…",
+    /** EV-272 AC7, verbatim (EV-256e's sentence). */
     loadFailed: "Your recipes could not be loaded.",
-    /** AC2, verbatim — the empty library, with a link to `/recipes/new`. */
+    /** AC2, verbatim — the empty library, with a link to `/recipes/new` (EV-272 AC7). */
     empty: "You have no recipes yet.",
     emptyLink: "New recipe",
-    noMatch: (query: string) => `None of your recipes match “${query}”.`,
-    macroLine: (kcal: number, p: number, c: number, f: number) =>
-      `${kcal} kcal · P ${p} g · C ${c} g · F ${f} g`,
     chooseNamed: (recipe: string) => `Choose ${recipe}`,
-    /** AC2, verbatim — the confirm. */
+    /** AC2, verbatim — the confirm (EV-272 AC4). */
     confirm: (meal: string, recipe: string, weekday: string) =>
       `Replace “${meal}” with “${recipe}” on ${weekday}?`,
-    confirmButton: "Replace",
-    back: "Choose another recipe",
     placing: "Replacing…",
-    cancel: "Cancel",
 
     /* ── AC4, verbatim — the markers ─────────────────────────────────────────── */
     yourRecipe: "Your recipe",
@@ -919,6 +914,27 @@ export const copy = {
      */
     applyWarning: (n: number, first: string) =>
       `This replaces up to ${n} ${n === 1 ? "meal" : "meals"} placed from coach recipes. Meals ${first} has eaten are kept.`,
+  },
+
+  /**
+   * EV-272 — the Swap sheet while the placement flag is on: the coach's recipes first,
+   * suggestions only when asked. Sentences marked AC are verbatim story text.
+   *
+   * ⚠ DELIBERATELY ABSENT: any word saying the suggestions come from a model ("AI").
+   * The portal cannot witness their source — `CoachSwapOptionsResponse` carries none,
+   * and the same endpoint serves the stub catalogue when AI is off or fails, and always
+   * for a meal that is already a coach recipe (EV-256d). R4; the escape hatch is an api
+   * source field, not a label here.
+   */
+  swapSheet: {
+    searchLabel: "Search your recipes", // AC2, verbatim
+    searchPlaceholder: "Recipe name",
+    suggestions: "Suggestions", // AC2, verbatim
+    showSuggestions: "Show suggestions", // AC2 / AC5, verbatim
+    /** AC3, verbatim. */
+    noMatch: (query: string) => `No recipe matches “${query}”.`,
+    cancel: "Cancel", // AC4, verbatim — back to the list, the query kept
+    confirm: "Confirm", // AC4, verbatim
   },
 
   /**

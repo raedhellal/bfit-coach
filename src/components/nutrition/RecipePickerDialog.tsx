@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { Button, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { Input, MIN_TOUCH_TARGET } from "@/components/ui/kit";
 import { copy } from "@/lib/copy";
-import { truncateName } from "@/lib/format";
-import {
-  placeRecipeAction,
-  recipeChoicesAction,
-  type PlacementFailure,
-} from "@/lib/nutritionActions";
-import { settled } from "@/lib/settled";
-import type { CoachRecipeSummary, MealWeekView } from "@/lib/coachApi";
+import type { PlacementFailure } from "@/lib/nutritionActions";
+import type { CoachRecipeSummary } from "@/lib/coachApi";
 
-/** The meal the dialog was opened on. Everything it says is about THIS meal. */
+/**
+ * EV-256e's recipe picker — since EV-272 the RECIPE HALF of the Swap sheet
+ * (`SwapSheet.tsx`), no longer a dialog of its own. The file keeps its name so the
+ * history of the picker stays in one place; EV-272 R1 removed the separate "Use one of
+ * my recipes" button that used to open it.
+ *
+ * Presentational: the sheet owns the library, the query and the choice, because the
+ * query must survive the confirm's Cancel (EV-272 AC4) and a refusal (the sheet stays
+ * open on the list).
+ */
+
+/** The meal the sheet was opened on. Everything it says is about THIS meal. */
 export interface PlacementTarget {
   mealId: string;
   mealName: string;
@@ -23,9 +27,9 @@ export interface PlacementTarget {
 
 /**
  * The refusal sentence for one failure, in the story's words (EV-256e AC3 + edge case
- * 6). `recipe` is the recipe the coach CONFIRMED, not the one currently highlighted.
+ * 6, re-used verbatim by EV-272 AC4). `recipe` is the recipe the coach CONFIRMED.
  */
-function refusalSentence(
+export function refusalSentence(
   failure: PlacementFailure,
   recipe: string,
   first: string,
@@ -54,308 +58,151 @@ function refusalSentence(
     case "PLACEMENT_OFF":
       return t.placementOff;
     case "ACCESS_DENIED":
-      // Never `recipeGone` from the 403 alone — see `place()`.
+      // Never `recipeGone` from the 403 alone — see `SwapSheet`'s `place()`.
       return t.accessDenied(first);
     case "FAILED":
       return t.failed;
   }
 }
 
+export type LibraryState =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "ready"; recipes: CoachRecipeSummary[] };
+
 /**
- * EV-256e AC2/AC3 — the picker and its confirm, one dialog.
- *
- * Mounted per opening (the card keys it on the meal id), so a refusal from the last
- * meal can never be shown against this one, and the list is read fresh each time: the
- * library is the coach's and may have changed in another tab.
- *
- * ⚠ A refusal leaves the dialog OPEN (AC3), back on the list with the sentence above
- * it, so the coach can choose another recipe — BELOW_FLOOR literally tells them to. The
- * one outcome that closes it is `MEAL_CHANGED`: the meal it was opened on no longer
- * exists, so the card re-reads the week and says so (edge case 6).
+ * The library's four states, in the sheet: loading, could not be loaded (AC7), empty
+ * (AC7 — the sentence and the way to fix it), and the search over the rows (AC2/AC3).
+ * `shown` is already filtered and ordered (`recipeSearch.ts`).
  */
-export function RecipePickerDialog({
-  clientId,
-  firstName,
-  target,
-  onClose,
-  onPlaced,
-  onMealChanged,
-  onRefresh,
+export function RecipePicker({
+  library,
+  shown,
+  query,
+  onQuery,
+  onChoose,
+  disabled,
 }: {
-  clientId: string;
-  firstName: string;
-  target: PlacementTarget;
-  onClose: () => void;
-  onPlaced: (week: MealWeekView) => void;
-  onMealChanged: () => void;
-  /** `router.refresh()` — an ended link redirects; a switched-off flag hides the action. */
-  onRefresh: () => void;
+  library: LibraryState;
+  shown: CoachRecipeSummary[];
+  query: string;
+  onQuery: (query: string) => void;
+  onChoose: (recipe: CoachRecipeSummary) => void;
+  disabled: boolean;
 }) {
-  const [recipes, setRecipes] = useState<CoachRecipeSummary[] | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [filter, setFilter] = useState("");
-  const [chosen, setChosen] = useState<CoachRecipeSummary | null>(null);
-  const [refusal, setRefusal] = useState<{ text: string; retiredRecipeId: string | null } | null>(
-    null
-  );
-  const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    let live = true;
-    settled(recipeChoicesAction(), { ok: false, code: "FAILED" } as const).then((result) => {
-      if (!live) return;
-      if (result.ok) {
-        setRecipes(result.recipes);
-        setLoadFailed(false);
-      } else {
-        setRecipes([]);
-        setLoadFailed(true);
-      }
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  function choose(recipe: CoachRecipeSummary) {
-    setRefusal(null);
-    setChosen(recipe);
+  if (library.status === "loading") {
+    return (
+      <p role="status" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
+        {copy.placement.loading}
+      </p>
+    );
   }
-
-  function place() {
-    const recipe = chosen;
-    if (!recipe) return;
-    startTransition(async () => {
-      const result = await settled(placeRecipeAction(clientId, target.mealId, recipe.id), {
-        ok: false,
-        failure: { code: "FAILED" },
-      } as const);
-      if (result.ok) {
-        onPlaced(result.week);
-        return;
-      }
-      const failure = result.failure;
-      if (failure.code === "MEAL_CHANGED") {
-        onMealChanged();
-        return;
-      }
-      setChosen(null);
-      if (failure.code === "ACCESS_DENIED") {
-        /**
-         * ONE 403 body covers "that recipe is not yours any more" (deleted in another
-         * tab) and "the link ended" (the trainee revoked). Saying the first on the
-         * strength of the 403 alone put "That recipe is not in your library any more."
-         * on screen for a revoke, just before the redirect (staff review, live run).
-         * So: refresh the page — an ended link redirects to /clients/denied — and
-         * re-read the library, which is the coach's own and answers regardless of the
-         * link. Only a list that no longer holds the recipe earns `recipeGone`;
-         * anything else gets the neutral sentence.
-         */
-        onRefresh();
-        const fresh = await settled(recipeChoicesAction(), { ok: false, code: "FAILED" } as const);
-        const gone = fresh.ok && !fresh.recipes.some((r) => r.id === recipe.id);
-        if (fresh.ok) setRecipes(fresh.recipes);
-        setRefusal({
-          text: gone ? copy.placement.recipeGone : copy.placement.accessDenied(firstName),
-          retiredRecipeId: null,
-        });
-        return;
-      }
-      setRefusal({
-        text: refusalSentence(failure, recipe.name, firstName, target.weekday),
-        retiredRecipeId: failure.code === "RETIRED_INGREDIENT" ? recipe.id : null,
-      });
-      // The flag was switched off after the page loaded: the refresh re-reads
-      // `recipePlacementEnabled` and the action disappears from every meal.
-      if (failure.code === "PLACEMENT_OFF") onRefresh();
-    });
+  if (library.status === "failed") {
+    return (
+      <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
+        {copy.placement.loadFailed}
+      </p>
+    );
   }
-
-  const needle = filter.trim().toLowerCase();
-  const shown =
-    recipes === null
-      ? null
-      : needle === ""
-        ? recipes
-        : recipes.filter((r) => r.name.toLowerCase().includes(needle));
-
-  const footer = chosen ? (
-    <>
-      <Button variant="secondary" onClick={() => setChosen(null)} disabled={pending}>
-        {copy.placement.back}
-      </Button>
-      <Button onClick={place} disabled={pending}>
-        {pending ? copy.placement.placing : copy.placement.confirmButton}
-      </Button>
-    </>
-  ) : (
-    <Button variant="secondary" onClick={onClose} disabled={pending}>
-      {copy.placement.cancel}
-    </Button>
-  );
-
-  return (
-    <Modal
-      open
-      onClose={() => !pending && onClose()}
-      title={copy.placement.title}
-      sub={<span title={target.mealName}>{truncateName(target.mealName)}</span>}
-      icon="file"
-      width={520}
-      footer={footer}
-    >
-      {refusal && (
-        <div
-          role="alert"
-          data-testid="placement-refusal"
+  if (library.recipes.length === 0) {
+    return (
+      <div style={{ display: "grid", gap: 10, justifyItems: "start" }}>
+        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>{copy.placement.empty}</p>
+        <Link
+          href="/recipes/new"
           style={{
-            margin: "0 0 12px",
-            padding: "10px 12px",
+            display: "inline-flex",
+            alignItems: "center",
+            height: MIN_TOUCH_TARGET,
+            padding: "0 14px",
             borderRadius: "var(--r-md)",
-            background: "var(--err-bg)",
-            color: "var(--err-ink)",
+            border: "1px solid var(--border-2)",
+            background: "var(--surface)",
+            color: "var(--ink)",
             fontSize: 13,
-            lineHeight: 1.5,
-            overflowWrap: "anywhere",
+            fontWeight: 600,
+            textDecoration: "none",
           }}
         >
-          {refusal.text}
-          {refusal.retiredRecipeId && (
-            <>
-              {" "}
-              <Link
-                href={`/recipes/${refusal.retiredRecipeId}`}
-                style={{ color: "inherit", fontWeight: 600 }}
-              >
-                {copy.placement.openRecipe}
-              </Link>
-            </>
-          )}
-        </div>
-      )}
-
-      {chosen ? (
-        // AC2 — the confirm, verbatim, naming the meal, the recipe and the meal's day.
-        <p
-          style={{
-            margin: 0,
-            fontSize: 13.5,
-            color: "var(--ink-2)",
-            lineHeight: 1.55,
-            overflowWrap: "anywhere",
-          }}
-        >
-          {copy.placement.confirm(target.mealName, chosen.name, target.weekday)}
+          {copy.placement.emptyLink}
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+      <Input
+        label={copy.swapSheet.searchLabel}
+        placeholder={copy.swapSheet.searchPlaceholder}
+        icon="search"
+        value={query}
+        onChange={(e) => onQuery(e.target.value)}
+        autoFocus
+        full
+      />
+      {shown.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--ink-3)", overflowWrap: "anywhere" }}>
+          {copy.swapSheet.noMatch(query.trim())}
         </p>
-      ) : shown === null ? (
-        <p role="status" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
-          {copy.placement.loading}
-        </p>
-      ) : loadFailed ? (
-        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
-          {copy.placement.loadFailed}
-        </p>
-      ) : recipes !== null && recipes.length === 0 ? (
-        // AC2 — the empty library: the sentence and the way to fix it.
-        <div style={{ display: "grid", gap: 10, justifyItems: "start" }}>
-          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>{copy.placement.empty}</p>
-          <Link
-            href="/recipes/new"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: MIN_TOUCH_TARGET,
-              padding: "0 14px",
-              borderRadius: "var(--r-md)",
-              border: "1px solid var(--border-2)",
-              background: "var(--surface)",
-              color: "var(--ink)",
-              fontSize: 13,
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
-            {copy.placement.emptyLink}
-          </Link>
-        </div>
       ) : (
-        <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
-          <Input
-            label={copy.placement.filterLabel}
-            placeholder={copy.placement.filterPlaceholder}
-            icon="search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            full
-          />
-          {shown.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: "var(--ink-3)", overflowWrap: "anywhere" }}>
-              {copy.placement.noMatch(filter.trim())}
-            </p>
-          ) : (
-            <ul
-              data-testid="recipe-choices"
-              style={{
-                listStyle: "none",
-                margin: 0,
-                padding: 0,
-                display: "grid",
-                // BUG-244: a 0 minimum, so a long name wraps inside the track instead of
-                // widening it past a 320 px viewport.
-                gridTemplateColumns: "minmax(0, 1fr)",
-                gap: 8,
-              }}
-            >
-              {shown.map((recipe) => (
-                <li key={recipe.id} style={{ minWidth: 0 }}>
-                  <button
-                    type="button"
-                    onClick={() => choose(recipe)}
-                    disabled={pending}
-                    title={recipe.name}
-                    aria-label={copy.placement.chooseNamed(recipe.name)}
-                    style={{
-                      width: "100%",
-                      minHeight: MIN_TOUCH_TARGET,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-start",
-                      gap: 3,
-                      padding: "9px 12px",
-                      borderRadius: "var(--r-md)",
-                      border: "1px solid var(--border)",
-                      background: "var(--surface)",
-                      cursor: pending ? "not-allowed" : "pointer",
-                      textAlign: "left",
-                      minWidth: 0,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 13.5,
-                        fontWeight: 600,
-                        color: "var(--ink)",
-                        overflowWrap: "anywhere",
-                        maxWidth: "100%",
-                      }}
-                    >
-                      {recipe.name}
-                    </span>
-                    <span className="tnum" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-                      {copy.placement.macroLine(
-                        recipe.kcal,
-                        recipe.proteinG,
-                        recipe.carbsG,
-                        recipe.fatG
-                      )}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <ul
+          data-testid="recipe-choices"
+          style={{
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            display: "grid",
+            // BUG-244: a 0 minimum, so a long name wraps inside the track instead of
+            // widening it past a 320 px viewport.
+            gridTemplateColumns: "minmax(0, 1fr)",
+            gap: 8,
+          }}
+        >
+          {shown.map((recipe) => (
+            <li key={recipe.id} style={{ minWidth: 0 }}>
+              <button
+                type="button"
+                onClick={() => onChoose(recipe)}
+                disabled={disabled}
+                title={recipe.name}
+                aria-label={copy.placement.chooseNamed(recipe.name)}
+                style={{
+                  width: "100%",
+                  minHeight: MIN_TOUCH_TARGET,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  gap: 3,
+                  padding: "9px 12px",
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  textAlign: "left",
+                  minWidth: 0,
+                }}
+              >
+                {/* EV-272 AC8: the WHOLE name, wrapping — never truncated or clipped. */}
+                <span
+                  style={{
+                    fontSize: 13.5,
+                    lineHeight: 1.35,
+                    fontWeight: 600,
+                    color: "var(--ink)",
+                    overflowWrap: "anywhere",
+                    maxWidth: "100%",
+                  }}
+                >
+                  {recipe.name}
+                </span>
+                <span className="tnum" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
+                  {copy.nutrition.macros(recipe.kcal, recipe.proteinG, recipe.carbsG, recipe.fatG)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
-    </Modal>
+    </div>
   );
 }

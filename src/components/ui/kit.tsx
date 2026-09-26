@@ -291,6 +291,7 @@ export function Input({
   onChange,
   onKeyDown,
   focusRing,
+  autoFocus,
   style = {},
 }: {
   label?: string;
@@ -305,6 +306,8 @@ export function Input({
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   focusRing?: boolean;
+  /** EV-272 AC2 — the Swap sheet's search field holds focus when the sheet opens. */
+  autoFocus?: boolean;
   style?: Sx;
 }) {
   return (
@@ -339,6 +342,7 @@ export function Input({
           type={type || "text"}
           onChange={onChange}
           onKeyDown={onKeyDown}
+          autoFocus={autoFocus}
           style={{
             flex: 1,
             // The FIELD is the target, not the box around it: the `<input>` itself has

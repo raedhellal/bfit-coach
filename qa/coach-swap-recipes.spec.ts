@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { atEachWidth, expectNoSidewaysScroll } from "./layout";
+import { matchesQuery, orderByKcalDistance, recipesFor } from "../src/lib/recipeSearch";
 
 /**
  * EV-272 — "the coach's meal swap searches the coach's own recipes first", in
@@ -665,5 +666,46 @@ test.describe("Edge case 5 — a full library", () => {
     await expect(recipeRows(sheet)).toHaveCount(10);
     info.annotations.push({ type: "keystroke-filter-ms", description: ms.toFixed(1) });
     process.stdout.write(`EV-272 edge case 5: one keystroke over 100 recipes filtered in ${ms.toFixed(1)} ms\n`);
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * The rules themselves — no page, no server (`src/lib/recipeSearch.ts`)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+test.describe("AC2/AC3 rules, pure", () => {
+  const LIB = [
+    { name: "Chicken rice", kcal: 650 },
+    { name: "Crêpes aux épinards", kcal: 430 },
+    { name: "Lentil bowl", kcal: 520 },
+    { name: "Overnight oats", kcal: 380 },
+    { name: "Salmon quinoa", kcal: 610 },
+    { name: "Tofu stir-fry", kcal: 560 },
+  ];
+
+  test("order: |kcal − meal| ascending, ties by name A→Z, input untouched", () => {
+    const before = LIB.map((r) => r.name);
+    expect(orderByKcalDistance(LIB, 600).map((r) => r.name)).toEqual(SIX);
+    expect(LIB.map((r) => r.name), "the api's list is not sorted in place").toEqual(before);
+    // A tie on distance (590 and 610 from 600): the name decides, whatever the input order.
+    const tie = [
+      { name: "b above", kcal: 610 },
+      { name: "A below", kcal: 590 },
+    ];
+    expect(orderByKcalDistance(tie, 600).map((r) => r.name)).toEqual(["A below", "b above"]);
+    expect(orderByKcalDistance([...tie].reverse(), 600).map((r) => r.name)).toEqual(["A below", "b above"]);
+  });
+
+  test("match: trimmed, case- and accent-insensitive, one substring", () => {
+    expect(matchesQuery("Crêpes aux épinards", "crepe")).toBe(true);
+    expect(matchesQuery("Crêpes aux épinards", "ÉPINARDS")).toBe(true);
+    expect(matchesQuery("Crepes aux epinards", "crêpes")).toBe(true);
+    expect(matchesQuery("Lentil bowl", "LENT")).toBe(true);
+    expect(matchesQuery("Chicken rice", "  rice ")).toBe(true);
+    expect(matchesQuery("Lentil bowl", "bowl oats")).toBe(false);
+    expect(matchesQuery("Overnight oats", "bowl oats")).toBe(false);
+    expect(matchesQuery("Anything", "   ")).toBe(true);
+    expect(matchesQuery("Anything", "")).toBe(true);
+    expect(recipesFor(LIB, 600, "o").map((r) => r.name)).toEqual(SIX.filter((n) => n.toLowerCase().includes("o")));
   });
 });

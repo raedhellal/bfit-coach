@@ -2,8 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
-import { RecipePickerDialog, type PlacementTarget } from "@/components/nutrition/RecipePickerDialog";
+import { Badge, Button, Card, CardHead, Modal } from "@/components/ui/kit";
+import {
+  readLibrary,
+  SuggestionRow,
+  SwapSheet,
+  type SwapSheetTarget,
+} from "@/components/nutrition/SwapSheet";
 import { copy } from "@/lib/copy";
 import { firstName, formatDate, formatWeekday, truncateName } from "@/lib/format";
 import {
@@ -75,9 +80,12 @@ export function NutritionWeekCard({
   currentWeekStart: string;
   /**
    * EV-256e AC1 — `CoachNutritionResponse.recipePlacementEnabled`, passed as
-   * `=== true` by the page. False in production until EV-256f ships: then NO meal has
-   * the action — hidden, not disabled, because a disabled control would advertise a
-   * feature the trainee's app cannot yet show honestly.
+   * `=== true` by the page. False in production until EV-256f ships.
+   *
+   * EV-272: it decides which Swap sheet a meal opens. False → the sheet exactly as it
+   * was (suggestions loaded at once, no recipes — AC1). True → `SwapSheet`, which opens
+   * on the coach's own recipes and loads suggestions only when asked. There is no
+   * second button either way (R1): "Use one of my recipes" is gone.
    */
   recipePlacementEnabled: boolean;
 }) {
@@ -96,10 +104,15 @@ export function NutritionWeekCard({
   }
   const [confirming, setConfirming] = useState(false);
   const [swapping, setSwapping] = useState<{ mealId: string; mealName: string } | null>(null);
+  /**
+   * EV-272 — the flag-on sheet's meal. Separate from `swapping` (the flag-off sheet) and
+   * decided when the sheet OPENS, so a flag switched off under an open sheet (edge case
+   * 2, which refreshes the page) cannot swap one sheet for the other mid-choice.
+   */
+  const [recipeSwap, setRecipeSwap] = useState<SwapSheetTarget | null>(null);
   const [candidates, setCandidates] = useState<SwapCandidate[] | null>(null);
   /** AC7 — a Swap refusal is shown IN the swap dialog, which stays open. */
   const [swapError, setSwapError] = useState<string | null>(null);
-  const [placing, setPlacing] = useState<PlacementTarget | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -181,6 +194,20 @@ export function NutritionWeekCard({
         return void handleAccessEnded();
       }
       setCandidates(result.ok ? result.options.candidates : []);
+    });
+  }
+
+  /** EV-272 — flag on: open on the coach's recipes. Nothing is requested here. */
+  function openRecipeSwap(meal: PlannedMealView, weekday: string) {
+    setError(null);
+    setRecipeSwap({
+      mealId: meal.mealId,
+      mealName: meal.name,
+      weekday,
+      kcal: meal.kcal,
+      locked: meal.locked,
+      // AC2: ONE library read per opening, sent from this click; AC6: none when locked.
+      library: meal.locked ? null : readLibrary(),
     });
   }
 
@@ -360,34 +387,15 @@ export function NutritionWeekCard({
                           size="sm"
                           icon="refresh"
                           ariaLabel={`${copy.nutrition.swap}: ${meal.name}`}
-                          onClick={() => openSwap(meal.mealId, meal.name)}
+                          onClick={() =>
+                            recipePlacementEnabled
+                              ? openRecipeSwap(meal, formatWeekday(day.date))
+                              : openSwap(meal.mealId, meal.name)
+                          }
                           disabled={pending}
                         >
                           {copy.nutrition.swap}
                         </Button>
-                        {/* EV-256e AC1: only while the flag is on, and never on a meal
-                            the trainee LOCKED — that one is theirs. An eaten meal DOES
-                            get it: the coach wire has no `eaten`, so the api's 409 is
-                            what tells the coach (AC3). */}
-                        {recipePlacementEnabled && !meal.locked && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon="file"
-                            ariaLabel={copy.placement.actionNamed(meal.name)}
-                            onClick={() => {
-                              setError(null);
-                              setPlacing({
-                                mealId: meal.mealId,
-                                mealName: meal.name,
-                                weekday: formatWeekday(day.date),
-                              });
-                            }}
-                            disabled={pending}
-                          >
-                            {copy.placement.action}
-                          </Button>
-                        )}
                       </div>
                     </div>
                   ))}
@@ -495,61 +503,43 @@ export function NutritionWeekCard({
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
             {candidates.map((candidate) => (
-              <button
+              <SuggestionRow
                 key={candidate.index}
-                type="button"
-                onClick={() => chooseSwap(candidate.index)}
-                disabled={pending}
-                title={candidate.name}
-                style={{
-                  minHeight: MIN_TOUCH_TARGET,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-start",
-                  gap: 3,
-                  padding: "9px 12px",
-                  borderRadius: "var(--r-md)",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  cursor: pending ? "not-allowed" : "pointer",
-                  textAlign: "left",
-                }}
-              >
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>
-                  {truncateName(candidate.name)}
-                </span>
-                <span className="tnum" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-                  {copy.nutrition.macros(
-                    candidate.kcal,
-                    candidate.proteinG,
-                    candidate.carbsG,
-                    candidate.fatG
-                  )}
-                </span>
-              </button>
+                candidate={candidate}
+                onChoose={chooseSwap}
+                pending={pending}
+              />
             ))}
           </div>
         )}
       </Modal>
 
-      {placing && (
-        <RecipePickerDialog
-          key={placing.mealId}
+      {recipeSwap && (
+        <SwapSheet
+          key={recipeSwap.mealId}
           clientId={clientId}
           firstName={first}
-          target={placing}
-          onClose={() => setPlacing(null)}
-          onPlaced={(placed) => {
-            setPlacing(null);
+          target={recipeSwap}
+          onClose={() => setRecipeSwap(null)}
+          onWeek={(next) => {
+            setRecipeSwap(null);
             setError(null);
-            setWeek(placed);
+            setWeek(next);
             router.refresh();
           }}
           onMealChanged={() => {
-            // Edge case 6: the meal is gone. Close, say so, and re-read the week.
-            setPlacing(null);
+            // EV-256e edge case 6: the meal is gone. Close, say so, re-read the week.
+            setRecipeSwap(null);
             setError(copy.placement.mealChanged);
             router.refresh();
+          }}
+          onAccessEnded={() => {
+            setRecipeSwap(null);
+            handleAccessEnded();
+          }}
+          onSwapFailed={() => {
+            setRecipeSwap(null);
+            setError(copy.nutrition.swapFailed);
           }}
           onRefresh={() => router.refresh()}
         />
