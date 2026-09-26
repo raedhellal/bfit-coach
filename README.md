@@ -43,12 +43,14 @@ npm run dev                    # http://localhost:3300
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:e2e` | Playwright smoke specs (fixture mode, boots its own server) |
 | `npm run test:e2e:roster` | the roster specs, on the **populated** fixture scenario (its own server, :3301) |
+| `npm run test:contract` | `qa/contract-drift.spec.ts` alone — no browser, no server (CI's `contract drift` job) |
 
 `test:e2e` and `test:e2e:roster` are **two suites, not one with a flag**:
 `COACH_FIXTURE_SCENARIO` is read once per dev-server process, the main suite needs
 `empty` (EV-183 AC1's empty state and the invite happy path) and the roster's
-scope-filtered nulls need rows. Both are gates — there is no CI here, so this table is
-the checklist.
+scope-filtered nulls need rows. Both are gates.
+
+CI: `.github/workflows/ci.yml` runs on every push and pull request, and it is **advisory until R10** — not a required check, and a red `main` still deploys to Vercel.
 
 **One worker per fixture server, enforced.** Every fixture test resets the server's whole
 in-memory store first (EV-223), so both fixture suites refuse `--workers` above 1 before any
