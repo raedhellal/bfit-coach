@@ -27,6 +27,7 @@ fixture.
   parallel workers produce ordering artefacts, not findings. SUPERSEDED in part by
   EV-223: the store is now reset to its seed before every test, so no test may rely on
   an earlier one's writes. See [[every-fixture-test-starts-from-the-seed]].
+  Since BUG-249 the one worker is ENFORCED — see [[one-worker-per-fixture-server]].
 - The fixture's mutable state must live on `globalThis` — see
   [[next-module-state-duplicated-across-layers]].
 - Login works in fixture mode: `/api/auth/login` mints a local unsigned token when the

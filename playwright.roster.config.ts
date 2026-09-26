@@ -29,6 +29,8 @@ export default defineConfig({
    */
   testMatch: /(coach-roster-scopes|coach-roster-triage|coach-library-apply)\.spec\.ts/,
   fullyParallel: false,
+  // One worker per fixture server, enforced by the first globalSetup (BUG-249) — see
+  // playwright.config.ts's `workers` note.
   workers: 1,
   // The same cold-compile budget as the main config, and for the same reason —
   // see playwright.config.ts. This config serves its own dev server, so it pays
@@ -36,7 +38,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   timeout: 60_000,
   // Compile every route once before anything is timed — see qa/warm-routes.ts.
-  globalSetup: "./qa/warm-routes.ts",
+  // BUG-249: refuse >1 worker FIRST (qa/fixture-single-worker.ts), then compile every route.
+  globalSetup: ["./qa/fixture-single-worker.ts", "./qa/warm-routes.ts"],
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],

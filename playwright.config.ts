@@ -39,6 +39,11 @@ export default defineConfig({
    * would interleave writes against that one store and the failures would be
    * ordering artefacts rather than product defects. `fullyParallel: false` only
    * serialises within a file; this serialises across them.
+   *
+   * ENFORCED, not just configured (BUG-249): since EV-223 every test resets that whole
+   * store, so a second worker would wipe the first's state mid-test. `--workers=N` on the
+   * command line overrides this line, so `qa/fixture-single-worker.ts` (first globalSetup)
+   * refuses any run whose resolved worker count is above 1, naming the cause.
    */
   workers: 1,
   /**
@@ -62,7 +67,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   timeout: 60_000,
   // Compile every route once before anything is timed — see qa/warm-routes.ts.
-  globalSetup: "./qa/warm-routes.ts",
+  // BUG-249: refuse >1 worker FIRST (qa/fixture-single-worker.ts), then compile every route.
+  globalSetup: ["./qa/fixture-single-worker.ts", "./qa/warm-routes.ts"],
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
