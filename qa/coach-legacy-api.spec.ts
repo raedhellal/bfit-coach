@@ -159,4 +159,7 @@ test("outside fixture mode the fixture reset route is a 404 to a signed-in coach
     const res = await page.request.fetch("/api/fixture/state", { method, maxRedirects: 0 });
     expect(res.status(), `${method} /api/fixture/state in live mode`).toBe(404);
   }
+  // EV-272 — the call journal ships in every build too, and is inert the same way.
+  const calls = await page.request.fetch("/api/fixture/calls", { method: "GET", maxRedirects: 0 });
+  expect(calls.status(), "GET /api/fixture/calls in live mode").toBe(404);
 });
