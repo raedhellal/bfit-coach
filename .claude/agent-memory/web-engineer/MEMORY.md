@@ -41,3 +41,4 @@
 - [Every fixture test starts from the seed](every-fixture-test-starts-from-the-seed.md) — EV-223: import test from qa/fixture-test.ts; seed cloned once per process; file-alone loop was green on main
 - [One worker per fixture server](one-worker-per-fixture-server.md) — BUG-249: >1 worker is refused; CI parallelises by --shard; proven via child runs, never a 2nd next dev
 - [A guard reads at a sample; say which](a-guard-reads-at-a-sample-say-which.md) — EV-217: settle wait from EVERY page animation (a sibling reaches via container query) + finished-check; diff vs origin/main...HEAD
+- [Progress-goal absent-key semantics](progress-goal-absent-key-semantics.md) — EV-274: body fat absent=unchanged, null=clear; "touched" must outlive a refused save
