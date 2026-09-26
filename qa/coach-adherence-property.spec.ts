@@ -1759,9 +1759,13 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * EV-217 — **RECORDS.** Runs of 2026-09-26 (a Saturday, UTC) on branch
- * `test/ev217-settled-instant-and-320`, base `25d939d`, at `8a2d3f3` (the sampling and
- * the banner, before this block was written), in `next dev` fixture mode: this file on
- * :3641, the default suite on :3642. These are what was measured then. They are history,
+ * `test/ev217-settled-instant-and-320`, base `25d939d`, in `next dev` fixture mode: this
+ * file on :3641, the default suite on :3642. First at `8a2d3f3` (the sampling and the
+ * banner, before this block was written); then, after `staff-engineer`'s REQUEST CHANGES
+ * on `7bdfcba`, every file-level run below was repeated at `3c1b4f1` (the whole-document
+ * scope and the soft preconditions) and the readings here are that second run's. The
+ * default-suite counts under a construction are from `8a2d3f3`. These are what was
+ * measured then. They are history,
  * not part of the banner above. Counts are per section: geometry is EV-210b AC3 (6 tests),
  * C3 is EV-210b AC4 (5), paint is EV-214..EV-217 (7: four worlds, the table test, the
  * EV-217 AC4 test, the EV-218 test), text is EV-251 / EV-253 / EV-259 (10). The file has 28
@@ -1813,16 +1817,34 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
  *     list or under it animates. PROBE: Lina 0.000 on load, **0.926 → 1.000 at +9.5 s**,
  *     0.000 at 320 px; the animation's target is a `<div>`, the list's parent. Here:
  *     **paint 3 failed**, named `settled (…; @keyframes qaAnc on <div>), at 1280 px`.
+ *   · 🔴 **`qaGrow`, a SIBLING of the card (`staff-engineer`, review of `7bdfcba`).** The
+ *     card sits in a flex wrapper after a `<div class="qa-sib">` with `animation: qaGrow
+ *     1ms 8s forwards` (`width: 0 → 1100px`); the `<ul>` has `container-type:
+ *     inline-size`, and `@container (max-width: 150px)` gives the current row `G`. Nothing
+ *     on the list, under it or above it animates. PROBE: Lina 0.000 on load (list 1074 px
+ *     wide) and at 320 px (250 px), **0.544 → 1.000 inside at +9.5 s** beside "3 / 4
+ *     sessions" with the list at 0 px (staff read 0.683). **Under the `7bdfcba` scope (the
+ *     list, under it, its ancestors): file 28 passed.** Here: **paint 3 failed** (Lina,
+ *     Tobias, Noor), named `settled (…; @keyframes qaGrow on <div>), at 1280 px`. This is
+ *     why the scope is the whole document and no DOM relation.
  *   · **A paint only WHILE an animation runs:** `@keyframes qaMq1n { from, to {
  *     background-image: G } }`, `animation: qaMq1n 2s 8s` (no fill). PROBE: Lina 0.000 on
  *     load, **0.926 → 1.000 at ≈ +10.0 s**, 0.000 and computed `none` at ≈ +12 s. Here:
  *     **file 28 passed.** Visible to neither sample: the settled read is taken after it
- *     ends. Disclosed in the banner; no row.
+ *     ends. → **EV-270** AC3 (`senior-po`, ruling 4 of 2026-09-26).
  *   · **An animation that never ends:** `animation: qaInf 1s infinite`, painting `G` in
  *     its second half. Here: **paint 5 failed.** All four worlds on "does not end within
- *     20000 ms", Ines on that alone; Lina, Tobias and Noor also on the on-load sample,
- *     whose read fell in a painting half, and the AC4 test for the same reason. This shows
- *     the unsettleable branch fires. It is not an attribution witness.
+ *     20000 ms", Ines on that alone; Lina, Tobias and Noor also on the on-load samples
+ *     (1280 and 320 px), whose reads fell in a painting half, and the AC4 test for the
+ *     same reason. This shows the unsettleable branch fires. It is not an attribution
+ *     witness.
+ *   · **M-Q5 plus an unrelated never-ending animation on `<body>`** (`qaSpin 1s infinite`,
+ *     opacity only, a stand-in for a spinner). Here: **paint 4 failed**: all four on "does
+ *     not end within 20000 ms", and Lina, Tobias and Noor ALSO naming `on load, at 320 px`.
+ *     So an unsettleable page skips only the settled read and the width sample still
+ *     runs (the preconditions are soft since `3c1b4f1`; at `7bdfcba` they were hard and
+ *     ended the test before the 320 px sample, which is `staff-engineer`'s nit; that
+ *     version was not re-run here).
  *
  * CHECK mutants: one EV-217 design choice reverted in the spec, with the construction it
  * exists for planted. This file only.
@@ -1837,9 +1859,11 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
  *     same with the finished-check also removed: **file 28 passed.** So a fixed short wait
  *     lets M-Q1 through, and the finished-check is what turns a wait that is too short into
  *     a red build rather than an early read.
- *   · **Ancestors dropped from the animation scope** (the list and under it only) + the
- *     ancestor construction: **file 28 passed.** So the ancestor half of the scope is what
- *     sees it.
+ *   · **The scope put back to `7bdfcba`'s DOM filter** (the list, under it, its ancestors)
+ *     + `qaGrow`: **file 28 passed**; + the ancestor construction: paint 3 failed. **The
+ *     same filter without ancestors** (the list and under it) + the ancestor construction:
+ *     **file 28 passed.** So a DOM-relation scope misses the sibling, and a narrower one
+ *     misses the ancestor too; the whole-document scope is what sees both.
  *   · **`reducedMotion: "reduce"` emulated**, clean code: paint 4 failed, each on the
  *     reduced-motion assertion.
  *   · **The pointer park removed**, clean code: file 28 passed. The sign-in click does not
