@@ -42,6 +42,13 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
    *   (2) the coach's editor edits a LOSSY projection, so rebuilding the whole
    *       document from it would silently delete `tempo`, `notes`, `trackingType`,
    *       `durationSeconds`, `weight` and `estimatedMinutes` from a trainee's plan.
+   *
+   * These entries do NOT make the type green (EV-222). Five of the six are `required`
+   * by `Routine`, and `qa/contract-drift.spec.ts` never lets a `missingInPortal` entry
+   * excuse a required field on a schema the api receives — so the case
+   * "CoachRoutineDraftRequest carries every field Routine requires" is red, declared
+   * with `test.fail()` under the annotation BUG-195. They stay here only because the
+   * NAME check (the other direction) still reads them.
    * ════════════════════════════════════════════════════════════════════════ */
   CoachRoutineDraftRequest: {
     missingInPortal: {
