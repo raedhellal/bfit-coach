@@ -27,9 +27,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to a BRANCH cancels that branch's older run. On `main` nothing is
+# cancelled: every main commit is a production deploy and gets its own verdict.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   NEXT_TELEMETRY_DISABLED: "1"
@@ -98,6 +100,10 @@ jobs:
       # skipping when the checkout is missing, by design, so it is excluded here rather
       # than left permanently red. The other two tests in that file still run. If the
       # title changes, this stops matching and the test runs (and goes red) — loud.
+      # ⚠ THE COST, stated: in CI the main-line limb ("a commit on b-fit-coach's own main
+      # may not vendor an unshipped api") TRUSTS spec/b-fit-api.sha's `on-api-main`
+      # without verifying it against b-fit-api. A hand-edited `on-api-main: YES` passes
+      # CI; only a local run with b-fit-api checked out alongside catches it, until EV-235.
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/2 --grep-invert "the vendored api commit's merge state"
       - if: failure()
         uses: actions/upload-artifact@v4

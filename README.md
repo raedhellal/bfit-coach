@@ -52,6 +52,8 @@ scope-filtered nulls need rows. Both are gates.
 
 CI: `.github/workflows/ci.yml` runs on every push and pull request, and it is **advisory until R10** — not a required check, and a red `main` still deploys to Vercel.
 
+CI cannot read the private `b-fit-api` repo (that is EV-235), so it skips the one test in `qa/api-merge-condition.spec.ts` that verifies `on-api-main` against b-fit-api. In CI a hand-edited `on-api-main: YES` in `spec/b-fit-api.sha` therefore passes; only a local `npm run test:e2e` with `b-fit-api` checked out alongside catches it.
+
 **One worker per fixture server, enforced.** Every fixture test resets the server's whole
 in-memory store first (EV-223), so both fixture suites refuse `--workers` above 1 before any
 test runs (`qa/fixture-single-worker.ts`, BUG-249). To go faster, run more servers
