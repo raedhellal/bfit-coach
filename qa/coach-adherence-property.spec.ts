@@ -951,8 +951,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
  *     sample.** Not a channel: a SAMPLING condition. What is sampled, and each condition
  *     it leaves unread with what was tried there (a paint only while an animation runs,
  *     constructed; a script-timed change, other widths and media conditions, not
- *     constructed; `:hover` / `:focus`, `BUG-222`), is in the EV-217 banner. → **EV-217**
- *     (AC3b owns hover and focus).
+ *     constructed; `:hover` / `:focus`, `BUG-222`), is in the EV-217 banner. → **EV-270**
+ *     (hover, focus, and the paint that exists only while an animation runs).
  *   · **A declaration the CSS parser discarded** — `Infinity%` / `NaN%` in any spelling,
  *     inline, in a custom property, on the row or on an ancestor. Not read: no
  *     declaration is, only computed values. What was tried: ADR-0024 M1 found no CSSOM
@@ -1681,22 +1681,27 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
  *   1. **On load, at the config's default width** (1280 px, Desktop Chrome): right after
  *      the adherence block is visible. The sample this limb always took.
  *   2. **Settled, at the default width**, on the same page. `waitUntilSettled` derives the
- *      wait from the page: `document.getAnimations()`, kept to animations and transitions
- *      whose target is the list, an element under it, or an ANCESTOR of it; the longest
- *      remaining `endTime − currentTime`, plus `SETTLE_MARGIN_MS`. Then it asserts every one
- *      of them has finished. With nothing animating, the wait is the margin alone and the
- *      read still happens. It asserts the runner does not emulate
- *      `prefers-reduced-motion: reduce`, and it fails, rather than skips, an animation that
- *      never ends or ends past `SETTLE_BUDGET_MS`.
- *      📌 The story's AC1 names "the longest `animation-*` / `transition-*` duration + delay
- *      among the elements read". This reads the same quantity from the animation objects
- *      the engine built from those declarations, over a wider scope: an ancestor's
- *      animation reaches the list through an inherited custom property, and a read of the
- *      list's own declarations would not see it (records).
+ *      wait from the page: EVERY animation and transition in `document.getAnimations()`,
+ *      wherever its target is; the longest remaining `endTime − currentTime`, plus
+ *      `SETTLE_MARGIN_MS`. Then it asserts every one of them has finished. With nothing
+ *      animating, the wait is the margin alone and the read still happens. It asserts the
+ *      runner does not emulate `prefers-reduced-motion: reduce`, and it fails, rather than
+ *      skips, an animation that never ends or ends past `SETTLE_BUDGET_MS`. Those three
+ *      are SOFT: a failed precondition skips the settled read and fails the test, and the
+ *      320 px sample still runs, so one construction cannot hide the width sample.
+ *      📌 AC1 as re-worded on 2026-09-26: "every animation and transition that can affect
+ *      the elements under test has finished". **Which ones can is not a DOM relation.** An
+ *      ancestor's animation reaches the list through an inherited custom property; a
+ *      SIBLING's reaches it through layout, e.g. a sibling of the card growing in a flex
+ *      row until a container query on the list fires. The scope was list + descendants +
+ *      ancestors at `7bdfcba`, and `staff-engineer`'s sibling construction walked past it
+ *      (records). So the scope is the whole document: the clean page runs no animation at
+ *      all (records), and any animation anywhere that does not end within the budget
+ *      turns this limb red, which is the behaviour `senior-po` ruled for.
  *   3. **On load, at 320 px**: a fresh navigation with the viewport at 320 px wide and the
- *      default height, read right after the block is visible. 320 px is `qa/layout.ts`'s
- *      `WIDTHS[0]`, imported, because it is the width this portal is already swept at by
- *      name.
+ *      default height, read right after the block is visible. 320 px is the narrowest of
+ *      `qa/layout.ts`'s `WIDTHS`, imported, because it is the width this portal is already
+ *      swept at by name.
  *
  * **One extra sample per condition, not a cross product (AC5).** There is no "settled at
  * 320 px" read. A construction that needs two conditions at once is a new row with a
@@ -1706,7 +1711,7 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
  * before the first sample, and each sample asserts `ul:hover` and `ul:focus-within` are
  * both false. No row is hovered and nothing is focused in any sample, so a paint that
  * exists only under `:hover` or `:focus` is not read here (`BUG-222`, `senior-qa`'s
- * witness; the hovered and focused samples are EV-217 AC3b, not built on this branch).
+ * witness). The hovered and focused samples are **EV-270** (split from EV-217 AC3b).
  *
  * **Clip region: none, because nothing here reads pixels.** Each read is
  * `getComputedStyle` on each element of the list and on its three boxes, so a paint on a
@@ -1721,10 +1726,11 @@ async function paintedElementsInList(region: Locator): Promise<ListPaint> {
  * Nothing was constructed against them. That is what this reads, not a claim about them.
  *
  * **What the settled sample does not wait for.** A change made by SCRIPT later (a timer, a
- * fetch, a state update) declares no animation, so nothing here can derive its instant;
- * none was constructed. And a paint that exists only WHILE an animation runs and is gone
+ * fetch, a state update) declares no animation, so nothing here can derive its instant
+ * (`staff-engineer` constructed one with `setTimeout` in the review of `7bdfcba`; not
+ * re-run on this branch). And a paint that exists only WHILE an animation runs and is gone
  * when it ends (`animation-fill-mode: none`) is visible to neither sample: constructed,
- * painting, and green (records).
+ * painting, and green (records). → **EV-270** AC3.
  *
  * **The weekday: NOT sampled, and on purpose (AC3c).** The suite reads the page on
  * whatever day it runs. The weekday changes only the fixture's derived `plannedSoFar`, and
@@ -1903,11 +1909,11 @@ function paintOffences(read: ListPaint, at: string): { offences: string[]; inspe
 
 /**
  * EV-217 AC2 — the second width. 320 px because `qa/layout.ts` already sweeps this portal
- * at 320 px by name (`WIDTHS[0]`), so it is a width this repo has decided it cares about,
+ * at 320 px by name (the narrowest of its `WIDTHS`; the test asserts it is 320), so it is a width this repo has decided it cares about,
  * not a number picked to catch one construction. Imported rather than restated, so the two
  * cannot drift apart.
  */
-const NARROW_WIDTH = WIDTHS[0];
+const NARROW_WIDTH = Math.min(...WIDTHS);
 
 /**
  * EV-217 AC1 — the margin added to the derived settle instant, and the budget past which
@@ -1928,16 +1934,21 @@ const SETTLE_BUDGET_MS = 20_000;
  * 🔴 **EV-217 AC1 — wait until the page has SETTLED, for as long as the page says.**
  *
  * The instant is DERIVED FROM THE PAGE, never a fixed sleep: `document.getAnimations()` is
- * read, and every CSS animation or transition whose target is the adherence list, an
- * element under it, or an ANCESTOR of it is kept (an ancestor's animated custom property
- * reaches the list by inheritance, so an ancestor is in scope). Each one's remaining time
+ * read, and EVERY animation or transition with a target is kept, wherever that target is.
+ * Influence on the list is not a DOM relation: an ancestor reaches it by inheritance, and a
+ * sibling of the card reaches it through layout (a container query; `staff-engineer`'s
+ * `qaGrow`, records). A DOM-relation filter was the scope at `7bdfcba` and missed the
+ * sibling. The clean page runs no animation anywhere, so the whole document costs nothing
+ * there. Each one's remaining time
  * is `getComputedTiming().endTime − currentTime`, which is its `delay + duration ×
  * iterations + end-delay` as the engine computed it from the declared
  * `animation-*` / `transition-*` values, less what has already elapsed. The wait is the
  * longest of those plus `SETTLE_MARGIN_MS`. With nothing running it is the margin alone,
  * and the second read still happens (edge case 1).
  *
- * It then ASSERTS the result, rather than trusting the arithmetic:
+ * It then ASSERTS the result, rather than trusting the arithmetic, SOFTLY: a failed
+ * precondition returns `settled: false` so the caller skips the settled read (it would not
+ * be one) and still takes the 320 px sample, and the soft failure fails the test:
  *   · the runner is not emulating `prefers-reduced-motion: reduce` (edge case 2 — a
  *     runner that suppressed motion would make this sample read the same page as the
  *     first, which is a finding and not a pass);
@@ -1949,15 +1960,16 @@ const SETTLE_BUDGET_MS = 20_000;
  * What it does NOT wait for: a change made by SCRIPT at some later time (a timer, a
  * fetch). Nothing declares one, so nothing here can derive it. Stated in the banner.
  */
-async function waitUntilSettled(page: Page, region: Locator): Promise<{ waitedMs: number; describe: string }> {
+async function waitUntilSettled(page: Page): Promise<{ settled: boolean; waitedMs: number; describe: string }> {
   const inScope = () =>
-    region.evaluate((blockEl) => {
-      const root = blockEl.querySelector("ul") ?? blockEl;
+    page.evaluate(() => {
       return document
         .getAnimations()
         .filter((animation) => {
+          // The whole document. See the doc comment: a DOM-relation filter here was walked
+          // past by a sibling whose growth fired a container query on the list.
           const target = (animation.effect as KeyframeEffect | null)?.target ?? null;
-          return target !== null && (target === root || root.contains(target) || target.contains(root));
+          return target !== null;
         })
         .map((animation) => {
           const effect = animation.effect as KeyframeEffect;
@@ -1977,8 +1989,9 @@ async function waitUntilSettled(page: Page, region: Locator): Promise<{ waitedMs
         });
     });
 
-  expect(
-    await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+  const reduced = await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  expect.soft(
+    reduced,
     "The runner emulates prefers-reduced-motion: reduce. An animation the page suppresses under it would " +
       "never run here, so the settled sample would read the on-load page again. That is a finding (EV-217 " +
       "edge case 2), not a pass: stop and ask senior-po."
@@ -1986,28 +1999,35 @@ async function waitUntilSettled(page: Page, region: Locator): Promise<{ waitedMs
 
   const before = await inScope();
   const unsettleable = before.filter((a) => !Number.isFinite(a.remainingMs) || a.remainingMs > SETTLE_BUDGET_MS);
-  expect(
+  expect.soft(
     unsettleable.map((a) => `${a.name}: ends in ${a.remainingMs} ms`),
-    `An animation on the adherence list, under it or on an ancestor of it does not end within ` +
+    `An animation on the page does not end within ` +
       `${SETTLE_BUDGET_MS} ms, so the settled sample cannot be taken (EV-217 AC1). The sample is not ` +
       "dropped: this is red. If the design needs such an animation, stop and ask senior-po."
   ).toEqual([]);
+  if (reduced || unsettleable.length > 0) return { settled: false, waitedMs: 0, describe: "not settleable" };
 
   const waitedMs = Math.ceil(Math.max(0, ...before.map((a) => a.remainingMs))) + SETTLE_MARGIN_MS;
   await page.waitForTimeout(waitedMs);
 
   const after = await inScope();
-  expect(
-    after.filter((a) => a.playState !== "finished").map((a) => `${a.name}: ${a.playState}, ${a.remainingMs} ms left`),
-    `${waitedMs} ms after the on-load read, an animation in scope has still not finished, so the ` +
-      "page has not settled and the second sample would not be a settled read (EV-217 AC1)."
-  ).toEqual([]);
+  const running = after
+    .filter((a) => a.playState !== "finished")
+    .map((a) => `${a.name}: ${a.playState}, ${a.remainingMs} ms left`);
+  expect
+    .soft(
+      running,
+      `${waitedMs} ms after the on-load read, an animation on the page has still not finished, so the ` +
+        "page has not settled and the second sample would not be a settled read (EV-217 AC1)."
+    )
+    .toEqual([]);
+  if (running.length > 0) return { settled: false, waitedMs, describe: "not settled" };
 
   const describe =
     before.length === 0
-      ? "no animation or transition in scope, so the margin alone"
-      : `the longest of ${before.length} animation(s) in scope plus the margin: ${before.map((a) => a.name).join(", ")}`;
-  return { waitedMs, describe };
+      ? "no animation or transition on the page, so the margin alone"
+      : `the longest of ${before.length} animation(s) on the page plus the margin: ${before.map((a) => a.name).join(", ")}`;
+  return { settled: true, waitedMs, describe };
 }
 
 test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / EV-217 / P-ADH C2 — no element of the adherence list has a non-initial value on an enumerated paint channel, at any of three samples", () => {
@@ -2215,16 +2235,20 @@ test.describe("EV-214 / EV-215 / EV-216 / EV-218 / EV-253 / EV-217 / P-ADH C2 �
       await expectNoPaintInList(page, world, `on load, at ${defaultWidth}`);
 
       // ── Sample 2 (EV-217 AC1): the same page, SETTLED, at the same width. ─────────
-      const settled = await waitUntilSettled(page, block(page, ADHERENCE));
-      await expectNoPaintInList(
-        page,
-        world,
-        `settled (${settled.waitedMs} ms after the on-load read; ${settled.describe}), at ${defaultWidth}`
-      );
+      // A failed precondition has already failed the test (softly) and skips only this read.
+      const settled = await waitUntilSettled(page);
+      if (settled.settled) {
+        await expectNoPaintInList(
+          page,
+          world,
+          `settled (${settled.waitedMs} ms after the on-load read; ${settled.describe}), at ${defaultWidth}`
+        );
+      }
 
       // ── Sample 3 (EV-217 AC2): a fresh load at 320 px, read on load. ──────────────
       // Only the width changes; the height is the default's, so this is one condition
       // moved, not two (AC5).
+      expect(NARROW_WIDTH, "qa/layout.ts's narrowest width is no longer 320 px; EV-217 AC2 names 320").toBe(320);
       await page.setViewportSize({ width: NARROW_WIDTH, height: defaultViewport!.height });
       await page.goto(`/clients/${world.id}`);
       await expect(block(page, ADHERENCE)).toBeVisible();
