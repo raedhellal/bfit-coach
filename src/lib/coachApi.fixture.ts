@@ -678,6 +678,8 @@ interface TraineeReadings {
  *   Lina   — eight weekly weights (the SAME series her chart draws) and two body-fat
  *            readings on the FIRST and LAST of those days, so both columns resolve to
  *            the same dates and the body-fat cells print no date of their own (AC2).
+ *            They are EV-274's TRAINEE-A numbers (28.0 → 24.0), so a body-fat milestone
+ *            of 20.0 prints EV-274b AC2's line character for character.
  *   Nils   — one weigh-in and no body fat at all: start and current are the same
  *            reading, the weight delta is a REAL `0.0 kg`, and body fat reads "Not
  *            recorded" (AC4, both halves on one row).
@@ -690,8 +692,8 @@ const READINGS: Record<string, TraineeReadings> = {
   [LINA_ID]: {
     weights: weightSeries().map((p) => ({ date: p.date, value: p.weightKg })),
     bodyFats: [
-      { date: isoDate(50), value: 24.0 },
-      { date: isoDate(1), value: 22.5 },
+      { date: isoDate(50), value: 28.0 },
+      { date: isoDate(1), value: 24.0 },
     ],
   },
   [NILS_ID]: {
@@ -733,6 +735,8 @@ const READINGS: Record<string, TraineeReadings> = {
 interface ProgressGoalRecord {
   startedOn: string | null;
   milestoneWeightKg: number | null;
+  /** EV-274a. Optional so the four EV-202 seeds need no edit: absent = none set. */
+  milestoneBodyFatPct?: number | null;
   /** Null WITH a milestone = the `ON DELETE SET NULL` case: the coach has left. */
   setByName: string | null;
   updatedAt: string | null;
@@ -777,14 +781,18 @@ function progressGoalFor(id: string, since: string): TraineeProgressGoal {
   const startBodyFat = firstOnOrAfter(readings.bodyFats, startedOn);
   const currentBodyFat = latest(readings.bodyFats);
   const milestoneWeightKg = stored?.milestoneWeightKg ?? null;
+  const milestoneBodyFatPct = stored?.milestoneBodyFatPct ?? null;
+  // b-fit-api `18fbcab` `hasMilestone()`: EITHER milestone earns the attribution.
+  const hasMilestone = milestoneWeightKg !== null || milestoneBodyFatPct !== null;
 
   return {
     startedOn,
     startedOnSource: stored?.startedOn ? "COACH" : "LINK_DEFAULT",
     milestoneWeightKg,
-    milestoneSetByName: milestoneWeightKg === null ? null : (stored?.setByName ?? null),
-    milestoneSource: milestoneWeightKg === null ? null : "COACH",
-    milestoneUpdatedAt: milestoneWeightKg === null ? null : (stored?.updatedAt ?? null),
+    milestoneBodyFatPct,
+    milestoneSetByName: hasMilestone ? (stored?.setByName ?? null) : null,
+    milestoneSource: hasMilestone ? "COACH" : null,
+    milestoneUpdatedAt: hasMilestone ? (stored?.updatedAt ?? null) : null,
     startWeight,
     currentWeight,
     startBodyFat,
@@ -800,6 +808,14 @@ function progressGoalFor(id: string, since: string): TraineeProgressGoal {
       milestoneWeightKg === null || currentWeight === null
         ? null
         : Number((milestoneWeightKg - currentWeight.value).toFixed(2)),
+    /**
+     * EV-274a AC4 — ABSENT, not null and not 0, without both a body-fat milestone and a
+     * body-fat reading (`@JsonInclude(NON_NULL)` on the api). A spread of `{}`, so the
+     * fixture serves the api's shape and a portal that read `null` would be caught here.
+     */
+    ...(milestoneBodyFatPct !== null && currentBodyFat !== null
+      ? { bodyFatToGoPts: Number((milestoneBodyFatPct - currentBodyFat.value).toFixed(1)) }
+      : {}),
   };
 }
 
@@ -3461,11 +3477,32 @@ export const fixtureCoachApi: CoachApi = {
     ) {
       await fail(400, "COACH_MILESTONE_OUT_OF_RANGE", "Milestone out of range");
     }
+    /**
+     * EV-274a B2 — 3.0..60.0 with at most one decimal, the same code, nothing written.
+     * B4 — the key ABSENT keeps the stored value; `null` clears it. `in`, not `??`: the
+     * difference between those two is the whole of the rule.
+     */
+    const bodyFatSent = "milestoneBodyFatPct" in body && body.milestoneBodyFatPct !== undefined;
+    const sentBodyFat = bodyFatSent ? (body.milestoneBodyFatPct ?? null) : null;
+    if (
+      sentBodyFat !== null &&
+      (sentBodyFat < 3 ||
+        sentBodyFat > 60 ||
+        // Not `!==`: 20.1 * 10 is 201.00000000000003 in binary floating point.
+        Math.abs(Math.round(sentBodyFat * 10) - sentBodyFat * 10) > 1e-9)
+    ) {
+      await fail(400, "COACH_MILESTONE_OUT_OF_RANGE", "milestoneBodyFatPct must be in the range 3.0-60.0 %");
+    }
+    const milestoneBodyFatPct = bodyFatSent
+      ? sentBodyFat
+      : (state().progressGoals.get(id)?.milestoneBodyFatPct ?? null);
     state().progressGoals.set(id, {
       startedOn: body.startedOn,
       milestoneWeightKg: body.milestoneWeightKg,
+      milestoneBodyFatPct,
       // The caller IS the signed-in coach, so the attribution is true by construction.
-      setByName: body.milestoneWeightKg === null ? null : "Alex R.",
+      setByName:
+        body.milestoneWeightKg === null && milestoneBodyFatPct === null ? null : "Alex R.",
       updatedAt: new Date().toISOString(),
     });
     // The SAME block the GET embeds, recomputed — so the portal needs no refetch.

@@ -2,10 +2,14 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import {
+  bodyFatToGoValue,
   buildProgressGoalRequest,
   describeChange,
   editField,
   markSent,
+  parseBodyFatMilestone,
+  progressRows,
+  refusedMilestone,
   reseedPreservingEdits,
   seedFormState,
   toGoValue,
@@ -109,6 +113,11 @@ function milestoneField(page: Page) {
   return block(page).getByLabel("Milestone weight (kg)");
 }
 
+/** EV-274b AC1's label, verbatim. */
+function bodyFatField(page: Page) {
+  return block(page).getByLabel("Milestone body fat (%)");
+}
+
 async function save(page: Page) {
   await block(page).getByRole("button", { name: "Save" }).click();
 }
@@ -177,15 +186,16 @@ test.describe("AC2 — start and current are derived, and the arithmetic is repr
     // the same days as the weights beside them, so a date here would be the same date
     // twice on one line. Tobias, below, is the trainee for whom they differ.
     await expect(row(page, "bodyFat")).toHaveText(
-      "Body fat — Start 24.0 % · Current 22.5 % · −1.5 pts"
+      "Body fat — Start 28.0 % · Current 24.0 % · −4.0 pts"
     );
-    // AC2: "with **no** milestone cell". EV-202 rules a milestone for body fat, waist
-    // or anything but weight out of scope by name.
+    // EV-202 AC2's "with **no** milestone cell", which EV-274b AC2 keeps for a trainee
+    // with no body-fat milestone: "No body-fat milestone → no Milestone cell and no 'to
+    // go', as today." Lina has none seeded.
     await expect(cell(page, "bodyFat", "milestone")).toHaveCount(0);
     await expect(cell(page, "bodyFat", "toGo")).toHaveCount(0);
   });
 
-  test("the block contains exactly two form fields, and neither holds a derived number", async ({
+  test("the block contains exactly three form fields, and none holds a derived number", async ({
     page,
   }) => {
     await signIn(page);
@@ -193,16 +203,18 @@ test.describe("AC2 — start and current are derived, and the arithmetic is repr
 
     /**
      * AC2's absence assertion, done by COUNTING rather than by looking for the fields
-     * we know about: a third input is a defect whatever it is called. The coach types
-     * a start date and a milestone; start weight, current weight, start body fat and
-     * current body fat are the trainee's own readings and have no write path.
+     * we know about: a fourth input is a defect whatever it is called. EV-274b AC1: "The
+     * form now holds **three** inputs" — a start date, a milestone weight and a
+     * milestone body fat; start weight, current weight, start body fat and current body
+     * fat are the trainee's own readings and have no write path.
      */
-    await expect(block(page).locator("input")).toHaveCount(2);
+    await expect(block(page).locator("input")).toHaveCount(3);
+    await expect(bodyFatField(page)).toBeVisible();
 
     const values = await block(page).locator("input").evaluateAll((els) =>
       els.map((el) => (el as HTMLInputElement).value)
     );
-    for (const derived of ["71.2", "70.4", "24", "22.5", "-0.8"]) {
+    for (const derived of ["71.2", "70.4", "28", "24", "-0.8", "-4"]) {
       expect(values, `a derived number is sitting in an editable field: ${derived}`).not.toContain(
         derived
       );
@@ -245,8 +257,8 @@ test.describe("edge cases 2, 4 and 5 — dates that differ, a bulk, and an exact
     // Edge case 2: the two columns resolve independently and may name different days.
     // Tobias's body fats were recorded on days his weights were not, so each cell
     // prints its own date rather than the screen printing one heading date.
-    await expect(cell(page, "bodyFat", "start")).toHaveText(/^Start 26\.0 % \(.+\)$/);
-    await expect(cell(page, "bodyFat", "current")).toHaveText(/^Current 25\.2 % \(.+\)$/);
+    await expect(cell(page, "bodyFat", "start")).toHaveText(/^Start 26\.0\u00a0% \(.+\)$/);
+    await expect(cell(page, "bodyFat", "current")).toHaveText(/^Current 25\.2\u00a0% \(.+\)$/);
     await expect(cell(page, "bodyFat", "delta")).toHaveText("−0.8 pts");
   });
 
@@ -379,8 +391,8 @@ test.describe("the block at 320, 360, 390 and 414", () => {
       await expectUnoccluded(page, block(page).getByRole("button", { name: "Save" }), {
         label: "the Save button",
       });
-      // EV-190c / BUG-146's floor: both fields are controls a coach taps at 390 px.
-      for (const field of [startDateField(page), milestoneField(page)]) {
+      // EV-190c / BUG-146's floor: every field is a control a coach taps at 390 px.
+      for (const field of [startDateField(page), milestoneField(page), bodyFatField(page)]) {
         const box = await field.boundingBox();
         expect(box!.height, "a field under the 44 px touch floor").toBeGreaterThanOrEqual(44);
       }
@@ -391,6 +403,9 @@ test.describe("the block at 320, 360, 390 and 414", () => {
 /* ════════════════════════════════════════════════════════════════════════════
  * THE PURE PINS. No browser, no fixture — the decisions themselves.
  * ════════════════════════════════════════════════════════════════════════════ */
+
+/** The body-fat field as a tab that never touched it hands it to the builder. */
+const UNTOUCHED = { text: "", touched: false };
 
 test.describe("the request is a whole representation", () => {
   test("every branch of the builder carries BOTH keys", () => {
@@ -411,7 +426,7 @@ test.describe("the request is a whole representation", () => {
       ["", ""],
     ];
     for (const [date, milestone] of cases) {
-      const built = buildProgressGoalRequest(date, milestone);
+      const built = buildProgressGoalRequest(date, milestone, UNTOUCHED);
       expect(built.ok, `${date} / ${milestone} should build`).toBe(true);
       if (!built.ok) continue;
       expect(
@@ -421,8 +436,8 @@ test.describe("the request is a whole representation", () => {
     }
 
     // And the witness that the four cases are not all the same case: the VALUES differ.
-    const both = buildProgressGoalRequest("2026-06-01", "80");
-    const neither = buildProgressGoalRequest("", "");
+    const both = buildProgressGoalRequest("2026-06-01", "80", UNTOUCHED);
+    const neither = buildProgressGoalRequest("", "", UNTOUCHED);
     expect(both.ok && both.body).toEqual({ startedOn: "2026-06-01", milestoneWeightKg: 80 });
     expect(neither.ok && neither.body).toEqual({ startedOn: null, milestoneWeightKg: null });
   });
@@ -431,10 +446,10 @@ test.describe("the request is a whole representation", () => {
     // No clamp and no silent coercion — and NOT a range check either: 25..300 kg is
     // the api's refusal to make (edge case 6), and pre-empting it here would hide the
     // mistake instead of reporting it.
-    expect(buildProgressGoalRequest("", "abc")).toEqual({ ok: false, reason: "MILESTONE" });
-    expect(buildProgressGoalRequest("not-a-date", "").ok).toBe(false);
+    expect(buildProgressGoalRequest("", "abc", UNTOUCHED)).toEqual({ ok: false, reason: "MILESTONE" });
+    expect(buildProgressGoalRequest("not-a-date", "", UNTOUCHED).ok).toBe(false);
     // 500 kg is out of RANGE, and it still builds: the api answers, not the browser.
-    expect(buildProgressGoalRequest("", "500").ok).toBe(true);
+    expect(buildProgressGoalRequest("", "500", UNTOUCHED).ok).toBe(true);
   });
 
   /** A stored block, for the two pure rules below. Only four fields matter to them. */
@@ -470,7 +485,9 @@ test.describe("the request is a whole representation", () => {
     expect(opened).toEqual({
       startedOn: "2026-06-01",
       milestone: "80",
-      dirty: { startedOn: false, milestone: false },
+      bodyFat: "",
+      dirty: { startedOn: false, milestone: false, bodyFat: false },
+      bodyFatTouched: false,
     });
 
     const typing = editField(opened, "milestone", "69");
@@ -481,7 +498,7 @@ test.describe("the request is a whole representation", () => {
     // …and the untouched one still follows the server.
     expect(pushed.startedOn).toBe("2026-07-01");
     // A prop push is not a save, so it does not decide the coach has finished.
-    expect(pushed.dirty).toEqual({ startedOn: false, milestone: true });
+    expect(pushed.dirty).toEqual({ startedOn: false, milestone: true, bodyFat: false });
 
     // Only a sent save settles them — after which both track the server again.
     const afterSend = reseedPreservingEdits(markSent(typing), storedGoal("2026-07-01", 67));
@@ -836,5 +853,557 @@ test.describe("edge cases 6 and 7 — a refused number, and a deliberate clear",
     // The milestone rode along untouched, which is the same both-fields property seen
     // from the other side.
     await expect(cell(page, "weight", "milestone")).toHaveText("Milestone 65.0 kg");
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-274b — THE BODY-FAT MILESTONE.
+ *
+ * b-fit-api `18fbcab` (EV-274a, merged and deployed). What is new on the wire, and what
+ * each test below holds the portal to:
+ *   · `PUT …/progress-goal` takes `milestoneBodyFatPct`, 3.0..60.0 with one decimal,
+ *     else 400 `COACH_MILESTONE_OUT_OF_RANGE`. AC1: the browser refuses the same values
+ *     first, with "Enter a percentage between 3 and 60.", and SENDS NOTHING.
+ *   · 🔴 On that one key, ABSENT = UNCHANGED and `null` = CLEARED (EV-274 B4). The form
+ *     sends the key exactly when the coach touched the field — always then, `null` to
+ *     clear — and never otherwise, which is what lets another tab's value survive a save
+ *     from a tab that never showed it (AC4).
+ *   · The block carries `milestoneBodyFatPct`, and `bodyFatToGoPts` only when there is a
+ *     body-fat reading — ABSENT, not null, otherwise (AC3).
+ *
+ * The fixture serves EV-274's TRAINEE-A body-fat numbers on Lina (28.0 → 24.0) and
+ * TRAINEE-B's shape on Nils (one weigh-in, no body fat), so AC2 and AC3 are asserted
+ * on the story's own strings.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** The body of every progress-goal server action POST the page sends, in order. */
+function recordSaves(page: Page): Record<string, unknown>[] {
+  const bodies: Record<string, unknown>[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "POST" || request.headers()["next-action"] === undefined) return;
+    if (!page.url().includes("/clients/")) return;
+    /**
+     * A server action's POST body is its argument list, serialised: `[clientId, body]`.
+     * Read here rather than asserted on the fixture's store, because AC1 and AC4 are
+     * claims about what the BROWSER sends — the key present, absent or null — and the
+     * stored value cannot tell "absent" from "the same number sent again".
+     */
+    const args = JSON.parse(request.postData() ?? "[]") as unknown[];
+    bodies.push((args[1] ?? {}) as Record<string, unknown>);
+  });
+  return bodies;
+}
+
+/** Set Lina's body-fat milestone through the form, and wait for the api's answer. */
+async function setLinaBodyFat(page: Page, value: string) {
+  await page.goto(`/clients/${LINA}`);
+  await bodyFatField(page).fill(value);
+  await saveAndSettle(page);
+  await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+}
+
+const INVALID_BODY_FAT = "Enter a percentage between 3 and 60.";
+
+test.describe("EV-274b AC1 — the body-fat field refuses what the api refuses, and sends nothing", () => {
+  test("every value outside 3.0-60.0 or with more than one decimal is refused in the browser", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+    const sent = recordSaves(page);
+
+    /**
+     * EV-274a AC2's own refusal list (2.9, 60.1, -1, 200, 20.05), plus what a coach can
+     * type that is not a number at all, and the comma form of a two-decimal value —
+     * the comma is accepted (edge case 6, weight parity) but only as ONE decimal.
+     */
+    for (const value of ["2.9", "60.1", "-1", "200", "20.05", "20,55", "abc", "20.", "2e1", "0"]) {
+      await bodyFatField(page).fill(value);
+      await save(page);
+      await expect(
+        block(page).getByText(INVALID_BODY_FAT, { exact: true }),
+        `${value} was not refused with the story's sentence`
+      ).toBeVisible();
+    }
+    // Give a request that should not exist every chance to be seen.
+    await page.waitForTimeout(500);
+    expect(sent, "a refused body fat still sent a request").toEqual([]);
+
+    await page.reload();
+    await expect(cell(page, "bodyFat", "milestone")).toHaveCount(0);
+  });
+
+  test("the bounds themselves are accepted, and one decimal travels as the number typed", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+    const sent = recordSaves(page);
+
+    for (const [typed, wire] of [
+      ["3", 3],
+      ["60.0", 60],
+      ["60.00", 60],
+      ["3.00", 3],
+      ["20.10", 20.1],
+      ["20.5", 20.5],
+      ["20,5", 20.5],
+    ] as const) {
+      await bodyFatField(page).fill(typed);
+      await saveAndSettle(page);
+      await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+      await expect(block(page).getByText(INVALID_BODY_FAT)).toHaveCount(0);
+      expect(sent.at(-1)?.milestoneBodyFatPct, `${typed} did not travel as ${wire}`).toBe(wire);
+    }
+    await expect(cell(page, "bodyFat", "milestone")).toHaveText("Milestone 20.5 %");
+  });
+
+  test("an emptied field sends null, which clears — and the weight rides along untouched", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await setLinaBodyFat(page, "20.0");
+    await page.reload();
+    await expect(bodyFatField(page)).toHaveValue("20");
+    const sent = recordSaves(page);
+
+    await bodyFatField(page).fill("");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+
+    // The KEY is present and its value is null — not absent, which would be "unchanged".
+    expect(sent).toHaveLength(1);
+    expect(Object.keys(sent[0])).toContain("milestoneBodyFatPct");
+    expect(sent[0].milestoneBodyFatPct).toBeNull();
+
+    await page.reload();
+    await expect(cell(page, "bodyFat", "milestone")).toHaveCount(0);
+    await expect(cell(page, "bodyFat", "toGo")).toHaveCount(0);
+    await expect(bodyFatField(page)).toHaveValue("");
+    // Edge case 3: clearing the body fat leaves the weight milestone as it was.
+    await expect(cell(page, "weight", "milestone")).toHaveText("Milestone 68.0 kg");
+  });
+
+  test("an untouched body-fat field puts no key on the request", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+    const sent = recordSaves(page);
+
+    await milestoneField(page).fill("66");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+
+    expect(sent).toHaveLength(1);
+    expect(Object.keys(sent[0]).sort()).toEqual(["milestoneWeightKg", "startedOn"]);
+  });
+});
+
+test.describe("EV-274b AC2 — the Body fat row", () => {
+  test("reads the story's line exactly, and the figure to go is a distance", async ({ page }) => {
+    await signIn(page);
+    await setLinaBodyFat(page, "20.0");
+
+    // EV-274b AC2, verbatim, on EV-274a AC1's numbers: 20.0 − 24.0 = −4.0, printed as
+    // a distance ("4.0 pts to go") while the delta keeps its sign ("−4.0 pts").
+    await expect(row(page, "bodyFat")).toHaveText(
+      "Body fat — Start 28.0 % · Current 24.0 % · −4.0 pts · Milestone 20.0 % · 4.0 pts to go"
+    );
+    await page.reload();
+    await expect(row(page, "bodyFat")).toHaveText(
+      "Body fat — Start 28.0 % · Current 24.0 % · −4.0 pts · Milestone 20.0 % · 4.0 pts to go"
+    );
+    // The weight row is unchanged by a body-fat milestone.
+    await expect(cell(page, "weight", "milestone")).toHaveText("Milestone 68.0 kg");
+  });
+
+  test("a milestone above the current reading keeps its plus, and an exact hit reads 0.0", async ({
+    page,
+  }) => {
+    await signIn(page);
+    // AC2's second sentence: "+2.0 pts to go", as weight's "+4.0 kg" does. No warning.
+    await setLinaBodyFat(page, "26.0");
+    await expect(cell(page, "bodyFat", "toGo")).toHaveText("+2.0 pts to go");
+    await expect(block(page).getByText(/warning|careful|too high/i)).toHaveCount(0);
+
+    // EV-274 edge case 2: "Milestone equal to current: 0.0 pts to go". No celebration.
+    await bodyFatField(page).fill("24");
+    await saveAndSettle(page);
+    await expect(cell(page, "bodyFat", "toGo")).toHaveText("0.0 pts to go");
+    await expect(block(page).getByText(/reached|congratulations|well done/i)).toHaveCount(0);
+  });
+
+  test("the save is reported with hasBodyFatMilestone and changed: bodyfat", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+    const events: Record<string, unknown>[] = [];
+    page.on("console", (message) => {
+      if (message.type() !== "info") return;
+      try {
+        const parsed = JSON.parse(message.text()) as Record<string, unknown>;
+        if (parsed.event === "coach_progress_goal_set") events.push(parsed);
+      } catch {
+        /* not an event line */
+      }
+    });
+
+    await bodyFatField(page).fill("20");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    await expect.poll(() => events.length).toBe(1);
+    expect(events[0]).toMatchObject({ hasBodyFatMilestone: true, changed: "bodyfat" });
+  });
+
+  test("an untouched body fat already stored is still reported, from the reply and not the request", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await setLinaBodyFat(page, "20.0");
+    // A fresh load: the body-fat field is the server's text, untouched, so no key is sent.
+    await page.reload();
+    const events: Record<string, unknown>[] = [];
+    page.on("console", (message) => {
+      if (message.type() !== "info") return;
+      try {
+        const parsed = JSON.parse(message.text()) as Record<string, unknown>;
+        if (parsed.event === "coach_progress_goal_set") events.push(parsed);
+      } catch {
+        /* not an event line */
+      }
+    });
+    const sent = recordSaves(page);
+
+    await milestoneField(page).fill("66");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+
+    expect(Object.keys(sent[0])).not.toContain("milestoneBodyFatPct");
+    await expect.poll(() => events.length).toBe(1);
+    // The milestone is still stored, so the event must say so; the request cannot.
+    expect(events[0]).toMatchObject({ hasBodyFatMilestone: true, changed: "milestone" });
+  });
+});
+
+test.describe("EV-274b AC3 — no body-fat reading", () => {
+  test("Not recorded, the milestone beside it, no figure to go — and the attribution", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${NILS}`);
+
+    await bodyFatField(page).fill("22.0");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    await page.reload();
+
+    // EV-274b AC3, verbatim. The api sends no `bodyFatToGoPts` here — absent, not 0.
+    await expect(row(page, "bodyFat")).toHaveText("Body fat — Not recorded · Milestone 22.0 %");
+    await expect(cell(page, "bodyFat", "toGo")).toHaveCount(0);
+    /**
+     * A body-fat-only milestone is still a milestone a coach set: the api resolves
+     * `milestoneSetByName` for it (`hasMilestone()`), and the line names who.
+     */
+    await expect(block(page).locator("[data-provenance='milestone']")).toHaveText(
+      /^Milestone set by Alex R\. on .+$/
+    );
+    await expect(cell(page, "weight", "milestone")).toHaveCount(0);
+  });
+});
+
+test.describe("EV-274b AC4 — a tab that never showed the body fat cannot erase it", () => {
+  test("the stale tab's save leaves the other tab's value; touching the field makes it last-write-wins", async ({
+    page,
+    context,
+  }) => {
+    await signIn(page);
+    // Tab A loads BEFORE any body-fat milestone exists. Its field is empty.
+    await page.goto(`/clients/${LINA}`);
+    await expect(bodyFatField(page)).toHaveValue("");
+
+    // Tab B sets one.
+    const other = await context.newPage();
+    await other.goto(`/clients/${LINA}`);
+    await bodyFatField(other).fill("21.0");
+    await saveAndSettle(other);
+    await expect(block(other).getByText(SAVED, { exact: true })).toBeVisible();
+
+    // Tab A, still showing the OLD (empty) value, saves a weight change.
+    const sent = recordSaves(page);
+    await milestoneField(page).fill("66");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    expect(Object.keys(sent[0])).not.toContain("milestoneBodyFatPct");
+
+    await other.reload();
+    await expect(cell(other, "bodyFat", "milestone")).toHaveText("Milestone 21.0 %");
+    await expect(cell(other, "weight", "milestone")).toHaveText("Milestone 66.0 kg");
+    // …and tab A now tracks the stored value, since its field was never the coach's.
+    await expect(bodyFatField(page)).toHaveValue("21");
+
+    // The other half of AC4: a tab whose form DID change the body fat wins, last.
+    await bodyFatField(other).fill("19.5");
+    await saveAndSettle(other);
+    await page.reload();
+    await expect(cell(page, "bodyFat", "milestone")).toHaveText("Milestone 19.5 %");
+    await other.close();
+  });
+
+  test("after its own successful save, a tab's body fat is the server's again and is not re-sent", async ({
+    page,
+    context,
+  }) => {
+    await signIn(page);
+    // Tab A sets 20.0 itself. Its reply re-seeds the field: the text is the server's now.
+    await setLinaBodyFat(page, "20.0");
+
+    // Tab B moves it to 21.0.
+    const other = await context.newPage();
+    await other.goto(`/clients/${LINA}`);
+    await bodyFatField(other).fill("21.0");
+    await saveAndSettle(other);
+    await expect(block(other).getByText(SAVED, { exact: true })).toBeVisible();
+
+    // Tab A, still showing 20, saves a weight change. It must not write its stale 20 back.
+    const sent = recordSaves(page);
+    await milestoneField(page).fill("66");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    expect(Object.keys(sent[0])).not.toContain("milestoneBodyFatPct");
+
+    await other.reload();
+    await expect(cell(other, "bodyFat", "milestone")).toHaveText("Milestone 21.0 %");
+    await other.close();
+  });
+
+  test("a body fat typed before a refused save is still sent by the next one", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+
+    // The api refuses the WEIGHT (edge case 6 of EV-202) and writes nothing.
+    await bodyFatField(page).fill("21.0");
+    await milestoneField(page).fill("500");
+    await save(page);
+    await expect(
+      block(page).getByText("A milestone weight must be between 25 and 300 kg. Nothing was saved.")
+    ).toBeVisible();
+
+    // The coach fixes the weight and saves again WITHOUT retyping the body fat.
+    const sent = recordSaves(page);
+    await milestoneField(page).fill("66");
+    await saveAndSettle(page);
+    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    expect(sent.at(-1)?.milestoneBodyFatPct, "the body fat the coach typed was silently dropped").toBe(21);
+
+    await page.reload();
+    await expect(cell(page, "bodyFat", "milestone")).toHaveText("Milestone 21.0 %");
+  });
+});
+
+test.describe("EV-274b AC5 — the Body fat row at 320 px wraps, and nothing is cut", () => {
+  test("the full row wraps inside the block at every width", async ({ page }) => {
+    await signIn(page);
+    await setLinaBodyFat(page, "20.0");
+
+    await atEachWidth(page, async (width) => {
+      await expectNoSidewaysScroll(page, "the trainee page with a body-fat milestone");
+      /**
+       * Centred first: `scrollIntoViewIfNeeded` leaves an element that is already
+       * "in view" where it is — which after a resize can be under the sticky shell bar,
+       * the ordinary behaviour of content scrolling under a sticky header, and a hit on
+       * the bar there says nothing about this row.
+       */
+      await row(page, "bodyFat").evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await expectUnoccluded(page, row(page, "bodyFat"), { label: "the body fat row" });
+      await bodyFatField(page).evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await expectUnoccluded(page, bodyFatField(page), {
+        over: milestoneField(page),
+        label: "the body fat field",
+      });
+
+      /**
+       * "Nothing is cut": every cell — the last one above all — lies inside the block.
+       * `expectNoSidewaysScroll` alone cannot see a cell clipped by an `overflow: hidden`
+       * card, which is the way a `nowrap` row would fail here.
+       */
+      const blockBox = (await block(page).boundingBox())!;
+      for (const key of ["start", "current", "delta", "milestone", "toGo"]) {
+        const box = (await cell(page, "bodyFat", key).boundingBox())!;
+        expect(box, `the ${key} cell has no box at ${width}px`).not.toBeNull();
+        expect(
+          box.x + box.width,
+          `the ${key} cell runs past the block's right edge at ${width}px`
+        ).toBeLessThanOrEqual(blockBox.x + blockBox.width + 0.5);
+        expect(box.x, `the ${key} cell starts left of the block at ${width}px`).toBeGreaterThanOrEqual(
+          blockBox.x - 0.5
+        );
+      }
+
+      if (width === 320) {
+        // "wraps": the one-sentence row takes more than one line at 320 px.
+        const rowBox = (await row(page, "bodyFat").boundingBox())!;
+        expect(rowBox.height, "the body fat row did not wrap at 320px").toBeGreaterThan(30);
+      }
+    });
+  });
+});
+
+test.describe("EV-274b — the pure rules", () => {
+  /** EV-274a AC1's TRAINEE-A block and AC4's TRAINEE-B block, as the api sends them. */
+  function traineeA(): TraineeProgressGoal {
+    return {
+      startedOn: "2026-06-01",
+      startedOnSource: "COACH",
+      milestoneWeightKg: 80,
+      milestoneBodyFatPct: 20,
+      milestoneSetByName: "Alex R.",
+      milestoneSource: "COACH",
+      milestoneUpdatedAt: "2026-09-26T10:00:00Z",
+      startWeight: { date: "2026-06-01", value: 92 },
+      currentWeight: { date: "2026-09-15", value: 86 },
+      startBodyFat: { date: "2026-06-01", value: 28 },
+      currentBodyFat: { date: "2026-09-15", value: 24 },
+      weightDeltaKg: -6,
+      bodyFatDeltaPts: -4,
+      weightToGoKg: -6,
+      bodyFatToGoPts: -4,
+    };
+  }
+
+  test("AC2 and AC3's rows, on the story's own numbers", () => {
+    const text = (goal: TraineeProgressGoal) =>
+      progressRows(goal)
+        .filter((r) => r.metric === "bodyFat")
+        .map((r) => `${r.label} — ${r.cells.map((c) => c.text).join(" · ")}`)[0]
+        // U+00A0 (see `formatPct`) read as a space, so the story's line compares verbatim.
+        .replace(/\u00a0/g, " ");
+
+    expect(text(traineeA())).toBe(
+      "Body fat — Start 28.0 % · Current 24.0 % · −4.0 pts · Milestone 20.0 % · 4.0 pts to go"
+    );
+
+    // TRAINEE-B: one weigh-in, no body_measurements, milestone 22.0, and the key ABSENT.
+    const b: TraineeProgressGoal = {
+      ...traineeA(),
+      milestoneWeightKg: null,
+      milestoneBodyFatPct: 22,
+      startBodyFat: null,
+      currentBodyFat: null,
+      bodyFatDeltaPts: null,
+    };
+    delete b.bodyFatToGoPts;
+    expect(text(b)).toBe("Body fat — Not recorded · Milestone 22.0 %");
+
+    /**
+     * A milestone AND a reading, with `bodyFatToGoPts` absent: the portal never computes
+     * or zeroes the figure itself — the api owns the arithmetic, and a missing figure is
+     * a missing cell, never "0.0 pts to go" (the story's exact-hit sentence).
+     */
+    const noFigure: TraineeProgressGoal = { ...traineeA() };
+    delete noFigure.bodyFatToGoPts;
+    expect(text(noFigure)).toBe("Body fat — Start 28.0 % · Current 24.0 % · −4.0 pts · Milestone 20.0 %");
+
+    // An api older than EV-274a sends neither key: no cell, no crash.
+    const legacy: TraineeProgressGoal = { ...traineeA() };
+    delete legacy.milestoneBodyFatPct;
+    delete legacy.bodyFatToGoPts;
+    expect(text(legacy)).toBe("Body fat — Start 28.0 % · Current 24.0 % · −4.0 pts");
+  });
+
+  test("the body-fat figure to go renders in all three directions", () => {
+    expect(bodyFatToGoValue(-4)).toBe("4.0\u00a0pts");
+    expect(bodyFatToGoValue(2)).toBe("+2.0\u00a0pts");
+    expect(bodyFatToGoValue(0)).toBe("0.0\u00a0pts");
+  });
+
+  test("the browser's rule matches the api's, except exponent, a leading + and a trailing point, refused on purpose", () => {
+    /**
+     * The api judges the VALUE (`stripTrailingZeros().scale() > 1`), so trailing zeros
+     * are the same number: `20.50`, `60.00`, `3.00` and `20.10` are accepted there, and
+     * must be here. staff-engineer's 675-input probe found the first cut refusing them.
+     */
+    for (const ok of [
+      "3", "3.0", "3.00", "60", "60.0", "60.00", "20.5", "20.50", "20.10", "20,5", "20,50", " 20 ", "",
+    ]) {
+      expect(parseBodyFatMilestone(ok).ok, `${ok} should be accepted`).toBe(true);
+    }
+    expect(parseBodyFatMilestone("20.10")).toEqual({ ok: true, value: 20.1 });
+    expect(parseBodyFatMilestone("60.00")).toEqual({ ok: true, value: 60 });
+    expect(parseBodyFatMilestone("20,50")).toEqual({ ok: true, value: 20.5 });
+    // The api's refusals, refused here too: a second SIGNIFICANT decimal is still one too many.
+    for (const bad of ["2.9", "60.1", "-1", "200", "20.05", "20.051", "20,55", "60.01", "abc", ".5"]) {
+      expect(parseBodyFatMilestone(bad).ok, `${bad} should be refused`).toBe(false);
+    }
+    // Refused ON PURPOSE though the api would take the value: text that is not a plain decimal.
+    for (const deliberate of ["1e1", "2e1", "+20", "20."]) {
+      expect(parseBodyFatMilestone(deliberate).ok, `${deliberate} is refused on purpose`).toBe(false);
+    }
+    expect(parseBodyFatMilestone("")).toEqual({ ok: true, value: null });
+  });
+
+  test("a 400 names the milestone that was refused, never the weight by default", () => {
+    // The api checks the weight first, so a weight outside 25..300 is always the cause.
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: 500, milestoneBodyFatPct: 20 })).toBe("WEIGHT");
+    // A valid weight and a body fat on the request: the body fat is the only candidate.
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: 80, milestoneBodyFatPct: 20 })).toBe("BODY_FAT");
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: null, milestoneBodyFatPct: 61 })).toBe("BODY_FAT");
+    // No body fat on the request (absent or a clear): it can only have been the weight.
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: 20 })).toBe("WEIGHT");
+    expect(refusedMilestone({ startedOn: null, milestoneWeightKg: 20, milestoneBodyFatPct: null })).toBe("WEIGHT");
+  });
+
+  test("a number and its unit are joined by a no-break space, so they never wrap apart", () => {
+    expect(bodyFatToGoValue(-4)).toBe("4.0\u00a0pts");
+    const cells = progressRows(traineeA()).find((r) => r.metric === "bodyFat")!.cells;
+    expect(cells.length).toBe(5);
+    for (const c of cells) {
+      expect(c.text, `${c.key} has a breakable space before its unit`).not.toMatch(/\d (%|pts)/);
+    }
+  });
+
+  test("the key travels exactly when the field was touched — null to clear", () => {
+    const untouched = buildProgressGoalRequest("2026-06-01", "80", { text: "20", touched: false });
+    expect(untouched.ok && Object.keys(untouched.body).sort()).toEqual([
+      "milestoneWeightKg",
+      "startedOn",
+    ]);
+    const set = buildProgressGoalRequest("2026-06-01", "80", { text: "20.5", touched: true });
+    expect(set.ok && set.body.milestoneBodyFatPct).toBe(20.5);
+    const cleared = buildProgressGoalRequest("2026-06-01", "80", { text: "", touched: true });
+    expect(cleared.ok && "milestoneBodyFatPct" in cleared.body).toBe(true);
+    expect(cleared.ok && cleared.body.milestoneBodyFatPct).toBeNull();
+    expect(buildProgressGoalRequest("", "", { text: "61", touched: true })).toEqual({
+      ok: false,
+      reason: "BODY_FAT",
+    });
+  });
+
+  test("touched survives a sent save and ends only at a re-seed from the server", () => {
+    const goal = traineeA();
+    const typed = editField(seedFormState(goal), "bodyFat", "21");
+    expect(typed.bodyFatTouched).toBe(true);
+    // Sent: dirty clears so the reply may re-seed — touched does NOT.
+    const sent = markSent(typed);
+    expect(sent.dirty.bodyFat).toBe(false);
+    expect(sent.bodyFatTouched).toBe(true);
+    // The server's answer re-seeds the field, and only then is the text the server's.
+    const reseeded = reseedPreservingEdits(sent, { ...goal, milestoneBodyFatPct: 21 });
+    expect(reseeded.bodyFat).toBe("21");
+    expect(reseeded.bodyFatTouched).toBe(false);
+  });
+
+  test("changed: bodyfat alone, both for more than one, cleared for all three", () => {
+    const before = { startedOn: "2026-06-01", milestoneWeightKg: 80, milestoneBodyFatPct: 20 };
+    expect(
+      describeChange(before, { startedOn: "2026-06-01", milestoneWeightKg: 80, milestoneBodyFatPct: 22 })
+    ).toBe("bodyfat");
+    // The key absent is "unchanged" (B4), not a clear.
+    expect(describeChange(before, { startedOn: "2026-06-01", milestoneWeightKg: 80 })).toBe("unchanged");
+    expect(
+      describeChange(before, { startedOn: "2026-06-01", milestoneWeightKg: 79, milestoneBodyFatPct: 22 })
+    ).toBe("both");
+    expect(describeChange(before, { startedOn: null, milestoneWeightKg: null, milestoneBodyFatPct: null })).toBe(
+      "cleared"
+    );
+    // A body fat still stored is not a clear.
+    expect(describeChange(before, { startedOn: null, milestoneWeightKg: null })).toBe("both");
   });
 });

@@ -129,27 +129,6 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
     },
   },
 
-  /* ── EV-274a, landing on another branch ──────────────────────────────────
-   * The spec vendored for EV-273b (b-fit-api 8b23d45) carries EV-274a's body-fat
-   * milestone. The portal half is `feat/ev274b-portal-body-fat` (b-fit-coach, in QA),
-   * which declares these fields on these types. Registered here so this branch's guard
-   * is green WITHOUT editing that branch's types. 🔴 WHICHEVER OF THE TWO MERGES SECOND
-   * DELETES THESE ENTRIES: once EV-274b's fields are on main, the "register cannot rot"
-   * check turns them red, which is the reminder.
-   * ---------------------------------------------------------------------- */
-  TraineeProgressGoal: {
-    missingInPortal: {
-      milestoneBodyFatPct: "EV-274a — owned by feat/ev274b-portal-body-fat.",
-      bodyFatToGoPts: "EV-274a — owned by feat/ev274b-portal-body-fat.",
-    },
-  },
-  CoachProgressGoalRequest: {
-    missingInPortal: {
-      milestoneBodyFatPct:
-        "EV-274a — OPTIONAL, and ABSENT means UNCHANGED (EV-274 B4), so a portal that omits it cannot erase a body-fat milestone. Owned by feat/ev274b-portal-body-fat.",
-    },
-  },
-
   CoachApplyWeekRequest: {
     missingInPortal: {
       mealStructure:

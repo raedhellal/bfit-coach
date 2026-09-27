@@ -538,11 +538,16 @@ test.describe("AC6 — the page is read-only, by a closed list", () => {
     }
 
     /**
-     * The two fields EV-202b adds, and no third. AC2 counts them inside its own block;
+     * The two fields EV-202b adds plus EV-274b's milestone body fat (its AC1: "The form
+     * now holds three inputs"), and no fourth. AC2 counts them inside its own block;
      * this counts them across the whole page, which is what catches a field arriving
-     * somewhere else on it.
+     * somewhere else on it — and names them, so a swap cannot pass as a count.
      */
-    await expect(page.locator("main").locator("input, textarea, select")).toHaveCount(2);
+    const fields = page.locator("main").locator("input, textarea, select");
+    await expect(fields).toHaveCount(3);
+    for (const label of ["Coaching start date", "Milestone weight (kg)", "Milestone body fat (%)"]) {
+      await expect(page.locator("main").getByLabel(label)).toHaveCount(1);
+    }
 
     /**
      * Every button on the page, by accessible name, against AC6's closed list. The

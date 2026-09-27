@@ -43,3 +43,4 @@
 - [A guard reads at a sample; say which](a-guard-reads-at-a-sample-say-which.md) — EV-217: settle wait from EVERY page animation (a sibling reaches via container query) + finished-check; diff vs origin/main...HEAD
 - [Swap sheet, recipes first (EV-272)](swap-sheet-portal-facts.md) — StrictMode doubles mount-effect reads in next dev; /api/fixture/calls is the no-request witness; C1/C0/c100 by email
 - [Nutrition templates (EV-273b)](nutrition-templates-portal-facts.md) — targets only; two server actions, answered = `response` event; journal logs GET nutrition + key sets; nav label collisions
+- [Progress-goal absent-key semantics](progress-goal-absent-key-semantics.md) — EV-274: body fat absent=unchanged, null=clear; "touched" must outlive a refused save

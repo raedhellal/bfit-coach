@@ -35,8 +35,10 @@ which has unmet release conditions (ADR-0016b D16b.11).
   nav label that contains an old one needs an `exact: true` sweep.
 - StrictMode double-runs mount effects in `next dev`: an effect that read-and-removed the
   hand-off then set `null` on the second run erased the banner. Only ever SET from such an effect.
-- The spec vendored at 8b23d45 carries EV-274a's body-fat fields; registered in
-  `qa/contract-deviations.ts` as owned by ev274b. Whichever branch merges second deletes them.
+- Two portal branches vendoring the spec in parallel: the one that syncs a newer api must
+  register the other's unmerged fields as deviations, and delete them when it merges the other
+  in (done for EV-274a when origin/main 4961a65 was merged into this branch). The guard's
+  "register cannot rot" check is the reminder.
 
 Related: [[swap-sheet-portal-facts]], [[every-fixture-test-starts-from-the-seed]],
 [[playwright-gettext-is-case-insensitive-substring]], [[stories-carry-verbatim-copy]].

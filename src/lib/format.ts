@@ -127,9 +127,14 @@ export function formatKcal(value: number): string {
 
 /* ── EV-202b: body composition ─────────────────────────────────────────────── */
 
-/** 24.0 → "24.0 %". One decimal, the same precision a caliper or an InBody reports. */
+/**
+ * 24.0 → "24.0 %". One decimal, the same precision a caliper or an InBody reports.
+ *
+ * The space is U+00A0, NO-BREAK: the Body fat row wraps at 320 px (EV-274b AC5), and an
+ * ordinary space let "20.0" end one line with "%" starting the next.
+ */
 export function formatPct(value: number): string {
-  return `${value.toFixed(1)} %`;
+  return `${value.toFixed(1)}\u00a0%`;
 }
 
 /**
@@ -142,8 +147,9 @@ export function formatPct(value: number): string {
  */
 export function formatPtsDelta(delta: number): string {
   const rounded = Number(delta.toFixed(1));
-  if (rounded === 0) return "0.0 pts";
-  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toFixed(1)} pts`;
+  // U+00A0, as in `formatPct`: the number and its unit never wrap apart.
+  if (rounded === 0) return "0.0\u00a0pts";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toFixed(1)}\u00a0pts`;
 }
 
 /**
