@@ -45,6 +45,8 @@ export default async function NutritionTemplatePage({ params }: { params: { id: 
       />
       {loaded.template ? (
         <NutritionTemplateEditor
+          // An update never hits the cap (only create and duplicate count), so no limit.
+          limit={null}
           templateId={loaded.template.id}
           initial={{
             name: loaded.template.name,

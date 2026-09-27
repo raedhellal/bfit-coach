@@ -58,7 +58,8 @@ export function NutritionTemplateLibrary({
   trainees,
 }: {
   library: NutritionTemplateList;
-  trainees: NutritionTarget[];
+  /** `null` = the roster read failed. Never collapsed to `[]`: "nobody" would be false. */
+  trainees: NutritionTarget[] | null;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -450,7 +451,7 @@ function PickDialog({
   onPick,
 }: {
   template: NutritionTemplate | null;
-  trainees: NutritionTarget[];
+  trainees: NutritionTarget[] | null;
   onClose: () => void;
   onPick: (template: NutritionTemplate, trainee: NutritionTarget) => void;
 }) {
@@ -468,7 +469,9 @@ function PickDialog({
         </Button>
       }
     >
-      {trainees.length === 0 ? (
+      {trainees === null ? (
+        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>{T.traineesLoadError}</p>
+      ) : trainees.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>{T.noTrainees}</p>
       ) : (
         <ul aria-label={T.pickTitle} style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
@@ -536,6 +539,7 @@ function ConfirmDialog({
   const [read, setRead] = useState<ReadState>({ state: "reading" });
   const [pending, startTransition] = useTransition();
   const requested = useRef(false);
+  const inFlight = useRef(false);
 
   /**
    * Rule 1 — ONE read per open (the dialog is keyed by template + trainee, so a new
@@ -569,6 +573,14 @@ function ConfirmDialog({
 
   function confirm() {
     if (read.state !== "ready") return;
+    /**
+     * The in-flight latch (staff review, should-fix 3). `disabled={pending}` is a
+     * RENDER: two clicks in one JS task both run before React re-renders, and each started
+     * its own targets → week chain. A ref is read synchronously, so the second click
+     * returns here. It is never released: every path out of the chain navigates away.
+     */
+    if (inFlight.current) return;
+    inFlight.current = true;
     const weekStart = read.reading.currentWeekStart;
     const { calories, proteinG, carbsG, fatG } = template.targets;
     startTransition(async () => {

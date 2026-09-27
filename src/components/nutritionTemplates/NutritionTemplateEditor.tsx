@@ -30,9 +30,12 @@ import type { NutritionTemplateTargetsRequest } from "@/lib/coachApi";
 export function NutritionTemplateEditor({
   templateId,
   initial,
+  limit,
 }: {
   templateId: string | null;
   initial: { name: string; targets: NutritionTemplateTargetsRequest } | null;
+  /** The cap the api SERVES (`/new` reads the list for it); null when unknown. */
+  limit: number | null;
 }) {
   const router = useRouter();
   const t = copy.nutritionTemplates;
@@ -63,7 +66,7 @@ export function NutritionTemplateEditor({
 
   const FAILURE: Record<NutritionTemplateFailure, string> = {
     NAME_TAKEN: t.nameTaken,
-    LIMIT_REACHED: t.limitReached(50),
+    LIMIT_REACHED: limit === null ? t.limitReachedUnknown : t.limitReached(limit),
     OUT_OF_BOUNDS: t.outOfBounds,
     ACCESS_DENIED: t.notYours,
     FAILED: t.saveFailed,
@@ -130,8 +133,14 @@ export function NutritionTemplateEditor({
           }}
         />
       </label>
-      {nameRefusal && name !== "" && (
-        <p style={{ margin: "-8px 0 14px", fontSize: 12.5, color: "var(--ink-3)" }}>{nameRefusal}</p>
+      {/*
+        The reason Save is disabled, always on screen while it is (staff review nit): an
+        empty form is the commonest case, and a greyed button with no sentence is a guess.
+      */}
+      {nameRefusal && (
+        <p style={{ margin: "-8px 0 14px", fontSize: 12.5, color: "var(--ink-3)" }}>
+          {nameRefusal}
+        </p>
       )}
 
       <CardHead title={t.targetsLabel} icon="apple" />
@@ -178,7 +187,14 @@ export function NutritionTemplateEditor({
       </p>
 
       <div style={{ marginTop: 16 }}>
-        <Button icon="check" onClick={save} disabled={pending || nameRefusal !== null}>
+        <Button
+          icon="check"
+          onClick={save}
+          disabled={pending || nameRefusal !== null}
+          // `Button` passes `title` through (a hyphenated aria-* prop would be dropped
+          // silently: TypeScript does not check hyphenated JSX attributes).
+          title={nameRefusal ?? undefined}
+        >
           {pending ? t.saving : t.save}
         </Button>
       </div>

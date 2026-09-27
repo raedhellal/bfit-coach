@@ -36,17 +36,21 @@ export default async function NutritionTemplatesPage() {
       .listNutritionTemplates()
       .then((value): NutritionTemplateList | null => value)
       .catch(() => null),
-    // A roster failure must not take the library down: only "Use on a trainee" needs
-    // a trainee, and an empty list renders AC3's own "no trainees" sentence.
+    // A roster failure must not take the library down: only "Use on a trainee" needs a
+    // trainee. It is `null`, NOT `[]` — an empty list would render "You have no trainees
+    // who have shared their nutrition with you.", a false sentence (staff review nit).
     coachApi
       .listClients()
-      .then((page) => page.items)
-      .catch((): RosterClient[] => []),
+      .then((page): RosterClient[] | null => page.items)
+      .catch(() => null),
   ]);
 
-  const trainees = roster
-    .filter((client) => client.status === "ACTIVE" && hasScope(client.scopes, "NUTRITION"))
-    .map((client) => ({ id: client.id, traineeDisplayName: client.traineeDisplayName }));
+  const trainees =
+    roster === null
+      ? null
+      : roster
+          .filter((client) => client.status === "ACTIVE" && hasScope(client.scopes, "NUTRITION"))
+          .map((client) => ({ id: client.id, traineeDisplayName: client.traineeDisplayName }));
 
   return (
     <CoachShell coachName={me?.displayName} section="nutrition-templates">

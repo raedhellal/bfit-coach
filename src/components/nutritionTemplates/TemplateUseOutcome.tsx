@@ -9,8 +9,11 @@ import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
  * it lands on, ABOVE the targets and the week the server just read.
  *
  * The sentence says what the browser observed of each write, and the page under it
- * shows what the api now holds; the two are never merged. Read once from the hand-off
- * (`takeOutcome`) and gone on reload, when the page alone is the truth.
+ * shows what the api now holds; the two are never merged. Consumed by the first render
+ * of THIS trainee's page within `OUTCOME_TTL_MS`, error branches included (the page
+ * mounts this above its load-error split), so a reload shows the page alone. A landing
+ * that was redirected away never shows it later: /clients/denied discards it and it
+ * expires (`src/lib/nutritionTemplateUse.ts`).
  *
  * A success is a `status`; every partial and failure is an `alert`, because each of
  * them asks the coach to do something (check, retry, wait until tomorrow).

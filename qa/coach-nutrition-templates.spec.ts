@@ -108,6 +108,9 @@ test.describe("AC2 — the editor: a name and four targets, and nothing else", (
     const text = await page.locator("main").innerText();
     expect(text).not.toMatch(/meals? (a|per) day|snack|Meal \d/i);
     await expect(page.getByText(STANDING, { exact: true })).toBeVisible();
+    // An empty form: Save is disabled AND says why (staff review nit).
+    await expect(page.getByRole("button", { name: "Save template" })).toBeDisabled();
+    await expect(page.getByText("Give the template a name.", { exact: true })).toBeVisible();
 
     await createTemplate(page, "Cut 1800", ["1800", "150", "170", "60"]);
     const cut = row(page, "Cut 1800");

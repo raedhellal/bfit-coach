@@ -3114,13 +3114,27 @@ async function nutritionCopyName(original: string): Promise<string> {
  *   `evoli_fixture_week=out_of_range` — the week apply answers 400 `COACH_WEEK_OUT_OF_RANGE`
  *                                      (edge case 10, the Monday rollover).
  *
- * The "no answer" outcomes need no switch: the gate aborts the browser's request.
+ *   `evoli_fixture_targets=no_answer` / `evoli_fixture_week=no_answer` — the api hop dies
+ *                                      with no status: `fetch` throws `TypeError("fetch
+ *                                      failed")`, exactly what `apiFetch` sees when the
+ *                                      connection to b-fit-api is lost (staff review, M4).
+ *   `evoli_fixture_week_start=YYYY-MM-DD` — the week the API considers current, served as
+ *                                      `currentWeekStart` and the only one apply accepts.
+ *                                      A date that is NOT the UTC Monday pins "the apply sends
+ *                                      the weekStart it READ", not one computed anywhere else.
+ *
+ * The browser-side "no answer" needs no switch: the gate aborts the browser's request.
  */
-async function targetsRefused(): Promise<boolean> {
-  return (await fixtureSwitch("evoli_fixture_targets")) === "refused";
+async function targetsSwitch(): Promise<string | null> {
+  return fixtureSwitch("evoli_fixture_targets");
 }
 async function weekSwitch(): Promise<string | null> {
   return fixtureSwitch("evoli_fixture_week");
+}
+/** The api's "current week" for this context: the override, else the UTC Monday. */
+async function servedWeekStart(): Promise<string> {
+  const forced = await fixtureSwitch("evoli_fixture_week_start");
+  return forced && /^\d{4}-\d{2}-\d{2}$/.test(forced) ? forced : currentWeekStart();
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -4061,7 +4075,7 @@ export const fixtureCoachApi: CoachApi = {
       traineeDisplayName: OVERVIEWS[id]().traineeDisplayName,
       targets: state.targets,
       week: state.week,
-      currentWeekStart: currentWeekStart(),
+      currentWeekStart: await servedWeekStart(),
       dietProfile: state.dietProfile,
       // ON for everyone but the placement-off world (see PLACEMENT_OFF_IDS) — the
       // value the api's `local` profile and staging carry.
@@ -4075,7 +4089,9 @@ export const fixtureCoachApi: CoachApi = {
   ): Promise<CoachTargetsResult> {
     recordCall(`PUT /coach-portal/clients/${id}/nutrition/targets ${wireKeys(body)}`);
     await assertScope(id, "NUTRITION");
-    if (await targetsRefused()) await fail(500, "INTERNAL_ERROR", "Targets write failed");
+    const forcedTargets = await targetsSwitch();
+    if (forcedTargets === "refused") await fail(500, "INTERNAL_ERROR", "Targets write failed");
+    if (forcedTargets === "no_answer") throw new TypeError("fetch failed");
     const state = nutritionState(id);
     // `NutritionService.setManual` clamps CALORIES ONLY — protein and fat are
     // untouched, which is exactly what the standing sentence on the page says.
@@ -4104,7 +4120,8 @@ export const fixtureCoachApi: CoachApi = {
     const forced = await weekSwitch();
     if (forced === "rate_limited") await fail(429, "COACH_WEEK_APPLY_RATE_LIMIT", "Rate limited");
     if (forced === "out_of_range") await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");
-    if (weekStart !== currentWeekStart()) {
+    if (forced === "no_answer") throw new TypeError("fetch failed");
+    if (weekStart !== (await servedWeekStart())) {
       // Edge case 3: slice 1 applies the current week only.
       await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");
     }

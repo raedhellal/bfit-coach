@@ -69,13 +69,17 @@ export default async function NutritionPage({ params }: { params: { id: string }
         active="nutrition"
       />
 
+      {/*
+        EV-273b AC5 — what "Use on a trainee" observed, above what the api holds. ABOVE
+        the load-error split (staff review, blocker 1): a landing on the scope sentence or
+        the load error still shows and consumes it, rather than leaving it for a later visit.
+      */}
+      <TemplateUseOutcome clientId={params.id} firstName={firstName(displayName)} />
+
       {message || !nutrition ? (
         <ClientNotice message={message ?? copy.nutrition.loadError} />
       ) : (
         <>
-          {/* EV-273b AC5 — what "Use on a trainee" observed, above what the api holds. */}
-          <TemplateUseOutcome clientId={params.id} firstName={firstName(displayName)} />
-
           {nothingSetUp && (
             <Card style={{ marginBottom: 18 }}>
               <EmptyState

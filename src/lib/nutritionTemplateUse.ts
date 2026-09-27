@@ -35,24 +35,52 @@ export interface UseOutcome {
   template: string;
   kind: UseOutcomeKind;
   floorCalories: number | null;
+  /** `Date.now()` when the dialog handed it off. See `OUTCOME_TTL_MS`. */
+  at: number;
 }
 
 /**
  * The outcome crosses ONE navigation — library → the trainee's nutrition page — in
- * `sessionStorage`, and is read once and removed there.
+ * `sessionStorage`.
  *
  * Not the URL. A query string would put a sentence the coach reads as the product's
  * statement ("“Cut 1800” is now Lina's plan.") in the hands of anyone who can send the
- * coach a link. Session storage is this tab's own, is written only by the dialog that
- * made the writes, and a reload shows the page's server-read truth without the banner.
+ * coach a link. Session storage is this tab's own and is written only by the dialog that
+ * made the writes.
+ *
+ * ⚠ The landing is NOT guaranteed (staff review of EV-273b, blocker 1). The trainee's
+ * layout can redirect to /clients/denied before the page renders, and then nothing on
+ * that page reads the hand-off. Three things keep a sentence from surfacing later as if
+ * it were new, and none of them alone is enough:
+ *   · the banner is mounted on EVERY branch of the nutrition page, error branches
+ *     included, so any render of that trainee's page consumes it;
+ *   · /clients/denied discards any pending hand-off (`discardOutcome`) — access-lost
+ *     has nothing to report about a trainee page the coach never reached;
+ *   · it expires: older than `OUTCOME_TTL_MS` is dropped unread, whoever reads it.
+ * An outcome for trainee A is never shown on trainee B's page (and is left for A).
  */
 const KEY = "evoli.coach.nutritionTemplateOutcome";
 
-export function handOffOutcome(outcome: UseOutcome): void {
+/**
+ * Two minutes. The hand-off is written, then a client navigation follows at once; even a
+ * cold dev compile lands in seconds. Anything older is a landing that never happened.
+ */
+export const OUTCOME_TTL_MS = 120_000;
+
+export function handOffOutcome(outcome: Omit<UseOutcome, "at">): void {
   try {
-    window.sessionStorage.setItem(KEY, JSON.stringify(outcome));
+    window.sessionStorage.setItem(KEY, JSON.stringify({ ...outcome, at: Date.now() }));
   } catch {
     /* storage disabled — the page still renders the server's targets and week */
+  }
+}
+
+/** Access-lost: drop whatever was waiting, unread. */
+export function discardOutcome(): void {
+  try {
+    window.sessionStorage.removeItem(KEY);
+  } catch {
+    /* storage disabled — nothing to discard */
   }
 }
 
@@ -65,8 +93,11 @@ const KINDS: readonly UseOutcomeKind[] = [
   "TARGETS_UNKNOWN",
 ];
 
-/** Read-and-remove, for this trainee only. Anything malformed is dropped, not shown. */
-export function takeOutcome(clientId: string): UseOutcome | null {
+/**
+ * Read-and-remove, for THIS trainee only. An expired or malformed hand-off is removed and
+ * never shown; one for another trainee is left alone (it expires on its own).
+ */
+export function takeOutcome(clientId: string, now: number = Date.now()): UseOutcome | null {
   let raw: string | null = null;
   try {
     raw = window.sessionStorage.getItem(KEY);
@@ -78,17 +109,22 @@ export function takeOutcome(clientId: string): UseOutcome | null {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    window.sessionStorage.removeItem(KEY);
+    discardOutcome();
     return null;
   }
   const o = parsed as Partial<UseOutcome> | null;
-  if (!o || o.clientId !== clientId) return null;
-  window.sessionStorage.removeItem(KEY);
+  if (!o || typeof o.at !== "number" || now - o.at > OUTCOME_TTL_MS || now < o.at) {
+    discardOutcome();
+    return null;
+  }
+  if (o.clientId !== clientId) return null;
+  discardOutcome();
   if (typeof o.template !== "string" || !KINDS.includes(o.kind as UseOutcomeKind)) return null;
   return {
     clientId,
     template: o.template,
     kind: o.kind as UseOutcomeKind,
     floorCalories: typeof o.floorCalories === "number" ? o.floorCalories : null,
+    at: o.at,
   };
 }

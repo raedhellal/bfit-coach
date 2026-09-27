@@ -145,6 +145,16 @@ async function calls(page: Page): Promise<string[]> {
   expect(res.status(), "GET /api/fixture/calls — fixture mode only").toBe(200);
   return ((await res.json()) as { calls: string[] }).calls;
 }
+/**
+ * The WHOLE journal minus exactly one entry kind: EV-273b made the fixture journal the
+ * page render's own `GET …/clients/{id}/nutrition` (the read "Use on a trainee" is
+ * witnessed by). Filtering only that line keeps "the page load makes no other journalled
+ * call" in the assertion — a snapshot taken after the load would have hidden one
+ * (staff review of EV-273b, mutant M13).
+ */
+function withoutPageRead(journal: string[], clientId: string): string[] {
+  return journal.filter((c) => c !== `GET /coach-portal/clients/${clientId}/nutrition`);
+}
 const isLibraryRead = (c: string) => c === "GET /coach-portal/recipes";
 const isSwapRead = (c: string) => /^GET \/coach-portal\/clients\/[^/]+\/nutrition\/week\/meals\/[^/]+\/swap$/.test(c);
 
@@ -245,9 +255,6 @@ test.describe("AC2 — flag on: my recipes first", () => {
     await expect(row.getByText("600 kcal · 28 g protein · 62 g carbs · 26 g fat")).toBeVisible();
 
     const posts = actionLog(page);
-    // EV-273b: the journal now also records the page's own `GET …/nutrition` (the read
-    // "Use on a trainee" is witnessed by), so only what OPENING THE SHEET sent is counted.
-    const before = (await calls(page)).length;
     const sheet = await openSheet(page, row);
     await expect(sheet.getByText(M_NAME, { exact: true })).toBeVisible(); // the sub-title
     const search = sheet.getByLabel(SEARCH_LABEL);
@@ -270,7 +277,7 @@ test.describe("AC2 — flag on: my recipes first", () => {
 
     await quiet(page);
     expect(posts, "exactly one server action on opening: the library read").toHaveLength(1);
-    const journal = (await calls(page)).slice(before);
+    const journal = withoutPageRead(await calls(page), TESS);
     expect(journal.filter(isLibraryRead)).toHaveLength(1);
     expect(journal.filter(isSwapRead), "R5: no suggestion request on open").toHaveLength(0);
     expect(journal).toHaveLength(1);
@@ -561,8 +568,6 @@ test.describe("AC6 — a locked meal", () => {
     const row = meal(page, L_ROW);
     await expect(row.getByText("Kept", { exact: true })).toBeVisible();
     const posts = actionLog(page);
-    // EV-273b: the page's own `GET …/nutrition` is journalled now; count the sheet's only.
-    const before = await calls(page);
     const sheet = await openSheet(page, row);
     await expect(sheet.getByText(lockedSentence("Tess"), { exact: true })).toBeVisible();
     await expect(sheet.getByLabel(SEARCH_LABEL)).toHaveCount(0);
@@ -571,7 +576,7 @@ test.describe("AC6 — a locked meal", () => {
     await expect(sheet.locator("button[title]")).toHaveCount(0);
     await quiet(page);
     expect(posts).toEqual([]);
-    expect(await calls(page)).toEqual(before);
+    expect(withoutPageRead(await calls(page), TESS)).toEqual([]);
     await expectNoAiClaim(sheet);
   });
 });

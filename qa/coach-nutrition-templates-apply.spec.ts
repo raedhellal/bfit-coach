@@ -385,6 +385,147 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
   });
 });
 
+test.describe("staff review of EV-273b — the transport, the latch, the read, the week start", () => {
+  test("targets: the API hop dies with no status (TypeError) → 'couldn't confirm', and no week request", async ({ page, context, baseURL }) => {
+    await signIn(page);
+    const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_targets", "no_answer");
+    const timeline = actionTimeline(page);
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(targetsUnknown("Petra"));
+    await quietMs(page);
+    expect(timeline.filter((e) => e.startsWith("week"))).toEqual([]);
+    expect(traineeWrites(await calls(page))).toEqual([
+      `PUT /coach-portal/clients/${PETRA}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
+    ]);
+  });
+
+  test("week: the API hop dies with no status (TypeError) → targets updated, the week unconfirmed", async ({ page, context, baseURL }) => {
+    await signIn(page);
+    const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "no_answer");
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(weekUnknown("Petra"));
+  });
+
+  test("two clicks on Confirm in ONE task run ONE chain", async ({ page }) => {
+    await signIn(page);
+    const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+    await dialog.getByRole("button", { name: "Confirm" }).evaluate((b: HTMLElement) => {
+      b.click();
+      b.click();
+    });
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(applied(CUT, "Petra"));
+    await quietMs(page);
+    expect(traineeWrites(await calls(page))).toEqual([
+      `PUT /coach-portal/clients/${PETRA}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
+      `POST /coach-portal/clients/${PETRA}/nutrition/week/apply {weekStart}`,
+    ]);
+  });
+
+  test("a 403 on the dialog-open read goes to access-lost, and nothing is written", async ({ page, context, baseURL }) => {
+    await signIn(page);
+    await page.goto("/nutrition-templates");
+    await setSwitch(context, baseURL as string, "evoli_fixture_link", "ended");
+    await row(page, CUT).getByRole("button", { name: "Use on a trainee" }).click();
+    await page.getByRole("dialog", { name: "Use on a trainee" }).getByRole("button", { name: "Petra L.", exact: true }).click();
+    await page.waitForURL("/clients/denied");
+    expect((await calls(page)).filter((c) => c === `GET /coach-portal/clients/${PETRA}/nutrition`)).toHaveLength(1);
+    expect(traineeWrites(await calls(page))).toEqual([]);
+  });
+
+  test("the apply sends the weekStart the dialog READ, even when it is not this UTC Monday", async ({ page, context, baseURL }) => {
+    // The api's "current week" is the one it says it is. Next Monday is a date no clock
+    // in the browser or the portal would compute today.
+    const now = new Date();
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) + 7);
+    const served = d.toISOString().slice(0, 10);
+    const label = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(d);
+    await signIn(page);
+    await setSwitch(context, baseURL as string, "evoli_fixture_week_start", served);
+    const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+    await expect(dialog.getByText(confirmBody("Petra", label), { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    // The fixture refuses any weekStart but the served one (400 → "couldn't be rebuilt").
+    await expect(outcome(page)).toHaveText(applied(CUT, "Petra"));
+  });
+});
+
+test.describe("staff review blocker 1 — the hand-off never outlives its landing", () => {
+  test("a landing redirected to access-lost leaves nothing behind for a later visit", async ({ page, context, baseURL }) => {
+    await signIn(page);
+    const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "rate_limited");
+    // The link ends AFTER the week answered 429 and BEFORE the trainee page renders, so the
+    // landing is redirected by the layout and the page never reads the hand-off.
+    await page.route(
+      (url) => url.pathname === `/clients/${PETRA}/nutrition`,
+      async (route) => {
+        await setSwitch(context, baseURL as string, "evoli_fixture_link", "ended");
+        const headers = { ...route.request().headers() };
+        headers.cookie = `${headers.cookie ?? ""}; evoli_fixture_link=ended`;
+        await route.continue({ headers });
+      }
+    );
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await page.waitForURL("/clients/denied");
+    await expect(page.getByTestId("template-use-outcome")).toHaveCount(0);
+    await expect.poll(() => pendingHandOff(page), { message: "access-lost discards the hand-off" }).toBeNull();
+
+    // The link is back; the coach revisits the trainee later.
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await context.clearCookies({ name: "evoli_fixture_link" });
+    await context.clearCookies({ name: "evoli_fixture_week" });
+    await page.goto(`/clients/${PETRA}/nutrition`);
+    await expect(page.getByLabel("Calories", { exact: true })).toBeVisible();
+    await quietMs(page);
+    await expect(outcome(page)).toHaveCount(0);
+    await expect(page.getByText(weekRateLimited("Petra"))).toHaveCount(0);
+  });
+
+  test("an outcome for one trainee is never shown on another's page, and stays for its own", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/nutrition-templates");
+    await page.evaluate(
+      ([clientId, template]) =>
+        window.sessionStorage.setItem(
+          "evoli.coach.nutritionTemplateOutcome",
+          JSON.stringify({ clientId, template, kind: "APPLIED", floorCalories: null, at: Date.now() })
+        ),
+      [PETRA, CUT]
+    );
+    await page.goto(`/clients/${TOBIAS}/nutrition`);
+    await expect(page.getByLabel("Calories", { exact: true })).toBeVisible();
+    await quietMs(page);
+    await expect(outcome(page)).toHaveCount(0);
+    await page.goto(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(applied(CUT, "Petra"));
+  });
+
+  test("an outcome older than two minutes is dropped unread", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/nutrition-templates");
+    await page.evaluate(
+      ([clientId, template]) =>
+        window.sessionStorage.setItem(
+          "evoli.coach.nutritionTemplateOutcome",
+          JSON.stringify({ clientId, template, kind: "WEEK_RATE_LIMITED", floorCalories: null, at: Date.now() - 180_000 })
+        ),
+      [PETRA, CUT]
+    );
+    await page.goto(`/clients/${PETRA}/nutrition`);
+    await expect(page.getByLabel("Calories", { exact: true })).toBeVisible();
+    await quietMs(page);
+    await expect(outcome(page)).toHaveCount(0);
+    expect(await pendingHandOff(page)).toBeNull();
+  });
+});
+
 test.describe("AC7 — a snapshot", () => {
   test("editing the template to 2400 and deleting it changes nothing already applied", async ({ page }) => {
     await signIn(page);

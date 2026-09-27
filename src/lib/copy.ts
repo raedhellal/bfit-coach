@@ -1321,6 +1321,8 @@ export const copy = {
     backToLibrary: "Back to nutrition templates",
     limitReached: (limit: number) =>
       `You can keep up to ${limit} nutrition templates. Delete one to make room.`,
+    /** The 409 when the served limit is unknown (the library read failed): no number invented. */
+    limitReachedUnknown: "You have reached your nutrition template limit. Delete one to make room.",
     remaining: (left: number, limit: number) => `${left} of ${limit} left`,
 
     /* ── a library row (AC1: name, kcal and P/C/F — and no meal structure) ── */
@@ -1374,6 +1376,8 @@ export const copy = {
     pickSub: (template: string) => `Choose who gets “${template}”.`,
     /** AC3: only ACTIVE links with NUTRITION are offered, so nobody is refused after. */
     noTrainees: "You have no trainees who have shared their nutrition with you.",
+    /** The roster read failed: nobody is offered, and "no trainees" would be false. */
+    traineesLoadError: "Your trainees could not be loaded. Close this and try again.",
     /** AC4, verbatim. */
     confirmTitle: (template: string, first: string) => `Use “${template}” on ${first}?`,
     now: "Now",
