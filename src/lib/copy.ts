@@ -167,7 +167,11 @@ export const copy = {
      */
     titleFrom: (coachName: string) => `${coachName} invited you to Evoli Fit`,
     body: "Open the invite in the Evoli Fit app to see who is inviting you. Nothing is shared until you accept.",
-    open: "Open in Evoli Fit",
+    /**
+     * EV-289, verbatim: "Open in Evoli Fit" and "Open in Evoli Fit Lite". The app name
+     * comes from `src/lib/traineeApps.ts`, so the lite label follows D-LITE-1 there.
+     */
+    openIn: (appName: string) => `Open in ${appName}`,
     // Edge case 3, verbatim: a phone without the app gets a sentence, not a white screen.
     fallback:
       "Don't have the app yet? Install Evoli Fit, then open this link again.",
