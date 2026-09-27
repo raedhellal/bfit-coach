@@ -144,7 +144,8 @@ input::placeholder { color:var(--ink-3); }
     order: 3;
     flex-basis: 100%;
     /* EV-273b: four links need two lines at 320 px. Wrapping keeps every link whole
-       and on screen; without it "Nutrition templates" ran 90 px past the viewport. */
+       and on screen. MEASURED without it (mutant M9): "Nutrition templates" ended at
+       381 px in a 320 px viewport and the page scrolled sideways by 77 px. */
     flex-wrap: wrap;
     row-gap: 2px;
   }

@@ -122,8 +122,17 @@ test.describe("AC2 — the editor: a name and four targets, and nothing else", (
     await page.getByLabel("Template name").fill("Zero fat");
     await page.getByLabel("Calories", { exact: true }).fill("1800");
     await page.getByLabel("Protein", { exact: true }).fill("150");
-    await page.getByLabel("Carbs", { exact: true }).fill("abc");
+    await page.getByLabel("Carbs", { exact: true }).fill("170");
+    // A zero ALONE — every other field valid — so the rule under test is "above 0",
+    // not "is a number" (mutant M14 survived a version of this test that mixed the two).
     await page.getByLabel("Fat", { exact: true }).fill("0");
+    await page.getByRole("button", { name: "Save template" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: ABOVE_ZERO })).toBeVisible();
+    await page.waitForTimeout(400);
+    expect(await writes(page)).toEqual([]);
+
+    await page.getByLabel("Fat", { exact: true }).fill("60");
+    await page.getByLabel("Carbs", { exact: true }).fill("abc");
     await page.getByRole("button", { name: "Save template" }).click();
     await expect(page.getByRole("alert").filter({ hasText: ABOVE_ZERO })).toBeVisible();
     await page.waitForTimeout(400);
@@ -223,7 +232,8 @@ test.describe("AC8 — 320 / 360 / 390 / 414", () => {
         const link = nav.getByRole("link", { name, exact: true });
         await expectUnoccluded(page, link, { over: signOut, label: `${name} nav link` });
         const box = await link.boundingBox();
-        expect(box && box.x >= 0 && box.x + box.width <= width + 0.5, `${name} is inside ${width}px`).toBe(true);
+        const right = box ? Math.round(box.x + box.width) : NaN;
+        expect(box && box.x >= 0 && right <= width, `${name}: right edge at ${right}px in a ${width}px viewport`).toBe(true);
       }
       await expectNoSidewaysScroll(page, "the nutrition library");
     });

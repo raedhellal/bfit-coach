@@ -42,3 +42,4 @@
 - [One worker per fixture server](one-worker-per-fixture-server.md) — BUG-249: >1 worker is refused; CI parallelises by --shard; proven via child runs, never a 2nd next dev
 - [A guard reads at a sample; say which](a-guard-reads-at-a-sample-say-which.md) — EV-217: settle wait from EVERY page animation (a sibling reaches via container query) + finished-check; diff vs origin/main...HEAD
 - [Swap sheet, recipes first (EV-272)](swap-sheet-portal-facts.md) — StrictMode doubles mount-effect reads in next dev; /api/fixture/calls is the no-request witness; C1/C0/c100 by email
+- [Nutrition templates (EV-273b)](nutrition-templates-portal-facts.md) — targets only; two server actions, answered = `response` event; journal logs GET nutrition + key sets; nav label collisions

@@ -185,6 +185,14 @@ test.describe("AC3 — who it can be used on", () => {
       await expect(picker.getByText(absent)).toHaveCount(0);
     }
   });
+
+  test("AC1 / edge case 9 — a template with a structure stored through the api shows none", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/nutrition-templates");
+    const cut = row(page, CUT);
+    await expect(cut.getByText("1800 kcal · P 150 g · C 170 g · F 60 g", { exact: true })).toBeVisible();
+    expect(await page.locator("main").innerText()).not.toMatch(/meals? (a|per) day|snack|Meal \d|\b4 meals/i);
+  });
 });
 
 test.describe("AC4 — the confirm dialog, from a read made when it opens", () => {
@@ -345,6 +353,7 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
     await page.waitForURL("/clients/denied");
     await quietMs(page);
     expect(timeline.filter((e) => e.startsWith("week"))).toEqual([]);
+    expect(await pendingHandOff(page), "access-lost hands no outcome to a trainee page").toBeNull();
   });
 
   test("403 on the week (revoked between the two): the targets stand, access-lost is shown", async ({ page, context, baseURL }) => {
@@ -366,6 +375,9 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
     );
     await dialog.getByRole("button", { name: "Confirm" }).click();
     await page.waitForURL("/clients/denied");
+    // Straight to access-lost — NOT a "couldn't be rebuilt" hand-off that the trainee
+    // page's own 403 then happens to redirect past (mutant M10 survived without this).
+    expect(await pendingHandOff(page), "access-lost hands no outcome to a trainee page").toBeNull();
     expect(traineeWrites(await calls(page))).toEqual([
       `PUT /coach-portal/clients/${PETRA}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
       `POST /coach-portal/clients/${PETRA}/nutrition/week/apply {weekStart}`,
@@ -415,6 +427,11 @@ test.describe("AC8 — the dialog at 320 / 360 / 390 / 414", () => {
     });
   });
 });
+
+/** The outcome waiting for a trainee page, if any (`src/lib/nutritionTemplateUse.ts`). */
+async function pendingHandOff(page: Page): Promise<string | null> {
+  return page.evaluate(() => window.sessionStorage.getItem("evoli.coach.nutritionTemplateOutcome"));
+}
 
 async function quietMs(page: Page) {
   await page.waitForTimeout(400);
