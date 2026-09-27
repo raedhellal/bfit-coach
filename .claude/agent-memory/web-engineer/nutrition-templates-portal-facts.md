@@ -42,3 +42,9 @@ which has unmet release conditions (ADR-0016b D16b.11).
 
 Related: [[swap-sheet-portal-facts]], [[every-fixture-test-starts-from-the-seed]],
 [[playwright-gettext-is-case-insensitive-substring]], [[stories-carry-verbatim-copy]].
+
+Staff review (blocker, fixed at b191df1): a client-side hand-off to a page is NOT guaranteed a
+landing — the `[id]` layout can redirect to /clients/denied first. Stamp it (`at`), expire it
+(2 min), mount the reader on every branch, and discard it on /clients/denied. Also: the kit
+`Button` drops hyphenated props (`aria-*`) silently and tsc does not check hyphenated JSX
+attributes; `disabled={pending}` is no double-click guard within one JS task — use a ref latch.
