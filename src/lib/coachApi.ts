@@ -1826,6 +1826,22 @@ export function isMealLocked(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_MEAL_LOCKED";
 }
 /**
+ * 409 — EV-288 / BUG-271 (ADR-0028 §4.3b): the swap was applied to a meal with no
+ * candidates cached, so the list the coach was shown is no longer the server's (an
+ * earlier apply cleared it — the trainee's, another tab's — or another write replaced
+ * the meal). Nothing was written and the api never generates on an apply: the answer is
+ * to read `GET …/swap` again and let the coach pick from what they can see.
+ *
+ * ⚠ Sent by b-fit-api only from `fix/bug271-swap-apply-no-model-call` (`0b23b73`,
+ * UNMERGED when this was written; `ApiError("SWAP_OPTIONS_STALE", …)` from
+ * `RestExceptionHandler`). Matched by CODE, so the branch is dormant against an api that
+ * still generates on a miss, and live the day it merges. Not in the vendored spec: it
+ * adds no schema, only a code on the existing 409.
+ */
+export function isSwapOptionsStale(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "SWAP_OPTIONS_STALE";
+}
+/**
  * 422 — an ingredient or the recipe's NAME conflicts with the trainee's rules.
  * `details` is `{field: "ingredient", value: <label>}` or exactly `{field: "name"}`;
  * it never names the rule or the category.

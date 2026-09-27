@@ -3123,10 +3123,45 @@ export function fixtureCalls(): string[] {
   return [...((globalThis as GlobalWithCalls)[CALLS_KEY] ?? [])];
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-288 — THE SWAP-CANDIDATE CACHE (`planned_meal.swap_candidates`), as b-fit-api keeps it
+ * from BUG-271's fix (`fix/bug271-swap-apply-no-model-call` @ `0b23b73`, ADR-0028 §4.3b):
+ *
+ *   · `GET …/meals/{M}/swap` answers the cached list, or builds one and caches it.
+ *   · `POST …/meals/{M}/swap` applies an index FROM THE CACHE and never builds a list;
+ *     with nothing cached it is 409 `SWAP_OPTIONS_STALE`. A successful apply clears it,
+ *     and so does any other write that replaces the meal.
+ *
+ * So a second tab (or the trainee) swapping the meal after this tab read its options
+ * leaves this tab's list stale, which is the case EV-288 handles — reproduced here from
+ * two pages on one server, no switch needed.
+ *
+ * Outside `FixtureState` for the call journal's reason: it is filled by a READ, and the
+ * seed check must not turn red because a test opened a sheet. Emptied by every reset.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const SWAP_CACHE_KEY = Symbol.for("evoli.coach.fixture.swapCandidates");
+type SwapCache = Map<string, (typeof MEAL_POOL)[number][]>;
+type GlobalWithSwapCache = typeof globalThis & Record<symbol, SwapCache | undefined>;
+
+function swapCache(): SwapCache {
+  return ((globalThis as GlobalWithSwapCache)[SWAP_CACHE_KEY] ??= new Map());
+}
+const swapCacheKey = (id: string, mealId: string) => `${id}/${mealId}`;
+/** The meal was replaced: its list is gone. */
+function clearSwapCandidates(id: string, mealId: string): void {
+  swapCache().delete(swapCacheKey(id, mealId));
+}
+/** A day or the week was rebuilt: every list for this trainee is gone. */
+function clearAllSwapCandidates(id: string): void {
+  for (const key of [...swapCache().keys()]) if (key.startsWith(`${id}/`)) swapCache().delete(key);
+}
+
 /** Throw the whole store away and start again from this process's seed. */
 export function resetFixtureState(): void {
   seed();
   (globalThis as GlobalWithCalls)[CALLS_KEY] = [];
+  (globalThis as GlobalWithSwapCache)[SWAP_CACHE_KEY] = new Map();
 }
 
 /** True when nothing has been written (or read-with-side-effect) since the last reset. */
@@ -3817,6 +3852,7 @@ export const fixtureCoachApi: CoachApi = {
       await fail(429, "COACH_WEEK_APPLY_RATE_LIMIT", "Rate limited");
     }
     // AC3: applying twice REPLACES the week; it never accumulates.
+    clearAllSwapCandidates(id);
     const previous = state.week;
     state.seeds = state.seeds.map(() => state.seeds[0] + 1);
     const fresh = buildWeek(weekStart, state.seeds, state.pool);
@@ -3830,6 +3866,7 @@ export const fixtureCoachApi: CoachApi = {
     const state = nutritionState(id);
     if (!state.week) await fail(400, "COACH_WEEK_OUT_OF_RANGE", "No week");
     const week = state.week as MealWeekView;
+    clearAllSwapCandidates(id);
     state.seeds = state.seeds.map((s, i) => (i === index ? s + 1 : s));
     const regenerated = buildWeek(week.weekStart, state.seeds, state.pool);
     // Only the regenerated day changes: every other day keeps its meals — ids, recipe
@@ -3852,7 +3889,13 @@ export const fixtureCoachApi: CoachApi = {
     const state = nutritionState(id);
     const meal = state.week?.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
     if (!meal) return { mealId, candidates: [] };
-    const candidates = state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name).map(
+    // EV-288: the cached list if there is one, else a fresh one, cached.
+    const key = swapCacheKey(id, mealId);
+    const list =
+      swapCache().get(key) ??
+      state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name);
+    swapCache().set(key, list);
+    const candidates = list.map(
       (m, index) => ({
         index,
         name: m.name,
@@ -3875,6 +3918,17 @@ export const fixtureCoachApi: CoachApi = {
     const meal = current.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
     if (!meal) return current;
     /**
+     * EV-288 (BUG-271, ADR-0028 §4.3b): the index is into the list the caller was SHOWN,
+     * i.e. the cache. Nothing cached → 409 `SWAP_OPTIONS_STALE` and no list is built.
+     * The api's order: this is read right after ownership, BEFORE the eaten/locked
+     * refusals that `replaceMealChecked` takes under the plan lock.
+     */
+    const options = swapCache().get(swapCacheKey(id, mealId));
+    if (!options) {
+      await fail(409, "SWAP_OPTIONS_STALE", "These swap options are out of date. Load them again and pick one.");
+      throw new Error("unreachable");
+    }
+    /**
      * BUG-245 (EV-256e AC7): what the trainee owns is refused and nothing is written —
      * eaten first, then locked. ⚠ This is the api AFTER BUG-245, which is NOT merged
      * (b-fit-api `fix/bug245-coach-swap-keeps-eaten` at `105c25b`); `6a76d92`'s coach
@@ -3885,9 +3939,9 @@ export const fixtureCoachApi: CoachApi = {
     if (meal.locked || (await lockedSince(mealId))) {
       await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
     }
-    const options = state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name);
     const chosen = options[candidateIndex];
     if (!chosen) return current;
+    clearSwapCandidates(id, mealId);
     state.week = {
       ...current,
       days: current.days.map((day) => ({
@@ -4009,6 +4063,7 @@ export const fixtureCoachApi: CoachApi = {
         ),
       })),
     };
+    clearSwapCandidates(id, mealId);
     return state.week;
   },
 };
