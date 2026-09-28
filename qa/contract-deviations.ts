@@ -116,28 +116,4 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
         "EV-190a's per-week meals/snacks override. OPTIONAL on the wire — omitting it means 'generate against the trainee's own stored preference', which is what every apply did before EV-190a, so the portal is currently correct rather than broken. The control that sets it is on feat/ev071b-coach-refusal.",
     },
   },
-
-  /* ----------------------------------------------------------------------
-   * EV-283a's fields — on b-fit-api main (`6264142`) and in this branch's vendored spec,
-   * because `npm run spec:sync` vendors the whole file. Their portal half is EV-283b,
-   * `feat/ev283b-routine-changed-banner`, cut from the same main on the same day.
-   *
-   * → WHICHEVER OF feat/ev283b AND feat/ev284b MERGES SECOND deletes these two entries.
-   * It cannot be forgotten: once `coachApi.ts` declares the fields, the register fails
-   * on a stale entry.
-   * ---------------------------------------------------------------------- */
-  RosterClient: {
-    missingInPortal: {
-      routineChangedSinceYourPublish:
-        "EV-283a's roster \"Plan changed\" marker. Typed and rendered by feat/ev283b-routine-changed-banner.",
-    },
-  },
-
-  CoachRoutineResponse: {
-    missingInPortal: {
-      lastChangedBy: "EV-283a — who wrote the live plan. Typed and rendered by feat/ev283b-routine-changed-banner.",
-      lastChangedAt: "EV-283a — when it became live. Same branch.",
-      changedSinceYourPublish: "EV-283a — the routine page's copy of the roster flag. Same branch.",
-    },
-  },
 };
