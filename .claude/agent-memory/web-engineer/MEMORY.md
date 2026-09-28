@@ -45,3 +45,4 @@
 - [Progress-goal absent-key semantics](progress-goal-absent-key-semantics.md) — EV-274: body fat absent=unchanged, null=clear; "touched" must outlive a refused save
 - [Fixture swap-candidate cache (EV-288)](fixture-swap-candidate-cache.md) — apply with nothing cached is 409 SWAP_OPTIONS_STALE; read options first; cache outside FixtureState, reset empties it
 - [Trainee app identity constant (EV-289)](trainee-app-identity-constant.md) — src/lib/traineeApps.ts holds both apps; lite = D-LITE-1 default; role names need exact:true
+- [Food log (EV-284b)](food-log-portal-facts.md) — QUICK dashes by source; no range sent; <summary> is phrasing-only; own reads journal; cross-branch drift register
