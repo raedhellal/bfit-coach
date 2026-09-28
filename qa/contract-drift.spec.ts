@@ -284,7 +284,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 59;
+const SCHEMAS_EXPECTED = 64; // EV-284b: +5 food-log types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -421,6 +421,8 @@ const REQUEST_FACING_EXPECTED = [
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
+  NutritionTemplateSaveRequest:
+    "POST/PUT /coach-portal/nutrition-templates (EV-273a, on api main since the 2026-09-28 re-vendor at 6264142): the portal sends NO request to it yet. EV-273b (`feat/ev273b-portal-nutrition-templates`) tags the type; delete this entry when it lands, or the exact comparison goes red.",
 };
 
 const receivable = requestSchemas(spec);

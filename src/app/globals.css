@@ -158,3 +158,44 @@ input::placeholder { color:var(--ink-3); }
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* EV-284b — the Food log's days. A native <details> per logged day (keyboard and screen
+   reader support for free, no client JavaScript), with the marker replaced by a chevron
+   that turns when the day is open. The summary is a 44 px touch target. */
+.food-day > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 44px;
+  padding: 6px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.food-day > summary::-webkit-details-marker {
+  display: none;
+}
+.food-day > summary:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 2px;
+  border-radius: var(--r-md);
+}
+.food-day-chev {
+  display: inline-flex;
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+.food-day[open] > summary .food-day-chev {
+  transform: rotate(90deg);
+}
+.food-macros {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin: 6px 0 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .food-day-chev {
+    transition: none;
+  }
+}

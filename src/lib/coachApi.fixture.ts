@@ -8,6 +8,11 @@ import type {
   CoachApi,
   CoachMe,
   CoachNutritionResponse,
+  CoachFoodLogDay,
+  CoachFoodLogEatenMeal,
+  CoachFoodLogEntry,
+  CoachFoodLogMacros,
+  CoachFoodLogResponse,
   CoachRoutineDraft,
   CoachRoutineDraftRequest,
   CoachRoutineDraftResponse,
@@ -3123,10 +3128,30 @@ export function fixtureCalls(): string[] {
   return [...((globalThis as GlobalWithCalls)[CALLS_KEY] ?? [])];
 }
 
+/**
+ * EV-284b — a SECOND list for page-load reads, kept apart from `calls` on purpose.
+ * `calls` means "recipe and swap operations" and EV-272's specs assert it is EXACTLY
+ * empty after a page load; putting the nutrition page's own food-log read into it
+ * turned two of them red. The food log's consent witness ("without NUTRITION the log is
+ * never requested") needs the same kind of evidence, so it gets its own list.
+ */
+const READS_KEY = Symbol.for("evoli.coach.fixture.reads");
+
+function recordRead(call: string): void {
+  const g = globalThis as GlobalWithCalls;
+  (g[READS_KEY] ??= []).push(call);
+}
+
+/** Every page-load read the fixture journals (today: the food log), since the last reset. */
+export function fixtureReads(): string[] {
+  return [...((globalThis as GlobalWithCalls)[READS_KEY] ?? [])];
+}
+
 /** Throw the whole store away and start again from this process's seed. */
 export function resetFixtureState(): void {
   seed();
   (globalThis as GlobalWithCalls)[CALLS_KEY] = [];
+  (globalThis as GlobalWithCalls)[READS_KEY] = [];
 }
 
 /** True when nothing has been written (or read-with-side-effect) since the last reset. */
@@ -3143,6 +3168,219 @@ function nutritionState(id: string): NutritionState {
     all.set(id, current);
   }
   return current;
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-284b — THE TRAINEE'S FOOD LOG (`GET …/nutrition/log`).
+ *
+ * Read-only on both sides (a record is erased only by the person who entered it), so
+ * it lives OUTSIDE `FixtureState`: nothing in the portal writes it, and the seed check
+ * has nothing to compare. Days are keyed by how many UTC days before the SERVER's
+ * today they fall, which is the api's own default window (the portal sends no range).
+ *
+ * `totals` is computed HERE, once, as entries plus eaten meals — the fixture stands in
+ * for the api's single computation (AC2), and the portal never re-sums. `targets` is
+ * the trainee's STORED target as `getNutrition` serves it (so a coach's save shows up
+ * in the next read, as on the api); the api's training/rest-day adjustment is not
+ * modelled, and the fixture says so rather than inventing one.
+ *
+ * Each trainee reaches a state the others cannot:
+ *   Lina  — today: OFF with a barcode (0 g fat, a REAL zero) + QUICK (AC1's Monday);
+ *           1 day ago: a planned meal eaten and no entries (totals with no entries);
+ *           3 days ago: OFF without a barcode + MANUAL with 0 g fat + an eaten lunch;
+ *           6 days ago: OFF + QUICK. Days 2, 4 and 5 ago: nothing (totals null).
+ *   Nils  — no stored target (targets null) and one MANUAL entry today.
+ *   Every other NUTRITION trainee (Petra among them) never logs: seven empty days.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface SeededFoodDay {
+  entries: Omit<CoachFoodLogEntry, "loggedAt">[];
+  entryTimes: string[];
+  eatenMeals: Omit<CoachFoodLogEatenMeal, "eatenAt">[];
+  eatenTimes: string[];
+}
+
+function foodDay(
+  entries: [Omit<CoachFoodLogEntry, "loggedAt">, string][],
+  eaten: [Omit<CoachFoodLogEatenMeal, "eatenAt">, string][] = []
+): SeededFoodDay {
+  return {
+    entries: entries.map(([e]) => e),
+    entryTimes: entries.map(([, t]) => t),
+    eatenMeals: eaten.map(([m]) => m),
+    eatenTimes: eaten.map(([, t]) => t),
+  };
+}
+
+/** Seeded days per trainee, by UTC days before today. Times are `HH:MM` UTC. */
+const FOOD_LOGS: Record<string, Record<number, SeededFoodDay>> = {
+  [LINA_ID]: {
+    0: foodDay([
+      [
+        {
+          name: "Greek yogurt 0%",
+          brand: "Fage",
+          servingG: 170,
+          calories: 97,
+          proteinG: 17.3,
+          carbsG: 6.1,
+          fatG: 0,
+          source: "OFF",
+          barcode: "5201054017470",
+        },
+        "07:45",
+      ],
+      [
+        {
+          name: "Pastry",
+          brand: null,
+          servingG: null,
+          calories: 320,
+          // Stored NOT NULL DEFAULT 0 (V28): a quick add that gave kcal only.
+          proteinG: 0,
+          carbsG: 0,
+          fatG: 0,
+          source: "QUICK",
+          barcode: null,
+        },
+        "10:20",
+      ],
+    ]),
+    1: foodDay(
+      [],
+      [
+        [
+          { name: "Overnight oats with berries", slot: "BREAKFAST", calories: 420, proteinG: 18, carbsG: 62, fatG: 11 },
+          "07:30",
+        ],
+      ]
+    ),
+    3: foodDay(
+      [
+        [
+          {
+            name: "Banana",
+            brand: null,
+            servingG: 120,
+            calories: 107,
+            proteinG: 1.3,
+            carbsG: 27.4,
+            fatG: 0.4,
+            source: "OFF",
+            // From the food database WITHOUT a code: the same label as with one.
+            barcode: null,
+          },
+          "09:05",
+        ],
+        [
+          {
+            name: "Rice cakes",
+            brand: null,
+            servingG: 18,
+            calories: 70,
+            proteinG: 1.4,
+            carbsG: 15,
+            fatG: 0,
+            source: "MANUAL",
+            barcode: null,
+          },
+          "16:10",
+        ],
+      ],
+      [
+        [
+          { name: "Chicken quinoa bowl", slot: "LUNCH", calories: 610, proteinG: 48, carbsG: 58, fatG: 18 },
+          "12:40",
+        ],
+      ]
+    ),
+    6: foodDay([
+      [
+        {
+          name: "Whey protein",
+          brand: "Myprotein",
+          servingG: 30,
+          calories: 120,
+          proteinG: 24,
+          carbsG: 2,
+          fatG: 1.9,
+          source: "OFF",
+          barcode: "5055534302194",
+        },
+        "18:00",
+      ],
+      [
+        {
+          name: "Dinner out",
+          brand: null,
+          servingG: null,
+          calories: 850,
+          proteinG: 0,
+          carbsG: 0,
+          fatG: 0,
+          source: "QUICK",
+          barcode: null,
+        },
+        "20:30",
+      ],
+    ]),
+  },
+  [NILS_ID]: {
+    0: foodDay([
+      [
+        {
+          name: "Porridge",
+          brand: null,
+          servingG: 250,
+          calories: 300,
+          proteinG: 10,
+          carbsG: 54,
+          fatG: 6,
+          source: "MANUAL",
+          barcode: null,
+        },
+        "08:15",
+      ],
+    ]),
+  },
+};
+
+/** `YYYY-MM-DD` of the UTC day `daysAgo` before `now`. */
+function utcDayBefore(now: Date, daysAgo: number): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  return d.toISOString().slice(0, 10);
+}
+
+function foodLogDay(id: string, date: string, daysAgo: number, targets: CoachFoodLogMacros | null): CoachFoodLogDay {
+  const seeded = FOOD_LOGS[id]?.[daysAgo];
+  const entries: CoachFoodLogEntry[] = (seeded?.entries ?? []).map((e, i) => ({
+    ...e,
+    loggedAt: `${date}T${seeded!.entryTimes[i]}:00Z`,
+  }));
+  const eatenMeals: CoachFoodLogEatenMeal[] = (seeded?.eatenMeals ?? []).map((m, i) => ({
+    ...m,
+    eatenAt: `${date}T${seeded!.eatenTimes[i]}:00Z`,
+  }));
+  const recorded = entries.length + eatenMeals.length > 0;
+  const sum = (pick: (x: CoachFoodLogMacros) => number) =>
+    Math.round([...entries, ...eatenMeals].reduce((acc, x) => acc + pick(x), 0));
+  return {
+    date,
+    // NULL when nothing was recorded — "Nothing logged", never 0 kcal.
+    totals: recorded
+      ? {
+          calories: sum((x) => x.calories),
+          proteinG: sum((x) => x.proteinG),
+          carbsG: sum((x) => x.carbsG),
+          fatG: sum((x) => x.fatG),
+        }
+      : null,
+    targets,
+    entries,
+    eatenMeals,
+  };
 }
 
 export const fixtureCoachApi: CoachApi = {
@@ -3774,6 +4012,36 @@ export const fixtureCoachApi: CoachApi = {
       // value the api's `local` profile and staging carry.
       recipePlacementEnabled: !(await placementOff(id)),
     };
+  },
+
+  /**
+   * EV-284a. The guard runs FIRST, as on the api, so a refused link never learns anything
+   * from a 400. Two cookie switches (one browser context only, like `evoli_fixture_link`)
+   * reach the page's two failure branches: `evoli_fixture_food_log=down` → a 500 (the
+   * section's load error) and `=forbidden` → the guard's 403 on THIS read alone (access
+   * ended between the page's reads → /clients/denied).
+   */
+  async getFoodLog(id: string): Promise<CoachFoodLogResponse> {
+    recordRead(`GET /coach-portal/clients/${id}/nutrition/log`);
+    await assertScope(id, "NUTRITION");
+    const failure = await fixtureSwitch("evoli_fixture_food_log");
+    if (failure === "forbidden") await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+    if (failure === "down") await fail(500, "INTERNAL_ERROR", "Food log unavailable");
+    const now = new Date();
+    const stored = nutritionState(id).targets;
+    const targets: CoachFoodLogMacros | null = stored
+      ? {
+          calories: stored.calories,
+          proteinG: stored.proteinG,
+          carbsG: stored.carbsG,
+          fatG: stored.fatG,
+        }
+      : null;
+    // The api's default window: `to` = today (UTC), `from` = six days before, ascending.
+    const days = [6, 5, 4, 3, 2, 1, 0].map((ago) =>
+      foodLogDay(id, utcDayBefore(now, ago), ago, targets)
+    );
+    return { clientId: id, from: days[0].date, to: days[6].date, days };
   },
 
   async saveNutritionTargets(
