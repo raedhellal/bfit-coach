@@ -4,6 +4,7 @@ import { ClientHeader } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { RoutineEditor } from "@/components/routine/RoutineEditor";
+import { TraineeChangedBanner } from "@/components/routine/TraineeChangedBanner";
 import { SaveAsTemplateButton } from "@/components/templates/SaveAsTemplateButton";
 import {
   coachApi,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/coachApi";
 import { equipmentLabels, injuryLabels } from "@/lib/guardrailLabels";
 import { toDraftView, toPlanView } from "@/lib/routineDocument";
+import { traineeChangeNotice } from "@/lib/routineChange";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { copy } from "@/lib/copy";
 
@@ -145,6 +147,12 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    */
   const guardrails = routine?.guardrails;
 
+  /**
+   * EV-283b — the trainee changed the live plan. Null (no banner) unless the api says
+   * `TRAINEE` in so many words; see `src/lib/routineChange.ts` for why it fails closed.
+   */
+  const changedByTrainee = traineeChangeNotice(routine, displayName);
+
   return (
     <CoachShell coachName={me?.displayName}>
       <ClientHeader
@@ -158,6 +166,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
         <ClientNotice message={message ?? copy.routine.loadError} />
       ) : (
         <>
+          {changedByTrainee && <TraineeChangedBanner sentence={changedByTrainee} />}
           {guardrails && (
             <ProfileFacts
               title={copy.routine.title}

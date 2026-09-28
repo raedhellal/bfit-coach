@@ -4,6 +4,7 @@ import { UiIcon } from "@/components/ui/icons";
 import { copy } from "@/lib/copy";
 import { formatDate } from "@/lib/format";
 import { hasScope, type RosterClient } from "@/lib/coachApi";
+import { rosterPlanChanged } from "@/lib/routineChange";
 
 /**
  * The populated roster, rendered twice: a table above 768 px and a stacked card list
@@ -85,6 +86,29 @@ function FlagBadge({ count }: { count: number | null }) {
   );
 }
 
+/**
+ * EV-283b — the small "Plan changed" marker: the trainee's own plan became live after
+ * this coach's latest publish, so a publish now would replace their change. Rendered for
+ * a literal `true` only (`rosterPlanChanged`): null means the link does not share
+ * WORKOUTS and false means the coach's plan is live, and neither is a marker. The api
+ * computes it by the same rule as the routine page's `changedSinceYourPublish`, and a
+ * publish clears it.
+ *
+ * `data-plan-changed` is the test hook: the word "changed" can appear in a plan name,
+ * and a marker located by its text alone would find one.
+ */
+function PlanChangedMarker({ client }: { client: RosterClient }) {
+  if (!rosterPlanChanged(client)) return null;
+  return (
+    <span data-plan-changed="" style={{ display: "inline-flex" }}>
+      <Badge tone="amber">
+        <UiIcon name="edit" size={12} />
+        {copy.roster.planChanged}
+      </Badge>
+    </span>
+  );
+}
+
 export function RosterRows({ clients }: { clients: RosterClient[] }) {
   return (
     <>
@@ -124,17 +148,23 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                   </span>
                 </Link>
               </Td>
-              <Td
-                title={c.currentPlanName || undefined}
-                style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              >
-                {/* "No plan" is a statement about the trainee's app; "Not shared" is
-                    a statement about the link. `scopes` is what makes them two cells
-                    instead of one hedge. */}
-                {c.currentPlanName || (
-                  <span style={{ color: "var(--ink-3)" }}>
-                    {hasScope(c.scopes, "WORKOUTS") ? copy.roster.noPlan : copy.client.notShared}
-                  </span>
+              <Td title={c.currentPlanName || undefined} style={{ maxWidth: 240 }}>
+                {/* The ellipsis lives on the name's own line so the EV-283b marker below
+                    it is never the part that gets clipped. */}
+                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {/* "No plan" is a statement about the trainee's app; "Not shared" is
+                      a statement about the link. `scopes` is what makes them two cells
+                      instead of one hedge. */}
+                  {c.currentPlanName || (
+                    <span style={{ color: "var(--ink-3)" }}>
+                      {hasScope(c.scopes, "WORKOUTS") ? copy.roster.noPlan : copy.client.notShared}
+                    </span>
+                  )}
+                </div>
+                {rosterPlanChanged(c) && (
+                  <div style={{ marginTop: 4 }}>
+                    <PlanChangedMarker client={c} />
+                  </div>
                 )}
               </Td>
               <Td>
@@ -231,6 +261,7 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                       and a triage signal that only exists on a desktop table is not a
                       triage signal. */}
                   <FlagBadge count={c.redFlagCount} />
+                  <PlanChangedMarker client={c} />
                   <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>

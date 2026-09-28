@@ -3905,6 +3905,251 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /coach-portal/nutrition-templates:
+    get:
+      summary: The coach's own nutrition template library
+      description: >-
+        EV-273a / ADR-0016b. Newest-updated first. Unpaged because the cap is 50 templates per
+        coach, enforced at the write under the coach-profile row lock and repeated as the query's
+        LIMIT, so it is a bounded collection rather than an unbounded query. A second coach sees an
+        EMPTY library, never this one's. Nothing here is visible to a trainee.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The library
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Create a nutrition template
+      description: >-
+        EV-273a AC1. Absolute targets with `PUT /coach-portal/clients/{id}/nutrition/targets`'s
+        bounds exactly, and an optional meal structure (omitted = the trainee's own). The calorie
+        floor is NOT applied here: a template has no sex; it applies when the template is used,
+        through the existing targets write. Every key the request does not declare, at any depth,
+        is refused with `COACH_FIELD_NOT_ACCEPTED` (EV-273a AC2); `recipePins` is such a key until
+        EV-273c. Applying a template is the portal sending the existing coach writes: no endpoint
+        takes a template id and writes anyone's data (ADR-0016b D16b.7).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NutritionTemplateSaveRequest"
+      responses:
+        "201":
+          description: Created. The same body `GET /coach-portal/nutrition-templates/{id}` returns.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateResponse"
+        "400":
+          description: >-
+            `COACH_FIELD_NOT_ACCEPTED` naming an undeclared key at any depth. `VALIDATION_ERROR`
+            naming the field (at the start of `message`) for a missing, fractional or out-of-bound
+            target, a `mealStructure` without both of its fields, or a name that is empty or over
+            80 characters after trimming. `COACH_MEAL_STRUCTURE_OUT_OF_RANGE` for `mealsPerDay`
+            outside 1-6.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `COACH_NUTRITION_TEMPLATE_NAME_TAKEN` (this coach already has a nutrition template with
+            the name, ignoring case and surrounding spaces; a routine template with it is fine), or
+            `COACH_NUTRITION_TEMPLATE_LIMIT_REACHED` at 50
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/nutrition-templates/{id}:
+    get:
+      summary: One nutrition template
+      description: >-
+        EV-273a AC4. Every denial on this mapping is ONE body, `code` included: a template belonging
+        to another coach, an id that never existed and one deleted in another tab are the same
+        branch of `requireOwnedNutritionTemplate`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: COACH_ACCESS_DENIED. Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      summary: Replace a nutrition template
+      description: >-
+        EV-273a. Replaces the whole template and applies every save rule again, including the name
+        rule against this coach's OTHER nutrition templates (keeping or re-casing its own name is
+        not a collision). Trainees it was already used on keep their targets and meals.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NutritionTemplateSaveRequest"
+      responses:
+        "200":
+          description: The saved template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateResponse"
+        "400":
+          description: As for POST /coach-portal/nutrition-templates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: COACH_ACCESS_DENIED. Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: COACH_NUTRITION_TEMPLATE_NAME_TAKEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Delete a nutrition template
+      description: >-
+        EV-273a. After it, the id answers the same 403 body as a foreign or random id. Trainees it
+        was already used on keep their targets and meals.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: COACH_ACCESS_DENIED. Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/nutrition-templates/{id}/duplicate:
+    post:
+      summary: Duplicate a nutrition template
+      description: >-
+        EV-273a. The copy is named "{name} (copy)", then "(copy 2)" and so on up to "(copy 20)",
+        with the same targets and meal structure. The original is shortened when needed so the
+        suffix always fits in 80 characters.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: The copy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionTemplateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: COACH_ACCESS_DENIED. Foreign, unknown or deleted — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `COACH_NUTRITION_TEMPLATE_LIMIT_REACHED` at 50, or `COACH_NUTRITION_TEMPLATE_NAME_TAKEN`
+            when "(copy)" to "(copy 20)" are all taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /coach-portal/ingredients:
     get:
       summary: Search the ingredients a recipe may use
@@ -4079,6 +4324,76 @@ paths:
             Not a coach, not this coach's client, revoked, no such id, or the link does not carry
             NUTRITION — one undifferentiated body for all five, so a 403 tells the caller nothing
             about which of them it was.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/nutrition/log:
+    get:
+      summary: The trainee's food log, per day, against their targets
+      description: >-
+        EV-284a. One element per day from `from` to `to`, both inclusive, ascending; at most 14 days.
+        Both parameters are optional: `to` defaults to the SERVER's UTC today (the portal sends no
+        `X-Timezone` and no trainee zone is stored — ADR-0025 D25.6 is pending), and `from` to six
+        days before `to`.
+        Days are the trainee's stored `food_log.logged_on`, the key their own day read uses, so an
+        entry is filed under the same day on both surfaces. Note that the app sends no date when it
+        logs food, so `logged_on` is the server's UTC day of the write.
+        `totals` is computed by the SAME code as the trainee's `GET /me/nutrition/today` `consumed`
+        — food log entries plus planned meals marked eaten — and is NULL on a day where nothing was
+        recorded. Render "Nothing logged", never 0 kcal.
+        `targets` is the stored target adjusted for a training or rest day exactly as the trainee's
+        own day read adjusts it; null when the trainee has none. Reading never creates a target.
+        Read-only: a record is erased only by the person who entered it.
+        Requires the **NUTRITION** scope on the link. Its consent text already covers "the meals you
+        log", so this needs no new scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: The trainee's days
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachFoodLogResponse"
+        "400":
+          description: >-
+            COACH_FOOD_LOG_RANGE_INVALID — `from` after `to`, or more than 14 days. Refused, never
+            clamped. VALIDATION_ERROR — a date that is not YYYY-MM-DD.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Same undifferentiated body as `GET /coach-portal/clients/{id}/nutrition`: not a coach, not
+            this coach's client, a revoked link, an unknown id, or a link without NUTRITION. The guard
+            runs before the range check, so a refused link never learns anything from a 400.
           content:
             application/json:
               schema:
@@ -4490,7 +4805,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/CoachMealWeek"
         "400":
-          description: VALIDATION_ERROR — no candidate at that index
+          description: >-
+            VALIDATION_ERROR — candidateIndex outside 0..20; INVALID_REQUEST — no candidate at
+            that index in the cached list
           content:
             application/json:
               schema:
@@ -4516,7 +4833,9 @@ paths:
         "409":
           description: >-
             COACH_MEAL_EATEN — the trainee has marked this meal eaten; COACH_MEAL_LOCKED — the
-            trainee locked this meal
+            trainee locked this meal; SWAP_OPTIONS_STALE — no candidates are cached for this meal
+            (BUG-271: every apply clears them, and an apply never generates), so read GET …/swap
+            again and pick from that list
           content:
             application/json:
               schema:
@@ -4905,6 +5224,17 @@ components:
           items:
             type: string
             enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS]
+        routineChangedSinceYourPublish:
+          type: boolean
+          nullable: true
+          description: >-
+            EV-283a — the roster's "Plan changed" marker: true when the trainee's own plan became
+            their live plan at or after THIS coach's latest publish to them. Computed by the same
+            rule as `CoachRoutineResponse.changedSinceYourPublish`, so the marker and the routine
+            page cannot disagree. False when the coach's plan is live, when this coach never
+            published to them, and when the author was never recorded (nothing is inferred). Edits
+            made from a workout session (add, remove or reorder an exercise) are not recorded. NULL
+            when this link does not carry WORKOUTS — "not shared", like `currentPlanName`.
       required: [id, traineeDisplayName, status, since, scopes]
     CoachClientPageResponse:
       type: object
@@ -5869,6 +6199,139 @@ components:
           items:
             type: string
       required: [allergies, rules, dislikes]
+    CoachFoodLogResponse:
+      type: object
+      description: EV-284a — the trainee's food log over a range of their days, against their targets.
+      properties:
+        clientId:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        days:
+          type: array
+          description: >-
+            One element per day from..to, ascending. A day with nothing recorded is present, with
+            `totals` null.
+          items:
+            $ref: "#/components/schemas/CoachFoodLogDay"
+      required: [clientId, from, to, days]
+    CoachFoodLogDay:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: The day the entries were filed under (`food_log.logged_on`).
+        totals:
+          allOf:
+            - $ref: "#/components/schemas/CoachFoodLogMacros"
+          nullable: true
+          description: >-
+            What the trainee consumed: entries plus planned meals marked eaten, from the same
+            computation as `GET /me/nutrition/today` `consumed`. NULL when nothing was recorded.
+        targets:
+          allOf:
+            - $ref: "#/components/schemas/CoachFoodLogMacros"
+          nullable: true
+          description: >-
+            The day's targets, training/rest-day adjusted as the trainee's own day read adjusts them;
+            null when the trainee has no stored target.
+        entries:
+          type: array
+          description: The day's food log entries, oldest first.
+          items:
+            $ref: "#/components/schemas/CoachFoodLogEntry"
+        eatenMeals:
+          type: array
+          description: >-
+            Planned meals the trainee marked eaten that day. They count in `totals` and are not
+            entries.
+          items:
+            $ref: "#/components/schemas/CoachFoodLogEatenMeal"
+      required: [date, entries, eatenMeals]
+    CoachFoodLogMacros:
+      type: object
+      properties:
+        calories:
+          type: integer
+        proteinG:
+          type: integer
+        carbsG:
+          type: integer
+        fatG:
+          type: integer
+      required: [calories, proteinG, carbsG, fatG]
+    CoachFoodLogEntry:
+      type: object
+      properties:
+        name:
+          type: string
+        brand:
+          type: string
+          nullable: true
+        servingG:
+          type: number
+          nullable: true
+          description: Serving in grams; null for a quick add.
+        calories:
+          type: integer
+        proteinG:
+          type: number
+          description: >-
+            Stored NOT NULL with a default of 0, so a quick add that gave only kcal reads 0 here,
+            indistinguishable from a real 0 g.
+        carbsG:
+          type: number
+          description: >-
+            Stored NOT NULL with a default of 0, so a quick add that gave only kcal reads 0 here,
+            indistinguishable from a real 0 g.
+        fatG:
+          type: number
+          description: >-
+            Stored NOT NULL with a default of 0, so a quick add that gave only kcal reads 0 here,
+            indistinguishable from a real 0 g.
+        source:
+          type: string
+          enum: [OFF, QUICK, MANUAL]
+          description: As stored (`FoodLogEntry.Source`).
+        barcode:
+          type: string
+          nullable: true
+          description: >-
+            The product code when the entry came from the food database. The app sends it for a
+            scanned product AND for a searched one (a search result is resolved by its code), so a
+            barcode does not by itself mean "scanned".
+        loggedAt:
+          type: string
+          format: date-time
+          description: When the entry was recorded.
+      required: [name, calories, proteinG, carbsG, fatG, source, loggedAt]
+    CoachFoodLogEatenMeal:
+      type: object
+      properties:
+        name:
+          type: string
+        slot:
+          type: string
+          nullable: true
+          description: The meal slot, e.g. BREAKFAST.
+        calories:
+          type: integer
+        proteinG:
+          type: integer
+        carbsG:
+          type: integer
+        fatG:
+          type: integer
+        eatenAt:
+          type: string
+          format: date-time
+      required: [name, calories, proteinG, carbsG, fatG, eatenAt]
     CoachNutritionResponse:
       type: object
       properties:
@@ -6003,7 +6466,35 @@ components:
           type: string
           format: date-time
           nullable: true
-      required: [clientId, guardrails, hasDraft]
+        lastChangedBy:
+          type: string
+          enum: [COACH, TRAINEE]
+          nullable: true
+          description: >-
+            EV-283a — who wrote the live plan: `COACH` (a publish) or `TRAINEE` (the trainee's own
+            editor, `PUT /me/coach/routine`, or an AI generation or chat rewrite they started).
+            NULL when it was never recorded: a plan written before this field existed, a catalogue
+            plan, or no plan at all. Nothing is inferred from the plan's source. Edits made from a
+            workout session (add, remove or reorder an exercise) are not recorded: they change
+            neither this field nor `lastChangedAt`.
+        lastChangedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            EV-283a — when that plan became the live plan: the save itself, or later when the
+            trainee went back to it (`POST /plans/select`) or an AI generation they started
+            finished. Null exactly when `lastChangedBy` is null.
+        changedSinceYourPublish:
+          type: boolean
+          description: >-
+            EV-283a — true when the trainee's own plan became the live plan at or after THIS
+            coach's latest publish to them, so publishing now replaces their change (the draft is
+            untouched either way). False when the coach's plan is live, when this coach never
+            published to this trainee, and when the author was never recorded. Edits made from a
+            workout session (add, remove or reorder an exercise) are not recorded, so they never
+            set it. Publishing clears it.
+      required: [clientId, guardrails, hasDraft, changedSinceYourPublish]
     CoachRoutineGuardrails:
       type: object
       description: >-
@@ -6395,6 +6886,122 @@ components:
           type: integer
           description: The product cap on recipes per coach (100), so the portal can show "{n} of 100".
           example: 100
+        remaining:
+          type: integer
+          description: How many more this coach may create.
+    NutritionTemplateSaveRequest:
+      type: object
+      description: >-
+        A nutrition template to create or replace (EV-273a). A closed key list at every depth: any
+        other key is refused with COACH_FIELD_NOT_ACCEPTED.
+      required: [name, targets]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: >-
+            1..80 characters after trimming, no control character or line break. Unique per coach
+            among nutrition templates, ignoring case and surrounding spaces.
+          example: Cut 1800
+        targets:
+          $ref: "#/components/schemas/NutritionTemplateTargetsRequest"
+        mealStructure:
+          allOf:
+            - $ref: "#/components/schemas/NutritionTemplateMealStructureRequest"
+          nullable: true
+          description: Omit (or null) to use the trainee's own meal structure when the template is applied.
+    NutritionTemplateTargetsRequest:
+      type: object
+      description: Absolute daily targets, whole numbers, with CoachTargetsRequest's bounds.
+      required: [calories, proteinG, carbsG, fatG]
+      additionalProperties: false
+      properties:
+        calories:
+          type: integer
+          minimum: 800
+          maximum: 8000
+          example: 1800
+        proteinG:
+          type: integer
+          minimum: 0
+          maximum: 500
+          example: 150
+        carbsG:
+          type: integer
+          minimum: 0
+          maximum: 1200
+          example: 170
+        fatG:
+          type: integer
+          minimum: 0
+          maximum: 400
+          example: 60
+    NutritionTemplateMealStructureRequest:
+      type: object
+      description: One fact, so both fields are required when the object is sent.
+      required: [mealsPerDay, snacksEnabled]
+      additionalProperties: false
+      properties:
+        mealsPerDay:
+          type: integer
+          description: 1-6 inclusive, else 400 COACH_MEAL_STRUCTURE_OUT_OF_RANGE (never clamped).
+          example: 4
+        snacksEnabled:
+          type: boolean
+          example: false
+    NutritionTemplateResponse:
+      type: object
+      description: A nutrition template. No recipe pins until EV-273c.
+      required: [id, name, targets, mealStructure, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        targets:
+          $ref: "#/components/schemas/NutritionTemplateTargets"
+        mealStructure:
+          allOf:
+            - $ref: "#/components/schemas/NutritionTemplateMealStructure"
+          nullable: true
+          description: Always present; null = use the trainee's own meal structure.
+        updatedAt:
+          type: string
+          format: date-time
+    NutritionTemplateTargets:
+      type: object
+      required: [calories, proteinG, carbsG, fatG]
+      properties:
+        calories:
+          type: integer
+        proteinG:
+          type: integer
+        carbsG:
+          type: integer
+        fatG:
+          type: integer
+    NutritionTemplateMealStructure:
+      type: object
+      required: [mealsPerDay, snacksEnabled]
+      properties:
+        mealsPerDay:
+          type: integer
+        snacksEnabled:
+          type: boolean
+    NutritionTemplateListResponse:
+      type: object
+      description: The coach's nutrition template library, newest-updated first.
+      required: [templates, limit, remaining]
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/NutritionTemplateResponse"
+        limit:
+          type: integer
+          description: The cap on nutrition templates per coach (50).
+          example: 50
         remaining:
           type: integer
           description: How many more this coach may create.
