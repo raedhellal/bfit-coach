@@ -47,5 +47,20 @@ code states, and each one would cost a rewrite or a false green to rediscover.
   fixture suite and died only there. Fixture pending accounts are addressed by email
   (`new.coach@`, `expired.coach@`, `throttled.coach@`, `stale.coach@`, `pending.trainee@`,
   `orphan.pending@`, `expires.midway@evoli.fit`), temporary password `Temp-pass-2026`.
+- **`/api/auth/*` gets no middleware, so no rotation** (staff round 2, blocking). The access
+  cookie's Max-Age is the api's `expiresIn` (900 s), so a form open for 15 minutes posts with
+  NO access cookie, and `apiFetch` throws on a missing token before its refresh-on-401. Any
+  handler there that reads the session calls `routeAccessToken()` (`src/lib/routeSession.ts`)
+  first. Witness it by `context.clearCookies({ name: "evoli_pro_at" })` before submit — a
+  test that only expires the token passes on the old code, because `apiFetch`'s 401 retry
+  rescues it; assert on the stub journal that `/auth/refresh` precedes `/me/activate`.
+- **The api compares `token_version` on refresh only**, not on an access token. So after a
+  lost activation reply the old PENDING access token still reads `GET /me/activation`
+  (`pending: false`) and a reload shows "already finished". Copy after an unknown outcome
+  must never say "not changed".
+- **Origin allowlist** (`src/lib/sameOrigin.ts`) is on all three `/api/auth/*` handlers; an
+  ABSENT Origin is allowed on purpose — every Playwright `page.request.post` sends none.
+- A mutant that makes the fixture api refuse with the SAME code the handler would (M2, the
+  409) survives a status-only test; assert that `/api/fixture/activations` stayed empty.
 
 See [[coach-portal-fixture-mode]], [[stories-carry-verbatim-copy]].

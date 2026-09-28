@@ -1,6 +1,8 @@
 import { expect, request, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
+import { isPendingOnly } from "../src/lib/jwt";
+import { mintFixtureToken } from "../src/lib/fixtureToken";
 
 /**
  * EV-278c AC11 — a coach whose account the admin initialised (EV-278a) finishes it on the
@@ -156,6 +158,33 @@ test.describe("EV-278c — a pending coach finishes the account on the portal", 
     // Still pending: the account was not finished on anybody's behalf.
     await page.goto("/");
     await expect(page).toHaveURL(/\/activate$/);
+  });
+
+  test("a signed-in COACH posting to the activation endpoint is refused 409 before the api is asked", async ({
+    page,
+  }) => {
+    // Staff mutant M2 (delete the handler's isPendingOnly 409) survived the suite: the
+    // fixture api answers ACCOUNT_ALREADY_ACTIVE for a non-pending caller too, so the
+    // status alone cannot tell the two apart. The witness is that NOTHING reached the api.
+    const login = await page.request.post("/api/auth/login", {
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+    });
+    expect(login.status()).toBe(200);
+    const res = await page.request.post("/api/auth/activate", {
+      data: {
+        temporaryPassword: TEMP,
+        newPassword: NEW_PASSWORD,
+        consentAccepted: true,
+        privacyPolicyVersion: "v1.0",
+        termsVersion: "v1.0",
+      },
+    });
+    expect(res.status()).toBe(409);
+    expect(await res.json()).toEqual({ code: "ACCOUNT_ALREADY_ACTIVE" });
+    // This context's session is a coach's, so the witness route is reachable directly.
+    const seen = await page.request.get("/api/fixture/activations", { maxRedirects: 0 });
+    expect(seen.status()).toBe(200);
+    expect((await seen.json()).activations, "the handler refused it; the api never saw it").toEqual([]);
   });
 
   test("AC11: the policy and terms links open the documents, labelled with the versions GET /legal/versions returned", async ({
@@ -391,4 +420,69 @@ test.describe("EV-278c — a pending coach finishes the account on the portal", 
       await expectUnoccluded(page, f.repeat, { over: f.consent, label: "repeat password" });
     });
   }
+});
+
+test.describe("EV-278c — the session checks behind /api/auth/*", () => {
+  test("pending-only means EXACTLY [PENDING]: a token with PENDING beside COACH is not a pending session", () => {
+    // Staff mutant M4 (`roles.includes("PENDING")`) survived: no writer mints this token
+    // (User.withRoles refuses it, ADR-0022 K2), so no browser test can meet one.
+    const as = (roles: string[]) => mintFixtureToken("x@evoli.fit", roles);
+    expect(isPendingOnly(as(["PENDING"]))).toBe(true);
+    expect(isPendingOnly(as(["PENDING", "COACH"]))).toBe(false);
+    expect(isPendingOnly(as(["COACH", "PENDING"]))).toBe(false);
+    expect(isPendingOnly(as(["PENDING", "PENDING"]))).toBe(false);
+    expect(isPendingOnly(as(["COACH"]))).toBe(false);
+    expect(isPendingOnly(as([]))).toBe(false);
+    expect(isPendingOnly("not-a-jwt")).toBe(false);
+    expect(isPendingOnly(null)).toBe(false);
+  });
+
+  const EVIL = "https://evil.example";
+  const ACTIVATE_BODY = {
+    temporaryPassword: TEMP,
+    newPassword: NEW_PASSWORD,
+    consentAccepted: true,
+    privacyPolicyVersion: "v1.0",
+    termsVersion: "v1.0",
+  };
+
+  test("a cross-origin sign-in is refused 403 and writes no cookie", async ({ page, baseURL }) => {
+    for (const origin of [EVIL, "null", "http://localhost.evil.example"]) {
+      const res = await page.request.post("/api/auth/login", {
+        headers: { Origin: origin },
+        data: { email: "coach@evoli.fit", password: "Password123!" },
+      });
+      expect(res.status(), `Origin: ${origin}`).toBe(403);
+      expect(await res.json()).toEqual({ code: "CROSS_ORIGIN" });
+      expect(res.headers()["set-cookie"], `Origin: ${origin}`).toBeUndefined();
+    }
+    expect(await page.context().cookies()).toEqual([]);
+
+    // The same request from the portal's own origin is the ordinary sign-in.
+    const own = await page.request.post("/api/auth/login", {
+      headers: { Origin: new URL(String(baseURL)).origin },
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+    });
+    expect(own.status()).toBe(200);
+  });
+
+  test("a cross-origin activation is refused 403 and reaches no api", async ({ page }) => {
+    await signInPending(page);
+    const res = await page.request.post("/api/auth/activate", { headers: { Origin: EVIL }, data: ACTIVATE_BODY });
+    expect(res.status()).toBe(403);
+    expect(await res.json()).toEqual({ code: "CROSS_ORIGIN" });
+    expect((await recordedActivations(page)).activations).toEqual([]);
+    await page.goto("/");
+    await expect(page, "still pending: nothing was finished").toHaveURL(/\/activate$/);
+  });
+
+  test("a cross-origin sign-out is refused 403 and leaves the session in place", async ({ page }) => {
+    await signIn(page, "coach@evoli.fit", "Password123!");
+    await page.waitForURL("/");
+    const res = await page.request.post("/api/auth/logout", { headers: { Origin: EVIL } });
+    expect(res.status()).toBe(403);
+    expect(res.headers()["set-cookie"]).toBeUndefined();
+    await page.goto(`/clients/${LINA}`);
+    await expect(page, "still signed in").toHaveURL(new RegExp(`/clients/${LINA}$`));
+  });
 });

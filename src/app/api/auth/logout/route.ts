@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { refuseCrossOrigin } from "@/lib/sameOrigin";
 import { clearSession } from "@/lib/session";
 
 /**
@@ -9,8 +10,14 @@ import { clearSession } from "@/lib/session";
  * matches "logout" in the api source), so signing out drops the browser's copy of the
  * tokens but cannot invalidate the refresh token server-side. It stays valid until it
  * expires or ADR-0010's rotation ledger retires it. EV-060 should add the endpoint.
+ *
+ * Same-origin only, like the other two `/api/auth/*` handlers: another site must not be
+ * able to sign a coach out (see sameOrigin.ts). It reads no session, so it needs no
+ * rotation.
  */
-export async function POST() {
+export async function POST(request: Request) {
+  const crossOrigin = refuseCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
   clearSession();
   return new NextResponse(null, { status: 204 });
 }

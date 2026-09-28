@@ -5,6 +5,7 @@ import { fixtureLoginIdentity } from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
 import { mintFixtureToken } from "@/lib/fixtureToken";
 import { hasCoachRole, isPendingOnly } from "@/lib/jwt";
+import { refuseCrossOrigin } from "@/lib/sameOrigin";
 import { writeSession, type SessionTokens } from "@/lib/session";
 
 /**
@@ -82,6 +83,10 @@ async function admitPending(tokens: SessionTokens) {
 }
 
 export async function POST(request: Request) {
+  // Login CSRF: another site must not be able to sign this browser in (see sameOrigin.ts).
+  const crossOrigin = refuseCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   let email = "";
   let password = "";
   try {

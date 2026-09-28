@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { ApiError, coachApi, type ActivateAccountRequest } from "@/lib/coachApi";
 import { hasCoachRole, isPendingOnly } from "@/lib/jwt";
-import { clearSession, readAccessToken, writeSession } from "@/lib/session";
+import { routeAccessToken } from "@/lib/routeSession";
+import { refuseCrossOrigin } from "@/lib/sameOrigin";
+import { clearSession, writeSession } from "@/lib/session";
 
 /**
  * POST /api/auth/activate — EV-278c, ADR-0022 D22.9: finish an account the admin
@@ -9,8 +11,11 @@ import { clearSession, readAccessToken, writeSession } from "@/lib/session";
  *
  * A route handler and not a server action because it WRITES the session (both cookies),
  * and this app writes cookies in `/api/auth/*` handlers only (ADR-0012 D5). It sits under
- * `/api/auth`, which the middleware matcher excludes, so it checks for itself that the
- * caller holds a PENDING session; b-fit-api then decides everything else.
+ * `/api/auth`, which the middleware matcher excludes, so it does for itself the three
+ * things middleware would have done: refuses a cross-origin POST (`sameOrigin.ts`),
+ * ROTATES an access token that is missing or expired (`routeSession.ts` — the access
+ * cookie outlives nobody who spends fifteen minutes on the form), and checks the caller
+ * holds a PENDING session. b-fit-api then decides everything else.
  *
  * ── the consent rule, which is why this file exists rather than a thin proxy ──────────
  * EV-278: *whoever creates an account only initialises it*; the person consents when they
@@ -34,9 +39,14 @@ function refuse(status: number, code: string, extra: Record<string, unknown> = {
 }
 
 export async function POST(request: Request) {
-  const access = readAccessToken();
-  if (!access) return refuse(401, "SESSION_EXPIRED");
-  if (!isPendingOnly(access)) return refuse(409, "ACCOUNT_ALREADY_ACTIVE");
+  const crossOrigin = refuseCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
+  const session = await routeAccessToken();
+  if (session.kind === "unavailable") return refuse(503, "API_UNAVAILABLE");
+  if (session.kind === "expired") return refuse(401, "SESSION_EXPIRED");
+  // Checked on the ROTATED token too: the refresh answers with the account's current roles.
+  if (!isPendingOnly(session.accessToken)) return refuse(409, "ACCOUNT_ALREADY_ACTIVE");
 
   let body: Body;
   try {
@@ -74,7 +84,8 @@ export async function POST(request: Request) {
       return refuse(502, "ACTIVATED_SIGN_IN_AGAIN");
     }
     writeSession(tokens);
-    return NextResponse.json({ ok: true, next: "/" });
+    // No destination: the form goes to "/" itself, and middleware decides from there.
+    return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.status === 401) {
@@ -98,6 +109,8 @@ export async function POST(request: Request) {
       }
       return refuse(err.status >= 400 && err.status < 600 ? err.status : 502, code);
     }
+    // A thrown fetch: the api may have committed the activation and lost the reply, so
+    // nothing said to the person may claim the account is unchanged (copy.activate.unavailable).
     return refuse(503, "API_UNAVAILABLE");
   }
 }

@@ -122,8 +122,15 @@ export const copy = {
     loadFailed: "Reload the page to try again.",
     legalUnavailable:
       "We can't show the Terms of Service and the Privacy Policy right now, so the account can't be finished yet. Reload the page to try again.",
-    failed: "Something went wrong and your account was not changed. Try again.",
-    unavailable: "Cannot reach the server. Your account was not changed. Try again.",
+    /**
+     * `failed` and `unavailable` are ONE sentence on purpose (staff, EV-278c round 2): after
+     * an unrecognised answer or a lost reply the portal does not know whether the api
+     * finished the account, so neither may say it was "not changed". Reloading /activate
+     * asks `GET /me/activation` again and draws where it actually stands — the form if still
+     * pending, `alreadyActiveTitle` if it was finished.
+     */
+    failed: "We couldn't confirm your account was finished. Reload this page to see where it stands.",
+    unavailable: "We couldn't confirm your account was finished. Reload this page to see where it stands.",
     signedInAgain: "Your account is finished. Sign in with your new password.",
   },
 

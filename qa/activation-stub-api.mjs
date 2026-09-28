@@ -14,7 +14,12 @@ import { createServer } from "node:http";
  *     minted for the pending session answers 401 afterwards;
  *   - `AccountActivationUseCase`'s order of checks, and a 429 with `Retry-After`;
  *   - `GET /legal/versions` with values the fixture does NOT use (v2.3 / v1.7), so a
- *     portal that hard-coded "v1.0" would send the wrong versions here and be caught.
+ *     portal that hard-coded "v1.0" would send the wrong versions here and be caught;
+ *   - a LOST REPLY (`lost@stub.test`): the activation commits, then the socket is
+ *     destroyed before a byte is written, so the portal cannot know the outcome. The api
+ *     compares `token_version` on REFRESH only (`RefreshTokenUseCase`; the access filter
+ *     does not), so the session's PENDING access token still reads `GET /me/activation`
+ *     — which now answers `pending: false`. Modelled the same way here.
  *
  * Tokens are unsigned (`alg: none`), like the other stubs: `src/lib/jwt.ts` only decodes.
  */
@@ -52,6 +57,7 @@ function reset() {
       ["pending@stub.test", account({ sub: "2780c000-0000-4000-8000-0000000000a1" })],
       ["throttled@stub.test", account({ sub: "2780c000-0000-4000-8000-0000000000a2", behaviour: "THROTTLED" })],
       ["midway@stub.test", account({ sub: "2780c000-0000-4000-8000-0000000000a3", behaviour: "EXPIRES_MIDWAY" })],
+      ["lost@stub.test", account({ sub: "2780c000-0000-4000-8000-0000000000a4", behaviour: "LOSES_REPLY" })],
     ]),
     journal: [],
     pendingPortalRefusals: 0,
@@ -101,6 +107,8 @@ function principal(req) {
   const bearer = (req.headers.authorization || "").replace(/^Bearer /, "");
   const claims = decode(bearer);
   if (!claims?.email) return null;
+  // An expired access token is refused, as the api's JWT filter refuses it.
+  if (typeof claims.exp !== "number" || claims.exp * 1000 <= Date.now()) return null;
   const account = state.accounts.get(claims.email);
   if (!account) return null;
   return { email: claims.email, account, roles: claims.roles || [] };
@@ -199,6 +207,11 @@ const server = createServer(async (req, res) => {
     a.activated = true;
     a.password = body.newPassword;
     a.tokenVersion += 1;
+    if (a.behaviour === "LOSES_REPLY") {
+      // Committed, and the caller never hears so.
+      req.socket.destroy();
+      return;
+    }
     return json(res, 200, tokensFor(who.email, a));
   }
 

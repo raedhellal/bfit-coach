@@ -153,3 +153,115 @@ test("live: a wrong temporary password at sign-in is the ordinary refusal, and w
   const j = await journal(page);
   expect(j.journal.filter((e) => e.path === "/me/activation")).toEqual([]);
 });
+
+/**
+ * Staff round 2, blocking: the access cookie's Max-Age is the api's `expiresIn` (900 s in
+ * production), and middleware — the thing that rotates — never runs for `/api/auth/*`. So a
+ * coach who spends more than fifteen minutes on the form submits with NO access cookie and
+ * a perfectly good 30-day refresh cookie. The handler has to rotate for itself.
+ */
+test("live: the access cookie is gone by the time the form is sent — the handler rotates with the refresh cookie and the activation lands", async ({
+  page,
+}) => {
+  await signInPending(page, "pending@stub.test");
+  await page.context().clearCookies({ name: "evoli_pro_at" });
+  expect(await cookie(page, "evoli_pro_at")).toBeUndefined();
+  expect(await cookie(page, "evoli_pro_rt")).toBeDefined();
+
+  const answered = page.waitForResponse((r) => r.url().endsWith("/api/auth/activate"));
+  await fillAndSubmit(page);
+  const res = await answered;
+  expect(res.status()).toBe(200);
+  // Nit 6: the form navigates to "/" itself; the handler names no destination.
+  expect(await res.json()).toEqual({ ok: true });
+  await page.waitForURL(/\/$/);
+  await expect(page.getByText("No trainees yet", { exact: true })).toBeVisible();
+  expect(claims(await cookie(page, "evoli_pro_at")).roles).toEqual(["COACH"]);
+
+  const j = await journal(page);
+  const paths = j.journal.map((e) => e.path);
+  const refreshAt = paths.lastIndexOf("/auth/refresh");
+  const activateAt = paths.indexOf("/me/activate");
+  expect(refreshAt, "the handler rotated").toBeGreaterThan(-1);
+  expect(refreshAt, "and rotated BEFORE activating").toBeLessThan(activateAt);
+  expect(j.journal[activateAt].roles, "activation was sent with the rotated PENDING token").toEqual(["PENDING"]);
+  expect(j.activationBodies).toHaveLength(1);
+});
+
+test("live: an access cookie that is still there but EXPIRED is rotated before the activation is sent", async ({
+  page,
+  baseURL,
+}) => {
+  await signInPending(page, "pending@stub.test");
+  const current = String(await cookie(page, "evoli_pro_at"));
+  const [head, , sig] = current.split(".");
+  const expired = Buffer.from(
+    JSON.stringify({ ...claims(current), exp: Math.floor(Date.now() / 1000) - 60 })
+  )
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  await page.context().addCookies([
+    { name: "evoli_pro_at", value: `${head}.${expired}.${sig}`, url: String(baseURL), httpOnly: true, sameSite: "Lax" },
+  ]);
+
+  await fillAndSubmit(page);
+  await page.waitForURL(/\/$/);
+  expect(claims(await cookie(page, "evoli_pro_at")).roles).toEqual(["COACH"]);
+  const paths = (await journal(page)).journal.map((e) => e.path);
+  const activateAt = paths.indexOf("/me/activate");
+  expect(activateAt).toBeGreaterThan(-1);
+  expect(paths.slice(0, activateAt), "rotated before activating, not after a 401").toContain("/auth/refresh");
+  expect(paths.filter((p) => p === "/me/activate"), "one attempt, not a refused one then a retry").toHaveLength(1);
+});
+
+test("live: no access cookie and no refresh cookie — the session is over, nothing is sent", async ({ page }) => {
+  await signInPending(page, "pending@stub.test");
+  await page.context().clearCookies();
+  await fillAndSubmit(page);
+  await page.waitForURL(/\/login\?error=expired$/);
+  const j = await journal(page);
+  expect(j.activationBodies).toEqual([]);
+  expect(j.journal.filter((e) => e.path === "/me/activate")).toEqual([]);
+});
+
+test("live: no access cookie and a refresh cookie the api refuses — the session is over, nothing is sent", async ({
+  page,
+  baseURL,
+}) => {
+  await signInPending(page, "pending@stub.test");
+  await page.context().clearCookies({ name: "evoli_pro_at" });
+  await page.context().addCookies([
+    { name: "evoli_pro_rt", value: "not.a-token.at-all", url: String(baseURL), httpOnly: true, sameSite: "Lax" },
+  ]);
+  await fillAndSubmit(page);
+  await page.waitForURL(/\/login\?error=expired$/);
+  const j = await journal(page);
+  expect(j.journal.some((e) => e.path === "/auth/refresh"), "a rotation was tried").toBe(true);
+  expect(j.activationBodies).toEqual([]);
+});
+
+/**
+ * Staff round 2, should-fix: when the reply is lost the portal does not know whether the
+ * account was finished, so the sentence may not say it was not. Reloading must then show
+ * where it stands: the PENDING access token still reads `GET /me/activation`, which says
+ * `pending: false`.
+ */
+test("live: a lost reply claims nothing about the account, and a reload shows it is already finished", async ({
+  page,
+}) => {
+  await signInPending(page, "lost@stub.test");
+  await fillAndSubmit(page);
+  await expect(page.locator("form").getByRole("alert")).toHaveText(
+    "We couldn't confirm your account was finished. Reload this page to see where it stands."
+  );
+  const j = await journal(page);
+  expect(j.tokenVersions["lost@stub.test"], "the api DID finish it").toBe(1);
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/activate$/);
+  await expect(page.getByRole("heading", { level: 1, name: "This account is already finished" })).toBeVisible();
+  await expect(page.getByText("Sign in again with the password you chose.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Finish my account" })).toHaveCount(0);
+});
