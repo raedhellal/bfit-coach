@@ -43,8 +43,15 @@ export async function POST(request: Request) {
   if (crossOrigin) return crossOrigin;
 
   const session = await routeAccessToken();
+  // Unavailable (api down, or its per-IP refresh throttle): the cookies stay, the same
+  // refresh token is good for the next attempt.
   if (session.kind === "unavailable") return refuse(503, "API_UNAVAILABLE");
-  if (session.kind === "expired") return refuse(401, "SESSION_EXPIRED");
+  if (session.kind === "expired") {
+    // The refresh token is missing or the api refused it: clear it, so no later request
+    // presents it again (staff round 3, nit 3).
+    clearSession();
+    return refuse(401, "SESSION_EXPIRED");
+  }
   // Checked on the ROTATED token too: the refresh answers with the account's current roles.
   if (!isPendingOnly(session.accessToken)) return refuse(409, "ACCOUNT_ALREADY_ACTIVE");
 

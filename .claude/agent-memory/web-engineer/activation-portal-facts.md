@@ -60,6 +60,21 @@ code states, and each one would cost a rewrite or a false green to rediscover.
   must never say "not changed".
 - **Origin allowlist** (`src/lib/sameOrigin.ts`) is on all three `/api/auth/*` handlers; an
   ABSENT Origin is allowed on purpose — every Playwright `page.request.post` sends none.
+- **A failed `/auth/refresh` is not always the session ending** (staff round 3). The
+  api's `AuthRateLimitGuard.onRefresh` throttles per CLIENT IP, and every coach's rotation
+  comes from the portal server's one IP — a 429 read as "expired" logs out whoever is
+  next. `src/lib/refreshOutcome.ts` is the one rule (4xx≠429 → expired; 429/5xx/throw →
+  unavailable), used by `routeSession.ts` AND `middleware.ts`. Middleware answers
+  unavailable with a 503 REWRITE onto `/unavailable` (cookies untouched, URL kept, reload
+  button); a direct visit to `/unavailable` redirects home. `apiFetch`'s own
+  `requestRefresh` still swallows every failure to null — out of scope then, worth a row.
+  The activation stub has `/__refresh-fails?status=503|429|0` to drive it.
+- **`sameOrigin.ts` compares the full origin** (`x-forwarded-proto` + `x-forwarded-host`,
+  falling back to `request.url`'s scheme + `Host`), and an absent Origin is refused when
+  `Sec-Fetch-Site` is `cross-site`/`same-site`. Playwright's request context may set both
+  headers freely, which is how the fixture suite witnesses them.
+- `qa/refresh-single-flight.spec.ts` hard-codes stub port 8098: `STUB_API_PORT` moves the
+  stub but not the spec, so override only `COACH_REFRESH_PORT`.
 - A mutant that makes the fixture api refuse with the SAME code the handler would (M2, the
   409) survives a status-only test; assert that `/api/fixture/activations` stayed empty.
 

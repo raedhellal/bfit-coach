@@ -1449,6 +1449,18 @@ export const copy = {
     ingredientsBound: "A recipe has between 1 and 25 ingredients.",
   },
 
+  /**
+   * /unavailable — a page load whose session rotation got no verdict from the api (it is
+   * down, or its per-IP refresh throttle answered 429). The cookies were kept, so "not
+   * signed out" is true; middleware answered before any page ran, so "nothing was
+   * changed" is true too — a server action refused there never reached its handler.
+   */
+  unavailable: {
+    title: "We can't reach Evoli right now",
+    body: "Nothing was changed and you have not been signed out. Try again in a moment.",
+    retry: "Try again",
+  },
+
   common: {
     loading: "Loading…",
     // The route-level error boundary catches renders from every page, not just the

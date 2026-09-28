@@ -235,11 +235,104 @@ test("live: no access cookie and a refresh cookie the api refuses — the sessio
   await page.context().addCookies([
     { name: "evoli_pro_rt", value: "not.a-token.at-all", url: String(baseURL), httpOnly: true, sameSite: "Lax" },
   ]);
+  const answered = page.waitForResponse((r) => r.url().endsWith("/api/auth/activate"));
   await fillAndSubmit(page);
+  expect((await answered).status()).toBe(401);
   await page.waitForURL(/\/login\?error=expired$/);
+  // Staff round 3, nit 3: the refresh cookie the api just refused is cleared, not left to
+  // be tried again by every later request.
+  expect(await cookie(page, "evoli_pro_rt"), "the dead refresh cookie is cleared").toBeUndefined();
   const j = await journal(page);
   expect(j.journal.some((e) => e.path === "/auth/refresh"), "a rotation was tried").toBe(true);
   expect(j.activationBodies).toEqual([]);
+});
+
+/**
+ * Staff round 3, should-fix: `/auth/refresh` failing is not always the session ending.
+ * `AuthRateLimitGuard.onRefresh` throttles per client IP, and every coach's rotation comes
+ * from the portal server's ONE IP, so a 429 there would otherwise sign out whoever was
+ * unlucky. A 5xx is the api being down. Both are `unavailable`: 503, cookies kept, nothing
+ * sent — and once the api answers again the same session carries on.
+ */
+for (const status of [503, 429]) {
+  test(`live: the handler's rotation meets ${status} — 503 API_UNAVAILABLE, the session is kept, nothing is sent`, async ({
+    page,
+  }) => {
+    await signInPending(page, "pending@stub.test");
+    const refreshBefore = await cookie(page, "evoli_pro_rt");
+    await page.context().clearCookies({ name: "evoli_pro_at" });
+    await stub(page, `/__refresh-fails?status=${status}`);
+
+    const answered = page.waitForResponse((r) => r.url().endsWith("/api/auth/activate"));
+    await fillAndSubmit(page);
+    const res = await answered;
+    expect(res.status()).toBe(503);
+    expect(await res.json()).toEqual({ code: "API_UNAVAILABLE" });
+    expect(res.headers()["set-cookie"], "no cookie is touched").toBeUndefined();
+    await expect(page.locator("form").getByRole("alert")).toHaveText(
+      "We couldn't confirm your account was finished. Reload this page to see where it stands."
+    );
+    await expect(page).toHaveURL(/\/activate$/);
+    expect(await cookie(page, "evoli_pro_rt"), "the refresh cookie survives").toBe(refreshBefore);
+    const j = await journal(page);
+    expect(j.journal.some((e) => e.path === "/auth/refresh"), "a rotation was tried").toBe(true);
+    expect(j.journal.filter((e) => e.path === "/me/activate")).toEqual([]);
+
+    // The api answers again: the SAME session finishes the account.
+    await stub(page, "/__refresh-fails?status=0");
+    await fillAndSubmit(page);
+    await page.waitForURL(/\/$/);
+    expect(claims(await cookie(page, "evoli_pro_at")).roles).toEqual(["COACH"]);
+  });
+
+  test(`live: a page load whose rotation meets ${status} is served 503 with a retry, and keeps the session`, async ({
+    page,
+  }) => {
+    await signInPending(page, "pending@stub.test");
+    const refreshBefore = await cookie(page, "evoli_pro_rt");
+    await page.context().clearCookies({ name: "evoli_pro_at" });
+    await stub(page, `/__refresh-fails?status=${status}`);
+
+    const res = await page.goto("/activate");
+    expect(res?.status()).toBe(503);
+    expect(res?.headers()["set-cookie"], "no cookie is touched").toBeUndefined();
+    await expect(page, "not bounced to /login").toHaveURL(/\/activate$/);
+    await expect(page.getByRole("heading", { level: 1, name: "We can't reach Evoli right now" })).toBeVisible();
+    await expect(
+      page.getByText("Nothing was changed and you have not been signed out. Try again in a moment.", { exact: true })
+    ).toBeVisible();
+    expect(await cookie(page, "evoli_pro_rt"), "the refresh cookie survives").toBe(refreshBefore);
+    const j = await journal(page);
+    expect(j.journal.some((e) => e.path === "/auth/refresh"), "a rotation was tried").toBe(true);
+
+    // Try again, with the api back: the same URL, the same session, rotated this time.
+    await stub(page, "/__refresh-fails?status=0");
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("button", { name: "Finish my account" })).toBeVisible();
+    await expect(page).toHaveURL(/\/activate$/);
+    expect(claims(await cookie(page, "evoli_pro_at")).roles).toEqual(["PENDING"]);
+  });
+}
+
+test("live: a page load whose refresh cookie the api refuses (401) still ends the session", async ({ page, baseURL }) => {
+  await signInPending(page, "pending@stub.test");
+  await page.context().clearCookies({ name: "evoli_pro_at" });
+  await page.context().addCookies([
+    { name: "evoli_pro_rt", value: "not.a-token.at-all", url: String(baseURL), httpOnly: true, sameSite: "Lax" },
+  ]);
+  await page.goto("/activate");
+  await expect(page).toHaveURL(/\/login\?error=expired$/);
+  expect(await cookie(page, "evoli_pro_rt")).toBeUndefined();
+});
+
+test("live: /unavailable is not a page of its own — a direct visit goes home", async ({ page }) => {
+  // A COACH session: a pending one is sent to /activate from every path anyway.
+  await signInPending(page, "pending@stub.test");
+  await fillAndSubmit(page);
+  await page.waitForURL(/\/$/);
+  await page.goto("/unavailable");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText("No trainees yet", { exact: true })).toBeVisible();
 });
 
 /**

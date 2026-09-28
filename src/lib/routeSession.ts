@@ -1,5 +1,6 @@
 import "server-only";
 import { ApiError, apiPost } from "./apiFetch";
+import { refreshOutcome } from "./refreshOutcome";
 import { isExpired } from "./jwt";
 import { readAccessToken, readRefreshToken, writeSession } from "./session";
 
@@ -19,6 +20,12 @@ import { readAccessToken, readRefreshToken, writeSession } from "./session";
  * `apiFetch` in the same request sends the fresh token). No refresh cookie, or a rotation
  * the api refuses → `expired`, and the caller answers 401. An api that cannot be reached
  * → `unavailable`: that is not the session ending, and must not be told as one.
+ *
+ * "Refuses" is a 4xx other than 429 (`refreshOutcome`, shared with `middleware.ts`). A 429
+ * is `unavailable` too, not `expired` (staff round 3): `AuthRateLimitGuard.onRefresh`
+ * throttles per client IP, and every coach's rotation comes from THIS server's one IP, so
+ * reading a 429 as "signed out" would log out whoever happened to be next. A 5xx is the
+ * api failing, not the token.
  *
  * Not joined to `apiFetch`'s single-flight: that one is for a page render fanning out
  * several calls at once. A handler makes one rotation, then one call.
@@ -47,6 +54,9 @@ export async function routeAccessToken(): Promise<RouteSession> {
     });
     return { kind: "token", accessToken: tokens.accessToken };
   } catch (err) {
-    return err instanceof ApiError ? { kind: "expired" } : { kind: "unavailable" };
+    // A thrown fetch (no status) is the api out of reach.
+    return err instanceof ApiError && refreshOutcome(err.status) === "expired"
+      ? { kind: "expired" }
+      : { kind: "unavailable" };
   }
 }

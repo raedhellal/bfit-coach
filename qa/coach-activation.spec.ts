@@ -466,6 +466,39 @@ test.describe("EV-278c — the session checks behind /api/auth/*", () => {
     expect(own.status()).toBe(200);
   });
 
+  // Staff round 3, nit 1: the portal's host under ANOTHER scheme is another origin.
+  test("an Origin with the portal's host but another scheme is refused 403", async ({ page, baseURL }) => {
+    const own = new URL(String(baseURL));
+    const otherScheme = `${own.protocol === "https:" ? "http" : "https"}://${own.host}`;
+    const res = await page.request.post("/api/auth/login", {
+      headers: { Origin: otherScheme },
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+    });
+    expect(res.status(), `Origin: ${otherScheme}`).toBe(403);
+    expect(await res.json()).toEqual({ code: "CROSS_ORIGIN" });
+    expect(res.headers()["set-cookie"]).toBeUndefined();
+  });
+
+  // Staff round 3, nit 2: no Origin is allowed only when the browser does not say the
+  // request came from another site.
+  test("no Origin but Sec-Fetch-Site naming another site is refused 403; same-origin is not", async ({ page }) => {
+    for (const site of ["cross-site", "same-site"]) {
+      const res = await page.request.post("/api/auth/login", {
+        headers: { "Sec-Fetch-Site": site },
+        data: { email: "coach@evoli.fit", password: "Password123!" },
+      });
+      expect(res.status(), `Sec-Fetch-Site: ${site}`).toBe(403);
+      expect(await res.json()).toEqual({ code: "CROSS_ORIGIN" });
+      expect(res.headers()["set-cookie"], `Sec-Fetch-Site: ${site}`).toBeUndefined();
+    }
+    expect(await page.context().cookies()).toEqual([]);
+    const own = await page.request.post("/api/auth/login", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+    });
+    expect(own.status()).toBe(200);
+  });
+
   test("a cross-origin activation is refused 403 and reaches no api", async ({ page }) => {
     await signInPending(page);
     const res = await page.request.post("/api/auth/activate", { headers: { Origin: EVIL }, data: ACTIVATE_BODY });

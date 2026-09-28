@@ -62,6 +62,10 @@ function reset() {
     journal: [],
     pendingPortalRefusals: 0,
     activationBodies: [],
+    // Staff round 3: `/__refresh-fails?status=503|429` makes `/auth/refresh` answer that,
+    // as b-fit-api does when it is down (5xx) or when `AuthRateLimitGuard.onRefresh`
+    // throttles the portal server's IP (429, with `Retry-After`). 0 = answer normally.
+    refreshFailure: 0,
   };
 }
 reset();
@@ -127,6 +131,10 @@ const server = createServer(async (req, res) => {
     reset();
     return json(res, 200, { ok: true });
   }
+  if (path === "/__refresh-fails") {
+    state.refreshFailure = Number(url.searchParams.get("status") || 0);
+    return json(res, 200, { ok: true, refreshFailure: state.refreshFailure });
+  }
   if (path === "/__journal") {
     return json(res, 200, {
       journal: state.journal,
@@ -149,6 +157,12 @@ const server = createServer(async (req, res) => {
 
   if (path === "/auth/refresh" && req.method === "POST") {
     const body = await readBody(req);
+    if (state.refreshFailure === 429) {
+      return json(res, 429, { code: "RATE_LIMITED", message: "Too many requests" }, { "Retry-After": "30" });
+    }
+    if (state.refreshFailure >= 500) {
+      return json(res, state.refreshFailure, { code: "INTERNAL_ERROR", message: "Unavailable" });
+    }
     const claims = decode(body.refreshToken);
     const account = claims && state.accounts.get(claims.email);
     if (!account || claims.typ !== "refresh" || claims.tv !== account.tokenVersion) {

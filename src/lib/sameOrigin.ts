@@ -12,27 +12,59 @@ import { NextResponse } from "next/server";
  * cross-origin activation would finish somebody's account with a consent they never gave.
  *
  * The rule:
- *   - an `Origin` header whose host is not this request's host → 403 `CROSS_ORIGIN`;
+ *   - an `Origin` header that is not this request's origin — scheme AND host, so
+ *     `https://portal` is not `http://portal` (staff round 3, nit 1) → 403 `CROSS_ORIGIN`;
  *   - `Origin: null` (a sandboxed frame, a data: URL, some cross-origin redirects) → 403;
- *   - no `Origin` header at all → allowed. Every browser sends `Origin` on a POST,
+ *   - no `Origin` header, but `Sec-Fetch-Site` saying the request came from another site
+ *     (`cross-site`, `same-site`) → 403 (nit 2). A browser that omitted Origin but sent
+ *     the fetch metadata has told us where the request came from;
+ *   - no `Origin` header otherwise → allowed. Every browser sends `Origin` on a POST,
  *     same-origin included, so an absent header is a non-browser client (curl, the
  *     Playwright request context), which has no victim's cookie jar to ride.
  *
- * "This request's host" is the `Host` header — `x-forwarded-host` first, which is what
- * Vercel's edge sets to the public host. A page on another site cannot set either: a
- * custom header on a cross-origin request needs a CORS preflight, and nothing here
- * answers one.
+ * "This request's origin" is `x-forwarded-proto` + `x-forwarded-host` — what Vercel's
+ * edge (and Next's own server) set to the public scheme and host — falling back to the
+ * request URL's scheme and the `Host` header. A page on another site cannot set any of
+ * them: a custom header on a cross-origin request needs a CORS preflight, and nothing
+ * here answers one.
  */
+const FOREIGN_FETCH_SITES = new Set(["cross-site", "same-site"]);
+
+function ownOrigin(request: Request): string | null {
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  if (!host) return null;
+  let scheme = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (!scheme) {
+    try {
+      scheme = new URL(request.url).protocol.replace(/:$/, "");
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return new URL(`${scheme}://${host}`).origin.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 export function refuseCrossOrigin(request: Request): NextResponse | null {
   const origin = request.headers.get("origin");
-  if (origin === null) return null;
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  let originHost: string | null = null;
-  try {
-    originHost = origin === "null" ? null : new URL(origin).host;
-  } catch {
-    originHost = null;
+  if (origin === null) {
+    const site = request.headers.get("sec-fetch-site")?.trim().toLowerCase();
+    return site && FOREIGN_FETCH_SITES.has(site) ? crossOrigin() : null;
   }
-  if (host && originHost && originHost.toLowerCase() === host.toLowerCase()) return null;
+  let claimed: string | null = null;
+  try {
+    claimed = origin === "null" ? null : new URL(origin).origin.toLowerCase();
+  } catch {
+    claimed = null;
+  }
+  const own = ownOrigin(request);
+  if (own && claimed && claimed === own) return null;
+  return crossOrigin();
+}
+
+function crossOrigin() {
   return NextResponse.json({ code: "CROSS_ORIGIN" }, { status: 403 });
 }
