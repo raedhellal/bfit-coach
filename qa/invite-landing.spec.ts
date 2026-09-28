@@ -12,6 +12,34 @@ import { test } from "./fixture-test";
 
 const TOKEN = "abc";
 const DEEP_LINK = `evolifit://my-coach/invite/${TOKEN}`;
+const LITE_LINK = `evolifitlite://my-coach/invite/${TOKEN}`;
+
+/**
+ * EV-289 AC1 (+ AC3: the portal ships one locale, English, so both labels are asserted
+ * verbatim here) — ADR-0027 D27.5d: the page offers both apps, full app first, with the
+ * same token and the same `coach` query. Literals, never imported from copy.ts or
+ * traineeApps.ts: if D-LITE-1 renames the lite app, this test is meant to go red and be
+ * edited with the story.
+ */
+test("EV-289 AC1: two buttons in order, Evoli Fit then Evoli Fit Lite, same token and coach query", async ({
+  page,
+}) => {
+  for (const [query, suffix] of [
+    ["", ""],
+    [`?coach=${encodeURIComponent("Alex R.")}`, "?coach=Alex%20R."],
+  ] as const) {
+    await page.goto(`/i/${TOKEN}${query}`);
+    const links = page.getByRole("link");
+    await expect(links).toHaveCount(2);
+    await expect(links.nth(0)).toHaveAccessibleName("Open in Evoli Fit");
+    await expect(links.nth(0)).toHaveAttribute("href", `${DEEP_LINK}${suffix}`);
+    await expect(links.nth(1)).toHaveAccessibleName("Open in Evoli Fit Lite");
+    await expect(links.nth(1)).toHaveAttribute("href", `${LITE_LINK}${suffix}`);
+    // Order on screen, not only in the DOM: the full app's button is above the lite one.
+    const [a, b] = [await links.nth(0).boundingBox(), await links.nth(1).boundingBox()];
+    expect(a!.y + a!.height).toBeLessThanOrEqual(b!.y);
+  }
+});
 
 test("the invite page renders without a session and never bounces to /login", async ({ page }) => {
   const res = await page.goto(`/i/${TOKEN}`);
@@ -29,7 +57,7 @@ test("the primary action is a real custom-scheme link and nothing auto-redirects
 }) => {
   await page.goto(`/i/${TOKEN}`);
 
-  const open = page.getByRole("link", { name: "Open in Evoli Fit" });
+  const open = page.getByRole("link", { name: "Open in Evoli Fit", exact: true });
   await expect(open).toBeVisible();
   await expect(open).toHaveAttribute("href", DEEP_LINK);
 
@@ -46,7 +74,7 @@ test("the primary action is a real custom-scheme link and nothing auto-redirects
   const hrefs = await page.locator("a[href]").evaluateAll((els) =>
     els.map((el) => el.getAttribute("href") || "")
   );
-  expect(hrefs).toEqual([DEEP_LINK]);
+  expect(hrefs).toEqual([DEEP_LINK, LITE_LINK]);
 });
 
 test("the token appears only inside the deep-link href, never as text", async ({ page }) => {
@@ -62,7 +90,10 @@ test("the token appears only inside the deep-link href, never as text", async ({
     els.map((el) => el.getAttribute("href") || "").filter((h) => h.includes(t as string)),
     token
   );
-  expect(withToken).toEqual([`evolifit://my-coach/invite/${token}`]);
+  expect(withToken).toEqual([
+    `evolifit://my-coach/invite/${token}`,
+    `evolifitlite://my-coach/invite/${token}`,
+  ]);
 });
 
 test("the invite page fits 390 px with a full-width tap target", async ({ page }) => {
@@ -74,10 +105,12 @@ test("the invite page fits 390 px with a full-width tap target", async ({ page }
   );
   expect(overflows, "the page must not scroll sideways at 390 px").toBe(false);
 
-  const box = await page.getByRole("link", { name: "Open in Evoli Fit" }).boundingBox();
-  expect(box).toBeTruthy();
-  // Apple's minimum tap target is 44 px.
-  expect(box!.height).toBeGreaterThanOrEqual(44);
+  for (const name of ["Open in Evoli Fit", "Open in Evoli Fit Lite"]) {
+    const box = await page.getByRole("link", { name, exact: true }).boundingBox();
+    expect(box, name).toBeTruthy();
+    // Apple's minimum tap target is 44 px.
+    expect(box!.height, name).toBeGreaterThanOrEqual(44);
+  }
 });
 
 test("the public invite page answers GET but refuses any other method", async ({ request }) => {
