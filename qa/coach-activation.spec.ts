@@ -1,0 +1,394 @@
+import { expect, request, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
+import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
+
+/**
+ * EV-278c AC11 — a coach whose account the admin initialised (EV-278a) finishes it on the
+ * portal. Fixture mode (the default config, `empty` roster scenario).
+ *
+ * The fixture's pending accounts are addressed BY EMAIL (`PENDING_ACCOUNTS` in
+ * `src/lib/coachApi.fixture.ts`); every one of them starts un-activated at each test,
+ * because `./fixture-test` resets the store first. Their shapes mirror b-fit-api
+ * `c69c287` (`AccountActivationUseCase`): the checks run in the api's order, so an
+ * expired account answers 410 before its temporary password is looked at.
+ *
+ * What this file cannot prove, and where it is proven instead: the fixture never refuses
+ * a PENDING token on `/coach-portal/*` (the real api does, 403), and it never sends a
+ * `Retry-After` header over HTTP. `qa/coach-activation.stub.spec.ts` drives the LIVE code
+ * path against a stub api that does both (`playwright.activation.config.ts`).
+ */
+
+const TEMP = "Temp-pass-2026";
+const NEW_PASSWORD = "Coach-pass-2026";
+const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
+
+async function signIn(page: Page, email: string, password = TEMP) {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+}
+
+async function signInPending(page: Page, email = "new.coach@evoli.fit") {
+  await signIn(page, email);
+  await page.waitForURL(/\/activate$/);
+}
+
+/**
+ * The form's refusal line. Scoped to the FORM: Next's route announcer is also
+ * `role="alert"` (an empty `#__next-route-announcer__`), so a page-wide `getByRole("alert")`
+ * is two elements and proves nothing.
+ */
+const refusal = (page: Page) => page.locator("form").getByRole("alert");
+
+const form = (page: Page) => ({
+  temporary: page.getByLabel("Temporary password"),
+  fresh: page.getByLabel("New password", { exact: true }),
+  repeat: page.getByLabel("Repeat the new password"),
+  consent: page.getByRole("checkbox", { name: "I agree to the Terms of Service and the Privacy Policy." }),
+  submit: page.getByRole("button", { name: "Finish my account" }),
+});
+
+async function fillPasswords(page: Page, temporary = TEMP, fresh = NEW_PASSWORD, repeat = fresh) {
+  const f = form(page);
+  await f.temporary.fill(temporary);
+  await f.fresh.fill(fresh);
+  await f.repeat.fill(repeat);
+}
+
+/** Activation bodies the fixture api received, read with a COACH session of its own. */
+async function recordedActivations(page: Page) {
+  // The page's own cookie is a PENDING one; middleware sends it to /activate. Use a
+  // separate context signed in as the ordinary fixture coach.
+  const ctx = await request.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    const login = await ctx.post("/api/auth/login", {
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+      maxRedirects: 0,
+    });
+    expect(login.status()).toBe(200);
+    const res = await ctx.get("/api/fixture/activations", { maxRedirects: 0 });
+    expect(res.status(), "GET /api/fixture/activations").toBe(200);
+    return (await res.json()) as {
+      activations: Array<{
+        email: string;
+        keys: string[];
+        consentAccepted: unknown;
+        privacyPolicyVersion: unknown;
+        termsVersion: unknown;
+        outcome: string;
+      }>;
+    };
+  } finally {
+    await ctx.dispose();
+  }
+}
+
+test.describe("EV-278c — a pending coach finishes the account on the portal", () => {
+  test("AC11: a temporary-password sign-in lands on the activation screen, naming who set it up and when it expires", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    await expect(page.getByRole("heading", { level: 1, name: "Finish your account" })).toBeVisible();
+    await expect(page.getByText("Evoli set up this Evoli Pro account for you.", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Finish it by 27 Oct 2036, 09:30 UTC. If it isn't finished by then, the account is deleted.",
+        { exact: true }
+      )
+    ).toBeVisible();
+    // No portal chrome: nothing on this screen leads to the roster.
+    await expect(page.getByRole("navigation")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Roster" })).toHaveCount(0);
+  });
+
+  test("AC11: a pending session reaches the activation screen and nowhere else", async ({ page }) => {
+    await signInPending(page);
+    for (const path of ["/", `/clients/${LINA}`, `/clients/${LINA}/routine`, "/templates", "/recipes", "/clients/denied"]) {
+      const response = await page.goto(path);
+      await expect(page, `${path} must send a pending session back`).toHaveURL(/\/activate$/);
+      expect(response?.status(), `${path} ends on the activation screen`).toBe(200);
+      await expect(page.getByRole("heading", { level: 1, name: "Finish your account" })).toBeVisible();
+      await expect(page.getByText("No trainees yet")).toHaveCount(0);
+    }
+    // The fixture test routes are behind the same guard.
+    const direct = await page.request.get("/api/fixture/state", { maxRedirects: 0 });
+    expect(direct.status(), "a pending cookie on a guarded API route is redirected").toBe(307);
+    expect(direct.headers()["location"]).toMatch(/\/activate$/);
+  });
+
+  test("AC11: the button stays disabled until the policy is accepted — never pre-ticked", async ({ page }) => {
+    await signInPending(page);
+    const f = form(page);
+    await expect(f.consent).not.toBeChecked();
+    await expect(f.submit).toBeDisabled();
+
+    await fillPasswords(page);
+    await expect(f.submit, "all passwords filled, consent not given").toBeDisabled();
+
+    await f.consent.check();
+    await expect(f.submit).toBeEnabled();
+    await f.consent.uncheck();
+    await expect(f.submit, "unticking takes the consent back").toBeDisabled();
+
+    // Nothing was sent while the box was unticked.
+    expect((await recordedActivations(page)).activations).toEqual([]);
+  });
+
+  test("the activation endpoint itself refuses a body without an explicit consent, and sends nothing on", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    for (const consentAccepted of [false, undefined, "true", 1]) {
+      const res = await page.request.post("/api/auth/activate", {
+        data: {
+          temporaryPassword: TEMP,
+          newPassword: NEW_PASSWORD,
+          ...(consentAccepted === undefined ? {} : { consentAccepted }),
+          privacyPolicyVersion: "v1.0",
+          termsVersion: "v1.0",
+        },
+      });
+      expect(res.status(), `consentAccepted=${JSON.stringify(consentAccepted)}`).toBe(400);
+      expect((await res.json()).code).toBe("CONSENT_REQUIRED");
+    }
+    expect((await recordedActivations(page)).activations).toEqual([]);
+    // Still pending: the account was not finished on anybody's behalf.
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/activate$/);
+  });
+
+  test("AC11: the policy and terms links open the documents, labelled with the versions GET /legal/versions returned", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    const terms = page.getByRole("link", { name: "Terms of Service (version v1.0)" });
+    const privacy = page.getByRole("link", { name: "Privacy Policy (version v1.0)" });
+    await expect(terms).toHaveAttribute("href", "https://evoli.fit/terms");
+    await expect(privacy).toHaveAttribute("href", "https://evoli.fit/privacy");
+    for (const link of [terms, privacy]) {
+      await expect(link).toHaveAttribute("target", "_blank");
+      await expect(link).toHaveAttribute("rel", /noopener/);
+    }
+  });
+
+  test("AC11: a successful activation sends the accepted versions and no role, and lands the coach on the roster", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    const f = form(page);
+    await fillPasswords(page);
+    await f.consent.check();
+    await f.submit.click();
+
+    await page.waitForURL(/\/$/);
+    await expect(page.getByText("No trainees yet", { exact: true })).toBeVisible();
+
+    const { activations } = await recordedActivations(page);
+    expect(activations).toHaveLength(1);
+    expect(activations[0]).toMatchObject({
+      email: "new.coach@evoli.fit",
+      consentAccepted: true,
+      privacyPolicyVersion: "v1.0",
+      termsVersion: "v1.0",
+      outcome: "ACTIVATED",
+    });
+    // The granted role comes from the api's row (D22.9a); the portal never names one.
+    expect(activations[0].keys.sort()).toEqual(
+      ["consentAccepted", "newPassword", "privacyPolicyVersion", "temporaryPassword", "termsVersion"].sort()
+    );
+
+    // The session now holds the fresh COACH tokens: the activation screen is behind it.
+    await page.goto("/activate");
+    await expect(page).toHaveURL(/\/$/);
+    await page.goto(`/clients/${LINA}`);
+    await expect(page).toHaveURL(new RegExp(`/clients/${LINA}$`));
+  });
+
+  test("a wrong temporary password is named, keeps the consent, and clears only the password fields", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    const f = form(page);
+    await fillPasswords(page, "not-the-one");
+    await f.consent.check();
+    await f.submit.click();
+
+    await expect(refusal(page)).toHaveText(
+      "That temporary password isn't right. Check the email we sent you."
+    );
+    await expect(page).toHaveURL(/\/activate$/);
+    await expect(f.temporary).toHaveValue("");
+    await expect(f.fresh).toHaveValue("");
+    await expect(f.repeat).toHaveValue("");
+    await expect(f.consent).toBeChecked();
+  });
+
+  test("reusing the temporary password as the new one is refused with its own sentence", async ({ page }) => {
+    await signInPending(page);
+    const f = form(page);
+    await fillPasswords(page, TEMP, TEMP);
+    await f.consent.check();
+    await f.submit.click();
+    await expect(refusal(page)).toHaveText(
+      "Choose a new password that's different from the temporary one."
+    );
+    await expect(page).toHaveURL(/\/activate$/);
+  });
+
+  test("the new password is checked before anything is sent: 8 characters, typed twice the same", async ({ page }) => {
+    await signInPending(page);
+    const f = form(page);
+    await f.consent.check();
+
+    await fillPasswords(page, TEMP, "short", "short");
+    await expect(page.getByText("At least 8 characters.", { exact: true })).toBeVisible();
+    await expect(f.submit).toBeDisabled();
+
+    await fillPasswords(page, TEMP, NEW_PASSWORD, `${NEW_PASSWORD}x`);
+    await expect(page.getByText("The two new passwords don't match.", { exact: true })).toBeVisible();
+    await expect(f.submit).toBeDisabled();
+
+    await fillPasswords(page);
+    await expect(f.submit).toBeEnabled();
+  });
+
+  test("an expired account says so, names who can set it up again, and offers no form", async ({ page }) => {
+    await signInPending(page, "expired.coach@evoli.fit");
+    await expect(page.getByRole("heading", { level: 1, name: "This account has expired" })).toBeVisible();
+    await expect(
+      page.getByText(
+        "It had to be finished by 1 Aug 2026, 09:30 UTC, and that time has passed. Ask Evoli to set it up again.",
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(page.getByRole("checkbox")).toHaveCount(0);
+    await expect(page.getByLabel("Temporary password")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Finish my account" })).toHaveCount(0);
+    // Still confined: an expired pending session reaches nothing else either.
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/activate$/);
+    // And the way out works.
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("an account that expires while the form is open answers 410 with the same message", async ({ page }) => {
+    await signInPending(page, "expires.midway@evoli.fit");
+    const f = form(page);
+    await fillPasswords(page);
+    await f.consent.check();
+    await f.submit.click();
+    await expect(refusal(page)).toHaveText(
+      "This account had to be finished by 27 Oct 2036, 09:30 UTC, and that time has passed. Ask Evoli to set it up again."
+    );
+    await expect(f.submit).toBeDisabled();
+  });
+
+  test("a trainee's pending account is refused on the portal and pointed at the app, with no session", async ({
+    page,
+  }) => {
+    await signIn(page, "pending.trainee@evoli.fit");
+    await expect(refusal(page)).toHaveText(
+      "This account is not an Evoli Pro coach account. Finish setting it up in the Evoli Fit app."
+    );
+    await expect(page).toHaveURL(/\/login$/);
+    await page.goto("/activate");
+    await expect(page, "no cookie was written, so the guard sends it to /login").toHaveURL(/\/login$/);
+  });
+
+  test("a pending account with no initialisation record is refused at sign-in with a way to reach us", async ({
+    page,
+  }) => {
+    await signIn(page, "orphan.pending@evoli.fit");
+    await expect(refusal(page)).toHaveText(
+      "We can't finish this account here. Write to support@evoli.fit and we'll sort it out."
+    );
+    await page.goto("/activate");
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test("the activation throttle says how long to wait and holds the button", async ({ page }) => {
+    await signInPending(page, "throttled.coach@evoli.fit");
+    const f = form(page);
+    await fillPasswords(page);
+    await f.consent.check();
+    await f.submit.click();
+    // Retry-After 599 s → rounded UP to 10 minutes (EV-204 AC-P5c, mirrored).
+    await expect(refusal(page)).toHaveText("Too many attempts. Try again in 10 minutes.");
+    await fillPasswords(page);
+    await expect(f.submit, "held until Retry-After has passed").toBeDisabled();
+  });
+
+  test("a policy revised while the form was open is re-presented and must be accepted again", async ({ page }) => {
+    await signInPending(page, "stale.coach@evoli.fit");
+    const f = form(page);
+    await fillPasswords(page);
+    await f.consent.check();
+    await f.submit.click();
+
+    await expect(refusal(page)).toHaveText(
+      "Our Terms of Service or Privacy Policy have changed. Please review them and accept the new version."
+    );
+    await expect(f.consent, "never resubmitted silently: the tick is taken back").not.toBeChecked();
+    await expect(page.getByRole("link", { name: "Privacy Policy (version v1.1)" })).toBeVisible();
+    await expect(f.submit).toBeDisabled();
+
+    await fillPasswords(page);
+    await f.consent.check();
+    await f.submit.click();
+    await page.waitForURL(/\/$/);
+
+    const { activations } = await recordedActivations(page);
+    expect(activations.map((a) => [a.privacyPolicyVersion, a.outcome])).toEqual([
+      ["v1.0", "CONSENT_VERSION_STALE"],
+      ["v1.1", "ACTIVATED"],
+    ]);
+  });
+
+  test("keyboard only: every control is reachable in order, Space ticks the consent, Enter submits", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    const f = form(page);
+    await f.temporary.focus();
+    await page.keyboard.type(TEMP);
+    await page.keyboard.press("Tab");
+    await expect(f.fresh).toBeFocused();
+    await page.keyboard.type(NEW_PASSWORD);
+    await page.keyboard.press("Tab");
+    await expect(f.repeat).toBeFocused();
+    await page.keyboard.type(NEW_PASSWORD);
+    await page.keyboard.press("Tab");
+    await expect(f.consent).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(f.consent).toBeChecked();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("link", { name: /^Terms of Service/ })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("link", { name: /^Privacy Policy/ })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(f.submit).toBeFocused();
+    await f.repeat.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(/\/$/);
+  });
+
+  for (const width of [1280, 375, 320]) {
+    test(`layout at ${width}px: no sideways scroll, and the consent and submit are not painted over`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await signInPending(page);
+      await expectNoSidewaysScroll(page, "activation screen");
+      const f = form(page);
+      await expectUnoccluded(page, f.consent, { label: "consent checkbox" });
+      await expectUnoccluded(page, f.submit, { over: page.getByRole("link", { name: /^Privacy Policy/ }), label: "submit" });
+      await expectUnoccluded(page, page.getByRole("link", { name: /^Terms of Service/ }), {
+        over: page.getByRole("link", { name: /^Privacy Policy/ }),
+        label: "terms link",
+      });
+      await expectUnoccluded(page, f.repeat, { over: f.consent, label: "repeat password" });
+    });
+  }
+});

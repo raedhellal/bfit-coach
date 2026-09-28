@@ -64,6 +64,7 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
   "coach-affordance.live.spec.ts": "live config, same",
   "coach-legacy-api.spec.ts": "legacy config: COACH_API_MODE=live against qa/legacy-api.mjs",
   "refresh-single-flight.spec.ts": "refresh config: COACH_API_MODE=live against qa/stub-api.mjs",
+  "coach-activation.stub.spec.ts": "activation config: COACH_API_MODE=live against qa/activation-stub-api.mjs; resets the stub per test",
   "contract-drift.spec.ts": "reads two files from disk; never calls the dev server",
   "api-merge-condition.spec.ts": "reads git and a file from disk; never calls the dev server",
 };

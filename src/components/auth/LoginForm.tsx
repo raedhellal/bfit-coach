@@ -35,6 +35,11 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
         return copy.login.rateLimited;
       case "MFA_UNSUPPORTED":
         return copy.login.mfaUnsupported;
+      // EV-278c — a pending account the portal will not finish, and a data defect.
+      case "PENDING_TRAINEE":
+        return copy.login.pendingTrainee;
+      case "ACCOUNT_NOT_INITIALISED":
+        return copy.login.notInitialised;
       case "API_UNAVAILABLE":
         return copy.login.unavailable;
       default:
@@ -59,7 +64,11 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
         setPassword("");
         return;
       }
-      router.replace("/");
+      // EV-278c: the handler says where the session lands — the roster, or /activate for
+      // an account still to be finished. A closed set; anything else is the roster, and
+      // middleware re-decides either way.
+      const body = (await res.json().catch(() => null)) as { next?: string } | null;
+      router.replace(body?.next === "/activate" ? "/activate" : "/");
       router.refresh();
     } catch {
       setError(copy.login.unavailable);

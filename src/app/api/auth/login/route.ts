@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { ApiError, apiPost } from "@/lib/apiFetch";
+import { coachApi, type ActivationStatus } from "@/lib/coachApi";
+import { fixtureLoginIdentity } from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
-import { hasCoachRole } from "@/lib/jwt";
-import { writeSession } from "@/lib/session";
+import { mintFixtureToken } from "@/lib/fixtureToken";
+import { hasCoachRole, isPendingOnly } from "@/lib/jwt";
+import { writeSession, type SessionTokens } from "@/lib/session";
 
 /**
  * POST /api/auth/login — the BFF sign-in (EV-183 AC1, ADR-0012 D5).
@@ -37,22 +40,45 @@ function fail(status: number, code: string) {
 }
 
 /**
- * Fixture mode has to mint something the middleware can read, so it builds an
- * unsigned token with the same claim shape b-fit-api uses. It is accepted by nothing
- * but this app's own routing: every api call in fixture mode is served from
- * coachApi.fixture.ts and never leaves the process. Gated on the server env, so it
- * cannot be turned on from a browser.
+ * EV-278c — where a session goes once it exists. A closed set, never a value taken from
+ * the request: the form navigates to what this handler says, so an open value here would
+ * be an open redirect.
  */
-function fixtureToken(email: string): string {
-  const enc = (o: unknown) =>
-    btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  const payload = {
-    sub: "1a2b3c4d-0000-4000-8000-00000000c0ac",
-    email,
-    roles: ["USER", "COACH"],
-    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 8,
-  };
-  return `${enc({ alg: "none", typ: "JWT" })}.${enc(payload)}.fixture`;
+type Landing = "/" | "/activate";
+
+function signedIn(tokens: SessionTokens, next: Landing) {
+  writeSession(tokens);
+  return NextResponse.json({ ok: true, next });
+}
+
+/**
+ * EV-278c / ADR-0022 D22.9e — a token whose roles are exactly `["PENDING"]`.
+ *
+ * It is admitted ONLY once `GET /me/activation` says the account is pending with a
+ * coach's grant, and then only to /activate (middleware confines it there). Anything
+ * else writes NO cookie, so the session never starts:
+ *   - a trainee's pending account (`grantedRole: USER`) — "today's refusal, pointing at
+ *     the app" (D22.9e): the trainee finishes in Evoli Fit;
+ *   - `409 ACCOUNT_NOT_INITIALISED` — a data defect the person cannot fix from here;
+ *   - `pending: false` on a PENDING token, or any other grant (a `GYM_OWNER` arrives with
+ *     EV-281a, and the portal has no gym home until EV-281b) — the ordinary AC1 refusal.
+ * An expired account IS admitted: the activation screen is where it is told so, with who
+ * to ask, and a PENDING session can reach nothing else anyway.
+ */
+async function admitPending(tokens: SessionTokens) {
+  let status: ActivationStatus;
+  try {
+    status = await coachApi.getActivation(tokens.accessToken);
+  } catch (err) {
+    if (err instanceof ApiError) {
+      if (err.code === "ACCOUNT_NOT_INITIALISED") return fail(409, "ACCOUNT_NOT_INITIALISED");
+      return fail(502, "LOGIN_FAILED");
+    }
+    return fail(503, "API_UNAVAILABLE");
+  }
+  if (status.pending && status.grantedRole === "COACH") return signedIn(tokens, "/activate");
+  if (status.pending && status.grantedRole === "USER") return fail(403, "PENDING_TRAINEE");
+  return fail(403, "NOT_A_COACH");
 }
 
 export async function POST(request: Request) {
@@ -68,12 +94,17 @@ export async function POST(request: Request) {
   if (!email || !password) return fail(400, "BAD_REQUEST");
 
   if (COACH_API_MODE === "fixture") {
-    writeSession({
-      accessToken: fixtureToken(email),
+    // Any password signs in; the temporary one is checked where the api checks it, at
+    // activation. The roles are the fixture account's (EV-278c) or the ordinary coach's.
+    const identity = fixtureLoginIdentity(email);
+    const tokens: SessionTokens = {
+      accessToken: mintFixtureToken(email, identity.roles, identity.sub),
       refreshToken: "fixture-refresh",
       expiresIn: 60 * 60 * 8,
-    });
-    return NextResponse.json({ ok: true });
+    };
+    if (isPendingOnly(tokens.accessToken)) return admitPending(tokens);
+    if (!hasCoachRole(tokens.accessToken)) return fail(403, "NOT_A_COACH");
+    return signedIn(tokens, "/");
   }
 
   let response: LoginResponse;
@@ -98,17 +129,21 @@ export async function POST(request: Request) {
     return fail(502, "LOGIN_FAILED");
   }
 
-  // AC1: only COACH accounts may enter. `GET /me` (`UserResponse`) exposes id, email,
-  // fullName, createdAt and emailVerified and NO roles, so the role is read from the
-  // access token's `roles` claim (JwtTokenService) — see src/lib/jwt.ts.
-  if (!hasCoachRole(response.accessToken)) {
-    return fail(403, "NOT_A_COACH"); // no cookie is written: the session never starts
-  }
-
-  writeSession({
+  const tokens: SessionTokens = {
     accessToken: response.accessToken,
     refreshToken: response.refreshToken,
     expiresIn: response.expiresIn,
-  });
-  return NextResponse.json({ ok: true });
+  };
+
+  // EV-278c: an initialised account signing in with its emailed temporary password.
+  if (isPendingOnly(tokens.accessToken)) return admitPending(tokens);
+
+  // AC1: only COACH accounts may enter. `GET /me` (`UserResponse`) exposes id, email,
+  // fullName, createdAt and emailVerified and NO roles, so the role is read from the
+  // access token's `roles` claim (JwtTokenService) — see src/lib/jwt.ts.
+  if (!hasCoachRole(tokens.accessToken)) {
+    return fail(403, "NOT_A_COACH"); // no cookie is written: the session never starts
+  }
+
+  return signedIn(tokens, "/");
 }

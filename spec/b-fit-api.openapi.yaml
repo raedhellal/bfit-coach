@@ -417,6 +417,175 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /me/activation:
+    get:
+      summary: Whether this account still has to be activated (EV-204a1, ADR-0022 D22.9e)
+      description: >-
+        One of the three routes a PENDING account may call (the others are POST /me/activate and
+        /auth/email/verification/**). An account initialised by a coach, a gym or Evoli holds the
+        role PENDING until its person activates it, and every route not on that allowlist and not
+        public answers it 403 AUTH_FORBIDDEN. A full account gets {"pending": false} and nulls.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Activation state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivationStatusResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            ACCOUNT_NOT_INITIALISED — a PENDING account with no initialisation record (a data defect
+            no writer produces; never guessed around)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/activate:
+    post:
+      summary: Activate an initialised account (EV-204a1, ADR-0022 D22.9)
+      description: >-
+        In one transaction: checks the temporary password, validates the new one, records privacy
+        and terms consent with source ACTIVATION, grants the role recorded when the account was
+        initialised (the body has NO role field; one sent is ignored), stamps the activation and
+        returns fresh tokens. The role is a JWT claim, so the client must switch to these tokens
+        before its next authenticated read: the old ones still carry PENDING and are refused
+        everywhere else. Any refusal persists nothing.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateAccountRequest"
+      responses:
+        "200":
+          description: Activated; fresh tokens for the full account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokens"
+        "400":
+          description: >-
+            VALIDATION_ERROR (a missing field or a new password under 8 characters),
+            TEMPORARY_PASSWORD_INVALID (the temporary password is not the latest one issued; a 400,
+            not a 401, so clients do not refresh-and-retry and spend two attempts per typo),
+            TEMPORARY_PASSWORD_REUSED (the new password equals the temporary one), or
+            CONSENT_REQUIRED (consentAccepted absent or false)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized (no or invalid token)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            ACCOUNT_ALREADY_ACTIVE (the account is not pending), CONSENT_VERSION_STALE (a displayed
+            version is not current), or ACCOUNT_NOT_INITIALISED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "410":
+          description: >-
+            ACTIVATION_EXPIRED — at or after expiresAt (created + 30 days; a resend never moves it).
+            The remedy is a new initialisation by whoever set the account up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: >-
+            ACTIVATION_GRANT_INVALID — the recorded role is not a full account (a data defect the
+            schema makes unreachable; never reported as ACCOUNT_ALREADY_ACTIVE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: RATE_LIMITED — the 11th activation attempt within 15 minutes for this account
+          headers:
+            Retry-After:
+              description: Seconds until the window resets
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/nomination:
+    post:
+      summary: Pull a fresh invite to the coach this account was set up for (EV-204a2, ADR-0019 A2g)
+      description: >-
+        Only for an activated account whose initialisation row names a nominee coach, and only while
+        its derived status is ACTIVATED (the current nomination not accepted by this person). Mints
+        one single-use invite for the nominee with the ordinary 7-day TTL, expires the previous
+        unused nomination, and records the new one. Writes NO consent and NO link: accept the token
+        with POST /me/my-coach/accept, unchanged. No request body; the coach comes from the account's
+        own initialisation row, so a body naming another coach is ignored. Covered by the /me/**
+        ACCOUNT floor, not the PENDING allowlist.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: A fresh token and the coach's display name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NominationResponse"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            A PENDING account (activate first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            NOMINATION_NOT_FOUND — no initialisation row, no nominee coach, or the nominee no longer holds a coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            NOMINATION_CLOSED — the nomination's link is ACTIVE (LINKED) or has ended (LINK_ENDED); after LINK_ENDED only the coach's own invite can link again
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: RATE_LIMITED — the 11th pull within an hour for this account; nothing is written
+          headers:
+            Retry-After:
+              description: Seconds until the window resets
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /me/profile:
     get:
       summary: Current user profile
@@ -564,6 +733,14 @@ paths:
                   sessionMinutes: 30
                   equipment: ["NONE"]
       responses:
+        "403":
+          description: >-
+            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
+            plan. Refused before any model call and before any AI credit is consumed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "200":
           description: Plan
           content:
@@ -1627,6 +1804,14 @@ paths:
             schema:
               $ref: "#/components/schemas/CoachInterpretTextRequest"
       responses:
+        "403":
+          description: >-
+            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
+            plan. Refused before any model call and before any AI credit is consumed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "200":
           description: Interpretation
           content:
@@ -1665,6 +1850,14 @@ paths:
               required:
                 - audio
       responses:
+        "403":
+          description: >-
+            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
+            plan. Refused before any model call and before any AI credit is consumed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "200":
           description: Voice processed
           content:
@@ -2383,6 +2576,261 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /admin/accounts:
+    post:
+      summary: Initialise a coach account (admin; EV-278a, ADR-0022 D22.8c)
+      description: >-
+        Creates an account holding only PENDING, its coach profile (display name = fullName, the default
+        tier; inert until activation), and a provisioning row naming this admin as initialiser (kind
+        ADMIN, granted role COACH, ai_mode FULL). Emails the person a generated temporary password with
+        the Art. 14 notice (Reply-To is the monitored objection inbox; the source named is Evoli; line 8
+        points at the coach portal). Writes NO consent and NO coach link: the coach consents when
+        finishing the account (POST /me/activate). The password is never returned. An expired,
+        unactivated account at the address counts as absent and is replaced in the same transaction.
+        Not throttled (D22.8c). ADMIN is granted only to a session that proved a second factor
+        (BUG-165). GYM_OWNER arrives with EV-281a.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminInitialiseAccountRequest"
+      responses:
+        "201":
+          description: Initialised
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitialisedAccountResponse"
+        "400":
+          description: >-
+            VALIDATION_ERROR — missing or invalid email, fullName (over 80, or a control character, line break or invisible format character) or kind, or a malformed locale; INVALID_REQUEST — a kind other than COACH
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not an admin, or AUTH_MFA_REQUIRED (no second factor proved this session)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            ACCOUNT_EXISTS — the address has an activated account; details.userId is that account (open
+            its user page and use Make coach). ACCOUNT_PENDING — the address has an unexpired account
+            waiting to be finished; details carry userId, initialiserKind (COACH, GYM or ADMIN),
+            initialiserName (the coach's display name or "Evoli"; null once the initialiser was erased),
+            createdAt and expiresAt. Nothing is written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: >-
+            ACCOUNT_INITIALISATION_UNAVAILABLE — no monitored objection inbox is configured (BFIT_OBJECTION_INBOX), so no lawful invitation can be sent. Nothing is written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/accounts/{id}:
+    delete:
+      summary: Withdraw any unactivated initialised account (admin; EV-204a2, ADR-0022 D22.10c)
+      description: >-
+        Hard-deletes an account that still holds PENDING, whoever initialised it, with everything it
+        held (its role, provisioning row and, for a coach, its coach profile). Refuses an activated
+        account with 409 ACCOUNT_ALREADY_ACTIVE (EV-278 AC8b). ADMIN is granted only to a session that
+        proved a second factor (BUG-165).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not an admin, or no second factor proved this session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            PENDING_ACCOUNT_NOT_FOUND — no such pending account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            ACCOUNT_ALREADY_ACTIVE — the account is activated (or was never pending); nothing is deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/accounts/{id}/resend:
+    post:
+      summary: Resend an admin-initialised invitation with a new temporary password (admin; EV-278a)
+      description: >-
+        Emails a new temporary password for a pending account the admin initialised. The old one stops
+        signing in and every refresh token minted from it stops refreshing (token_version is bumped).
+        The expiry does NOT move; the new email states the same date. Throttled per admin and account
+        (5 an hour).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResendInvitationRequest"
+      responses:
+        "200":
+          description: Resent; expiresAt unchanged, passwordIssuedAt moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitialisedAccountResponse"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not an admin, or AUTH_MFA_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            PENDING_ACCOUNT_NOT_FOUND — no unexpired, admin-initialised pending account with this id (a coach's trainee is the coach's to resend)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            ACCOUNT_ALREADY_ACTIVE — the account is activated; nothing is sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: RATE_LIMITED — the sixth resend within an hour for this admin and account
+          headers:
+            Retry-After:
+              description: Seconds until the window resets
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: >-
+            ACCOUNT_INITIALISATION_UNAVAILABLE — no monitored objection inbox is configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/users/{id}/role:
+    patch:
+      summary: Replace a user's role (admin)
+      description: >-
+        REPLACES the role set with the one role given (so promoting a trainee to COACH removes USER).
+        EV-204a1 / ADR-0022 D22.4d: a PENDING account is refused (409 ACCOUNT_PENDING) and nothing
+        changes, because only its person can activate it; PENDING itself is never assignable
+        (400 ROLE_NOT_ASSIGNABLE). When both hold, the 409 wins. The user must sign in again for a
+        new role to reach their token.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRoleRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserResponse"
+        "400":
+          description: VALIDATION_ERROR, or ROLE_NOT_ASSIGNABLE (role PENDING)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: ACCOUNT_PENDING — the account has not been activated; its role cannot be changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /subscriptions/plans:
     get:
       summary: List subscription plans (free / premium / premium_plus)
@@ -2498,6 +2946,14 @@ paths:
             schema:
               $ref: "#/components/schemas/GenerateWeekRequest"
       responses:
+        "403":
+          description: >-
+            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
+            plan. Refused before any model call and before any AI credit is consumed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "201":
           description: The week, GENERATING
           content:
@@ -2629,6 +3085,14 @@ paths:
               profile:
                 contentType: application/json
       responses:
+        "403":
+          description: >-
+            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
+            plan. Refused before any model call and before any AI credit is consumed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "202":
           description: Generation queued
           content:
@@ -2809,6 +3273,241 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "403":
           description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/trainees:
+    post:
+      summary: Initialise a trainee account (EV-204a2, ADR-0022 D22.3/D22.8)
+      description: >-
+        Creates an account holding only PENDING, records the caller as its initialiser and nominee
+        coach, and emails the trainee a generated temporary password together with the Art. 14 notice
+        (Reply-To is the monitored objection inbox). Writes NO consent, NO coach link and NO invite:
+        the trainee activates and consents in the app (POST /me/activate), then pulls the nomination
+        (POST /me/nomination). The granted role (USER), the AI mode and the nominee come from the
+        caller, never the body; unknown fields such as role, aiMode or password are ignored. The
+        temporary password is never returned. An expired, unactivated account at the address counts
+        as absent and is replaced in the same transaction. Throttled per coach (30 an hour, every
+        call counted).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitialiseTraineeRequest"
+      responses:
+        "201":
+          description: Initialised; the row the roster shows as Invited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitialisedAccountResponse"
+        "400":
+          description: >-
+            VALIDATION_ERROR — missing or invalid email or fullName (including a control character, line break or invisible format character in fullName), or a malformed locale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not a coach (or a PENDING account)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            ACCOUNT_EXISTS — the address has an account, active or pending (one answer for both); or COACH_PROFILE_REQUIRED — the coach has no coach profile, so the email could name nobody. Nothing is written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: RATE_LIMITED — the 31st initialisation within an hour for this coach
+          headers:
+            Retry-After:
+              description: Seconds until the window resets
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: >-
+            ACCOUNT_INITIALISATION_UNAVAILABLE — no monitored objection inbox is configured (BFIT_OBJECTION_INBOX), so no lawful invitation can be sent. Nothing is written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    get:
+      summary: The coach's Invited accounts (EV-204a2)
+      description: >-
+        Accounts nominating this coach that are not activated and not expired, newest first. An
+        expired account is absent (no tombstone), even before the sweeper deletes it.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: A page of Invited rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitialisedAccountPageResponse"
+        "400":
+          description: >-
+            VALIDATION_ERROR — page below 0, or size outside 1..100
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not a coach
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/trainees/{id}/resend:
+    post:
+      summary: Resend the invitation with a new temporary password (EV-204a2, ADR-0022 D22.9b)
+      description: >-
+        Emails a new temporary password. The old one stops signing in and every refresh token minted
+        from it stops refreshing (token_version is bumped). The expiry does NOT move; the new email
+        states the same date. An access token minted in the last 15 minutes lives out its TTL and can
+        reach only the PENDING allowlist.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResendInvitationRequest"
+      responses:
+        "200":
+          description: Resent; expiresAt unchanged, passwordIssuedAt moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitialisedAccountResponse"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not a coach
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            PENDING_ACCOUNT_NOT_FOUND — not an unactivated, unexpired account this coach initialised (one answer for another coach's, activated, expired and unknown ids)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: RATE_LIMITED — this coach's 6th resend within an hour for this account
+          headers:
+            Retry-After:
+              description: Seconds until the window resets
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: >-
+            ACCOUNT_INITIALISATION_UNAVAILABLE — no monitored objection inbox is configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/trainees/{id}:
+    delete:
+      summary: Withdraw an unactivated account this coach initialised (EV-204a2, ADR-0022 D22.10c)
+      description: >-
+        Hard-deletes the account and everything it held, with the sweeper's cascade. The
+        erasure-on-request path for a person who objects through their coach.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not a coach
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            PENDING_ACCOUNT_NOT_FOUND — activated, another initialiser's, or no such account
           content:
             application/json:
               schema:
@@ -7693,6 +8392,214 @@ components:
         - accessToken
         - refreshToken
         - expiresIn
+    Role:
+      type: string
+      description: >-
+        An account role. PENDING (EV-204a1, ADR-0022) is an account somebody else initialised that
+        its person has not yet activated; it holds no other role and reaches only the activation
+        allowlist and the public routes.
+      enum: [USER, COACH, ADMIN, PENDING]
+    ActivateAccountRequest:
+      type: object
+      description: There is deliberately no role field; the granted role is the one recorded at initialisation.
+      properties:
+        temporaryPassword:
+          type: string
+          format: password
+          maxLength: 128
+          description: The temporary password from the invitation email (proof of the latest one issued)
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+        consentAccepted:
+          type: boolean
+          description: Acceptance of the privacy policy and the terms; must be true
+        privacyPolicyVersion:
+          type: string
+          maxLength: 32
+          example: "v1.0"
+        termsVersion:
+          type: string
+          maxLength: 32
+          example: "v1.0"
+        fullName:
+          type: string
+          maxLength: 120
+          nullable: true
+          description: Optional correction of the name the initialiser typed
+      required:
+        - temporaryPassword
+        - newPassword
+    ActivationStatusResponse:
+      type: object
+      properties:
+        pending:
+          type: boolean
+        grantedRole:
+          allOf:
+            - $ref: "#/components/schemas/Role"
+          nullable: true
+          description: The role activation grants (USER or COACH); null when not pending
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Activation refuses at or after this instant
+        creatorKind:
+          type: string
+          enum: [COACH, GYM, ADMIN]
+          nullable: true
+        creatorName:
+          type: string
+          nullable: true
+          description: >-
+            The coach's display name, the gym's name, or "Evoli" for the admin. Null when not
+            pending, or when the initialiser's account has been erased (creatorKind alone answers)
+      required:
+        - pending
+    InitialiseTraineeRequest:
+      type: object
+      description: >-
+        What a coach types. There is deliberately no role, aiMode, nominee or password field; any
+        such field sent is ignored.
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        fullName:
+          type: string
+          maxLength: 120
+          pattern: "^(?:[^\\p{Cc}\\p{Cf}\\u2028\\u2029]|[\\u200C\\u200D])*$"
+          description: >-
+            The name as the coach knows it; the trainee can correct it at activation. No control
+            character (CR, LF, tab, NUL, ...), no U+2028/U+2029 and no invisible format character
+            (bidi overrides and isolates, soft hyphen, BOM, ...); ZWNJ and ZWJ are allowed
+        locale:
+          type: string
+          pattern: "^[A-Za-z]{2}([-_][A-Za-z]{2})?$"
+          description: Invitation language; en and fr are sent as such, anything else falls back to English
+      required:
+        - email
+        - fullName
+    AdminInitialiseAccountRequest:
+      type: object
+      description: >-
+        What the admin types (EV-278a). There is deliberately no password, role or aiMode field; any
+        such field sent is ignored. The granted role is a function of kind.
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        fullName:
+          type: string
+          maxLength: 80
+          pattern: "^(?:[^\\p{Cc}\\p{Cf}\\u2028\\u2029]|[\\u200C\\u200D])*$"
+          description: >-
+            The person's name; for a coach also the coach profile's display name (80 characters, the
+            column's width). No control character, no U+2028/U+2029 and no invisible format character;
+            ZWNJ and ZWJ are allowed. The person can correct their account name at activation
+        kind:
+          type: string
+          enum: [COACH]
+          description: What the account activates into. GYM_OWNER arrives with EV-281a
+        locale:
+          type: string
+          pattern: "^[A-Za-z]{2}([-_][A-Za-z]{2})?$"
+          description: Invitation language; en and fr are sent as such, anything else falls back to English
+      required:
+        - email
+        - fullName
+        - kind
+    ResendInvitationRequest:
+      type: object
+      properties:
+        locale:
+          type: string
+          pattern: "^[A-Za-z]{2}([-_][A-Za-z]{2})?$"
+    InitialisedAccountResponse:
+      type: object
+      description: An initialised account that has not been activated. Never carries the temporary password.
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+        fullName:
+          type: string
+        status:
+          type: string
+          enum: [INVITED]
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: The account and its data are deleted at this instant unless activated; Resend never moves it
+        passwordIssuedAt:
+          type: string
+          format: date-time
+          description: When the latest temporary password was emailed
+      required: [userId, email, fullName, status, createdAt, expiresAt, passwordIssuedAt]
+    InitialisedAccountPageResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InitialisedAccountResponse"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+      required: [items, page, size, totalElements, totalPages]
+    NominationResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Single-use invite token for POST /me/my-coach/accept; valid 7 days; a later pull expires it
+        coachDisplayName:
+          type: string
+      required: [token, coachDisplayName]
+    UpdateUserRoleRequest:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+      required:
+        - role
+    AdminUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        role:
+          allOf:
+            - $ref: "#/components/schemas/Role"
+          description: >-
+            The primary role: PENDING first (a pending account holds nothing else), then ADMIN,
+            COACH, else USER
     LegalVersionsResponse:
       type: object
       properties:
@@ -7719,11 +8626,18 @@ components:
         createdAt:
           type: string
           format: date-time
+        aiIncluded:
+          type: boolean
+          description: >-
+            EV-286a / ADR-0028 §3c. False for a coached account: its AI features are not included,
+            and its AI entry points answer 403 AI_NOT_INCLUDED. A positive flag, so a client that
+            ignores it behaves as before; the api refuses regardless.
       required:
         - id
         - email
         - fullName
         - createdAt
+        - aiIncluded
     UserProfileRequest:
       type: object
       properties:

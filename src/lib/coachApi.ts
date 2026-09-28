@@ -1,5 +1,5 @@
 import "server-only";
-import { apiFetch, ApiError } from "./apiFetch";
+import { apiFetch, apiGet, apiGetAs, ApiError } from "./apiFetch";
 import { COACH_API_MODE, INVITE_BASE_URL } from "./env";
 import { fixtureCoachApi } from "./coachApi.fixture";
 import { sanitiseCoachName } from "./inviteName";
@@ -1789,6 +1789,140 @@ export interface CoachFoodLogResponse {
   days: CoachFoodLogDay[];
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-278c — FINISHING AN ACCOUNT SOMEBODY ELSE INITIALISED (ADR-0022 D22.9).
+ *
+ * Not `/coach-portal/*`: these are the account-level routes b-fit-api lets a `PENDING`
+ * principal reach (the three-entry allowlist in `SecurityConfig`: `GET /me/activation`,
+ * `POST /me/activate`, `/auth/email/verification/**`) plus the public `GET
+ * /legal/versions`. They live in this module anyway because it is the one the
+ * contract-drift guard reads, and a type that escapes the guard is how this surface has
+ * shipped against fields nobody sends. Vendored from b-fit-api
+ * `feat/ev278a-admin-initialises-coach` @ `c69c287` (NOT on api main when written; see
+ * `spec/b-fit-api.sha`).
+ *
+ * Consent is the PERSON'S (EV-278 "The consent constraint"): the only `consentAccepted`
+ * this surface ever sends is the one a coach ticked on `/activate`, forwarded by
+ * `/api/auth/activate`, which refuses anything but a literal `true` before the api is
+ * called at all.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * `Role` as the api enumerates it at `c69c287`. `GYM_OWNER` is not in it yet (EV-281a),
+ * so the portal admits a pending account for `COACH` only; a `GYM_OWNER` grant has no
+ * home to land on here until EV-281b, and admitting it would activate someone into a
+ * `NOT_A_COACH` bounce.
+ */
+export type AccountRole = "USER" | "COACH" | "ADMIN" | "PENDING";
+
+/** Who initialised the account. `ADMIN` is Evoli (EV-278a), `COACH` and `GYM` initialise trainees. */
+export type InitialiserKind = "COACH" | "GYM" | "ADMIN";
+
+/**
+ * `GET /me/activation` (D22.9e). A full account gets `{ pending: false }` and nulls.
+ *
+ * There is no `createdAt` and no account name on it: the screen can say who set the
+ * account up and until when, not on what day, and it cannot show the name the
+ * initialiser typed (`GET /me` is behind the `ACCOUNT` floor a pending token lacks). That
+ * is why `ActivateAccountRequest.fullName` is not sent — see the register.
+ *
+ * @wire ActivationStatusResponse
+ */
+export interface ActivationStatus {
+  pending: boolean;
+  grantedRole: AccountRole | null;
+  /** Activation refuses at or after this instant (created + 30 days; a resend never moves it). */
+  expiresAt: string | null;
+  creatorKind: InitialiserKind | null;
+  /**
+   * The coach's display name, the gym's name, or "Evoli". Null when not pending, or when
+   * the initialiser's account has been erased — `creatorKind` alone answers then.
+   */
+  creatorName: string | null;
+}
+
+/**
+ * `POST /me/activate`'s body. **There is no role field, on the wire or here** (D22.9a):
+ * the granted role is the one recorded at initialisation.
+ *
+ * @wire ActivateAccountRequest
+ */
+export interface ActivateAccountRequest {
+  temporaryPassword: string;
+  newPassword: string;
+  /** Only ever a coach's own tick, and only ever `true` when sent (see `/api/auth/activate`). */
+  consentAccepted: true;
+  privacyPolicyVersion: string;
+  termsVersion: string;
+}
+
+/**
+ * `GET /legal/versions` — unauthenticated. The strings echoed back as the versions the
+ * person was shown; a mismatch is `409 CONSENT_VERSION_STALE`, never a silent substitute.
+ *
+ * @wire LegalVersionsResponse
+ */
+export interface LegalVersions {
+  privacyPolicyVersion: string;
+  termsVersion: string;
+}
+
+/**
+ * `POST /me/activate`'s 200 — fresh tokens for the full account. The role is a JWT
+ * claim, so the session must switch to these before its next read: the old ones still
+ * say PENDING and b-fit-api refuses them everywhere but the allowlist.
+ *
+ * @wire AuthTokens
+ */
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  /** Access token lifetime in seconds. */
+  expiresIn: number;
+}
+
+/** The codes `POST /me/activate` refuses with, as the activation screen reads them. */
+export const ACTIVATION_REFUSALS = [
+  "VALIDATION_ERROR",
+  "TEMPORARY_PASSWORD_INVALID",
+  "TEMPORARY_PASSWORD_REUSED",
+  "CONSENT_REQUIRED",
+  "ACCOUNT_ALREADY_ACTIVE",
+  "CONSENT_VERSION_STALE",
+  "ACCOUNT_NOT_INITIALISED",
+  "ACTIVATION_EXPIRED",
+  "RATE_LIMITED",
+] as const;
+export type ActivationRefusal = (typeof ACTIVATION_REFUSALS)[number];
+
+/**
+ * A pending account the PORTAL can finish: pending, a coach's grant, and not yet at its
+ * expiry. Expiry is judged against `now` because `GET /me/activation` still answers
+ * `pending: true` for an expired row the sweeper has not reached — only `POST
+ * /me/activate` says 410. Fails closed on an unparseable instant.
+ */
+export function activationExpired(status: ActivationStatus, now: number = Date.now()): boolean {
+  if (!status.expiresAt) return true;
+  const at = Date.parse(status.expiresAt);
+  return Number.isNaN(at) || at <= now;
+}
+
+/** "Evoli", the gym's or the coach's name — or a kind-only fallback when the name was erased. */
+export function initialiserName(status: Pick<ActivationStatus, "creatorName" | "creatorKind">): string {
+  const name = status.creatorName?.trim();
+  if (name) return name;
+  switch (status.creatorKind) {
+    case "ADMIN":
+      return "Evoli";
+    case "GYM":
+      return "Your gym";
+    case "COACH":
+      return "Your coach";
+    default:
+      return "Evoli";
+  }
+}
+
 // ── error helpers ────────────────────────────────────────────────────────────
 
 export { ApiError } from "./apiFetch";
@@ -2196,6 +2330,29 @@ function client(id: string): string {
 }
 
 const liveCoachApi = {
+  // ── EV-278c activation (the PENDING allowlist + the public versions) ──────
+
+  /**
+   * `GET /me/activation`. With `bearer`, the caller's token (the sign-in check, before any
+   * cookie exists); without, the session cookie's, with `apiFetch`'s refresh-on-401.
+   */
+  getActivation(bearer?: string): Promise<ActivationStatus> {
+    return bearer
+      ? apiGetAs<ActivationStatus>("/me/activation", bearer)
+      : apiFetch<ActivationStatus>("/me/activation");
+  },
+  /**
+   * `POST /me/activate`. Refusals are 400/409/410/429 and are NOT retried: the api made
+   * `TEMPORARY_PASSWORD_INVALID` a 400 precisely so a client does not refresh and spend a
+   * second attempt of the ten-per-15-minutes window on one typo.
+   */
+  activate(body: ActivateAccountRequest): Promise<AuthTokens> {
+    return apiFetch<AuthTokens>("/me/activate", { method: "POST", body: JSON.stringify(body) });
+  },
+  getLegalVersions(): Promise<LegalVersions> {
+    return apiGet<LegalVersions>("/legal/versions");
+  },
+
   getMe(): Promise<CoachMe> {
     return apiFetch<CoachMe>("/coach-portal/me");
   },

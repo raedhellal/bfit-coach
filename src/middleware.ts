@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { hasCoachRole, isExpired } from "@/lib/jwt";
+import { hasCoachRole, isExpired, isPendingOnly } from "@/lib/jwt";
 
 /**
  * The route guard (EV-183 AC1, ADR-0012 D5).
@@ -19,6 +19,12 @@ import { hasCoachRole, isExpired } from "@/lib/jwt";
 const ACCESS_COOKIE = "evoli_pro_at";
 const REFRESH_COOKIE = "evoli_pro_rt";
 const LOGIN = "/login";
+/**
+ * EV-278c — the one page a PENDING session may reach (ADR-0022 D22.9e: "only to the
+ * activation route"), and a page a coach session never sees. /api/auth/activate, which
+ * does the work, is under the excluded `/api/auth` prefix and checks the session itself.
+ */
+const ACTIVATE = "/activate";
 
 /**
  * /clients/denied — the one route this app serves with a non-200 status
@@ -150,12 +156,39 @@ export async function middleware(req: NextRequest) {
   }
 
   if (isExpired(token)) return toLogin(req, "expired");
-  // AC1: only COACH accounts may enter. The sentence itself is rendered by /login.
-  if (!hasCoachRole(token)) return toLogin(req, "not_coach");
 
-  const res = DENIED_ROUTE.test(pathname)
-    ? NextResponse.rewrite(req.nextUrl, { status: 403 })
-    : NextResponse.next();
+  /**
+   * EV-278c — a PENDING session is confined to /activate, and a coach session is kept off
+   * it. Checked BEFORE the coach test, and as a redirect rather than a login bounce: the
+   * sign-in handler only writes a PENDING cookie after b-fit-api said the account is a
+   * coach's to finish, so sending it back to /login would be a loop with no way forward.
+   * Every other path — the roster, a trainee, the libraries, the fixture routes — answers
+   * a 307 to /activate, so no page component that reads coach data ever renders for it.
+   * (b-fit-api refuses the token on /coach-portal/* anyway; this is which screen to draw.)
+   */
+  let res: NextResponse;
+  if (isPendingOnly(token)) {
+    if (pathname === ACTIVATE) {
+      res = NextResponse.next();
+    } else {
+      const url = req.nextUrl.clone();
+      url.pathname = ACTIVATE;
+      url.search = "";
+      res = NextResponse.redirect(url);
+    }
+  } else if (!hasCoachRole(token)) {
+    // AC1: only COACH accounts may enter. The sentence itself is rendered by /login.
+    return toLogin(req, "not_coach");
+  } else if (pathname === ACTIVATE) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    url.search = "";
+    res = NextResponse.redirect(url);
+  } else {
+    res = DENIED_ROUTE.test(pathname)
+      ? NextResponse.rewrite(req.nextUrl, { status: 403 })
+      : NextResponse.next();
+  }
   if (rotated) {
     res.cookies.set(ACCESS_COOKIE, rotated.accessToken, {
       ...cookieOptions(),

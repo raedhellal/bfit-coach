@@ -25,22 +25,41 @@ export class ApiError extends Error {
    * reader (`draftExistsUpdatedAt`) narrows it at its own call site.
    */
   details: Record<string, unknown> | null;
+  /**
+   * EV-278c — the `Retry-After` header of a 429, in whole seconds, or null.
+   *
+   * b-fit-api sends it on every 429 (BUG-152), and the activation screen's refusal is a
+   * sentence ABOUT it ("Try again in {minutes} minutes", EV-204 AC-P5c mirrored). It is a
+   * header, not a body field, so without this it was dropped here with the response.
+   * Only the delta-seconds form is read; an HTTP-date is null, which the one reader
+   * treats as "no wait to state" rather than guessing one.
+   */
+  retryAfterSeconds: number | null;
   constructor(
     status: number,
     message: string,
     code: string | null = null,
-    details: Record<string, unknown> | null = null
+    details: Record<string, unknown> | null = null,
+    retryAfterSeconds: number | null = null
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
+function retryAfter(res: Response): number | null {
+  const raw = res.headers.get("Retry-After");
+  if (!raw || !/^\d+$/.test(raw.trim())) return null;
+  const seconds = Number(raw.trim());
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
 /** The api's error envelope is `{ code, message, details? }` (`ApiError`). */
-function toApiError(status: number, body: unknown): ApiError {
+function toApiError(status: number, body: unknown, res?: Response): ApiError {
   const b = body as { code?: unknown; message?: unknown; details?: unknown } | null;
   const code = typeof b?.code === "string" ? b.code : null;
   const message =
@@ -49,7 +68,7 @@ function toApiError(status: number, body: unknown): ApiError {
     b?.details && typeof b.details === "object" && !Array.isArray(b.details)
       ? (b.details as Record<string, unknown>)
       : null;
-  return new ApiError(status, message, code, details);
+  return new ApiError(status, message, code, details, res ? retryAfter(res) : null);
 }
 
 async function parse(res: Response): Promise<unknown> {
@@ -71,7 +90,37 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
     cache: "no-store",
   });
   const data = await parse(res);
-  if (!res.ok) throw toApiError(res.status, data);
+  if (!res.ok) throw toApiError(res.status, data, res);
+  return data as T;
+}
+
+/**
+ * Unauthenticated GET — `GET /legal/versions` (EV-278c), which the api serves with no
+ * session because a consent control has to render before anyone can sign anything.
+ */
+export async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(apiUrl(path), { cache: "no-store" });
+  const data = await parse(res);
+  if (!res.ok) throw toApiError(res.status, data, res);
+  return data as T;
+}
+
+/**
+ * A GET with a bearer the CALLER holds, not the cookie's — EV-278c's sign-in check.
+ *
+ * `/api/auth/login` has to ask `GET /me/activation` about a `[PENDING]` token BEFORE it
+ * writes that token into a cookie (ADR-0022 D22.9e: admitted only once the api says the
+ * granted role is a coach's), so there is no cookie for `apiFetch` to read yet. No
+ * refresh-on-401 here: the token was minted by the login a moment ago, and a 401 on it
+ * is a refusal to report, not an expiry to paper over.
+ */
+export async function apiGetAs<T>(path: string, bearer: string): Promise<T> {
+  const res = await fetch(apiUrl(path), {
+    headers: { Authorization: `Bearer ${bearer}` },
+    cache: "no-store",
+  });
+  const data = await parse(res);
+  if (!res.ok) throw toApiError(res.status, data, res);
   return data as T;
 }
 
@@ -162,6 +211,6 @@ export async function apiFetch<T>(
     if (fresh) res = await call(fresh);
   }
   const data = await parse(res);
-  if (!res.ok) throw toApiError(res.status, data);
+  if (!res.ok) throw toApiError(res.status, data, res);
   return data as T;
 }

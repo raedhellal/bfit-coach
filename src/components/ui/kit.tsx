@@ -292,6 +292,9 @@ export function Input({
   onKeyDown,
   focusRing,
   autoFocus,
+  autoComplete,
+  ariaLabel,
+  hintId,
   style = {},
 }: {
   label?: string;
@@ -308,6 +311,21 @@ export function Input({
   focusRing?: boolean;
   /** EV-272 AC2 — the Swap sheet's search field holds focus when the sheet opens. */
   autoFocus?: boolean;
+  /**
+   * EV-278c — the activation screen's password fields: `current-password` for the
+   * emailed one, `new-password` for the two new ones, so a password manager offers to
+   * save the right value and never autofills the temporary one into the new fields.
+   */
+  autoComplete?: string;
+  /**
+   * EV-278c — the input's accessible name, when it must be the label alone. The label
+   * WRAPS the hint, so without this the name is "New password At least 8 characters."
+   * and two fields whose labels share words ("New password", "Repeat the new password")
+   * cannot be told apart by name. Pair it with `hintId` so the hint is still announced.
+   */
+  ariaLabel?: string;
+  /** Gives the hint/error line this id and points the input's `aria-describedby` at it. */
+  hintId?: string;
   style?: Sx;
 }) {
   return (
@@ -343,6 +361,10 @@ export function Input({
           onChange={onChange}
           onKeyDown={onKeyDown}
           autoFocus={autoFocus}
+          autoComplete={autoComplete}
+          aria-label={ariaLabel}
+          aria-describedby={hintId && (hint || error) ? hintId : undefined}
+          aria-invalid={error ? true : undefined}
           style={{
             flex: 1,
             // The FIELD is the target, not the box around it: the `<input>` itself has
@@ -363,7 +385,7 @@ export function Input({
         />
         {trailing}
       </div>
-      {(hint || error) && <div style={{ fontSize: 12, marginTop: 6, color: error ? "var(--err)" : "var(--ink-3)" }}>{error || hint}</div>}
+      {(hint || error) && <div id={hintId} style={{ fontSize: 12, marginTop: 6, color: error ? "var(--err)" : "var(--ink-3)" }}>{error || hint}</div>}
     </label>
   );
 }
