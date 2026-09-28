@@ -51,7 +51,9 @@ const DENIED_ROUTE = /^\/clients\/denied\/?$/;
  * NOT cleared and nobody is sent to /login; the page says so and offers a reload of the
  * URL they asked for (a rewrite keeps it in the address bar).
  *
- * It is reached only by that rewrite. Middleware runs once per request and not again for
+ * It is reached only by that rewrite, and only for a GET or HEAD (see `unavailable`), so
+ * the page's "Nothing was changed" is true: a read was refused before any page ran, and a
+ * write never gets this page at all. Middleware runs once per request and not again for
  * its own rewrite, so a direct visit — the only way `pathname` can be this — is sent home.
  */
 const UNAVAILABLE = "/unavailable";
@@ -121,8 +123,24 @@ async function refresh(refreshToken: string): Promise<Rotation> {
   }
 }
 
-/** 503 at the URL asked for, cookies untouched — see `UNAVAILABLE`. */
+/**
+ * 503 at the URL asked for, cookies untouched — see `UNAVAILABLE`.
+ *
+ * Only a GET or HEAD is rewritten to the page (staff round 4 on EV-278c). Anything else —
+ * above all a server action, which is a POST to the page's own URL with a `Next-Action`
+ * header — gets a bare 503 from here. Rewritten, it lands on /unavailable, which has no
+ * worker for the action, and Next 14 then FORWARDS it (cookies and all) to a page that
+ * has one; that request re-enters middleware, is rewritten again, and so on for as long
+ * as the refresh keeps failing — one `/auth/refresh` per lap, 18,381 of them from one
+ * click in staff's measurement, still going after the browser gave up, and running the
+ * abandoned write the moment the api recovered. A bare response ends the request here:
+ * the action never runs, the client's action call resolves with no result and the
+ * island shows its own "not saved" sentence, and the next page load gets the real page.
+ */
 function unavailable(req: NextRequest) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return new NextResponse(null, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
   const url = req.nextUrl.clone();
   url.pathname = UNAVAILABLE;
   url.search = "";

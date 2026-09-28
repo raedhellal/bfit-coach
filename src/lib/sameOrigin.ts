@@ -24,16 +24,23 @@ import { NextResponse } from "next/server";
  *
  * "This request's origin" is `x-forwarded-proto` + `x-forwarded-host` — what Vercel's
  * edge (and Next's own server) set to the public scheme and host — falling back to the
- * request URL's scheme and the `Host` header. A page on another site cannot set any of
+ * request URL's scheme and the `Host` header. Both forwarded headers are read by their
+ * FIRST comma-separated entry: a chain of proxies appends to them, and the first is the
+ * one the browser reached (staff round 4 nit). A page on another site cannot set any of
  * them: a custom header on a cross-origin request needs a CORS preflight, and nothing
  * here answers one.
  */
 const FOREIGN_FETCH_SITES = new Set(["cross-site", "same-site"]);
 
+/** The first entry of a header a proxy chain appends to: the value the browser reached. */
+function firstHop(value: string | null): string | undefined {
+  return value?.split(",")[0]?.trim() || undefined;
+}
+
 function ownOrigin(request: Request): string | null {
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const host = firstHop(request.headers.get("x-forwarded-host")) ?? firstHop(request.headers.get("host"));
   if (!host) return null;
-  let scheme = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  let scheme = firstHop(request.headers.get("x-forwarded-proto"));
   if (!scheme) {
     try {
       scheme = new URL(request.url).protocol.replace(/:$/, "");

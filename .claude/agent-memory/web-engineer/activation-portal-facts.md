@@ -64,17 +64,26 @@ code states, and each one would cost a rewrite or a false green to rediscover.
   api's `AuthRateLimitGuard.onRefresh` throttles per CLIENT IP, and every coach's rotation
   comes from the portal server's one IP — a 429 read as "expired" logs out whoever is
   next. `src/lib/refreshOutcome.ts` is the one rule (4xx≠429 → expired; 429/5xx/throw →
-  unavailable), used by `routeSession.ts` AND `middleware.ts`. Middleware answers
-  unavailable with a 503 REWRITE onto `/unavailable` (cookies untouched, URL kept, reload
-  button); a direct visit to `/unavailable` redirects home. `apiFetch`'s own
+  unavailable), used by `routeSession.ts` AND `middleware.ts`. Middleware answers a
+  GET/HEAD with a 503 REWRITE onto `/unavailable` (cookies untouched, URL kept, reload
+  button) and EVERY OTHER METHOD with a bare 503; a direct visit redirects home.
+- **Never rewrite a server action to another page** (staff round 4, blocking). An action
+  is a POST to the page URL with `Next-Action`; Next 14.2 finds no worker on the rewrite
+  target and FORWARDS it, cookies and all, to the first page that has one
+  (`action-handler.js` `createForwardedActionResponse`, no `x-action-forwarded` check) —
+  which re-enters middleware: an endless internal loop, one `/auth/refresh` per lap
+  (2,784–4,600 in 15 s measured), still running after the client gives up, and running
+  the write once refresh recovers. A REDIRECT does not loop (undici cannot replay the
+  streamed body on 307: "failed to forward action response"). Witness: capture the real
+  action with `page.route` + `route.abort()`, replay via `page.request` minus `cookie`. `apiFetch`'s own
   `requestRefresh` still swallows every failure to null — out of scope then, worth a row.
   The activation stub has `/__refresh-fails?status=503|429|0` to drive it.
 - **`sameOrigin.ts` compares the full origin** (`x-forwarded-proto` + `x-forwarded-host`,
   falling back to `request.url`'s scheme + `Host`), and an absent Origin is refused when
   `Sec-Fetch-Site` is `cross-site`/`same-site`. Playwright's request context may set both
   headers freely, which is how the fixture suite witnesses them.
-- `qa/refresh-single-flight.spec.ts` hard-codes stub port 8098: `STUB_API_PORT` moves the
-  stub but not the spec, so override only `COACH_REFRESH_PORT`.
+- `qa/refresh-single-flight.spec.ts` reads `STUB_API_ORIGIN` (default :8098): moving the
+  stub with `STUB_API_PORT` needs `STUB_API_ORIGIN` set to match, or override neither.
 - A mutant that makes the fixture api refuse with the SAME code the handler would (M2, the
   409) survives a status-only test; assert that `/api/fixture/activations` stayed empty.
 

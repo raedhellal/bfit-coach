@@ -27,6 +27,13 @@ import { createServer } from "node:http";
 const PORT = Number(process.env.ACTIVATION_STUB_PORT || 8097);
 const TEMP = "Temp-pass-2026";
 const LEGAL = { privacyPolicyVersion: "v2.3", termsVersion: "v1.7" };
+const TEMPLATE = {
+  id: "2780c000-0000-4000-8000-00000000f001",
+  name: "Stub push day",
+  dayCount: 1,
+  exerciseCount: 3,
+  updatedAt: "2026-09-01T09:00:00Z",
+};
 
 const b64url = (o) =>
   Buffer.from(JSON.stringify(o)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -66,6 +73,9 @@ function reset() {
     // as b-fit-api does when it is down (5xx) or when `AuthRateLimitGuard.onRefresh`
     // throttles the portal server's IP (429, with `Retry-After`). 0 = answer normally.
     refreshFailure: 0,
+    // Staff round 4: one template in every coach's library, so a spec can capture the
+    // REAL server-action request the Delete button sends and replay it.
+    templates: new Map([[TEMPLATE.id, { ...TEMPLATE }]]),
   };
 }
 reset();
@@ -240,6 +250,18 @@ const server = createServer(async (req, res) => {
     }
     if (path === "/coach-portal/clients") {
       return json(res, 200, { items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 });
+    }
+    if (path === "/coach-portal/templates" && req.method === "GET") {
+      const templates = [...state.templates.values()];
+      return json(res, 200, { templates, limit: 50, remaining: 50 - templates.length });
+    }
+    const templateId = path.match(/^\/coach-portal\/templates\/([^/]+)$/)?.[1];
+    if (templateId && req.method === "DELETE") {
+      if (!state.templates.delete(decodeURIComponent(templateId))) {
+        return json(res, 404, { code: "NOT_FOUND", message: path });
+      }
+      res.writeHead(204);
+      return res.end();
     }
   }
 

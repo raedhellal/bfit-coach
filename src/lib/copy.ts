@@ -1452,8 +1452,10 @@ export const copy = {
   /**
    * /unavailable — a page load whose session rotation got no verdict from the api (it is
    * down, or its per-IP refresh throttle answered 429). The cookies were kept, so "not
-   * signed out" is true; middleware answered before any page ran, so "nothing was
-   * changed" is true too — a server action refused there never reached its handler.
+   * signed out" is true. Only a GET or HEAD is ever shown this page — middleware answers
+   * a server action or any other write with a bare 503 and no page (staff round 4) — and
+   * a read refused before any page ran changed nothing, so "nothing was changed" is true
+   * too. Do not route a write here: after a refused write the sentence could be false.
    */
   unavailable: {
     title: "We can't reach Evoli right now",

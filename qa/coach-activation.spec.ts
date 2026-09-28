@@ -479,6 +479,26 @@ test.describe("EV-278c — the session checks behind /api/auth/*", () => {
     expect(res.headers()["set-cookie"]).toBeUndefined();
   });
 
+  // Staff round 4, nit: a proxy chain appends to X-Forwarded-Host exactly as it does to
+  // X-Forwarded-Proto, so the first entry is the host the browser reached — read like the
+  // scheme, not as one unparseable host that refused every sign-in behind two proxies.
+  test("a comma-separated X-Forwarded-Host is read by its first entry", async ({ page, baseURL }) => {
+    const own = new URL(String(baseURL));
+    const foreignFirst = await page.request.post("/api/auth/login", {
+      headers: { Origin: own.origin, "X-Forwarded-Host": `evil.example, ${own.host}` },
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+    });
+    expect(foreignFirst.status(), "the first hop is another host").toBe(403);
+    expect(await foreignFirst.json()).toEqual({ code: "CROSS_ORIGIN" });
+    expect(await page.context().cookies()).toEqual([]);
+
+    const ownFirst = await page.request.post("/api/auth/login", {
+      headers: { Origin: own.origin, "X-Forwarded-Host": ` ${own.host} , proxy.internal` },
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+    });
+    expect(ownFirst.status(), "the first hop is this portal").toBe(200);
+  });
+
   // Staff round 3, nit 2: no Origin is allowed only when the browser does not say the
   // request came from another site.
   test("no Origin but Sec-Fetch-Site naming another site is refused 403; same-origin is not", async ({ page }) => {

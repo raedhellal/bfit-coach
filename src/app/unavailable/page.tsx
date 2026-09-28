@@ -5,6 +5,7 @@ import { copy } from "@/lib/copy";
 
 /**
  * /unavailable — served with **503** by `middleware.ts`, as a rewrite, when a page load's
+ * (a GET or HEAD's — a write gets a bare 503 and never this page, staff round 4)
  * session rotation got no verdict from b-fit-api: the call threw, answered 5xx, or
  * answered 429 from the api's per-IP refresh throttle (staff round 3 on EV-278c).
  *

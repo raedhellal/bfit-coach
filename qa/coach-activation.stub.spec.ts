@@ -12,6 +12,8 @@ import { expect, test, type Page } from "@playwright/test";
 const STUB = `http://localhost:${process.env.ACTIVATION_STUB_PORT || "8097"}`;
 const TEMP = "Temp-pass-2026";
 const NEW_PASSWORD = "Coach-pass-2026";
+/** The one template `qa/activation-stub-api.mjs` puts in every coach's library. */
+const STUB_TEMPLATE = "Stub push day";
 
 interface Journal {
   journal: Array<{ method: string; path: string; roles: string[] | null }>;
@@ -334,6 +336,105 @@ test("live: /unavailable is not a page of its own — a direct visit goes home",
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText("No trainees yet", { exact: true })).toBeVisible();
 });
+
+/**
+ * Staff round 4, blocking. A server action is a POST to the PAGE's own URL with a
+ * `Next-Action` header. Rewriting it to /unavailable handed it to a page with no worker
+ * for that action, and Next 14 FORWARDS such a request — with its cookies — to a page
+ * that has one, which re-enters middleware, which rewrites it again: an endless loop that
+ * called `/auth/refresh` once per lap for as long as refresh kept failing, went on after
+ * the browser had given up, and ran the abandoned write as soon as refresh recovered.
+ *
+ * So only a GET or HEAD is rewritten to the page; any other method is answered a bare 503
+ * by middleware itself. The request below is the REAL one the Delete button sends,
+ * captured from the browser, replayed with only the refresh cookie.
+ */
+async function captureDeleteAction(page: Page) {
+  await signInPending(page, "pending@stub.test");
+  await fillAndSubmit(page);
+  await page.waitForURL(/\/$/);
+  await page.goto("/templates");
+  await expect(page.getByText(STUB_TEMPLATE, { exact: true })).toBeVisible();
+
+  let captured: { headers: Record<string, string>; body: string } | null = null;
+  await page.route("**/templates", async (route) => {
+    const request = route.request();
+    const headers = await request.allHeaders();
+    if (request.method() === "POST" && headers["next-action"]) {
+      captured = { headers, body: request.postData() ?? "" };
+      return route.abort();
+    }
+    return route.continue();
+  });
+  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect.poll(() => captured !== null, { message: "the Delete button sent a server action" }).toBe(true);
+  await page.unroute("**/templates");
+  // A fresh page, so the aborted attempt's "could not be deleted" is not on screen.
+  await page.reload();
+  await expect(page.getByText(STUB_TEMPLATE, { exact: true })).toBeVisible();
+  const { headers, body } = captured as unknown as { headers: Record<string, string>; body: string };
+  // Replayed through the context's own cookie jar, so the browser's `cookie` header goes.
+  const replay = Object.fromEntries(
+    Object.entries(headers).filter(([name]) => !["cookie", "content-length", "host"].includes(name))
+  );
+  return { headers: replay, body };
+}
+
+const refreshCalls = async (page: Page) =>
+  (await journal(page)).journal.filter((e) => e.path === "/auth/refresh").length;
+const templateWrites = async (page: Page) =>
+  (await journal(page)).journal.filter((e) => e.path.startsWith("/coach-portal/templates/") && e.method !== "GET");
+
+for (const status of [503, 429]) {
+  test(`live: a server action whose rotation meets ${status} is refused 503 once — no forwarding loop, and nothing runs when the api recovers`, async ({
+    page,
+    baseURL,
+  }) => {
+    const action = await captureDeleteAction(page);
+    expect(action.headers["next-action"], "a real action id").toMatch(/^[0-9a-f]{40,}$/);
+    expect(await templateWrites(page), "the captured request never reached the server").toEqual([]);
+
+    await page.context().clearCookies({ name: "evoli_pro_at" });
+    const refreshBefore = await cookie(page, "evoli_pro_rt");
+    expect(refreshBefore).toBeDefined();
+    await stub(page, `/__refresh-fails?status=${status}`);
+    const callsBefore = await refreshCalls(page);
+
+    const res = await page.request
+      .post(`${baseURL}/templates`, { headers: action.headers, data: action.body, maxRedirects: 0, timeout: 15_000 })
+      .catch(() => null);
+    // Everything is measured before anything is asserted, so a red run reports the counts.
+    const lapCalls = (await refreshCalls(page)) - callsBefore;
+    expect.soft(res?.status() ?? "no answer within 15 s", "refused by middleware, not rewritten").toBe(503);
+    expect.soft(res?.headers()["cache-control"]).toBe("no-store");
+    expect.soft(res?.headers()["set-cookie"], "no cookie is touched").toBeUndefined();
+    expect.soft(lapCalls, "exactly one /auth/refresh for one request").toBe(1);
+
+    // The same refusal, met by the browser: the action call resolves with no result and the
+    // dialog says the template was not deleted — a sentence that is true, because it wasn't.
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/templates",
+      { timeout: 15_000 }
+    );
+    await page.getByRole("button", { name: "Delete" }).click();
+    await expect(page.getByRole("dialog").getByRole("alert")).toHaveCount(0);
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    expect.soft((await answered.catch(() => null))?.status() ?? "no answer within 15 s").toBe(503);
+    await expect.soft(page.getByRole("dialog").getByRole("alert")).toHaveText("The template could not be deleted.");
+
+    // The api answers again. A request still circling inside the server would now rotate,
+    // pass middleware and run the delete the coach was told had failed.
+    await stub(page, "/__refresh-fails?status=0");
+    await page.waitForTimeout(4_000);
+    expect.soft(await templateWrites(page), "no /coach-portal write after the api recovers").toEqual([]);
+    expect.soft(
+      (await refreshCalls(page)) - callsBefore,
+      "one rotation per request (the replay, the click) and none on its own"
+    ).toBe(2);
+    expect(await cookie(page, "evoli_pro_rt"), "the refresh cookie survives").toBe(refreshBefore);
+  });
+}
 
 /**
  * Staff round 2, should-fix: when the reply is lost the portal does not know whether the
