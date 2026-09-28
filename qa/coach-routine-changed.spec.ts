@@ -12,7 +12,8 @@ import { test } from "./fixture-test";
  * The sentences are LITERALS, not imports from `src/lib/copy.ts`: an assertion built
  * from the shipped string agrees with it by construction and cannot witness a reword.
  * The date is the fixture's fixed `lastChangedAt`, formatted the way every date on this
- * portal is (`formatInstant`: en-GB, UTC — see `src/lib/format.ts` for why UTC).
+ * portal is (`formatInstant`: en-GB, UTC — see `src/lib/format.ts` for why UTC), and
+ * the sentence says so: " (UTC)" after the date is Raed's 2026-09-28 ruling.
  *
  * The fixture's four routine states:
  *   Yusuf — TRAINEE, and changed since this coach's publish (the roster flags him).
@@ -44,8 +45,8 @@ const onDay = (iso: string) =>
     timeZone: "UTC",
   }).format(new Date(iso));
 
-const YUSUF_SENTENCE = `Yusuf changed this plan on ${onDay("2026-09-24T18:40:00Z")}. You're seeing their version.`;
-const OMAR_SENTENCE = `Omar changed this plan on ${onDay("2026-09-19T08:15:00Z")}. You're seeing their version.`;
+const YUSUF_SENTENCE = `Yusuf changed this plan on ${onDay("2026-09-24T18:40:00Z")} (UTC). You're seeing their version.`;
+const OMAR_SENTENCE = `Omar changed this plan on ${onDay("2026-09-19T08:15:00Z")} (UTC). You're seeing their version.`;
 
 async function signIn(page: Page) {
   await page.goto("/login");

@@ -527,13 +527,15 @@ export const copy = {
     /**
      * EV-283 In scope, verbatim: "{Trainee first name} changed this plan on {date}. You're
      * seeing their version." Shown above the editor when `lastChangedBy = TRAINEE`; the
-     * date is `formatInstant` (this portal's one date format, en-GB, UTC).
+     * date is `formatInstant` (this portal's one date format, en-GB, UTC) and is labelled
+     * " (UTC)" — Raed's ruling 2026-09-28: keep UTC rather than guess the coach's zone,
+     * but say so, because a change made late evening in Europe reads as the next day.
      * Deliberately NOT said: what changed (a diff is out of scope — no published copy is
      * kept beside the live one) and anything about session edits, which the api does not
      * record until EV-283c.
      */
     traineeChanged: (firstName: string, date: string) =>
-      `${firstName} changed this plan on ${date}. You're seeing their version.`,
+      `${firstName} changed this plan on ${date} (UTC). You're seeing their version.`,
     draftBadge: "Draft — not yet published", // AC2, verbatim
     publishedBadge: "Published plan",
     planNameLabel: "Plan name",

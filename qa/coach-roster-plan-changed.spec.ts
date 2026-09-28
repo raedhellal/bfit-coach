@@ -66,13 +66,34 @@ test("the marker is on the flagged row and on no other, in both layouts", async 
   ).toBeVisible();
 });
 
-test("publishing to the trainee clears the marker", async ({ page }) => {
+test("publishing to the trainee clears the marker, reached by clicking", async ({ page }) => {
   await signIn(page);
-  await expect(
-    page.locator(".only-wide tbody tr", { hasText: "Yusuf A." }).getByText(MARKER, { exact: true })
-  ).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const yusufRow = page.locator(".only-wide tbody tr", { hasText: "Yusuf A." });
+  await expect(yusufRow.getByText(MARKER, { exact: true })).toBeVisible();
 
-  await page.goto(`/clients/${YUSUF}/routine`);
+  // Every step below is a click, never a page.goto: the defect this guards is the
+  // CLIENT router cache serving the roster it rendered before the publish, and a
+  // goto is a fresh document that never consults that cache. The window marker
+  // proves no step fell back to a full load.
+  //
+  // What this does NOT witness (checked 2026-09-28, Next 14.2.35, dev server): it stays
+  // green with `revalidatePath("/")` removed from routineActions.ts — and with all
+  // three of its revalidatePath calls removed — because the editor's own
+  // `router.refresh()` after a publish purges the whole client router cache. It pins
+  // the behaviour the coach sees, not which line produces it.
+  await page.evaluate(() => {
+    (window as unknown as { __ev283bSpa?: boolean }).__ev283bSpa = true;
+  });
+
+  await yusufRow.getByRole("link").first().click();
+  await page.waitForURL(`/clients/${YUSUF}`);
+  await page
+    .getByRole("navigation", { name: "Trainee sections" })
+    .getByRole("link", { name: "Routine", exact: true })
+    .click();
+  await page.waitForURL(`/clients/${YUSUF}/routine`);
+
   await page.getByRole("button", { name: "Publish", exact: true }).click();
   const confirm = page.getByRole("dialog").getByRole("button", { name: /^Publish/ });
   await expect(confirm).toBeEnabled();
@@ -81,8 +102,18 @@ test("publishing to the trainee clears the marker", async ({ page }) => {
     page.getByText("Published. The trainee sees it next time they open the app.")
   ).toBeVisible();
 
-  await page.goto("/");
+  // The header's text link, not the logo (which shares its aria-label).
+  await page
+    .getByRole("link", { name: "Back to roster" })
+    .filter({ hasText: "Back to roster" })
+    .click();
+  await page.waitForURL("/");
+  expect(
+    await page.evaluate(() => (window as unknown as { __ev283bSpa?: boolean }).__ev283bSpa)
+  ).toBe(true);
+
   await expect(page.locator(".only-wide tbody tr")).toHaveCount(6);
+  await expect(yusufRow.getByText(MARKER, { exact: true })).toHaveCount(0);
   expect(await markedRows(page, ".only-wide tbody tr")).toEqual([]);
   await expect(page.getByText(MARKER, { exact: true })).toHaveCount(0);
 });

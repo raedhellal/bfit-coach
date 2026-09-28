@@ -1,7 +1,7 @@
 import { UiIcon } from "@/components/ui/icons";
 
 /**
- * EV-283b — "{first name} changed this plan on {date}. You're seeing their version."
+ * EV-283b — "{first name} changed this plan on {date} (UTC). You're seeing their version."
  *
  * A server component with no state: the sentence comes from the page's routine read,
  * so a publish (which revalidates the route and `router.refresh()`es) re-renders the

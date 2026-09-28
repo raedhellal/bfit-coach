@@ -18,7 +18,7 @@ const onDay = (iso: string) =>
     timeZone: "UTC",
   }).format(new Date(iso));
 
-const YUSUF_SENTENCE = `Yusuf changed this plan on ${onDay("2026-09-24T18:40:00Z")}. You're seeing their version.`;
+const YUSUF_SENTENCE = `Yusuf changed this plan on ${onDay("2026-09-24T18:40:00Z")} (UTC). You're seeing their version.`;
 
 /**
  * The half the fixture cannot reach: it always sends the fields, so a page that read
