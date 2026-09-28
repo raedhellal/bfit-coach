@@ -145,6 +145,36 @@ test("live: a 410 on submit shows the expiry, with who to ask", async ({ page })
   await expect(page.getByRole("button", { name: "Finish my account" })).toBeDisabled();
 });
 
+/**
+ * BUG-381 — the live path of a blank new password. The form refuses one before sending
+ * it, so the only way the api's own refusal reaches the screen is a body the form did not
+ * build; the route below rewrites the real request on its way to the portal's handler, so
+ * the handler, `apiFetch` and the stub's `@NotBlank` answer are all the real ones.
+ *
+ * b-fit-api's message is `field + " " + defaultMessage`, and the default message follows
+ * the JVM locale (a French JVM said "ne doit pas être vide" at the EV-309 gate). The
+ * handler reads only the FIELD, so both locales must land on the same sentence.
+ */
+for (const locale of ["en", "fr"] as const) {
+  test(`live: the api's blank refusal (${locale} message) is shown as the blank rule, not a length the password met`, async ({
+    page,
+  }) => {
+    await stub(page, `/__validation-locale?lang=${locale}`);
+    await signInPending(page, "pending@stub.test");
+    await page.route("**/api/auth/activate", async (route) => {
+      const body = JSON.parse(route.request().postData() ?? "{}");
+      await route.continue({ postData: JSON.stringify({ ...body, newPassword: " ".repeat(8) }) });
+    });
+    await fillAndSubmit(page);
+    await expect(page.locator("form").getByRole("alert")).toHaveText("Your new password can't be only spaces.");
+
+    const j = await journal(page);
+    expect(j.activationBodies.map((b) => b.email), "the api was asked, once").toEqual(["pending@stub.test"]);
+    // Nothing was finished: the session is still the pending one.
+    expect(claims(await cookie(page, "evoli_pro_at")).roles).toEqual(["PENDING"]);
+  });
+}
+
 test("live: a wrong temporary password at sign-in is the ordinary refusal, and writes no cookie", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill("pending@stub.test");

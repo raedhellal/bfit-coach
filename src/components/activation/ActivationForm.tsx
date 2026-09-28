@@ -6,6 +6,7 @@ import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
 import { copy } from "@/lib/copy";
 import { LEGAL_URLS } from "@/lib/legal";
+import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, isApiBlank } from "@/lib/password";
 
 /**
  * EV-278c — the activation form: a new password and the coach's OWN consent.
@@ -33,9 +34,6 @@ export interface ActivationFormProps {
   expiredMessage: string;
 }
 
-const MIN_LENGTH = 8;
-const MAX_LENGTH = 128;
-
 export function ActivationForm({ versions: initialVersions, expiredMessage }: ActivationFormProps) {
   const router = useRouter();
   const [temporary, setTemporary] = useState("");
@@ -61,12 +59,16 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
     return () => clearTimeout(timer);
   }, [heldUntil]);
 
-  const tooShort = fresh.length > 0 && fresh.length < MIN_LENGTH;
-  const tooLong = fresh.length > MAX_LENGTH;
+  // BUG-381: the api's `@NotBlank` (spaces, tabs and other chars <= U+0020 only), checked
+  // before its `@Size`, because more spaces can never satisfy it — see src/lib/password.ts.
+  const blank = fresh.length > 0 && isApiBlank(fresh);
+  const tooShort = !blank && fresh.length > 0 && fresh.length < NEW_PASSWORD_MIN;
+  const tooLong = fresh.length > NEW_PASSWORD_MAX;
   const mismatch = repeat.length > 0 && repeat !== fresh;
   const ready =
-    temporary.length > 0 &&
-    fresh.length >= MIN_LENGTH &&
+    !isApiBlank(temporary) &&
+    fresh.length >= NEW_PASSWORD_MIN &&
+    !blank &&
     !tooLong &&
     repeat === fresh &&
     consent === true;
@@ -116,6 +118,9 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
           break;
         case "TEMPORARY_PASSWORD_REUSED":
           setError(copy.activate.temporaryReused);
+          break;
+        case "PASSWORD_BLANK":
+          setError(copy.activate.blank);
           break;
         case "VALIDATION_ERROR":
           setError(copy.activate.validation);
@@ -217,8 +222,16 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
       <Input
         label={copy.activate.newPassword}
         ariaLabel={copy.activate.newPassword}
-        hint={tooShort || tooLong ? undefined : copy.activate.newHint}
-        error={tooShort ? copy.activate.newHint : tooLong ? copy.activate.validation : undefined}
+        hint={blank || tooShort || tooLong ? undefined : copy.activate.newHint}
+        error={
+          blank
+            ? copy.activate.blank
+            : tooShort
+              ? copy.activate.newHint
+              : tooLong
+                ? copy.activate.validation
+                : undefined
+        }
         hintId="activate-new-hint"
         icon="key"
         type="password"

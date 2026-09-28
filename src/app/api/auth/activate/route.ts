@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ApiError, coachApi, type ActivateAccountRequest } from "@/lib/coachApi";
 import { hasCoachRole, isPendingOnly } from "@/lib/jwt";
+import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN } from "@/lib/password";
 import { routeAccessToken } from "@/lib/routeSession";
 import { refuseCrossOrigin } from "@/lib/sameOrigin";
 import { clearSession, writeSession } from "@/lib/session";
@@ -36,6 +37,38 @@ type Body = Partial<Record<keyof ActivateAccountRequest, unknown>>;
 
 function refuse(status: number, code: string, extra: Record<string, unknown> = {}) {
   return NextResponse.json({ code, ...extra }, { status });
+}
+
+/**
+ * BUG-381 — which password a `400 VALIDATION_ERROR` from `POST /me/activate` refused.
+ *
+ * b-fit-api answers the first field error as `field + " " + defaultMessage`
+ * (`RestExceptionHandler.handleValidation`). Only the FIELD is read: the default message
+ * follows the api's JVM locale ("must not be blank", "ne doit pas être vide"), the field
+ * name does not.
+ *
+ * - `temporaryPassword` (`@NotBlank @Size(max = 128)`): whatever was typed cannot be the
+ *   temporary password, which is exactly what `TEMPORARY_PASSWORD_INVALID` says.
+ * - `newPassword` (`@NotBlank @Size(min = 8, max = 128)`) with a length that MEETS `@Size`:
+ *   the one constraint left to refuse it is `@NotBlank`, so the password is blank —
+ *   `PASSWORD_BLANK`, never the length sentence (the bug: eight spaces were told
+ *   "must be 8 to 128 characters"). A blank password that is also too short keeps
+ *   `VALIDATION_ERROR`, whose length sentence is then true.
+ *
+ * Anything else stays the api's `VALIDATION_ERROR`.
+ */
+function passwordRefusal(err: ApiError, newPassword: string): string | null {
+  if (err.code !== "VALIDATION_ERROR") return null;
+  const field = /^(\w+) /.exec(err.message)?.[1];
+  if (field === "temporaryPassword") return "TEMPORARY_PASSWORD_INVALID";
+  if (
+    field === "newPassword" &&
+    newPassword.length >= NEW_PASSWORD_MIN &&
+    newPassword.length <= NEW_PASSWORD_MAX
+  ) {
+    return "PASSWORD_BLANK";
+  }
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -114,6 +147,8 @@ export async function POST(request: Request) {
       if (code === "RATE_LIMITED") {
         return refuse(429, code, { retryAfterSeconds: err.retryAfterSeconds });
       }
+      const password = passwordRefusal(err, newPassword);
+      if (password) return refuse(400, password);
       return refuse(err.status >= 400 && err.status < 600 ? err.status : 502, code);
     }
     // A thrown fetch: the api may have committed the activation and lost the reply, so

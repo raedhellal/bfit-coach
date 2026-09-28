@@ -282,6 +282,94 @@ test.describe("EV-278c — a pending coach finishes the account on the portal", 
     await expect(f.submit).toBeEnabled();
   });
 
+  /**
+   * BUG-381 — b-fit-api's rule for `newPassword` is `@NotBlank @Size(min = 8, max = 128)`
+   * (`ActivateAccountRequest`, origin/main `5f368d7`), and Hibernate Validator 8.0.1's
+   * `NotBlankValidator` is `toString().trim().length() > 0`: Java's `trim()` strips every
+   * char up to U+0020, so "blank" is "made only of chars ≤ U+0020" — spaces, tabs, line
+   * breaks. It is NOT JavaScript's `trim()` (which also strips U+00A0 and the U+2000 run);
+   * eight no-break spaces pass the api, so they must pass here. The api hashes the password
+   * as sent (no trim), so a space at either end is part of the password and is allowed.
+   */
+  test("BUG-381: a new password of only spaces or tabs is refused before anything is sent, naming that rule", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    const f = form(page);
+    await f.consent.check();
+    for (const blank of [" ".repeat(8), "\t".repeat(8), " \t".repeat(6), "   "]) {
+      await fillPasswords(page, TEMP, blank, blank);
+      await expect(
+        page.getByText("Your new password can't be only spaces.", { exact: true }),
+        `${JSON.stringify(blank)} names the rule it broke`
+      ).toBeVisible();
+      await expect(page.getByText("Your new password must be 8 to 128 characters.")).toHaveCount(0);
+      await expect(f.submit, JSON.stringify(blank)).toBeDisabled();
+      // Enter in a field submits a form even with its button disabled; nothing may leave.
+      await f.repeat.press("Enter");
+    }
+    // The temporary password is `@NotBlank` too: spaces there can never be the right one.
+    await fillPasswords(page, " ".repeat(8), NEW_PASSWORD, NEW_PASSWORD);
+    await expect(f.submit, "a blank temporary password").toBeDisabled();
+    await f.repeat.press("Enter");
+    await fillPasswords(page);
+    await expect(f.submit, "and a real one enables it").toBeEnabled();
+    await expect(refusal(page)).toHaveCount(0);
+    expect((await recordedActivations(page)).activations, "nothing reached the api").toEqual([]);
+  });
+
+  test("BUG-381: the blank rule is the api's and no stricter — spaces at the ends and no-break spaces are allowed", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    const f = form(page);
+    await f.consent.check();
+    const nbsp = String.fromCharCode(0xa0);
+    for (const ok of [" abcdefg", "abcdefg ", `  ${NEW_PASSWORD}  `, nbsp.repeat(8)]) {
+      await fillPasswords(page, TEMP, ok, ok);
+      await expect(page.getByText("Your new password can't be only spaces.")).toHaveCount(0);
+      await expect(f.submit, JSON.stringify(ok)).toBeEnabled();
+    }
+    // And one of them really finishes the account: the spaces are part of the password.
+    await fillPasswords(page, TEMP, `  ${NEW_PASSWORD}  `);
+    await f.submit.click();
+    await page.waitForURL(/\/$/);
+  });
+
+  test("BUG-381: the api's blank refusal is answered as blank, never as a length the password met", async ({
+    page,
+  }) => {
+    await signInPending(page);
+    const post = (temporaryPassword: string, newPassword: string) =>
+      page.request.post("/api/auth/activate", {
+        data: { temporaryPassword, newPassword, consentAccepted: true, privacyPolicyVersion: "v1.0", termsVersion: "v1.0" },
+      });
+
+    // 8 and 128 chars meet @Size, so the one constraint left to refuse them is @NotBlank.
+    for (const blank of [" ".repeat(8), "\t".repeat(8), " ".repeat(128)]) {
+      const res = await post(TEMP, blank);
+      expect(res.status(), JSON.stringify(blank)).toBe(400);
+      expect((await res.json()).code, JSON.stringify(blank)).toBe("PASSWORD_BLANK");
+    }
+    // Too short and blank: the length sentence is true, so it stays.
+    const short = await post(TEMP, "   ");
+    expect(short.status()).toBe(400);
+    expect((await short.json()).code).toBe("VALIDATION_ERROR");
+    // Too LONG and not blank (staff nit, round 2): the refusal is @Size, never @NotBlank.
+    // The mapping's upper bound is what keeps 129 characters off the blank sentence.
+    const long = await post(TEMP, "a".repeat(129));
+    expect(long.status()).toBe(400);
+    expect((await long.json()).code, "129 chars").toBe("VALIDATION_ERROR");
+    // A blank TEMPORARY password is a wrong one, not a new-password length.
+    const temp = await post(" ".repeat(8), NEW_PASSWORD);
+    expect(temp.status()).toBe(400);
+    expect((await temp.json()).code).toBe("TEMPORARY_PASSWORD_INVALID");
+
+    // The api WAS asked each time: this is the mapping of its refusal, not a portal pre-check.
+    const { activations } = await recordedActivations(page);
+    expect(activations.map((a) => a.outcome)).toEqual(Array(6).fill("VALIDATION_ERROR"));
+  });
+
   test("an expired account says so, names who can set it up again, and offers no form", async ({ page }) => {
     await signInPending(page, "expired.coach@evoli.fit");
     await expect(page.getByRole("heading", { level: 1, name: "This account has expired" })).toBeVisible();

@@ -23,20 +23,10 @@ export default function LoginPage({
 
   return (
     <div className="login-split">
-      {/* Brand panel — decorative, hidden below 768 px by CSS (no JS, no reflow). */}
-      <div
-        className="login-brand"
-        style={{
-          background: "var(--grad-energy)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          padding: 48,
-          color: "#fff",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
+      {/* Brand panel — decorative, hidden below 768 px by CSS (no JS, no reflow). No inline
+          style on it (BUG-380): an inline `display` beat the ≤767 px rule that hides it, so
+          its whole layout lives on `.login-brand` in globals.css. */}
+      <div className="login-brand">
         <div
           style={{
             position: "absolute",

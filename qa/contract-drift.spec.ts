@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN } from "../src/lib/password";
 import { DEVIATIONS, type SchemaDeviation } from "./contract-deviations";
 
 /**
@@ -518,6 +519,41 @@ test("the required-field check fires on a synthetic request schema, and only the
   const widget = fakeClient.find((e) => e.name === "WidgetRequest");
   expect(widget).toBeDefined();
   expect(registeredRequired(fakeSpec, widget!, fakeRegister)).toEqual(["size"]);
+});
+
+/**
+ * The keys of one property of one schema (`name` at indent 8, its keys at indent 10),
+ * as `key -> raw value`, or null if either is absent.
+ */
+function propertyKeys(spec: string, schema: string, property: string): Record<string, string> | null {
+  const block = schemaBlock(spec, schema);
+  if (!block) return null;
+  const start = block.findIndex((l) => l === `        ${property}:`);
+  if (start === -1) return null;
+  const keys: Record<string, string> = {};
+  for (let i = start + 1; i < block.length; i += 1) {
+    const line = block[i];
+    if (line.trim() === "") continue;
+    if (line.length - line.trimStart().length <= 8) break;
+    const kv = /^ {10}([A-Za-z_$][A-Za-z0-9_]*):\s*(.*)$/.exec(line);
+    if (kv) keys[kv[1]] = kv[2].trim();
+  }
+  return keys;
+}
+
+/**
+ * BUG-381 (staff round 2, optional nit): `src/lib/password.ts` restates the api's
+ * `@Size(min = 8, max = 128)` on `newPassword`, and the form, the route handler's refusal
+ * mapping and the fixture all read it from there. Hold that restatement to the artefact:
+ * a re-vendor that moves either bound, or that adds a `pattern` (a character rule the
+ * portal's blank-only check does not know), goes red here instead of on a coach.
+ */
+test("ActivateAccountRequest.newPassword: the bounds the portal restates are the api's, and there is no pattern", () => {
+  const keys = propertyKeys(spec, "ActivateAccountRequest", "newPassword");
+  expect(keys, "ActivateAccountRequest.newPassword not found in the vendored spec").not.toBeNull();
+  expect(Number(keys!.minLength), "minLength").toBe(NEW_PASSWORD_MIN);
+  expect(Number(keys!.maxLength), "maxLength").toBe(NEW_PASSWORD_MAX);
+  expect(keys, "a pattern the portal does not enforce").not.toHaveProperty("pattern");
 });
 
 /*

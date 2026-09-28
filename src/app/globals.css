@@ -91,7 +91,20 @@ input::placeholder { color:var(--ink-3); }
 .page { padding: 28px 32px 56px; max-width: 1180px; margin: 0 auto; }
 .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .login-split { min-height: 100vh; display: flex; }
-.login-brand { flex: 1; }
+/* BUG-380: the brand panel's WHOLE layout is here, never inline. An inline `display`
+   beats the ≤767 px `display: none` below (no media query can override an inline
+   declaration), which kept the panel on a phone and squeezed the form to 224 px at 320. */
+.login-brand {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px;
+  color: #fff;
+  background: var(--grad-energy);
+  position: relative;
+  overflow: hidden;
+}
 .login-form { width: 480px; max-width: 100%; }
 
 @media (max-width: 767px) {

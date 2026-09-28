@@ -39,19 +39,9 @@ function formatExpiry(iso: string | null): string {
 function Frame({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="login-split">
-      <div
-        className="login-brand"
-        style={{
-          background: "var(--grad-energy)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          padding: 48,
-          color: "#fff",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
+      {/* No inline style on the panel (BUG-380): an inline `display` beat the ≤767 px rule
+          that hides it. Its whole layout lives on `.login-brand` in globals.css. */}
+      <div className="login-brand">
         <div
           style={{
             position: "absolute",

@@ -73,6 +73,7 @@ import { adherenceSeries } from "./fixtureAdherence";
 import { FIXTURE_RECIPE_BOUNDS as B } from "./fixtureRecipeBounds";
 // EV-278c — the fixture's POST /me/activate hands back fresh tokens, minted like the login's.
 import { mintFixtureToken } from "./fixtureToken";
+import { isApiBlank } from "./password";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
@@ -3679,14 +3680,18 @@ async function fixtureActivate(body: ActivateAccountRequest): Promise<AuthTokens
     return fail(status, code, message);
   };
 
-  // Bean validation runs before the use case: required fields, newPassword ≥ 8.
-  if (
-    typeof raw.temporaryPassword !== "string" ||
-    typeof raw.newPassword !== "string" ||
-    raw.newPassword.length < 8 ||
-    raw.newPassword.length > 128
-  ) {
-    return refuse(400, "VALIDATION_ERROR", "newPassword must be 8 to 128 characters");
+  // Bean validation runs before the use case: `@NotBlank` on both passwords and
+  // `@Size(min = 8, max = 128)` on the new one (b-fit-api `ActivateAccountRequest`,
+  // `5f368d7`). The api answers the first field error as `field + " " + defaultMessage`.
+  // "Blank" is the API's blank (Java `trim()`, chars <= U+0020): `isApiBlank` (BUG-381).
+  if (typeof raw.temporaryPassword !== "string" || isApiBlank(raw.temporaryPassword)) {
+    return refuse(400, "VALIDATION_ERROR", "temporaryPassword must not be blank");
+  }
+  if (typeof raw.newPassword !== "string" || isApiBlank(raw.newPassword)) {
+    return refuse(400, "VALIDATION_ERROR", "newPassword must not be blank");
+  }
+  if (raw.newPassword.length < 8 || raw.newPassword.length > 128) {
+    return refuse(400, "VALIDATION_ERROR", "newPassword must be between 8 and 128 characters");
   }
   const account = s.pendingAccounts.get(email);
   if (account?.behaviour === "THROTTLED") {
