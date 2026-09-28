@@ -87,4 +87,18 @@ code states, and each one would cost a rewrite or a false green to rediscover.
 - A mutant that makes the fixture api refuse with the SAME code the handler would (M2, the
   409) survives a status-only test; assert that `/api/fixture/activations` stayed empty.
 
+- **Password rules (BUG-381, 2026-09-28): the api's "blank" is Java's, not JS's.**
+  `newPassword` is `@NotBlank @Size(8,128)`; HV 8.0.1's `NotBlankValidator` is
+  `trim().length() > 0` and Java `trim()` strips only chars <= U+0020. JS `trim()` also
+  strips U+00A0/U+2000../U+FEFF, which the api ACCEPTS — using it would be a stricter rule.
+  The api hashes the password as sent (no trim), so edge spaces are legal. One module:
+  `src/lib/password.ts` (`isApiBlank`), used by the form, the handler and the fixture.
+- **The api's 400 message is `field + " " + defaultMessage` and the default message follows
+  the JVM LOCALE** (French on a QA rig). Map by the field name only; the handler infers
+  `@NotBlank` from "newPassword refused with a length inside @Size". The activation stub
+  has `/__validation-locale?lang=fr` to witness it.
+- **BUG-380: an inline `display` on an element a media query hides beats the query.** The
+  auth brand panel's layout now lives on `.login-brand` in globals.css; `qa/coach-auth-layout.spec.ts`
+  pins 320/375/767 hidden + 768/1280 unchanged on /login and /activate.
+
 See [[coach-portal-fixture-mode]], [[stories-carry-verbatim-copy]].
