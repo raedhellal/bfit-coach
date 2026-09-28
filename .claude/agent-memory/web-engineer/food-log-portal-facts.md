@@ -11,7 +11,10 @@ that are decisions, not details:
 
 - **The numbers are the api's `totals`, never re-summed.** They come from the same code
   as the trainee's Today screen (AC2); a portal sum is a second answer. `totals` null is
-  the ONLY "Nothing logged" signal, never 0 kcal.
+  the ONLY "Nothing logged" signal on the collapsed row, never 0 kcal. Review N3: a
+  day with totals but empty `entries` and `eatenMeals` keeps the totals in its summary
+  and its expanded panel reads "Nothing logged" instead of opening onto nothing
+  (fixture: Nils, two days ago, via `totalsOverride`).
 - **QUICK → kcal and a dash per macro, as a rule on `source`.** Macros are stored
   `NOT NULL DEFAULT 0` (V28), so a 0 cannot mean "not entered" on any other entry; OFF
   and MANUAL show their 0. OFF is "From the food database" with OR without a barcode:
