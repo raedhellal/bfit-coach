@@ -3283,7 +3283,10 @@ function nutritionState(id: string): NutritionState {
  *           1 day ago: a planned meal eaten and no entries (totals with no entries);
  *           3 days ago: OFF without a barcode + MANUAL with 0 g fat + an eaten lunch;
  *           6 days ago: OFF + QUICK. Days 2, 4 and 5 ago: nothing (totals null).
- *   Nils  — no stored target (targets null) and one MANUAL entry today.
+ *   Nils  — no stored target (targets null) and one MANUAL entry today;
+ *           2 days ago: api totals but NO entries and NO eaten meals (review N3 — a
+ *           shape the contract says should not happen; the portal must not render an
+ *           empty panel for it).
  *   Every other NUTRITION trainee (Petra among them) never logs: seven empty days.
  * ════════════════════════════════════════════════════════════════════════════ */
 
@@ -3292,6 +3295,8 @@ interface SeededFoodDay {
   entryTimes: string[];
   eatenMeals: Omit<CoachFoodLogEatenMeal, "eatenAt">[];
   eatenTimes: string[];
+  /** Sent as-is instead of the sum — only for the totals-without-items day (N3). */
+  totalsOverride?: CoachFoodLogMacros;
 }
 
 function foodDay(
@@ -3420,6 +3425,7 @@ const FOOD_LOGS: Record<string, Record<number, SeededFoodDay>> = {
     ]),
   },
   [NILS_ID]: {
+    2: { ...foodDay([]), totalsOverride: { calories: 250, proteinG: 12, carbsG: 30, fatG: 8 } },
     0: foodDay([
       [
         {
@@ -3462,7 +3468,9 @@ function foodLogDay(id: string, date: string, daysAgo: number, targets: CoachFoo
   return {
     date,
     // NULL when nothing was recorded — "Nothing logged", never 0 kcal.
-    totals: recorded
+    totals: seeded?.totalsOverride
+      ? seeded.totalsOverride
+      : recorded
       ? {
           calories: sum((x) => x.calories),
           proteinG: sum((x) => x.proteinG),

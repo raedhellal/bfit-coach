@@ -149,6 +149,14 @@ function FoodDay({ day }: { day: CoachFoodLogDay }) {
             ))}
           </Group>
         )}
+        {/* Totals with nothing to itemise (the api says that cannot happen): the
+            numbers above stay, as the api's, and the panel says so instead of opening
+            onto nothing. */}
+        {entries.length === 0 && eaten.length === 0 && (
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
+            {copy.foodLog.nothingLogged}
+          </p>
+        )}
       </div>
     </details>
   );

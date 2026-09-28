@@ -29,7 +29,8 @@ import { test } from "./fixture-test";
  *           QUICK one (AC1's Monday). 1 day ago: a planned meal eaten, no entries.
  *           3 days ago: OFF without a barcode, MANUAL with 0 g fat, and an eaten lunch.
  *           6 days ago: OFF + QUICK. Days 2, 4 and 5 ago: nothing.
- *   Nils  — no stored target; one MANUAL entry today.
+ *   Nils  — no stored target; one MANUAL entry today; 2 days ago totals with no
+ *           entries and no eaten meals (review N3).
  *   Petra — NUTRITION only, never logs: seven "Nothing logged" (edge case 1).
  *   Yusuf — no NUTRITION scope: no section, and the log is never requested.
  */
@@ -212,6 +213,21 @@ test.describe("EV-284b AC5 — the Food log section", () => {
     await openNutrition(page, NILS);
     await expect(pairOf(day(page, 0), "Calories")).toHaveText("300 kcal · No target");
     await expect(pairOf(day(page, 0), "Protein")).toHaveText("10 g · No target");
+  });
+
+  test("totals with no entries and no eaten meals open onto Nothing logged, not an empty panel", async ({
+    page,
+  }) => {
+    await openNutrition(page, NILS);
+    const odd = day(page, 2);
+    // The api's totals are still shown, never hidden or re-derived from empty lists.
+    await expect(pairOf(odd, "Calories")).toHaveText("250 kcal · No target");
+    await odd.locator("summary").click();
+    await expect(odd.locator("details")).toHaveAttribute("open", "");
+    const panel = odd.locator("details > div");
+    await expect(panel).toHaveText("Nothing logged");
+    await expect(panel).toBeVisible();
+    await expect(panel.locator("[data-entry], [data-eaten-meal]")).toHaveCount(0);
   });
 
   /**
