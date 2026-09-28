@@ -113,6 +113,11 @@ export function NutritionWeekCard({
   const [candidates, setCandidates] = useState<SwapCandidate[] | null>(null);
   /** AC7 — a Swap refusal is shown IN the swap dialog, which stays open. */
   const [swapError, setSwapError] = useState<string | null>(null);
+  /**
+   * EV-288 — the list on screen was replaced after a 409 `SWAP_OPTIONS_STALE`. A notice,
+   * not a refusal: nothing is wrong, the coach just picks again from the current list.
+   */
+  const [swapNotice, setSwapNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -184,6 +189,7 @@ export function NutritionWeekCard({
     setSwapping({ mealId, mealName });
     setCandidates(null);
     setSwapError(null);
+    setSwapNotice(null);
     startTransition(async () => {
       const result = await settled(swapOptionsAction(clientId, mealId), {
         ok: false,
@@ -219,6 +225,32 @@ export function NutritionWeekCard({
         applySwapAction(clientId, target.mealId, candidateIndex),
         { ok: false, code: "FAILED" } as const
       );
+      if (!result.ok && result.code === "SWAP_OPTIONS_STALE") {
+        /**
+         * EV-288 (BUG-271, ADR-0028 §4.3b): the list this coach chose from is not the
+         * server's any more (the trainee, or another tab, swapped this meal meanwhile).
+         * Nothing was written. The dialog stays open, the options are read ONCE more
+         * and shown with the line. The apply is NOT retried: the coach picks again from
+         * what they can see, which is the whole point of the api refusing.
+         */
+        setSwapError(null);
+        setSwapNotice(null);
+        setCandidates(null);
+        const fresh = await settled(swapOptionsAction(clientId, target.mealId), {
+          ok: false,
+          code: "FAILED",
+        } as const);
+        if (!fresh.ok && fresh.code === "ACCESS_DENIED") {
+          setSwapping(null);
+          return void handleAccessEnded();
+        }
+        // Edge case 1: the re-read failed → today's options-error state, and no line
+        // pointing at "current ones" that are not there.
+        setCandidates(fresh.ok ? fresh.options.candidates : []);
+        if (fresh.ok) setSwapNotice(copy.nutrition.swapOptionsChanged);
+        return;
+      }
+      setSwapNotice(null);
       if (!result.ok && (result.code === "MEAL_EATEN" || result.code === "MEAL_LOCKED")) {
         // EV-256e AC7 (BUG-245): the trainee owns this meal. Nothing was written, so
         // the week on screen is left exactly as it is, and the sentence goes in the
@@ -490,6 +522,15 @@ export function NutritionWeekCard({
             style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)", lineHeight: 1.5 }}
           >
             {swapError}
+          </p>
+        )}
+        {swapNotice && (
+          <p
+            role="status"
+            data-testid="swap-options-changed"
+            style={{ margin: "0 0 12px", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}
+          >
+            {swapNotice}
           </p>
         )}
         {candidates === null ? (
