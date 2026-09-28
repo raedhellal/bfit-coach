@@ -2521,6 +2521,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /admin/users:
+    get:
+      summary: List or search users (admin)
+      description: >-
+        Without q, or with an empty q: every user, newest first (createdAt descending), paged.
+        With q (EV-261a): the users whose email OR full name contains q, case-insensitively, newest
+        first with the id breaking ties so paging is stable. q is trimmed first (spaces, including
+        no-break spaces, and a pasted newline). %, _ and backslash in q are matched literally, never as
+        wildcards. There is no accent folding: q=zoe does not find "Zoé" (a recorded limit, not a
+        defect). A search returns exactly the fields the list returns, for the same population
+        (PENDING accounts included, as in the list); deleted accounts do not exist to be found.
+        ADMIN is granted only to a session that proved a second factor (BUG-165).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: Page index (0-based). page x size must not exceed 2147483647.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: q
+          in: query
+          required: false
+          description: >-
+            Search text. Leading and trailing whitespace is trimmed first; the rest must be at
+            least 2 and at most 254 characters after trimming (counted as Unicode code points),
+            with no control character. There is deliberately no maxLength on the raw
+            parameter: a longer value that trims to 254 or fewer is accepted. Absent or empty means
+            no search. Send it URL-encoded: a literal "+" must travel as %2B.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserPageResponse"
+        "400":
+          description: >-
+            INVALID_REQUEST (page < 0, size outside 1-100, or page x size past 2147483647; or a
+            request parameter whose percent-escape cannot be decoded, e.g. an unencoded q=100%fit,
+            message "A request parameter could not be decoded.", BUG-332);
+            ADMIN_SEARCH_TOO_SHORT (q under 2 characters after trimming, e.g. "%" sent as %25);
+            ADMIN_SEARCH_TOO_LONG (q over 254 characters);
+            ADMIN_SEARCH_INVALID (q contains a control character). The message never echoes q.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /admin/users/{userId}/entitlements:
     post:
       summary: Grant subscription tier and/or AI credits to a user (admin)
@@ -2827,6 +2904,421 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "409":
           description: ACCOUNT_PENDING — the account has not been activated; its role cannot be changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/gyms:
+    post:
+      summary: Create a gym (admin)
+      description: >-
+        EV-277a / ADR-0019 D19.2. Creates a gym (the company above its coaches; memberships are
+        EV-277c) with status ACTIVE. Values are trimmed before validation; a blank vatNumber is null.
+        Logs one ADMIN_GYM_CREATED line carrying the actor id and the gym id, never an address.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminGymRequest"
+      responses:
+        "201":
+          description: The stored gym, status ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGymDetailResponse"
+        "400":
+          description: VALIDATION_ERROR — the message starts with the offending field's name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    get:
+      summary: List gyms, sorted by name (admin)
+      description: >-
+        EV-277a. Sorted by name case-insensitively, the id breaking ties, so page boundaries are
+        stable. Without `status`, every gym; there is no deleted state.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
+        - name: page
+          in: query
+          required: false
+          description: Page index (0-based)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Page size (1-100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: One page of gyms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGymPageResponse"
+        "400":
+          description: INVALID_REQUEST — an unknown status or out-of-range pagination
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/gyms/{id}:
+    get:
+      summary: Get a gym (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The gym
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGymDetailResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: GYM_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      summary: Replace a gym's editable fields (admin)
+      description: >-
+        EV-277a. Every editable field is replaced, so an absent vatNumber clears it. The status is
+        not editable here (see deactivate / reactivate). Logs one ADMIN_GYM_UPDATED line. There is
+        no DELETE on this path: an invoiced gym must stay addressable (EV-279).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminGymRequest"
+      responses:
+        "200":
+          description: The updated gym
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGymDetailResponse"
+        "400":
+          description: VALIDATION_ERROR — the message starts with the offending field's name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: GYM_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/gyms/{id}/deactivate:
+    post:
+      summary: Deactivate a gym; nothing is deleted (admin)
+      description: >-
+        EV-277a. Sets status INACTIVE and changes nothing else; the row stays, and it leaves
+        `GET /admin/gyms?status=ACTIVE`. Idempotent: deactivating an INACTIVE gym answers 200 with
+        the gym unchanged and logs nothing. Otherwise logs one ADMIN_GYM_DEACTIVATED line.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The gym, INACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGymDetailResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: GYM_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/gyms/{id}/reactivate:
+    post:
+      summary: Reactivate a gym (admin)
+      description: >-
+        EV-277a. Sets status ACTIVE and changes nothing else. Idempotent: reactivating an ACTIVE gym
+        answers 200 with the gym unchanged and logs nothing. Otherwise logs one
+        ADMIN_GYM_REACTIVATED line.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The gym, ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGymDetailResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: GYM_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/gyms/{id}/coaches:
+    post:
+      summary: Add a coach to a gym (admin)
+      description: >-
+        EV-277c / ADR-0019 D19.2b, A5a. The coach joins now (joinedAt = the request instant). A coach
+        is in at most one gym at a time; an independent coach is one with no current membership.
+        Joining grants no role and touches none of the coach's trainee links (D19.2c). Refusals, in
+        this order: GYM_NOT_FOUND (404), GYM_INACTIVE, GYM_MEMBER_NOT_A_COACH (no coach profile, or
+        the account does not hold the COACH role at the time of the request, e.g. a coach demoted to
+        USER, who keeps the profile; also an id that is no account; BUG-317), GYM_MEMBER_NOT_ACTIVATED
+        (the coach's account is still PENDING, ADR-0019 A9d; a PENDING account holds no other role, so
+        it is judged by its profile alone), GYM_MEMBER_ALREADY, GYM_MEMBER_IN_ANOTHER_GYM (409s). A refusal
+        writes nothing and logs nothing. Of two concurrent adds of one coach, exactly one succeeds
+        and the other answers GYM_MEMBER_IN_ANOTHER_GYM with details.gymId naming the winner's gym, or,
+        when both adds named the same gym, GYM_MEMBER_ALREADY (no details: the gym is the one in the path).
+        Logs one ADMIN_GYM_COACH_JOINED line after the commit: actor, gym and coach ids only. Demoting
+        a coach closes no membership: a demoted coach stays listed until removed.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminGymCoachRequest"
+      responses:
+        "201":
+          description: The gym, with the coach among its current coaches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGymDetailResponse"
+        "400":
+          description: VALIDATION_ERROR (coachUserId missing, or given more than once, BUG-318) or INVALID_REQUEST (a body or path id that is not a UUID; a body coachUserId must be exactly the 36 canonical characters, so a NUL, LF or space around it is refused, BUG-319)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: GYM_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            GYM_INACTIVE, GYM_MEMBER_NOT_A_COACH, GYM_MEMBER_NOT_ACTIVATED, GYM_MEMBER_ALREADY, or
+            GYM_MEMBER_IN_ANOTHER_GYM with details.gymId naming the gym the coach is currently in.
+            Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: GYM_MEMBER_IN_ANOTHER_GYM
+                message: This coach is already in another gym.
+                details:
+                  gymId: 3f1c2a9e-0000-4000-8000-000000000001
+  /admin/gyms/{id}/coaches/{coachUserId}/leave:
+    post:
+      summary: Remove a coach from a gym (admin)
+      description: >-
+        EV-277c / ADR-0019 D19.2b. Sets leftAt = now on the coach's current membership of this gym;
+        the row is kept (ADR-0019 A9a deletes it only at the coach's hard delete) and the coach moves
+        to pastCoaches. Allowed on an
+        INACTIVE gym. The coach's trainee links are unchanged (D19.2c). Logs one ADMIN_GYM_COACH_LEFT
+        line after the commit: actor, gym and coach ids only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: coachUserId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The gym, with the coach among its past coaches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminGymDetailResponse"
+        "400":
+          description: INVALID_REQUEST — a path id that is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: GYM_NOT_FOUND, or GYM_MEMBERSHIP_NOT_FOUND when the coach is not currently in this gym (never was, already left, or is in another gym)
           content:
             application/json:
               schema:
@@ -5351,6 +5843,11 @@ paths:
         reason. The rebuilt day is generated against the structure THE WEEK was applied with — read
         from the week, never from the trainee's profile — so the day a coach regenerates matches
         the week they applied.
+        BUG-287: only what the regenerate writes is checked against the trainee's food rules. Meals
+        on the other days that the trainee's CURRENT rules exclude (they changed their preferences
+        after the week was made) no longer block it; a meal the trainee locked on this day that
+        their rules now exclude loses its lock and is replaced. A refusal of the rebuilt day itself
+        is the 422 below, and the day stays as it was.
       security:
         - bearerAuth: []
       parameters:
@@ -5400,6 +5897,12 @@ paths:
             created — that persistence is the trainee's own path only.
 
 
+            BUG-287: the same code also answers when the rebuilt day is refused at the WRITE — the
+            trainee changed their food rules while this day was being generated, so a meal it
+            produced is excluded by the rules in force when it is saved. Nothing was written either:
+            the day stays as it was, and only this day is checked, never the other six.
+
+
             This operation answered **500** before EV-071a. The portal decides what to show from
             this **code**; the `message` is developer-facing and is not copy.
           content:
@@ -5423,6 +5926,8 @@ paths:
         the engine reads `nutrition_preferences`, and nothing in this request could override them.
         A meal id belonging to somebody else answers 404: ownership is resolved through the
         trainee's id, so a guessed id buys nothing.
+        A change to the trainee's food preferences clears every list cached for them (BUG-286), so
+        the next read generates under the rules in force; the list served is always the list cached.
       security:
         - bearerAuth: []
       parameters:
@@ -5475,6 +5980,9 @@ paths:
         locked answers 409 COACH_MEAL_LOCKED, the same rule as placement, apply and regenerate.
         Eaten is checked first. Both checks run under the plan lock against the meal as it is now,
         so a mark or a lock made after the portal loaded the week is seen too.
+        A cached candidate that the trainee's food rules now exclude (the rules changed after the
+        list was cached) is never written: it answers 409 SWAP_OPTIONS_STALE and clears the list,
+        so read GET …/swap again and pick from the new one (BUG-286).
       security:
         - bearerAuth: []
       parameters:
@@ -8579,6 +9087,166 @@ components:
           $ref: "#/components/schemas/Role"
       required:
         - role
+    AdminGymRequest:
+      type: object
+      description: >-
+        A gym's editable fields (EV-277a). Values are trimmed before validation; a name made only of
+        whitespace, separators (NBSP included) or format characters is blank.
+      required: [name, legalName, billingAddress, contactEmail]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          example: Iron Temple
+        legalName:
+          type: string
+          minLength: 1
+          maxLength: 160
+          example: Iron Temple SARL
+        billingAddress:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Free text; newlines allowed
+        vatNumber:
+          type: string
+          nullable: true
+          maxLength: 32
+          description: Optional; blank or absent means none
+        contactEmail:
+          type: string
+          format: email
+          maxLength: 254
+    AdminGymResponse:
+      type: object
+      description: A gym as the list shows it (EV-277a), with its active-coach count (EV-277c).
+      required: [id, name, legalName, billingAddress, contactEmail, status, createdAt, updatedAt,
+                 activeCoachCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        legalName:
+          type: string
+        billingAddress:
+          type: string
+        vatNumber:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        activeCoachCount:
+          type: integer
+          format: int64
+          description: Coaches currently in the gym (a membership with no leftAt)
+    AdminGymDetailResponse:
+      type: object
+      description: >-
+        One gym with its coaches (EV-277a + EV-277c): the answer of every single-gym route.
+        currentCoaches are oldest join first; pastCoaches most recent departure first. A coach who
+        left and rejoined appears once per period.
+      required: [id, name, legalName, billingAddress, contactEmail, status, createdAt, updatedAt,
+                 activeCoachCount, currentCoaches, pastCoaches]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        legalName:
+          type: string
+        billingAddress:
+          type: string
+        vatNumber:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        activeCoachCount:
+          type: integer
+          format: int64
+          description: Coaches currently in the gym (a membership with no leftAt)
+        currentCoaches:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminGymCoachResponse"
+        pastCoaches:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminGymCoachResponse"
+    AdminGymCoachResponse:
+      type: object
+      description: One membership period of a coach in a gym (EV-277c).
+      required: [membershipId, coachUserId, displayName, email, joinedAt]
+      properties:
+        membershipId:
+          type: string
+          format: uuid
+        coachUserId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          description: The coach's own display name; the gym cannot edit it (ADR-0019 A5c)
+        email:
+          type: string
+          format: email
+        joinedAt:
+          type: string
+          format: date-time
+        leftAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null while the coach is current
+    AdminGymCoachRequest:
+      type: object
+      required: [coachUserId]
+      properties:
+        coachUserId:
+          type: string
+          format: uuid
+          description: The user id of an account with a coach profile
+    AdminGymPageResponse:
+      type: object
+      required: [items, page, size, totalElements, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminGymResponse"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
     AdminUserResponse:
       type: object
       properties:
@@ -8600,6 +9268,28 @@ components:
           description: >-
             The primary role: PENDING first (a pending account holds nothing else), then ADMIN,
             COACH, else USER
+    AdminUserPageResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUserResponse"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+      required:
+        - items
+        - page
+        - size
+        - totalElements
+        - totalPages
     LegalVersionsResponse:
       type: object
       properties:

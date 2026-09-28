@@ -1881,20 +1881,6 @@ export interface AuthTokens {
   expiresIn: number;
 }
 
-/** The codes `POST /me/activate` refuses with, as the activation screen reads them. */
-export const ACTIVATION_REFUSALS = [
-  "VALIDATION_ERROR",
-  "TEMPORARY_PASSWORD_INVALID",
-  "TEMPORARY_PASSWORD_REUSED",
-  "CONSENT_REQUIRED",
-  "ACCOUNT_ALREADY_ACTIVE",
-  "CONSENT_VERSION_STALE",
-  "ACCOUNT_NOT_INITIALISED",
-  "ACTIVATION_EXPIRED",
-  "RATE_LIMITED",
-] as const;
-export type ActivationRefusal = (typeof ACTIVATION_REFUSALS)[number];
-
 /**
  * A pending account the PORTAL can finish: pending, a coach's grant, and not yet at its
  * expiry. Expiry is judged against `now` because `GET /me/activation` still answers

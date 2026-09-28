@@ -47,3 +47,4 @@
 - [Fixture swap-candidate cache (EV-288)](fixture-swap-candidate-cache.md) — apply with nothing cached is 409 SWAP_OPTIONS_STALE; read options first; cache outside FixtureState, reset empties it
 - [Trainee app identity constant (EV-289)](trainee-app-identity-constant.md) — src/lib/traineeApps.ts holds both apps; lite = D-LITE-1 default; role names need exact:true
 - [Food log (EV-284b)](food-log-portal-facts.md) — QUICK dashes by source; no range sent; <summary> is phrasing-only; own reads journal; cross-branch drift register
+- [Activation (EV-278c)](activation-portal-facts.md) — PENDING reaches 3 api routes, `GET /me` 403 so no name; login checks /me/activation pre-cookie; alert scoping; live stub config
