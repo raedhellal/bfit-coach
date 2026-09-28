@@ -355,6 +355,11 @@ test.describe("EV-278c — a pending coach finishes the account on the portal", 
     const short = await post(TEMP, "   ");
     expect(short.status()).toBe(400);
     expect((await short.json()).code).toBe("VALIDATION_ERROR");
+    // Too LONG and not blank (staff nit, round 2): the refusal is @Size, never @NotBlank.
+    // The mapping's upper bound is what keeps 129 characters off the blank sentence.
+    const long = await post(TEMP, "a".repeat(129));
+    expect(long.status()).toBe(400);
+    expect((await long.json()).code, "129 chars").toBe("VALIDATION_ERROR");
     // A blank TEMPORARY password is a wrong one, not a new-password length.
     const temp = await post(" ".repeat(8), NEW_PASSWORD);
     expect(temp.status()).toBe(400);
@@ -362,7 +367,7 @@ test.describe("EV-278c — a pending coach finishes the account on the portal", 
 
     // The api WAS asked each time: this is the mapping of its refusal, not a portal pre-check.
     const { activations } = await recordedActivations(page);
-    expect(activations.map((a) => a.outcome)).toEqual(Array(5).fill("VALIDATION_ERROR"));
+    expect(activations.map((a) => a.outcome)).toEqual(Array(6).fill("VALIDATION_ERROR"));
   });
 
   test("an expired account says so, names who can set it up again, and offers no form", async ({ page }) => {

@@ -92,7 +92,10 @@ const javaBlank = (v) => typeof v !== "string" || [...v].every((c) => c.charCode
 function validationRefusal(body) {
   const fr = state.validationLocale === "fr";
   const blank = fr ? "ne doit pas \u00eatre vide" : "must not be blank";
-  const size = fr ? "la taille doit \u00eatre comprise entre 8 et 128" : "must be between 8 and 128 characters";
+  // `@NotBlank` has no message of its own, so it resolves `{jakarta.validation.constraints.NotBlank.message}`
+  // against the JVM locale. `@Size(min = 8, max = 128, message = "must be between 8 and 128 characters")`
+  // is a LITERAL on b-fit-api's `ActivateAccountRequest`, so a French JVM still sends it in English.
+  const size = "must be between 8 and 128 characters";
   if (javaBlank(body.temporaryPassword)) return `temporaryPassword ${blank}`;
   if (javaBlank(body.newPassword)) return `newPassword ${blank}`;
   if (body.newPassword.length < 8 || body.newPassword.length > 128) return `newPassword ${size}`;
