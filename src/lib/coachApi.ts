@@ -244,6 +244,18 @@ export interface RosterClient {
   status: ClientStatus;
   /** ISO-8601 instant — when the trainee accepted. */
   since: string;
+  /**
+   * EV-283a — the roster's "Plan changed" marker: true when the trainee's own plan became
+   * their live plan at or after THIS coach's latest publish. The api computes it by the
+   * same rule as `CoachRoutineResponse.changedSinceYourPublish`, so the marker and the
+   * routine page cannot disagree. Null when the link lacks WORKOUTS ("not shared").
+   *
+   * OPTIONAL in this type although the api always sends the key: an api that predates
+   * EV-283a omits it, and the marker reads it through `rosterPlanChanged`, which is true
+   * for a literal `true` only. Absent, null and false all render nothing — a marker is a
+   * claim, and silence from an older api is not one.
+   */
+  routineChangedSinceYourPublish?: boolean | null;
 }
 
 /**
@@ -782,6 +794,27 @@ export interface CoachRoutineResponse {
   hasDraft: boolean;
   /** ISO instant; null when there is no draft. */
   draftUpdatedAt: string | null;
+  /**
+   * EV-283a — who wrote the LIVE plan: `COACH` (a publish) or `TRAINEE` (their own
+   * editor, or an AI generation or chat rewrite they started). Null when never recorded
+   * (a plan older than the field, a catalogue plan, no plan): nothing is inferred.
+   * Edits made from a workout session are not recorded yet (EV-283c).
+   *
+   * Optional for the same reason as the roster flag: an older api omits it, and the
+   * banner is rendered only for a literal `TRAINEE` (`traineeChangeNotice`).
+   */
+  lastChangedBy?: "COACH" | "TRAINEE" | null;
+  /** EV-283a — ISO instant the live plan became live. Null exactly when `lastChangedBy` is. */
+  lastChangedAt?: string | null;
+  /**
+   * EV-283a — true when the trainee's own plan became live at or after this coach's
+   * latest publish, so publishing now replaces their change. Required on the wire;
+   * optional here because an older api omits it. The routine page does NOT render from
+   * it: the story keys the banner on `lastChangedBy = TRAINEE`, which is also true for
+   * a trainee this coach never published to. It is the roster marker's rule, and is
+   * typed here so the drift guard holds the whole envelope.
+   */
+  changedSinceYourPublish?: boolean;
 }
 
 /**

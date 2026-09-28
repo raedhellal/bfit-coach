@@ -101,6 +101,12 @@ export const copy = {
     noWorkout: "No workouts yet",
     streak: (days: number) => `${days} day${days === 1 ? "" : "s"}`,
     noStreak: "No streak",
+    /**
+     * EV-283 In scope, verbatim: "a small *"Plan changed"* marker on rows with
+     * `routineChangedSinceYourPublish`". Said only for a literal `true` — null is "not
+     * shared" (no WORKOUTS) and says nothing, false says nothing.
+     */
+    planChanged: "Plan changed",
     statusActive: "ACTIVE",
     loadError: "The roster could not be loaded.",
     retry: "Reload",
@@ -518,6 +524,16 @@ export const copy = {
     build: "Build a plan", // AC1, verbatim
     // AC1, verbatim — the link is ACTIVE but carries no WORKOUTS scope.
     scopeMissing: "This trainee has not shared their workouts with you.",
+    /**
+     * EV-283 In scope, verbatim: "{Trainee first name} changed this plan on {date}. You're
+     * seeing their version." Shown above the editor when `lastChangedBy = TRAINEE`; the
+     * date is `formatInstant` (this portal's one date format, en-GB, UTC).
+     * Deliberately NOT said: what changed (a diff is out of scope — no published copy is
+     * kept beside the live one) and anything about session edits, which the api does not
+     * record until EV-283c.
+     */
+    traineeChanged: (firstName: string, date: string) =>
+      `${firstName} changed this plan on ${date}. You're seeing their version.`,
     draftBadge: "Draft — not yet published", // AC2, verbatim
     publishedBadge: "Published plan",
     planNameLabel: "Plan name",

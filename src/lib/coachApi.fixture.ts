@@ -2928,6 +2928,55 @@ function seedNutrition(id: string): SeededNutrition {
  * a demo fixture, not a database.
  * ════════════════════════════════════════════════════════════════════════════ */
 
+/** EV-283a's three fields as the fixture stores them (see `FixtureState.planAuthors`). */
+interface PlanAuthor {
+  lastChangedBy: "COACH" | "TRAINEE";
+  lastChangedAt: string;
+  changedSinceYourPublish: boolean;
+}
+
+/**
+ * EV-283b's seeded authorship. FIXED instants, not relative ones, because AC5 asserts the
+ * banner's sentence with its date ("24 Sept 2026" in en-GB). Each row reaches a state the others cannot:
+ *   Yusuf — TRAINEE after this coach's publish: the banner AND the roster marker. He is
+ *           the only WORKOUTS row on the populated roster with the flag, so the marker
+ *           is on exactly one row.
+ *   Omar  — TRAINEE, but this coach never published to him: the banner shows (the story
+ *           keys it on `lastChangedBy`), the flag is false. Overview-only, so no row.
+ *   Lina  — COACH: no banner, no marker.
+ * Every other trainee has no entry: never recorded, nothing inferred (EV-283 AC3).
+ */
+function seedPlanAuthors(): Map<string, PlanAuthor> {
+  return new Map<string, PlanAuthor>([
+    [
+      YUSUF_ID,
+      { lastChangedBy: "TRAINEE", lastChangedAt: "2026-09-24T18:40:00Z", changedSinceYourPublish: true },
+    ],
+    [
+      OMAR_ID,
+      { lastChangedBy: "TRAINEE", lastChangedAt: "2026-09-19T08:15:00Z", changedSinceYourPublish: false },
+    ],
+    [
+      LINA_ID,
+      { lastChangedBy: "COACH", lastChangedAt: "2026-09-10T09:00:00Z", changedSinceYourPublish: false },
+    ],
+  ]);
+}
+
+/**
+ * The roster row's `routineChangedSinceYourPublish`, derived from the row's OWN `scopes`
+ * (so the two cannot disagree): null without WORKOUTS (not shared), otherwise the same
+ * record `getRoutine` reads.
+ */
+function withPlanFlag(row: RosterClient): RosterClient {
+  return {
+    ...row,
+    routineChangedSinceYourPublish: row.scopes.includes("WORKOUTS")
+      ? (state().planAuthors.get(row.id)?.changedSinceYourPublish ?? false)
+      : null,
+  };
+}
+
 interface FixtureState {
   /** AC6: revoking takes the whole roster away for the rest of the process. */
   revoked: boolean;
@@ -2941,6 +2990,14 @@ interface FixtureState {
   lastRoutineClient: string | null;
   /** The live plan per trainee. `publishRoutine` replaces an entry. */
   plans: Map<string, RoutinePlanView | null>;
+  /**
+   * EV-283a — who made each live plan live, and whether that was after this coach's
+   * latest publish. No entry = never recorded (the api's null/null/false). ONE record
+   * feeds both `getRoutine` and the roster row, which is the api's "same rule, so the
+   * marker and the routine page cannot disagree", held by construction here too.
+   * `publishRoutine` overwrites an entry with COACH/now/false — "publishing clears it".
+   */
+  planAuthors: Map<string, PlanAuthor>;
   drafts: Map<string, CoachRoutineDraft>;
   /** The digest handed out by the last preview, per trainee (EV-184 ruling 2). */
   pendingDigest: Map<string, string>;
@@ -2987,6 +3044,7 @@ function freshState(): FixtureState {
       [PETRA_ID, null],
       [MARA_ID, null],
     ]),
+    planAuthors: seedPlanAuthors(),
     drafts: new Map(),
     pendingDigest: new Map(),
     templates: new Map(seedTemplates().map((t) => [t.id, t])),
@@ -3180,7 +3238,7 @@ export const fixtureCoachApi: CoachApi = {
     const items =
       SCENARIO === "empty" || state().revoked
         ? []
-        : sortRoster([lina(), petra(), yusuf(), sara(), tobias(), mara()], sort);
+        : sortRoster([lina(), petra(), yusuf(), sara(), tobias(), mara()].map(withPlanFlag), sort);
     return {
       items: page === 0 ? items : [],
       page,
@@ -3309,6 +3367,8 @@ export const fixtureCoachApi: CoachApi = {
     state().lastRoutineClient = id;
     const plan = state().plans.get(id) ?? null;
     const draft = state().drafts.get(id) ?? null;
+    // No plan, nothing recorded: the api's null/null/false for "no plan at all".
+    const author = plan ? state().planAuthors.get(id) : undefined;
     return {
       clientId: id,
       planId: plan?.planId ?? null,
@@ -3317,6 +3377,9 @@ export const fixtureCoachApi: CoachApi = {
       guardrails: guardrailsFor(id),
       hasDraft: draft !== null,
       draftUpdatedAt: draft?.updatedAt ?? null,
+      lastChangedBy: author?.lastChangedBy ?? null,
+      lastChangedAt: author?.lastChangedAt ?? null,
+      changedSinceYourPublish: author?.changedSinceYourPublish ?? false,
     };
   },
 
@@ -3434,6 +3497,12 @@ export const fixtureCoachApi: CoachApi = {
     const planId = `plan-${id.slice(-4)}-${Date.now().toString(36)}`;
     // AC3: the trainee receives the REPAIRED plan, not the submitted one.
     state().plans.set(id, { planId, name: repaired.name, trainingDays: repaired.trainingDays });
+    // EV-283 AC2: a publish makes the coach the author and clears both flags.
+    state().planAuthors.set(id, {
+      lastChangedBy: "COACH",
+      lastChangedAt: new Date().toISOString(),
+      changedSinceYourPublish: false,
+    });
     state().drafts.delete(id);
     state().pendingDigest.delete(id);
     // The applied repairs are identical to the acknowledged preview's — the digest
