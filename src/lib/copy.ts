@@ -105,6 +105,12 @@ export const copy = {
       "Our Terms of Service or Privacy Policy have changed. Please review them and accept the new version.",
     consentReload: "Our Terms of Service or Privacy Policy have changed. Reload this page to see the new version.",
     validation: "Your new password must be 8 to 128 characters.",
+    /**
+     * BUG-381: b-fit-api's `@NotBlank` on `newPassword`. Said before sending (the form) and
+     * for the api's own refusal (`PASSWORD_BLANK`, mapped by /api/auth/activate), never as
+     * `validation` — eight spaces meet the length rule, so that sentence was false.
+     */
+    blank: "Your new password can't be only spaces.",
     notInitialised: "We can't finish this account here. Write to support@evoli.fit and we'll sort it out.",
     alreadyActiveTitle: "This account is already finished",
     alreadyActive: "Sign in again with the password you chose.",

@@ -73,12 +73,31 @@ function reset() {
     // as b-fit-api does when it is down (5xx) or when `AuthRateLimitGuard.onRefresh`
     // throttles the portal server's IP (429, with `Retry-After`). 0 = answer normally.
     refreshFailure: 0,
+    // BUG-381: `/__validation-locale?lang=fr` answers bean-validation refusals the way a
+    // French JVM does ("ne doit pas être vide"), which the EV-309 gate saw on a real rig.
+    validationLocale: "en",
     // Staff round 4: one template in every coach's library, so a spec can capture the
     // REAL server-action request the Delete button sends and replay it.
     templates: new Map([[TEMPLATE.id, { ...TEMPLATE }]]),
   };
 }
 reset();
+
+/**
+ * Hibernate Validator 8.0.1's `NotBlankValidator` is `toString().trim().length() > 0`, and
+ * Java's `trim()` strips every char <= U+0020 (not U+00A0, not the U+2000 run).
+ */
+const javaBlank = (v) => typeof v !== "string" || [...v].every((c) => c.charCodeAt(0) <= 0x20);
+
+function validationRefusal(body) {
+  const fr = state.validationLocale === "fr";
+  const blank = fr ? "ne doit pas \u00eatre vide" : "must not be blank";
+  const size = fr ? "la taille doit \u00eatre comprise entre 8 et 128" : "must be between 8 and 128 characters";
+  if (javaBlank(body.temporaryPassword)) return `temporaryPassword ${blank}`;
+  if (javaBlank(body.newPassword)) return `newPassword ${blank}`;
+  if (body.newPassword.length < 8 || body.newPassword.length > 128) return `newPassword ${size}`;
+  return null;
+}
 
 function mint(email, account, type) {
   const roles = account.activated ? [account.grantedRole] : ["PENDING"];
@@ -140,6 +159,10 @@ const server = createServer(async (req, res) => {
   if (path === "/__reset") {
     reset();
     return json(res, 200, { ok: true });
+  }
+  if (path === "/__validation-locale") {
+    state.validationLocale = url.searchParams.get("lang") === "fr" ? "fr" : "en";
+    return json(res, 200, { ok: true, validationLocale: state.validationLocale });
   }
   if (path === "/__refresh-fails") {
     state.refreshFailure = Number(url.searchParams.get("status") || 0);
@@ -208,9 +231,12 @@ const server = createServer(async (req, res) => {
       privacyPolicyVersion: body.privacyPolicyVersion,
       termsVersion: body.termsVersion,
     });
-    if (typeof body.newPassword !== "string" || body.newPassword.length < 8) {
-      return json(res, 400, { code: "VALIDATION_ERROR", message: "newPassword" });
-    }
+    // Bean validation, before the use case: `ActivateAccountRequest` is `@NotBlank` on both
+    // passwords and `@Size(min = 8, max = 128)` on the new one (b-fit-api `5f368d7`).
+    // `RestExceptionHandler.handleValidation` answers the FIRST field error as
+    // `field + " " + defaultMessage`, and the default message follows the JVM locale.
+    const refused = validationRefusal(body);
+    if (refused) return json(res, 400, { code: "VALIDATION_ERROR", message: refused });
     if (a.behaviour === "THROTTLED") {
       return json(res, 429, { code: "RATE_LIMITED", message: "Too many attempts" }, { "Retry-After": "61" });
     }
