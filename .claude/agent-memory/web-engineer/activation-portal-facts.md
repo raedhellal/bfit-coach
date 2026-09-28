@@ -96,7 +96,13 @@ code states, and each one would cost a rewrite or a false green to rediscover.
 - **The api's 400 message is `field + " " + defaultMessage` and the default message follows
   the JVM LOCALE** (French on a QA rig). Map by the field name only; the handler infers
   `@NotBlank` from "newPassword refused with a length inside @Size". The activation stub
-  has `/__validation-locale?lang=fr` to witness it.
+  has `/__validation-locale?lang=fr` to witness it. Only a `{key}` message is localised:
+  `@Size(..., message = "must be between 8 and 128 characters")` is a LITERAL, so a French
+  JVM mixes "ne doit pas être vide" with an English size sentence — a stub must too.
+- **An inferred mapping needs a test on BOTH sides of every bound it reads.** Staff round 2
+  found the `<= NEW_PASSWORD_MAX` arm untested (129 chars would have read as blank); a
+  mutant per bound, not one happy case. `contract-drift.spec.ts` pins the spec's
+  `newPassword` min/max to `password.ts` and forbids a `pattern`.
 - **BUG-380: an inline `display` on an element a media query hides beats the query.** The
   auth brand panel's layout now lives on `.login-brand` in globals.css; `qa/coach-auth-layout.spec.ts`
   pins 320/375/767 hidden + 768/1280 unchanged on /login and /activate.
