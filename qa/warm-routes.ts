@@ -96,6 +96,24 @@ export default async function warmRoutes(config: FullConfig): Promise<void> {
       // the route, not to wait for the page to settle.
       await page.goto(route, { waitUntil: "domcontentloaded", timeout: 60_000 });
     }
+
+    /**
+     * EV-278c — /activate is off-limits to the coach session above (middleware sends it
+     * to /), so it is compiled from a PENDING session of its own: a fixture account the
+     * login mints `["PENDING"]` for. Signing in writes nothing to the fixture store.
+     */
+    const pending = await browser.newContext({ baseURL });
+    try {
+      const response = await pending.request.post("/api/auth/login", {
+        data: { email: "new.coach@evoli.fit", password: "Temp-pass-2026" },
+      });
+      if (response.ok()) {
+        const activate = await pending.newPage();
+        await activate.goto("/activate", { waitUntil: "domcontentloaded", timeout: 60_000 });
+      }
+    } finally {
+      await pending.close();
+    }
   } finally {
     await browser.close();
   }

@@ -1,5 +1,11 @@
 import "server-only";
 import type {
+  ActivateAccountRequest,
+  ActivationStatus,
+  AccountRole,
+  AuthTokens,
+  InitialiserKind,
+  LegalVersions,
   CatalogExercise,
   CoachAccessScope,
   FiredRedFlag,
@@ -65,6 +71,8 @@ import { copy } from "./copy";
 import { adherenceSeries } from "./fixtureAdherence";
 // EV-256b — the fixture's own copy of the recipe bounds (see that module for why).
 import { FIXTURE_RECIPE_BOUNDS as B } from "./fixtureRecipeBounds";
+// EV-278c — the fixture's POST /me/activate hands back fresh tokens, minted like the login's.
+import { mintFixtureToken } from "./fixtureToken";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
@@ -3029,6 +3037,18 @@ interface FixtureState {
    * inventing a user id this surface is never given.
    */
   progressGoals: Map<string, ProgressGoalRecord>;
+  /**
+   * EV-278c — accounts somebody else initialised, keyed by lower-cased email. An
+   * activation flips `activated`, so the NEXT sign-in with that address is a coach's.
+   */
+  pendingAccounts: Map<string, FixturePendingAccount>;
+  /** `GET /legal/versions`. One account (`stale.coach`) revises the policy mid-form. */
+  legalVersions: LegalVersions;
+  /**
+   * Every `POST /me/activate` the fixture answered, in order, with the outcome. The body's
+   * KEYS are kept (the portal must never send a role) but never a password value.
+   */
+  activations: FixtureActivationRecord[];
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -3106,6 +3126,9 @@ function freshState(): FixtureState {
         },
       ],
     ]),
+    pendingAccounts: seedPendingAccounts(),
+    legalVersions: { privacyPolicyVersion: "v1.0", termsVersion: "v1.0" },
+    activations: [],
   };
 }
 
@@ -3484,7 +3507,243 @@ function foodLogDay(id: string, date: string, daysAgo: number, targets: CoachFoo
   };
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-278c — PENDING ACCOUNTS, AS b-fit-api `c69c287` KEEPS THEM.
+ *
+ * Addressed by EMAIL, like the recipe libraries: the fixture login mints a `["PENDING"]`
+ * token for any address below that has not been activated, and the activation screen's
+ * reads find the account through the token's `email` claim. Each address reaches a state
+ * the others cannot:
+ *
+ *   new.coach        — the happy path, and every per-field refusal (a wrong temporary
+ *                      password, the temporary one reused, a short new one).
+ *   expired.coach    — `expiresAt` in the past: `GET /me/activation` still answers
+ *                      pending (the sweeper has not run), only activation says 410.
+ *   expires.midway   — the screen renders a future expiry, then activation answers 410:
+ *                      the clock passed while the form was open.
+ *   throttled.coach  — every activation is the 11th in the window: 429, Retry-After 599.
+ *   stale.coach      — the first activation publishes a privacy revision (v1.1) and
+ *                      answers 409 CONSENT_VERSION_STALE with both current versions.
+ *   pending.trainee  — granted USER by a coach: the portal refuses it at sign-in.
+ *   orphan.pending   — PENDING with no initialisation row: 409 ACCOUNT_NOT_INITIALISED
+ *                      on both routes (a state only hand-written SQL makes).
+ *
+ * The checks run in `AccountActivationUseCase`'s order — bean validation, the throttle,
+ * already active, not initialised, expired, the temporary password, reuse, then consent —
+ * so a fixture refusal is the one the api would give for the same input. The instants
+ * are FIXED so the screen's sentences can be asserted verbatim.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** Every fixture account's temporary password, as the invitation email would carry it. */
+const FIXTURE_TEMPORARY_PASSWORD = "Temp-pass-2026";
+
+interface FixturePendingAccount {
+  sub: string;
+  grantedRole: AccountRole;
+  creatorKind: InitialiserKind;
+  creatorName: string | null;
+  expiresAt: string;
+  temporaryPassword: string;
+  /** false = PENDING with no `account_initialisations` row. */
+  initialised: boolean;
+  activated: boolean;
+  behaviour: "NONE" | "THROTTLED" | "REVISES_POLICY" | "EXPIRES_MIDWAY";
+}
+
+interface FixtureActivationRecord {
+  email: string;
+  keys: string[];
+  consentAccepted: unknown;
+  privacyPolicyVersion: unknown;
+  termsVersion: unknown;
+  outcome: string;
+}
+
+const FUTURE_EXPIRY = "2036-10-27T09:30:00Z";
+
+function seedPendingAccounts(): Map<string, FixturePendingAccount> {
+  const account = (
+    sub: string,
+    overrides: Partial<FixturePendingAccount> = {}
+  ): FixturePendingAccount => ({
+    sub,
+    grantedRole: "COACH",
+    creatorKind: "ADMIN",
+    creatorName: "Evoli",
+    expiresAt: FUTURE_EXPIRY,
+    temporaryPassword: FIXTURE_TEMPORARY_PASSWORD,
+    initialised: true,
+    activated: false,
+    behaviour: "NONE",
+    ...overrides,
+  });
+  return new Map<string, FixturePendingAccount>([
+    ["new.coach@evoli.fit", account("2780c000-0000-4000-8000-000000000001")],
+    [
+      "expired.coach@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000002", { expiresAt: "2026-08-01T09:30:00Z" }),
+    ],
+    [
+      "expires.midway@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000003", { behaviour: "EXPIRES_MIDWAY" }),
+    ],
+    [
+      "throttled.coach@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000004", { behaviour: "THROTTLED" }),
+    ],
+    [
+      "stale.coach@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000005", { behaviour: "REVISES_POLICY" }),
+    ],
+    [
+      "pending.trainee@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000006", {
+        grantedRole: "USER",
+        creatorKind: "COACH",
+        creatorName: "Alex R.",
+      }),
+    ],
+    [
+      "orphan.pending@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000007", { initialised: false }),
+    ],
+  ]);
+}
+
+/**
+ * The roles and subject the fixture login mints for an address: `["PENDING"]` for an
+ * account above that has not been activated, the ordinary coach otherwise. Called by
+ * `/api/auth/login` in fixture mode only.
+ */
+export function fixtureLoginIdentity(email: string): { roles: string[]; sub?: string } {
+  const account = state().pendingAccounts.get(email.trim().toLowerCase());
+  if (!account) return { roles: ["USER", "COACH"] };
+  if (account.activated) return { roles: [account.grantedRole], sub: account.sub };
+  return { roles: ["PENDING"], sub: account.sub };
+}
+
+/** `GET /api/fixture/activations` — the test suite's witness of what was sent. */
+export function fixtureActivations(): FixtureActivationRecord[] {
+  return state().activations.map((a) => ({ ...a, keys: [...a.keys] }));
+}
+
+async function fixtureCallerEmail(bearer?: string): Promise<string> {
+  const { decodeJwt } = await import("./jwt");
+  if (bearer) return (decodeJwt(bearer)?.email ?? "").toLowerCase();
+  try {
+    const { readSessionEmail } = await import("./session");
+    return (readSessionEmail() ?? "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+const NOT_PENDING: ActivationStatus = {
+  pending: false,
+  grantedRole: null,
+  expiresAt: null,
+  creatorKind: null,
+  creatorName: null,
+};
+
+async function fixtureGetActivation(bearer?: string): Promise<ActivationStatus> {
+  const account = state().pendingAccounts.get(await fixtureCallerEmail(bearer));
+  if (!account || account.activated) return { ...NOT_PENDING };
+  if (!account.initialised) {
+    return fail(409, "ACCOUNT_NOT_INITIALISED", "this account has no initialisation record");
+  }
+  return {
+    pending: true,
+    grantedRole: account.grantedRole,
+    expiresAt: account.expiresAt,
+    creatorKind: account.creatorKind,
+    creatorName: account.creatorName,
+  };
+}
+
+async function fixtureActivate(body: ActivateAccountRequest): Promise<AuthTokens> {
+  const email = await fixtureCallerEmail();
+  const s = state();
+  const raw = body as unknown as Record<string, unknown>;
+  const record = (outcome: string) =>
+    s.activations.push({
+      email,
+      keys: Object.keys(raw),
+      consentAccepted: raw.consentAccepted,
+      privacyPolicyVersion: raw.privacyPolicyVersion,
+      termsVersion: raw.termsVersion,
+      outcome,
+    });
+  const refuse = async (status: number, code: string, message: string): Promise<never> => {
+    record(code);
+    return fail(status, code, message);
+  };
+
+  // Bean validation runs before the use case: required fields, newPassword ≥ 8.
+  if (
+    typeof raw.temporaryPassword !== "string" ||
+    typeof raw.newPassword !== "string" ||
+    raw.newPassword.length < 8 ||
+    raw.newPassword.length > 128
+  ) {
+    return refuse(400, "VALIDATION_ERROR", "newPassword must be 8 to 128 characters");
+  }
+  const account = s.pendingAccounts.get(email);
+  if (account?.behaviour === "THROTTLED") {
+    record("RATE_LIMITED");
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(429, "Too many attempts", "RATE_LIMITED", null, 599);
+  }
+  if (!account || account.activated) {
+    return refuse(409, "ACCOUNT_ALREADY_ACTIVE", "this account is already active");
+  }
+  if (!account.initialised) {
+    return refuse(409, "ACCOUNT_NOT_INITIALISED", "this account has no initialisation record");
+  }
+  if (account.behaviour === "EXPIRES_MIDWAY" || Date.parse(account.expiresAt) <= Date.now()) {
+    return refuse(410, "ACTIVATION_EXPIRED", "this account had to be activated by " + account.expiresAt);
+  }
+  if (raw.temporaryPassword !== account.temporaryPassword) {
+    return refuse(400, "TEMPORARY_PASSWORD_INVALID", "temporary password is incorrect");
+  }
+  if (raw.newPassword === account.temporaryPassword) {
+    return refuse(400, "TEMPORARY_PASSWORD_REUSED", "choose a new password, not the temporary one");
+  }
+  if (raw.consentAccepted !== true) {
+    return refuse(400, "CONSENT_REQUIRED", "consent is required");
+  }
+  if (account.behaviour === "REVISES_POLICY" && s.legalVersions.privacyPolicyVersion === "v1.0") {
+    // A privacy revision is published while this person had the form open.
+    s.legalVersions = { ...s.legalVersions, privacyPolicyVersion: "v1.1" };
+  }
+  if (
+    raw.privacyPolicyVersion !== s.legalVersions.privacyPolicyVersion ||
+    raw.termsVersion !== s.legalVersions.termsVersion
+  ) {
+    record("CONSENT_VERSION_STALE");
+    return failWithDetails(409, "CONSENT_VERSION_STALE", "a displayed version is not current", {
+      privacyPolicyVersion: s.legalVersions.privacyPolicyVersion,
+      termsVersion: s.legalVersions.termsVersion,
+    });
+  }
+
+  account.activated = true;
+  record("ACTIVATED");
+  return {
+    accessToken: mintFixtureToken(email, [account.grantedRole], account.sub),
+    refreshToken: `fixture-refresh-${account.sub}`,
+    expiresIn: 60 * 60 * 8,
+  };
+}
+
 export const fixtureCoachApi: CoachApi = {
+  // ── EV-278c activation ────────────────────────────────────────────────────
+  getActivation: fixtureGetActivation,
+  activate: fixtureActivate,
+  async getLegalVersions(): Promise<LegalVersions> {
+    return { ...state().legalVersions };
+  },
+
   async getMe(): Promise<CoachMe> {
     return {
       coachId: COACH_ID,

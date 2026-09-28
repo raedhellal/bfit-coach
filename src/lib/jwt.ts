@@ -10,7 +10,7 @@
  * Why we decode at all: `GET /me` (`UserResponse`) exposes id, email, fullName,
  * createdAt and emailVerified — and NO roles. The roles live only in the access
  * token, as the `roles` claim written by `JwtTokenService` (a JSON array of
- * `Role.name()`: "USER" | "COACH" | "ADMIN"). So "is this a coach?" cannot be
+ * `Role.name()`: "USER" | "COACH" | "ADMIN" | "PENDING"). So "is this a coach?" cannot be
  * answered from `/me` today; it is answered from the claim.
  *
  * Runs in the edge runtime (middleware) as well as node, so: `atob` only, no Buffer.
@@ -44,6 +44,20 @@ export function decodeJwt(token: string): JwtClaims | null {
 export function hasCoachRole(token: string | null | undefined): boolean {
   if (!token) return false;
   return decodeJwt(token)?.roles?.includes("COACH") === true;
+}
+
+/**
+ * EV-278c — an account somebody else initialised that its person has not activated.
+ *
+ * EXACTLY `["PENDING"]`, never "includes PENDING": b-fit-api's `User.withRoles` refuses
+ * PENDING beside any other role (ADR-0022 K2), so a token carrying PENDING and anything
+ * else is one no writer produces and is not read as pending here. Middleware and the
+ * sign-in handler use this to confine the session to /activate.
+ */
+export function isPendingOnly(token: string | null | undefined): boolean {
+  if (!token) return false;
+  const roles = decodeJwt(token)?.roles;
+  return Array.isArray(roles) && roles.length === 1 && roles[0] === "PENDING";
 }
 
 /** True when the token is absent, unreadable, or expires within `skewSeconds`. */

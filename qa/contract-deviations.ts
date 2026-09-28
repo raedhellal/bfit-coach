@@ -61,6 +61,15 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
     },
   },
 
+  /* ── EV-278c: finishing an initialised account ───────────────────────────── */
+
+  ActivateAccountRequest: {
+    missingInPortal: {
+      fullName:
+        "OPTIONAL on the wire (`nullable`, not `required`): omitted = the name the admin typed stays. ADR-0022 D22.10e wants the activation screen to SHOW that name and let the person correct it, but the portal cannot read it — `GET /me` is behind the ACCOUNT floor a PENDING token lacks, and `ActivationStatusResponse` carries no name. A blank 'correct your name' field with nothing to correct would be a control about a value the person cannot see. → OWNER: java-engineer (a `fullName` on `ActivationStatusResponse`), then web-engineer adds the field.",
+    },
+  },
+
   /* ── read-path omissions, all of them decisions ─────────────────────────── */
 
   CatalogExercise: {

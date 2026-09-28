@@ -49,6 +49,89 @@ export const copy = {
       "This account uses two-factor authentication, which Evoli Pro does not support yet.",
     unavailable: "Cannot reach the server. Check that the API is running.",
     signedOut: "You have been signed out.",
+    /**
+     * EV-278c / ADR-0022 D22.9e — "a pending trainee on the portal → today's refusal,
+     * pointing at the app". AC1's sentence, then where the trainee finishes instead.
+     */
+    pendingTrainee:
+      "This account is not an Evoli Pro coach account. Finish setting it up in the Evoli Fit app.",
+    /** EV-278c — `409 ACCOUNT_NOT_INITIALISED` at sign-in (EV-204 AC-P5c's line, for the web). */
+    notInitialised: "We can't finish this account here. Write to support@evoli.fit and we'll sort it out.",
+  },
+
+  /**
+   * EV-278c — the activation screen (/activate). EV-278 carries no verbatim copy for it;
+   * the refusal lines below marked "AC-P5c" are EV-204 AC-P5c's app sentences, mirrored so
+   * the two activation surfaces say the same thing about the same refusal (ADR-0022 D22.9f:
+   * one endpoint, one consent source). Everything else is this surface's own wording.
+   *
+   * Deliberately ABSENT: any "we emailed you" sentence (the api's mail adapter swallows
+   * failures, EV-278 edge case 1) and any sentence naming the account's name (the portal
+   * cannot read it; see `ActivationStatus`).
+   */
+  activate: {
+    title: "Finish your account",
+    setUpBy: (initialiser: string) => `${initialiser} set up this Evoli Pro account for you.`,
+    finishBy: (when: string) =>
+      `Finish it by ${when}. If it isn't finished by then, the account is deleted.`,
+    temporaryPassword: "Temporary password",
+    temporaryHint: "From the invitation email.",
+    newPassword: "New password",
+    newHint: "At least 8 characters.",
+    repeatPassword: "Repeat the new password",
+    mismatch: "The two new passwords don't match.",
+    /**
+     * The checkbox's accessible name. The links sit OUTSIDE the label, on their own line,
+     * so that opening a document to read it can never tick the box (the app's BUG-023
+     * reasoning: "a row-wide toggle would tick consent for anyone tapping to read").
+     */
+    consent: "I agree to the Terms of Service and the Privacy Policy.",
+    termsLink: (version: string) => `Terms of Service (version ${version})`,
+    privacyLink: (version: string) => `Privacy Policy (version ${version})`,
+    readBefore: "Read them before you agree:",
+    submit: "Finish my account",
+    submitting: "Finishing…",
+    // AC-P5c, verbatim from the app.
+    temporaryInvalid: "That temporary password isn't right. Check the email we sent you.",
+    // AC-P5c, verbatim from the app.
+    temporaryReused: "Choose a new password that's different from the temporary one.",
+    // AC-P5c's shape: {minutes} = Retry-After ÷ 60, rounded up.
+    rateLimited: (minutes: number) =>
+      `Too many attempts. Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`,
+    rateLimitedNoWait: "Too many attempts. Wait a few minutes and try again.",
+    // The app's consentRequired / consentUpdated lines, for a person finishing an account.
+    consentRequired: "Please accept the Terms of Service and the Privacy Policy to finish your account.",
+    consentUpdated:
+      "Our Terms of Service or Privacy Policy have changed. Please review them and accept the new version.",
+    consentReload: "Our Terms of Service or Privacy Policy have changed. Reload this page to see the new version.",
+    validation: "Your new password must be 8 to 128 characters.",
+    notInitialised: "We can't finish this account here. Write to support@evoli.fit and we'll sort it out.",
+    alreadyActiveTitle: "This account is already finished",
+    alreadyActive: "Sign in again with the password you chose.",
+    signInAgain: "Sign in again",
+    expiredTitle: "This account has expired",
+    /** The page, when `expiresAt` has passed before the form is shown. */
+    expired: (when: string, initialiser: string) =>
+      `It had to be finished by ${when}, and that time has passed. Ask ${initialiser} to set it up again.`,
+    /** `410 ACTIVATION_EXPIRED` on submit: the clock passed while the form was open. */
+    expiredOnSubmit: (when: string, initialiser: string) =>
+      `This account had to be finished by ${when}, and that time has passed. Ask ${initialiser} to set it up again.`,
+    traineeTitle: "Finish this account in the app",
+    trainee: "This account is set up for Evoli Fit, not Evoli Pro. Finish it in the Evoli Fit app.",
+    loadFailedTitle: "We couldn't load your account",
+    loadFailed: "Reload the page to try again.",
+    legalUnavailable:
+      "We can't show the Terms of Service and the Privacy Policy right now, so the account can't be finished yet. Reload the page to try again.",
+    /**
+     * `failed` and `unavailable` are ONE sentence on purpose (staff, EV-278c round 2): after
+     * an unrecognised answer or a lost reply the portal does not know whether the api
+     * finished the account, so neither may say it was "not changed". Reloading /activate
+     * asks `GET /me/activation` again and draws where it actually stands — the form if still
+     * pending, `alreadyActiveTitle` if it was finished.
+     */
+    failed: "We couldn't confirm your account was finished. Reload this page to see where it stands.",
+    unavailable: "We couldn't confirm your account was finished. Reload this page to see where it stands.",
+    signedInAgain: "Your account is finished. Sign in with your new password.",
   },
 
   shell: {
@@ -1364,6 +1447,20 @@ export const copy = {
     ingredientTwice: "This ingredient is already in the recipe.",
     ingredientInvalid: "Check this ingredient's quantity and unit.",
     ingredientsBound: "A recipe has between 1 and 25 ingredients.",
+  },
+
+  /**
+   * /unavailable — a page load whose session rotation got no verdict from the api (it is
+   * down, or its per-IP refresh throttle answered 429). The cookies were kept, so "not
+   * signed out" is true. Only a GET or HEAD is ever shown this page — middleware answers
+   * a server action or any other write with a bare 503 and no page (staff round 4) — and
+   * a read refused before any page ran changed nothing, so "nothing was changed" is true
+   * too. Do not route a write here: after a refused write the sentence could be false.
+   */
+  unavailable: {
+    title: "We can't reach Evoli right now",
+    body: "Nothing was changed and you have not been signed out. Try again in a moment.",
+    retry: "Try again",
   },
 
   common: {
