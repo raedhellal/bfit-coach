@@ -49,10 +49,19 @@ function classify(err: unknown): RoutineFailure {
   return "FAILED";
 }
 
-/** The routine tab's own route, so a publish is visible on the next server render. */
+/**
+ * The routine tab's own route, so a publish is visible on the next server render —
+ * and the roster, because EV-283b's "Plan changed" marker is derived from the same
+ * write: a publish sets `routineChangedSinceYourPublish` back to false, so the row it
+ * came from is stale the moment this action returns. Next 14.2 happens to purge the
+ * whole client router cache on ANY revalidate, which would clear the marker without
+ * this line; that is an implementation detail of one Next version, not a contract,
+ * so the roster is named here explicitly.
+ */
 function revalidateRoutine(clientId: string): void {
   revalidatePath(`/clients/${clientId}/routine`);
   revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/");
 }
 
 export type SaveDraftResult =
