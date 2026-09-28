@@ -1688,6 +1688,107 @@ export interface CoachPlaceRecipeRequest {
   recipeId: string;
 }
 
+// ── EV-284a: the trainee's food log ──────────────────────────────────────────
+//
+// 🔌 WIRE — `GET /coach-portal/clients/{id}/nutrition/log?from&to` (b-fit-api main
+// `6264142`). NUTRITION scope, the same undifferentiated 403 as every coach read, and
+// `400 COACH_FOOD_LOG_RANGE_INVALID` for `from` after `to` or more than 14 days. The
+// portal sends NO range: the api's default is the seven days ending on the SERVER's UTC
+// today, and where that window ends is ADR-0025 D25.6's to decide, not this surface's.
+
+/**
+ * `CoachFoodLogMacros` — a day's totals or targets. Integers.
+ *
+ * @wire CoachFoodLogMacros
+ */
+export interface CoachFoodLogMacros {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
+
+/** `FoodLogEntry.Source` as stored. Rendered through `copy.foodLog.source`. */
+export type FoodLogSource = "OFF" | "QUICK" | "MANUAL";
+
+/**
+ * `CoachFoodLogEntry` — one thing the trainee logged.
+ *
+ * The macros are stored `NOT NULL DEFAULT 0` (V28), so a quick add that gave kcal only
+ * reads 0 g here, indistinguishable from a real 0 g. That is why EV-284 AC5 makes the
+ * dashes a rule on `source === "QUICK"` and shows every other entry's 0 as a 0.
+ * `barcode` is sent for a scanned product AND a searched one, so it never means
+ * "scanned" (AC5's struck label).
+ *
+ * @wire CoachFoodLogEntry
+ */
+export interface CoachFoodLogEntry {
+  name: string;
+  brand?: string | null;
+  /** Grams; null for a quick add. */
+  servingG?: number | null;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  source: FoodLogSource;
+  barcode?: string | null;
+  /** ISO instant the entry was recorded. */
+  loggedAt: string;
+}
+
+/**
+ * `CoachFoodLogEatenMeal` — a planned meal the trainee marked eaten that day. It counts
+ * in the day's `totals` and is not an entry, so without it a total could exceed the sum
+ * of its entries with nothing on the page to explain it.
+ *
+ * @wire CoachFoodLogEatenMeal
+ */
+export interface CoachFoodLogEatenMeal {
+  name: string;
+  /** e.g. BREAKFAST; nullable on the wire. */
+  slot?: string | null;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  eatenAt: string;
+}
+
+/**
+ * `CoachFoodLogDay` — one of the trainee's stored days (`food_log.logged_on`, EV-284
+ * AC4: the server's UTC day of the write, BUG-274).
+ *
+ * `totals` is NULL on a day where nothing was recorded, and that is the "Nothing
+ * logged" day — never a 0 kcal (EV-284b). It is computed by the SAME code as the
+ * trainee's own Today screen (AC2), so the portal never re-sums it.
+ *
+ * @wire CoachFoodLogDay
+ */
+export interface CoachFoodLogDay {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  totals?: CoachFoodLogMacros | null;
+  /** Training/rest-day adjusted as the trainee's own day read; null with no stored target. */
+  targets?: CoachFoodLogMacros | null;
+  /** Oldest first. */
+  entries: CoachFoodLogEntry[];
+  eatenMeals: CoachFoodLogEatenMeal[];
+}
+
+/**
+ * `CoachFoodLogResponse` — one element per day `from`..`to`, ascending, a day with
+ * nothing recorded present with `totals` null.
+ *
+ * @wire CoachFoodLogResponse
+ */
+export interface CoachFoodLogResponse {
+  clientId: string;
+  from: string;
+  to: string;
+  days: CoachFoodLogDay[];
+}
+
 // ── error helpers ────────────────────────────────────────────────────────────
 
 export { ApiError } from "./apiFetch";
@@ -2302,6 +2403,13 @@ const liveCoachApi = {
 
   getNutrition(id: string): Promise<CoachNutritionResponse> {
     return apiFetch<CoachNutritionResponse>(`${client(id)}/nutrition`);
+  },
+  /**
+   * EV-284a. No `from`/`to`: the api's default is the seven days ending on its UTC
+   * today, and where the coach's window ends is ADR-0025 D25.6's, not this surface's.
+   */
+  getFoodLog(id: string): Promise<CoachFoodLogResponse> {
+    return apiFetch<CoachFoodLogResponse>(`${client(id)}/nutrition/log`);
   },
   saveNutritionTargets(id: string, body: CoachTargetsRequest): Promise<CoachTargetsResult> {
     return apiFetch<CoachTargetsResult>(`${client(id)}/nutrition/targets`, {

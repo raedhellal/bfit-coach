@@ -166,3 +166,28 @@ export function firstName(displayName: string): string {
   if (trimmed === "") return "This trainee";
   return trimmed.split(/\s+/)[0];
 }
+
+/* ── EV-284b: the food log ──────────────────────────────────────────────────── */
+
+/**
+ * 17.3 → "17.3", 0 → "0", 24 → "24". At most one decimal, the precision the food
+ * database stores; a real 0 prints as 0 (EV-284 AC5: only a QUICK entry gets dashes).
+ */
+const GRAMS = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 });
+export function formatGrams(value: number): string {
+  return GRAMS.format(value);
+}
+
+/** An ISO instant → "07:45", in UTC like every other time on this portal. */
+const TIME = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "UTC",
+});
+export function formatUtcTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return TIME.format(d);
+}

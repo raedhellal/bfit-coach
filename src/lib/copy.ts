@@ -883,6 +883,48 @@ export const copy = {
   },
 
   /**
+   * EV-284b — the Food log section on the nutrition tab. Strings marked AC5 are the
+   * story's (hub EV-284, AC5 as amended 2026-09-27), VERBATIM; the rest are ours.
+   *
+   * Deliberately NOT said: "Scanned". A scan and a food-database search are stored
+   * identically (the app sends the product code for both), so AC5 merged the two into
+   * one label; telling them apart needs a cross-repo row nobody has asked for.
+   */
+  foodLog: {
+    title: "Food log",
+    /**
+     * OURS. The window is the api's default (seven days ending on its UTC today) and a
+     * day is the stored `food_log.logged_on`, which is the server's UTC day of the write
+     * (EV-284 AC4, BUG-274). Saying so is the only way a coach far from UTC can read a
+     * late dinner filed under the next day.
+     */
+    window: (from: string, to: string) => `${from} – ${to}. Days are counted in UTC.`,
+    nothingLogged: "Nothing logged", // EV-284b In scope + AC5, verbatim
+    calories: "Calories",
+    protein: "Protein",
+    carbs: "Carbs",
+    fat: "Fat",
+    /** "417 / 2,150 kcal" — eaten, then the day's target. */
+    pair: (eaten: string, target: string, unit: string) => `${eaten} / ${target} ${unit}`,
+    /** OURS. A trainee with no stored target: what they ate, and no invented target. */
+    noTarget: (eaten: string, unit: string) => `${eaten} ${unit} · No target`,
+    kcal: "kcal",
+    grams: "g",
+    /** AC5, verbatim, keyed by `FoodLogEntry.Source`. An unknown source gets no label. */
+    source: {
+      OFF: "From the food database",
+      QUICK: "Quick add",
+      MANUAL: "Entered by hand",
+    } as Record<string, string>,
+    fromThePlan: "From the plan", // AC5, verbatim
+    logged: "Logged",
+    serving: (grams: string) => `${grams} g`,
+    /** OURS. Times are the api's instants shown in UTC, like every date on this portal. */
+    at: (time: string) => `${time} UTC`,
+    loadError: "The food log could not be loaded.",
+  },
+
+  /**
    * EV-256e — "Use one of my recipes" on the meal week. Every sentence marked AC is the
    * story's, VERBATIM (hub `32d2657`), and QA checks them character by character.
    * `{FirstName}` is `firstName(traineeDisplayName)`; `{recipe}` and `{meal name}` are

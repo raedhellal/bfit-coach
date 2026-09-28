@@ -36,6 +36,15 @@ roster. Facts that are decisions, not details:
 - **A roster-state spec is a new file in TWO configs**: add it to
   `playwright.roster.config.ts` `testMatch` AND to `playwright.config.ts` `testIgnore`,
   or the default (empty-roster) run executes it and fails.
+- **The date is labelled " (UTC)"** — Raed's ruling 2026-09-28 after staff review: keep
+  UTC, say so. Any future banner/date copy on this portal should follow the same rule
+  rather than guess the coach's zone.
+- **No Playwright test can witness a `revalidatePath` on a publish here.** The routine
+  editor calls `router.refresh()` after every write, and in Next 14.2 that purges the
+  whole client router cache, so the roster clears on a click-through even with all
+  three `revalidatePath`s removed (checked 2026-09-28, dev server). The roster
+  clearing spec pins the coach-visible behaviour and says so in a comment; do not
+  claim a revalidate line is "tested" by it.
 
 See [[coach-portal-reads-scopes-never-a-status]], [[every-fixture-test-starts-from-the-seed]],
 [[stories-carry-verbatim-copy]].

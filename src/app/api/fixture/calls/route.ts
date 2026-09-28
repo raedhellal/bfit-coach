@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fixtureCalls } from "@/lib/coachApi.fixture";
+import { fixtureCalls, fixtureReads } from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
 
 /**
@@ -8,6 +8,10 @@ import { COACH_API_MODE } from "@/lib/env";
  *   GET → `{ calls }`: every api request the fixture answered since the last reset
  *         (`DELETE /api/fixture/state` empties it), e.g.
  *         `"GET /coach-portal/clients/{id}/nutrition/week/meals/{mealId}/swap"`.
+ *
+ *   and `{ reads }` (EV-284b): page-load reads the fixture journals, today only
+ *         `"GET /coach-portal/clients/{id}/nutrition/log"`. A separate list because
+ *         `calls` is asserted EXACTLY empty after a page load by EV-272's specs.
  *
  * It exists because the browser sees server actions, never api paths, so "no swap
  * request until Show suggestions is pressed" has no other witness in fixture mode.
@@ -24,5 +28,5 @@ const NO_STORE = { "Cache-Control": "no-store" };
 
 export async function GET() {
   if (COACH_API_MODE !== "fixture") return new NextResponse(null, { status: 404, headers: NO_STORE });
-  return NextResponse.json({ calls: fixtureCalls() }, { headers: NO_STORE });
+  return NextResponse.json({ calls: fixtureCalls(), reads: fixtureReads() }, { headers: NO_STORE });
 }
