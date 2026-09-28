@@ -167,7 +167,11 @@ export const copy = {
      */
     titleFrom: (coachName: string) => `${coachName} invited you to Evoli Fit`,
     body: "Open the invite in the Evoli Fit app to see who is inviting you. Nothing is shared until you accept.",
-    open: "Open in Evoli Fit",
+    /**
+     * EV-289, verbatim: "Open in Evoli Fit" and "Open in Evoli Fit Lite". The app name
+     * comes from `src/lib/traineeApps.ts`, so the lite label follows D-LITE-1 there.
+     */
+    openIn: (appName: string) => `Open in ${appName}`,
     // Edge case 3, verbatim: a phone without the app gets a sentence, not a white screen.
     fallback:
       "Don't have the app yet? Install Evoli Fit, then open this link again.",
@@ -830,6 +834,13 @@ export const copy = {
     swapLoading: "Loading options…",
     swapNone: "No swap options are available for this meal.",
     swapFailed: "The meal could not be swapped.",
+    /**
+     * EV-288, verbatim — the apply answered 409 `SWAP_OPTIONS_STALE` (BUG-271): the list
+     * on screen was re-read and replaced. Shared by both Swap sheets (flag off and on).
+     * Not shown when the re-read itself fails: there are no "current ones" to point at,
+     * so that case is today's options-error state (story edge case 1).
+     */
+    swapOptionsChanged: "These options changed. Here are the current ones.",
     noMeals: "No meals planned for this day.",
     /**
      * The marker on a meal the TRAINEE locked in their own app. ADR-0015 D6.7: an

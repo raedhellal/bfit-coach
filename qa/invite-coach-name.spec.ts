@@ -81,24 +81,28 @@ test("the QR encodes the full URL including ?coach=, not just the token path", a
   expect(scanned).not.toEqual(matrixOf(url.split("?")[0]));
 });
 
-test("the landing page forwards ?coach= into the single deep link and names the coach", async ({
+test("the landing page forwards ?coach= into BOTH apps' deep links and names the coach", async ({
   page,
 }) => {
   await page.goto(`/i/${TOKEN}?coach=${encodeURIComponent("Alex R.")}`);
 
   await expect(page.getByRole("heading", { name: "Alex R. invited you to Evoli Fit" })).toBeVisible();
 
-  const open = page.getByRole("link", { name: "Open in Evoli Fit" });
+  const open = page.getByRole("link", { name: "Open in Evoli Fit", exact: true });
   await expect(open).toHaveAttribute(
     "href",
     `evolifit://my-coach/invite/${TOKEN}?coach=Alex%20R.`
   );
 
-  // Still exactly one link on the page, and the token still never printed as text.
+  // EV-289: exactly two links, the full app's then the lite app's, carrying the SAME
+  // `coach` query; the token still never printed as text.
   const hrefs = await page
     .locator("a[href]")
     .evaluateAll((els) => els.map((el) => el.getAttribute("href") || ""));
-  expect(hrefs).toHaveLength(1);
+  expect(hrefs).toEqual([
+    `evolifit://my-coach/invite/${TOKEN}?coach=Alex%20R.`,
+    `evolifitlite://my-coach/invite/${TOKEN}?coach=Alex%20R.`,
+  ]);
   expect(await page.locator("body").innerText()).not.toContain(TOKEN);
 });
 
@@ -107,7 +111,7 @@ test("a link without ?coach= still renders, with the generic headline", async ({
 
   expect(res?.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "Your coach invited you to Evoli" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open in Evoli Fit" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Open in Evoli Fit", exact: true })).toHaveAttribute(
     "href",
     `evolifit://my-coach/invite/${TOKEN}`
   );
@@ -119,7 +123,7 @@ test("an empty or whitespace-only coach name falls back to the generic headline"
   await page.goto(`/i/${TOKEN}?coach=%20%20`);
 
   await expect(page.getByRole("heading", { name: "Your coach invited you to Evoli" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open in Evoli Fit" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Open in Evoli Fit", exact: true })).toHaveAttribute(
     "href",
     `evolifit://my-coach/invite/${TOKEN}`
   );
@@ -143,12 +147,18 @@ test("a hostile coach name is plain text, capped at 60 characters, and cannot sp
   expect(heading.endsWith(suffix)).toBe(true);
   expect(heading.length - suffix.length).toBeLessThanOrEqual(60);
 
-  const href = await page.getByRole("link", { name: "Open in Evoli Fit" }).getAttribute("href");
+  const href = await page.getByRole("link", { name: "Open in Evoli Fit", exact: true }).getAttribute("href");
   // One `?`, one `&`-free parameter: the name is encoded, so the app parses one query key.
   expect(href!.startsWith(`evolifit://my-coach/invite/${TOKEN}?coach=`)).toBe(true);
   const query = new URL(href!.replace("evolifit://", "https://")).searchParams;
   expect([...query.keys()]).toEqual(["coach"]);
   expect(query.get("coach")!.length).toBeLessThanOrEqual(60);
+
+  // EV-289: the lite app's link is encoded by the same function — same query, byte for byte.
+  const lite = await page
+    .getByRole("link", { name: "Open in Evoli Fit Lite", exact: true })
+    .getAttribute("href");
+  expect(lite).toBe(href!.replace("evolifit://", "evolifitlite://"));
 });
 
 test("a bidi override in the coach name is stripped, not rendered", async ({ page }) => {
@@ -163,7 +173,7 @@ test("a bidi override in the coach name is stripped, not rendered", async ({ pag
   expect(heading).not.toContain(rlo);
   expect(heading).toBe("Alex moc.live R. invited you to Evoli Fit");
 
-  const href = await page.getByRole("link", { name: "Open in Evoli Fit" }).getAttribute("href");
+  const href = await page.getByRole("link", { name: "Open in Evoli Fit", exact: true }).getAttribute("href");
   expect(href).not.toContain(rlo);
   expect(href).not.toContain("%E2%80%AE");
 });
