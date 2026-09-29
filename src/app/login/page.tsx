@@ -1,6 +1,6 @@
 import { UiIcon, Logo } from "@/components/ui/icons";
 import { LoginForm } from "@/components/auth/LoginForm";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /login — the only unguarded page (middleware.ts).
@@ -14,6 +14,7 @@ export default function LoginPage({
 }: {
   searchParams?: { error?: string };
 }) {
+  const copy = getCopy();
   const initialError =
     searchParams?.error === "not_coach"
       ? copy.login.notACoach

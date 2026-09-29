@@ -1,7 +1,7 @@
 "use client";
 
 import { MIN_TOUCH_TARGET } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { ISO_WEEKDAY_NUMBERS, isoWeekdayLabel } from "@/lib/format";
 
 /**
@@ -117,6 +117,7 @@ export function WeekdaySelect({
   value: number;
   onChange: (dayOfWeek: number) => void;
 }) {
+  const copy = useCopy();
   return (
     <select
       aria-label={copy.routine.weekdayLabel(dayIndex + 1)}
@@ -136,7 +137,7 @@ export function WeekdaySelect({
     >
       {ISO_WEEKDAY_NUMBERS.map((iso) => (
         <option key={iso} value={iso}>
-          {isoWeekdayLabel(iso)}
+          {isoWeekdayLabel(iso, copy.locale)}
         </option>
       ))}
     </select>
@@ -165,13 +166,14 @@ export function DayFocusField({
   value: string;
   onChange: (focus: string) => void;
 }) {
+  const copy = useCopy();
   return (
     <label style={{ display: "block", minWidth: 0 }}>
       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}>
         {copy.routine.dayFocusLabel}
       </div>
       <input
-        aria-label={`${copy.routine.dayLabel(dayIndex + 1)} focus`}
+        aria-label={copy.routine.dayFocusName(dayIndex + 1)}
         value={value}
         title={value}
         onChange={(e) => onChange(e.target.value)}

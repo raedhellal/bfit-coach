@@ -248,10 +248,20 @@ the staff challenge, this file moves and no screen changes.
 
 ## Copy
 
-Every user-visible string is in **`src/lib/copy.ts`**, English only. The strings marked
-`AC` are verbatim acceptance-criteria text from EV-183 and QA verifies them character by
-character — a "tidy-up" of one of those sentences is a story change. No invented
-benefits, no tier price (⛔ D8 is open).
+Every user-visible string is in **`src/lib/copy.ts`** (English, `en`) and
+**`src/lib/copy.fr.ts`** (French, `fr`, EV-324). The strings marked `AC` are verbatim
+acceptance-criteria text and QA verifies them character by character — a "tidy-up" of one
+of those sentences is a story change. No invented benefits, no tier price (⛔ D8 is open).
+
+**Language (EV-324).** The browser decides: the first `Accept-Language` entry starting
+with `fr` gets French, anything else English (`src/lib/i18n/locale.ts`). There is no
+switch in the UI. A server component calls `getCopy()` (`src/lib/i18n/server.ts`), a
+client component `useCopy()` (`src/lib/i18n/client.tsx`); nothing imports a dictionary
+directly. `fr` is typed `satisfies Copy`, so **a new string must be added in both files**
+or `tsc` fails; `qa/coach-i18n.spec.ts` also checks the enum-label maps `tsc` cannot.
+Dates and numbers take the locale too — every formatter in `src/lib/format.ts` requires it
+(`copy.locale`). `qa/coach-french.spec.ts` fails if a demo page shows an English UI string
+to a French browser.
 
 ## Design
 

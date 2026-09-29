@@ -4,7 +4,7 @@ import { RecipeEditor } from "@/components/recipes/RecipeEditor";
 import { PageHead } from "@/components/ui/kit";
 import { readCoachMe } from "@/lib/clientOverview";
 import { blankRecipe } from "@/lib/recipeDocument";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /recipes/new — AC1's "New recipe".
@@ -17,6 +17,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function NewRecipePage() {
+  const copy = getCopy();
   const me = await readCoachMe();
   return (
     <CoachShell coachName={me?.displayName} section="recipes">

@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { setRosterSortAction } from "@/lib/actions";
 import { settled } from "@/lib/settled";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { MIN_TOUCH_TARGET } from "@/components/ui/kit";
 import type { RosterSort } from "@/lib/coachApi";
 
@@ -25,6 +25,7 @@ import type { RosterSort } from "@/lib/coachApi";
  * error boundary and replace the roster with "Something went wrong."
  */
 export function RosterSortToggle({ sort }: { sort: RosterSort }) {
+  const copy = useCopy();
   const [pending, startTransition] = useTransition();
 
   const options: { value: RosterSort; label: string }[] = [

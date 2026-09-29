@@ -1,4 +1,4 @@
-import { copy } from "./copy";
+import type { Copy } from "./copy";
 import type {
   CoachRecipe,
   CoachRecipeSaveRequest,
@@ -211,14 +211,14 @@ export interface Problem {
   missing?: boolean;
 }
 
-const MACRO_LABEL: Record<MacroField, string> = {
+const macroLabel = (copy: Copy): Record<MacroField, string> => ({
   kcal: copy.recipes.kcalLabel,
   proteinG: copy.recipes.proteinLabel,
   carbsG: copy.recipes.carbsLabel,
   fatG: copy.recipes.fatLabel,
-};
+});
 
-function macroProblem(field: MacroField, raw: string): Problem | null {
+function macroProblem(field: MacroField, raw: string, copy: Copy): Problem | null {
   const parsed = parseWhole(raw);
   const min = field === "kcal" ? KCAL_MIN : 0;
   const max = field === "kcal" ? KCAL_MAX : MACRO_MAX;
@@ -234,7 +234,7 @@ function macroProblem(field: MacroField, raw: string): Problem | null {
     };
   }
   if (parsed.kind === "invalid" || parsed.value < min || parsed.value > max) {
-    return { at: field, message: copy.recipes.numberRange(MACRO_LABEL[field], min, max) };
+    return { at: field, message: copy.recipes.numberRange(macroLabel(copy)[field], min, max) };
   }
   return null;
 }
@@ -243,7 +243,7 @@ function macroProblem(field: MacroField, raw: string): Problem | null {
  * Everything the portal can already see the api will refuse, each addressed to its
  * control. Save is disabled while this is non-empty.
  */
-export function localProblems(draft: RecipeDraft): Problem[] {
+export function localProblems(draft: RecipeDraft, copy: Copy): Problem[] {
   const problems: Problem[] = [];
 
   if (hasControl(draft.name)) {
@@ -268,7 +268,7 @@ export function localProblems(draft: RecipeDraft): Problem[] {
   });
 
   for (const field of MACRO_FIELDS) {
-    const problem = macroProblem(field, draft[field]);
+    const problem = macroProblem(field, draft[field], copy);
     if (problem) problems.push(problem);
   }
 
@@ -383,7 +383,8 @@ export function addressOf(field: string | null): FieldAddress {
  */
 export function serverProblem(
   failure: RecipeFailure,
-  sent: { kcal: number; ingredients: { key: string; label: string }[] }
+  sent: { kcal: number; ingredients: { key: string; label: string }[] },
+  copy: Copy
 ): Problem {
   switch (failure.code) {
     case "UNKNOWN_INGREDIENT": {
@@ -409,7 +410,7 @@ export function serverProblem(
     case "ACCESS_DENIED":
       return { at: "form", message: copy.recipes.notYours };
     case "INVALID_FIELD":
-      return { at: addressOf(failure.field), message: invalidFieldMessage(failure.field) };
+      return { at: addressOf(failure.field), message: invalidFieldMessage(failure.field, copy) };
     default:
       return { at: "form", message: copy.recipes.saveFailed };
   }
@@ -420,12 +421,12 @@ export function serverProblem(
  * own text is not shown: Bean Validation's default messages follow the JVM locale
  * (French on the dev machine that built EV-256a), and the field is what matters.
  */
-function invalidFieldMessage(field: string | null): string {
+function invalidFieldMessage(field: string | null, copy: Copy): string {
   if (!field) return copy.recipes.saveFailed;
   if (field === "name") return copy.recipes.nameInvalid;
-  if (field === "kcal") return copy.recipes.numberRange(MACRO_LABEL.kcal, KCAL_MIN, KCAL_MAX);
+  if (field === "kcal") return copy.recipes.numberRange(macroLabel(copy).kcal, KCAL_MIN, KCAL_MAX);
   if (field === "proteinG" || field === "carbsG" || field === "fatG") {
-    return copy.recipes.numberRange(MACRO_LABEL[field], 0, MACRO_MAX);
+    return copy.recipes.numberRange(macroLabel(copy)[field], 0, MACRO_MAX);
   }
   if (/^ingredients\[\d+\]\.key$/.test(field)) return copy.recipes.ingredientTwice;
   if (/^ingredients\[\d+\]\.quantity$/.test(field)) return copy.recipes.quantityRange;

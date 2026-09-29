@@ -6,7 +6,7 @@ import { PageHead } from "@/components/ui/kit";
 import { ApiError, coachApi, isForbidden, type CoachRecipe } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
 import { fromRecipe } from "@/lib/recipeDocument";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /recipes/[id] — the editor on an existing recipe (AC2, AC6).
@@ -26,6 +26,7 @@ export const dynamic = "force-dynamic";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function RecipePage({ params }: { params: { id: string } }) {
+  const copy = getCopy();
   /**
    * A path segment that is not a UUID is not the id of any recipe, so it is answered
    * with the AC6 sentence WITHOUT an api call. Sent on, the live api's UUID conversion

@@ -13,7 +13,7 @@ import { Card, CardHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { hasScope } from "@/lib/coachApi";
 import { readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { firstName, formatDate, formatKg, formatShortDate } from "@/lib/format";
 import { weightCaption } from "@/lib/weight";
 
@@ -34,6 +34,7 @@ import { weightCaption } from "@/lib/weight";
 export const dynamic = "force-dynamic";
 
 export default async function ClientPage({ params }: { params: { id: string } }) {
+  const copy = getCopy();
   /**
    * Both reads are the layout's, memoised for this request (src/lib/clientOverview.ts)
    * — this component does not call the api a second time.
@@ -174,7 +175,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
           label={copy.client.lastSession}
           value={
             progressShared && lastSession
-              ? formatDate(lastSession.date)
+              ? formatDate(lastSession.date, copy.locale)
               : progressShared
                 ? copy.client.noSession
                 : copy.common.dash
@@ -198,11 +199,11 @@ export default async function ClientPage({ params }: { params: { id: string } })
           icon="trend"
           tone="green"
           label={copy.client.weight}
-          value={latest ? formatKg(latest.weightKg) : copy.common.dash}
+          value={latest ? formatKg(latest.weightKg, copy.locale) : copy.common.dash}
           // One caption, derived from the same series as the value and the sparkline
           // (BUG-144) — see src/lib/weight.ts. A link without WEIGH_INS has no series
           // to derive from and must not borrow block 4's empty-state sentence.
-          foot={weighInsShared ? weightCaption(series) : copy.client.notShared}
+          foot={weighInsShared ? weightCaption(series, copy) : copy.client.notShared}
         />
       </div>
 
@@ -214,9 +215,9 @@ export default async function ClientPage({ params }: { params: { id: string } })
           </p>
         ) : series.length > 0 ? (
           <TrendChart
-            points={series.map((p) => ({ label: formatShortDate(p.date), value: p.weightKg }))}
+            points={series.map((p) => ({ label: formatShortDate(p.date, copy.locale), value: p.weightKg }))}
             ariaLabel={`${copy.client.weightTrend}: ${series
-              .map((p) => `${formatShortDate(p.date)} ${formatKg(p.weightKg)}`)
+              .map((p) => `${formatShortDate(p.date, copy.locale)} ${formatKg(p.weightKg, copy.locale)}`)
               .join(", ")}`}
           />
         ) : (
@@ -237,7 +238,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
               that `PUT …/progress-goal` would answer, which is undifferentiated
               across five denials and says nothing about consent. */}
           <BlockNote>
-            {copy.progressGoal.notShared(firstName(overview.traineeDisplayName))}
+            {copy.progressGoal.notShared(firstName(overview.traineeDisplayName, copy.locale))}
           </BlockNote>
         </MonitoringBlock>
       ) : !overview.progressGoal ? (

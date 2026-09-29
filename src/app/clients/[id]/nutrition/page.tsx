@@ -15,7 +15,7 @@ import {
   type CoachNutritionResponse,
 } from "@/lib/coachApi";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { recipePlacementOn } from "@/lib/recipePlacement";
 
 /**
@@ -40,6 +40,7 @@ import { recipePlacementOn } from "@/lib/recipePlacement";
 export const dynamic = "force-dynamic";
 
 export default async function NutritionPage({ params }: { params: { id: string } }) {
+  const copy = getCopy();
   let denied = false;
   const [me, { overview }] = await Promise.all([readCoachMe(), readClientOverview(params.id)]);
 
@@ -108,7 +109,10 @@ export default async function NutritionPage({ params }: { params: { id: string }
             icon="shield"
             groups={[
               { label: copy.nutrition.allergies, values: nutrition.dietProfile.allergies },
-              { label: copy.nutrition.rules, values: nutrition.dietProfile.rules },
+              {
+                label: copy.nutrition.rules,
+                values: nutrition.dietProfile.rules.map((rule) => copy.nutrition.ruleLabels[rule] ?? rule),
+              },
               { label: copy.nutrition.dislikes, values: nutrition.dietProfile.dislikes },
             ]}
             emptyAll={copy.nutrition.noRestrictions}

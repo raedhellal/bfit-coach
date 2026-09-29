@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 
 /**
  * The credential form. It posts to /api/auth/login (this app's own origin) and never
@@ -16,6 +16,7 @@ import { copy } from "@/lib/copy";
  * otherwise the client router replays a cached RSC payload rendered without a session.
  */
 export function LoginForm({ initialError }: { initialError?: string | null }) {
+  const copy = useCopy();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

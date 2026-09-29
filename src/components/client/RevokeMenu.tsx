@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, IconButton, Modal } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { revokeClientAction } from "@/lib/actions";
 import { settled } from "@/lib/settled";
 
@@ -16,6 +16,7 @@ import { settled } from "@/lib/settled";
  * interactive element to this page is a story change, not a tweak.
  */
 export function RevokeMenu({ clientId, displayName }: { clientId: string; displayName: string }) {
+  const copy = useCopy();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);

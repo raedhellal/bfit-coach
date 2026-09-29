@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/ui/icons";
 import { Avatar } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { SignOutButton } from "./SignOutButton";
 
 /**
@@ -31,8 +31,9 @@ export function CoachShell({
   section?: "roster" | "templates" | "recipes";
   children: React.ReactNode;
 }) {
+  const copy = getCopy();
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+    <div style={{ minHeight: "calc(100vh - var(--legal-footer-h))", background: "var(--bg)" }}>
       <header
         style={{
           position: "sticky",

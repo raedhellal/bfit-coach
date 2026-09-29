@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Avatar, Badge } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { ClientTabs, type ClientTab } from "./ClientTabs";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { formatInstant, truncateName } from "@/lib/format";
 
 /**
@@ -30,6 +30,7 @@ export function ClientHeader({
   active: ClientTab;
   action?: ReactNode;
 }) {
+  const copy = getCopy();
   return (
     <div style={{ marginBottom: 18 }}>
       <Link
@@ -73,7 +74,7 @@ export function ClientHeader({
           */}
           {since && (
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 7 }}>
-              <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since))}</Badge>
+              <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
             </div>
           )}
         </div>

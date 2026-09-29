@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Logo } from "@/components/ui/icons";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { sanitiseCoachName } from "@/lib/inviteName";
 import { INVITE_APPS, inviteDeepLink } from "@/lib/traineeApps";
 
@@ -29,6 +29,7 @@ import { INVITE_APPS, inviteDeepLink } from "@/lib/traineeApps";
 type SearchParams = { [key: string]: string | string[] | undefined };
 
 export function generateMetadata({ searchParams }: { searchParams: SearchParams }): Metadata {
+  const copy = getCopy();
   const coachName = sanitiseCoachName(searchParams.coach);
   return {
     // Still no token anywhere near the title — only the coach's name, which is public
@@ -50,6 +51,7 @@ export default function InvitePage({
   params: { token: string };
   searchParams: SearchParams;
 }) {
+  const copy = getCopy();
   // AC3: the coach's name is forwarded to the app on the deep link exactly as it was
   // received. The app needs it because b-fit-api cannot resolve an invite token before
   // the trainee accepts, so without this query the consent screen can only say

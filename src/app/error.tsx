@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { Button, Card } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 
 /**
  * Route-level error boundary. A render that throws shows this instead of a white
@@ -14,6 +14,7 @@ import { copy } from "@/lib/copy";
  * naming a screen the coach was not on.
  */
 export default function Error({ reset }: { error: Error; reset: () => void }) {
+  const copy = useCopy();
   const pathname = usePathname();
   const onRoster = pathname === "/";
   return (

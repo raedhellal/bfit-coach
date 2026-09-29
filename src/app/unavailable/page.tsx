@@ -1,7 +1,7 @@
 import { ReloadButton } from "@/components/shell/ReloadButton";
 import { Logo } from "@/components/ui/icons";
 import { Card } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /unavailable — served with **503** by `middleware.ts`, as a rewrite, when a page load's
@@ -17,6 +17,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default function UnavailablePage() {
+  const copy = getCopy();
   return (
     <main className="page" style={{ maxWidth: 520, margin: "0 auto", paddingTop: 64 }}>
       <div style={{ marginBottom: 24 }}>

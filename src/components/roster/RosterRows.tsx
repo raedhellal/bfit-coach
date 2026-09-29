@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Avatar, Badge, DataTable, Td } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import { hasScope, type RosterClient } from "@/lib/coachApi";
 import { rosterPlanChanged } from "@/lib/routineChange";
@@ -42,6 +42,7 @@ import { rosterPlanChanged } from "@/lib/routineChange";
  * been allowed to see is a claim made out of nothing.
  */
 function StreakChip({ days, shared }: { days: number | null; shared: boolean }) {
+  const copy = getCopy();
   if (!shared || days === null)
     return <span style={{ color: "var(--ink-3)" }}>{copy.common.dash}</span>;
   if (days <= 0) return <span style={{ color: "var(--ink-3)" }}>{copy.roster.noStreak}</span>;
@@ -67,6 +68,7 @@ function StreakChip({ days, shared }: { days: number | null; shared: boolean }) 
  *               these rows LAST for the same reason.
  */
 function FlagBadge({ count }: { count: number | null }) {
+  const copy = getCopy();
   /**
    * `typeof`, not `=== null`, and it FAILS CLOSED for the same reason `hasScope` does:
    * the type describes the api we are building, not every api this build can be pointed
@@ -98,6 +100,7 @@ function FlagBadge({ count }: { count: number | null }) {
  * and a marker located by its text alone would find one.
  */
 function PlanChangedMarker({ client }: { client: RosterClient }) {
+  const copy = getCopy();
   if (!rosterPlanChanged(client)) return null;
   return (
     <span data-plan-changed="" style={{ display: "inline-flex" }}>
@@ -110,6 +113,7 @@ function PlanChangedMarker({ client }: { client: RosterClient }) {
 }
 
 export function RosterRows({ clients }: { clients: RosterClient[] }) {
+  const copy = getCopy();
   return (
     <>
       <div className="only-wide">
@@ -169,7 +173,7 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
               </Td>
               <Td>
                 {c.lastCompletedWorkoutDate ? (
-                  formatDate(c.lastCompletedWorkoutDate)
+                  formatDate(c.lastCompletedWorkoutDate, copy.locale)
                 ) : (
                   // Two readings of one null, and `scopes` picks: PROGRESS held means
                   // the trainee has genuinely never completed a workout ("No workouts
@@ -192,7 +196,7 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                 <FlagBadge count={c.redFlagCount} />
               </Td>
               <Td>
-                <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
+                <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status === "ACTIVE" ? copy.roster.statusActive : c.status}</Badge>
               </Td>
               <Td align="right">
                 <Link href={`/clients/${c.id}`} aria-label={c.traineeDisplayName}>
@@ -262,12 +266,12 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                       triage signal. */}
                   <FlagBadge count={c.redFlagCount} />
                   <PlanChangedMarker client={c} />
-                  <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
+                  <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status === "ACTIVE" ? copy.roster.statusActive : c.status}</Badge>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
                   {copy.roster.colLastWorkout}:{" "}
                   {c.lastCompletedWorkoutDate
-                    ? formatDate(c.lastCompletedWorkoutDate)
+                    ? formatDate(c.lastCompletedWorkoutDate, copy.locale)
                     : hasScope(c.scopes, "PROGRESS")
                       ? copy.roster.noWorkout
                       : copy.client.notShared}

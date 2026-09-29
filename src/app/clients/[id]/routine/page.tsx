@@ -17,7 +17,7 @@ import { equipmentLabels, injuryLabels } from "@/lib/guardrailLabels";
 import { toDraftView, toPlanView } from "@/lib/routineDocument";
 import { traineeChangeNotice } from "@/lib/routineChange";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /clients/[id]/routine — EV-184b.
@@ -47,6 +47,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function RoutinePage({ params }: { params: { id: string } }) {
+  const copy = getCopy();
   let denied = false;
   const [me, { overview }] = await Promise.all([
     readCoachMe(),
@@ -151,7 +152,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    * EV-283b — the trainee changed the live plan. Null (no banner) unless the api says
    * `TRAINEE` in so many words; see `src/lib/routineChange.ts` for why it fails closed.
    */
-  const changedByTrainee = traineeChangeNotice(routine, displayName);
+  const changedByTrainee = traineeChangeNotice(routine, displayName, copy);
 
   return (
     <CoachShell coachName={me?.displayName}>
@@ -172,10 +173,10 @@ export default async function RoutinePage({ params }: { params: { id: string } }
               title={copy.routine.title}
               icon="shield"
               groups={[
-                { label: copy.routine.injuries, values: injuryLabels(guardrails.injuries) },
+                { label: copy.routine.injuries, values: injuryLabels(guardrails.injuries, copy) },
                 {
                   label: copy.routine.equipment,
-                  values: equipmentLabels(guardrails.equipment),
+                  values: equipmentLabels(guardrails.equipment, copy),
                   // `equipmentChecked` is the api's own derivation of "a non-empty
                   // equipment list reached the policy", and it is the only thing that
                   // separates a trainee who recorded no equipment from one who never

@@ -12,6 +12,7 @@
 import { useId } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { UiIcon } from "./icons";
+import { useCopy } from "@/lib/i18n/client";
 
 type Sx = CSSProperties;
 
@@ -481,6 +482,7 @@ export function Modal({
   icon?: string;
   iconTone?: "blue" | "red" | "amber";
 }) {
+  const copy = useCopy();
   /**
    * `title` is a ReactNode, so it cannot be handed to `aria-label` as a string.
    * `aria-labelledby` points at the rendered heading instead, which keeps the
@@ -519,7 +521,7 @@ export function Modal({
             </div>
             {/* EV-190c: was 32 px square — the smallest target in the portal, and the
                 one every modal puts in a corner. Both axes now meet the floor. */}
-            <button onClick={onClose} aria-label="Close" style={{ width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, flexShrink: 0, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button onClick={onClose} aria-label={copy.common.close} style={{ width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, flexShrink: 0, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <UiIcon name="x" size={17} color="var(--ink-2)" />
             </button>
           </div>

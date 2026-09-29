@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
 import { saveAsTemplateAction, type TemplateFailure } from "@/lib/templateActions";
 import { TEMPLATE_NAME_MAX } from "@/lib/templateDocument";
@@ -36,6 +36,7 @@ export function SaveAsTemplateButton({
   planName: string | null;
   hasDraft: boolean;
 }) {
+  const copy = useCopy();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");

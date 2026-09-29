@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { en } from "../src/lib/copy";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import {
   bodyFatToGoValue,
@@ -536,9 +537,9 @@ test.describe("the request is a whole representation", () => {
   });
 
   test("the signed 'to go' figure renders in all three directions", () => {
-    expect(toGoValue(-6)).toBe("6.0 kg"); // AC2's cut — magnitude, unsigned
-    expect(toGoValue(4)).toBe("+4.0 kg"); // edge case 4's bulk — the plus is the direction
-    expect(toGoValue(0)).toBe("0.0 kg"); // edge case 5's exact hit
+    expect(toGoValue(-6, "en")).toBe("6.0 kg"); // AC2's cut — magnitude, unsigned
+    expect(toGoValue(4, "en")).toBe("+4.0 kg"); // edge case 4's bulk — the plus is the direction
+    expect(toGoValue(0, "en")).toBe("0.0 kg"); // edge case 5's exact hit
   });
 });
 
@@ -1270,7 +1271,7 @@ test.describe("EV-274b — the pure rules", () => {
 
   test("AC2 and AC3's rows, on the story's own numbers", () => {
     const text = (goal: TraineeProgressGoal) =>
-      progressRows(goal)
+      progressRows(goal, en)
         .filter((r) => r.metric === "bodyFat")
         .map((r) => `${r.label} — ${r.cells.map((c) => c.text).join(" · ")}`)[0]
         // U+00A0 (see `formatPct`) read as a space, so the story's line compares verbatim.
@@ -1309,9 +1310,9 @@ test.describe("EV-274b — the pure rules", () => {
   });
 
   test("the body-fat figure to go renders in all three directions", () => {
-    expect(bodyFatToGoValue(-4)).toBe("4.0\u00a0pts");
-    expect(bodyFatToGoValue(2)).toBe("+2.0\u00a0pts");
-    expect(bodyFatToGoValue(0)).toBe("0.0\u00a0pts");
+    expect(bodyFatToGoValue(-4, "en")).toBe("4.0\u00a0pts");
+    expect(bodyFatToGoValue(2, "en")).toBe("+2.0\u00a0pts");
+    expect(bodyFatToGoValue(0, "en")).toBe("0.0\u00a0pts");
   });
 
   test("the browser's rule matches the api's, except exponent, a leading + and a trailing point, refused on purpose", () => {
@@ -1351,8 +1352,8 @@ test.describe("EV-274b — the pure rules", () => {
   });
 
   test("a number and its unit are joined by a no-break space, so they never wrap apart", () => {
-    expect(bodyFatToGoValue(-4)).toBe("4.0\u00a0pts");
-    const cells = progressRows(traineeA()).find((r) => r.metric === "bodyFat")!.cells;
+    expect(bodyFatToGoValue(-4, "en")).toBe("4.0\u00a0pts");
+    const cells = progressRows(traineeA(), en).find((r) => r.metric === "bodyFat")!.cells;
     expect(cells.length).toBe(5);
     for (const c of cells) {
       expect(c.text, `${c.key} has a breakable space before its unit`).not.toMatch(/\d (%|pts)/);

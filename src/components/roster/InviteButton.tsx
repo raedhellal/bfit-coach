@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Modal, Skeleton } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { createInviteAction } from "@/lib/actions";
 import { settled } from "@/lib/settled";
 import type { Invite } from "@/lib/coachApi";
@@ -24,6 +24,7 @@ export function InviteButton({
   disabled?: boolean;
   disabledReason?: string;
 }) {
+  const copy = useCopy();
   const [open, setOpen] = useState(false);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export function InviteButton({
       return;
     }
     setInvite(result.invite);
-  }, [disabledReason]);
+  }, [disabledReason, copy]);
 
   function onOpen() {
     setOpen(true);
