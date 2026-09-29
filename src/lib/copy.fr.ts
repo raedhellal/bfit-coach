@@ -450,9 +450,9 @@ export const fr = {
     lockedMealsKept: "Les repas que le client a verrouillés sont conservés.",
     regenerate: "Régénérer le jour",
     regenerateSharesLimit: (trainee: string) =>
-      `Les régénérations de jour partagent la limite quotidienne de ${trainee}.`,
+      `Les régénérations de jour partagent la limite quotidienne de ${endSentence(trainee)}`,
     swapIsFree: (trainee: string) =>
-      `Remplacer un repas n'utilise pas les régénérations quotidiennes de ${trainee}.`,
+      `Remplacer un repas n'utilise pas les régénérations quotidiennes de ${endSentence(trainee)}`,
     regenerating: "Régénération…",
     regenerateFailed: "Le jour n'a pas pu être régénéré.",
     /** The demo script's word ("Remplacer"); the app says "Échanger" for the trainee's own swap. */
@@ -533,7 +533,7 @@ export const fr = {
     openRecipe: "Ouvrir la recette",
     mealChanged: "Ce repas a changé. Sélectionnez-le à nouveau.",
     recipeGone: "Cette recette ne fait plus partie de votre bibliothèque.",
-    accessDenied: (first: string) => `Cette recette n'a pas pu être utilisée pour ${first}.`,
+    accessDenied: (first: string) => `Cette recette n'a pas pu être utilisée pour ${endSentence(first)}`,
     placementOff: "Les recettes ne peuvent pas être placées sur les repas pour le moment.",
     failed: "La recette n'a pas pu être utilisée. Réessayez.",
     applyWarning: (count: number, first: string) =>
@@ -657,7 +657,7 @@ export const fr = {
     applyNotPublished:
       "Cela remplit votre brouillon pour ce client. Rien ne change pour lui tant que vous n'avez pas publié.",
     applied: (trainee: string) =>
-      `Brouillon prêt pour ${trainee}. Rien n'a encore changé pour ce client — publiez quand vous êtes prêt.`,
+      `Brouillon prêt pour ${endSentence(trainee)} Rien n'a encore changé pour ce client — publiez quand vous êtes prêt.`,
     startedFrom: (name: string) => `Créé à partir de ${name}`,
     unbindable: (n: number) =>
       n === 1

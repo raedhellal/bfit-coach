@@ -108,6 +108,15 @@ test.describe("numbers", () => {
       expect(parseQuantity(bad), bad).toBeNull();
     }
   });
+
+  test("a French decimal comma reads as a point (EV-324 staff should-fix 2)", () => {
+    expect(parseQuantity("150,5")).toBe(150.5);
+    expect(parseQuantity("0,25")).toBe(0.25);
+    expect(parseWhole("50,7")).toEqual({ kind: "fraction", value: 50.7 });
+    for (const bad of ["150,000", "1,5,5", ","]) {
+      expect(parseQuantity(bad), bad).toBeNull();
+    }
+  });
 });
 
 test("a blank form lists what is missing as hints, not errors, and cannot be sent", () => {
