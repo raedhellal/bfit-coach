@@ -51,6 +51,13 @@ draft and Publish work. Facts that are decisions, not details:
   under the wrong sentence. `withoutDurationReps` now runs in BOTH body builders, and
   templateActions maps the code. When a control is conditional, check every stored
   document that predates the condition — and every write path, not only the one you built.
+  **Since api round 3 (`fcc1ccd`, merged in 741ed39) the TEMPLATE path clears those reps**
+  (apply + every template write) instead of refusing; only the coach's draft SAVE still
+  refuses. The fixture ports that (`clearRepsOnDuration`, deliberately not the portal's
+  helper) and B1 now asserts "Core circuit" applies first time. The portal keeps its
+  REPS_ON_DURATION mapping on the template screens only as a rollback sentence. Lesson: a
+  fixture that keeps an api refusal the merged api dropped is testing an unreachable path —
+  diff the api's behaviour, not just its schemas, when re-vendoring.
 
 Live-proof traps: `POST /coach-portal/invites` answers **201**; the seed catalog names
 are "Push Up" (not Push-Up) and search sorts by name ("Copenhagen Plank" before
