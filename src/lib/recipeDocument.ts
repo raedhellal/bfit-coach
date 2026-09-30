@@ -165,8 +165,9 @@ export type ParsedWhole =
   | { kind: "invalid" };
 
 export function parseWhole(raw: string): ParsedWhole {
-  // A French coach types a decimal comma ("150,5"); read it as a point, as progressGoal.ts does.
-  const text = raw.trim().replace(",", ".");
+  // No comma rewrite here: "1,000" kcal is an English thousands separator, and reading it
+  // as 1.000 sent kcal 1 (BUG-460). A comma is refused as invalid instead.
+  const text = raw.trim();
   if (text === "") return { kind: "empty" };
   if (!/^\d+(\.\d+)?$/.test(text)) return { kind: "invalid" };
   const value = Number(text);
@@ -180,6 +181,7 @@ export function parseWhole(raw: string): ParsedWhole {
  * which the api's `@Digits` also refuses (it counts the written scale).
  */
 export function parseQuantity(raw: string): number | null {
+  // A French coach types a decimal comma ("150,5"); read it as a point, as progressGoal.ts does.
   const text = raw.trim().replace(",", ".");
   if (!/^\d{1,4}(\.\d{1,2})?$/.test(text)) return null;
   const value = Number(text);
