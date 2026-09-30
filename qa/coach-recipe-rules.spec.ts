@@ -112,7 +112,10 @@ test.describe("numbers", () => {
   test("a French decimal comma reads as a point (EV-324 staff should-fix 2)", () => {
     expect(parseQuantity("150,5")).toBe(150.5);
     expect(parseQuantity("0,25")).toBe(0.25);
-    expect(parseWhole("50,7")).toEqual({ kind: "fraction", value: 50.7 });
+    // kcal and macros keep refusing a comma: "1,000" must never become kcal 1 (BUG-460).
+    for (const text of ["1,000", "1,500", "50,7"]) {
+      expect(parseWhole(text), text).toEqual({ kind: "invalid" });
+    }
     for (const bad of ["150,000", "1,5,5", ","]) {
       expect(parseQuantity(bad), bad).toBeNull();
     }
