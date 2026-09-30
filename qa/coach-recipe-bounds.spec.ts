@@ -10,6 +10,9 @@ import {
   MAX_QUANTITY,
   MAX_STEPS,
   MAX_STEP_LENGTH,
+  MEAL_SLOTS,
+  MEAL_SLOTS_MAX,
+  MEAL_SLOTS_MIN,
 } from "../src/lib/recipeDocument";
 import { FIXTURE_RECIPE_BOUNDS } from "../src/lib/fixtureRecipeBounds";
 
@@ -141,4 +144,40 @@ test("the fixture's copy refuses at the api's published numbers too", () => {
     macroMax: published.proteinMax,
     quantityMax: published.quantityMax,
   });
+});
+
+/**
+ * EV-320c — the meal-slot tags, three ways again: the published `minItems` / `maxItems`
+ * and the enum (on the save request AND both reads), the portal's `MEAL_SLOTS*` and the
+ * fixture's. The enum's ORDER is held too: the api stores and reads the tags in it, and
+ * the portal draws chips and badges in it.
+ */
+test("EV-320c: mealSlots' bounds and closed set match in the spec, the portal and the fixture", () => {
+  /** `enum: [A, B, C]` inside a property's `items:`. */
+  const enumOf = (lines: string[]): string[] => {
+    const hit = lines.map((l) => /^\s*enum: \[(.*)\]\s*$/.exec(l)).find(Boolean);
+    expect(hit, "enum not found").toBeTruthy();
+    return hit![1].split(",").map((v) => v.trim());
+  };
+  const sent = property(save, "mealSlots");
+  const read = property(schema("CoachRecipeResponse"), "mealSlots");
+  const row = property(schema("CoachRecipeSummaryResponse"), "mealSlots");
+  const publishedSlots = {
+    min: num(sent, "minItems"),
+    max: num(sent, "maxItems"),
+    values: enumOf(sent),
+  };
+  // The parser read real numbers — a guard that reads nothing passes everything.
+  expect(publishedSlots).toEqual({ min: 1, max: 4, values: ["BREAKFAST", "LUNCH", "DINNER", "SNACK"] });
+  // Both reads are nullable (null = untagged) and carry the same closed set.
+  for (const lines of [read, row]) {
+    expect(lines.some((l) => /^\s*nullable: true\s*$/.test(l))).toBe(true);
+    expect(enumOf(lines)).toEqual(publishedSlots.values);
+  }
+  expect({ min: MEAL_SLOTS_MIN, max: MEAL_SLOTS_MAX, values: [...MEAL_SLOTS] }).toEqual(publishedSlots);
+  expect({
+    min: FIXTURE_RECIPE_BOUNDS.mealSlotsMin,
+    max: FIXTURE_RECIPE_BOUNDS.mealSlotsMax,
+    values: [...FIXTURE_RECIPE_BOUNDS.mealSlotValues],
+  }).toEqual(publishedSlots);
 });

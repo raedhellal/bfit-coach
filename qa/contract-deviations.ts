@@ -76,34 +76,6 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
     },
   },
 
-  /* ── EV-320a meal-slot tags: on api main, no portal control yet ─────────────
-   * b-fit-api `0d58432` (on api main, vendored at 741ed39) added `mealSlots` to the
-   * three recipe schemas so "Apply week" can fill breakfast and snacks from a coach's
-   * recipes. This portal neither sets nor shows them yet; the chips that would are an
-   * unwritten portal story. Identical on BUG-195c and EV-321b (both re-vendored 741ed39),
-   * so both added it; the duplicate was dropped when they merged (both 2026-09-30).
-   * ---------------------------------------------------------------------- */
-  CoachRecipeSaveRequest: {
-    missingInPortal: {
-      mealSlots:
-        "OPTIONAL and nullable on the wire. Omitted on UPDATE the api KEEPS the stored tags (b-fit-api 741ed39 `CoachRecipeUseCase.update`: `checked.mealSlots() != null ? checked.mealSlots() : owned.recipe().mealSlots()`, where `CoachRecipeRules.mealSlots` returns null for an absent field; pinned by `CoachRecipeIntegrationTest.ev320a_mealSlotsAreSavedReadKeptOnAnUpdateThatOmitsThemAndBounded`), so a save from this editor cannot untag a recipe tagged elsewhere. Omitted on CREATE the recipe is stored untagged, which the fill reads as LUNCH and DINNER only: exactly what every recipe was before EV-320a. -> OWNER: senior-po to card the portal half (tag chips on the recipe editor); it declares the field and deletes this entry.",
-    },
-  },
-
-  CoachRecipe: {
-    missingInPortal: {
-      mealSlots:
-        "Not rendered: no screen here shows a recipe's slot tags until the portal half of EV-320 exists. Nullable on the wire (null = untagged = LUNCH and DINNER to the fill), so whoever declares it must not read null as an empty list.",
-    },
-  },
-
-  CoachRecipeSummary: {
-    missingInPortal: {
-      mealSlots:
-        "Not rendered: the recipe library row carries no slot badge until the portal half of EV-320 exists. Same null = untagged caveat as `CoachRecipe`.",
-    },
-  },
-
   /* ── EV-071b / EV-190a, landing on another branch ────────────────────────
    * These three are NOT drift to close here. They are the api half of EV-071b
    * ruling 6 addendum 6.1 and EV-190a N1, and the portal half is on

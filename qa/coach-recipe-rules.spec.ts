@@ -44,8 +44,11 @@ const filled = (over: Partial<RecipeDraft> = {}): RecipeDraft => ({
   carbsG: "62",
   fatG: "12",
   steps: ["Cook the rice."],
+  mealSlots: ["LUNCH", "DINNER"],
   ...over,
 });
+/** A new recipe: the save body carries the chips (EV-320c; `coach-recipe-slots.spec.ts`). */
+const NEW = { recipe: "new" } as const;
 
 const none = { field: null, key: null, computedKcal: null };
 
@@ -85,7 +88,7 @@ test.describe("numbers", () => {
     const refused = localProblems(filled({ proteinG: "50.7" }), en);
     expect(refused).toEqual([{ at: "proteinG", message: "Whole numbers only. Use 50 or 51." }]);
     expect(localProblems(filled({ proteinG: "50.0" }), en)).toEqual([]);
-    expect(forSave(filled({ proteinG: "50.0" })).proteinG).toBe(50);
+    expect(forSave(filled({ proteinG: "50.0" }), NEW).proteinG).toBe(50);
   });
 
   test("the bounds are the api's: kcal 1..3000, each macro 0..300", () => {
@@ -131,7 +134,7 @@ test("a blank form lists what is missing as hints, not errors, and cannot be sen
 test("a step is sent stripped, because the api bounds the RAW string at 300", () => {
   const step = `${"s".repeat(300)} `;
   expect(localProblems(filled({ steps: [step] }), en)).toEqual([]);
-  expect(forSave(filled({ steps: [step] })).steps[0]).toHaveLength(300);
+  expect(forSave(filled({ steps: [step] }), NEW).steps[0]).toHaveLength(300);
 });
 
 test.describe("every server refusal is addressed to its field (AC4)", () => {

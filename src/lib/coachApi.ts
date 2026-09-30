@@ -1193,8 +1193,8 @@ export interface CoachRecipeIngredientRequest {
 
 /**
  * 🔌 WIRE — the body of `POST /coach-portal/recipes` and `PUT …/recipes/{id}`. One
- * serving. The PUT replaces the WHOLE recipe, so this is always the whole thing: there
- * is no partial update to get wrong.
+ * serving. The PUT replaces the WHOLE recipe, so this is always the whole thing — with ONE
+ * exception since EV-320a: `mealSlots`, which an update keeps when it is omitted.
  *
  * @wire CoachRecipeSaveRequest
  */
@@ -1206,6 +1206,18 @@ export interface CoachRecipeSaveRequest {
   carbsG: number;
   fatG: number;
   steps: string[];
+  /**
+   * EV-320c (api EV-320a, b-fit-api `0d58432`): which slots of a week "Apply week" may
+   * fill with this recipe. OPTIONAL, and the absence is meaningful — do not "complete" it:
+   *   · omitted on CREATE → stored untagged (`null`), read by the fill as LUNCH + DINNER;
+   *   · omitted on UPDATE → the api KEEPS the stored tags (`CoachRecipeUseCase.update`);
+   *   · sent → replaces them. 1..4 values, each once; `[]` is a 400 naming `mealSlots`,
+   *     so a tagged recipe can never be returned to untagged.
+   * The editor builds it in ONE place (`slotsForSave` in `recipeDocument.ts`), which
+   * sends it on create and on an update only when the selection differs from the stored
+   * one. `null` is never sent: the api reads it exactly as "omitted".
+   */
+  mealSlots?: MealSlot[];
 }
 
 /**
@@ -1239,6 +1251,13 @@ export interface CoachRecipe {
   ingredients: CoachRecipeIngredient[];
   steps: string[];
   unknownKeys: string[];
+  /**
+   * EV-320a — the recipe's slot tags in BREAKFAST, LUNCH, DINNER, SNACK order, or `null`
+   * when UNTAGGED (saved before V74, or without the field). `null` is NOT an empty list:
+   * the fill reads it as LUNCH + DINNER (`CoachRecipeLibrary.UNTAGGED_SLOTS`), and the
+   * portal shows exactly that, marked as the default. `effectiveSlots` is the one reader.
+   */
+  mealSlots: MealSlot[] | null;
 }
 
 /**
@@ -1256,6 +1275,8 @@ export interface CoachRecipeSummary {
   carbsG: number;
   fatG: number;
   ingredientCount: number;
+  /** EV-320a — as on `CoachRecipe`: the slot tags, or `null` when untagged (never `[]`). */
+  mealSlots: MealSlot[] | null;
 }
 
 /**

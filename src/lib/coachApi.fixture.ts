@@ -1438,7 +1438,16 @@ interface StoredRecipe {
   fatG: number;
   ingredients: { key: string; quantity: number; unit: RecipeUnit }[];
   steps: string[];
+  /**
+   * EV-320a's V74 `meal_slots`: `null` is UNTAGGED (every recipe saved before V74, or
+   * without the field) and is kept as null, never as `[]` — the fill reads it as LUNCH +
+   * DINNER, and the portal must meet a real null to prove it does not read it as nothing.
+   */
+  mealSlots: MealSlot[] | null;
 }
+
+/** `WeeklyMealPlan.MealSlot` order — the order `CoachRecipeRules.mealSlots` folds to. */
+const FIXTURE_MEAL_SLOT_ORDER: readonly MealSlot[] = B.mealSlotValues;
 
 function toRecipeResponse(row: StoredRecipe): CoachRecipe {
   return {
@@ -1452,6 +1461,7 @@ function toRecipeResponse(row: StoredRecipe): CoachRecipe {
     steps: [...row.steps],
     // D26.2 (a): a retired key never breaks a read; it is reported.
     unknownKeys: row.ingredients.map((l) => l.key).filter((key) => !VOCABULARY_SET.has(key)),
+    mealSlots: row.mealSlots === null ? null : [...row.mealSlots],
   };
 }
 
@@ -1477,6 +1487,8 @@ function seedRecipes(): StoredRecipe[] {
         { key: "olive_oil", quantity: 10, unit: "ml" },
       ],
       steps: ["Cook the rice.", "Grill the chicken."],
+      // EV-320c: UNTAGGED, as every recipe saved before V74 reads — the "(default)" row.
+      mealSlots: null,
     },
     {
       id: "8e3f1b22-0000-4000-8000-0000000000c2",
@@ -1491,6 +1503,7 @@ function seedRecipes(): StoredRecipe[] {
         { key: "mixed_berries", quantity: 80, unit: "g" },
       ],
       steps: ["Mix everything the night before.", "Keep it in the fridge."],
+      mealSlots: ["BREAKFAST", "SNACK"],
     },
     {
       id: "8e3f1b22-0000-4000-8000-0000000000c3",
@@ -1507,6 +1520,7 @@ function seedRecipes(): StoredRecipe[] {
         { key: "oats", quantity: 40, unit: "g" },
       ],
       steps: ["Blend everything.", "Cook in a hot pan."],
+      mealSlots: ["BREAKFAST"],
     },
     /**
      * EV-256e. EV-256c AC4's own example: every ingredient is excluded by NO rule, and
@@ -1526,6 +1540,7 @@ function seedRecipes(): StoredRecipe[] {
         { key: "tomato_passata", quantity: 150, unit: "g" },
       ],
       steps: ["Soften the onion.", "Simmer the lentils in the passata."],
+      mealSlots: ["DINNER"],
     },
     /**
      * EV-256e — an 80-character name, the api's maximum, so the picker, the confirm and
@@ -1548,6 +1563,9 @@ function seedRecipes(): StoredRecipe[] {
         { key: "olive_oil", quantity: 10, unit: "ml" },
       ],
       steps: ["Roast the sweet potato and chickpeas.", "Wilt the spinach and dress with lemon."],
+      // Tagged Lunch + Dinner EXPLICITLY: the same two slots as an untagged recipe, drawn
+      // as two tags and without "(default)", so a spec can tell the two apart.
+      mealSlots: ["LUNCH", "DINNER"],
     },
   ];
 }
@@ -1576,6 +1594,7 @@ function seedC1Recipes(): StoredRecipe[] {
     fatG,
     ingredients,
     steps: ["Prepare everything.", "Cook and serve."],
+    mealSlots: null,
   });
   return [
     row(1, "Salmon quinoa", 610, 42, 50, 26, [
@@ -1622,6 +1641,7 @@ function seedCapRecipes(): StoredRecipe[] {
     fatG: 10,
     ingredients: [{ key: "rice", quantity: 100, unit: "g" as RecipeUnit }],
     steps: ["Cook."],
+    mealSlots: null,
   }));
 }
 
@@ -1758,6 +1778,21 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
       await beanRefusal(`ingredients[${i}].unit`, "must be one of g, ml, piece");
     }
   }
+  // EV-320a — `@Size(min = 1, max = 4) List<@NotNull @Pattern(MEAL_SLOT) String> mealSlots`.
+  // JSON null is Java null: exactly "omitted" (`CoachRecipeRules.mealSlots(null)` → null).
+  const rawSlots = (body as { mealSlots?: unknown }).mealSlots;
+  if (rawSlots !== undefined && rawSlots !== null) {
+    if (!Array.isArray(rawSlots) || rawSlots.length < B.mealSlotsMin || rawSlots.length > B.mealSlotsMax) {
+      await beanRefusal("mealSlots", `must hold between ${B.mealSlotsMin} and ${B.mealSlotsMax} meal slots`);
+    }
+    const values = rawSlots as unknown[];
+    for (let i = 0; i < values.length; i += 1) {
+      if (values[i] === null || values[i] === undefined) await beanRefusal(`mealSlots[${i}]`, "is required");
+      if (typeof values[i] !== "string" || !(B.mealSlotValues as readonly string[]).includes(values[i] as string)) {
+        await beanRefusal(`mealSlots[${i}]`, "must be one of BREAKFAST, LUNCH, DINNER, SNACK");
+      }
+    }
+  }
 
   // ── 2. CoachRecipeRules: name, steps, ingredients, macros ───────────────────
   const name = javaNormalise(body.name);
@@ -1805,6 +1840,12 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
     fatG: body.fatG,
     ingredients: body.ingredients.map((l) => ({ key: l.key, quantity: l.quantity, unit: l.unit })),
     steps,
+    // Folded to the enum's order with no repeats (staff challenge S5); null when omitted.
+    // `createRecipe` stores that null (untagged); `updateRecipe` reads it as "keep".
+    mealSlots:
+      rawSlots === undefined || rawSlots === null
+        ? null
+        : FIXTURE_MEAL_SLOT_ORDER.filter((slot) => (rawSlots as unknown[]).includes(slot)),
   };
 }
 
@@ -5032,6 +5073,7 @@ export const fixtureCoachApi: CoachApi = {
         carbsG: row.carbsG,
         fatG: row.fatG,
         ingredientCount: row.ingredients.length,
+        mealSlots: row.mealSlots === null ? null : [...row.mealSlots],
       })),
       limit: RECIPE_LIMIT,
       remaining: Math.max(0, RECIPE_LIMIT - rows.length),
@@ -5067,7 +5109,9 @@ export const fixtureCoachApi: CoachApi = {
     ) {
       await fail(409, "COACH_RECIPE_NAME_TAKEN", "You already have a recipe with that name");
     }
-    const saved: StoredRecipe = { id, ...checked };
+    // EV-320a / staff challenge S4: an update that OMITS mealSlots keeps the stored tags
+    // (`checked.mealSlots() != null ? checked.mealSlots() : owned.recipe().mealSlots()`).
+    const saved: StoredRecipe = { id, ...checked, mealSlots: checked.mealSlots ?? existing.mealSlots };
     (await library()).set(id, saved);
     return toRecipeResponse(saved);
   },

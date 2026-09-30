@@ -20,4 +20,8 @@ export const FIXTURE_RECIPE_BOUNDS = {
   macroMin: 0,
   macroMax: 300,
   quantityMax: 5000,
+  /** EV-320a — `@Size(min = 1, max = 4)` on `mealSlots`, and `MEAL_SLOT`'s closed set in enum order. */
+  mealSlotsMin: 1,
+  mealSlotsMax: 4,
+  mealSlotValues: ["BREAKFAST", "LUNCH", "DINNER", "SNACK"],
 } as const;

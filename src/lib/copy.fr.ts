@@ -725,6 +725,11 @@ export const fr = {
     macroLine: (kcal: number, p: number, c: number, f: number) =>
       `${n(kcal)} kcal · P ${n(p)} g · G ${n(c)} g · L ${n(f)} g`,
     ingredientCount: (count: number) => `${count} ingrédient${s(count)}`,
+    slotsDefault: (lunch: string, dinner: string) => `${lunch}, ${dinner} (par défaut)`,
+    slotsDefaultTitle: "Aucun moment enregistré : utilisée pour le déjeuner et le dîner par défaut.",
+    filterLabel: "Moment du repas",
+    filterAll: "Tous les moments",
+    filterEmpty: "Aucune recette pour ce moment du repas.",
     edit: "Modifier",
     remove: "Supprimer",
     deleteTitle: "Supprimer la recette ?",
@@ -772,6 +777,13 @@ export const fr = {
     removeStep: "Retirer",
     removeStepNamed: (n: number) => `Retirer l'étape ${n}`,
     stepsFull: "Une recette compte au maximum 15 étapes.",
+    slotsHeading: "Moments du repas",
+    slotsNote:
+      "Quand vous appliquez une semaine de repas, cette recette ne sert que pour les repas choisis ici.",
+    slotsRequired: "Choisissez au moins un type de repas.",
+    slotsInvalid: "Choisissez de un à quatre moments de repas.",
+    slotsUntagged:
+      "Aucun moment enregistré pour l'instant : cette recette sert au déjeuner et au dîner par défaut.",
     save: "Enregistrer la recette",
     saving: "Enregistrement…",
     saved: "Recette enregistrée.",

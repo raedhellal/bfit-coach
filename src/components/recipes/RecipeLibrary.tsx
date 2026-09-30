@@ -3,12 +3,13 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import { truncateName } from "@/lib/format";
 import { deleteRecipeAction } from "@/lib/recipeActions";
 import { settled } from "@/lib/settled";
-import type { CoachRecipeList, CoachRecipeSummary } from "@/lib/coachApi";
+import { MEAL_SLOTS, effectiveSlots } from "@/lib/recipeDocument";
+import type { CoachRecipeList, CoachRecipeSummary, MealSlot } from "@/lib/coachApi";
 
 /**
  * EV-256b AC1 and AC5 — the coach's recipe library and its delete.
@@ -21,13 +22,22 @@ import type { CoachRecipeList, CoachRecipeSummary } from "@/lib/coachApi";
  * WHAT A ROW SHOWS: name, kcal, P/C/F and the ingredient count — AC1's list, and what
  * `CoachRecipeSummaryResponse` carries. There is no date on the row because the api
  * serves none (no timestamps on the recipe wire, EV-256a); the list is alphabetical.
+ *
+ * EV-320c: each row also carries its meal times, and the list can be filtered by one. Both
+ * read `mealSlots` through `effectiveSlots`, so an UNTAGGED recipe (`null`) shows and
+ * filters as Lunch + Dinner — what the week fill does with it — marked as the default.
  */
 export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
   const copy = useCopy();
   const router = useRouter();
   const [deleting, setDeleting] = useState<CoachRecipeSummary | null>(null);
+  const [slot, setSlot] = useState<MealSlot | "ALL">("ALL");
 
   const count = library.recipes.length;
+  const shown =
+    slot === "ALL"
+      ? library.recipes
+      : library.recipes.filter((recipe) => effectiveSlots(recipe.mealSlots).includes(slot));
   const newRecipe = (
     <Button icon="plus" onClick={() => router.push("/recipes/new")}>
       {copy.recipes.create}
@@ -68,7 +78,52 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
                 {copy.recipes.limitReached(library.limit)}
               </span>
             )}
+            {/*
+              A separate <label for>, not a wrapping one: a wrapping label folds the
+              selected option's text into the select's accessible name.
+            */}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <label
+                htmlFor="recipe-slot-filter"
+                style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}
+              >
+                {copy.recipes.filterLabel}
+              </label>
+              <select
+                id="recipe-slot-filter"
+                value={slot}
+                onChange={(e) => setSlot(e.target.value as MealSlot | "ALL")}
+                style={{
+                  height: MIN_TOUCH_TARGET,
+                  minWidth: 0,
+                  maxWidth: "100%",
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border-2)",
+                  background: "var(--surface)",
+                  padding: "0 10px",
+                  fontFamily: "var(--font-body)",
+                  fontSize: 13.5,
+                  color: "var(--ink)",
+                }}
+              >
+                <option value="ALL">{copy.recipes.filterAll}</option>
+                {MEAL_SLOTS.map((value) => (
+                  <option key={value} value={value}>
+                    {copy.nutrition.mealSlots[value] ?? value}
+                  </option>
+                ))}
+              </select>
+            </span>
           </div>
+          {shown.length === 0 && (
+            // A filter that matches nothing is not an empty LIBRARY: the count above still
+            // says how many recipes there are, and this says why none is listed.
+            <Card>
+              <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--ink-2)" }}>
+                {copy.recipes.filterEmpty}
+              </p>
+            </Card>
+          )}
           {/*
             BUG-244: `minmax(0, 1fr)`, not the implicit `auto` track. An auto track sizes to
             its widest item's min-content, which for a `nowrap` title is the WHOLE title:
@@ -86,7 +141,7 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
               gap: 12,
             }}
           >
-            {library.recipes.map((recipe) => (
+            {shown.map((recipe) => (
               <li key={recipe.id}>
                 <RecipeRow recipe={recipe} onDelete={() => setDeleting(recipe)} />
               </li>
@@ -148,6 +203,7 @@ function RecipeRow({ recipe, onDelete }: { recipe: CoachRecipeSummary; onDelete:
             <span>{copy.recipes.macroLine(recipe.kcal, recipe.proteinG, recipe.carbsG, recipe.fatG)}</span>
             <span>{copy.recipes.ingredientCount(recipe.ingredientCount)}</span>
           </div>
+          <SlotBadges mealSlots={recipe.mealSlots} />
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link
@@ -174,6 +230,42 @@ function RecipeRow({ recipe, onDelete }: { recipe: CoachRecipeSummary; onDelete:
         </div>
       </div>
     </Card>
+  );
+}
+
+/**
+ * EV-320c — a row's meal times. Tagged: one badge per slot, in the api's order. UNTAGGED
+ * (`null`): ONE badge naming what the fill uses it for, "Lunch, Dinner (default)" — never
+ * nothing, and never read as an empty list. `data-slots` / `data-default` state the drawn
+ * value for a spec (a badge row is otherwise asserted by its words only).
+ */
+function SlotBadges({ mealSlots }: { mealSlots: MealSlot[] | null }) {
+  const copy = useCopy();
+  const labels = copy.nutrition.mealSlots;
+  const untagged = mealSlots === null;
+  const slots = effectiveSlots(mealSlots);
+  return (
+    <ul
+      aria-label={copy.recipes.slotsHeading}
+      data-testid="recipe-slots"
+      data-slots={slots.join(",")}
+      data-default={untagged ? "true" : "false"}
+      style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "flex", gap: 6, flexWrap: "wrap" }}
+    >
+      {untagged ? (
+        <li>
+          <Badge title={copy.recipes.slotsDefaultTitle}>
+            {copy.recipes.slotsDefault(labels.LUNCH ?? "LUNCH", labels.DINNER ?? "DINNER")}
+          </Badge>
+        </li>
+      ) : (
+        slots.map((slot) => (
+          <li key={slot}>
+            <Badge tone="blue">{labels[slot] ?? slot}</Badge>
+          </li>
+        ))
+      )}
+    </ul>
   );
 }
 
