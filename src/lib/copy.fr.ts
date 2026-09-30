@@ -854,7 +854,6 @@ export const fr = {
     colDaysMet: "Jours réussis",
     colTotal: "Total",
     colSynced: "Dernière synchro",
-    colSource: "Source",
     colDays: "Jour par jour",
     status: {
       INVITED: "Invitation envoyée",

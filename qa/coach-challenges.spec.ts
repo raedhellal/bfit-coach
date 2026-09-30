@@ -82,8 +82,11 @@ test.describe("the ranked progress table", () => {
     await expect(row(page, TOBIAS).locator("td").first()).toHaveText("#3");
     await expect(row(page, YUSUF)).toContainText("4 / 5");
     await expect(row(page, YUSUF)).toContainText("10,400 / 10,000 steps");
-    await expect(row(page, YUSUF)).toContainText("Apple Health");
-    await expect(row(page, LINA)).toContainText("Health Connect");
+    // The sync time, and under it where the number came from — never "verified".
+    await expect(row(page, YUSUF).locator("[data-synced]")).toHaveText(/^\d+ minutes ago$/); // seeded 40 min before the process started
+    await expect(row(page, YUSUF).locator("[data-source]")).toHaveText("Apple Health");
+    await expect(row(page, LINA).locator("[data-source]")).toHaveText("Health Connect");
+    await expect(row(page, TOBIAS).locator("[data-source]")).toHaveText("Manual entry");
     await expect(row(page, LINA)).toContainText("49,720 steps");
     // The bar is capped at the goal and states its numbers.
     await expect(row(page, YUSUF).getByRole("progressbar")).toHaveAttribute("data-pct", "100");
@@ -280,6 +283,16 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
 });
 
 test.describe("layout", () => {
+  test("at 1280 the seven-day table fits its card: no sideways scroll, no clipped square", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await signIn(page);
+    await page.goto(`/challenges/${ACTIVE}`);
+    const overflow = await table(page)
+      .locator("table")
+      .evaluate((t) => (t.parentElement as HTMLElement).scrollWidth - (t.parentElement as HTMLElement).clientWidth);
+    expect(overflow, "the progress table scrolls sideways inside its card at 1280").toBeLessThanOrEqual(0);
+  });
+
   test("the fourth nav link and the list fit 320 / 360 / 390 / 414", async ({ page }) => {
     await signIn(page);
     await page.goto("/challenges");

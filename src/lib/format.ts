@@ -236,20 +236,16 @@ export function formatUtcTime(iso: string | null | undefined): string {
 
 /**
  * 10000 → "10,000" / "10 000" (U+202F, the narrow no-break space ICU groups French
- * digits with). A step count is a whole number; it is rounded only defensively.
+ * digits with — four digits too: 1000 → "1 000", in Node 22's ICU 78 and Chrome 153 alike,
+ * read from the DOM's code points. The U+202F is nearly invisible in the portal's font, so a
+ * screenshot looks like "1000"; do not "fix" it from a picture). Rounded only defensively.
  *
  * Never called with a null: a day with no data is "—" (`copy.common.dash`), and the
  * caller that has a null must say so rather than format a 0.
  */
-/*
- * `useGrouping: "always"`, not the default: ICU's French data decides whether a FOUR-digit
- * number is grouped (`minimumGroupingDigits`), and Node and Chrome were measured to
- * disagree — the server printed "1 000" where the browser printed "1000". A step count
- * rendered on the server and re-rendered in a client island must be one string.
- */
 const STEPS: Record<Locale, Intl.NumberFormat> = {
-  en: new Intl.NumberFormat(intlLocale("en"), { maximumFractionDigits: 0, useGrouping: "always" }),
-  fr: new Intl.NumberFormat(intlLocale("fr"), { maximumFractionDigits: 0, useGrouping: "always" }),
+  en: new Intl.NumberFormat(intlLocale("en"), { maximumFractionDigits: 0 }),
+  fr: new Intl.NumberFormat(intlLocale("fr"), { maximumFractionDigits: 0 }),
 };
 export function formatSteps(value: number, locale: Locale): string {
   return STEPS[locale].format(Math.round(value));

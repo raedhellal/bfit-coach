@@ -1,6 +1,6 @@
 ---
 name: challenges-portal-facts
-description: EV-321b step challenges on b-fit-coach — null-is-never-0 contract, who ranks, the trainee's "today", the Node-vs-Chrome French grouping split, the native date field's locale, fixture switches and where the specs run
+description: EV-321b step challenges on b-fit-coach — null-is-never-0 contract, who ranks, the trainee's "today", French grouping that a screenshot hides, the native date field's locale, fixture switches and where the specs run
 metadata:
   type: project
 ---
@@ -31,9 +31,11 @@ would break silently. Raed's investor demo (Sat 2026-10-03) peaks on this page.
 - **The trainee's "today" is theirs:** the zone the app last declared (X-Timezone on
   accept/sync), else UTC−12, moved forward by a later stored row. A trainee with no zone
   can show YESTERDAY as "today" on a UTC afternoon. The fixture uses UTC and says so.
-- **Node and Chrome disagree on French four-digit grouping** ("1 000" vs "1000",
-  ICU `minimumGroupingDigits`). `formatSteps` pins `useGrouping: "always"` so a server
-  render and a client island print one string. `formatKcal` still has the split.
+- **Read French numbers from the DOM, never from a screenshot.** fr-FR groups four digits
+  with U+202F ("1 000") in Node and Chrome alike, and the portal's font draws U+202F almost
+  zero-width, so a PNG reads "1000". I misread one, "fixed" a disagreement that did not
+  exist (`useGrouping: "always"`), and reverted it once `page.getByText(...).textContent()`
+  showed `1U+202f000`. See [[unicode-escapes-in-written-source]].
 - **A native `<input type="date">` is drawn in the BROWSER's UI locale**, not the page's
   (headless Chromium showed 09/30/2026 on a fr-FR page). The dialog restates the window in
   the page's language under the fields (`data-testid="challenge-window"`).

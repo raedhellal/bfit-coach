@@ -129,7 +129,7 @@ test("create in the portal → trainee accepts and syncs → the ranked row show
   await expect(row).toContainText("16,200 steps");
   await expect(row).toContainText("Health Connect");
   // `syncedAt` moments ago, relative ("now" in English at under a minute).
-  await expect(row.locator("td").nth(6)).toHaveText(/^(now|\d+ seconds? ago|\d+ minutes? ago|1 minute ago)$/);
+  await expect(row.locator("[data-synced]")).toHaveText(/^(now|\d+ seconds? ago|\d+ minutes? ago|1 minute ago)$/);
 
   // The strip, from the api's `days`: MET, NO_DATA (no row — never 0), IN_PROGRESS, 4 × FUTURE.
   const statuses = await row

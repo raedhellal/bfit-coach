@@ -1605,8 +1605,8 @@ export const en = {
     colToday: "Today",
     colDaysMet: "Days met",
     colTotal: "Total",
+    /** The sync time, with the source ("Health Connect") under it. */
     colSynced: "Last sync",
-    colSource: "Source",
     colDays: "Day by day",
     status: {
       INVITED: "Invitation sent",

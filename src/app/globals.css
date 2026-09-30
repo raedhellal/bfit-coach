@@ -181,8 +181,8 @@ input::placeholder { color:var(--ink-3); }
 }
 .challenge-day {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border-radius: 4px;
   border: 1px solid transparent;
 }

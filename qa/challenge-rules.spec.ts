@@ -188,7 +188,7 @@ test.describe("the api's refusals, mapped to sentences", () => {
     expect(challengeFailureMessage({ code: "LIMIT_REACHED" }, fr).message).toBe(
       "Vous avez déjà 20 défis qui ne sont pas terminés. Supprimez-en un pour en créer un autre."
     );
-    // fr-FR groups with U+202F — four digits too (`useGrouping: "always"`, see format.ts).
+    // fr-FR groups with U+202F, four digits too (read from Chrome's DOM, not from a screenshot).
     expect(challengeFailureMessage({ code: "INVALID", field: "dailyTarget" }, fr).message).toBe(
       "L'objectif quotidien est compris entre 1\u202f000 et 50\u202f000 pas."
     );
@@ -201,6 +201,6 @@ test.describe("the api's refusals, mapped to sentences", () => {
     expect(formatSteps(10000, "fr")).toBe("10\u202f000");
     expect(formatSteps(10000, "en")).toBe("10,000");
     expect(formatSteps(43570, "fr")).toBe("43\u202f570");
-    expect(formatSteps(6150, "fr")).toBe("6\u202f150"); // four digits: grouped, on server and browser alike
+    expect(formatSteps(6150, "fr")).toBe("6\u202f150"); // four digits are grouped too
   });
 });

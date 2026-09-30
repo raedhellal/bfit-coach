@@ -24,11 +24,10 @@ export function ProgressTable({ detail, copy, now }: { detail: CoachChallengeDet
     { label: c.colRank, w: 56 },
     { label: c.colClient },
     { label: c.colStatus },
-    { label: c.colToday, w: 190 },
+    { label: c.colToday },
     { label: c.colDaysMet, align: "right" as const },
     { label: c.colTotal, align: "right" as const },
     { label: c.colSynced },
-    { label: c.colSource },
     ...(steps ? [{ label: c.colDays }] : []),
   ];
   return (
@@ -155,9 +154,16 @@ function AcceptedRow({
       <Td align="right" style={{ whiteSpace: "nowrap" }}>
         {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
       </Td>
-      <Td style={{ whiteSpace: "nowrap" }}>{formatSince(progress.syncedAt, now, copy.locale)}</Td>
-      <Td style={{ whiteSpace: "nowrap" }}>{source ? c.source[source] : copy.common.dash}</Td>
-      {steps && <Td style={{ minWidth: 150 }}>{progress.days ? <DayStrip days={progress.days} name={name} copy={copy} /> : copy.common.dash}</Td>}
+      {/* When, then where from — the source is the label of the number, not a column of its own. */}
+      <Td style={{ whiteSpace: "nowrap" }}>
+        <div data-synced>{formatSince(progress.syncedAt, now, copy.locale)}</div>
+        {source && (
+          <div data-source={source} style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
+            {c.source[source]}
+          </div>
+        )}
+      </Td>
+      {steps && <Td style={{ minWidth: 170 }}>{progress.days ? <DayStrip days={progress.days} name={name} copy={copy} /> : copy.common.dash}</Td>}
     </tr>
   );
 }
