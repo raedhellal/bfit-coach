@@ -137,7 +137,7 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
   NutritionTemplateSaveRequest: {
     missingInPortal: {
       mealStructure:
-        "EV-273 N6 — OPTIONAL on the wire (omitted = the trainee's own structure). The first portal control to send it would be N1's, which has not cleared. EV-273b AC5/AC2's key-set assertions hold it off the wire; EV-273e adds it.",
+        "EV-273 N6 — OPTIONAL on the wire (omitted = the trainee's own structure). The first portal control to send it would be N1's, which has not cleared. EV-273b AC5/AC2's key-set assertions hold it off the wire; EV-273e adds it. ⚠ Omitting it on PUT CLEARS a stored one (the api replaces the whole row), so an EV-273b edit or rename wipes a structure stored through the api; EV-273e must read it and carry it through edit and rename.",
     },
   },
   NutritionTemplate: {

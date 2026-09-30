@@ -203,6 +203,37 @@ test.describe("AC2 — the editor: a name and four targets, and nothing else", (
     await expect(row(page, "Cut 1800")).toBeVisible();
   });
 
+  test("a rename from a STALE tab keeps the targets another tab saved since (staff follow-up)", async ({ page, context }) => {
+    await signIn(page);
+    await createTemplate(page, "Cut 1800", ["1800", "150", "170", "60"]);
+    // Tab A: the library as rendered now, 1800 kcal, and left open.
+    await expect(row(page, "Cut 1800").getByText("1800 kcal · P 150 g · C 170 g · F 60 g", { exact: true })).toBeVisible();
+
+    // Tab B (same session): edit the calories to 2000 and save.
+    const b = await context.newPage();
+    await b.goto("/nutrition-templates");
+    await row(b, "Cut 1800").getByRole("link", { name: "Edit" }).click();
+    await b.waitForURL(/\/nutrition-templates\/[0-9a-f-]{36}$/);
+    await b.getByLabel("Calories", { exact: true }).fill("2000");
+    await b.getByRole("button", { name: "Save template" }).click();
+    await expect(b.getByText("Template saved.", { exact: true })).toBeVisible();
+    await b.close();
+
+    // Tab A, never reloaded, renames. Before the fix it PUT the row's 1800 back.
+    await row(page, "Cut 1800").getByRole("button", { name: "Rename" }).click();
+    await page.getByRole("dialog").getByLabel("Template name").fill("Cut travel");
+    await page.getByRole("dialog").getByRole("button", { name: "Rename" }).click();
+    await expect(row(page, "Cut travel")).toBeVisible();
+
+    await page.reload();
+    await expect(row(page, "Cut travel").getByText("2000 kcal · P 150 g · C 170 g · F 60 g", { exact: true })).toBeVisible();
+    // The rename read the template before writing it: GET, then a whole PUT of {name, targets}.
+    const journal = await calls(page);
+    const put = journal.findLastIndex((c) => /^PUT \/coach-portal\/nutrition-templates\/[0-9a-f-]{36} \{name,targets\}$/.test(c));
+    expect(put).toBeGreaterThan(0);
+    expect(journal[put - 1]).toMatch(/^GET \/coach-portal\/nutrition-templates\/[0-9a-f-]{36}$/);
+  });
+
   test("delete names the template and says trainees keep what they have", async ({ page }) => {
     await signIn(page);
     await createTemplate(page, "Cut 1800", ["1800", "150", "170", "60"]);

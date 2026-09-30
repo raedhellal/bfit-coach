@@ -69,3 +69,17 @@ attributes; `disabled={pending}` is no double-click guard within one JS task —
   untestable short of 47 UI creates.
 - The apply specs stay on `playwright.roster.config.ts`: the default scenario's roster is
   empty, so "Use on a trainee" offers nobody there.
+
+**Staff follow-ups (APPROVED at 3bfd017, 2026-09-30):**
+- Rename is `renameNutritionTemplateAction(id, name)`: GET the template, then PUT
+  `{name, targets: current.targets}`. The row's rendered targets reverted another tab's
+  edit. The api has no If-Match, so GET→PUT only NARROWS the race. The fixture now journals
+  `GET /coach-portal/nutrition-templates/{id}` (editor page renders log it too).
+- **An access-lost redirect hides a wrong hand-off.** A week 403 that wrongly handed off
+  WEEK_FAILED and pushed to the trainee page (mutant M6) passed "hand-off is null" AND
+  "journal has one GET …/nutrition": the layout's overview 403 redirects before the page
+  reads, and /clients/denied discards the hand-off. Witness the NAVIGATION: no browser
+  request for `/clients/{id}/nutrition` after Confirm. Measure a proposed assertion
+  against the mutant before trusting it.
+- "(copy)" stays English in French: the portal cannot tell the api's suffix from a name a
+  coach typed, and the rename dialog would write a translated display back.

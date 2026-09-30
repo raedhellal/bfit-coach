@@ -12,7 +12,7 @@ import {
   deleteNutritionTemplateAction,
   duplicateNutritionTemplateAction,
   readNutritionForUseAction,
-  updateNutritionTemplateAction,
+  renameNutritionTemplateAction,
   type ApplyTargetsResult,
   type ApplyWeekResult,
   type ReadForUseResult,
@@ -296,7 +296,11 @@ const inputStyle = {
   color: "var(--ink)",
 } as const;
 
-/** Rename is a whole PUT of `{ name, targets }` — the api has no rename mapping. */
+/**
+ * Rename. The api has no rename mapping, so it is a whole PUT — built on the server from
+ * the template as the api holds it NOW, never from this row's rendered targets (a stale
+ * tab would revert another tab's edit). See `renameNutritionTemplateAction`.
+ */
 function RenameDialog({
   template,
   onClose,
@@ -328,7 +332,7 @@ function RenameDialog({
     if (!template || refusal) return;
     startTransition(async () => {
       const result = await settled(
-        updateNutritionTemplateAction(template.id, trimmed, template.targets),
+        renameNutritionTemplateAction(template.id, trimmed),
         { ok: false, code: "FAILED" } as const
       );
       if (!result.ok) {

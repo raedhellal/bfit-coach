@@ -374,15 +374,29 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
         }
       }
     );
+    // Every browser request for the trainee's nutrition PAGE after Confirm (document or
+    // RSC). Mutant M6 — hand off WEEK_FAILED and push to that page — is invisible to the
+    // two checks below it: the trainee layout's overview 403 redirects to /clients/denied
+    // before the page reads anything, and /clients/denied discards the hand-off. Measured
+    // 2026-09-30: under M6 the journal still held exactly one `GET …/nutrition`. What M6
+    // cannot hide is the navigation itself.
+    const traineePage: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname === `/clients/${PETRA}/nutrition`) traineePage.push(r.url());
+    });
     await dialog.getByRole("button", { name: "Confirm" }).click();
     await page.waitForURL("/clients/denied");
-    // Straight to access-lost — NOT a "couldn't be rebuilt" hand-off that the trainee
-    // page's own 403 then happens to redirect past (mutant M10 survived without this).
+    await quietMs(page);
+    expect(traineePage, "a week 403 goes straight to access-lost, never via the trainee's page").toEqual([]);
+    // Straight to access-lost, so no "couldn't be rebuilt" hand-off is left waiting.
     expect(await pendingHandOff(page), "access-lost hands no outcome to a trainee page").toBeNull();
     expect(traineeWrites(await calls(page))).toEqual([
       `PUT /coach-portal/clients/${PETRA}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
       `POST /coach-portal/clients/${PETRA}/nutrition/week/apply {weekStart}`,
     ]);
+    // One nutrition read: the dialog's, at open. (Necessary, NOT sufficient against M6 —
+    // see `traineePage` above.)
+    expect((await calls(page)).filter((c) => c === `GET /coach-portal/clients/${PETRA}/nutrition`)).toHaveLength(1);
   });
 });
 

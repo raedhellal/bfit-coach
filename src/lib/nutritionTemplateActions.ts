@@ -89,7 +89,7 @@ export async function createNutritionTemplateAction(
   }
 }
 
-/** Edit AND rename: the api has one replace mapping, and a rename is a whole PUT. */
+/** Edit: the editor holds every field it sends. A rename from the library uses `renameNutritionTemplateAction`. */
 export async function updateNutritionTemplateAction(
   id: string,
   name: string,
@@ -99,6 +99,35 @@ export async function updateNutritionTemplateAction(
     const template = await coachApi.updateNutritionTemplate(id, {
       name,
       targets: targetsOf(targets),
+    });
+    revalidateLibrary();
+    revalidatePath(`/nutrition-templates/${id}`);
+    return { ok: true, template };
+  } catch (err) {
+    return { ok: false, code: classify(err) };
+  }
+}
+
+/**
+ * Rename (staff follow-up to EV-273b). The api has no rename mapping: a rename is a
+ * whole PUT of `{ name, targets }`. The library row's targets are what was RENDERED, so
+ * sending them from a tab left open reverted targets another tab had saved since
+ * (witnessed: tab B saved 2000 kcal, stale tab A renamed, the row went back to 1800).
+ * So the targets are READ here, from the api, immediately before the write.
+ *
+ * ⚠ This NARROWS the window, it does not close it. The api takes no If-Match and no
+ * version on this PUT, so an edit that lands between this GET and this PUT is still
+ * overwritten. Closing it needs a rename mapping or a precondition on the api's side.
+ */
+export async function renameNutritionTemplateAction(
+  id: string,
+  name: string
+): Promise<NutritionTemplateResult> {
+  try {
+    const current = await coachApi.getNutritionTemplate(id);
+    const template = await coachApi.updateNutritionTemplate(id, {
+      name,
+      targets: targetsOf(current.targets),
     });
     revalidateLibrary();
     revalidatePath(`/nutrition-templates/${id}`);

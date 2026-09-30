@@ -5344,6 +5344,8 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getNutritionTemplate(id: string): Promise<NutritionTemplate> {
+    // Journalled so a rename can be seen to READ before it writes (staff follow-up).
+    recordCall(`GET /coach-portal/nutrition-templates/${id}`);
     return structuredClone(await ownedNutritionTemplate(id));
   },
 
