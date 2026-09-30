@@ -24,6 +24,17 @@ import type {
   CoachRoutineDraftResponse,
   CoachRoutineGuardrails,
   CoachRoutineResponse,
+  ActivitySource,
+  ChallengeDay,
+  ChallengeDayStatus,
+  ChallengeMetric,
+  ChallengePhase,
+  ChallengeProgress,
+  CoachChallengeCreateRequest,
+  CoachChallengeDetail,
+  CoachChallengePage,
+  CoachChallengeParticipant,
+  CoachChallengeSummary,
   CoachTemplate,
   CoachTemplateApplyResult,
   CoachTemplateFromRoutineRequest,
@@ -2991,6 +3002,381 @@ function withPlanFlag(row: RosterClient): RosterClient {
   };
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-321b — STEP CHALLENGES, ported from b-fit-api EV-321a @ 1749060
+ * (`CoachChallengeUseCase`, `ChallengeProgressCalculator`). Progress is DERIVED at read
+ * time from stored day rows, as the api does, so the portal's table is fed the same
+ * shape the api computes rather than a hand-written one:
+ *
+ *   · a day with no row is NO_DATA with a null value — never a 0 — and adds nothing;
+ *   · a row at or above the target is MET; below it, today is IN_PROGRESS and any
+ *     earlier day MISSED; after today is FUTURE;
+ *   · ACCEPTED first, by daysMet desc then total desc, competition ranking (1, 1, 3),
+ *     name to break ties; INVITED after by name, rank and progress null.
+ *
+ * Two simplifications, stated: each participant's "today" is the fixture's UTC day
+ * (the api uses the zone the trainee's app last declared, else UTC-12), still moved
+ * forward to a later stored row as the api moves it; and one row per day (the api's
+ * source precedence picks one of several — the fixture seeds the winner only).
+ *
+ * Visibility is the roster: a participant whose link is not in the current roster (a
+ * revoked process, the `empty` scenario, `evoli_fixture_link=ended`) is ABSENT, which
+ * is the api's `VISIBLE_LINK` rule — a revoked trainee is hidden, not a 403.
+ *
+ * Two fixture-only cookie switches, for the refusals the dialog cannot reach from a
+ * browser that only offers linked clients:
+ *   `evoli_fixture_link=ended`               → the create's 403 (a link ended after the
+ *                                              page loaded);
+ *   `evoli_fixture_challenge_cap=reached`    → the create's 409 (a second tab filled
+ *                                              the 20 unended).
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const CHALLENGE_UNENDED_MAX = 20; // CoachChallengeUseCase.MAX_UNENDED_CHALLENGES
+const CHALLENGE_SPAN_MAX = 92; // Challenge.MAX_SPAN_DAYS
+const CHALLENGE_PAST_MAX = 14;
+const CHALLENGE_AHEAD_MAX = 60;
+
+interface StoredStepRow {
+  value: number;
+  source: ActivitySource;
+  syncedAt: string;
+}
+
+interface StoredParticipant {
+  clientId: string;
+  invitedAt: string;
+  acceptedAt: string | null;
+  /** Keyed by `YYYY-MM-DD`. No key = no row = NO_DATA. */
+  steps: Record<string, StoredStepRow>;
+}
+
+interface StoredChallenge {
+  id: string;
+  title: string;
+  metric: ChallengeMetric;
+  dailyTarget: number | null;
+  totalTarget: number | null;
+  startsOn: string;
+  endsOn: string;
+  createdAt: string;
+  participants: StoredParticipant[];
+}
+
+function utcDay(offsetDays = 0): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function dayPlus(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+function daySpan(a: string, b: string): number {
+  const [ya, ma, da] = a.split("-").map(Number);
+  const [yb, mb, db] = b.split("-").map(Number);
+  return Math.round((Date.UTC(yb, mb - 1, db) - Date.UTC(ya, ma - 1, da)) / 86_400_000);
+}
+
+function minutesAgo(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString();
+}
+
+/**
+ * Seeded rows by offset from today: `[offset, steps, source?]`. An offset that is not
+ * listed is a day with NO row — which is the whole point of Tobias.
+ */
+function stepRows(
+  rows: [offset: number, steps: number, source?: ActivitySource][],
+  source: ActivitySource,
+  lastSyncMinutesAgo: number
+): Record<string, StoredStepRow> {
+  const out: Record<string, StoredStepRow> = {};
+  for (const [offset, steps, own] of rows) {
+    const day = utcDay(offset);
+    // The latest day was synced most recently; earlier days at their own evening.
+    const syncedAt = offset === 0 ? minutesAgo(lastSyncMinutesAgo) : `${day}T20:30:00.000Z`;
+    out[day] = { value: steps, source: own ?? source, syncedAt };
+  }
+  return out;
+}
+
+/** The ids the demo and QA address. Fixed so a spec can open a seeded challenge by URL. */
+export const FIXTURE_CHALLENGE_IDS = {
+  active: "c4a11e00-0000-4000-8000-000000000001",
+  ended: "c4a11e00-0000-4000-8000-000000000002",
+  upcoming: "c4a11e00-0000-4000-8000-000000000003",
+} as const;
+
+/**
+ * Three challenges, one per phase, in the POPULATED scenario only (the `empty` roster has
+ * nobody to invite and nothing to show). The active one is the demo's peak:
+ *   Yusuf  — 4 days met (one missed-by-nothing: a NO_DATA day he never synced) → rank 1;
+ *   Lina   — 3 met, today IN_PROGRESS → rank 2;
+ *   Tobias — 1 met, NO row today and yesterday → today reads "—", never 0;
+ *   Sara, Mara — invited, not accepted: no number at all.
+ * Ranking is therefore neither alphabetical nor the invite order.
+ */
+function seedChallenges(): Map<string, StoredChallenge> {
+  if (SCENARIO === "empty") return new Map();
+  const invited = minutesAgo(5 * 24 * 60);
+  const active: StoredChallenge = {
+    id: FIXTURE_CHALLENGE_IDS.active,
+    title: "10 000 pas par jour",
+    metric: "STEPS",
+    dailyTarget: 10_000,
+    totalTarget: null,
+    startsOn: utcDay(-4),
+    endsOn: utcDay(2),
+    createdAt: minutesAgo(5 * 24 * 60 + 30),
+    participants: [
+      {
+        clientId: LINA_ID,
+        invitedAt: invited,
+        acceptedAt: minutesAgo(5 * 24 * 60 - 60),
+        steps: stepRows(
+          [[-4, 12_400], [-3, 10_350], [-2, 9_800], [-1, 11_020], [0, 6_150]],
+          "HEALTH_CONNECT",
+          12
+        ),
+      },
+      {
+        clientId: YUSUF_ID,
+        invitedAt: invited,
+        acceptedAt: minutesAgo(5 * 24 * 60 - 90),
+        steps: stepRows([[-4, 10_100], [-2, 13_050], [-1, 10_020], [0, 10_400]], "HEALTHKIT", 40),
+      },
+      {
+        clientId: TOBIAS_ID,
+        invitedAt: invited,
+        acceptedAt: minutesAgo(4 * 24 * 60),
+        steps: stepRows([[-4, 8_000], [-3, 10_500], [-2, 7_200, "MANUAL"]], "PEDOMETER", 0),
+      },
+      { clientId: SARA_ID, invitedAt: invited, acceptedAt: null, steps: {} },
+      { clientId: MARA_ID, invitedAt: invited, acceptedAt: null, steps: {} },
+    ],
+  };
+  const ended: StoredChallenge = {
+    id: FIXTURE_CHALLENGE_IDS.ended,
+    title: "Semaine de rentrée",
+    metric: "STEPS",
+    dailyTarget: 8_000,
+    totalTarget: null,
+    startsOn: utcDay(-20),
+    endsOn: utcDay(-14),
+    createdAt: minutesAgo(22 * 24 * 60),
+    participants: [
+      {
+        clientId: LINA_ID,
+        invitedAt: minutesAgo(22 * 24 * 60),
+        acceptedAt: minutesAgo(21 * 24 * 60),
+        steps: stepRows(
+          [[-20, 9_100], [-19, 8_300], [-18, 7_900], [-17, 8_800], [-16, 10_200], [-15, 8_050], [-14, 9_400]],
+          "HEALTH_CONNECT",
+          0
+        ),
+      },
+      {
+        clientId: TOBIAS_ID,
+        invitedAt: minutesAgo(22 * 24 * 60),
+        acceptedAt: minutesAgo(21 * 24 * 60),
+        steps: stepRows([[-20, 6_000], [-19, 8_100], [-17, 5_400]], "PEDOMETER", 0),
+      },
+    ],
+  };
+  const upcoming: StoredChallenge = {
+    id: FIXTURE_CHALLENGE_IDS.upcoming,
+    title: "Objectif 8 000 pas",
+    metric: "STEPS",
+    dailyTarget: 8_000,
+    totalTarget: null,
+    startsOn: utcDay(3),
+    endsOn: utcDay(9),
+    createdAt: minutesAgo(60),
+    participants: [
+      { clientId: YUSUF_ID, invitedAt: minutesAgo(60), acceptedAt: minutesAgo(30), steps: {} },
+      { clientId: PETRA_ID, invitedAt: minutesAgo(60), acceptedAt: null, steps: {} },
+    ],
+  };
+  return new Map([active, ended, upcoming].map((c) => [c.id, c]));
+}
+
+/** The ACTIVE links, by id — the api's `VISIBLE_LINK` fragment, for a STEPS challenge. */
+async function visibleLinks(): Promise<Map<string, RosterClient>> {
+  if (SCENARIO === "empty" || state().revoked || (await linkEnded())) return new Map();
+  return new Map([lina(), petra(), yusuf(), sara(), tobias(), mara()].map((row) => [row.id, row]));
+}
+
+function challengePhase(c: StoredChallenge, today: string): ChallengePhase {
+  if (today < c.startsOn) return "UPCOMING";
+  return today > c.endsOn ? "ENDED" : "ACTIVE";
+}
+
+/** `ChallengeProgressCalculator.steps`, ported. */
+function stepsProgress(c: StoredChallenge, p: StoredParticipant): ChallengeProgress {
+  let today = utcDay(0);
+  for (const day of Object.keys(p.steps)) {
+    if (day >= c.startsOn && day <= c.endsOn && day > today) today = day;
+  }
+  const target = c.dailyTarget ?? 0;
+  const days: ChallengeDay[] = [];
+  let elapsed = 0;
+  let met = 0;
+  let total = 0;
+  let syncedAt: string | null = null;
+  for (let day = c.startsOn; day <= c.endsOn; day = dayPlus(day, 1)) {
+    if (day > today) {
+      days.push({ day, value: null, source: null, status: "FUTURE" });
+      continue;
+    }
+    elapsed += 1;
+    const row = p.steps[day];
+    if (!row) {
+      days.push({ day, value: null, source: null, status: "NO_DATA" });
+      continue;
+    }
+    let status: ChallengeDayStatus;
+    if (row.value >= target) {
+      status = "MET";
+      met += 1;
+    } else {
+      status = day === today ? "IN_PROGRESS" : "MISSED";
+    }
+    total += row.value;
+    if (syncedAt === null || row.syncedAt > syncedAt) syncedAt = row.syncedAt;
+    days.push({ day, value: row.value, source: row.source, status });
+  }
+  const todayRow = today >= c.startsOn && today <= c.endsOn ? p.steps[today] : undefined;
+  return {
+    today,
+    todayValue: todayRow ? todayRow.value : null,
+    todaySource: todayRow ? todayRow.source : null,
+    daysElapsed: elapsed,
+    daysMet: met,
+    total,
+    target,
+    syncedAt,
+    days,
+  };
+}
+
+function toChallengeSummary(c: StoredChallenge, participants: number, accepted: number): CoachChallengeSummary {
+  return {
+    id: c.id,
+    title: c.title,
+    metric: c.metric,
+    dailyTarget: c.dailyTarget,
+    totalTarget: c.totalTarget,
+    startsOn: c.startsOn,
+    endsOn: c.endsOn,
+    days: daySpan(c.startsOn, c.endsOn) + 1,
+    phase: challengePhase(c, utcDay(0)),
+    participantCount: participants,
+    acceptedCount: accepted,
+    createdAt: c.createdAt,
+  };
+}
+
+async function challengeDetail(c: StoredChallenge): Promise<CoachChallengeDetail> {
+  const links = await visibleLinks();
+  const visible = c.participants.filter((p) => links.has(p.clientId));
+  const name = (p: StoredParticipant) => links.get(p.clientId)?.traineeDisplayName ?? null;
+  const byName = (a: StoredParticipant, b: StoredParticipant) => {
+    const x = (name(a) ?? "").toLowerCase();
+    const y = (name(b) ?? "").toLowerCase();
+    return x < y ? -1 : x > y ? 1 : a.clientId < b.clientId ? -1 : a.clientId > b.clientId ? 1 : 0;
+  };
+  const progress = new Map(
+    visible.filter((p) => p.acceptedAt !== null).map((p) => [p.clientId, stepsProgress(c, p)])
+  );
+  const best = (a: ChallengeProgress, b: ChallengeProgress) =>
+    (b.daysMet ?? 0) - (a.daysMet ?? 0) || b.total - a.total;
+  const accepted = visible
+    .filter((p) => p.acceptedAt !== null)
+    .sort((a, b) => best(progress.get(a.clientId)!, progress.get(b.clientId)!) || byName(a, b));
+  const invited = visible.filter((p) => p.acceptedAt === null).sort(byName);
+
+  const rows: CoachChallengeParticipant[] = [];
+  let rank = 0;
+  let previous: ChallengeProgress | null = null;
+  accepted.forEach((p, i) => {
+    const current = progress.get(p.clientId)!;
+    if (previous === null || best(previous, current) !== 0) rank = i + 1;
+    previous = current;
+    rows.push({
+      clientId: p.clientId,
+      displayName: name(p),
+      status: "ACCEPTED",
+      invitedAt: p.invitedAt,
+      acceptedAt: p.acceptedAt,
+      rank,
+      progress: current,
+    });
+  });
+  for (const p of invited) {
+    rows.push({
+      clientId: p.clientId,
+      displayName: name(p),
+      status: "INVITED",
+      invitedAt: p.invitedAt,
+      acceptedAt: null,
+      rank: null,
+      progress: null,
+    });
+  }
+  return { challenge: toChallengeSummary(c, visible.length, accepted.length), participants: rows };
+}
+
+async function ownedChallenge(id: string): Promise<StoredChallenge> {
+  const found = state().challenges.get(id);
+  if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  return found as StoredChallenge;
+}
+
+/** `CoachChallengeCreateRequest`'s Bean Validation, then `checkRules`, in the api's order. */
+async function assertChallengeRequest(body: CoachChallengeCreateRequest): Promise<void> {
+  // Bean Validation: `VALIDATION_ERROR`, the field LEADING the message, no details.
+  const bean = (message: string) => fail(400, "VALIDATION_ERROR", message);
+  const title = typeof body.title === "string" ? body.title : null;
+  if (title === null) await bean("title must not be null");
+  const control = !NO_CONTROL.test(title as string);
+  const normal = javaNormalise(title as string);
+  if (control || normal === null || normal.length > 80) {
+    await bean("title must be 1-80 characters after trimming, with no control character");
+  }
+  if (body.metric !== "STEPS" && body.metric !== "WORKOUTS") await bean("metric must be STEPS or WORKOUTS");
+  if (typeof body.dailyTarget === "number" && (body.dailyTarget < 1000 || body.dailyTarget > 50_000)) {
+    await bean(`dailyTarget must be between 1000 and 50000`);
+  }
+  if (typeof body.totalTarget === "number" && (body.totalTarget < 1 || body.totalTarget > 100)) {
+    await bean("totalTarget must be between 1 and 100");
+  }
+  if (!body.startsOn) await bean("startsOn must not be null");
+  if (!body.endsOn) await bean("endsOn must not be null");
+  if (!Array.isArray(body.clientIds) || body.clientIds.length < 1 || body.clientIds.length > 50) {
+    await bean("clientIds size must be between 1 and 50");
+  }
+
+  // `checkRules`: `VALIDATION_ERROR` with `details.field`.
+  const rule = (field: string, reason: string) =>
+    failWithDetails(400, "VALIDATION_ERROR", `${field} ${reason}`, { field });
+  if (body.metric === "STEPS") {
+    if (body.dailyTarget == null) await rule("dailyTarget", "is required for STEPS");
+    if (body.totalTarget != null) await rule("totalTarget", "must be absent for STEPS");
+  } else {
+    if (body.totalTarget == null) await rule("totalTarget", "is required for WORKOUTS");
+    if (body.dailyTarget != null) await rule("dailyTarget", "must be absent for WORKOUTS");
+  }
+  const span = daySpan(body.startsOn, body.endsOn);
+  if (span < 0) await rule("endsOn", "must not be before startsOn");
+  if (span > CHALLENGE_SPAN_MAX) await rule("endsOn", `must be at most ${CHALLENGE_SPAN_MAX} days after startsOn`);
+  const offset = daySpan(utcDay(0), body.startsOn);
+  if (offset < -CHALLENGE_PAST_MAX) await rule("startsOn", `must be at most ${CHALLENGE_PAST_MAX} days before today`);
+  if (offset > CHALLENGE_AHEAD_MAX) await rule("startsOn", `must be at most ${CHALLENGE_AHEAD_MAX} days after today`);
+}
+
+
 interface FixtureState {
   /** AC6: revoking takes the whole roster away for the rest of the process. */
   revoked: boolean;
@@ -3050,6 +3436,8 @@ interface FixtureState {
    * KEYS are kept (the portal must never send a role) but never a password value.
    */
   activations: FixtureActivationRecord[];
+  /** EV-321b — the coach's challenges, by id, each with its participants' day rows. */
+  challenges: Map<string, StoredChallenge>;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -3130,6 +3518,7 @@ function freshState(): FixtureState {
     pendingAccounts: seedPendingAccounts(),
     legalVersions: { privacyPolicyVersion: "v1.0", termsVersion: "v1.0" },
     activations: [],
+    challenges: seedChallenges(),
   };
 }
 
@@ -4674,5 +5063,69 @@ export const fixtureCoachApi: CoachApi = {
     };
     clearSwapCandidates(id, mealId);
     return state.week;
+  },
+
+  // ── EV-321b step challenges ─────────────────────────────────────────────────
+  async listChallenges(page = 0, size = 50): Promise<CoachChallengePage> {
+    if (page < 0 || size < 1 || size > 50) await fail(400, "VALIDATION_ERROR", "size must be between 1 and 50");
+    const links = await visibleLinks();
+    // `endsOn` desc, then `createdAt` desc, then id — the api's order.
+    const all = [...state().challenges.values()].sort(
+      (a, b) =>
+        (a.endsOn < b.endsOn ? 1 : a.endsOn > b.endsOn ? -1 : 0) ||
+        (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0) ||
+        (a.id < b.id ? -1 : 1)
+    );
+    const items = all.slice(page * size, page * size + size).map((c) => {
+      const visible = c.participants.filter((p) => links.has(p.clientId));
+      return toChallengeSummary(c, visible.length, visible.filter((p) => p.acceptedAt !== null).length);
+    });
+    return {
+      items,
+      page,
+      size,
+      totalElements: all.length,
+      totalPages: Math.ceil(all.length / size),
+    };
+  },
+
+  async getChallenge(id: string): Promise<CoachChallengeDetail> {
+    return challengeDetail(await ownedChallenge(id));
+  },
+
+  async createChallenge(body: CoachChallengeCreateRequest): Promise<CoachChallengeDetail> {
+    await assertChallengeRequest(body);
+    // Every client id through the guard BEFORE anything is written: one foreign, revoked
+    // or unknown id refuses the whole request with the guard's single 403 (AC2).
+    const links = await visibleLinks();
+    const ids = [...new Set(body.clientIds)];
+    if (ids.some((id) => !links.has(id))) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+    if (body.metric === "WORKOUTS" && ids.some((id) => !links.get(id)!.scopes.includes("WORKOUTS"))) {
+      await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+    }
+    const today = utcDay(0);
+    const unended = [...state().challenges.values()].filter((c) => c.endsOn >= today).length;
+    if (unended >= CHALLENGE_UNENDED_MAX || (await fixtureSwitch("evoli_fixture_challenge_cap")) === "reached") {
+      await fail(409, "COACH_CHALLENGE_LIMIT_REACHED", `At most ${CHALLENGE_UNENDED_MAX} challenges may be unended`);
+    }
+    const now = new Date().toISOString();
+    const created: StoredChallenge = {
+      id: crypto.randomUUID(),
+      title: javaNormalise(body.title) as string,
+      metric: body.metric,
+      dailyTarget: body.metric === "STEPS" ? (body.dailyTarget ?? null) : null,
+      totalTarget: body.metric === "WORKOUTS" ? (body.totalTarget ?? null) : null,
+      startsOn: body.startsOn,
+      endsOn: body.endsOn,
+      createdAt: now,
+      participants: ids.map((clientId) => ({ clientId, invitedAt: now, acceptedAt: null, steps: {} })),
+    };
+    state().challenges.set(created.id, created);
+    return challengeDetail(created);
+  },
+
+  async deleteChallenge(id: string): Promise<void> {
+    await ownedChallenge(id);
+    state().challenges.delete(id);
   },
 };

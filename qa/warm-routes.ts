@@ -86,6 +86,9 @@ export default async function warmRoutes(config: FullConfig): Promise<void> {
       "/recipes",
       "/recipes/new",
       `/recipes/${NOBODYS_RECIPE}`,
+      // EV-321b. A random id renders the "not in your list" notice and compiles the route.
+      "/challenges",
+      `/challenges/${NOBODYS_TEMPLATE}`,
       `/clients/${LINA}`,
       `/clients/${LINA}/routine`,
       `/clients/${LINA}/nutrition`,

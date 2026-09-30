@@ -28,7 +28,7 @@ export function CoachShell({
 }: {
   coachName?: string | null;
   /** Which nav entry is the page under this shell. Undefined on a trainee screen. */
-  section?: "roster" | "templates" | "recipes";
+  section?: "roster" | "templates" | "recipes" | "challenges";
   children: React.ReactNode;
 }) {
   const copy = getCopy();
@@ -70,6 +70,10 @@ export function CoachShell({
             {/* EV-256b AC1 — Recipes sits next to Templates. */}
             <ShellLink href="/recipes" current={section === "recipes"}>
               {copy.recipes.nav}
+            </ShellLink>
+            {/* EV-321b — step challenges, the fourth destination. */}
+            <ShellLink href="/challenges" current={section === "challenges"}>
+              {copy.challenges.nav}
             </ShellLink>
           </nav>
           <div style={{ flex: 1 }} />

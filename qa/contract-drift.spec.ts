@@ -285,7 +285,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 68; // EV-284b: +5 food-log types; EV-278c: +4 activation types
+const SCHEMAS_EXPECTED = 75; // EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -398,6 +398,7 @@ const REQUEST_FACING_EXPECTED = [
   "ActivateAccountRequest",
   "CoachApplySwapRequest",
   "CoachApplyWeekRequest",
+  "CoachChallengeCreateRequest",
   "CoachPlaceRecipeRequest",
   "CoachProgressGoalRequest",
   "CoachRecipeIngredientRequest",

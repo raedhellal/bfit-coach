@@ -1507,6 +1507,152 @@ export const en = {
    * a read refused before any page ran changed nothing, so "nothing was changed" is true
    * too. Do not route a write here: after a refused write the sentence could be false.
    */
+  /**
+   * EV-321b — step challenges (b-fit-api EV-321a). No story carries verbatim copy for the
+   * portal half; the one wording the api's contract rules on is the source label: the
+   * portal names where a number came from ("Health Connect", "Apple Health") and never
+   * calls it "verified". Numbers arrive PRE-FORMATTED (`formatSteps`), so a sentence here
+   * never groups digits itself.
+   */
+  challenges: {
+    nav: "Challenges",
+    title: "Challenges",
+    subtitle: "Step goals your clients join from the Evoli Fit app.",
+    create: "New challenge",
+    emptyTitle: "No challenges yet",
+    emptyBody: "Set a daily step goal for a week and invite your clients. You see their progress once they accept.",
+    loadError: "Your challenges could not be loaded.",
+    /** One body for a foreign id, one that never existed and one deleted in another tab. */
+    notYours: "That challenge is not in your list.",
+    backToList: "Back to challenges",
+    phase: {
+      UPCOMING: "Upcoming",
+      ACTIVE: "Active",
+      ENDED: "Ended",
+    },
+    window: (start: string, end: string) => `${start} → ${end}`,
+    days: (days: number) => `${days} day${days === 1 ? "" : "s"}`,
+    stepsGoal: (steps: string) => `${steps} steps a day`,
+    workoutsGoal: (count: string) => `${count} workouts in total`,
+    counts: (participants: number, accepted: number) =>
+      `${participants} invited · ${accepted} joined`,
+    previous: "Previous",
+    next: "Next",
+    pageOf: (page: number, pages: number) => `Page ${page} of ${pages}`,
+
+    /* ── the create dialog ─────────────────────────────────────────────────── */
+    dialogTitle: "New challenge",
+    dialogSub: "Your clients get an invitation in the Evoli Fit app.",
+    titleLabel: "Title",
+    titlePlaceholder: "e.g. 10,000 steps a day",
+    metricLabel: "Type",
+    metricSteps: "Daily steps",
+    targetLabel: "Daily step goal",
+    targetHint: (min: string, max: string) => `Between ${min} and ${max} steps.`,
+    startLabel: "Starts on",
+    endLabel: "Ends on",
+    windowHint: "Up to 93 days, starting at most 14 days ago or 60 days ahead.",
+    clientsLabel: "Clients to invite",
+    clientsHint: "You see a client's steps only after they accept the invitation.",
+    selectAll: "Select all",
+    selectNone: "Clear",
+    selected: (count: number) => `${count} selected`,
+    noClients: "You have no linked clients yet. Invite a client from the roster first.",
+    submit: "Create and invite",
+    submitting: "Creating…",
+    cancel: "Cancel",
+    problems: {
+      titleRequired: "Give the challenge a title.",
+      titleTooLong: (max: string) => `A title is at most ${max} characters.`,
+      titleControl: "A title fits on one line.",
+      titleInvalid: (max: string) => `A title is 1 to ${max} characters, on one line.`,
+      targetInvalid: "Enter the goal as a whole number of steps.",
+      targetRange: (min: string, max: string) => `The daily goal is between ${min} and ${max} steps.`,
+      dateInvalid: "Choose a date.",
+      endBeforeStart: "The end date is on or after the start date.",
+      windowTooLong: (days: string) => `A challenge lasts at most ${days} days.`,
+      startTooEarly: (days: string) => `The start date is at most ${days} days ago.`,
+      startTooLate: (days: string) => `The start date is at most ${days} days ahead.`,
+      startRange: (past: string, ahead: string) =>
+        `The start date is between ${past} days ago and ${ahead} days ahead.`,
+      endRange: (days: string) => `The end date is on or after the start, and a challenge lasts at most ${days} days.`,
+      clientsRequired: "Choose at least one client.",
+      clientsTooMany: (max: string) => `You can invite up to ${max} clients.`,
+      clientsRange: (max: string) => `Choose between 1 and ${max} clients.`,
+    },
+    failures: {
+      /** 403 COACH_ACCESS_DENIED — one body for foreign, revoked and unknown clients. */
+      accessDenied:
+        "One of these clients is no longer linked to you. Nothing was created. Reload the page and choose again.",
+      /** 409 COACH_CHALLENGE_LIMIT_REACHED. */
+      limitReached: (max: string) =>
+        `You already have ${max} challenges that have not ended. Delete one to create another.`,
+      invalid: "The challenge could not be created. Check the form and try again.",
+      failed: "The challenge could not be created. Try again in a moment.",
+    },
+    created: "Challenge created. Your clients see the invitation in the Evoli Fit app.",
+
+    /* ── the challenge page ───────────────────────────────────────────────── */
+    refresh: "Refresh",
+    refreshing: "Refreshing…",
+    autoRefresh: "Updates every 45 seconds while this page is open.",
+    loadedAt: (time: string) => `Updated at ${time} UTC`,
+    consent: "Accepting the invitation is how a client agrees to share their steps with you.",
+    progressLabel: "Participants' progress",
+    colRank: "Rank",
+    colClient: "Client",
+    colStatus: "Status",
+    colToday: "Today",
+    colDaysMet: "Days met",
+    colTotal: "Total",
+    colSynced: "Last sync",
+    colSource: "Source",
+    colDays: "Day by day",
+    status: {
+      INVITED: "Invitation sent",
+      ACCEPTED: "Joined",
+    },
+    unnamed: "Unnamed client",
+    /** An INVITED row: no number, because accepting is the consent to share one. */
+    invitedNote: "Their steps appear here once they accept.",
+    rank: (rank: number) => `#${rank}`,
+    todaySteps: (value: string, target: string) => `${value} / ${target} steps`,
+    todayWorkouts: (value: string) => `${value} today`,
+    todayBar: (name: string) => `${name}: today's steps against the daily goal`,
+    daysMet: (met: number, elapsed: number) => `${met} / ${elapsed}`,
+    daysMetLabel: (met: number, elapsed: number) =>
+      `${met} of ${elapsed} day${elapsed === 1 ? "" : "s"} so far met the goal`,
+    totalSteps: (steps: string) => `${steps} steps`,
+    totalWorkouts: (count: string, target: string) => `${count} / ${target} workouts`,
+    source: {
+      HEALTH_CONNECT: "Health Connect",
+      HEALTHKIT: "Apple Health",
+      PEDOMETER: "Pedometer",
+      MANUAL: "Manual entry",
+    },
+    dayStatus: {
+      MET: "goal met",
+      MISSED: "goal missed",
+      IN_PROGRESS: "in progress",
+      NO_DATA: "no data",
+      FUTURE: "not yet",
+    },
+    dayLabel: (day: string, status: string) => `${day}: ${status}`,
+    dayLabelSteps: (day: string, steps: string, status: string) => `${day}: ${steps} steps, ${status}`,
+    daysList: (name: string) => `${name}, day by day`,
+    legend: "Key",
+    noParticipants:
+      "Nobody is listed on this challenge. A client who declined, left or is no longer linked to you does not appear.",
+
+    /* ── delete ───────────────────────────────────────────────────────────── */
+    remove: "Delete challenge",
+    deleteTitle: "Delete this challenge?",
+    deleteBody: (title: string) =>
+      `“${title}” is deleted, and it disappears from your clients' app. The steps your clients recorded stay theirs.`,
+    deleteConfirm: "Delete",
+    deleteFailed: "The challenge could not be deleted. Try again in a moment.",
+  },
+
   unavailable: {
     title: "We can't reach Evoli right now",
     body: "Nothing was changed and you have not been signed out. Try again in a moment.",
