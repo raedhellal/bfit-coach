@@ -1,5 +1,5 @@
 import { UiIcon } from "@/components/ui/icons";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import type { FiredRedFlag } from "@/lib/coachApi";
 
@@ -23,6 +23,7 @@ import type { FiredRedFlag } from "@/lib/coachApi";
  * holds it.
  */
 export function RedFlagEvidence({ flags }: { flags: FiredRedFlag[] }) {
+  const copy = getCopy();
   return (
     <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 10 }}>
       {flags.map((fired) => (
@@ -57,7 +58,7 @@ export function RedFlagEvidence({ flags }: { flags: FiredRedFlag[] }) {
                 {fired.missedSessions.map((missed) => (
                   <li key={missed.date} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
-                      {formatDate(missed.date)}
+                      {formatDate(missed.date, copy.locale)}
                     </span>
                     {/* The plan's schedule does not always name a workout for a day.
                         Then the date stands alone — the portal does not invent one. */}
@@ -79,7 +80,7 @@ export function RedFlagEvidence({ flags }: { flags: FiredRedFlag[] }) {
               */}
               {fired.weighIn.lastWeighInDate !== null && fired.weighIn.daysSince !== null
                 ? copy.client.lastWeighIn(
-                    formatDate(fired.weighIn.lastWeighInDate),
+                    formatDate(fired.weighIn.lastWeighInDate, copy.locale),
                     fired.weighIn.daysSince
                   )
                 : copy.client.neverWeighedIn}

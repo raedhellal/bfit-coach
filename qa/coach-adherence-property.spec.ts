@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
-import { copy } from "../src/lib/copy";
+import { en as copy } from "../src/lib/copy";
 import { adherenceSeries, type WeekSpec } from "../src/lib/fixtureAdherence";
 import { formatDate } from "../src/lib/format";
 import { WIDTHS } from "./layout";
@@ -2835,7 +2835,7 @@ function expectedRowTexts(key: FixtureSeriesKey, now: Date): string[][] {
   const series = adherenceSeries(specs, now);
   if (series.planned === 0 && series.done === 0) return [];
   return series.weeks.map((week) => [
-    formatDate(week.weekCommencing),
+    formatDate(week.weekCommencing, "en"),
     week.hasPlan ? copy.client.weekSessions(week.done, week.planned) : copy.client.weekNoPlan,
   ]);
 }

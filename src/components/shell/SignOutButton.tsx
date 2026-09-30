@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 
 /** The one interactive element in the shell, so the shell itself stays a server component. */
 export function SignOutButton() {
+  const copy = useCopy();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 

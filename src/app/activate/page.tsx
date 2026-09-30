@@ -10,7 +10,7 @@ import {
   type ActivationStatus,
   type LegalVersions,
 } from "@/lib/coachApi";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { formatInstant, formatUtcTime } from "@/lib/format";
 
 /**
@@ -32,11 +32,13 @@ export const dynamic = "force-dynamic";
 
 /** "27 Oct 2036, 09:30 UTC" — the portal formats in UTC (src/lib/format.ts), and says so. */
 function formatExpiry(iso: string | null): string {
+  const copy = getCopy();
   if (!iso) return copy.common.dash;
-  return `${formatInstant(iso)}, ${formatUtcTime(iso)} UTC`;
+  return `${formatInstant(iso, copy.locale)}, ${formatUtcTime(iso)} UTC`;
 }
 
 function Frame({ title, children }: { title: string; children: ReactNode }) {
+  const copy = getCopy();
   return (
     <div className="login-split">
       {/* No inline style on the panel (BUG-380): an inline `display` beat the ≤767 px rule
@@ -128,6 +130,7 @@ async function settle<T>(p: Promise<T>): Promise<Loaded<T>> {
 }
 
 export default async function ActivatePage() {
+  const copy = getCopy();
   const [activation, legal] = await Promise.all([
     settle<ActivationStatus>(coachApi.getActivation()),
     settle<LegalVersions>(coachApi.getLegalVersions()),
@@ -174,7 +177,14 @@ export default async function ActivatePage() {
     );
   }
 
-  const initialiser = initialiserName(status);
+  // EV-324: the two kind-only fallbacks in the page's language (coachApi.ts is left alone).
+  const initialiser = status.creatorName?.trim()
+    ? initialiserName(status)
+    : status.creatorKind === "GYM"
+      ? copy.activate.yourGym
+      : status.creatorKind === "COACH"
+        ? copy.activate.yourCoach
+        : initialiserName(status);
   const when = formatExpiry(status.expiresAt);
 
   // `GET /me/activation` still answers pending for a row past its expiry until the sweeper

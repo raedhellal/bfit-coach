@@ -1,14 +1,22 @@
 /**
- * Every user-visible string in Evoli Pro, in one place.
+ * Every user-visible string in Evoli Pro, in one place — the ENGLISH dictionary.
  *
- * English only for the demo — there is no i18n runtime here and inventing one for a
- * demo branch would be work the story excludes. The sentences marked "AC" are
- * verbatim acceptance-criteria text from EV-183 and MUST NOT be reworded without
- * changing the story: senior-qa verifies them character by character.
+ * EV-324: the portal speaks French to a browser whose first language is French. This
+ * object is `en`; `src/lib/copy.fr.ts` is `fr`, typed `satisfies Copy`, so a key missing
+ * from either side fails `tsc` (AC4). Nothing imports a dictionary directly: a server
+ * component calls `getCopy()` (`src/lib/i18n/server.ts`), a client component calls
+ * `useCopy()` (`src/lib/i18n/client.tsx`). A string added here without its French twin is
+ * a compile error, which is the point.
+ *
+ * The sentences marked "AC" are verbatim acceptance-criteria text from their stories and
+ * MUST NOT be reworded without changing the story: senior-qa verifies them character by
+ * character. EV-324 AC2: the English strings are unchanged by the French row.
  *
  * No invented benefits, no tier price, no ToS/DPA wording (EV-183 "NOT in the demo"
  * item 12 — ⛔ D8/D9 are open).
  */
+import type { Locale } from "./i18n/locale";
+
 /**
  * Append a full stop unless the value already ends a sentence.
  *
@@ -17,11 +25,13 @@
  * double stop. It is the smallest possible defect and it was shipped and then pinned by
  * a test, which is why it gets a named helper rather than a `.replace` at one call site.
  */
-function endSentence(value: string): string {
+export function endSentence(value: string): string {
   return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`;
 }
 
-export const copy = {
+export const en = {
+  /** EV-324 — the dictionary's own language; formatters take it (`src/lib/format.ts`). */
+  locale: "en" as Locale,
   brand: "Evoli Pro", // AC1: the app header reads exactly this
   tagline: "The coach back-office for Evoli Fit.",
 
@@ -138,6 +148,13 @@ export const copy = {
     failed: "We couldn't confirm your account was finished. Reload this page to see where it stands.",
     unavailable: "We couldn't confirm your account was finished. Reload this page to see where it stands.",
     signedInAgain: "Your account is finished. Sign in with your new password.",
+    /**
+     * EV-324 — who set the account up, when the api sent a kind and no name (the name was
+     * erased). `initialiserName` in coachApi.ts still carries its English pair — that file
+     * belongs to a parallel branch this week — so /activate maps these two kinds itself.
+     */
+    yourGym: "Your gym",
+    yourCoach: "Your coach",
   },
 
   shell: {
@@ -586,6 +603,8 @@ export const copy = {
   },
 
   tabs: {
+    /** The tab strip's landmark name (was a literal in ClientTabs.tsx before EV-324). */
+    label: "Trainee sections",
     overview: "Overview",
     routine: "Routine", // EV-184 AC1, verbatim
     nutrition: "Nutrition", // EV-185 AC1, verbatim
@@ -644,6 +663,8 @@ export const copy = {
      * a coach reads it as the field it is. Nothing else about the field changes.
      */
     dayFocusLabel: "Day focus",
+    /** The focus field's accessible name per day (was composed with a literal " focus" before EV-324). */
+    dayFocusName: (n: number) => `Day ${n} focus`,
     /**
      * EV-201 AC2, verbatim. Replace carries the row's sets, reps and rest onto the new
      * exercise (`onPick`); Remove-then-Add does not — it lands on the 3 / "8-12" / "90s"
@@ -802,7 +823,8 @@ export const copy = {
     fat: "Fat",
     kcal: "kcal",
     grams: "g",
-    activity: "Activity level",
+    /** The targets card's badge. EV-324 made it a template so French can space its colon. */
+    activityBadge: (label: string) => `Activity level: ${label}`,
     activityLabels: {
       SEDENTARY: "Sedentary",
       LIGHT: "Lightly active",
@@ -833,6 +855,11 @@ export const copy = {
     scopeMissing: "This trainee has not shared their nutrition with you.",
     allergies: "Allergies",
     rules: "Dietary rules",
+    /**
+     * EV-324 — `FoodRule` tokens. English shows the token as it always has (AC2); French
+     * gets the word. An unknown token falls back to itself.
+     */
+    ruleLabels: { HALAL: "HALAL", KOSHER: "KOSHER" } as Record<string, string>,
     dislikes: "Dislikes",
     // Edge case 1, verbatim: no preferences row is not the same as an empty checked list.
     noRestrictions: "No dietary restrictions recorded.",
@@ -1202,6 +1229,23 @@ export const copy = {
     newDayFocus: "New day",
     goalLabel: "Goal",
     levelLabel: "Level",
+    /**
+     * EV-324 — the goal and level options. English shows the api's token, exactly as it
+     * did before this row (AC2: English unchanged); French gets words. Giving English words
+     * too is a UX call for another row, not a side effect of this one.
+     */
+    goalLabels: {
+      BUILD_MUSCLE: "BUILD_MUSCLE",
+      LOSE_WEIGHT: "LOSE_WEIGHT",
+      GET_STRONGER: "GET_STRONGER",
+      ENDURANCE: "ENDURANCE",
+      MOBILITY: "MOBILITY",
+    } as Record<string, string>,
+    levelLabels: {
+      BEGINNER: "BEGINNER",
+      INTERMEDIATE: "INTERMEDIATE",
+      ADVANCED: "ADVANCED",
+    } as Record<string, string>,
     minutesLabel: "Minutes per session",
     summaryLabel: "Summary",
     summaryHint: "Shown to nobody but you. Leave it empty if you have nothing to add.",
@@ -1476,5 +1520,70 @@ export const copy = {
     unexpectedError: "Something went wrong.",
     tryAgain: "Try again",
     dash: "—",
+    /** A modal's close button (was a literal in kit.tsx before EV-324). */
+    close: "Close",
+  },
+
+  /**
+   * EV-324 AC5b (scope §10.2), verbatim — the legal line under every page. Nutrition is
+   * not care: coaches may sell meal plans to healthy clients, and therapeutic nutrition
+   * belongs to dietitians. Rendered once, sticky, by `LegalFooter` in the root layout.
+   */
+  legalFooter:
+    "Meal plans for healthy people. They do not replace medical advice or care from a dietitian.",
+  /** The footer landmark's accessible name. Ours, not story copy. */
+  legalFooterLabel: "Legal notice",
+
+  /**
+   * The trainee's guardrail tokens as words (EV-324 moved them here from
+   * `src/lib/guardrailLabels.ts`, which keeps the lookup and the humanising fallback).
+   * b-fit-mobile's `equipment.*` strings, verbatim per language; ADR-0005 D1a's tokens.
+   */
+  guardrails: {
+    equipment: {
+      NONE: "Bodyweight only",
+      BODYWEIGHT: "Bodyweight only",
+      DUMBBELLS: "Dumbbells",
+      BARBELL: "Barbell",
+      BANDS: "Bands",
+      GYM: "Full gym",
+      KETTLEBELL: "Kettlebell",
+      PULL_UP_BAR: "Pull-up bar",
+      BENCH: "Bench",
+      CABLE_MACHINE: "Cable machine",
+      SQUAT_RACK: "Squat rack",
+    } as Record<string, string>,
+    injuries: {
+      KNEE: "Knees",
+      LOWER_BACK: "Lower back",
+      SHOULDER: "Shoulders",
+      NECK: "Neck",
+      WRIST: "Wrists",
+      HIP: "Hips",
+      ANKLE: "Ankles",
+      ELBOW: "Elbows",
+    } as Record<string, string>,
   },
 } as const;
+
+/**
+ * EV-324 AC4 — the shape both languages share. `en` is `as const`, so its strings are
+ * literal types; `Widen` turns every literal back into `string` (and keeps functions'
+ * parameters) so that `fr` can say different words in the SAME shape. `fr` is declared
+ * `satisfies Copy`: a key missing in French is a missing-property error, and a key French
+ * has that English does not is an excess-property error — both fail `tsc`.
+ *
+ * `Record<string, string>` maps (the enum labels) cannot be checked key-by-key this way;
+ * `qa/coach-i18n.spec.ts` compares the two dictionaries' key sets at run time too.
+ */
+type Widen<T> = T extends string
+  ? string
+  : T extends number
+    ? number
+    : T extends (...args: infer A) => infer R
+      ? (...args: A) => Widen<R>
+      : T extends object
+        ? { readonly [K in keyof T]: Widen<T[K]> }
+        : T;
+
+export type Copy = Omit<Widen<typeof en>, "locale"> & { readonly locale: Locale };

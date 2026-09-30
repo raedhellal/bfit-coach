@@ -1,4 +1,4 @@
-import { copy } from "./copy";
+import type { Copy } from "./copy";
 import { firstName, formatInstant } from "./format";
 
 /**
@@ -25,12 +25,13 @@ import { firstName, formatInstant } from "./format";
  */
 export function traineeChangeNotice(
   routine: { lastChangedBy?: unknown; lastChangedAt?: unknown } | null | undefined,
-  traineeDisplayName: string | null | undefined
+  traineeDisplayName: string | null | undefined,
+  copy: Copy
 ): string | null {
   if (!routine || routine.lastChangedBy !== "TRAINEE") return null;
   const at = routine.lastChangedAt;
   if (typeof at !== "string" || Number.isNaN(new Date(at).getTime())) return null;
-  return copy.routine.traineeChanged(firstName(traineeDisplayName ?? ""), formatInstant(at));
+  return copy.routine.traineeChanged(firstName(traineeDisplayName ?? "", copy.locale), formatInstant(at, copy.locale));
 }
 
 /** The roster's "Plan changed" marker: a literal `true` only. */

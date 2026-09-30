@@ -11,7 +11,8 @@ import {
   TextField,
   WeekdaySelect,
 } from "@/components/routine/RoutineFields";
-import { copy } from "@/lib/copy";
+import type { Copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { isoWeekdayLabel, truncateName } from "@/lib/format";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -76,7 +77,7 @@ type PickerTarget =
   | { mode: "add"; dayIndex: number }
   | { mode: "replace"; dayIndex: number; exerciseIndex: number };
 
-const FAILURE_COPY: Record<TemplateFailure, string> = {
+const failureCopy = (copy: Copy): Record<TemplateFailure, string> => ({
   NAME_TAKEN: copy.templates.nameTaken,
   LIMIT_REACHED: copy.templates.limitReached(50),
   TOO_LARGE: copy.templates.saveFailed,
@@ -86,7 +87,7 @@ const FAILURE_COPY: Record<TemplateFailure, string> = {
   CATALOG_UNAVAILABLE: copy.routine.catalogUnavailable,
   ACCESS_DENIED: copy.templates.notYours,
   FAILED: copy.templates.saveFailed,
-};
+});
 
 export function TemplateEditor({
   templateId: initialTemplateId,
@@ -96,6 +97,7 @@ export function TemplateEditor({
   templateId: string | null;
   initial: TemplateDraft;
 }) {
+  const copy = useCopy();
   const router = useRouter();
   /**
    * Null until the first save on a NEW template, and the id from then on.
@@ -149,7 +151,7 @@ export function TemplateEditor({
       (day, i) => i !== dayIndex && day.dayOfWeek === dayOfWeek
     );
     if (clash) {
-      setWeekdayError({ dayIndex, message: copy.routine.weekdayTaken(isoWeekdayLabel(dayOfWeek)) });
+      setWeekdayError({ dayIndex, message: copy.routine.weekdayTaken(isoWeekdayLabel(dayOfWeek, copy.locale)) });
       return;
     }
     editDay(dayIndex, (day) => ({ ...day, dayOfWeek }));
@@ -177,7 +179,7 @@ export function TemplateEditor({
     });
   }
 
-  const reasons = publishabilityReasons(draft);
+  const reasons = publishabilityReasons(draft, copy);
   const saveable = reasons.length === 0;
 
   function save() {
@@ -191,7 +193,7 @@ export function TemplateEditor({
       if (!result.ok) {
         // A FAILED save leaves the unsaved flag standing: the coach is still holding
         // work the server has not got.
-        setError(FAILURE_COPY[result.code]);
+        setError(failureCopy(copy)[result.code]);
         return;
       }
       setError(null);
@@ -339,12 +341,14 @@ export function TemplateEditor({
             label={copy.templates.goalLabel}
             value={draft.document.goal}
             options={GOALS}
+            labels={copy.templates.goalLabels}
             onChange={(goal) => editDocument((document) => ({ ...document, goal }))}
           />
           <SelectField
             label={copy.templates.levelLabel}
             value={draft.document.level}
             options={LEVELS}
+            labels={copy.templates.levelLabels}
             onChange={(level) => editDocument((document) => ({ ...document, level }))}
           />
           <NumberField
@@ -442,7 +446,7 @@ export function TemplateEditor({
               variant="ghost"
               size="sm"
               icon="trash"
-              ariaLabel={`${copy.routine.removeDay}: ${isoWeekdayLabel(day.dayOfWeek)}`}
+              ariaLabel={`${copy.routine.removeDay}: ${isoWeekdayLabel(day.dayOfWeek, copy.locale)}`}
               title={days.length <= MIN_TRAINING_DAYS ? copy.templates.dayCountBound : undefined}
               disabled={days.length <= MIN_TRAINING_DAYS}
               onClick={() => editDays((list) => list.filter((_, i) => i !== dayIndex))}
@@ -660,7 +664,7 @@ export function TemplateEditor({
         onClick={() => {
           const next = firstFreeWeekday(days);
           if (next === null) return;
-          editDays((list) => [...list, emptyDay(next)]);
+          editDays((list) => [...list, emptyDay(next, copy)]);
         }}
       >
         {copy.routine.addDay}

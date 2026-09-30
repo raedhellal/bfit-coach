@@ -5,7 +5,7 @@ import { TemplateEditor } from "@/components/templates/TemplateEditor";
 import { PageHead } from "@/components/ui/kit";
 import { coachApi, isForbidden, type CoachTemplate } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /templates/[id] — AC2's Edit.
@@ -25,6 +25,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function TemplatePage({ params }: { params: { id: string } }) {
+  const copy = getCopy();
   const [me, loaded] = await Promise.all([
     readCoachMe(),
     coachApi

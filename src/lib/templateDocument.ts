@@ -1,4 +1,4 @@
-import { copy } from "./copy";
+import type { Copy } from "./copy";
 import type {
   CoachTemplateSaveRequest,
   Routine,
@@ -95,7 +95,7 @@ export interface TemplateDraft {
  * — and the editor says so from the first render rather than at the first press of
  * Save. That is V1b's cost made visible instead of discovered.
  */
-export function blankTemplate(): TemplateDraft {
+export function blankTemplate(copy: Copy): TemplateDraft {
   return {
     name: "",
     document: {
@@ -103,7 +103,7 @@ export function blankTemplate(): TemplateDraft {
       goal: "BUILD_MUSCLE",
       level: "BEGINNER",
       daysPerWeek: 2,
-      trainingDays: [emptyDay(1), emptyDay(2)],
+      trainingDays: [emptyDay(1, copy), emptyDay(2, copy)],
       weeklyProgression: [],
       constraints: { equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: 2 },
       summary: null,
@@ -111,7 +111,7 @@ export function blankTemplate(): TemplateDraft {
   };
 }
 
-export function emptyDay(dayOfWeek: number): RoutineTrainingDay {
+export function emptyDay(dayOfWeek: number, copy: Copy): RoutineTrainingDay {
   return {
     dayOfWeek,
     focus: copy.templates.newDayFocus,
@@ -190,7 +190,7 @@ export function forSave(draft: TemplateDraft): CoachTemplateSaveRequest {
  * Each sentence names the day it is about where a day is at fault, because "invalid"
  * over a six-day template is a coach hunting.
  */
-export function publishabilityReasons(draft: TemplateDraft): string[] {
+export function publishabilityReasons(draft: TemplateDraft, copy: Copy): string[] {
   const reasons: string[] = [];
   const name = draft.name.trim();
   const document = draft.document;

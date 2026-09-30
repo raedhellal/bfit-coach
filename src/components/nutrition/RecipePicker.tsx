@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Input, MIN_TOUCH_TARGET } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import type { Copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import type { PlacementFailure } from "@/lib/nutritionActions";
 import type { CoachRecipeSummary } from "@/lib/coachApi";
 
@@ -32,7 +33,8 @@ export function refusalSentence(
   failure: PlacementFailure,
   recipe: string,
   first: string,
-  weekday: string
+  weekday: string,
+  copy: Copy
 ): string {
   const t = copy.placement;
   switch (failure.code) {
@@ -89,6 +91,7 @@ export function RecipePicker({
   onChoose: (recipe: CoachRecipeSummary) => void;
   disabled: boolean;
 }) {
+  const copy = useCopy();
   if (library.status === "loading") {
     return (
       <p role="status" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>

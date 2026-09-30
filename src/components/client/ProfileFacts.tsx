@@ -1,5 +1,5 @@
 import { Badge, Card, CardHead } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * The trainee's stored profile facts, rendered read-only (EV-184 AC1, EV-185 AC1).
@@ -44,6 +44,7 @@ export function ProfileFacts({
    */
   emptyAll?: string;
 }) {
+  const copy = getCopy();
   const allEmpty = groups.every((g) => g.values.length === 0);
   return (
     <Card style={{ marginBottom: 18 }}>

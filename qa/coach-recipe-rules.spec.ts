@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
+import { en } from "../src/lib/copy";
 import {
   addressOf,
   blankRecipe,
@@ -53,8 +54,8 @@ test.describe("the name is counted the way the api counts it", () => {
     expect(nameLength("a".repeat(80))).toBe(80);
     // U+1F957 (green salad) is outside the BMP: Java String.length() and JS .length both say 2.
     expect(nameLength(`${"a".repeat(78)}\u{1F957}`)).toBe(80);
-    expect(localProblems(filled({ name: `${"a".repeat(78)}\u{1F957}` }))).toEqual([]);
-    expect(localProblems(filled({ name: `${"a".repeat(79)}\u{1F957}` })).map((p) => p.message)).toEqual([
+    expect(localProblems(filled({ name: `${"a".repeat(78)}\u{1F957}` }), en)).toEqual([]);
+    expect(localProblems(filled({ name: `${"a".repeat(79)}\u{1F957}` }), en).map((p) => p.message)).toEqual([
       "A recipe name is at most 80 characters.",
     ]);
   });
@@ -63,7 +64,7 @@ test.describe("the name is counted the way the api counts it", () => {
     // ZWSP/ZWJ are Cf: removed, not counted. NBSP is Zs: folded, then stripped at the ends.
     const padded = `\u00A0\u200B${"b".repeat(80)}\u200D\u00A0`;
     expect(normaliseName(padded)).toBe("b".repeat(80));
-    expect(localProblems(filled({ name: padded }))).toEqual([]);
+    expect(localProblems(filled({ name: padded }), en)).toEqual([]);
     // A name made ONLY of invisible characters is no name.
     expect(normaliseName("\u200B\u00A0\u200D")).toBeNull();
     // The Arabic tatweel is a LETTER (Lm) and is kept, as the api keeps it.
@@ -71,7 +72,7 @@ test.describe("the name is counted the way the api counts it", () => {
   });
 
   test("a line break or control character is refused", () => {
-    expect(localProblems(filled({ name: "Chicken\trice" })).map((p) => p.message)).toEqual([
+    expect(localProblems(filled({ name: "Chicken\trice" }), en).map((p) => p.message)).toEqual([
       "Keep this on one line, with no special characters.",
     ]);
   });
@@ -81,22 +82,22 @@ test.describe("numbers", () => {
   test("a macro is a WHOLE number: 50.7 is refused, never truncated; 50.0 is accepted", () => {
     expect(parseWhole("50.7")).toEqual({ kind: "fraction", value: 50.7 });
     expect(parseWhole("50.0")).toEqual({ kind: "whole", value: 50 });
-    const refused = localProblems(filled({ proteinG: "50.7" }));
+    const refused = localProblems(filled({ proteinG: "50.7" }), en);
     expect(refused).toEqual([{ at: "proteinG", message: "Whole numbers only. Use 50 or 51." }]);
-    expect(localProblems(filled({ proteinG: "50.0" }))).toEqual([]);
+    expect(localProblems(filled({ proteinG: "50.0" }), en)).toEqual([]);
     expect(forSave(filled({ proteinG: "50.0" })).proteinG).toBe(50);
   });
 
   test("the bounds are the api's: kcal 1..3000, each macro 0..300", () => {
-    expect(localProblems(filled({ kcal: "0" }))[0]).toEqual({
+    expect(localProblems(filled({ kcal: "0" }), en)[0]).toEqual({
       at: "kcal",
       message: "Calories (kcal): a whole number from 1 to 3000.",
     });
-    expect(localProblems(filled({ fatG: "301" }))[0]).toEqual({
+    expect(localProblems(filled({ fatG: "301" }), en)[0]).toEqual({
       at: "fatG",
       message: "Fat (g): a whole number from 0 to 300.",
     });
-    expect(localProblems(filled({ carbsG: "0", kcal: "3000" }))).toEqual([]);
+    expect(localProblems(filled({ carbsG: "0", kcal: "3000" }), en)).toEqual([]);
   });
 
   test("a quantity is > 0, ≤ 5000, at most two decimals — 150.000 refused like the api's @Digits", () => {
@@ -107,17 +108,29 @@ test.describe("numbers", () => {
       expect(parseQuantity(bad), bad).toBeNull();
     }
   });
+
+  test("a French decimal comma reads as a point (EV-324 staff should-fix 2)", () => {
+    expect(parseQuantity("150,5")).toBe(150.5);
+    expect(parseQuantity("0,25")).toBe(0.25);
+    // kcal and macros keep refusing a comma: "1,000" must never become kcal 1 (BUG-460).
+    for (const text of ["1,000", "1,500", "50,7"]) {
+      expect(parseWhole(text), text).toEqual({ kind: "invalid" });
+    }
+    for (const bad of ["150,000", "1,5,5", ","]) {
+      expect(parseQuantity(bad), bad).toBeNull();
+    }
+  });
 });
 
 test("a blank form lists what is missing as hints, not errors, and cannot be sent", () => {
-  const problems = localProblems(blankRecipe());
+  const problems = localProblems(blankRecipe(), en);
   expect(problems.length).toBeGreaterThan(0);
   expect(problems.every((p) => p.missing)).toBe(true);
 });
 
 test("a step is sent stripped, because the api bounds the RAW string at 300", () => {
   const step = `${"s".repeat(300)} `;
-  expect(localProblems(filled({ steps: [step] }))).toEqual([]);
+  expect(localProblems(filled({ steps: [step] }), en)).toEqual([]);
   expect(forSave(filled({ steps: [step] })).steps[0]).toHaveLength(300);
 });
 
@@ -141,7 +154,7 @@ test.describe("every server refusal is addressed to its field (AC4)", () => {
     expect(recipeFieldOf(null, "Request failed (400)")).toBeNull();
 
     const failure: RecipeFailure = { code: "INVALID_FIELD", ...none, field: "proteinG" };
-    expect(serverProblem(failure, sent)).toEqual({
+    expect(serverProblem(failure, sent, en)).toEqual({
       at: "proteinG",
       message: "Protein (g): a whole number from 0 to 300.",
     });
@@ -151,7 +164,7 @@ test.describe("every server refusal is addressed to its field (AC4)", () => {
     expect(recipeFieldOf({ field: "steps[0]" }, "must be between 1 and 300 characters")).toBe("steps[0]");
     expect(addressOf("ingredients[1].key")).toBe("ingredients.1");
     expect(
-      serverProblem({ code: "INVALID_FIELD", ...none, field: "ingredients[1].key" }, sent)
+      serverProblem({ code: "INVALID_FIELD", ...none, field: "ingredients[1].key" }, sent, en)
     ).toEqual({ at: "ingredients.1", message: "This ingredient is already in the recipe." });
   });
 
@@ -162,7 +175,7 @@ test.describe("every server refusal is addressed to its field (AC4)", () => {
       key: "quark",
       computedKcal: null,
     };
-    expect(serverProblem(failure, sent)).toEqual({
+    expect(serverProblem(failure, sent, en)).toEqual({
       at: "ingredients.0",
       message: "“quark” is no longer on Evoli's ingredient list. Remove it to save.",
     });
@@ -175,7 +188,7 @@ test.describe("every server refusal is addressed to its field (AC4)", () => {
       key: "oats",
       computedKcal: null,
     };
-    expect(serverProblem(failure, sent)).toEqual({
+    expect(serverProblem(failure, sent, en)).toEqual({
       at: "ingredients.1",
       message: "“oats” is no longer on Evoli's ingredient list. Remove it to save.",
     });
@@ -183,7 +196,7 @@ test.describe("every server refusal is addressed to its field (AC4)", () => {
 
   test("the macro refusal is AC4's sentence, with computedKcal and the kcal SENT", () => {
     expect(
-      serverProblem({ code: "MACROS_INCONSISTENT", ...none, computedKcal: 680 }, sent)
+      serverProblem({ code: "MACROS_INCONSISTENT", ...none, computedKcal: 680 }, sent, en)
     ).toEqual({
       at: "macros",
       message: "These macros add up to 680 kcal, not 500. Check the numbers.",
@@ -191,14 +204,14 @@ test.describe("every server refusal is addressed to its field (AC4)", () => {
   });
 
   test("name taken → the name; limit, denial and anything else → under Save", () => {
-    expect(serverProblem({ code: "NAME_TAKEN", ...none }, sent).at).toBe("name");
-    expect(serverProblem({ code: "LIMIT_REACHED", ...none }, sent)).toEqual({
+    expect(serverProblem({ code: "NAME_TAKEN", ...none }, sent, en).at).toBe("name");
+    expect(serverProblem({ code: "LIMIT_REACHED", ...none }, sent, en)).toEqual({
       at: "form",
       message: "You can keep up to 100 recipes. Delete one to make room.",
     });
-    expect(serverProblem({ code: "ACCESS_DENIED", ...none }, sent).message).toBe(
+    expect(serverProblem({ code: "ACCESS_DENIED", ...none }, sent, en).message).toBe(
       "That recipe is not in your library."
     );
-    expect(serverProblem({ code: "FAILED", ...none }, sent).at).toBe("form");
+    expect(serverProblem({ code: "FAILED", ...none }, sent, en).at).toBe("form");
   });
 });

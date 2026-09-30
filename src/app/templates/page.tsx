@@ -4,7 +4,7 @@ import { TemplateLibrary } from "@/components/templates/TemplateLibrary";
 import { PageHead } from "@/components/ui/kit";
 import { coachApi, hasScope, type CoachTemplateList, type RosterClient } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /templates — EV-188b AC1/AC2, the coach's own library.
@@ -25,6 +25,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function TemplatesPage() {
+  const copy = getCopy();
   const [me, library, trainees] = await Promise.all([
     readCoachMe(),
     coachApi

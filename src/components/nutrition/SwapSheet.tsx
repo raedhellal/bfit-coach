@@ -9,7 +9,7 @@ import {
   type LibraryState,
   type PlacementTarget,
 } from "@/components/nutrition/RecipePicker";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { truncateName } from "@/lib/format";
 import {
   applySwapAction,
@@ -36,6 +36,7 @@ export function SuggestionRow({
   onChoose: (index: number) => void;
   pending: boolean;
 }) {
+  const copy = useCopy();
   return (
     <button
       type="button"
@@ -128,6 +129,7 @@ export function SwapSheet({
   /** `router.refresh()` — an ended link redirects; a switched-off flag is re-read. */
   onRefresh: () => void;
 }) {
+  const copy = useCopy();
   const [library, setLibrary] = useState<LibraryState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<CoachRecipeSummary | null>(null);
@@ -208,7 +210,7 @@ export function SwapSheet({
         return;
       }
       setRefusal({
-        text: refusalSentence(failure, recipe.name, firstName, target.weekday),
+        text: refusalSentence(failure, recipe.name, firstName, target.weekday, copy),
         retiredRecipeId: failure.code === "RETIRED_INGREDIENT" ? recipe.id : null,
         from: "placement",
       });

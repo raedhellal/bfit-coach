@@ -66,7 +66,7 @@ import type {
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
 // `repairsFor`.
-import { copy } from "./copy";
+import { en as copy } from "./copy";
 // The pure series builder (EV-249). Only the function lives there; every tuple is here.
 import { adherenceSeries } from "./fixtureAdherence";
 // EV-256b — the fixture's own copy of the recipe bounds (see that module for why).

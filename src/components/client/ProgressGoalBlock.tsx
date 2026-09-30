@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BlockNote, MonitoringBlock } from "@/components/client/MonitoringBlock";
 import { Button, Input } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { firstName } from "@/lib/format";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { saveProgressGoalAction } from "@/lib/progressGoalActions";
@@ -70,6 +70,7 @@ export function ProgressGoalBlock({
   traineeDisplayName: string;
   goal: TraineeProgressGoal;
 }) {
+  const copy = useCopy();
   const router = useRouter();
 
   /**
@@ -112,7 +113,7 @@ export function ProgressGoalBlock({
   const [invalid, setInvalid] = useState<ProgressGoalInputError | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const name = firstName(traineeDisplayName);
+  const name = firstName(traineeDisplayName, copy.locale);
   const empty = !hasAnyReading(goal);
   const noBodyFat = !empty && bodyFatAbsent(goal);
 
@@ -233,7 +234,7 @@ export function ProgressGoalBlock({
     });
   }
 
-  const attribution = milestoneAttribution(goal);
+  const attribution = milestoneAttribution(goal, copy);
 
   return (
     <MonitoringBlock title={copy.progressGoal.title} icon="trend">
@@ -246,7 +247,7 @@ export function ProgressGoalBlock({
         <BlockNote>{copy.progressGoal.noWeightYet(name)}</BlockNote>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {progressRows(goal).map((row) => (
+          {progressRows(goal, copy).map((row) => (
             /**
              * ORDINARY INLINE TEXT, not a flex row and not a `<table>`.
              *
@@ -286,7 +287,7 @@ export function ProgressGoalBlock({
         data-provenance="startedOn"
         style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}
       >
-        {startedOnLine(goal)}
+        {startedOnLine(goal, copy)}
       </p>
       {attribution && (
         <p

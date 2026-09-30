@@ -8,7 +8,8 @@ import type {
   CoachFoodLogMacros,
   CoachFoodLogResponse,
 } from "@/lib/coachApi";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
+import type { Locale } from "@/lib/i18n/locale";
 import {
   formatDate,
   formatGrams,
@@ -44,6 +45,7 @@ export function FoodLogCard({
   log: CoachFoodLogResponse | null;
   failed: boolean;
 }) {
+  const copy = getCopy();
   const days = !failed && log && Array.isArray(log.days) ? [...log.days].reverse() : null;
   return (
     <section aria-labelledby="food-log-title" style={{ marginTop: 18 }}>
@@ -51,7 +53,7 @@ export function FoodLogCard({
         <CardHead
           icon="apple"
           title={<span id="food-log-title">{copy.foodLog.title}</span>}
-          sub={days && log ? copy.foodLog.window(formatDate(log.from), formatDate(log.to)) : undefined}
+          sub={days && log ? copy.foodLog.window(formatDate(log.from, copy.locale), formatDate(log.to, copy.locale)) : undefined}
         />
         {days ? (
           <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
@@ -75,8 +77,8 @@ export function FoodLogCard({
   );
 }
 
-function dayLabel(date: string): string {
-  return `${formatWeekday(date)} ${formatShortDate(date)}`;
+function dayLabel(date: string, locale: Locale): string {
+  return `${formatWeekday(date, locale)} ${formatShortDate(date, locale)}`;
 }
 
 /**
@@ -90,6 +92,7 @@ function recorded(day: CoachFoodLogDay): boolean {
 }
 
 function FoodDay({ day }: { day: CoachFoodLogDay }) {
+  const copy = getCopy();
   if (!recorded(day)) {
     return (
       <div
@@ -119,14 +122,14 @@ function FoodDay({ day }: { day: CoachFoodLogDay }) {
             label={copy.foodLog.calories}
             eaten={day.totals?.calories}
             target={day.targets?.calories}
-            format={formatKcal}
+            format={(value) => formatKcal(value, copy.locale)}
             unit={copy.foodLog.kcal}
           />
           <Pair
             label={copy.foodLog.protein}
             eaten={day.totals?.proteinG}
             target={day.targets?.proteinG}
-            format={formatGrams}
+            format={(value) => formatGrams(value, copy.locale)}
             unit={copy.foodLog.grams}
           />
         </span>
@@ -163,9 +166,10 @@ function FoodDay({ day }: { day: CoachFoodLogDay }) {
 }
 
 function DayName({ date }: { date: string }) {
+  const { locale } = getCopy();
   return (
     <span style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)", minWidth: 120 }}>
-      {dayLabel(date)}
+      {dayLabel(date, locale)}
     </span>
   );
 }
@@ -187,6 +191,7 @@ function Pair({
   format: (n: number) => string;
   unit: string;
 }) {
+  const copy = getCopy();
   const had = typeof eaten === "number" ? format(eaten) : copy.common.dash;
   const value =
     typeof target === "number"
@@ -220,9 +225,10 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function Macros({ values, dashes }: { values: CoachFoodLogMacros; dashes: boolean }) {
-  const grams = (n: number) => (dashes ? copy.common.dash : `${formatGrams(n)} ${copy.foodLog.grams}`);
+  const copy = getCopy();
+  const grams = (n: number) => (dashes ? copy.common.dash : `${formatGrams(n, copy.locale)} ${copy.foodLog.grams}`);
   const cells: [string, string][] = [
-    [copy.foodLog.calories, `${formatKcal(values.calories)} ${copy.foodLog.kcal}`],
+    [copy.foodLog.calories, `${formatKcal(values.calories, copy.locale)} ${copy.foodLog.kcal}`],
     [copy.foodLog.protein, grams(values.proteinG)],
     [copy.foodLog.carbs, grams(values.carbsG)],
     [copy.foodLog.fat, grams(values.fatG)],
@@ -244,9 +250,10 @@ function Macros({ values, dashes }: { values: CoachFoodLogMacros; dashes: boolea
 const lineStyle = { fontSize: 12.5, color: "var(--ink-3)", marginTop: 2, overflowWrap: "anywhere" } as const;
 
 function Entry({ entry }: { entry: CoachFoodLogEntry }) {
+  const copy = getCopy();
   const meta = [
     copy.foodLog.source[entry.source],
-    typeof entry.servingG === "number" ? copy.foodLog.serving(formatGrams(entry.servingG)) : null,
+    typeof entry.servingG === "number" ? copy.foodLog.serving(formatGrams(entry.servingG, copy.locale)) : null,
     formatUtcTime(entry.loggedAt) ? copy.foodLog.at(formatUtcTime(entry.loggedAt)) : null,
   ].filter(Boolean);
   return (
@@ -262,6 +269,7 @@ function Entry({ entry }: { entry: CoachFoodLogEntry }) {
 }
 
 function EatenMeal({ meal }: { meal: CoachFoodLogEatenMeal }) {
+  const copy = getCopy();
   const meta = [
     meal.slot ? copy.nutrition.mealSlots[meal.slot] : null,
     formatUtcTime(meal.eatenAt) ? copy.foodLog.at(formatUtcTime(meal.eatenAt)) : null,

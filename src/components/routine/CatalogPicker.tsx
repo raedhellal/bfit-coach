@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { truncateName } from "@/lib/format";
 import { searchCatalogAction } from "@/lib/routineActions";
 import { settled } from "@/lib/settled";
@@ -45,6 +45,7 @@ export function CatalogPicker({
   onClose: () => void;
   onPick: (exercise: CatalogExercise) => void;
 }) {
+  const copy = useCopy();
   const [q, setQ] = useState("");
   const [muscle, setMuscle] = useState("");
   const [equipment, setEquipment] = useState("");
@@ -298,6 +299,7 @@ function FilterSelect({
   options: string[];
   onChange: (value: string) => void;
 }) {
+  const copy = useCopy();
   return (
     <label style={{ display: "block" }}>
       <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 7 }}>

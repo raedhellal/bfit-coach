@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { formatInstant, formatKcal, truncateName } from "@/lib/format";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { saveTargetsAction } from "@/lib/nutritionActions";
@@ -41,6 +41,7 @@ export function NutritionTargetsCard({
   traineeDisplayName: string;
   targets: NutritionTargets | null;
 }) {
+  const copy = useCopy();
   const router = useRouter();
   const [calories, setCalories] = useState(targets ? String(targets.calories) : "");
   const [protein, setProtein] = useState(targets ? String(targets.proteinG) : "");
@@ -89,15 +90,15 @@ export function NutritionTargetsCard({
     if (values.some((v) => !Number.isFinite(v) || v <= 0)) return null;
     const macroKcal = Math.round(proteinG * 4 + carbsG * 4 + fatG * 9);
     const delta = macroKcal - Math.round(kcal);
-    const sum = formatKcal(macroKcal);
+    const sum = formatKcal(macroKcal, copy.locale);
     if (Math.abs(delta) <= MATCH_TOLERANCE_KCAL) {
       return { line: copy.nutrition.macrosMatch(sum), delta };
     }
     return {
       line:
         delta > 0
-          ? copy.nutrition.macrosAbove(sum, formatKcal(delta))
-          : copy.nutrition.macrosBelow(sum, formatKcal(-delta)),
+          ? copy.nutrition.macrosAbove(sum, formatKcal(delta, copy.locale))
+          : copy.nutrition.macrosBelow(sum, formatKcal(-delta, copy.locale)),
       delta,
     };
   }
@@ -180,8 +181,8 @@ export function NutritionTargetsCard({
     if (targets.source === "AUTO") return copy.nutrition.sourceAuto;
     if (targets.source === "MANUAL") return copy.nutrition.sourceManual;
     return targets.setByYou
-      ? copy.nutrition.sourceCoach(formatInstant(targets.updatedAt))
-      : copy.nutrition.sourceCoachOther(formatInstant(targets.updatedAt));
+      ? copy.nutrition.sourceCoach(formatInstant(targets.updatedAt, copy.locale))
+      : copy.nutrition.sourceCoachOther(formatInstant(targets.updatedAt, copy.locale));
   }
 
   const source = sourceLine();
@@ -195,9 +196,9 @@ export function NutritionTargetsCard({
         action={
           targets?.activity ? (
             <Badge tone="purple">
-              {`${copy.nutrition.activity}: ${
+              {copy.nutrition.activityBadge(
                 copy.nutrition.activityLabels[targets.activity] ?? targets.activity
-              }`}
+              )}
             </Badge>
           ) : undefined
         }

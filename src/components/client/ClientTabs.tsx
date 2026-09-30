@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { MIN_TOUCH_TARGET } from "@/components/ui/kit";
 
 export type ClientTab = "overview" | "routine" | "nutrition";
@@ -26,6 +26,7 @@ export type ClientTab = "overview" | "routine" | "nutrition";
  * client JavaScript to a page that may otherwise need none.
  */
 export function ClientTabs({ clientId, active }: { clientId: string; active: ClientTab }) {
+  const copy = getCopy();
   const tabs: { key: ClientTab; label: string; href: string }[] = [
     { key: "overview", label: copy.tabs.overview, href: `/clients/${clientId}` },
     { key: "routine", label: copy.tabs.routine, href: `/clients/${clientId}/routine` },
@@ -33,7 +34,7 @@ export function ClientTabs({ clientId, active }: { clientId: string; active: Cli
   ];
   return (
     <nav
-      aria-label="Trainee sections"
+      aria-label={copy.tabs.label}
       style={{
         display: "flex",
         gap: 4,

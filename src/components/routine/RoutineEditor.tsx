@@ -6,7 +6,8 @@ import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/comp
 import { UiIcon } from "@/components/ui/icons";
 import { CatalogPicker } from "./CatalogPicker";
 import { DayFocusField, NumberField, TextField, WeekdaySelect } from "./RoutineFields";
-import { copy } from "@/lib/copy";
+import type { Copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { ISO_WEEKDAY_NUMBERS, isoWeekdayLabel, truncateName } from "@/lib/format";
@@ -82,14 +83,14 @@ function firstFreeWeekday(existing: RoutineDayEntry[]): number | null {
   return ISO_WEEKDAY_NUMBERS.find((day) => !used.has(day)) ?? null;
 }
 
-function emptyDay(dayOfWeek: number): RoutineDayEntry {
+function emptyDay(dayOfWeek: number, copy: Copy): RoutineDayEntry {
   return { dayOfWeek, focus: copy.routine.newDayFocus, exercises: [] };
 }
 
 /** The two days a brand-new plan starts with: the minimum the bound allows. */
-function startingDays(): RoutineDayEntry[] {
-  const first = emptyDay(1);
-  return [first, emptyDay(firstFreeWeekday([first]) ?? 2)];
+function startingDays(copy: Copy): RoutineDayEntry[] {
+  const first = emptyDay(1, copy);
+  return [first, emptyDay(firstFreeWeekday([first]) ?? 2, copy)];
 }
 
 function toEntry(exercise: CatalogExercise): RoutineExerciseEntry {
@@ -106,13 +107,13 @@ function toEntry(exercise: CatalogExercise): RoutineExerciseEntry {
   };
 }
 
-const FAILURE_COPY: Record<RoutineFailure, string> = {
+const failureCopy = (copy: Copy): Record<RoutineFailure, string> => ({
   PLAN_EMPTY: copy.routine.planEmpty,
   CATALOG_UNAVAILABLE: copy.routine.catalogUnavailable,
   REPAIRS_UNACKNOWLEDGED: copy.routine.publishFailed,
   ACCESS_DENIED: copy.client.notFound,
   FAILED: copy.routine.publishFailed,
-};
+});
 
 export function RoutineEditor({
   clientId,
@@ -143,6 +144,8 @@ export function RoutineEditor({
    */
   unbindableExercises?: string[];
 }) {
+  const copy = useCopy();
+  const FAILURE_COPY = failureCopy(copy);
   const router = useRouter();
   const [plan, setPlan] = useState<RoutinePlanView | null>(initialDraft ?? activePlan);
   /** True from the moment a draft exists on the server OR the coach edits anything. */
@@ -247,7 +250,7 @@ export function RoutineEditor({
     if (!plan) return;
     const clash = plan.trainingDays.some((d, i) => i !== dayIndex && d.dayOfWeek === dayOfWeek);
     if (clash) {
-      setWeekdayError({ dayIndex, message: copy.routine.weekdayTaken(isoWeekdayLabel(dayOfWeek)) });
+      setWeekdayError({ dayIndex, message: copy.routine.weekdayTaken(isoWeekdayLabel(dayOfWeek, copy.locale)) });
       return;
     }
     editDays((days) =>
@@ -477,7 +480,7 @@ export function RoutineEditor({
             <Button
               icon="plus"
               onClick={() =>
-                edit({ planId: null, name: copy.routine.title, trainingDays: startingDays() })
+                edit({ planId: null, name: copy.routine.title, trainingDays: startingDays(copy) })
               }
             >
               {copy.routine.build}
@@ -724,7 +727,7 @@ export function RoutineEditor({
               variant="ghost"
               size="sm"
               icon="trash"
-              ariaLabel={`${copy.routine.removeDay}: ${isoWeekdayLabel(day.dayOfWeek)}`}
+              ariaLabel={`${copy.routine.removeDay}: ${isoWeekdayLabel(day.dayOfWeek, copy.locale)}`}
               title={
                 plan.trainingDays.length <= MIN_TRAINING_DAYS
                   ? copy.routine.dayCountBound
@@ -924,7 +927,7 @@ export function RoutineEditor({
         onClick={() => {
           const next = firstFreeWeekday(plan.trainingDays);
           if (next === null) return;
-          editDays((days) => [...days, emptyDay(next)]);
+          editDays((days) => [...days, emptyDay(next, copy)]);
         }}
       >
         {copy.routine.addDay}
@@ -1026,6 +1029,7 @@ function PublishModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const copy = useCopy();
   const repairs = preview?.repairs ?? [];
   const hasRepairs = repairs.length > 0;
   return (

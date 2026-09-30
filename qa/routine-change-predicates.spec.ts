@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
+import { en } from "../src/lib/copy";
 import { rosterPlanChanged, traineeChangeNotice } from "../src/lib/routineChange";
 
 /** EV-283b — the two predicates behind the banner and the roster marker. */
@@ -29,27 +30,27 @@ const YUSUF_SENTENCE = `Yusuf changed this plan on ${onDay("2026-09-24T18:40:00Z
  */
 test("only a literal TRAINEE with a readable instant makes a sentence", () => {
   const at = "2026-09-24T18:40:00Z";
-  expect(traineeChangeNotice({ lastChangedBy: "TRAINEE", lastChangedAt: at }, "Yusuf A.")).toBe(
+  expect(traineeChangeNotice({ lastChangedBy: "TRAINEE", lastChangedAt: at }, "Yusuf A.", en)).toBe(
     YUSUF_SENTENCE
   );
   // The first name is the first word of the display name, whatever follows it.
-  expect(traineeChangeNotice({ lastChangedBy: "TRAINEE", lastChangedAt: at }, "  Yusuf  ")).toBe(
+  expect(traineeChangeNotice({ lastChangedBy: "TRAINEE", lastChangedAt: at }, "  Yusuf  ", en)).toBe(
     YUSUF_SENTENCE
   );
   for (const by of ["COACH", null, undefined, "trainee", 1, {}]) {
     expect(
-      traineeChangeNotice({ lastChangedBy: by, lastChangedAt: at }, "Yusuf A."),
+      traineeChangeNotice({ lastChangedBy: by, lastChangedAt: at }, "Yusuf A.", en),
       JSON.stringify(by) ?? "undefined"
     ).toBeNull();
   }
   for (const when of [null, undefined, "", "not a date"]) {
     expect(
-      traineeChangeNotice({ lastChangedBy: "TRAINEE", lastChangedAt: when }, "Yusuf A."),
+      traineeChangeNotice({ lastChangedBy: "TRAINEE", lastChangedAt: when }, "Yusuf A.", en),
       JSON.stringify(when) ?? "undefined"
     ).toBeNull();
   }
-  expect(traineeChangeNotice({}, "Yusuf A.")).toBeNull();
-  expect(traineeChangeNotice(null, "Yusuf A.")).toBeNull();
+  expect(traineeChangeNotice({}, "Yusuf A.", en)).toBeNull();
+  expect(traineeChangeNotice(null, "Yusuf A.", en)).toBeNull();
 });
 
 test("only a literal true puts the Plan changed marker on a roster row", () => {

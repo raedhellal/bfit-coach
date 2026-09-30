@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { LEGAL_URLS } from "@/lib/legal";
 import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, isApiBlank } from "@/lib/password";
 
@@ -35,6 +35,7 @@ export interface ActivationFormProps {
 }
 
 export function ActivationForm({ versions: initialVersions, expiredMessage }: ActivationFormProps) {
+  const copy = useCopy();
   const router = useRouter();
   const [temporary, setTemporary] = useState("");
   const [fresh, setFresh] = useState("");

@@ -1,5 +1,5 @@
 import { BlockNote, MonitoringBlock } from "@/components/client/MonitoringBlock";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import type { AdherenceSeries as Series } from "@/lib/coachApi";
 
@@ -21,6 +21,7 @@ import type { AdherenceSeries as Series } from "@/lib/coachApi";
  * Server component. Nothing here is interactive — AC6's closed list has no room for it.
  */
 export function AdherenceSeries({ series }: { series: Series }) {
+  const copy = getCopy();
   /**
    * The whole-series empty state — EV-208 AC1/AC2, superseding EV-187 AC3's last
    * clause, and edge case 1.
@@ -135,7 +136,7 @@ export function AdherenceSeries({ series }: { series: Series }) {
               }}
             >
               <span style={{ color: "var(--ink-3)", whiteSpace: "nowrap" }}>
-                {formatDate(week.weekCommencing)}
+                {formatDate(week.weekCommencing, copy.locale)}
               </span>
               {/* The grid cell is always present so the three columns line up down the
                   card; the TRACK is not, because an empty track is still a picture of a

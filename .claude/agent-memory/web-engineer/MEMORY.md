@@ -48,3 +48,4 @@
 - [Trainee app identity constant (EV-289)](trainee-app-identity-constant.md) — src/lib/traineeApps.ts holds both apps; lite = D-LITE-1 default; role names need exact:true
 - [Food log (EV-284b)](food-log-portal-facts.md) — QUICK dashes by source; no range sent; <summary> is phrasing-only; own reads journal; cross-branch drift register
 - [Activation (EV-278c)](activation-portal-facts.md) — PENDING reaches 3 api routes, `GET /me` 403; login checks /me/activation pre-cookie; api "blank" is Java trim (BUG-381); live stub config
+- [French portal, EV-324](coach-portal-i18n-facts.md) — Record maps escape `satisfies Copy`; api text stays English; fixture signs in anyone; AC2 beats AC3 on EN dates

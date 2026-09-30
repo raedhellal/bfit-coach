@@ -62,7 +62,10 @@
 }
 
 html, body { margin:0; padding:0; min-height:100%; background:var(--bg); color:var(--ink); font-family:var(--font-body); }
-#app-root { width:100%; min-height:100vh; }
+/* EV-324: the frame is shortened by the sticky legal footer's height (LegalFooter.tsx), so a
+   page that fits the viewport is never covered by it. 0 below 768 px, where it is static. */
+:root { --legal-footer-h: 0px; }
+#app-root { width:100%; min-height:calc(100vh - var(--legal-footer-h)); }
 * { box-sizing:border-box; }
 a { color:inherit; text-decoration:none; }
 button { font-family:var(--font-body); }
@@ -90,7 +93,7 @@ input::placeholder { color:var(--ink-3); }
 
 .page { padding: 28px 32px 56px; max-width: 1180px; margin: 0 auto; }
 .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.login-split { min-height: 100vh; display: flex; }
+.login-split { min-height: calc(100vh - var(--legal-footer-h)); display: flex; }
 /* BUG-380: the brand panel's WHOLE layout is here, never inline. An inline `display`
    beats the ≤767 px `display: none` below (no media query can override an inline
    declaration), which kept the panel on a phone and squeezed the form to 224 px at 320. */
@@ -210,5 +213,32 @@ input::placeholder { color:var(--ink-3); }
 @media (prefers-reduced-motion: reduce) {
   .food-day-chev {
     transition: none;
+  }
+}
+
+/* ── EV-324 AC5b: the legal footer (LegalFooter.tsx) ─────────────────────────────
+   Sticky at the bottom on a wide screen, so the line is on screen at 1280 × 800 on every
+   page however long; a plain footer below 768 px (see the component for why). z-index
+   sits under the header (20), the revoke menu (30) and every modal (80). */
+.legal-footer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  padding: 8px 16px;
+}
+.legal-footer p { margin: 0; }
+@media (min-width: 768px) {
+  :root { --legal-footer-h: 35px; }
+  .legal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 15;
+    /* No nowrap/ellipsis: the sentence is legal copy and is shown whole (AC5b "verbatim").
+       At 1280 it is one line; between 768 and ~1000 px it wraps to two and covers a few
+       more pixels while scrolling, and nothing at the end of a page. */
+    min-height: var(--legal-footer-h);
   }
 }
