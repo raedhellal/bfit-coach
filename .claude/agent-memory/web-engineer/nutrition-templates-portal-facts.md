@@ -1,6 +1,6 @@
 ---
 name: nutrition-templates-portal-facts
-description: EV-273b (targets-only nutrition templates) — where it lives, the api shapes, the two-action apply and the test traps it hit (streaming action bodies, nav label collisions, journal now records GET nutrition)
+description: EV-273b (targets-only nutrition templates) — where it lives, the api shapes, the two-action apply, the French port, and the test traps it hit (streaming action bodies, nav label collisions, journal records GET nutrition, the cap switch)
 metadata:
   type: project
 ---
@@ -48,3 +48,24 @@ landing — the `[id]` layout can redirect to /clients/denied first. Stamp it (`
 (2 min), mount the reader on every branch, and discard it on /clients/denied. Also: the kit
 `Button` drops hyphenated props (`aria-*`) silently and tsc does not check hyphenated JSX
 attributes; `disabled={pending}` is no double-click guard within one JS task — use a ref latch.
+
+**French (EV-324 merged in, 2026-09-30, merge `dc0e8ce`):**
+- The branch sat UNPUSHED for three days (staff-reviewed at `c4ef90a`) while main grew the
+  i18n split. A task that says "create branch X" may find X already exists locally with
+  reviewed work: check `git branch --list` and `git log origin/main..X` before `worktree
+  add -b`, and bring it forward with a merge rather than rebuild it.
+- A `node_modules` SYMLINK is not matched by `.gitignore`'s `node_modules/` (trailing slash =
+  directories only). `git add -A` in a worktree with a symlinked node_modules stages it.
+  Stage paths explicitly.
+- French nav label is "Modèles nutrition", never bare "Modèles" (the routine library's).
+  It contains "Modèles", so a French `getByRole("link", {name: "Modèles"})` needs `exact`.
+- `nutritionTemplates.amount(value, unit)` exists because English prints raw ("1800 kcal",
+  EV-324 AC2) and French groups with U+202F ("1 800 kcal"); `formatKcal` alone would have
+  changed the English dialog to "1,800".
+- The api's duplicate suffix is English `(copy)` on a French page. It is data (the api
+  names the row), not UI; `expectNoEnglish` rightly ignores it. Worth a line to Raed.
+- `evoli_fixture_nutrition_template_cap=reached` refuses create/duplicate with the 409
+  without changing the served list (a second tab filled it) — the cap is otherwise
+  untestable short of 47 UI creates.
+- The apply specs stay on `playwright.roster.config.ts`: the default scenario's roster is
+  empty, so "Use on a trainee" offers nobody there.
