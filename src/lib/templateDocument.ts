@@ -1,10 +1,13 @@
-import { copy } from "./copy";
-import type {
-  CoachTemplateSaveRequest,
-  Routine,
-  RoutineExercise,
-  RoutineTrainingDay,
-} from "./coachApi";
+import type { Copy } from "./copy";
+import type { CoachTemplateSaveRequest, Routine } from "./coachApi";
+import {
+  DEFAULT_MINUTES_PER_SESSION,
+  MAX_TRAINING_DAYS,
+  MIN_TRAINING_DAYS,
+  documentReasons,
+  emptyDay,
+  withoutDurationReps,
+} from "./routineDocument";
 
 /**
  * The template editor's document, its bounds, and the one function that decides whether
@@ -54,9 +57,11 @@ import type {
  */
 export const TEMPLATE_NAME_MAX = 80;
 
-/** `TrainingDayBounds` in the api — the SAME bound a trainee's plan is held to. */
-export const MIN_TRAINING_DAYS = 2;
-export const MAX_TRAINING_DAYS = 6;
+/**
+ * `TrainingDayBounds` in the api — the SAME bound a trainee's plan is held to, which is
+ * why it lives in `routineDocument.ts` and is only re-exported here.
+ */
+export { MIN_TRAINING_DAYS, MAX_TRAINING_DAYS };
 
 /**
  * AC2 / Ruling 5c — `CoachTemplateTooLargeException.MAX_EXERCISES_PER_DAY`.
@@ -75,12 +80,11 @@ export const MAX_EXERCISES_PER_DAY = 12;
  */
 export const MAX_FREE_TEXT = 2_000;
 
-/** `PrimaryGoal` — the api's own enum. `Routine.goal` is `@NotBlank`, not enum-checked
- * at the DTO, but downstream reads it as one of these, so the control is a closed list
- * and not a text box. A coach typing "bulking" would store a value nothing understands. */
-export const GOALS = ["BUILD_MUSCLE", "LOSE_WEIGHT", "GET_STRONGER", "ENDURANCE", "MOBILITY"] as const;
-/** `FitnessLevel` — same reasoning. */
-export const LEVELS = ["BEGINNER", "INTERMEDIATE", "ADVANCED"] as const;
+/**
+ * `PrimaryGoal` / `FitnessLevel` — the api's own enums, closed lists because downstream
+ * reads `Routine.goal`/`.level` as one of these. Defined once, in `routineDocument.ts`.
+ */
+export { GOALS, LEVELS } from "./routineDocument";
 
 /** The editor's whole state: the library name, and the document under it. */
 export interface TemplateDraft {
@@ -95,7 +99,7 @@ export interface TemplateDraft {
  * — and the editor says so from the first render rather than at the first press of
  * Save. That is V1b's cost made visible instead of discovered.
  */
-export function blankTemplate(): TemplateDraft {
+export function blankTemplate(copy: Copy): TemplateDraft {
   return {
     name: "",
     document: {
@@ -103,44 +107,17 @@ export function blankTemplate(): TemplateDraft {
       goal: "BUILD_MUSCLE",
       level: "BEGINNER",
       daysPerWeek: 2,
-      trainingDays: [emptyDay(1), emptyDay(2)],
+      trainingDays: [emptyDay(1, copy.templates.newDayFocus), emptyDay(2, copy.templates.newDayFocus)],
       weeklyProgression: [],
-      constraints: { equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: 2 },
+      constraints: {
+        equipment: [],
+        injuries: [],
+        minutesPerSession: DEFAULT_MINUTES_PER_SESSION,
+        daysPerWeek: 2,
+      },
       summary: null,
     },
   };
-}
-
-export function emptyDay(dayOfWeek: number): RoutineTrainingDay {
-  return {
-    dayOfWeek,
-    focus: copy.templates.newDayFocus,
-    estimatedMinutes: null,
-    exercises: [],
-  };
-}
-
-/**
- * A freshly picked exercise. The defaults exist so a new row is never an empty
- * prescription; the five nullable fields start null because the coach has not said
- * anything about them, and null is what the api stores for "not prescribed".
- */
-export function newExercise(name: string): RoutineExercise {
-  return {
-    name,
-    sets: 3,
-    reps: "8-12",
-    rest: "90s",
-    tempo: null,
-    notes: null,
-    trackingType: "WEIGHT_REPS",
-    durationSeconds: null,
-    weight: null,
-  };
-}
-
-export function exerciseCount(document: Routine): number {
-  return document.trainingDays.reduce((total, day) => total + day.exercises.length, 0);
 }
 
 /**
@@ -167,6 +144,11 @@ export function forSave(draft: TemplateDraft): CoachTemplateSaveRequest {
     name: draft.name.trim(),
     document: {
       ...draft.document,
+      // Staff review B1: a template must never carry reps on a timed exercise — the editor
+      // has no control to clear them. The api clears them too since BUG-195b round 3
+      // (`fcc1ccd`); round 2 refused apply with COACH_DRAFT_REPS_ON_DURATION. Sending the
+      // clean body keeps the portal correct against either.
+      trainingDays: withoutDurationReps(draft.document.trainingDays),
       daysPerWeek: days,
       constraints: {
         ...draft.document.constraints,
@@ -190,56 +172,19 @@ export function forSave(draft: TemplateDraft): CoachTemplateSaveRequest {
  * Each sentence names the day it is about where a day is at fault, because "invalid"
  * over a six-day template is a coach hunting.
  */
-export function publishabilityReasons(draft: TemplateDraft): string[] {
+export function publishabilityReasons(draft: TemplateDraft, copy: Copy): string[] {
   const reasons: string[] = [];
   const name = draft.name.trim();
-  const document = draft.document;
-
   if (name === "") reasons.push(copy.templates.nameRequired);
-  else if (name.length > 80) reasons.push(copy.templates.nameTooLong);
-
-  if (document.name.trim() === "") reasons.push(copy.templates.documentNameRequired);
-
-  const days = document.trainingDays;
-  if (days.length < MIN_TRAINING_DAYS || days.length > MAX_TRAINING_DAYS) {
-    reasons.push(copy.templates.dayCountBound);
-  }
-  days.forEach((day, index) => {
-    if (day.exercises.length === 0) reasons.push(copy.templates.dayEmpty(index + 1));
-    if (day.exercises.length > MAX_EXERCISES_PER_DAY) {
-      reasons.push(copy.templates.tooLarge(index + 1, day.exercises.length));
-    }
-    if (day.focus.trim() === "") reasons.push(copy.templates.dayFocusRequired(index + 1));
-  });
-
-  const weekdays = new Set(days.map((day) => day.dayOfWeek));
-  if (weekdays.size !== days.length) reasons.push(copy.templates.duplicateWeekday);
-
-  if (longestFreeText(document) > MAX_FREE_TEXT) reasons.push(copy.templates.freeTextTooLong);
-
-  return reasons;
-}
-
-/**
- * `CoachTemplateDocument.longestFreeText`, ported field for field — summary, focus,
- * exercise name and exercise note. Ported rather than approximated because a portal
- * that refuses at a DIFFERENT number than the server does is worse than one that does
- * not check: it either blocks a save the server would take, or lets through a 400 it
- * promised would not happen.
- */
-function longestFreeText(document: Routine): number {
-  let longest = document.summary?.length ?? 0;
-  for (const day of document.trainingDays) {
-    longest = Math.max(longest, day.focus.length);
-    for (const exercise of day.exercises) {
-      longest = Math.max(longest, exercise.name.length, exercise.notes?.length ?? 0);
-    }
-  }
-  return longest;
-}
-
-/** The first weekday not already used, or null when all seven are taken. */
-export function firstFreeWeekday(days: RoutineTrainingDay[]): number | null {
-  const used = new Set(days.map((d) => d.dayOfWeek));
-  return [1, 2, 3, 4, 5, 6, 7].find((day) => !used.has(day)) ?? null;
+  else if (name.length > TEMPLATE_NAME_MAX) reasons.push(copy.templates.nameTooLong);
+  // The document's own rules are the trainee editor's rules too (BUG-195c): one port of
+  // the api's validation, in `routineDocument.ts`, so the two editors cannot refuse at
+  // different numbers. A template adds the two bounds only the template store has.
+  return reasons.concat(
+    documentReasons(draft.document, copy, {
+      dayCountBound: copy.templates.dayCountBound,
+      maxExercisesPerDay: MAX_EXERCISES_PER_DAY,
+      maxFreeText: MAX_FREE_TEXT,
+    })
+  );
 }

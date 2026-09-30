@@ -7,7 +7,7 @@ import { Button, Card, EmptyState, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { coachApi, type CoachMe, type RosterClient } from "@/lib/coachApi";
 import { readRosterSort } from "@/lib/rosterSort";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { tierLabel } from "@/lib/format";
 
 /**
@@ -23,6 +23,7 @@ import { tierLabel } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function RosterPage() {
+  const copy = getCopy();
   let me: CoachMe | null = null;
   let clients: RosterClient[] | null = null;
   let failed = false;

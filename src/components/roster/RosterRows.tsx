@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Avatar, Badge, DataTable, Td } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import { hasScope, type RosterClient } from "@/lib/coachApi";
+import { rosterPlanChanged } from "@/lib/routineChange";
 
 /**
  * The populated roster, rendered twice: a table above 768 px and a stacked card list
@@ -41,6 +42,7 @@ import { hasScope, type RosterClient } from "@/lib/coachApi";
  * been allowed to see is a claim made out of nothing.
  */
 function StreakChip({ days, shared }: { days: number | null; shared: boolean }) {
+  const copy = getCopy();
   if (!shared || days === null)
     return <span style={{ color: "var(--ink-3)" }}>{copy.common.dash}</span>;
   if (days <= 0) return <span style={{ color: "var(--ink-3)" }}>{copy.roster.noStreak}</span>;
@@ -66,6 +68,7 @@ function StreakChip({ days, shared }: { days: number | null; shared: boolean }) 
  *               these rows LAST for the same reason.
  */
 function FlagBadge({ count }: { count: number | null }) {
+  const copy = getCopy();
   /**
    * `typeof`, not `=== null`, and it FAILS CLOSED for the same reason `hasScope` does:
    * the type describes the api we are building, not every api this build can be pointed
@@ -85,7 +88,32 @@ function FlagBadge({ count }: { count: number | null }) {
   );
 }
 
+/**
+ * EV-283b — the small "Plan changed" marker: the trainee's own plan became live after
+ * this coach's latest publish, so a publish now would replace their change. Rendered for
+ * a literal `true` only (`rosterPlanChanged`): null means the link does not share
+ * WORKOUTS and false means the coach's plan is live, and neither is a marker. The api
+ * computes it by the same rule as the routine page's `changedSinceYourPublish`, and a
+ * publish clears it.
+ *
+ * `data-plan-changed` is the test hook: the word "changed" can appear in a plan name,
+ * and a marker located by its text alone would find one.
+ */
+function PlanChangedMarker({ client }: { client: RosterClient }) {
+  const copy = getCopy();
+  if (!rosterPlanChanged(client)) return null;
+  return (
+    <span data-plan-changed="" style={{ display: "inline-flex" }}>
+      <Badge tone="amber">
+        <UiIcon name="edit" size={12} />
+        {copy.roster.planChanged}
+      </Badge>
+    </span>
+  );
+}
+
 export function RosterRows({ clients }: { clients: RosterClient[] }) {
+  const copy = getCopy();
   return (
     <>
       <div className="only-wide">
@@ -124,22 +152,28 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                   </span>
                 </Link>
               </Td>
-              <Td
-                title={c.currentPlanName || undefined}
-                style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              >
-                {/* "No plan" is a statement about the trainee's app; "Not shared" is
-                    a statement about the link. `scopes` is what makes them two cells
-                    instead of one hedge. */}
-                {c.currentPlanName || (
-                  <span style={{ color: "var(--ink-3)" }}>
-                    {hasScope(c.scopes, "WORKOUTS") ? copy.roster.noPlan : copy.client.notShared}
-                  </span>
+              <Td title={c.currentPlanName || undefined} style={{ maxWidth: 240 }}>
+                {/* The ellipsis lives on the name's own line so the EV-283b marker below
+                    it is never the part that gets clipped. */}
+                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {/* "No plan" is a statement about the trainee's app; "Not shared" is
+                      a statement about the link. `scopes` is what makes them two cells
+                      instead of one hedge. */}
+                  {c.currentPlanName || (
+                    <span style={{ color: "var(--ink-3)" }}>
+                      {hasScope(c.scopes, "WORKOUTS") ? copy.roster.noPlan : copy.client.notShared}
+                    </span>
+                  )}
+                </div>
+                {rosterPlanChanged(c) && (
+                  <div style={{ marginTop: 4 }}>
+                    <PlanChangedMarker client={c} />
+                  </div>
                 )}
               </Td>
               <Td>
                 {c.lastCompletedWorkoutDate ? (
-                  formatDate(c.lastCompletedWorkoutDate)
+                  formatDate(c.lastCompletedWorkoutDate, copy.locale)
                 ) : (
                   // Two readings of one null, and `scopes` picks: PROGRESS held means
                   // the trainee has genuinely never completed a workout ("No workouts
@@ -162,7 +196,7 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                 <FlagBadge count={c.redFlagCount} />
               </Td>
               <Td>
-                <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
+                <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status === "ACTIVE" ? copy.roster.statusActive : c.status}</Badge>
               </Td>
               <Td align="right">
                 <Link href={`/clients/${c.id}`} aria-label={c.traineeDisplayName}>
@@ -231,12 +265,13 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                       and a triage signal that only exists on a desktop table is not a
                       triage signal. */}
                   <FlagBadge count={c.redFlagCount} />
-                  <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status}</Badge>
+                  <PlanChangedMarker client={c} />
+                  <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status === "ACTIVE" ? copy.roster.statusActive : c.status}</Badge>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
                   {copy.roster.colLastWorkout}:{" "}
                   {c.lastCompletedWorkoutDate
-                    ? formatDate(c.lastCompletedWorkoutDate)
+                    ? formatDate(c.lastCompletedWorkoutDate, copy.locale)
                     : hasScope(c.scopes, "PROGRESS")
                       ? copy.roster.noWorkout
                       : copy.client.notShared}

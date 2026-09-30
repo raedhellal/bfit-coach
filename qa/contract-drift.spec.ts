@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN } from "../src/lib/password";
 import { DEVIATIONS, type SchemaDeviation } from "./contract-deviations";
 
 /**
@@ -284,7 +285,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 64; // EV-273b: +5 nutrition-template types
+const SCHEMAS_EXPECTED = 80; // EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -362,10 +363,11 @@ for (const entry of interfaces) {
  *     declared non-optional — it reads names, like the rest of this file;
  *   ✗ a body the portal builds from an UNTAGGED type. At the TOP level this is bounded:
  *     every `/coach-portal` requestBody root must have an `@wire` interface or a written
- *     exemption (`UNTAGGED_REQUEST_ROOTS`; one today, `CoachPublishRequest`, sent inline
- *     as `{ digest }`). NESTED types are not bounded: the editor's `RoutineDayEntry` rides
- *     inside `CoachRoutineDraftRequest.trainingDays` with no tag, so the nested half of
- *     BUG-195 is invisible here; the top-level half is enough to hold the case red.
+ *     exemption (`UNTAGGED_REQUEST_ROOTS`, e.g. `CoachPublishRequest`, sent inline as
+ *     `{ digest }`). NESTED types are only as good as their own tags: since BUG-195c the
+ *     draft body's `document` is the tagged `Routine`, whose nested `RoutineTrainingDay`
+ *     and `RoutineExercise` are tagged and checked in this same loop — the untagged
+ *     `RoutineDayEntry` that hid BUG-195's nested half no longer exists.
  *
  * NO SERVER-RESOLVED ALLOWANCE, deliberately. The authority is the api, not a design
  * record: on b-fit-api main `Routine.goal` / `.level` are `@NotBlank` and
@@ -382,11 +384,12 @@ for (const entry of interfaces) {
  * Interfaces whose required-field case is KNOWN red, each wrapped in `test.fail()` with
  * the bug as its annotation. The marker is not an exemption: the day the case starts
  * passing, `test.fail` fails the run, so the entry has to be deleted by the fix that
- * closes it (BUG-195c) rather than forgotten.
+ * closes it rather than forgotten.
+ *
+ * EMPTY since BUG-195c, which deleted `CoachRoutineDraftRequest: "BUG-195"` — the case
+ * went green, `test.fail` went red, and the deletion was forced exactly as designed.
  */
-const KNOWN_REQUIRED_OMISSIONS: Record<string, string> = {
-  CoachRoutineDraftRequest: "BUG-195",
-};
+const KNOWN_REQUIRED_OMISSIONS: Record<string, string> = {};
 
 /**
  * The `@wire` interfaces that face a schema the api can receive, BY NAME. Pinned for the
@@ -394,8 +397,10 @@ const KNOWN_REQUIRED_OMISSIONS: Record<string, string> = {
  * interface and gaining another is not a silent swap.
  */
 const REQUEST_FACING_EXPECTED = [
+  "ActivateAccountRequest",
   "CoachApplySwapRequest",
   "CoachApplyWeekRequest",
+  "CoachChallengeCreateRequest",
   "CoachPlaceRecipeRequest",
   "CoachProgressGoalRequest",
   "CoachRecipeIngredientRequest",
@@ -423,6 +428,10 @@ const REQUEST_FACING_EXPECTED = [
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
+  InitialiseTraineeRequest:
+    "POST /coach-portal/trainees (EV-204a2, arrived with the EV-278c re-vendor at b-fit-api c69c287): the coach initialises a trainee's account. The portal sends NO request to it yet; EV-204b (b-fit-coach, 'Add a trainee') tags the type — delete this entry when it lands, or the exact comparison goes red.",
+  ResendInvitationRequest:
+    "POST /coach-portal/trainees/{id}/resend (EV-204a2, same re-vendor): the coach's Resend for an Invited row. The portal sends NO request to it yet; EV-204b tags it — delete this entry when it lands.",
 };
 
 const receivable = requestSchemas(spec);
@@ -513,6 +522,41 @@ test("the required-field check fires on a synthetic request schema, and only the
   const widget = fakeClient.find((e) => e.name === "WidgetRequest");
   expect(widget).toBeDefined();
   expect(registeredRequired(fakeSpec, widget!, fakeRegister)).toEqual(["size"]);
+});
+
+/**
+ * The keys of one property of one schema (`name` at indent 8, its keys at indent 10),
+ * as `key -> raw value`, or null if either is absent.
+ */
+function propertyKeys(spec: string, schema: string, property: string): Record<string, string> | null {
+  const block = schemaBlock(spec, schema);
+  if (!block) return null;
+  const start = block.findIndex((l) => l === `        ${property}:`);
+  if (start === -1) return null;
+  const keys: Record<string, string> = {};
+  for (let i = start + 1; i < block.length; i += 1) {
+    const line = block[i];
+    if (line.trim() === "") continue;
+    if (line.length - line.trimStart().length <= 8) break;
+    const kv = /^ {10}([A-Za-z_$][A-Za-z0-9_]*):\s*(.*)$/.exec(line);
+    if (kv) keys[kv[1]] = kv[2].trim();
+  }
+  return keys;
+}
+
+/**
+ * BUG-381 (staff round 2, optional nit): `src/lib/password.ts` restates the api's
+ * `@Size(min = 8, max = 128)` on `newPassword`, and the form, the route handler's refusal
+ * mapping and the fixture all read it from there. Hold that restatement to the artefact:
+ * a re-vendor that moves either bound, or that adds a `pattern` (a character rule the
+ * portal's blank-only check does not know), goes red here instead of on a coach.
+ */
+test("ActivateAccountRequest.newPassword: the bounds the portal restates are the api's, and there is no pattern", () => {
+  const keys = propertyKeys(spec, "ActivateAccountRequest", "newPassword");
+  expect(keys, "ActivateAccountRequest.newPassword not found in the vendored spec").not.toBeNull();
+  expect(Number(keys!.minLength), "minLength").toBe(NEW_PASSWORD_MIN);
+  expect(Number(keys!.maxLength), "maxLength").toBe(NEW_PASSWORD_MAX);
+  expect(keys, "a pattern the portal does not enforce").not.toHaveProperty("pattern");
 });
 
 /*

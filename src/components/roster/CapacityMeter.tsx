@@ -1,4 +1,4 @@
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { tierLabel } from "@/lib/format";
 
 /**
@@ -18,6 +18,7 @@ export function CapacityMeter({
   capacity: number;
   tier: string;
 }) {
+  const copy = getCopy();
   const pct = capacity > 0 ? Math.min(100, (active / capacity) * 100) : 0;
   const label = copy.roster.capacity(active, capacity, tierLabel(tier));
   return (

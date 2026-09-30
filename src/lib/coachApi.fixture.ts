@@ -1,5 +1,11 @@
 import "server-only";
 import type {
+  ActivateAccountRequest,
+  ActivationStatus,
+  AccountRole,
+  AuthTokens,
+  InitialiserKind,
+  LegalVersions,
   CatalogExercise,
   CoachAccessScope,
   FiredRedFlag,
@@ -8,11 +14,26 @@ import type {
   CoachApi,
   CoachMe,
   CoachNutritionResponse,
-  CoachRoutineDraft,
+  CoachFoodLogDay,
+  CoachFoodLogEatenMeal,
+  CoachFoodLogEntry,
+  CoachFoodLogMacros,
+  CoachFoodLogResponse,
   CoachRoutineDraftRequest,
   CoachRoutineDraftResponse,
   CoachRoutineGuardrails,
   CoachRoutineResponse,
+  ActivitySource,
+  ChallengeDay,
+  ChallengeDayStatus,
+  ChallengeMetric,
+  ChallengePhase,
+  ChallengeProgress,
+  CoachChallengeCreateRequest,
+  CoachChallengeDetail,
+  CoachChallengePage,
+  CoachChallengeParticipant,
+  CoachChallengeSummary,
   CoachTemplate,
   CoachTemplateApplyResult,
   CoachTemplateFromRoutineRequest,
@@ -42,9 +63,6 @@ import type {
   RosterPage,
   RosterSort,
   Routine,
-  RoutineDayEntry,
-  RoutineExerciseEntry,
-  RoutinePlanView,
   SessionFeedback,
   SessionHistory,
   SessionHistoryItem,
@@ -59,11 +77,14 @@ import type {
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
 // `repairsFor`.
-import { copy } from "./copy";
+import { en as copy } from "./copy";
 // The pure series builder (EV-249). Only the function lives there; every tuple is here.
 import { adherenceSeries } from "./fixtureAdherence";
 // EV-256b — the fixture's own copy of the recipe bounds (see that module for why).
 import { FIXTURE_RECIPE_BOUNDS as B } from "./fixtureRecipeBounds";
+// EV-278c — the fixture's POST /me/activate hands back fresh tokens, minted like the login's.
+import { mintFixtureToken } from "./fixtureToken";
+import { isApiBlank } from "./password";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
@@ -1806,6 +1827,32 @@ async function recipeNameTaken(name: string, exceptId: string | null): Promise<b
  * A small stand-in for the 1,235-row catalog. The four fields are
  * `ExerciseCatalogEntry`'s: slug, name, primaryMuscles, equipment.
  */
+/**
+ * The fixture's SEED shape — a compact way to write a plan down (catalog slug + sets,
+ * reps, rest). Until BUG-195c it was the portal's own editor model; the portal now
+ * edits the whole `Routine`, so this lives here and is converted to a document ONCE,
+ * when the store is seeded (`toRoutineDocument`). Nothing in the store is this shape.
+ */
+interface SeedExercise {
+  catalogSlug: string | null;
+  name: string;
+  primaryMuscles: string | null;
+  equipment: string | null;
+  sets: number;
+  reps: string;
+  rest: string;
+}
+interface SeedDay {
+  dayOfWeek: number;
+  focus: string;
+  exercises: SeedExercise[];
+}
+interface SeedPlan {
+  planId: string | null;
+  name: string;
+  trainingDays: SeedDay[];
+}
+
 const CATALOG: CatalogExercise[] = [
   { slug: "barbell-back-squat", name: "Barbell Back Squat", primaryMuscles: "Quadriceps", equipment: "Barbell" },
   { slug: "goblet-squat", name: "Goblet Squat", primaryMuscles: "Quadriceps", equipment: "Dumbbell" },
@@ -1818,7 +1865,7 @@ const CATALOG: CatalogExercise[] = [
   { slug: "barbell-bench-press", name: "Barbell Bench Press", primaryMuscles: "Chest", equipment: "Barbell" },
   { slug: "dumbbell-bench-press", name: "Dumbbell Bench Press", primaryMuscles: "Chest", equipment: "Dumbbell" },
   { slug: "machine-chest-press", name: "Machine Chest Press", primaryMuscles: "Chest", equipment: "Machine" },
-  { slug: "push-up", name: "Push-Up", primaryMuscles: "Chest", equipment: null },
+  { slug: "push-up", name: "Push-Up", primaryMuscles: "Chest", equipment: null, exerciseType: "BODYWEIGHT" },
   { slug: "barbell-overhead-press", name: "Barbell Overhead Press", primaryMuscles: "Shoulders", equipment: "Barbell" },
   { slug: "landmine-press", name: "Landmine Press", primaryMuscles: "Shoulders", equipment: "Barbell" },
   { slug: "cable-lateral-raise", name: "Cable Lateral Raise", primaryMuscles: "Shoulders", equipment: "Cable" },
@@ -1837,7 +1884,7 @@ const CATALOG: CatalogExercise[] = [
   { slug: "barbell-curl", name: "Barbell Curl", primaryMuscles: "Biceps", equipment: "Barbell" },
   { slug: "incline-dumbbell-curl", name: "Incline Dumbbell Curl", primaryMuscles: "Biceps", equipment: "Dumbbell" },
   { slug: "cable-triceps-pushdown", name: "Cable Triceps Pushdown", primaryMuscles: "Triceps", equipment: "Cable" },
-  { slug: "plank", name: "Plank", primaryMuscles: "Core", equipment: null },
+  { slug: "plank", name: "Plank", primaryMuscles: "Core", equipment: null, exerciseType: "DURATION" },
   { slug: "hanging-knee-raise", name: "Hanging Knee Raise", primaryMuscles: "Core", equipment: null },
 ];
 
@@ -1845,7 +1892,7 @@ function catalogBySlug(slug: string): CatalogExercise | undefined {
   return CATALOG.find((e) => e.slug === slug);
 }
 
-function exercise(slug: string, sets: number, reps: string, rest: string): RoutineExerciseEntry {
+function exercise(slug: string, sets: number, reps: string, rest: string): SeedExercise {
   const entry = catalogBySlug(slug);
   if (!entry) throw new Error(`fixture: unknown catalog slug ${slug}`);
   return {
@@ -1925,7 +1972,7 @@ function guardrailsFor(id: string): CoachRoutineGuardrails {
   return GUARDRAILS[id] ?? guardrails([], []);
 }
 
-function linaPlan(): RoutinePlanView {
+function linaPlan(): SeedPlan {
   return {
     planId: "plan-lina-0001",
     name: "Intermediate Muscle Building Routine",
@@ -1962,7 +2009,7 @@ function linaPlan(): RoutinePlanView {
   };
 }
 
-function danaPlan(): RoutinePlanView {
+function danaPlan(): SeedPlan {
   return {
     planId: "plan-dana-0004",
     name: "Shoulder-Friendly Push Pull",
@@ -1989,7 +2036,7 @@ function danaPlan(): RoutinePlanView {
 }
 
 /** Yusuf shares his workouts and nothing else — a plain two-day plan is enough. */
-function yusufPlan(): RoutinePlanView {
+function yusufPlan(): SeedPlan {
   return {
     planId: "plan-yusuf-0007",
     name: "Two Day Full Body",
@@ -2015,7 +2062,7 @@ function yusufPlan(): RoutinePlanView {
   };
 }
 
-function omarPlan(): RoutinePlanView {
+function omarPlan(): SeedPlan {
   return {
     planId: "plan-omar-0005",
     name: "Full Body Three Day",
@@ -2028,16 +2075,30 @@ function omarPlan(): RoutinePlanView {
           exercise("dumbbell-bench-press", 3, "8-12", "90s"),
         ],
       },
+      /*
+       * BUG-195c: a second day, because a one-day plan is a document the api could never
+       * have stored (`TrainingDayBounds` is 2-6 on every write path) and the editor now
+       * refuses to send one. Omar's scenario is the catalog OUTAGE, and it must be reached
+       * by Publish rather than masked by the day bound.
+       */
+      {
+        dayOfWeek: 4,
+        focus: "Full Body B",
+        exercises: [
+          exercise("romanian-deadlift", 3, "8-10", "120s"),
+          exercise("lat-pulldown", 3, "10-12", "90s"),
+        ],
+      },
     ],
   };
 }
 
 /**
- * The fixture's store → the api's `Routine` document.
+ * A SEED plan → the api's `Routine` document, once, when the store is seeded.
  *
- * The fixture keeps plans in the EDITOR's shape because that is what its repair engine
- * edits; the wire is a full `Routine`, so the conversion happens at the boundary —
- * `getRoutine` and `getRoutineDraft` — and nowhere else.
+ * Since BUG-195c the store holds whole documents (a draft the coach saves carries
+ * `tempo`, `notes`, `trackingType`, `durationSeconds`, `weight` and `estimatedMinutes`,
+ * and must read back with them — AC3.2), so this runs at seed time and nowhere else.
  *
  * The five fields no coach control touches (`goal`, `level`, `weeklyProgression`,
  * `constraints`, `summary`) are FIXTURE DATA, invented here on purpose and only here: a
@@ -2052,7 +2113,7 @@ function omarPlan(): RoutinePlanView {
  * such fields, so an exercise the coach picks and saves comes back without them, and
  * the fixture must lose them at the same point the api does.
  */
-function toRoutineDocument(id: string, plan: RoutinePlanView): Routine {
+function toRoutineDocument(id: string, plan: SeedPlan): Routine {
   const rails = guardrailsFor(id);
   return {
     name: plan.name,
@@ -2093,6 +2154,132 @@ function toRoutineDocument(id: string, plan: RoutinePlanView): Routine {
 }
 
 
+/** A published plan as the fixture stores it: the `plans` row's name + the whole document. */
+interface StoredPlan {
+  planId: string;
+  planName: string;
+  document: Routine;
+}
+
+/** A draft as the fixture stores it: `coach_plan_drafts.document` + `updated_at`. */
+interface StoredDraft {
+  document: Routine;
+  updatedAt: string;
+}
+
+function seededPlan(id: string, plan: SeedPlan | null): StoredPlan | null {
+  if (!plan) return null;
+  return {
+    planId: plan.planId ?? `plan-${id.slice(-4)}`,
+    planName: plan.name,
+    document: toRoutineDocument(id, plan),
+  };
+}
+
+/**
+ * The trainee's own onboarding answers (`user_profiles.primary_goal` / `fitness_level`)
+ * — what the api RESOLVES a draft's `goal` and `level` to on every write (ADR-0018 D3,
+ * `CoachDraftResolution`). One answer for every fixture trainee, the one the seeded
+ * documents carry, so a save changes nothing a test did not ask it to.
+ */
+const FIXTURE_SUBJECT = { goal: "BUILD_MUSCLE", level: "INTERMEDIATE" } as const;
+
+/**
+ * `CoachPlanDraft.nextUpdatedAt` — strictly monotonic per row (ADR-0018 D6's amendment):
+ * `max(now, previous + 1)`. Two writes inside one millisecond must not share a token,
+ * or a replay of the first echo would be accepted at the third write.
+ */
+function nextDraftUpdatedAt(previous: string | undefined): string {
+  const floor = previous ? Date.parse(previous) + 1 : Number.NEGATIVE_INFINITY;
+  return new Date(Math.max(Date.now(), floor)).toISOString();
+}
+
+/**
+ * `PUT …/routine/draft`'s write boundary, in the api's order (BUG-195b): `@Valid Routine`
+ * first (400 VALIDATION_ERROR — including the pre-BUG-195c body, which has no
+ * `document`), then the two D9 refusals (400 COACH_DRAFT_SUBJECT_FIELD naming the field
+ * and never the value; 400 COACH_DRAFT_REPS_ON_DURATION locating the exercise), then the
+ * D3 resolution. The token is checked by the caller, AFTER this — as the api does.
+ *
+ * `@Valid` is ported only as far as the portal can reach it: the editor refuses every
+ * other shape before sending, so a fixture 400 for those would test a path no coach can
+ * take. What IS reproduced is every refusal a body built by `forDraftSave` could still
+ * meet, and the one the old body met every time.
+ */
+async function resolveDraftDocument(submitted: unknown): Promise<Routine> {
+  const doc = submitted as Partial<Routine> | null | undefined;
+  const days = doc?.trainingDays;
+  const constraints = doc?.constraints;
+  const invalid =
+    !doc ||
+    !Array.isArray(days) ||
+    days.length < 2 ||
+    days.length > 6 ||
+    typeof doc.daysPerWeek !== "number" ||
+    doc.daysPerWeek < 2 ||
+    doc.daysPerWeek > 6 ||
+    days.some((day) => !Array.isArray(day.exercises) || day.exercises.length === 0) ||
+    !doc.name?.trim() ||
+    !doc.goal?.trim() ||
+    !doc.level?.trim() ||
+    !Array.isArray(doc.weeklyProgression) ||
+    !constraints ||
+    !Array.isArray(constraints.equipment) ||
+    !Array.isArray(constraints.injuries) ||
+    !(constraints.minutesPerSession > 0);
+  if (invalid) await fail(400, "VALIDATION_ERROR", "Validation failed");
+  const routine = doc as Routine;
+  for (const field of ["equipment", "injuries"] as const) {
+    if (routine.constraints[field].length > 0) {
+      await failWithDetails(
+        400,
+        "COACH_DRAFT_SUBJECT_FIELD",
+        `constraints.${field} is the trainee's own answer and a coach draft may not carry it.`,
+        { field: `constraints.${field}` }
+      );
+    }
+  }
+  for (const day of routine.trainingDays) {
+    for (let index = 0; index < day.exercises.length; index += 1) {
+      const exercise = day.exercises[index];
+      if (String(exercise.trackingType ?? "").toUpperCase() === "DURATION" && exercise.reps != null) {
+        await failWithDetails(
+          400,
+          "COACH_DRAFT_REPS_ON_DURATION",
+          `Exercise ${index + 1} on day ${day.dayOfWeek} is timed (DURATION) and also carries reps.`,
+          { dayOfWeek: day.dayOfWeek, exerciseIndex: index, field: "reps" }
+        );
+      }
+    }
+  }
+  const n = routine.trainingDays.length;
+  return {
+    ...routine,
+    goal: FIXTURE_SUBJECT.goal,
+    level: FIXTURE_SUBJECT.level,
+    daysPerWeek: n,
+    constraints: {
+      equipment: [],
+      injuries: [],
+      minutesPerSession: routine.constraints.minutesPerSession,
+      daysPerWeek: n,
+    },
+  };
+}
+
+/** The draft read shape — `GET` and `PUT …/routine/draft` answer the same record. */
+function draftResponse(id: string, draft: StoredDraft): CoachRoutineDraftResponse {
+  const down = catalogIsDown();
+  return {
+    document: draft.document,
+    schemaVersion: 1,
+    updatedAt: draft.updatedAt,
+    sourceTemplateId: state().draftTemplate.get(id) ?? null,
+    unbindableExercises: down ? [] : unbindableNames(draft.document),
+    catalogChecked: !down,
+  };
+}
+
 // ── EV-188b the coach's routine library ─────────────────────────────────────
 
 /**
@@ -2118,7 +2305,7 @@ function nameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
-function templateDocument(name: string, days: RoutineDayEntry[]): Routine {
+function templateDocument(name: string, days: SeedDay[]): Routine {
   return {
     name,
     goal: "BUILD_MUSCLE",
@@ -2149,11 +2336,26 @@ function templateDocument(name: string, days: RoutineDayEntry[]): Routine {
 }
 
 /**
+ * A trainee's document → a template document: `CoachTemplateDocument.strip` — the
+ * trainee's equipment and injuries cleared (AC4) and, since BUG-211 (W-2), their
+ * `weeklyProgression` too. Everything the coach prescribed travels.
+ */
+function templateFromDocument(document: Routine): Routine {
+  const n = document.trainingDays.length;
+  return {
+    ...document,
+    daysPerWeek: n,
+    weeklyProgression: [],
+    constraints: { ...document.constraints, equipment: [], injuries: [], daysPerWeek: n },
+  };
+}
+
+/**
  * A raw exercise name that is NOT in the fixture catalog, so AC5's unbindable mark is
  * reachable. The api's version of this is a fuzzy matcher over a catalogue that moves;
  * here it is simply a name with no row, which produces the same observable.
  */
-function rawEntry(name: string, sets: number, reps: string, rest: string): RoutineExerciseEntry {
+function rawEntry(name: string, sets: number, reps: string, rest: string): SeedExercise {
   return { catalogSlug: null, name, primaryMuscles: null, equipment: null, sets, reps, rest };
 }
 
@@ -2222,7 +2424,72 @@ function seedTemplates(): CoachTemplate[] {
       createdAt: at(60 * 24 * 30),
       updatedAt: at(60 * 24 * 11),
     },
+    {
+      /*
+       * Staff review B1 — a template written by the PRE-BUG-195c editor: every new
+       * exercise started with reps "8-12" and switching it to DURATION never cleared
+       * them. Stored rows are never migrated; since BUG-195b round 3 the api's apply
+       * clears those reps (`clearRepsOnDuration`) rather than refusing the template.
+       */
+      id: "7c2d0a11-0000-4000-8000-0000000000b3",
+      name: "Core circuit",
+      schemaVersion: 1,
+      document: legacyTimedReps(
+        templateDocument("Core circuit", [
+          {
+            dayOfWeek: 3,
+            focus: "Core",
+            exercises: [exercise("plank", 3, "8-12", "30s"), exercise("hanging-knee-raise", 3, "10-12", "60s")],
+          },
+          {
+            dayOfWeek: 6,
+            focus: "Conditioning",
+            exercises: [exercise("push-up", 3, "10-15", "60s"), exercise("goblet-squat", 3, "12-15", "60s")],
+          },
+        ]),
+        "Plank",
+        45
+      ),
+      createdAt: at(60 * 24 * 40),
+      updatedAt: at(60 * 24 * 20),
+    },
   ];
+}
+
+/** The B1 shape: one exercise switched to DURATION with its old reps left on it. */
+function legacyTimedReps(document: Routine, name: string, seconds: number): Routine {
+  return {
+    ...document,
+    trainingDays: document.trainingDays.map((day) => ({
+      ...day,
+      exercises: day.exercises.map((ex) =>
+        ex.name === name ? { ...ex, trackingType: "DURATION" as const, durationSeconds: seconds } : ex
+      ),
+    })),
+  };
+}
+
+/**
+ * b-fit-api `CoachTemplateDocument.clearRepsOnDuration` (BUG-195b round 3, `fcc1ccd`, on
+ * api main at 741ed39): the TEMPLATE path clears `reps` on a timed exercise instead of
+ * refusing it — at apply, and at every template write (create, update, duplicate,
+ * save-as-template). The coach's own draft SAVE still refuses the pair
+ * (`resolveDraftDocument`). Ported here rather than imported from
+ * `routineDocument.withoutDurationReps` on purpose: a fixture that borrows the portal's
+ * helper would agree with any bug in it.
+ */
+function clearRepsOnDuration(document: Routine): Routine {
+  return {
+    ...document,
+    trainingDays: document.trainingDays.map((day) => ({
+      ...day,
+      exercises: day.exercises.map((ex) =>
+        String(ex.trackingType ?? "").toUpperCase() === "DURATION" && ex.reps != null
+          ? { ...ex, reps: null }
+          : ex
+      ),
+    })),
+  };
 }
 
 /** `GET /coach-portal/templates` order: newest-updated first. */
@@ -2284,34 +2551,15 @@ function copyName(original: string): string {
  * Never stored, which is what makes the marks disappear after a re-sync with no edit
  * having been made, and what makes two opens of an unedited draft legitimately differ.
  */
-function unbindableNames(days: RoutineDayEntry[]): string[] {
+function unbindableNames(document: Routine): string[] {
   const known = new Set(CATALOG.map((e) => e.name.toLowerCase()));
   const out: string[] = [];
-  for (const day of days) {
+  for (const day of document.trainingDays) {
     for (const ex of day.exercises) {
       if (!known.has(ex.name.toLowerCase()) && !out.includes(ex.name)) out.push(ex.name);
     }
   }
   return out;
-}
-
-function toDayEntries(document: Routine): RoutineDayEntry[] {
-  return document.trainingDays.map((day) => ({
-    dayOfWeek: day.dayOfWeek,
-    focus: day.focus,
-    exercises: day.exercises.map((ex) => {
-      const known = CATALOG.find((c) => c.name.toLowerCase() === ex.name.toLowerCase());
-      return {
-        catalogSlug: known?.slug ?? null,
-        name: ex.name,
-        primaryMuscles: known?.primaryMuscles ?? null,
-        equipment: known?.equipment ?? null,
-        sets: ex.sets,
-        reps: ex.reps ?? "",
-        rest: ex.rest,
-      };
-    }),
-  }));
 }
 
 /** djb2. Not a security primitive — it stands in for whatever the api will hash. */
@@ -2329,7 +2577,7 @@ function digestOf(value: string): string {
  * modal used when this was a triple: the demo's lines stay byte-identical, and the day
  * the api's own wording lands it replaces this and nothing else moves.
  */
-function repairsFor(id: string, plan: RoutinePlanView): PublishRepair[] {
+function repairsFor(id: string, plan: Routine): PublishRepair[] {
   const injuries = guardrailsFor(id).injuries;
   const out: PublishRepair[] = [];
   for (const day of plan.trainingDays) {
@@ -2346,7 +2594,11 @@ function repairsFor(id: string, plan: RoutinePlanView): PublishRepair[] {
   return out;
 }
 
-function applyRepairs(id: string, plan: RoutinePlanView): RoutinePlanView {
+/**
+ * The repaired document the trainee receives. A repair changes the EXERCISE and keeps the
+ * prescription — every other field the coach wrote travels, as `RoutinePolicy` keeps it.
+ */
+function applyRepairs(id: string, plan: Routine): Routine {
   const injuries = guardrailsFor(id).injuries;
   return {
     ...plan,
@@ -2356,8 +2608,8 @@ function applyRepairs(id: string, plan: RoutinePlanView): RoutinePlanView {
         const rule = REPAIR_RULES.find(
           (r) => r.exercise === ex.name && injuries.includes(r.injury)
         );
-        if (!rule) return ex;
-        return { ...exercise(rule.replacement, ex.sets, ex.reps, ex.rest) };
+        const replacement = rule ? catalogBySlug(rule.replacement) : undefined;
+        return replacement ? { ...ex, name: replacement.name } : ex;
       }),
     })),
   };
@@ -3157,6 +3409,454 @@ async function servedWeekStart(): Promise<string> {
  * a demo fixture, not a database.
  * ════════════════════════════════════════════════════════════════════════════ */
 
+/** EV-283a's three fields as the fixture stores them (see `FixtureState.planAuthors`). */
+interface PlanAuthor {
+  lastChangedBy: "COACH" | "TRAINEE";
+  lastChangedAt: string;
+  changedSinceYourPublish: boolean;
+}
+
+/**
+ * EV-283b's seeded authorship. FIXED instants, not relative ones, because AC5 asserts the
+ * banner's sentence with its date ("24 Sept 2026" in en-GB). Each row reaches a state the others cannot:
+ *   Yusuf — TRAINEE after this coach's publish: the banner AND the roster marker. He is
+ *           the only WORKOUTS row on the populated roster with the flag, so the marker
+ *           is on exactly one row.
+ *   Omar  — TRAINEE, but this coach never published to him: the banner shows (the story
+ *           keys it on `lastChangedBy`), the flag is false. Overview-only, so no row.
+ *   Lina  — COACH: no banner, no marker.
+ * Every other trainee has no entry: never recorded, nothing inferred (EV-283 AC3).
+ */
+function seedPlanAuthors(): Map<string, PlanAuthor> {
+  return new Map<string, PlanAuthor>([
+    [
+      YUSUF_ID,
+      { lastChangedBy: "TRAINEE", lastChangedAt: "2026-09-24T18:40:00Z", changedSinceYourPublish: true },
+    ],
+    [
+      OMAR_ID,
+      { lastChangedBy: "TRAINEE", lastChangedAt: "2026-09-19T08:15:00Z", changedSinceYourPublish: false },
+    ],
+    [
+      LINA_ID,
+      { lastChangedBy: "COACH", lastChangedAt: "2026-09-10T09:00:00Z", changedSinceYourPublish: false },
+    ],
+  ]);
+}
+
+/**
+ * The roster row's `routineChangedSinceYourPublish`, derived from the row's OWN `scopes`
+ * (so the two cannot disagree): null without WORKOUTS (not shared), otherwise the same
+ * record `getRoutine` reads.
+ */
+function withPlanFlag(row: RosterClient): RosterClient {
+  return {
+    ...row,
+    routineChangedSinceYourPublish: row.scopes.includes("WORKOUTS")
+      ? (state().planAuthors.get(row.id)?.changedSinceYourPublish ?? false)
+      : null,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-321b — STEP CHALLENGES, ported from b-fit-api EV-321a @ 1749060
+ * (`CoachChallengeUseCase`, `ChallengeProgressCalculator`). Progress is DERIVED at read
+ * time from stored day rows, as the api does, so the portal's table is fed the same
+ * shape the api computes rather than a hand-written one:
+ *
+ *   · a day with no row is NO_DATA with a null value — never a 0 — and adds nothing;
+ *   · a row at or above the target is MET; below it, today is IN_PROGRESS and any
+ *     earlier day MISSED; after today is FUTURE;
+ *   · ACCEPTED first, by daysMet desc then total desc, competition ranking (1, 1, 3),
+ *     name to break ties; INVITED after by name, rank and progress null.
+ *
+ * Two simplifications, stated: each participant's "today" is the fixture's UTC day
+ * (the api uses the zone the trainee's app last declared, else UTC-12), still moved
+ * forward to a later stored row as the api moves it; and one row per day (the api's
+ * source precedence picks one of several — the fixture seeds the winner only).
+ *
+ * Visibility is the roster: a participant whose link is not in the current roster (a
+ * revoked process, the `empty` scenario, `evoli_fixture_link=ended`) is ABSENT, which
+ * is the api's `VISIBLE_LINK` rule — a revoked trainee is hidden, not a 403.
+ *
+ * Fixture-only cookie switches (one browser context each). Two for the refusals the
+ * dialog cannot reach from a browser that only offers linked clients:
+ *   `evoli_fixture_link=ended`               → the create's 403 (a link ended after the
+ *                                              page loaded);
+ *   `evoli_fixture_challenge_cap=reached`    → the create's 409 (a second tab filled
+ *                                              the 20 unended).
+ * And two for states the seed does not hold:
+ *   `evoli_fixture_today_steps=<n>`          → Lina's TODAY row on the ACTIVE challenge
+ *                                              reads n steps (the 9,950-of-10,000 bar);
+ *   `evoli_fixture_roster=fail`              → `GET /coach-portal/clients` is a 500 (the
+ *                                              create dialog's roster-failure sentence).
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const CHALLENGE_UNENDED_MAX = 20; // CoachChallengeUseCase.MAX_UNENDED_CHALLENGES
+const CHALLENGE_SPAN_MAX = 92; // Challenge.MAX_SPAN_DAYS
+const CHALLENGE_PAST_MAX = 14;
+const CHALLENGE_AHEAD_MAX = 60;
+
+interface StoredStepRow {
+  value: number;
+  source: ActivitySource;
+  syncedAt: string;
+}
+
+interface StoredParticipant {
+  clientId: string;
+  invitedAt: string;
+  acceptedAt: string | null;
+  /** Keyed by `YYYY-MM-DD`. No key = no row = NO_DATA. */
+  steps: Record<string, StoredStepRow>;
+}
+
+interface StoredChallenge {
+  id: string;
+  title: string;
+  metric: ChallengeMetric;
+  dailyTarget: number | null;
+  totalTarget: number | null;
+  startsOn: string;
+  endsOn: string;
+  createdAt: string;
+  participants: StoredParticipant[];
+}
+
+function utcDay(offsetDays = 0): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function dayPlus(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+function daySpan(a: string, b: string): number {
+  const [ya, ma, da] = a.split("-").map(Number);
+  const [yb, mb, db] = b.split("-").map(Number);
+  return Math.round((Date.UTC(yb, mb - 1, db) - Date.UTC(ya, ma - 1, da)) / 86_400_000);
+}
+
+function minutesAgo(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString();
+}
+
+/**
+ * Seeded rows by offset from today: `[offset, steps, source?]`. An offset that is not
+ * listed is a day with NO row — which is the whole point of Tobias.
+ */
+function stepRows(
+  rows: [offset: number, steps: number, source?: ActivitySource][],
+  source: ActivitySource,
+  lastSyncMinutesAgo: number
+): Record<string, StoredStepRow> {
+  const out: Record<string, StoredStepRow> = {};
+  for (const [offset, steps, own] of rows) {
+    const day = utcDay(offset);
+    // The latest day was synced most recently; earlier days at their own evening.
+    const syncedAt = offset === 0 ? minutesAgo(lastSyncMinutesAgo) : `${day}T20:30:00.000Z`;
+    out[day] = { value: steps, source: own ?? source, syncedAt };
+  }
+  return out;
+}
+
+/** The ids the demo and QA address. Fixed so a spec can open a seeded challenge by URL. */
+export const FIXTURE_CHALLENGE_IDS = {
+  active: "c4a11e00-0000-4000-8000-000000000001",
+  ended: "c4a11e00-0000-4000-8000-000000000002",
+  upcoming: "c4a11e00-0000-4000-8000-000000000003",
+} as const;
+
+/**
+ * Three challenges, one per phase, in the POPULATED scenario only (the `empty` roster has
+ * nobody to invite and nothing to show). The active one is the demo's peak:
+ *   Yusuf  — 4 days met (one missed-by-nothing: a NO_DATA day he never synced) → rank 1;
+ *   Lina   — 3 met, today IN_PROGRESS → rank 2;
+ *   Tobias — 1 met, NO row today and yesterday → today reads "—", never 0;
+ *   Sara, Mara — invited, not accepted: no number at all.
+ * Ranking is therefore neither alphabetical nor the invite order.
+ */
+function seedChallenges(): Map<string, StoredChallenge> {
+  if (SCENARIO === "empty") return new Map();
+  const invited = minutesAgo(5 * 24 * 60);
+  const active: StoredChallenge = {
+    id: FIXTURE_CHALLENGE_IDS.active,
+    title: "10 000 pas par jour",
+    metric: "STEPS",
+    dailyTarget: 10_000,
+    totalTarget: null,
+    startsOn: utcDay(-4),
+    endsOn: utcDay(2),
+    createdAt: minutesAgo(5 * 24 * 60 + 30),
+    participants: [
+      {
+        clientId: LINA_ID,
+        invitedAt: invited,
+        acceptedAt: minutesAgo(5 * 24 * 60 - 60),
+        steps: stepRows(
+          [[-4, 12_400], [-3, 10_350], [-2, 9_800], [-1, 11_020], [0, 6_150]],
+          "HEALTH_CONNECT",
+          12
+        ),
+      },
+      {
+        clientId: YUSUF_ID,
+        invitedAt: invited,
+        acceptedAt: minutesAgo(5 * 24 * 60 - 90),
+        steps: stepRows([[-4, 10_100], [-2, 13_050], [-1, 10_020], [0, 10_400]], "HEALTHKIT", 40),
+      },
+      {
+        clientId: TOBIAS_ID,
+        invitedAt: invited,
+        acceptedAt: minutesAgo(4 * 24 * 60),
+        steps: stepRows([[-4, 8_000], [-3, 10_500], [-2, 7_200, "MANUAL"]], "PEDOMETER", 0),
+      },
+      { clientId: SARA_ID, invitedAt: invited, acceptedAt: null, steps: {} },
+      { clientId: MARA_ID, invitedAt: invited, acceptedAt: null, steps: {} },
+    ],
+  };
+  const ended: StoredChallenge = {
+    id: FIXTURE_CHALLENGE_IDS.ended,
+    title: "Semaine de rentrée",
+    metric: "STEPS",
+    dailyTarget: 8_000,
+    totalTarget: null,
+    startsOn: utcDay(-20),
+    endsOn: utcDay(-14),
+    createdAt: minutesAgo(22 * 24 * 60),
+    participants: [
+      {
+        clientId: LINA_ID,
+        invitedAt: minutesAgo(22 * 24 * 60),
+        acceptedAt: minutesAgo(21 * 24 * 60),
+        steps: stepRows(
+          [[-20, 9_100], [-19, 8_300], [-18, 7_900], [-17, 8_800], [-16, 10_200], [-15, 8_050], [-14, 9_400]],
+          "HEALTH_CONNECT",
+          0
+        ),
+      },
+      {
+        clientId: TOBIAS_ID,
+        invitedAt: minutesAgo(22 * 24 * 60),
+        acceptedAt: minutesAgo(21 * 24 * 60),
+        steps: stepRows([[-20, 6_000], [-19, 8_100], [-17, 5_400]], "PEDOMETER", 0),
+      },
+    ],
+  };
+  const upcoming: StoredChallenge = {
+    id: FIXTURE_CHALLENGE_IDS.upcoming,
+    title: "Objectif 8 000 pas",
+    metric: "STEPS",
+    dailyTarget: 8_000,
+    totalTarget: null,
+    startsOn: utcDay(3),
+    endsOn: utcDay(9),
+    createdAt: minutesAgo(60),
+    participants: [
+      { clientId: YUSUF_ID, invitedAt: minutesAgo(60), acceptedAt: minutesAgo(30), steps: {} },
+      { clientId: PETRA_ID, invitedAt: minutesAgo(60), acceptedAt: null, steps: {} },
+    ],
+  };
+  return new Map([active, ended, upcoming].map((c) => [c.id, c]));
+}
+
+/** The ACTIVE links, by id — the api's `VISIBLE_LINK` fragment, for a STEPS challenge. */
+async function visibleLinks(): Promise<Map<string, RosterClient>> {
+  if (SCENARIO === "empty" || state().revoked || (await linkEnded())) return new Map();
+  return new Map([lina(), petra(), yusuf(), sara(), tobias(), mara()].map((row) => [row.id, row]));
+}
+
+function challengePhase(c: StoredChallenge, today: string): ChallengePhase {
+  if (today < c.startsOn) return "UPCOMING";
+  return today > c.endsOn ? "ENDED" : "ACTIVE";
+}
+
+/** `ChallengeProgressCalculator.steps`, ported. */
+function stepsProgress(c: StoredChallenge, p: StoredParticipant): ChallengeProgress {
+  let today = utcDay(0);
+  for (const day of Object.keys(p.steps)) {
+    if (day >= c.startsOn && day <= c.endsOn && day > today) today = day;
+  }
+  const target = c.dailyTarget ?? 0;
+  const days: ChallengeDay[] = [];
+  let elapsed = 0;
+  let met = 0;
+  let total = 0;
+  let syncedAt: string | null = null;
+  for (let day = c.startsOn; day <= c.endsOn; day = dayPlus(day, 1)) {
+    if (day > today) {
+      days.push({ day, value: null, source: null, status: "FUTURE" });
+      continue;
+    }
+    elapsed += 1;
+    const row = p.steps[day];
+    if (!row) {
+      days.push({ day, value: null, source: null, status: "NO_DATA" });
+      continue;
+    }
+    let status: ChallengeDayStatus;
+    if (row.value >= target) {
+      status = "MET";
+      met += 1;
+    } else {
+      status = day === today ? "IN_PROGRESS" : "MISSED";
+    }
+    total += row.value;
+    if (syncedAt === null || row.syncedAt > syncedAt) syncedAt = row.syncedAt;
+    days.push({ day, value: row.value, source: row.source, status });
+  }
+  const todayRow = today >= c.startsOn && today <= c.endsOn ? p.steps[today] : undefined;
+  return {
+    today,
+    todayValue: todayRow ? todayRow.value : null,
+    todaySource: todayRow ? todayRow.source : null,
+    daysElapsed: elapsed,
+    daysMet: met,
+    total,
+    target,
+    syncedAt,
+    days,
+  };
+}
+
+function toChallengeSummary(c: StoredChallenge, participants: number, accepted: number): CoachChallengeSummary {
+  return {
+    id: c.id,
+    title: c.title,
+    metric: c.metric,
+    dailyTarget: c.dailyTarget,
+    totalTarget: c.totalTarget,
+    startsOn: c.startsOn,
+    endsOn: c.endsOn,
+    days: daySpan(c.startsOn, c.endsOn) + 1,
+    phase: challengePhase(c, utcDay(0)),
+    participantCount: participants,
+    acceptedCount: accepted,
+    createdAt: c.createdAt,
+  };
+}
+
+/**
+ * `evoli_fixture_today_steps=<n>` — Lina's today row on the ACTIVE challenge reads `n`,
+ * everything else as seeded. For the near-goal bar (9,950 of 10,000 is IN_PROGRESS, not
+ * met), which no seeded row sits at. A malformed value is ignored, never coerced to 0.
+ */
+async function withTodayStepsSwitch(c: StoredChallenge): Promise<StoredChallenge> {
+  const raw = await fixtureSwitch("evoli_fixture_today_steps");
+  const value = raw === null || raw.trim() === "" ? Number.NaN : Number(raw);
+  if (c.id !== FIXTURE_CHALLENGE_IDS.active || !Number.isInteger(value) || value < 0) return c;
+  const day = utcDay(0);
+  return {
+    ...c,
+    participants: c.participants.map((p) =>
+      p.clientId === LINA_ID && p.steps[day] ? { ...p, steps: { ...p.steps, [day]: { ...p.steps[day], value } } } : p
+    ),
+  };
+}
+
+async function challengeDetail(stored: StoredChallenge): Promise<CoachChallengeDetail> {
+  const c = await withTodayStepsSwitch(stored);
+  const links = await visibleLinks();
+  const visible = c.participants.filter((p) => links.has(p.clientId));
+  const name = (p: StoredParticipant) => links.get(p.clientId)?.traineeDisplayName ?? null;
+  const byName = (a: StoredParticipant, b: StoredParticipant) => {
+    const x = (name(a) ?? "").toLowerCase();
+    const y = (name(b) ?? "").toLowerCase();
+    return x < y ? -1 : x > y ? 1 : a.clientId < b.clientId ? -1 : a.clientId > b.clientId ? 1 : 0;
+  };
+  const progress = new Map(
+    visible.filter((p) => p.acceptedAt !== null).map((p) => [p.clientId, stepsProgress(c, p)])
+  );
+  const best = (a: ChallengeProgress, b: ChallengeProgress) =>
+    (b.daysMet ?? 0) - (a.daysMet ?? 0) || b.total - a.total;
+  const accepted = visible
+    .filter((p) => p.acceptedAt !== null)
+    .sort((a, b) => best(progress.get(a.clientId)!, progress.get(b.clientId)!) || byName(a, b));
+  const invited = visible.filter((p) => p.acceptedAt === null).sort(byName);
+
+  const rows: CoachChallengeParticipant[] = [];
+  let rank = 0;
+  let previous: ChallengeProgress | null = null;
+  accepted.forEach((p, i) => {
+    const current = progress.get(p.clientId)!;
+    if (previous === null || best(previous, current) !== 0) rank = i + 1;
+    previous = current;
+    rows.push({
+      clientId: p.clientId,
+      displayName: name(p),
+      status: "ACCEPTED",
+      invitedAt: p.invitedAt,
+      acceptedAt: p.acceptedAt,
+      rank,
+      progress: current,
+    });
+  });
+  for (const p of invited) {
+    rows.push({
+      clientId: p.clientId,
+      displayName: name(p),
+      status: "INVITED",
+      invitedAt: p.invitedAt,
+      acceptedAt: null,
+      rank: null,
+      progress: null,
+    });
+  }
+  return { challenge: toChallengeSummary(c, visible.length, accepted.length), participants: rows };
+}
+
+async function ownedChallenge(id: string): Promise<StoredChallenge> {
+  const found = state().challenges.get(id);
+  if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  return found as StoredChallenge;
+}
+
+/** `CoachChallengeCreateRequest`'s Bean Validation, then `checkRules`, in the api's order. */
+async function assertChallengeRequest(body: CoachChallengeCreateRequest): Promise<void> {
+  // Bean Validation: `VALIDATION_ERROR`, the field LEADING the message, no details.
+  const bean = (message: string) => fail(400, "VALIDATION_ERROR", message);
+  const title = typeof body.title === "string" ? body.title : null;
+  if (title === null) await bean("title must not be null");
+  const control = !NO_CONTROL.test(title as string);
+  const normal = javaNormalise(title as string);
+  if (control || normal === null || normal.length > 80) {
+    await bean("title must be 1-80 characters after trimming, with no control character");
+  }
+  if (body.metric !== "STEPS" && body.metric !== "WORKOUTS") await bean("metric must be STEPS or WORKOUTS");
+  if (typeof body.dailyTarget === "number" && (body.dailyTarget < 1000 || body.dailyTarget > 50_000)) {
+    await bean(`dailyTarget must be between 1000 and 50000`);
+  }
+  if (typeof body.totalTarget === "number" && (body.totalTarget < 1 || body.totalTarget > 100)) {
+    await bean("totalTarget must be between 1 and 100");
+  }
+  if (!body.startsOn) await bean("startsOn must not be null");
+  if (!body.endsOn) await bean("endsOn must not be null");
+  if (!Array.isArray(body.clientIds) || body.clientIds.length < 1 || body.clientIds.length > 50) {
+    await bean("clientIds size must be between 1 and 50");
+  }
+
+  // `checkRules`: `VALIDATION_ERROR` with `details.field`.
+  const rule = (field: string, reason: string) =>
+    failWithDetails(400, "VALIDATION_ERROR", `${field} ${reason}`, { field });
+  if (body.metric === "STEPS") {
+    if (body.dailyTarget == null) await rule("dailyTarget", "is required for STEPS");
+    if (body.totalTarget != null) await rule("totalTarget", "must be absent for STEPS");
+  } else {
+    if (body.totalTarget == null) await rule("totalTarget", "is required for WORKOUTS");
+    if (body.dailyTarget != null) await rule("dailyTarget", "must be absent for WORKOUTS");
+  }
+  const span = daySpan(body.startsOn, body.endsOn);
+  if (span < 0) await rule("endsOn", "must not be before startsOn");
+  if (span > CHALLENGE_SPAN_MAX) await rule("endsOn", `must be at most ${CHALLENGE_SPAN_MAX} days after startsOn`);
+  const offset = daySpan(utcDay(0), body.startsOn);
+  if (offset < -CHALLENGE_PAST_MAX) await rule("startsOn", `must be at most ${CHALLENGE_PAST_MAX} days before today`);
+  if (offset > CHALLENGE_AHEAD_MAX) await rule("startsOn", `must be at most ${CHALLENGE_AHEAD_MAX} days after today`);
+}
+
+
 interface FixtureState {
   /** AC6: revoking takes the whole roster away for the rest of the process. */
   revoked: boolean;
@@ -3169,8 +3869,16 @@ interface FixtureState {
    */
   lastRoutineClient: string | null;
   /** The live plan per trainee. `publishRoutine` replaces an entry. */
-  plans: Map<string, RoutinePlanView | null>;
-  drafts: Map<string, CoachRoutineDraft>;
+  plans: Map<string, StoredPlan | null>;
+  /**
+   * EV-283a — who made each live plan live, and whether that was after this coach's
+   * latest publish. No entry = never recorded (the api's null/null/false). ONE record
+   * feeds both `getRoutine` and the roster row, which is the api's "same rule, so the
+   * marker and the routine page cannot disagree", held by construction here too.
+   * `publishRoutine` overwrites an entry with COACH/now/false — "publishing clears it".
+   */
+  planAuthors: Map<string, PlanAuthor>;
+  drafts: Map<string, StoredDraft>;
   /** The digest handed out by the last preview, per trainee (EV-184 ruling 2). */
   pendingDigest: Map<string, string>;
   /** EV-188b — the coach's library, keyed by template id. */
@@ -3198,6 +3906,21 @@ interface FixtureState {
   progressGoals: Map<string, ProgressGoalRecord>;
   /** EV-273b — the coach's nutrition templates, keyed by id. See `seedNutritionTemplates`. */
   nutritionTemplates: Map<string, StoredNutritionTemplate>;
+
+  /**
+   * EV-278c — accounts somebody else initialised, keyed by lower-cased email. An
+   * activation flips `activated`, so the NEXT sign-in with that address is a coach's.
+   */
+  pendingAccounts: Map<string, FixturePendingAccount>;
+  /** `GET /legal/versions`. One account (`stale.coach`) revises the policy mid-form. */
+  legalVersions: LegalVersions;
+  /**
+   * Every `POST /me/activate` the fixture answered, in order, with the outcome. The body's
+   * KEYS are kept (the portal must never send a role) but never a password value.
+   */
+  activations: FixtureActivationRecord[];
+  /** EV-321b — the coach's challenges, by id, each with its participants' day rows. */
+  challenges: Map<string, StoredChallenge>;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -3207,17 +3930,18 @@ function freshState(): FixtureState {
   return {
     revoked: false,
     lastRoutineClient: null,
-    plans: new Map<string, RoutinePlanView | null>([
-      [LINA_ID, linaPlan()],
+    plans: new Map<string, StoredPlan | null>([
+      [LINA_ID, seededPlan(LINA_ID, linaPlan())],
       [NILS_ID, null], // AC1's "No active plan"
       [SARA_ID, null],
-      [DANA_ID, danaPlan()],
-      [OMAR_ID, omarPlan()],
-      [YUSUF_ID, yusufPlan()],
+      [DANA_ID, seededPlan(DANA_ID, danaPlan())],
+      [OMAR_ID, seededPlan(OMAR_ID, omarPlan())],
+      [YUSUF_ID, seededPlan(YUSUF_ID, yusufPlan())],
       // Petra and Mara have no WORKOUTS scope, so no routine read reaches a plan.
       [PETRA_ID, null],
       [MARA_ID, null],
     ]),
+    planAuthors: seedPlanAuthors(),
     drafts: new Map(),
     pendingDigest: new Map(),
     templates: new Map(seedTemplates().map((t) => [t.id, t])),
@@ -3275,6 +3999,10 @@ function freshState(): FixtureState {
         },
       ],
     ]),
+    pendingAccounts: seedPendingAccounts(),
+    legalVersions: { privacyPolicyVersion: "v1.0", termsVersion: "v1.0" },
+    activations: [],
+    challenges: seedChallenges(),
   };
 }
 
@@ -3355,10 +4083,94 @@ export function fixtureCalls(): string[] {
   return [...((globalThis as GlobalWithCalls)[CALLS_KEY] ?? [])];
 }
 
+/**
+ * BUG-195c — every `PUT …/routine/draft` the fixture answered, with the TOKEN it carried
+ * and the two subject lists it SENT (never anything else from the document). A third
+ * list, for the same reason as `reads`: `calls` is asserted exactly by EV-272's specs.
+ */
+export interface FixtureDraftPut {
+  clientId: string;
+  /** The body's top-level keys — `["document","replacesDraftUpdatedAt"]` since BUG-195c. */
+  bodyKeys: string[];
+  replacesDraftUpdatedAt: string | null;
+  equipment: unknown;
+  injuries: unknown;
+  /** "200", or the refusal's code. */
+  outcome: string;
+}
+const DRAFT_PUTS_KEY = Symbol.for("evoli.coach.fixture.draftPuts");
+type GlobalWithDraftPuts = typeof globalThis & Record<symbol, FixtureDraftPut[] | undefined>;
+
+function recordDraftPut(entry: FixtureDraftPut): void {
+  const g = globalThis as GlobalWithDraftPuts;
+  (g[DRAFT_PUTS_KEY] ??= []).push(entry);
+}
+
+/** Every draft PUT since the last reset, in order (copies). */
+export function fixtureDraftPuts(): FixtureDraftPut[] {
+  return ((globalThis as GlobalWithDraftPuts)[DRAFT_PUTS_KEY] ?? []).map((entry) => ({ ...entry }));
+}
+
+/**
+ * EV-284b — a SECOND list for page-load reads, kept apart from `calls` on purpose.
+ * `calls` means "recipe and swap operations" and EV-272's specs assert it is EXACTLY
+ * empty after a page load; putting the nutrition page's own food-log read into it
+ * turned two of them red. The food log's consent witness ("without NUTRITION the log is
+ * never requested") needs the same kind of evidence, so it gets its own list.
+ */
+const READS_KEY = Symbol.for("evoli.coach.fixture.reads");
+
+function recordRead(call: string): void {
+  const g = globalThis as GlobalWithCalls;
+  (g[READS_KEY] ??= []).push(call);
+}
+
+/** Every page-load read the fixture journals (today: the food log), since the last reset. */
+export function fixtureReads(): string[] {
+  return [...((globalThis as GlobalWithCalls)[READS_KEY] ?? [])];
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-288 — THE SWAP-CANDIDATE CACHE (`planned_meal.swap_candidates`), as b-fit-api keeps it
+ * from BUG-271's fix (`fix/bug271-swap-apply-no-model-call` @ `0b23b73`, ADR-0028 §4.3b):
+ *
+ *   · `GET …/meals/{M}/swap` answers the cached list, or builds one and caches it.
+ *   · `POST …/meals/{M}/swap` applies an index FROM THE CACHE and never builds a list;
+ *     with nothing cached it is 409 `SWAP_OPTIONS_STALE`. A successful apply clears it,
+ *     and so does any other write that replaces the meal.
+ *
+ * So a second tab (or the trainee) swapping the meal after this tab read its options
+ * leaves this tab's list stale, which is the case EV-288 handles — reproduced here from
+ * two pages on one server, no switch needed.
+ *
+ * Outside `FixtureState` for the call journal's reason: it is filled by a READ, and the
+ * seed check must not turn red because a test opened a sheet. Emptied by every reset.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const SWAP_CACHE_KEY = Symbol.for("evoli.coach.fixture.swapCandidates");
+type SwapCache = Map<string, (typeof MEAL_POOL)[number][]>;
+type GlobalWithSwapCache = typeof globalThis & Record<symbol, SwapCache | undefined>;
+
+function swapCache(): SwapCache {
+  return ((globalThis as GlobalWithSwapCache)[SWAP_CACHE_KEY] ??= new Map());
+}
+const swapCacheKey = (id: string, mealId: string) => `${id}/${mealId}`;
+/** The meal was replaced: its list is gone. */
+function clearSwapCandidates(id: string, mealId: string): void {
+  swapCache().delete(swapCacheKey(id, mealId));
+}
+/** A day or the week was rebuilt: every list for this trainee is gone. */
+function clearAllSwapCandidates(id: string): void {
+  for (const key of [...swapCache().keys()]) if (key.startsWith(`${id}/`)) swapCache().delete(key);
+}
+
 /** Throw the whole store away and start again from this process's seed. */
 export function resetFixtureState(): void {
   seed();
   (globalThis as GlobalWithCalls)[CALLS_KEY] = [];
+  (globalThis as GlobalWithCalls)[READS_KEY] = [];
+  (globalThis as GlobalWithDraftPuts)[DRAFT_PUTS_KEY] = [];
+  (globalThis as GlobalWithSwapCache)[SWAP_CACHE_KEY] = new Map();
 }
 
 /** True when nothing has been written (or read-with-side-effect) since the last reset. */
@@ -3377,7 +4189,468 @@ function nutritionState(id: string): NutritionState {
   return current;
 }
 
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-284b — THE TRAINEE'S FOOD LOG (`GET …/nutrition/log`).
+ *
+ * Read-only on both sides (a record is erased only by the person who entered it), so
+ * it lives OUTSIDE `FixtureState`: nothing in the portal writes it, and the seed check
+ * has nothing to compare. Days are keyed by how many UTC days before the SERVER's
+ * today they fall, which is the api's own default window (the portal sends no range).
+ *
+ * `totals` is computed HERE, once, as entries plus eaten meals — the fixture stands in
+ * for the api's single computation (AC2), and the portal never re-sums. `targets` is
+ * the trainee's STORED target as `getNutrition` serves it (so a coach's save shows up
+ * in the next read, as on the api); the api's training/rest-day adjustment is not
+ * modelled, and the fixture says so rather than inventing one.
+ *
+ * Each trainee reaches a state the others cannot:
+ *   Lina  — today: OFF with a barcode (0 g fat, a REAL zero) + QUICK (AC1's Monday);
+ *           1 day ago: a planned meal eaten and no entries (totals with no entries);
+ *           3 days ago: OFF without a barcode + MANUAL with 0 g fat + an eaten lunch;
+ *           6 days ago: OFF + QUICK. Days 2, 4 and 5 ago: nothing (totals null).
+ *   Nils  — no stored target (targets null) and one MANUAL entry today;
+ *           2 days ago: api totals but NO entries and NO eaten meals (review N3 — a
+ *           shape the contract says should not happen; the portal must not render an
+ *           empty panel for it).
+ *   Every other NUTRITION trainee (Petra among them) never logs: seven empty days.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface SeededFoodDay {
+  entries: Omit<CoachFoodLogEntry, "loggedAt">[];
+  entryTimes: string[];
+  eatenMeals: Omit<CoachFoodLogEatenMeal, "eatenAt">[];
+  eatenTimes: string[];
+  /** Sent as-is instead of the sum — only for the totals-without-items day (N3). */
+  totalsOverride?: CoachFoodLogMacros;
+}
+
+function foodDay(
+  entries: [Omit<CoachFoodLogEntry, "loggedAt">, string][],
+  eaten: [Omit<CoachFoodLogEatenMeal, "eatenAt">, string][] = []
+): SeededFoodDay {
+  return {
+    entries: entries.map(([e]) => e),
+    entryTimes: entries.map(([, t]) => t),
+    eatenMeals: eaten.map(([m]) => m),
+    eatenTimes: eaten.map(([, t]) => t),
+  };
+}
+
+/** Seeded days per trainee, by UTC days before today. Times are `HH:MM` UTC. */
+const FOOD_LOGS: Record<string, Record<number, SeededFoodDay>> = {
+  [LINA_ID]: {
+    0: foodDay([
+      [
+        {
+          name: "Greek yogurt 0%",
+          brand: "Fage",
+          servingG: 170,
+          calories: 97,
+          proteinG: 17.3,
+          carbsG: 6.1,
+          fatG: 0,
+          source: "OFF",
+          barcode: "5201054017470",
+        },
+        "07:45",
+      ],
+      [
+        {
+          name: "Pastry",
+          brand: null,
+          servingG: null,
+          calories: 320,
+          // Stored NOT NULL DEFAULT 0 (V28): a quick add that gave kcal only.
+          proteinG: 0,
+          carbsG: 0,
+          fatG: 0,
+          source: "QUICK",
+          barcode: null,
+        },
+        "10:20",
+      ],
+    ]),
+    1: foodDay(
+      [],
+      [
+        [
+          { name: "Overnight oats with berries", slot: "BREAKFAST", calories: 420, proteinG: 18, carbsG: 62, fatG: 11 },
+          "07:30",
+        ],
+      ]
+    ),
+    3: foodDay(
+      [
+        [
+          {
+            name: "Banana",
+            brand: null,
+            servingG: 120,
+            calories: 107,
+            proteinG: 1.3,
+            carbsG: 27.4,
+            fatG: 0.4,
+            source: "OFF",
+            // From the food database WITHOUT a code: the same label as with one.
+            barcode: null,
+          },
+          "09:05",
+        ],
+        [
+          {
+            name: "Rice cakes",
+            brand: null,
+            servingG: 18,
+            calories: 70,
+            proteinG: 1.4,
+            carbsG: 15,
+            fatG: 0,
+            source: "MANUAL",
+            barcode: null,
+          },
+          "16:10",
+        ],
+      ],
+      [
+        [
+          { name: "Chicken quinoa bowl", slot: "LUNCH", calories: 610, proteinG: 48, carbsG: 58, fatG: 18 },
+          "12:40",
+        ],
+      ]
+    ),
+    6: foodDay([
+      [
+        {
+          name: "Whey protein",
+          brand: "Myprotein",
+          servingG: 30,
+          calories: 120,
+          proteinG: 24,
+          carbsG: 2,
+          fatG: 1.9,
+          source: "OFF",
+          barcode: "5055534302194",
+        },
+        "18:00",
+      ],
+      [
+        {
+          name: "Dinner out",
+          brand: null,
+          servingG: null,
+          calories: 850,
+          proteinG: 0,
+          carbsG: 0,
+          fatG: 0,
+          source: "QUICK",
+          barcode: null,
+        },
+        "20:30",
+      ],
+    ]),
+  },
+  [NILS_ID]: {
+    2: { ...foodDay([]), totalsOverride: { calories: 250, proteinG: 12, carbsG: 30, fatG: 8 } },
+    0: foodDay([
+      [
+        {
+          name: "Porridge",
+          brand: null,
+          servingG: 250,
+          calories: 300,
+          proteinG: 10,
+          carbsG: 54,
+          fatG: 6,
+          source: "MANUAL",
+          barcode: null,
+        },
+        "08:15",
+      ],
+    ]),
+  },
+};
+
+/** `YYYY-MM-DD` of the UTC day `daysAgo` before `now`. */
+function utcDayBefore(now: Date, daysAgo: number): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  return d.toISOString().slice(0, 10);
+}
+
+function foodLogDay(id: string, date: string, daysAgo: number, targets: CoachFoodLogMacros | null): CoachFoodLogDay {
+  const seeded = FOOD_LOGS[id]?.[daysAgo];
+  const entries: CoachFoodLogEntry[] = (seeded?.entries ?? []).map((e, i) => ({
+    ...e,
+    loggedAt: `${date}T${seeded!.entryTimes[i]}:00Z`,
+  }));
+  const eatenMeals: CoachFoodLogEatenMeal[] = (seeded?.eatenMeals ?? []).map((m, i) => ({
+    ...m,
+    eatenAt: `${date}T${seeded!.eatenTimes[i]}:00Z`,
+  }));
+  const recorded = entries.length + eatenMeals.length > 0;
+  const sum = (pick: (x: CoachFoodLogMacros) => number) =>
+    Math.round([...entries, ...eatenMeals].reduce((acc, x) => acc + pick(x), 0));
+  return {
+    date,
+    // NULL when nothing was recorded — "Nothing logged", never 0 kcal.
+    totals: seeded?.totalsOverride
+      ? seeded.totalsOverride
+      : recorded
+      ? {
+          calories: sum((x) => x.calories),
+          proteinG: sum((x) => x.proteinG),
+          carbsG: sum((x) => x.carbsG),
+          fatG: sum((x) => x.fatG),
+        }
+      : null,
+    targets,
+    entries,
+    eatenMeals,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-278c — PENDING ACCOUNTS, AS b-fit-api `c69c287` KEEPS THEM.
+ *
+ * Addressed by EMAIL, like the recipe libraries: the fixture login mints a `["PENDING"]`
+ * token for any address below that has not been activated, and the activation screen's
+ * reads find the account through the token's `email` claim. Each address reaches a state
+ * the others cannot:
+ *
+ *   new.coach        — the happy path, and every per-field refusal (a wrong temporary
+ *                      password, the temporary one reused, a short new one).
+ *   expired.coach    — `expiresAt` in the past: `GET /me/activation` still answers
+ *                      pending (the sweeper has not run), only activation says 410.
+ *   expires.midway   — the screen renders a future expiry, then activation answers 410:
+ *                      the clock passed while the form was open.
+ *   throttled.coach  — every activation is the 11th in the window: 429, Retry-After 599.
+ *   stale.coach      — the first activation publishes a privacy revision (v1.1) and
+ *                      answers 409 CONSENT_VERSION_STALE with both current versions.
+ *   pending.trainee  — granted USER by a coach: the portal refuses it at sign-in.
+ *   orphan.pending   — PENDING with no initialisation row: 409 ACCOUNT_NOT_INITIALISED
+ *                      on both routes (a state only hand-written SQL makes).
+ *
+ * The checks run in `AccountActivationUseCase`'s order — bean validation, the throttle,
+ * already active, not initialised, expired, the temporary password, reuse, then consent —
+ * so a fixture refusal is the one the api would give for the same input. The instants
+ * are FIXED so the screen's sentences can be asserted verbatim.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** Every fixture account's temporary password, as the invitation email would carry it. */
+const FIXTURE_TEMPORARY_PASSWORD = "Temp-pass-2026";
+
+interface FixturePendingAccount {
+  sub: string;
+  grantedRole: AccountRole;
+  creatorKind: InitialiserKind;
+  creatorName: string | null;
+  expiresAt: string;
+  temporaryPassword: string;
+  /** false = PENDING with no `account_initialisations` row. */
+  initialised: boolean;
+  activated: boolean;
+  behaviour: "NONE" | "THROTTLED" | "REVISES_POLICY" | "EXPIRES_MIDWAY";
+}
+
+interface FixtureActivationRecord {
+  email: string;
+  keys: string[];
+  consentAccepted: unknown;
+  privacyPolicyVersion: unknown;
+  termsVersion: unknown;
+  outcome: string;
+}
+
+const FUTURE_EXPIRY = "2036-10-27T09:30:00Z";
+
+function seedPendingAccounts(): Map<string, FixturePendingAccount> {
+  const account = (
+    sub: string,
+    overrides: Partial<FixturePendingAccount> = {}
+  ): FixturePendingAccount => ({
+    sub,
+    grantedRole: "COACH",
+    creatorKind: "ADMIN",
+    creatorName: "Evoli",
+    expiresAt: FUTURE_EXPIRY,
+    temporaryPassword: FIXTURE_TEMPORARY_PASSWORD,
+    initialised: true,
+    activated: false,
+    behaviour: "NONE",
+    ...overrides,
+  });
+  return new Map<string, FixturePendingAccount>([
+    ["new.coach@evoli.fit", account("2780c000-0000-4000-8000-000000000001")],
+    [
+      "expired.coach@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000002", { expiresAt: "2026-08-01T09:30:00Z" }),
+    ],
+    [
+      "expires.midway@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000003", { behaviour: "EXPIRES_MIDWAY" }),
+    ],
+    [
+      "throttled.coach@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000004", { behaviour: "THROTTLED" }),
+    ],
+    [
+      "stale.coach@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000005", { behaviour: "REVISES_POLICY" }),
+    ],
+    [
+      "pending.trainee@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000006", {
+        grantedRole: "USER",
+        creatorKind: "COACH",
+        creatorName: "Alex R.",
+      }),
+    ],
+    [
+      "orphan.pending@evoli.fit",
+      account("2780c000-0000-4000-8000-000000000007", { initialised: false }),
+    ],
+  ]);
+}
+
+/**
+ * The roles and subject the fixture login mints for an address: `["PENDING"]` for an
+ * account above that has not been activated, the ordinary coach otherwise. Called by
+ * `/api/auth/login` in fixture mode only.
+ */
+export function fixtureLoginIdentity(email: string): { roles: string[]; sub?: string } {
+  const account = state().pendingAccounts.get(email.trim().toLowerCase());
+  if (!account) return { roles: ["USER", "COACH"] };
+  if (account.activated) return { roles: [account.grantedRole], sub: account.sub };
+  return { roles: ["PENDING"], sub: account.sub };
+}
+
+/** `GET /api/fixture/activations` — the test suite's witness of what was sent. */
+export function fixtureActivations(): FixtureActivationRecord[] {
+  return state().activations.map((a) => ({ ...a, keys: [...a.keys] }));
+}
+
+async function fixtureCallerEmail(bearer?: string): Promise<string> {
+  const { decodeJwt } = await import("./jwt");
+  if (bearer) return (decodeJwt(bearer)?.email ?? "").toLowerCase();
+  try {
+    const { readSessionEmail } = await import("./session");
+    return (readSessionEmail() ?? "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+const NOT_PENDING: ActivationStatus = {
+  pending: false,
+  grantedRole: null,
+  expiresAt: null,
+  creatorKind: null,
+  creatorName: null,
+};
+
+async function fixtureGetActivation(bearer?: string): Promise<ActivationStatus> {
+  const account = state().pendingAccounts.get(await fixtureCallerEmail(bearer));
+  if (!account || account.activated) return { ...NOT_PENDING };
+  if (!account.initialised) {
+    return fail(409, "ACCOUNT_NOT_INITIALISED", "this account has no initialisation record");
+  }
+  return {
+    pending: true,
+    grantedRole: account.grantedRole,
+    expiresAt: account.expiresAt,
+    creatorKind: account.creatorKind,
+    creatorName: account.creatorName,
+  };
+}
+
+async function fixtureActivate(body: ActivateAccountRequest): Promise<AuthTokens> {
+  const email = await fixtureCallerEmail();
+  const s = state();
+  const raw = body as unknown as Record<string, unknown>;
+  const record = (outcome: string) =>
+    s.activations.push({
+      email,
+      keys: Object.keys(raw),
+      consentAccepted: raw.consentAccepted,
+      privacyPolicyVersion: raw.privacyPolicyVersion,
+      termsVersion: raw.termsVersion,
+      outcome,
+    });
+  const refuse = async (status: number, code: string, message: string): Promise<never> => {
+    record(code);
+    return fail(status, code, message);
+  };
+
+  // Bean validation runs before the use case: `@NotBlank` on both passwords and
+  // `@Size(min = 8, max = 128)` on the new one (b-fit-api `ActivateAccountRequest`,
+  // `5f368d7`). The api answers the first field error as `field + " " + defaultMessage`.
+  // "Blank" is the API's blank (Java `trim()`, chars <= U+0020): `isApiBlank` (BUG-381).
+  if (typeof raw.temporaryPassword !== "string" || isApiBlank(raw.temporaryPassword)) {
+    return refuse(400, "VALIDATION_ERROR", "temporaryPassword must not be blank");
+  }
+  if (typeof raw.newPassword !== "string" || isApiBlank(raw.newPassword)) {
+    return refuse(400, "VALIDATION_ERROR", "newPassword must not be blank");
+  }
+  if (raw.newPassword.length < 8 || raw.newPassword.length > 128) {
+    return refuse(400, "VALIDATION_ERROR", "newPassword must be between 8 and 128 characters");
+  }
+  const account = s.pendingAccounts.get(email);
+  if (account?.behaviour === "THROTTLED") {
+    record("RATE_LIMITED");
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(429, "Too many attempts", "RATE_LIMITED", null, 599);
+  }
+  if (!account || account.activated) {
+    return refuse(409, "ACCOUNT_ALREADY_ACTIVE", "this account is already active");
+  }
+  if (!account.initialised) {
+    return refuse(409, "ACCOUNT_NOT_INITIALISED", "this account has no initialisation record");
+  }
+  if (account.behaviour === "EXPIRES_MIDWAY" || Date.parse(account.expiresAt) <= Date.now()) {
+    return refuse(410, "ACTIVATION_EXPIRED", "this account had to be activated by " + account.expiresAt);
+  }
+  if (raw.temporaryPassword !== account.temporaryPassword) {
+    return refuse(400, "TEMPORARY_PASSWORD_INVALID", "temporary password is incorrect");
+  }
+  if (raw.newPassword === account.temporaryPassword) {
+    return refuse(400, "TEMPORARY_PASSWORD_REUSED", "choose a new password, not the temporary one");
+  }
+  if (raw.consentAccepted !== true) {
+    return refuse(400, "CONSENT_REQUIRED", "consent is required");
+  }
+  if (account.behaviour === "REVISES_POLICY" && s.legalVersions.privacyPolicyVersion === "v1.0") {
+    // A privacy revision is published while this person had the form open.
+    s.legalVersions = { ...s.legalVersions, privacyPolicyVersion: "v1.1" };
+  }
+  if (
+    raw.privacyPolicyVersion !== s.legalVersions.privacyPolicyVersion ||
+    raw.termsVersion !== s.legalVersions.termsVersion
+  ) {
+    record("CONSENT_VERSION_STALE");
+    return failWithDetails(409, "CONSENT_VERSION_STALE", "a displayed version is not current", {
+      privacyPolicyVersion: s.legalVersions.privacyPolicyVersion,
+      termsVersion: s.legalVersions.termsVersion,
+    });
+  }
+
+  account.activated = true;
+  record("ACTIVATED");
+  return {
+    accessToken: mintFixtureToken(email, [account.grantedRole], account.sub),
+    refreshToken: `fixture-refresh-${account.sub}`,
+    expiresIn: 60 * 60 * 8,
+  };
+}
+
 export const fixtureCoachApi: CoachApi = {
+  // ── EV-278c activation ────────────────────────────────────────────────────
+  getActivation: fixtureGetActivation,
+  activate: fixtureActivate,
+  async getLegalVersions(): Promise<LegalVersions> {
+    return { ...state().legalVersions };
+  },
+
   async getMe(): Promise<CoachMe> {
     return {
       coachId: COACH_ID,
@@ -3398,6 +4671,10 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async listClients(sort = "needs_attention" as RosterSort, page = 0, size = 100): Promise<RosterPage> {
+    // EV-321b — the roster read fails (this browser context only).
+    if ((await fixtureSwitch("evoli_fixture_roster")) === "fail") {
+      await fail(500, "INTERNAL_ERROR", "Internal error");
+    }
     /**
      * Six ACTIVE links — AC2's seeded roster, and every rendering of the flag column
      * on one screen: two flags (Tobias), one flag (Lina, Sara), a real zero and no
@@ -3412,7 +4689,7 @@ export const fixtureCoachApi: CoachApi = {
     const items =
       SCENARIO === "empty" || state().revoked
         ? []
-        : sortRoster([lina(), petra(), yusuf(), sara(), tobias(), mara()], sort);
+        : sortRoster([lina(), petra(), yusuf(), sara(), tobias(), mara()].map(withPlanFlag), sort);
     return {
       items: page === 0 ? items : [],
       page,
@@ -3541,14 +4818,19 @@ export const fixtureCoachApi: CoachApi = {
     state().lastRoutineClient = id;
     const plan = state().plans.get(id) ?? null;
     const draft = state().drafts.get(id) ?? null;
+    // No plan, nothing recorded: the api's null/null/false for "no plan at all".
+    const author = plan ? state().planAuthors.get(id) : undefined;
     return {
       clientId: id,
       planId: plan?.planId ?? null,
-      planName: plan?.name ?? null,
-      routine: plan ? toRoutineDocument(id, plan) : null,
+      planName: plan?.planName ?? null,
+      routine: plan?.document ?? null,
       guardrails: guardrailsFor(id),
       hasDraft: draft !== null,
       draftUpdatedAt: draft?.updatedAt ?? null,
+      lastChangedBy: author?.lastChangedBy ?? null,
+      lastChangedAt: author?.lastChangedAt ?? null,
+      changedSinceYourPublish: author?.changedSinceYourPublish ?? false,
     };
   },
 
@@ -3568,38 +4850,52 @@ export const fixtureCoachApi: CoachApi = {
         catalogChecked: false,
       };
     }
-    /**
-     * AC5 — re-derived on EVERY read and never stored, which is what makes the marks
-     * survive a reload and then disappear after a catalogue re-sync with no edit
-     * having been made. The catalog outage is the "not checked" case, and it answers
-     * an empty list with `catalogChecked: false` rather than marking everything.
-     */
-    const down = catalogIsDown();
-    return {
-      document: toRoutineDocument(id, draft),
-      schemaVersion: 1,
-      updatedAt: draft.updatedAt,
-      sourceTemplateId: state().draftTemplate.get(id) ?? null,
-      unbindableExercises: down ? [] : unbindableNames(draft.trainingDays),
-      catalogChecked: !down,
-    };
+    // AC5 — re-derived on EVERY read and never stored (`draftResponse`).
+    return draftResponse(id, draft);
   },
 
-  async saveRoutineDraft(
-    id: string,
-    draft: CoachRoutineDraftRequest
-  ): Promise<CoachRoutineDraft> {
+  /**
+   * BUG-195b's contract, reproduced (ADR-0018 D1/D3/D6/D9): the WHOLE document in
+   * `document`, the staleness token in `replacesDraftUpdatedAt`, the four subject fields
+   * resolved or refused, and the STORED draft in the response.
+   *
+   * Every PUT this fixture answers is journalled (`fixtureDraftPuts`) with the token it
+   * carried and the two subject lists it sent — the browser sees a server action, never
+   * this body, so the journal is the only witness in fixture mode that the portal sent
+   * `[]` for a trainee whose published plan carries their equipment and injuries
+   * (AC3.10(i)).
+   */
+  async saveRoutineDraft(id: string, body: CoachRoutineDraftRequest): Promise<CoachRoutineDraftResponse> {
     await assertScope(id, "WORKOUTS");
-    const saved: CoachRoutineDraft = {
-      planId: state().plans.get(id)?.planId ?? null,
-      name: draft.name,
-      trainingDays: draft.trainingDays,
-      updatedAt: new Date().toISOString(),
+    const sent = body as Partial<CoachRoutineDraftRequest> & Record<string, unknown>;
+    const entry: FixtureDraftPut = {
+      clientId: id,
+      bodyKeys: Object.keys(sent).sort(),
+      replacesDraftUpdatedAt: sent.replacesDraftUpdatedAt ?? null,
+      equipment: sent.document?.constraints?.equipment ?? null,
+      injuries: sent.document?.constraints?.injuries ?? null,
+      outcome: "pending",
     };
-    state().drafts.set(id, saved);
-    // Any edit invalidates an acknowledgement taken against the previous draft.
-    state().pendingDigest.delete(id);
-    return saved;
+    recordDraftPut(entry);
+    try {
+      const document = await resolveDraftDocument(sent.document);
+      const existing = state().drafts.get(id) ?? null;
+      if (existing && existing.updatedAt !== (sent.replacesDraftUpdatedAt ?? null)) {
+        await failWithDetails(409, "COACH_DRAFT_EXISTS", "This trainee already has a draft.", {
+          existingUpdatedAt: existing.updatedAt,
+        });
+      }
+      const saved: StoredDraft = { document, updatedAt: nextDraftUpdatedAt(existing?.updatedAt) };
+      state().drafts.set(id, saved);
+      // Any edit invalidates an acknowledgement taken against the previous draft.
+      state().pendingDigest.delete(id);
+      entry.outcome = "200";
+      return draftResponse(id, saved);
+    } catch (err) {
+      const code = (err as { code?: unknown }).code;
+      entry.outcome = typeof code === "string" ? code : "ERROR";
+      throw err;
+    }
   },
 
   async discardRoutineDraft(id: string): Promise<void> {
@@ -3620,11 +4916,11 @@ export const fixtureCoachApi: CoachApi = {
       await fail(400, "COACH_PLAN_EMPTY", "Plan empty");
     }
     const draft = state().drafts.get(id);
-    if (!draft || draft.trainingDays.length === 0) {
+    if (!draft || draft.document.trainingDays.length === 0) {
       // AC4: a draft with zero training days is refused, and nothing is written.
       await fail(400, "COACH_PLAN_EMPTY", "Plan empty");
     }
-    const plan = draft as CoachRoutineDraft;
+    const plan = (draft as StoredDraft).document;
     const repairs = repairsFor(id, plan);
     const digest = digestOf(JSON.stringify({ plan, repairs }));
     state().pendingDigest.set(id, digest);
@@ -3649,7 +4945,7 @@ export const fixtureCoachApi: CoachApi = {
       await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
     }
     const draft = state().drafts.get(id);
-    if (!draft || draft.trainingDays.length === 0) {
+    if (!draft || draft.document.trainingDays.length === 0) {
       await fail(400, "COACH_PLAN_EMPTY", "Plan empty");
     }
     if (state().pendingDigest.get(id) !== digest) {
@@ -3660,14 +4956,34 @@ export const fixtureCoachApi: CoachApi = {
         "Repairs not acknowledged"
       );
     }
-    const plan = draft as CoachRoutineDraft;
+    const plan = (draft as StoredDraft).document;
     const repairs = repairsFor(id, plan);
     const repaired = applyRepairs(id, plan);
     const planId = `plan-${id.slice(-4)}-${Date.now().toString(36)}`;
-    // AC3: the trainee receives the REPAIRED plan, not the submitted one.
-    state().plans.set(id, { planId, name: repaired.name, trainingDays: repaired.trainingDays });
+    /**
+     * AC3: the trainee receives the REPAIRED plan, not the submitted one. And since
+     * BUG-194 the published document's `constraints` carry the trainee's OWN equipment
+     * and injuries, read from their profile at publish time — which is exactly why the
+     * portal must send `[]` when it next saves a draft seeded from it (AC3.10).
+     */
+    const rails = guardrailsFor(id);
+    state().plans.set(id, {
+      planId,
+      planName: repaired.name,
+      document: {
+        ...repaired,
+        constraints: { ...repaired.constraints, equipment: rails.equipment, injuries: rails.injuries },
+      },
+    });
+    // EV-283 AC2: a publish makes the coach the author and clears both flags.
+    state().planAuthors.set(id, {
+      lastChangedBy: "COACH",
+      lastChangedAt: new Date().toISOString(),
+      changedSinceYourPublish: false,
+    });
     state().drafts.delete(id);
     state().pendingDigest.delete(id);
+    state().draftTemplate.delete(id);
     // The applied repairs are identical to the acknowledged preview's — the digest
     // check above is what guarantees it, and the fixture computes both from one call.
     return {
@@ -3741,10 +5057,10 @@ export const fixtureCoachApi: CoachApi = {
       // The api strips the two trainee-answer lists at the write boundary whatever the
       // body carries. The fixture does the same, so a portal bug that started sending
       // them could never look like it worked here.
-      document: {
+      document: clearRepsOnDuration({
         ...body.document,
         constraints: { ...body.document.constraints, equipment: [], injuries: [] },
-      },
+      }),
       createdAt: now,
       updatedAt: now,
     };
@@ -3759,10 +5075,10 @@ export const fixtureCoachApi: CoachApi = {
     const saved: CoachTemplate = {
       ...existing,
       name: body.name.trim(),
-      document: {
+      document: clearRepsOnDuration({
         ...body.document,
         constraints: { ...body.document.constraints, equipment: [], injuries: [] },
-      },
+      }),
       updatedAt: new Date().toISOString(),
     };
     state().templates.set(id, saved);
@@ -3798,7 +5114,7 @@ export const fixtureCoachApi: CoachApi = {
       id: crypto.randomUUID(),
       name: copyName(original.name),
       schemaVersion: original.schemaVersion,
-      document: JSON.parse(JSON.stringify(original.document)) as Routine,
+      document: clearRepsOnDuration(JSON.parse(JSON.stringify(original.document)) as Routine),
       createdAt: now,
       updatedAt: now,
     };
@@ -3843,6 +5159,15 @@ export const fixtureCoachApi: CoachApi = {
      * — a second tab saved in between — it is refused AGAIN. That is the only thing
      * that makes the portal's "this replaces your unpublished draft" sentence true.
      */
+    /**
+     * BUG-195b round 3 (api `fcc1ccd`, on api main at 741ed39) — apply CLEARS reps on a
+     * timed exercise before the resolution, so a template the pre-BUG-195c editor stored
+     * with "8-12" on a Plank still applies. Round 2 refused it with 400
+     * COACH_DRAFT_REPS_ON_DURATION; that refusal no longer exists on the api this portal
+     * ships against, so reproducing it here would test a path no coach can reach.
+     */
+    const source = clearRepsOnDuration(template.document);
+
     const existing = state().drafts.get(clientId) ?? null;
     if (existing && existing.updatedAt !== replacesDraftUpdatedAt) {
       await failWithDetails(409, "COACH_DRAFT_EXISTS", "This trainee already has a draft.", {
@@ -3850,15 +5175,24 @@ export const fixtureCoachApi: CoachApi = {
       });
     }
 
-    const updatedAt = new Date().toISOString();
-    const days = toDayEntries(template.document);
-    state().drafts.set(clientId, {
-      // A draft has never been published, so it carries no plan id.
-      planId: null,
-      name: template.document.name,
-      trainingDays: days,
-      updatedAt,
-    });
+    const updatedAt = nextDraftUpdatedAt(existing?.updatedAt);
+    /**
+     * BUG-195b (ADR-0018 D8): apply runs the SAME resolution as `PUT …/routine/draft` —
+     * the stored draft's goal and level are the TRAINEE's, not the template's, and its
+     * day counts are derived. The template row itself is never changed.
+     */
+    const n = source.trainingDays.length;
+    const resolved: Routine = {
+      ...source,
+      goal: FIXTURE_SUBJECT.goal,
+      level: FIXTURE_SUBJECT.level,
+      daysPerWeek: n,
+      // BUG-195b round 2: apply clears the progression too — a template's is never the
+      // trainee's own, so it must not ride into their draft (W-2's rule on this path).
+      weeklyProgression: [],
+      constraints: { ...source.constraints, equipment: [], injuries: [], daysPerWeek: n },
+    };
+    state().drafts.set(clientId, { document: resolved, updatedAt });
     state().draftTemplate.set(clientId, template.id);
     // Any new draft invalidates a publish acknowledgement taken against the old one.
     state().pendingDigest.delete(clientId);
@@ -3867,11 +5201,11 @@ export const fixtureCoachApi: CoachApi = {
       clientId,
       sourceTemplateId: template.id,
       sourceTemplateName: template.name,
-      document: template.document,
+      document: resolved,
       updatedAt,
       replacedExistingDraft: existing !== null,
       // Advisory and never persisted. Nothing is removed on it.
-      unbindableExercises: unbindableNames(days),
+      unbindableExercises: unbindableNames(resolved),
       catalogChecked: true,
     };
   },
@@ -3883,8 +5217,8 @@ export const fixtureCoachApi: CoachApi = {
     await assertScope(id, "WORKOUTS");
     const source =
       body.source === "DRAFT"
-        ? (state().drafts.get(id) ?? null)
-        : (state().plans.get(id) ?? null);
+        ? (state().drafts.get(id)?.document ?? null)
+        : (state().plans.get(id)?.document ?? null);
     /**
      * Edge case 12 — an active plan with no routine document (the legacy population).
      * Refused with a code and a sentence naming the reason; never an empty template
@@ -3894,19 +5228,17 @@ export const fixtureCoachApi: CoachApi = {
     if (!source) {
       await fail(400, "COACH_TEMPLATE_SOURCE_EMPTY", "This trainee has no routine to copy.");
     }
-    const plan = source as RoutinePlanView;
     await assertRoom();
     await assertNameFree(body.name, null);
-    const document = templateDocument(plan.name, plan.trainingDays);
+    const document = clearRepsOnDuration(templateFromDocument(source as Routine));
     await assertDaySizes(document);
     const now = new Date().toISOString();
     const created: CoachTemplate = {
       id: crypto.randomUUID(),
       name: body.name.trim(),
       schemaVersion: 1,
-      // AC4 — the prescription, and nothing the trainee told us about themselves.
-      // `templateDocument` writes both lists empty; the trainee's guardrails are never
-      // read on this path at all.
+      // AC4 — the prescription, and nothing the trainee told us about themselves:
+      // `templateFromDocument` clears both lists and the trainee's progression (W-2).
       document,
       createdAt: now,
       updatedAt: now,
@@ -4083,6 +5415,36 @@ export const fixtureCoachApi: CoachApi = {
     };
   },
 
+  /**
+   * EV-284a. The guard runs FIRST, as on the api, so a refused link never learns anything
+   * from a 400. Two cookie switches (one browser context only, like `evoli_fixture_link`)
+   * reach the page's two failure branches: `evoli_fixture_food_log=down` → a 500 (the
+   * section's load error) and `=forbidden` → the guard's 403 on THIS read alone (access
+   * ended between the page's reads → /clients/denied).
+   */
+  async getFoodLog(id: string): Promise<CoachFoodLogResponse> {
+    recordRead(`GET /coach-portal/clients/${id}/nutrition/log`);
+    await assertScope(id, "NUTRITION");
+    const failure = await fixtureSwitch("evoli_fixture_food_log");
+    if (failure === "forbidden") await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+    if (failure === "down") await fail(500, "INTERNAL_ERROR", "Food log unavailable");
+    const now = new Date();
+    const stored = nutritionState(id).targets;
+    const targets: CoachFoodLogMacros | null = stored
+      ? {
+          calories: stored.calories,
+          proteinG: stored.proteinG,
+          carbsG: stored.carbsG,
+          fatG: stored.fatG,
+        }
+      : null;
+    // The api's default window: `to` = today (UTC), `from` = six days before, ascending.
+    const days = [6, 5, 4, 3, 2, 1, 0].map((ago) =>
+      foodLogDay(id, utcDayBefore(now, ago), ago, targets)
+    );
+    return { clientId: id, from: days[0].date, to: days[6].date, days };
+  },
+
   async saveNutritionTargets(
     id: string,
     body: CoachTargetsRequest
@@ -4134,6 +5496,7 @@ export const fixtureCoachApi: CoachApi = {
       await fail(429, "COACH_WEEK_APPLY_RATE_LIMIT", "Rate limited");
     }
     // AC3: applying twice REPLACES the week; it never accumulates.
+    clearAllSwapCandidates(id);
     const previous = state.week;
     state.seeds = state.seeds.map(() => state.seeds[0] + 1);
     const fresh = buildWeek(weekStart, state.seeds, state.pool);
@@ -4147,6 +5510,7 @@ export const fixtureCoachApi: CoachApi = {
     const state = nutritionState(id);
     if (!state.week) await fail(400, "COACH_WEEK_OUT_OF_RANGE", "No week");
     const week = state.week as MealWeekView;
+    clearAllSwapCandidates(id);
     state.seeds = state.seeds.map((s, i) => (i === index ? s + 1 : s));
     const regenerated = buildWeek(week.weekStart, state.seeds, state.pool);
     // Only the regenerated day changes: every other day keeps its meals — ids, recipe
@@ -4169,7 +5533,13 @@ export const fixtureCoachApi: CoachApi = {
     const state = nutritionState(id);
     const meal = state.week?.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
     if (!meal) return { mealId, candidates: [] };
-    const candidates = state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name).map(
+    // EV-288: the cached list if there is one, else a fresh one, cached.
+    const key = swapCacheKey(id, mealId);
+    const list =
+      swapCache().get(key) ??
+      state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name);
+    swapCache().set(key, list);
+    const candidates = list.map(
       (m, index) => ({
         index,
         name: m.name,
@@ -4192,6 +5562,17 @@ export const fixtureCoachApi: CoachApi = {
     const meal = current.days.flatMap((d) => d.meals).find((m) => m.mealId === mealId);
     if (!meal) return current;
     /**
+     * EV-288 (BUG-271, ADR-0028 §4.3b): the index is into the list the caller was SHOWN,
+     * i.e. the cache. Nothing cached → 409 `SWAP_OPTIONS_STALE` and no list is built.
+     * The api's order: this is read right after ownership, BEFORE the eaten/locked
+     * refusals that `replaceMealChecked` takes under the plan lock.
+     */
+    const options = swapCache().get(swapCacheKey(id, mealId));
+    if (!options) {
+      await fail(409, "SWAP_OPTIONS_STALE", "These swap options are out of date. Load them again and pick one.");
+      throw new Error("unreachable");
+    }
+    /**
      * BUG-245 (EV-256e AC7): what the trainee owns is refused and nothing is written —
      * eaten first, then locked. ⚠ This is the api AFTER BUG-245, which is NOT merged
      * (b-fit-api `fix/bug245-coach-swap-keeps-eaten` at `105c25b`); `6a76d92`'s coach
@@ -4202,9 +5583,9 @@ export const fixtureCoachApi: CoachApi = {
     if (meal.locked || (await lockedSince(mealId))) {
       await fail(409, "COACH_MEAL_LOCKED", "Meal locked by the trainee");
     }
-    const options = state.pool.filter((m) => m.slot === meal.slot && m.name !== meal.name);
     const chosen = options[candidateIndex];
     if (!chosen) return current;
+    clearSwapCandidates(id, mealId);
     state.week = {
       ...current,
       days: current.days.map((day) => ({
@@ -4326,6 +5707,71 @@ export const fixtureCoachApi: CoachApi = {
         ),
       })),
     };
+    clearSwapCandidates(id, mealId);
     return state.week;
+  },
+
+  // ── EV-321b step challenges ─────────────────────────────────────────────────
+  async listChallenges(page = 0, size = 50): Promise<CoachChallengePage> {
+    if (page < 0 || size < 1 || size > 50) await fail(400, "VALIDATION_ERROR", "size must be between 1 and 50");
+    const links = await visibleLinks();
+    // `endsOn` desc, then `createdAt` desc, then id — the api's order.
+    const all = [...state().challenges.values()].sort(
+      (a, b) =>
+        (a.endsOn < b.endsOn ? 1 : a.endsOn > b.endsOn ? -1 : 0) ||
+        (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0) ||
+        (a.id < b.id ? -1 : 1)
+    );
+    const items = all.slice(page * size, page * size + size).map((c) => {
+      const visible = c.participants.filter((p) => links.has(p.clientId));
+      return toChallengeSummary(c, visible.length, visible.filter((p) => p.acceptedAt !== null).length);
+    });
+    return {
+      items,
+      page,
+      size,
+      totalElements: all.length,
+      totalPages: Math.ceil(all.length / size),
+    };
+  },
+
+  async getChallenge(id: string): Promise<CoachChallengeDetail> {
+    return challengeDetail(await ownedChallenge(id));
+  },
+
+  async createChallenge(body: CoachChallengeCreateRequest): Promise<CoachChallengeDetail> {
+    await assertChallengeRequest(body);
+    // Every client id through the guard BEFORE anything is written: one foreign, revoked
+    // or unknown id refuses the whole request with the guard's single 403 (AC2).
+    const links = await visibleLinks();
+    const ids = [...new Set(body.clientIds)];
+    if (ids.some((id) => !links.has(id))) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+    if (body.metric === "WORKOUTS" && ids.some((id) => !links.get(id)!.scopes.includes("WORKOUTS"))) {
+      await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+    }
+    const today = utcDay(0);
+    const unended = [...state().challenges.values()].filter((c) => c.endsOn >= today).length;
+    if (unended >= CHALLENGE_UNENDED_MAX || (await fixtureSwitch("evoli_fixture_challenge_cap")) === "reached") {
+      await fail(409, "COACH_CHALLENGE_LIMIT_REACHED", `At most ${CHALLENGE_UNENDED_MAX} challenges may be unended`);
+    }
+    const now = new Date().toISOString();
+    const created: StoredChallenge = {
+      id: crypto.randomUUID(),
+      title: javaNormalise(body.title) as string,
+      metric: body.metric,
+      dailyTarget: body.metric === "STEPS" ? (body.dailyTarget ?? null) : null,
+      totalTarget: body.metric === "WORKOUTS" ? (body.totalTarget ?? null) : null,
+      startsOn: body.startsOn,
+      endsOn: body.endsOn,
+      createdAt: now,
+      participants: ids.map((clientId) => ({ clientId, invitedAt: now, acceptedAt: null, steps: {} })),
+    };
+    state().challenges.set(created.id, created);
+    return challengeDetail(created);
+  },
+
+  async deleteChallenge(id: string): Promise<void> {
+    await ownedChallenge(id);
+    state().challenges.delete(id);
   },
 };

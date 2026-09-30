@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Logo } from "@/components/ui/icons";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { sanitiseCoachName } from "@/lib/inviteName";
+import { INVITE_APPS, inviteDeepLink } from "@/lib/traineeApps";
 
 /**
  * /i/<token> — the invite landing page (ADR-0012 D5, EV-183 edge case 3).
@@ -28,6 +29,7 @@ import { sanitiseCoachName } from "@/lib/inviteName";
 type SearchParams = { [key: string]: string | string[] | undefined };
 
 export function generateMetadata({ searchParams }: { searchParams: SearchParams }): Metadata {
+  const copy = getCopy();
   const coachName = sanitiseCoachName(searchParams.coach);
   return {
     // Still no token anywhere near the title — only the coach's name, which is public
@@ -49,15 +51,21 @@ export default function InvitePage({
   params: { token: string };
   searchParams: SearchParams;
 }) {
+  const copy = getCopy();
   // AC3: the coach's name is forwarded to the app on the deep link exactly as it was
   // received. The app needs it because b-fit-api cannot resolve an invite token before
   // the trainee accepts, so without this query the consent screen can only say
-  // "Your coach". It is re-encoded rather than concatenated raw so a name containing
-  // `&`, `#` or a space cannot split the deep link into extra parameters.
+  // "Your coach". Encoding is `inviteDeepLink`'s.
   const coachName = sanitiseCoachName(searchParams.coach);
-  const deepLink =
-    `evolifit://my-coach/invite/${encodeURIComponent(params.token)}` +
-    (coachName ? `?coach=${encodeURIComponent(coachName)}` : "");
+  // EV-289 (ADR-0027 D27.5d): one button per app, same token and `coach` query. The page
+  // cannot pick one — an invite is a bearer token and does not know whose account will
+  // accept it — and a web page cannot reliably detect which app is installed.
+  const links = INVITE_APPS.map((app, i) => ({
+    key: app.scheme,
+    primary: i === 0,
+    label: copy.invitePage.openIn(app.name),
+    href: inviteDeepLink(app, params.token, coachName),
+  }));
 
   return (
     <main
@@ -107,28 +115,41 @@ export default function InvitePage({
           {copy.invitePage.body}
         </p>
 
-        {/* A real link, not a button with an onClick: the custom scheme needs the
+        {/* Real links, not buttons with an onClick: the custom scheme needs the
             browser's own navigation from a tap, and this page ships no JavaScript. */}
-        <a
-          href={deepLink}
-          style={{
-            width: "100%",
-            minHeight: 48,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "0 18px",
-            borderRadius: "var(--r-pill)",
-            background: "var(--grad-energy)",
-            color: "var(--ink-on)",
-            fontFamily: "var(--font-body)",
-            fontSize: 15.5,
-            fontWeight: 700,
-            boxShadow: "var(--e-2)",
-          }}
-        >
-          {copy.invitePage.open}
-        </a>
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
+          {links.map((link) => (
+            <a
+              key={link.key}
+              href={link.href}
+              style={{
+                width: "100%",
+                minHeight: 48,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 18px",
+                borderRadius: "var(--r-pill)",
+                fontFamily: "var(--font-body)",
+                fontSize: 15.5,
+                fontWeight: 700,
+                ...(link.primary
+                  ? {
+                      background: "var(--grad-energy)",
+                      color: "var(--ink-on)",
+                      boxShadow: "var(--e-2)",
+                    }
+                  : {
+                      background: "var(--surface)",
+                      color: "var(--ink)",
+                      border: "1px solid var(--border)",
+                    }),
+              }}
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
 
         <div
           style={{

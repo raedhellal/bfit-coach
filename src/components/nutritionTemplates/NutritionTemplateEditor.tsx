@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, CardHead, MIN_TOUCH_TARGET } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import {
   createNutritionTemplateAction,
   updateNutritionTemplateAction,
@@ -38,6 +38,7 @@ export function NutritionTemplateEditor({
   limit: number | null;
 }) {
   const router = useRouter();
+  const copy = useCopy();
   const t = copy.nutritionTemplates;
   const [name, setName] = useState(initial?.name ?? "");
   const [calories, setCalories] = useState(initial ? String(initial.targets.calories) : "");

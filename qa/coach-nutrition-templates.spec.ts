@@ -75,7 +75,7 @@ test.describe("AC1 — the nav and the empty library", () => {
   test("Nutrition templates sits next to Templates and Recipes, and opens the library", async ({ page }) => {
     await signIn(page);
     const nav = page.getByRole("navigation", { name: "Portal" });
-    await expect(nav.getByRole("link")).toHaveText(["Roster", "Templates", "Recipes", "Nutrition templates"]);
+    await expect(nav.getByRole("link")).toHaveText(["Roster", "Templates", "Recipes", "Nutrition templates", "Challenges"]);
     await nav.getByRole("link", { name: "Nutrition templates", exact: true }).click();
     await page.waitForURL("/nutrition-templates");
     await expect(page.getByRole("heading", { name: "Nutrition templates", level: 1 })).toBeVisible();

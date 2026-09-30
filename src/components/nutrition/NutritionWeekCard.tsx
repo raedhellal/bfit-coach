@@ -9,7 +9,7 @@ import {
   SwapSheet,
   type SwapSheetTarget,
 } from "@/components/nutrition/SwapSheet";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { firstName, formatDate, formatWeekday, truncateName } from "@/lib/format";
 import {
   applySwapAction,
@@ -34,6 +34,7 @@ export function replaceableRecipeMeals(week: MealWeekView | null): number {
 
 /** EV-256e AC4 — the marker, from the two served fields and nothing else. */
 function RecipeMarker({ meal }: { meal: PlannedMealView }) {
+  const copy = useCopy();
   if (meal.provenance !== "COACH_RECIPE") return null;
   return meal.placedByYou === true ? (
     <Badge tone="blue" title={copy.placement.yourRecipeTitle}>
@@ -89,6 +90,7 @@ export function NutritionWeekCard({
    */
   recipePlacementEnabled: boolean;
 }) {
+  const copy = useCopy();
   const router = useRouter();
   const [week, setWeek] = useState<MealWeekView | null>(initialWeek);
   /**
@@ -113,11 +115,16 @@ export function NutritionWeekCard({
   const [candidates, setCandidates] = useState<SwapCandidate[] | null>(null);
   /** AC7 — a Swap refusal is shown IN the swap dialog, which stays open. */
   const [swapError, setSwapError] = useState<string | null>(null);
+  /**
+   * EV-288 — the list on screen was replaced after a 409 `SWAP_OPTIONS_STALE`. A notice,
+   * not a refusal: nothing is wrong, the coach just picks again from the current list.
+   */
+  const [swapNotice, setSwapNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const trainee = truncateName(traineeDisplayName);
-  const first = firstName(traineeDisplayName);
+  const first = firstName(traineeDisplayName, copy.locale);
   const recipeMeals = replaceableRecipeMeals(week);
 
   /**
@@ -184,6 +191,7 @@ export function NutritionWeekCard({
     setSwapping({ mealId, mealName });
     setCandidates(null);
     setSwapError(null);
+    setSwapNotice(null);
     startTransition(async () => {
       const result = await settled(swapOptionsAction(clientId, mealId), {
         ok: false,
@@ -219,6 +227,32 @@ export function NutritionWeekCard({
         applySwapAction(clientId, target.mealId, candidateIndex),
         { ok: false, code: "FAILED" } as const
       );
+      if (!result.ok && result.code === "SWAP_OPTIONS_STALE") {
+        /**
+         * EV-288 (BUG-271, ADR-0028 §4.3b): the list this coach chose from is not the
+         * server's any more (the trainee, or another tab, swapped this meal meanwhile).
+         * Nothing was written. The dialog stays open, the options are read ONCE more
+         * and shown with the line. The apply is NOT retried: the coach picks again from
+         * what they can see, which is the whole point of the api refusing.
+         */
+        setSwapError(null);
+        setSwapNotice(null);
+        setCandidates(null);
+        const fresh = await settled(swapOptionsAction(clientId, target.mealId), {
+          ok: false,
+          code: "FAILED",
+        } as const);
+        if (!fresh.ok && fresh.code === "ACCESS_DENIED") {
+          setSwapping(null);
+          return void handleAccessEnded();
+        }
+        // Edge case 1: the re-read failed → today's options-error state, and no line
+        // pointing at "current ones" that are not there.
+        setCandidates(fresh.ok ? fresh.options.candidates : []);
+        if (fresh.ok) setSwapNotice(copy.nutrition.swapOptionsChanged);
+        return;
+      }
+      setSwapNotice(null);
       if (!result.ok && (result.code === "MEAL_EATEN" || result.code === "MEAL_LOCKED")) {
         // EV-256e AC7 (BUG-245): the trainee owns this meal. Nothing was written, so
         // the week on screen is left exactly as it is, and the sentence goes in the
@@ -248,7 +282,7 @@ export function NutritionWeekCard({
       <CardHead
         title={copy.nutrition.weekTitle}
         icon="calendar"
-        sub={copy.nutrition.weekOf(formatDate(week?.weekStart ?? currentWeekStart))}
+        sub={copy.nutrition.weekOf(formatDate(week?.weekStart ?? currentWeekStart, copy.locale))}
         action={
           <Button icon="refresh" onClick={() => setConfirming(true)} disabled={pending}>
             {pending ? copy.nutrition.applying : copy.nutrition.apply(trainee)}
@@ -292,17 +326,17 @@ export function NutritionWeekCard({
                     className="dt"
                     style={{ fontWeight: 700, fontSize: 14.5, color: "var(--ink)" }}
                   >
-                    {formatWeekday(day.date)}
+                    {formatWeekday(day.date, copy.locale)}
                   </span>
                   <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-                    {formatDate(day.date)}
+                    {formatDate(day.date, copy.locale)}
                   </span>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   icon="refresh"
-                  ariaLabel={`${copy.nutrition.regenerate}: ${formatWeekday(day.date)}`}
+                  ariaLabel={`${copy.nutrition.regenerate}: ${formatWeekday(day.date, copy.locale)}`}
                   onClick={() => regenerate(day.index)}
                   disabled={pending}
                 >
@@ -321,7 +355,7 @@ export function NutritionWeekCard({
                       key={meal.mealId}
                       data-meal-id={meal.mealId}
                       role="group"
-                      aria-label={`${formatWeekday(day.date)} ${
+                      aria-label={`${formatWeekday(day.date, copy.locale)} ${
                         copy.nutrition.mealSlots[meal.slot] ?? meal.slot
                       }`}
                       style={{
@@ -389,7 +423,7 @@ export function NutritionWeekCard({
                           ariaLabel={`${copy.nutrition.swap}: ${meal.name}`}
                           onClick={() =>
                             recipePlacementEnabled
-                              ? openRecipeSwap(meal, formatWeekday(day.date))
+                              ? openRecipeSwap(meal, formatWeekday(day.date, copy.locale))
                               : openSwap(meal.mealId, meal.name)
                           }
                           disabled={pending}
@@ -452,7 +486,7 @@ export function NutritionWeekCard({
         {/* AC3: the dialog names the trainee AND the week start, and states that the
             trainee sees it immediately. */}
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-          {copy.nutrition.applyBody(trainee, formatDate(currentWeekStart))}
+          {copy.nutrition.applyBody(trainee, formatDate(currentWeekStart, copy.locale))}
         </p>
         <p style={{ margin: "8px 0 0", fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
           {copy.nutrition.seesStraightAway(trainee)}
@@ -490,6 +524,15 @@ export function NutritionWeekCard({
             style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)", lineHeight: 1.5 }}
           >
             {swapError}
+          </p>
+        )}
+        {swapNotice && (
+          <p
+            role="status"
+            data-testid="swap-options-changed"
+            style={{ margin: "0 0 12px", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}
+          >
+            {swapNotice}
           </p>
         )}
         {candidates === null ? (

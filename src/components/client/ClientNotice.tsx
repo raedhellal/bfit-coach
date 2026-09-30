@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button, Card } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * The overview's "there is nothing to show you here" card: one sentence and the way
@@ -19,6 +19,7 @@ export function ClientNotice({
   /** Where "back" goes. The roster unless the notice is inside another section. */
   back?: { href: string; label: string };
 }) {
+  const copy = getCopy();
   return (
     <Card>
       <div

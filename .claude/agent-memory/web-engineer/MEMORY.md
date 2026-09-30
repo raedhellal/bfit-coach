@@ -37,6 +37,7 @@
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
 - [Recipe placement (EV-256e)](recipe-placement-portal-facts.md) — no `eaten` on the coach wire; flag server-wide, per-trainee in fixture; fail-open read is fixture-blind; button gone since EV-272
+- [Routine changed banner (EV-283b)](routine-changed-banner-facts.md) — keys on lastChangedBy not the flag; one fixture record feeds page + roster; ICU "Sept"
 - [An allowance cannot excuse a required field](an-allowance-cannot-excuse-a-required-field.md) — EV-222: one checkRequired fed the register in both real and synthetic runs; register-side rule; untagged-root coverage
 - [Every fixture test starts from the seed](every-fixture-test-starts-from-the-seed.md) — EV-223: import test from qa/fixture-test.ts; seed cloned once per process; file-alone loop was green on main
 - [One worker per fixture server](one-worker-per-fixture-server.md) — BUG-249: >1 worker is refused; CI parallelises by --shard; proven via child runs, never a 2nd next dev
@@ -44,3 +45,10 @@
 - [Swap sheet, recipes first (EV-272)](swap-sheet-portal-facts.md) — StrictMode doubles mount-effect reads in next dev; /api/fixture/calls is the no-request witness; C1/C0/c100 by email
 - [Nutrition templates (EV-273b)](nutrition-templates-portal-facts.md) — targets only; two server actions, answered = `response` event; journal logs GET nutrition + key sets; nav label collisions
 - [Progress-goal absent-key semantics](progress-goal-absent-key-semantics.md) — EV-274: body fat absent=unchanged, null=clear; "touched" must outlive a refused save
+- [Fixture swap-candidate cache (EV-288)](fixture-swap-candidate-cache.md) — apply with nothing cached is 409 SWAP_OPTIONS_STALE; read options first; cache outside FixtureState, reset empties it
+- [Trainee app identity constant (EV-289)](trainee-app-identity-constant.md) — src/lib/traineeApps.ts holds both apps; lite = D-LITE-1 default; role names need exact:true
+- [Food log (EV-284b)](food-log-portal-facts.md) — QUICK dashes by source; no range sent; <summary> is phrasing-only; own reads journal; cross-branch drift register
+- [Activation (EV-278c)](activation-portal-facts.md) — PENDING reaches 3 api routes, `GET /me` 403; login checks /me/activation pre-cookie; api "blank" is Java trim (BUG-381); live stub config
+- [French portal, EV-324](coach-portal-i18n-facts.md) — Record maps escape `satisfies Copy`; api text stays English; fixture signs in anyone; AC2 beats AC3 on EN dates
+- [Routine draft write path (BUG-195c)](routine-draft-write-path-facts.md) — one editor, forDraftSave, token echoed as a string, 409 dialog, 4-e partition, live traps
+- [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale

@@ -1,8 +1,9 @@
 import { Card, PageHead, Skeleton } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /** Explicit loading state for the roster's server fetch (route-level Suspense). */
 export default function Loading() {
+  const copy = getCopy();
   return (
     <main className="page">
       <PageHead title={copy.roster.title} sub={copy.roster.subtitle} />

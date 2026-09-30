@@ -4,7 +4,7 @@ import { TemplateEditor } from "@/components/templates/TemplateEditor";
 import { PageHead } from "@/components/ui/kit";
 import { readCoachMe } from "@/lib/clientOverview";
 import { blankTemplate } from "@/lib/templateDocument";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /templates/new — AC1's "New template".
@@ -23,6 +23,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function NewTemplatePage() {
+  const copy = getCopy();
   const me = await readCoachMe();
   return (
     <CoachShell coachName={me?.displayName} section="templates">
@@ -35,7 +36,7 @@ export default async function NewTemplatePage() {
           </Link>
         }
       />
-      <TemplateEditor templateId={null} initial={blankTemplate()} />
+      <TemplateEditor templateId={null} initial={blankTemplate(copy)} />
     </CoachShell>
   );
 }

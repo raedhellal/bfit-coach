@@ -89,6 +89,9 @@ export default async function warmRoutes(config: FullConfig): Promise<void> {
       "/nutrition-templates",
       "/nutrition-templates/new",
       `/nutrition-templates/${NOBODYS_TEMPLATE}`,
+      // EV-321b. A random id renders the "not in your list" notice and compiles the route.
+      "/challenges",
+      `/challenges/${NOBODYS_TEMPLATE}`,
       `/clients/${LINA}`,
       `/clients/${LINA}/routine`,
       `/clients/${LINA}/nutrition`,
@@ -98,6 +101,24 @@ export default async function warmRoutes(config: FullConfig): Promise<void> {
       // `domcontentloaded`, not `networkidle`: the point is to make the server compile
       // the route, not to wait for the page to settle.
       await page.goto(route, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    }
+
+    /**
+     * EV-278c — /activate is off-limits to the coach session above (middleware sends it
+     * to /), so it is compiled from a PENDING session of its own: a fixture account the
+     * login mints `["PENDING"]` for. Signing in writes nothing to the fixture store.
+     */
+    const pending = await browser.newContext({ baseURL });
+    try {
+      const response = await pending.request.post("/api/auth/login", {
+        data: { email: "new.coach@evoli.fit", password: "Temp-pass-2026" },
+      });
+      if (response.ok()) {
+        const activate = await pending.newPage();
+        await activate.goto("/activate", { waitUntil: "domcontentloaded", timeout: 60_000 });
+      }
+    } finally {
+      await pending.close();
     }
   } finally {
     await browser.close();

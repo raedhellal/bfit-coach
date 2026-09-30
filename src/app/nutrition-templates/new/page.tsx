@@ -4,7 +4,7 @@ import { NutritionTemplateEditor } from "@/components/nutritionTemplates/Nutriti
 import { PageHead } from "@/components/ui/kit";
 import { coachApi } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /nutrition-templates/new — AC1's "New template". A route, like `/templates/new`: the
@@ -15,6 +15,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function NewNutritionTemplatePage() {
+  const copy = getCopy();
   // The library is read ONLY for the cap the api serves, so a 409 names the real number
   // (the refusal body carries none). A failed read leaves it unknown, never a guessed 50.
   const [me, limit] = await Promise.all([

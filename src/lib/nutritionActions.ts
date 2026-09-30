@@ -14,6 +14,7 @@ import {
   isRecipeRuleUncheckable,
   isRecipeUnknownIngredient,
   isRouteNotFound,
+  isSwapOptionsStale,
   isWeekApplyRateLimited,
   isWeekOutOfRange,
   type CoachRecipeSummary,
@@ -54,12 +55,18 @@ export type NutritionFailure =
    */
   | "MEAL_EATEN"
   | "MEAL_LOCKED"
+  /**
+   * EV-288 (BUG-271, ADR-0028 §4.3b) — the swap's candidate list is no longer the
+   * server's. Only the apply answers it; the sheet re-reads the options and stays open.
+   */
+  | "SWAP_OPTIONS_STALE"
   | "INVALID"
   | "FAILED";
 
 function classify(err: unknown): NutritionFailure {
   if (isMealEaten(err)) return "MEAL_EATEN";
   if (isMealLocked(err)) return "MEAL_LOCKED";
+  if (isSwapOptionsStale(err)) return "SWAP_OPTIONS_STALE";
   if (isWeekOutOfRange(err)) return "WEEK_OUT_OF_RANGE";
   // ADR-0015 D6.6. Collapsed into FAILED, this read as "try again" — and the retry it
   // invited could not succeed until the next day.

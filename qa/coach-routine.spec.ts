@@ -77,6 +77,17 @@ function exerciseRow(page: Page, name: string) {
   return page.getByRole("group", { name, exact: true });
 }
 
+/** Adds one catalog exercise to the day at `dayIndex` and closes the picker. */
+async function addFromCatalog(page: Page, dayIndex: number, name: string) {
+  await page.getByRole("button", { name: "Add exercise" }).nth(dayIndex).click();
+  const picker = page.getByRole("dialog");
+  await picker.getByLabel("Search the catalog").fill(name);
+  await picker.getByRole("button", { name: new RegExp(`^${name}`) }).click();
+  await expect(picker.getByText(`Added ${name}.`)).toBeVisible();
+  await picker.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
 test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
   test("the plan, its days and every exercise's sets, reps and rest", async ({ page }) => {
     await signIn(page);
@@ -488,6 +499,20 @@ test.describe("AC3 — publish previews the repairs and refuses until they are a
     await page.goto(`/clients/${NILS}/routine`);
     await page.getByRole("button", { name: "Build a plan" }).click();
 
+    /*
+     * BUG-195c — a day with no exercises is a 400 from a real api (`TrainingDay.exercises`
+     * is `@NotEmpty`), so the editor refuses FIRST, with the reasons on screen, rather
+     * than offering a Publish that fails with a sentence the coach cannot act on.
+     */
+    await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Save draft" })).toBeDisabled();
+    await expect(page.getByText("This plan is not ready to save yet:")).toBeVisible();
+    await expect(page.getByText("Day 1 has no exercises.")).toBeVisible();
+    await expect(page.getByText("Day 2 has no exercises.")).toBeVisible();
+    await addFromCatalog(page, 0, "Goblet Squat");
+    await addFromCatalog(page, 1, "Push-Up");
+    await expect(page.getByText("This plan is not ready to save yet:")).toHaveCount(0);
+
     await page.getByRole("button", { name: "Publish", exact: true }).click();
     await expect(page.getByText("A plan needs at least one training day.")).toBeVisible();
     // Refused, not half-written: no modal, nothing acknowledged.
@@ -537,7 +562,7 @@ test.describe("ADR-0015 D4 — a draft that moves between preview and publish", 
    * retry with the stale digest. Before this, the modal closed and the coach read "The
    * plan could not be published." for a plan that was perfectly publishable.
    */
-  test("the 409 re-previews and shows the modal again, and the next publish lands", async ({
+  test("the 409 re-previews — and a draft another tab moved is ASKED about, never overwritten", async ({
     page,
     context,
   }) => {
@@ -559,21 +584,30 @@ test.describe("ADR-0015 D4 — a draft that moves between preview and publish", 
     await expect(other.getByText(/^Draft saved /)).toBeVisible();
     await other.close();
 
-    // Tab A publishes what it was shown. The server refuses.
+    // Tab A publishes what it was shown. The server refuses (the digest moved), and the
+    // portal previews again — which SAVES FIRST, with tab A's token.
     await modal.getByRole("button", { name: "Publish", exact: true }).click();
 
-    // The modal is still there, with a fresh preview behind it. Waiting for the
-    // control to come back out of its pending state is what makes the next two
-    // assertions deterministic: without it they race the re-preview and would pass
-    // against a modal that is on its way out.
-    await expect(modal.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
-    await expect(modal).toHaveAccessibleName("No changes were needed");
-    // …and the coach is NOT told the plan failed, because it did not.
+    /*
+     * BUG-195c / AC3.6 — until the token, that re-preview silently overwrote tab B's
+     * saved edit with tab A's copy and published it. Now the save is a 409
+     * COACH_DRAFT_EXISTS, nothing is written, and the coach is asked, with the same
+     * sentence and control template apply uses.
+     */
+    const conflict = page.getByRole("dialog", { name: "This draft changed somewhere else" });
+    await expect(conflict).toBeVisible();
+    await expect(
+      conflict.getByText("This replaces your unpublished draft for Yusuf A. That draft cannot be recovered.")
+    ).toBeVisible();
+    // …and the coach is NOT told the plan failed, because nothing failed.
     await expect(page.getByText("The plan could not be published.")).toHaveCount(0);
     await expect(page.getByText(/^Published\. /)).toHaveCount(0);
 
-    // Acknowledging the new preview publishes.
-    await modal.getByRole("button", { name: "Publish", exact: true }).click();
+    // Replacing is a press, and it echoes the timestamp the 409 carried: the preview
+    // opens again on the plan THIS tab holds, and acknowledging it publishes.
+    await conflict.getByRole("button", { name: "Replace the draft" }).click();
+    await expect(page.getByRole("dialog")).toHaveAccessibleName("No changes were needed");
+    await page.getByRole("dialog").getByRole("button", { name: "Publish", exact: true }).click();
     await expect(
       page.getByText("Published. The trainee sees it next time they open the app.")
     ).toBeVisible();
@@ -746,9 +780,12 @@ test.describe("EV-190 AC1 — the coach chooses which weekdays the trainee train
       await expect(page.getByLabel(`Day ${i} weekday`)).toBeVisible();
     }
     // Monday, Tuesday, Wednesday, Thursday, Friday, Saturday — six distinct weekdays.
+    // The WEEKDAY selects only — since BUG-195c every exercise also has a "Tracked as"
+    // select, so "every combobox" is no longer "every weekday".
     const values = await page
-      .getByRole("combobox")
+      .getByRole("combobox", { name: /^Day \d weekday$/ })
       .evaluateAll((els) => els.map((el) => (el as HTMLSelectElement).value));
+    expect(values).toHaveLength(6);
     expect(new Set(values).size).toBe(values.length);
 
     await expect(page.getByRole("button", { name: "Add day" })).toBeDisabled();

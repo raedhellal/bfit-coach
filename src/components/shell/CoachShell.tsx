@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/ui/icons";
 import { Avatar } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { SignOutButton } from "./SignOutButton";
 
 /**
@@ -28,11 +28,12 @@ export function CoachShell({
 }: {
   coachName?: string | null;
   /** Which nav entry is the page under this shell. Undefined on a trainee screen. */
-  section?: "roster" | "templates" | "recipes" | "nutrition-templates";
+  section?: "roster" | "templates" | "recipes" | "nutrition-templates" | "challenges";
   children: React.ReactNode;
 }) {
+  const copy = getCopy();
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+    <div style={{ minHeight: "calc(100vh - var(--legal-footer-h))", background: "var(--bg)" }}>
       <header
         style={{
           position: "sticky",
@@ -73,11 +74,15 @@ export function CoachShell({
             {/*
               EV-273b AC1 — "Nutrition templates" next to Templates and Recipes. AFTER
               Recipes, so EV-256b's "Recipes sits immediately after Templates" still holds.
-              Four links do not fit one 288 px line, so below 520 px the nav WRAPS
+              Five links do not fit one 288 px line, so below 520 px the nav WRAPS
               (`.shell-nav` in globals.css) rather than scrolling or clipping.
             */}
             <ShellLink href="/nutrition-templates" current={section === "nutrition-templates"}>
               {copy.nutritionTemplates.nav}
+            </ShellLink>
+            {/* EV-321b — step challenges. */}
+            <ShellLink href="/challenges" current={section === "challenges"}>
+              {copy.challenges.nav}
             </ShellLink>
           </nav>
           <div style={{ flex: 1 }} />

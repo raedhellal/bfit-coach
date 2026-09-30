@@ -300,3 +300,44 @@ async function readDays(page: Page) {
     })
   );
 }
+
+/**
+ * BUG-195c staff review B1 — the demo beat: a template → a trainee → Publish.
+ *
+ * "Core circuit" was written by the pre-BUG-195c editor, which left reps "8-12" on a
+ * Plank it switched to DURATION. Stored rows are never migrated. Round 2 of BUG-195b
+ * refused to apply such a template (400 COACH_DRAFT_REPS_ON_DURATION) and the coach had
+ * to open and re-save it first; round 3 (b-fit-api `fcc1ccd`, on api main at 741ed39)
+ * CLEARS those reps at apply instead. So the legacy template must apply on the first
+ * try, with no repair step and no refusal sentence, and the draft it writes must carry
+ * no reps on the timed exercise (the Reps control is absent for DURATION, and Publish's
+ * guarded preview would otherwise meet the draft boundary's refusal).
+ */
+test.describe("B1 — a legacy template with reps on a timed exercise", () => {
+  test("applies on the first try (the api clears the stray reps); Publish then lands", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await applyToYusuf(page, "Core circuit");
+    await expect(page.getByText(DRAFT_BADGE)).toBeVisible();
+    await expect(
+      page.getByText(
+        "A timed exercise in this template still has reps from the old editor. Open the template and save it, then use it again."
+      )
+    ).toHaveCount(0);
+    const plank = page.getByRole("group", { name: "Plank", exact: true });
+    await expect(plank.getByLabel("Tracked as")).toHaveValue("DURATION");
+    await expect(plank.getByLabel("Reps")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    const modal = page.getByRole("dialog");
+    await expect(modal).toHaveAccessibleName("No changes were needed");
+    await modal.getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(
+      page.getByText("Published. The trainee sees it next time they open the app.")
+    ).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByLabel("Plan name")).toHaveValue("Core circuit");
+  });
+});

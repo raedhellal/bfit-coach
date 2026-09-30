@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
 
 /**
@@ -25,6 +25,7 @@ export function TemplateUseOutcome({
   clientId: string;
   firstName: string;
 }) {
+  const copy = useCopy();
   const [outcome, setOutcome] = useState<UseOutcome | null>(null);
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import "server-only";
-import { apiFetch, ApiError } from "./apiFetch";
+import { apiFetch, apiGet, apiGetAs, ApiError } from "./apiFetch";
 import { COACH_API_MODE, INVITE_BASE_URL } from "./env";
 import { fixtureCoachApi } from "./coachApi.fixture";
 import { sanitiseCoachName } from "./inviteName";
@@ -40,8 +40,10 @@ import { sanitiseCoachName } from "./inviteName";
  *   GET    /coach-portal/clients/{id}/routine            [scope WORKOUTS]
  *          → CoachRoutineResponse — active plan + days + exercises, the saved
  *            draft if one exists, and the trainee's READ-ONLY injuries/equipment.
- *   GET    /coach-portal/clients/{id}/routine/draft   → CoachRoutineDraft | 404
- *   PUT    /coach-portal/clients/{id}/routine/draft   ← CoachRoutineDraftRequest
+ *   GET    /coach-portal/clients/{id}/routine/draft   → CoachRoutineDraftResponse (nulls, never 404)
+ *   PUT    /coach-portal/clients/{id}/routine/draft   ← CoachRoutineDraftRequest (BUG-195c)
+ *          400 VALIDATION_ERROR · COACH_DRAFT_SUBJECT_FIELD · COACH_DRAFT_REPS_ON_DURATION
+ *          409 COACH_DRAFT_EXISTS (details.existingUpdatedAt)
  *   DELETE /coach-portal/clients/{id}/routine/draft   → 204
  *   POST   /coach-portal/clients/{id}/routine/publish/preview
  *          → { repairs: [{ exercise, replacedWith, rule }], digest }
@@ -244,6 +246,18 @@ export interface RosterClient {
   status: ClientStatus;
   /** ISO-8601 instant — when the trainee accepted. */
   since: string;
+  /**
+   * EV-283a — the roster's "Plan changed" marker: true when the trainee's own plan became
+   * their live plan at or after THIS coach's latest publish. The api computes it by the
+   * same rule as `CoachRoutineResponse.changedSinceYourPublish`, so the marker and the
+   * routine page cannot disagree. Null when the link lacks WORKOUTS ("not shared").
+   *
+   * OPTIONAL in this type although the api always sends the key: an api that predates
+   * EV-283a omits it, and the marker reads it through `rosterPlanChanged`, which is true
+   * for a literal `true` only. Absent, null and false all render nothing — a marker is a
+   * claim, and silence from an older api is not one.
+   */
+  routineChangedSinceYourPublish?: boolean | null;
 }
 
 /**
@@ -624,11 +638,13 @@ export interface TraineeProgress {
  *     `qa/contract-drift.test.mjs` checks every one of those claims against the
  *     vendored `spec/b-fit-api.openapi.yaml`.
  *
- *   · `RoutinePlanView` / `RoutineDayEntry` / `RoutineExerciseEntry` are THE EDITOR'S
- *     MODEL — a flatter shape the routine editor edits, derived from the wire by
- *     `src/lib/routineDocument.ts`. They are NOT a contract and must never be typed as
- *     one; the previous version of this file blurred exactly that line, which is how a
- *     field nobody serves ended up looking like a field somebody serves.
+ *   · There is NO second, editor-shaped layer any more (BUG-195c). EV-184b's editor
+ *     used to edit a flatter projection (`RoutinePlanView` and friends), which is what
+ *     made its write path unwritable: rebuilding a `Routine` from it would have deleted
+ *     `tempo`, `notes`, `trackingType`, `durationSeconds`, `weight` and
+ *     `estimatedMinutes`. Both coach editors now edit the `Routine` itself, through one
+ *     component (`src/components/routine/RoutineDocumentEditor.tsx`), and the only
+ *     transformation is `src/lib/routineDocument.ts`'s, in both directions.
  * ════════════════════════════════════════════════════════════════════════════
  */
 
@@ -642,9 +658,9 @@ export type TrackingType = "WEIGHT_REPS" | "DURATION";
  * there is **no `catalogSlug`, no `primaryMuscles` and no `equipment`**. The persisted
  * routine document carries an exercise NAME and nothing that identifies a catalog row,
  * so the identity the coach picked in `CatalogPicker` does not survive a save/publish
- * round trip — `RoutinePolicy` matches on the name, which is why it can. The editor's
- * `RoutineExerciseEntry` therefore carries those three as NULLABLE: populated for an
- * exercise the coach just picked in this session, null for every exercise read back.
+ * round trip — `RoutinePolicy` matches on the name, which is why it can. The editor
+ * therefore shows a picked exercise's muscle and equipment badges only for the session
+ * in which it was picked, and never for an exercise read back.
  * @wire RoutineExercise
  *
  */
@@ -782,6 +798,27 @@ export interface CoachRoutineResponse {
   hasDraft: boolean;
   /** ISO instant; null when there is no draft. */
   draftUpdatedAt: string | null;
+  /**
+   * EV-283a — who wrote the LIVE plan: `COACH` (a publish) or `TRAINEE` (their own
+   * editor, or an AI generation or chat rewrite they started). Null when never recorded
+   * (a plan older than the field, a catalogue plan, no plan): nothing is inferred.
+   * Edits made from a workout session are not recorded yet (EV-283c).
+   *
+   * Optional for the same reason as the roster flag: an older api omits it, and the
+   * banner is rendered only for a literal `TRAINEE` (`traineeChangeNotice`).
+   */
+  lastChangedBy?: "COACH" | "TRAINEE" | null;
+  /** EV-283a — ISO instant the live plan became live. Null exactly when `lastChangedBy` is. */
+  lastChangedAt?: string | null;
+  /**
+   * EV-283a — true when the trainee's own plan became live at or after this coach's
+   * latest publish, so publishing now replaces their change. Required on the wire;
+   * optional here because an older api omits it. The routine page does NOT render from
+   * it: the story keys the banner on `lastChangedBy = TRAINEE`, which is also true for
+   * a trainee this coach never published to. It is the roster marker's rule, and is
+   * typed here so the drift guard holds the whole envelope.
+   */
+  changedSinceYourPublish?: boolean;
 }
 
 /**
@@ -831,92 +868,49 @@ export interface CoachRoutineDraftResponse {
   catalogChecked: boolean;
 }
 
-// ── the editor's model (NOT a contract — derived by src/lib/routineDocument.ts) ──
-
-/**
- * ✏️ EDITOR MODEL — one prescription row as the editor holds it.
- *
- * `catalogSlug`, `primaryMuscles` and `equipment` are nullable because the WIRE does
- * not carry them (see `RoutineExercise`). They are populated only for an exercise the
- * coach picked from the catalog in this session, and they are lost on the next read —
- * which is worth knowing before anything is built on them. `sets` is a number; `reps`
- * and `rest` are strings because the persisted record's are.
- */
-export interface RoutineExerciseEntry {
-  /** `ExerciseCatalogEntry.slug` — the identity the coach PICKED, when they just did. */
-  catalogSlug: string | null;
-  name: string;
-  primaryMuscles: string | null;
-  equipment: string | null;
-  sets: number;
-  reps: string;
-  rest: string;
-}
-
-/** ✏️ EDITOR MODEL — one training day. `dayOfWeek` is ISO 1=Monday…7=Sunday. */
-export interface RoutineDayEntry {
-  dayOfWeek: number;
-  /** The split label the coach reads ("Upper body"). */
-  focus: string;
-  exercises: RoutineExerciseEntry[];
-}
-
-/** ✏️ EDITOR MODEL — a plan as the coach edits it: name + days. */
-export interface RoutinePlanView {
-  /** Null for a draft that has never been published. */
-  planId: string | null;
-  name: string;
-  /** Schedule order is the api's order; this surface does not re-sort it. */
-  trainingDays: RoutineDayEntry[];
-}
-
-/** ✏️ EDITOR MODEL — a saved draft. `updatedAt` is an ISO instant; last write wins. */
-export interface CoachRoutineDraft extends RoutinePlanView {
-  updatedAt: string;
-}
-
 /* ════════════════════════════════════════════════════════════════════════════
- * ⛔ KNOWN BROKEN AGAINST LIVE — the routine WRITE path (EV-184 AC2/AC3).
+ * BUG-195c — THE ROUTINE WRITE PATH (ADR-0018 D1 option 1-D, D6, D7).
  *
- * The read path above was realigned to b-fit-api main on 2026-09-18. The write path
- * was NOT, and this block is why, so that nobody reads the silence as agreement.
+ * Until this row the portal sent `{name, trainingDays}` — two of the eight fields of
+ * the `@Valid Routine` the api required — so every "Save draft" and every Publish
+ * (which saves first) was a 400 against a real api, from EV-184b's merge onwards. It
+ * was registered as ⛔ KNOWN BROKEN AGAINST LIVE here for two reasons, and ADR-0018
+ * answered both:
  *
- * `PUT /coach-portal/clients/{id}/routine/draft` takes `@Valid @RequestBody Routine` —
- * the WHOLE document — and answers `CoachRoutineDraftResponse`. This surface sends
- * `{name, trainingDays}` and expects a flat draft back, so against a real api a "Save
- * draft" is a 400 and the editor shows its generic failure. That is pre-existing and
- * unchanged by this branch; it is registered field by field in
- * `qa/contract-deviations.mjs` so the contract test keeps it visible.
+ *   1. *"The portal has no honest source for a trainee's goal and level."* It does not
+ *      need one: the SERVER owns them (D3). The portal sends whatever it was served (a
+ *      placeholder for a from-scratch plan), the api overwrites both with the trainee's
+ *      own onboarding answers, and the response carries what was stored.
+ *   2. *"The editor edits a lossy projection."* It no longer does: the routine editor
+ *      now holds the WHOLE document, with a control for every field that survives a
+ *      round trip, and `weeklyProgression` is carried untouched and declared so
+ *      (`src/lib/routineVisibility.ts`, ADR-0018 guard 4-e).
  *
- * It is NOT fixed here because fixing it is not a web decision:
- *
- *   1. `Routine` requires `goal`, `level` (`@NotBlank`), `weeklyProgression`,
- *      `constraints` and `constraints.minutesPerSession` (`@Positive`). For a trainee
- *      who has never had a routine — the api's own edge case 9, "the coach builds one
- *      from scratch" — the portal has no honest source for any of them, and inventing
- *      a goal and a training level for somebody else's trainee in the web tier is
- *      exactly the kind of fabrication this surface refuses.
- *   2. Even with an existing document to carry forward, the editor edits a LOSSY
- *      projection: `tempo`, `notes`, `trackingType`, `durationSeconds`, `weight` and
- *      `estimatedMinutes` are on the wire and on no coach control, so a naive rebuild
- *      of the document would silently delete a DURATION exercise's prescription from a
- *      trainee's plan. Deciding how a partial edit merges is a story/api question.
- *
- * → Needs `architect` + `java-engineer`: either the api accepts a coach-shaped draft
- *   body (name + days, merged server-side against the stored document, defaults for a
- *   from-scratch plan), or EV-184 gains the fields a coach must author. Until one of
- *   those lands, these two types describe a request b-fit-api refuses.
+ * The body is built in exactly one place, `forDraftSave` in `src/lib/routineDocument.ts`.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 /**
- * ⛔ `PUT …/routine/draft` as this surface sends it — see the block above.
+ * 🔌 WIRE — the body of `PUT /coach-portal/clients/{id}/routine/draft`.
  *
- * @wire Routine
+ * `replacesDraftUpdatedAt` is REQUIRED-AND-NULLABLE here although the wire lets it be
+ * absent, for the whole-representation reason: absent and null mean the same thing to
+ * the api ("only if there is no draft"), so a call site that forgot the token would
+ * silently turn every overwrite into a 409 — typing it required makes forgetting it a
+ * compile error. Echo it VERBATIM from the last GET, PUT or apply response, or from a
+ * 409's `details.existingUpdatedAt`; never compute it.
+ *
+ * `document.goal` / `.level` are the TRAINEE's (the server overwrites them),
+ * `constraints.equipment` / `.injuries` must be `[]` (a non-empty value is
+ * `400 COACH_DRAFT_SUBJECT_FIELD`), and both day counts are derived from
+ * `trainingDays.length`.
+ *
+ * @wire CoachRoutineDraftRequest
  */
 export interface CoachRoutineDraftRequest {
-  name: string;
-  trainingDays: RoutineDayEntry[];
+  replacesDraftUpdatedAt: string | null;
+  document: Routine;
 }
+
 
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -1368,7 +1362,18 @@ export interface CatalogExercise {
   name: string;
   primaryMuscles: string | null;
   equipment: string | null;
+  /**
+   * How a trainee logs the exercise: WEIGHTED / BODYWEIGHT / DURATION. Read for ONE
+   * thing (ADR-0018 D1's residual, BUG-195c AC3.5): a newly picked exercise's
+   * `trackingType` is DURATION when the catalog row is, instead of the constant
+   * WEIGHT_REPS that made a coach's Plank a sets × reps plank. Optional: not `required`
+   * on the wire, and an older catalog row may not carry it — absent is WEIGHT_REPS.
+   */
+  exerciseType?: CatalogExerciseType | null;
 }
+
+/** `ExerciseCatalogDto.exerciseType`. */
+export type CatalogExerciseType = "WEIGHTED" | "BODYWEIGHT" | "DURATION";
 
 /**
  * 🔌 WIRE — `GET /coach-portal/catalog/exercises` → `CoachCatalogPageResponse`.
@@ -1727,6 +1732,369 @@ export interface NutritionTemplateList {
   remaining: number;
 }
 
+
+// ── EV-284a: the trainee's food log ──────────────────────────────────────────
+//
+// 🔌 WIRE — `GET /coach-portal/clients/{id}/nutrition/log?from&to` (b-fit-api main
+// `6264142`). NUTRITION scope, the same undifferentiated 403 as every coach read, and
+// `400 COACH_FOOD_LOG_RANGE_INVALID` for `from` after `to` or more than 14 days. The
+// portal sends NO range: the api's default is the seven days ending on the SERVER's UTC
+// today, and where that window ends is ADR-0025 D25.6's to decide, not this surface's.
+
+/**
+ * `CoachFoodLogMacros` — a day's totals or targets. Integers.
+ *
+ * @wire CoachFoodLogMacros
+ */
+export interface CoachFoodLogMacros {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
+
+/** `FoodLogEntry.Source` as stored. Rendered through `copy.foodLog.source`. */
+export type FoodLogSource = "OFF" | "QUICK" | "MANUAL";
+
+/**
+ * `CoachFoodLogEntry` — one thing the trainee logged.
+ *
+ * The macros are stored `NOT NULL DEFAULT 0` (V28), so a quick add that gave kcal only
+ * reads 0 g here, indistinguishable from a real 0 g. That is why EV-284 AC5 makes the
+ * dashes a rule on `source === "QUICK"` and shows every other entry's 0 as a 0.
+ * `barcode` is sent for a scanned product AND a searched one, so it never means
+ * "scanned" (AC5's struck label).
+ *
+ * @wire CoachFoodLogEntry
+ */
+export interface CoachFoodLogEntry {
+  name: string;
+  brand?: string | null;
+  /** Grams; null for a quick add. */
+  servingG?: number | null;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  source: FoodLogSource;
+  barcode?: string | null;
+  /** ISO instant the entry was recorded. */
+  loggedAt: string;
+}
+
+/**
+ * `CoachFoodLogEatenMeal` — a planned meal the trainee marked eaten that day. It counts
+ * in the day's `totals` and is not an entry, so without it a total could exceed the sum
+ * of its entries with nothing on the page to explain it.
+ *
+ * @wire CoachFoodLogEatenMeal
+ */
+export interface CoachFoodLogEatenMeal {
+  name: string;
+  /** e.g. BREAKFAST; nullable on the wire. */
+  slot?: string | null;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  eatenAt: string;
+}
+
+/**
+ * `CoachFoodLogDay` — one of the trainee's stored days (`food_log.logged_on`, EV-284
+ * AC4: the server's UTC day of the write, BUG-274).
+ *
+ * `totals` is NULL on a day where nothing was recorded, and that is the "Nothing
+ * logged" day — never a 0 kcal (EV-284b). It is computed by the SAME code as the
+ * trainee's own Today screen (AC2), so the portal never re-sums it.
+ *
+ * @wire CoachFoodLogDay
+ */
+export interface CoachFoodLogDay {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  totals?: CoachFoodLogMacros | null;
+  /** Training/rest-day adjusted as the trainee's own day read; null with no stored target. */
+  targets?: CoachFoodLogMacros | null;
+  /** Oldest first. */
+  entries: CoachFoodLogEntry[];
+  eatenMeals: CoachFoodLogEatenMeal[];
+}
+
+/**
+ * `CoachFoodLogResponse` — one element per day `from`..`to`, ascending, a day with
+ * nothing recorded present with `totals` null.
+ *
+ * @wire CoachFoodLogResponse
+ */
+export interface CoachFoodLogResponse {
+  clientId: string;
+  from: string;
+  to: string;
+  days: CoachFoodLogDay[];
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-278c — FINISHING AN ACCOUNT SOMEBODY ELSE INITIALISED (ADR-0022 D22.9).
+ *
+ * Not `/coach-portal/*`: these are the account-level routes b-fit-api lets a `PENDING`
+ * principal reach (the three-entry allowlist in `SecurityConfig`: `GET /me/activation`,
+ * `POST /me/activate`, `/auth/email/verification/**`) plus the public `GET
+ * /legal/versions`. They live in this module anyway because it is the one the
+ * contract-drift guard reads, and a type that escapes the guard is how this surface has
+ * shipped against fields nobody sends. Vendored from b-fit-api
+ * `feat/ev278a-admin-initialises-coach` @ `c69c287` (NOT on api main when written; see
+ * `spec/b-fit-api.sha`).
+ *
+ * Consent is the PERSON'S (EV-278 "The consent constraint"): the only `consentAccepted`
+ * this surface ever sends is the one a coach ticked on `/activate`, forwarded by
+ * `/api/auth/activate`, which refuses anything but a literal `true` before the api is
+ * called at all.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * `Role` as the api enumerates it at `c69c287`. `GYM_OWNER` is not in it yet (EV-281a),
+ * so the portal admits a pending account for `COACH` only; a `GYM_OWNER` grant has no
+ * home to land on here until EV-281b, and admitting it would activate someone into a
+ * `NOT_A_COACH` bounce.
+ */
+export type AccountRole = "USER" | "COACH" | "ADMIN" | "PENDING";
+
+/** Who initialised the account. `ADMIN` is Evoli (EV-278a), `COACH` and `GYM` initialise trainees. */
+export type InitialiserKind = "COACH" | "GYM" | "ADMIN";
+
+/**
+ * `GET /me/activation` (D22.9e). A full account gets `{ pending: false }` and nulls.
+ *
+ * There is no `createdAt` and no account name on it: the screen can say who set the
+ * account up and until when, not on what day, and it cannot show the name the
+ * initialiser typed (`GET /me` is behind the `ACCOUNT` floor a pending token lacks). That
+ * is why `ActivateAccountRequest.fullName` is not sent — see the register.
+ *
+ * @wire ActivationStatusResponse
+ */
+export interface ActivationStatus {
+  pending: boolean;
+  grantedRole: AccountRole | null;
+  /** Activation refuses at or after this instant (created + 30 days; a resend never moves it). */
+  expiresAt: string | null;
+  creatorKind: InitialiserKind | null;
+  /**
+   * The coach's display name, the gym's name, or "Evoli". Null when not pending, or when
+   * the initialiser's account has been erased — `creatorKind` alone answers then.
+   */
+  creatorName: string | null;
+}
+
+/**
+ * `POST /me/activate`'s body. **There is no role field, on the wire or here** (D22.9a):
+ * the granted role is the one recorded at initialisation.
+ *
+ * @wire ActivateAccountRequest
+ */
+export interface ActivateAccountRequest {
+  temporaryPassword: string;
+  newPassword: string;
+  /** Only ever a coach's own tick, and only ever `true` when sent (see `/api/auth/activate`). */
+  consentAccepted: true;
+  privacyPolicyVersion: string;
+  termsVersion: string;
+}
+
+/**
+ * `GET /legal/versions` — unauthenticated. The strings echoed back as the versions the
+ * person was shown; a mismatch is `409 CONSENT_VERSION_STALE`, never a silent substitute.
+ *
+ * @wire LegalVersionsResponse
+ */
+export interface LegalVersions {
+  privacyPolicyVersion: string;
+  termsVersion: string;
+}
+
+/**
+ * `POST /me/activate`'s 200 — fresh tokens for the full account. The role is a JWT
+ * claim, so the session must switch to these before its next read: the old ones still
+ * say PENDING and b-fit-api refuses them everywhere but the allowlist.
+ *
+ * @wire AuthTokens
+ */
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  /** Access token lifetime in seconds. */
+  expiresIn: number;
+}
+
+/**
+ * A pending account the PORTAL can finish: pending, a coach's grant, and not yet at its
+ * expiry. Expiry is judged against `now` because `GET /me/activation` still answers
+ * `pending: true` for an expired row the sweeper has not reached — only `POST
+ * /me/activate` says 410. Fails closed on an unparseable instant.
+ */
+export function activationExpired(status: ActivationStatus, now: number = Date.now()): boolean {
+  if (!status.expiresAt) return true;
+  const at = Date.parse(status.expiresAt);
+  return Number.isNaN(at) || at <= now;
+}
+
+/** "Evoli", the gym's or the coach's name — or a kind-only fallback when the name was erased. */
+export function initialiserName(status: Pick<ActivationStatus, "creatorName" | "creatorKind">): string {
+  const name = status.creatorName?.trim();
+  if (name) return name;
+  switch (status.creatorKind) {
+    case "ADMIN":
+      return "Evoli";
+    case "GYM":
+      return "Your gym";
+    case "COACH":
+      return "Your coach";
+    default:
+      return "Evoli";
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-321b — step challenges, against b-fit-api `feat/ev321a-coach-challenges-api`
+ * @ `1749060` (EV-321a). ⛔ UNMERGED when this was written: `spec/b-fit-api.sha` says
+ * `on-api-main: NO`, and `qa/api-merge-condition.spec.ts` holds the merge condition.
+ *
+ * Four properties of this contract the types cannot state:
+ *
+ *   1. **`clientIds` are `coach_clients` row ids** — the roster's `RosterClient.id`,
+ *      never a user id. Any foreign, revoked or unknown id refuses the WHOLE create with
+ *      one undifferentiated `403 COACH_ACCESS_DENIED`, and nothing is written.
+ *   2. **`ChallengeDay.value: null` is NO DATA, never a zero.** The api stores no row for
+ *      a day the phone had nothing for, and a stored 0 is a real MISSED day. So nothing
+ *      on this surface may coalesce a null to 0 — `todayValue` included.
+ *   3. **An INVITED participant carries `rank: null` and `progress: null`.** Before the
+ *      trainee accepts, the coach sees the status and nothing else: accepting IS the
+ *      per-challenge consent to share steps (R2). The portal renders no number for them.
+ *   4. **The api ranks; the portal does not.** ACCEPTED first in `rank` order (STEPS:
+ *      daysMet desc, then total desc; equal keys share a rank, then name), INVITED after
+ *      by name. The table renders `participants` in the order served.
+ *
+ * WORKOUTS exists on the wire (the api's `ChallengeMetric` says "no portal or app UI
+ * yet"). The portal CREATES only STEPS; it renders a WORKOUTS challenge it is served
+ * (null `daysMet` and `days`) rather than crashing on one.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** `ChallengeMetric`. */
+export type ChallengeMetric = "STEPS" | "WORKOUTS";
+/** `ActivitySource` — where a day's step total came from, as the app reports it. */
+export type ActivitySource = "HEALTHKIT" | "HEALTH_CONNECT" | "PEDOMETER" | "MANUAL";
+/** `ChallengeParticipantStatus`. A decline or a leave DELETES the participation. */
+export type ChallengeParticipantStatus = "INVITED" | "ACCEPTED";
+/** `ChallengePhase`, computed on the server's UTC date for coach reads. */
+export type ChallengePhase = "UPCOMING" | "ACTIVE" | "ENDED";
+/**
+ * `ChallengeDayStatus`. NO_DATA is "a day up to today with no value from any source" —
+ * it is NOT a zero, never counts as met and never adds steps.
+ */
+export type ChallengeDayStatus = "MET" | "MISSED" | "IN_PROGRESS" | "NO_DATA" | "FUTURE";
+
+/**
+ * `POST /coach-portal/challenges`. Built in ONE place (`buildChallengeRequest`,
+ * `src/lib/challengeDocument.ts`), which is also what the unit spec drives.
+ * @wire CoachChallengeCreateRequest
+ */
+export interface CoachChallengeCreateRequest {
+  /** 1–80 characters after the api's normalisation; no control character or line break. */
+  title: string;
+  metric: ChallengeMetric;
+  /** STEPS only (required, 1 000–50 000). Must be absent or null for WORKOUTS. */
+  dailyTarget?: number | null;
+  /** WORKOUTS only (required, 1–100). Must be absent or null for STEPS. */
+  totalTarget?: number | null;
+  /** `YYYY-MM-DD`, at most 14 days before and 60 days after the server's UTC date. */
+  startsOn: string;
+  /** `YYYY-MM-DD`, 0–92 days after `startsOn`. */
+  endsOn: string;
+  /** 1–50 `coach_clients` ids from the roster. A duplicate counts once. */
+  clientIds: string[];
+}
+
+/** @wire CoachChallengeSummary */
+export interface CoachChallengeSummary {
+  id: string;
+  title: string;
+  metric: ChallengeMetric;
+  dailyTarget: number | null;
+  totalTarget: number | null;
+  startsOn: string;
+  endsOn: string;
+  /** Days in the window, both ends included (1–93). */
+  days: number;
+  phase: ChallengePhase;
+  /** Visible participants (INVITED + ACCEPTED) whose link is still ACTIVE. */
+  participantCount: number;
+  acceptedCount: number;
+  createdAt: string;
+}
+
+/** `GET /coach-portal/challenges` — newest window first. @wire CoachChallengePageResponse */
+export interface CoachChallengePage {
+  items: CoachChallengeSummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+/** One window day, in the TRAINEE's local calendar. @wire ChallengeDay */
+export interface ChallengeDay {
+  day: string;
+  /** Null = no data (never 0 for absent). */
+  value: number | null;
+  source: ActivitySource | null;
+  status: ChallengeDayStatus;
+}
+
+/**
+ * Computed at read time, never stored. For WORKOUTS `daysMet`, `todaySource`,
+ * `syncedAt` and `days` are null and `total` counts completed sessions.
+ * @wire ChallengeProgress
+ */
+export interface ChallengeProgress {
+  /** The trainee's local today, as this read determined it. */
+  today: string;
+  /** STEPS: null when there is no data for today, or today is outside the window. */
+  todayValue: number | null;
+  todaySource: ActivitySource | null;
+  /** Window days up to and including the trainee's today (0 before the start). */
+  daysElapsed: number;
+  daysMet: number | null;
+  total: number;
+  /** `dailyTarget` (STEPS) or `totalTarget` (WORKOUTS). */
+  target: number;
+  syncedAt: string | null;
+  days: ChallengeDay[] | null;
+}
+
+/** @wire CoachChallengeParticipant */
+export interface CoachChallengeParticipant {
+  /** The ACTIVE `coach_clients` row id — the portal's id for this trainee. */
+  clientId: string;
+  /** Null when the account holds no name. */
+  displayName: string | null;
+  status: ChallengeParticipantStatus;
+  invitedAt: string;
+  acceptedAt: string | null;
+  /** 1-based among ACCEPTED; equal keys share a rank. Null while INVITED. */
+  rank: number | null;
+  /** Null while INVITED. */
+  progress: ChallengeProgress | null;
+}
+
+/** `GET /coach-portal/challenges/{id}` and the 201 of the create. @wire CoachChallengeDetailResponse */
+export interface CoachChallengeDetail {
+  challenge: CoachChallengeSummary;
+  participants: CoachChallengeParticipant[];
+}
+
+/** The page size the list asks for: the api's maximum. */
+export const CHALLENGE_PAGE_SIZE = 50;
+
 // ── error helpers ────────────────────────────────────────────────────────────
 
 export { ApiError } from "./apiFetch";
@@ -1847,6 +2215,17 @@ export function draftExistsUpdatedAt(err: unknown): string | null {
   const value = err.details?.existingUpdatedAt;
   return typeof value === "string" ? value : null;
 }
+/**
+ * 400 `COACH_DRAFT_REPS_ON_DURATION` (BUG-195b, ADR-0018 D9) — a timed exercise that
+ * carries reps. On the coach's draft SAVE the api still refuses it (and `routineFailure`
+ * locates it). On template APPLY and template writes it was refused only in BUG-195b
+ * round 2: round 3 (`fcc1ccd`, on api main at 741ed39) clears the reps instead, so the
+ * template screens cannot meet this code from that api. Their mapping stays so an api
+ * rolled back past `fcc1ccd` still gets a sentence rather than "could not be saved".
+ */
+export function isRepsOnDuration(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_DRAFT_REPS_ON_DURATION";
+}
 export function isDraftExists(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_DRAFT_EXISTS";
 }
@@ -1910,6 +2289,22 @@ export function isMealLocked(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_MEAL_LOCKED";
 }
 /**
+ * 409 — EV-288 / BUG-271 (ADR-0028 §4.3b): the swap was applied to a meal with no
+ * candidates cached, so the list the coach was shown is no longer the server's (an
+ * earlier apply cleared it — the trainee's, another tab's — or another write replaced
+ * the meal). Nothing was written and the api never generates on an apply: the answer is
+ * to read `GET …/swap` again and let the coach pick from what they can see.
+ *
+ * ⚠ Sent by b-fit-api only from `fix/bug271-swap-apply-no-model-call` (`0b23b73`,
+ * UNMERGED when this was written; `ApiError("SWAP_OPTIONS_STALE", …)` from
+ * `RestExceptionHandler`). Matched by CODE, so the branch is dormant against an api that
+ * still generates on a miss, and live the day it merges. Not in the vendored spec: it
+ * adds no schema, only a code on the existing 409.
+ */
+export function isSwapOptionsStale(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "SWAP_OPTIONS_STALE";
+}
+/**
  * 422 — an ingredient or the recipe's NAME conflicts with the trainee's rules.
  * `details` is `{field: "ingredient", value: <label>}` or exactly `{field: "name"}`;
  * it never names the rule or the category.
@@ -1947,6 +2342,10 @@ export function isRouteNotFound(err: unknown): boolean {
 /** 400 — any other bound. The field is in `details.field` OR leads `message`. */
 export function isValidationError(err: unknown): boolean {
   return err instanceof ApiError && err.code === "VALIDATION_ERROR";
+}
+/** 409 — EV-321a AC3: 20 of this coach's challenges have not ended. */
+export function isChallengeLimitReached(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_CHALLENGE_LIMIT_REACHED";
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -2130,6 +2529,29 @@ function client(id: string): string {
 }
 
 const liveCoachApi = {
+  // ── EV-278c activation (the PENDING allowlist + the public versions) ──────
+
+  /**
+   * `GET /me/activation`. With `bearer`, the caller's token (the sign-in check, before any
+   * cookie exists); without, the session cookie's, with `apiFetch`'s refresh-on-401.
+   */
+  getActivation(bearer?: string): Promise<ActivationStatus> {
+    return bearer
+      ? apiGetAs<ActivationStatus>("/me/activation", bearer)
+      : apiFetch<ActivationStatus>("/me/activation");
+  },
+  /**
+   * `POST /me/activate`. Refusals are 400/409/410/429 and are NOT retried: the api made
+   * `TEMPORARY_PASSWORD_INVALID` a 400 precisely so a client does not refresh and spend a
+   * second attempt of the ten-per-15-minutes window on one typo.
+   */
+  activate(body: ActivateAccountRequest): Promise<AuthTokens> {
+    return apiFetch<AuthTokens>("/me/activate", { method: "POST", body: JSON.stringify(body) });
+  },
+  getLegalVersions(): Promise<LegalVersions> {
+    return apiGet<LegalVersions>("/legal/versions");
+  },
+
   getMe(): Promise<CoachMe> {
     return apiFetch<CoachMe>("/coach-portal/me");
   },
@@ -2196,10 +2618,10 @@ const liveCoachApi = {
   getRoutineDraft(id: string): Promise<CoachRoutineDraftResponse> {
     return apiFetch<CoachRoutineDraftResponse>(`${client(id)}/routine/draft`);
   },
-  saveRoutineDraft(id: string, draft: CoachRoutineDraftRequest): Promise<CoachRoutineDraft> {
-    return apiFetch<CoachRoutineDraft>(`${client(id)}/routine/draft`, {
+  saveRoutineDraft(id: string, body: CoachRoutineDraftRequest): Promise<CoachRoutineDraftResponse> {
+    return apiFetch<CoachRoutineDraftResponse>(`${client(id)}/routine/draft`, {
       method: "PUT",
-      body: JSON.stringify(draft),
+      body: JSON.stringify(body),
     });
   },
   async discardRoutineDraft(id: string): Promise<void> {
@@ -2377,6 +2799,13 @@ const liveCoachApi = {
   getNutrition(id: string): Promise<CoachNutritionResponse> {
     return apiFetch<CoachNutritionResponse>(`${client(id)}/nutrition`);
   },
+  /**
+   * EV-284a. No `from`/`to`: the api's default is the seven days ending on its UTC
+   * today, and where the coach's window ends is ADR-0025 D25.6's, not this surface's.
+   */
+  getFoodLog(id: string): Promise<CoachFoodLogResponse> {
+    return apiFetch<CoachFoodLogResponse>(`${client(id)}/nutrition/log`);
+  },
   saveNutritionTargets(id: string, body: CoachTargetsRequest): Promise<CoachTargetsResult> {
     return apiFetch<CoachTargetsResult>(`${client(id)}/nutrition/targets`, {
       method: "PUT",
@@ -2424,6 +2853,24 @@ const liveCoachApi = {
       `${client(id)}/nutrition/week/meals/${encodeURIComponent(mealId)}/recipe`,
       { method: "POST", body: JSON.stringify(body) }
     );
+  },
+
+  // ── EV-321b step challenges (b-fit-api EV-321a @ 1749060, unmerged) ────────
+  listChallenges(page = 0, size = CHALLENGE_PAGE_SIZE): Promise<CoachChallengePage> {
+    return apiFetch<CoachChallengePage>(`/coach-portal/challenges?page=${page}&size=${size}`);
+  },
+  getChallenge(id: string): Promise<CoachChallengeDetail> {
+    return apiFetch<CoachChallengeDetail>(`/coach-portal/challenges/${encodeURIComponent(id)}`);
+  },
+  createChallenge(body: CoachChallengeCreateRequest): Promise<CoachChallengeDetail> {
+    return apiFetch<CoachChallengeDetail>("/coach-portal/challenges", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  async deleteChallenge(id: string): Promise<void> {
+    // 204 No Content.
+    await apiFetch<void>(`/coach-portal/challenges/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
 };
 

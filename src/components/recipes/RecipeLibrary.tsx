@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { truncateName } from "@/lib/format";
 import { deleteRecipeAction } from "@/lib/recipeActions";
 import { settled } from "@/lib/settled";
@@ -23,6 +23,7 @@ import type { CoachRecipeList, CoachRecipeSummary } from "@/lib/coachApi";
  * serves none (no timestamps on the recipe wire, EV-256a); the list is alphabetical.
  */
 export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
+  const copy = useCopy();
   const router = useRouter();
   const [deleting, setDeleting] = useState<CoachRecipeSummary | null>(null);
 
@@ -107,6 +108,7 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
 }
 
 function RecipeRow({ recipe, onDelete }: { recipe: CoachRecipeSummary; onDelete: () => void }) {
+  const copy = useCopy();
   return (
     <Card>
       {/*
@@ -188,6 +190,7 @@ function DeleteDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const copy = useCopy();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [seeded, setSeeded] = useState<string | null>(null);

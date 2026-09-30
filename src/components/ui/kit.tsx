@@ -12,6 +12,7 @@
 import { useId } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { UiIcon } from "./icons";
+import { useCopy } from "@/lib/i18n/client";
 
 type Sx = CSSProperties;
 
@@ -292,6 +293,9 @@ export function Input({
   onKeyDown,
   focusRing,
   autoFocus,
+  autoComplete,
+  ariaLabel,
+  hintId,
   style = {},
 }: {
   label?: string;
@@ -308,6 +312,21 @@ export function Input({
   focusRing?: boolean;
   /** EV-272 AC2 — the Swap sheet's search field holds focus when the sheet opens. */
   autoFocus?: boolean;
+  /**
+   * EV-278c — the activation screen's password fields: `current-password` for the
+   * emailed one, `new-password` for the two new ones, so a password manager offers to
+   * save the right value and never autofills the temporary one into the new fields.
+   */
+  autoComplete?: string;
+  /**
+   * EV-278c — the input's accessible name, when it must be the label alone. The label
+   * WRAPS the hint, so without this the name is "New password At least 8 characters."
+   * and two fields whose labels share words ("New password", "Repeat the new password")
+   * cannot be told apart by name. Pair it with `hintId` so the hint is still announced.
+   */
+  ariaLabel?: string;
+  /** Gives the hint/error line this id and points the input's `aria-describedby` at it. */
+  hintId?: string;
   style?: Sx;
 }) {
   return (
@@ -343,6 +362,10 @@ export function Input({
           onChange={onChange}
           onKeyDown={onKeyDown}
           autoFocus={autoFocus}
+          autoComplete={autoComplete}
+          aria-label={ariaLabel}
+          aria-describedby={hintId && (hint || error) ? hintId : undefined}
+          aria-invalid={error ? true : undefined}
           style={{
             flex: 1,
             // The FIELD is the target, not the box around it: the `<input>` itself has
@@ -363,7 +386,7 @@ export function Input({
         />
         {trailing}
       </div>
-      {(hint || error) && <div style={{ fontSize: 12, marginTop: 6, color: error ? "var(--err)" : "var(--ink-3)" }}>{error || hint}</div>}
+      {(hint || error) && <div id={hintId} style={{ fontSize: 12, marginTop: 6, color: error ? "var(--err)" : "var(--ink-3)" }}>{error || hint}</div>}
     </label>
   );
 }
@@ -459,6 +482,7 @@ export function Modal({
   icon?: string;
   iconTone?: "blue" | "red" | "amber";
 }) {
+  const copy = useCopy();
   /**
    * `title` is a ReactNode, so it cannot be handed to `aria-label` as a string.
    * `aria-labelledby` points at the rendered heading instead, which keeps the
@@ -497,7 +521,7 @@ export function Modal({
             </div>
             {/* EV-190c: was 32 px square — the smallest target in the portal, and the
                 one every modal puts in a corner. Both axes now meet the floor. */}
-            <button onClick={onClose} aria-label="Close" style={{ width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, flexShrink: 0, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button onClick={onClose} aria-label={copy.common.close} style={{ width: MIN_TOUCH_TARGET, height: MIN_TOUCH_TARGET, flexShrink: 0, borderRadius: "var(--r-sm)", background: "var(--surface-2)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <UiIcon name="x" size={17} color="var(--ink-2)" />
             </button>
           </div>

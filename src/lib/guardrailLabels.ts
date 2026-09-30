@@ -21,41 +21,13 @@
  * and is undeployed, and EV-184 AC3's warning box is the only sentence on the subject.
  */
 
-/** ADR-0005 D1a's published equipment tokens → b-fit-mobile's English labels. */
-const EQUIPMENT_LABELS: Record<string, string> = {
-  NONE: "Bodyweight only",
-  BODYWEIGHT: "Bodyweight only",
-  DUMBBELLS: "Dumbbells",
-  BARBELL: "Barbell",
-  BANDS: "Bands",
-  GYM: "Full gym",
-  KETTLEBELL: "Kettlebell",
-  PULL_UP_BAR: "Pull-up bar",
-  BENCH: "Bench",
-  CABLE_MACHINE: "Cable machine",
-  SQUAT_RACK: "Squat rack",
-};
+import type { Copy } from "./copy";
 
-/**
- * The eight onboarding injury chips → their labels.
- *
- * `b-fit-mobile`'s `INJURY_TO_PROFILE` read backwards
- * (`src/features/onboarding/mappers.ts`). The server treats injuries as free text and
- * matches substrings, so these tokens are a convention rather than an enum — which is
- * exactly why the fallback below must not assume one.
+/*
+ * EV-324 — the label tables moved to the dictionaries (`copy.guardrails`), so the Routine
+ * tab reads them in the page's language. The lookup and the fallback stay here.
  */
-const INJURY_LABELS: Record<string, string> = {
-  KNEE: "Knees",
-  LOWER_BACK: "Lower back",
-  SHOULDER: "Shoulders",
-  NECK: "Neck",
-  WRIST: "Wrists",
-  HIP: "Hips",
-  ANKLE: "Ankles",
-  ELBOW: "Elbows",
-};
 
-/** `PULL_UP_BAR` → "Pull-up bar" lookups tolerate case and separator differences. */
 function normalise(value: string): string {
   return value.trim().toUpperCase().replace(/[\s-]+/g, "_");
 }
@@ -74,14 +46,14 @@ function humanise(token: string): string {
  * both sides, so it only ever fires for a value somebody else's deploy produced.
  * Blanks are dropped (a blank badge reads as a lost answer) and so are duplicates.
  */
-export function equipmentLabels(equipment: string[] | null | undefined): string[] {
+export function equipmentLabels(equipment: string[] | null | undefined, copy: Copy): string[] {
   if (!Array.isArray(equipment)) return [];
   const out: string[] = [];
   for (const raw of equipment) {
     if (typeof raw !== "string") continue;
     const token = normalise(raw);
     if (!token) continue;
-    const label = EQUIPMENT_LABELS[token] ?? humanise(token);
+    const label = copy.guardrails.equipment[token] ?? humanise(token);
     if (!out.includes(label)) out.push(label);
   }
   return out;
@@ -98,14 +70,14 @@ export function equipmentLabels(equipment: string[] | null | undefined): string[
  * coach most needs to read exactly as written. So a known chip token gets its label and
  * everything else is passed through untouched.
  */
-export function injuryLabels(injuries: string[] | null | undefined): string[] {
+export function injuryLabels(injuries: string[] | null | undefined, copy: Copy): string[] {
   if (!Array.isArray(injuries)) return [];
   const out: string[] = [];
   for (const raw of injuries) {
     if (typeof raw !== "string") continue;
     const value = raw.trim();
     if (!value) continue;
-    const label = INJURY_LABELS[normalise(value)] ?? value;
+    const label = copy.guardrails.injuries[normalise(value)] ?? value;
     if (!out.includes(label)) out.push(label);
   }
   return out;

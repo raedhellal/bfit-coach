@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
 import { firstName, formatDate, formatInstant } from "@/lib/format";
+import { useCopy } from "@/lib/i18n/client";
 import {
   applyTemplateTargetsAction,
   applyTemplateWeekAction,
@@ -51,8 +51,6 @@ type Dialog =
   | { kind: "pick"; template: NutritionTemplate }
   | { kind: "confirm"; template: NutritionTemplate; trainee: NutritionTarget };
 
-const T = copy.nutritionTemplates;
-
 export function NutritionTemplateLibrary({
   library,
   trainees,
@@ -61,6 +59,8 @@ export function NutritionTemplateLibrary({
   /** `null` = the roster read failed. Never collapsed to `[]`: "nobody" would be false. */
   trainees: NutritionTarget[] | null;
 }) {
+  const copy = useCopy();
+  const T = copy.nutritionTemplates;
   const router = useRouter();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -216,6 +216,8 @@ function TemplateRow({
   onDelete: () => void;
   onUse: () => void;
 }) {
+  const copy = useCopy();
+  const T = copy.nutritionTemplates;
   const { calories, proteinG, carbsG, fatG } = template.targets;
   return (
     <Card>
@@ -242,7 +244,7 @@ function TemplateRow({
             <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
               {T.macroLine(calories, proteinG, carbsG, fatG)}
             </span>
-            <Badge tone="neutral">{T.updatedAt(formatInstant(template.updatedAt))}</Badge>
+            <Badge tone="neutral">{T.updatedAt(formatInstant(template.updatedAt, copy.locale))}</Badge>
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -304,6 +306,8 @@ function RenameDialog({
   onClose: () => void;
   onDone: (name: string) => void;
 }) {
+  const copy = useCopy();
+  const T = copy.nutritionTemplates;
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [seeded, setSeeded] = useState<string | null>(null);
@@ -382,6 +386,8 @@ function DeleteDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const copy = useCopy();
+  const T = copy.nutritionTemplates;
   const [error, setError] = useState<string | null>(null);
   const [seeded, setSeeded] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -455,6 +461,8 @@ function PickDialog({
   onClose: () => void;
   onPick: (template: NutritionTemplate, trainee: NutritionTarget) => void;
 }) {
+  const copy = useCopy();
+  const T = copy.nutritionTemplates;
   return (
     <Modal
       open={template !== null}
@@ -534,8 +542,10 @@ function ConfirmDialog({
   trainee: NutritionTarget;
   onClose: () => void;
 }) {
+  const copy = useCopy();
+  const T = copy.nutritionTemplates;
   const router = useRouter();
-  const first = firstName(trainee.traineeDisplayName);
+  const first = firstName(trainee.traineeDisplayName, copy.locale);
   const [read, setRead] = useState<ReadState>({ state: "reading" });
   const [pending, startTransition] = useTransition();
   const requested = useRef(false);
@@ -687,17 +697,17 @@ function ConfirmDialog({
                     {row.label}
                   </th>
                   <td style={{ textAlign: "right", padding: "8px 4px", color: "var(--ink-2)" }}>
-                    {ready.targets === null ? T.notSet : `${row.now} ${row.unit}`}
+                    {ready.targets === null || row.now === null ? T.notSet : T.amount(row.now, row.unit)}
                   </td>
                   <td style={{ textAlign: "right", padding: "8px 4px", color: "var(--ink)", fontWeight: 700 }}>
-                    {`${row.after} ${row.unit}`}
+                    {T.amount(row.after, row.unit)}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55, overflowWrap: "anywhere" }}>
-            {T.confirmBody(first, formatDate(ready.currentWeekStart))}
+            {T.confirmBody(first, formatDate(ready.currentWeekStart, copy.locale))}
           </p>
           {template.targets.calories < FLOOR_WARNING_BELOW && (
             <p style={{ margin: 0, fontSize: 13, color: "var(--warn-ink)", lineHeight: 1.5 }}>

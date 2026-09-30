@@ -1,14 +1,22 @@
 /**
- * Every user-visible string in Evoli Pro, in one place.
+ * Every user-visible string in Evoli Pro, in one place — the ENGLISH dictionary.
  *
- * English only for the demo — there is no i18n runtime here and inventing one for a
- * demo branch would be work the story excludes. The sentences marked "AC" are
- * verbatim acceptance-criteria text from EV-183 and MUST NOT be reworded without
- * changing the story: senior-qa verifies them character by character.
+ * EV-324: the portal speaks French to a browser whose first language is French. This
+ * object is `en`; `src/lib/copy.fr.ts` is `fr`, typed `satisfies Copy`, so a key missing
+ * from either side fails `tsc` (AC4). Nothing imports a dictionary directly: a server
+ * component calls `getCopy()` (`src/lib/i18n/server.ts`), a client component calls
+ * `useCopy()` (`src/lib/i18n/client.tsx`). A string added here without its French twin is
+ * a compile error, which is the point.
+ *
+ * The sentences marked "AC" are verbatim acceptance-criteria text from their stories and
+ * MUST NOT be reworded without changing the story: senior-qa verifies them character by
+ * character. EV-324 AC2: the English strings are unchanged by the French row.
  *
  * No invented benefits, no tier price, no ToS/DPA wording (EV-183 "NOT in the demo"
  * item 12 — ⛔ D8/D9 are open).
  */
+import type { Locale } from "./i18n/locale";
+
 /**
  * Append a full stop unless the value already ends a sentence.
  *
@@ -17,11 +25,13 @@
  * double stop. It is the smallest possible defect and it was shipped and then pinned by
  * a test, which is why it gets a named helper rather than a `.replace` at one call site.
  */
-function endSentence(value: string): string {
+export function endSentence(value: string): string {
   return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`;
 }
 
-export const copy = {
+export const en = {
+  /** EV-324 — the dictionary's own language; formatters take it (`src/lib/format.ts`). */
+  locale: "en" as Locale,
   brand: "Evoli Pro", // AC1: the app header reads exactly this
   tagline: "The coach back-office for Evoli Fit.",
 
@@ -49,6 +59,102 @@ export const copy = {
       "This account uses two-factor authentication, which Evoli Pro does not support yet.",
     unavailable: "Cannot reach the server. Check that the API is running.",
     signedOut: "You have been signed out.",
+    /**
+     * EV-278c / ADR-0022 D22.9e — "a pending trainee on the portal → today's refusal,
+     * pointing at the app". AC1's sentence, then where the trainee finishes instead.
+     */
+    pendingTrainee:
+      "This account is not an Evoli Pro coach account. Finish setting it up in the Evoli Fit app.",
+    /** EV-278c — `409 ACCOUNT_NOT_INITIALISED` at sign-in (EV-204 AC-P5c's line, for the web). */
+    notInitialised: "We can't finish this account here. Write to support@evoli.fit and we'll sort it out.",
+  },
+
+  /**
+   * EV-278c — the activation screen (/activate). EV-278 carries no verbatim copy for it;
+   * the refusal lines below marked "AC-P5c" are EV-204 AC-P5c's app sentences, mirrored so
+   * the two activation surfaces say the same thing about the same refusal (ADR-0022 D22.9f:
+   * one endpoint, one consent source). Everything else is this surface's own wording.
+   *
+   * Deliberately ABSENT: any "we emailed you" sentence (the api's mail adapter swallows
+   * failures, EV-278 edge case 1) and any sentence naming the account's name (the portal
+   * cannot read it; see `ActivationStatus`).
+   */
+  activate: {
+    title: "Finish your account",
+    setUpBy: (initialiser: string) => `${initialiser} set up this Evoli Pro account for you.`,
+    finishBy: (when: string) =>
+      `Finish it by ${when}. If it isn't finished by then, the account is deleted.`,
+    temporaryPassword: "Temporary password",
+    temporaryHint: "From the invitation email.",
+    newPassword: "New password",
+    newHint: "At least 8 characters.",
+    repeatPassword: "Repeat the new password",
+    mismatch: "The two new passwords don't match.",
+    /**
+     * The checkbox's accessible name. The links sit OUTSIDE the label, on their own line,
+     * so that opening a document to read it can never tick the box (the app's BUG-023
+     * reasoning: "a row-wide toggle would tick consent for anyone tapping to read").
+     */
+    consent: "I agree to the Terms of Service and the Privacy Policy.",
+    termsLink: (version: string) => `Terms of Service (version ${version})`,
+    privacyLink: (version: string) => `Privacy Policy (version ${version})`,
+    readBefore: "Read them before you agree:",
+    submit: "Finish my account",
+    submitting: "Finishing…",
+    // AC-P5c, verbatim from the app.
+    temporaryInvalid: "That temporary password isn't right. Check the email we sent you.",
+    // AC-P5c, verbatim from the app.
+    temporaryReused: "Choose a new password that's different from the temporary one.",
+    // AC-P5c's shape: {minutes} = Retry-After ÷ 60, rounded up.
+    rateLimited: (minutes: number) =>
+      `Too many attempts. Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`,
+    rateLimitedNoWait: "Too many attempts. Wait a few minutes and try again.",
+    // The app's consentRequired / consentUpdated lines, for a person finishing an account.
+    consentRequired: "Please accept the Terms of Service and the Privacy Policy to finish your account.",
+    consentUpdated:
+      "Our Terms of Service or Privacy Policy have changed. Please review them and accept the new version.",
+    consentReload: "Our Terms of Service or Privacy Policy have changed. Reload this page to see the new version.",
+    validation: "Your new password must be 8 to 128 characters.",
+    /**
+     * BUG-381: b-fit-api's `@NotBlank` on `newPassword`. Said before sending (the form) and
+     * for the api's own refusal (`PASSWORD_BLANK`, mapped by /api/auth/activate), never as
+     * `validation` — eight spaces meet the length rule, so that sentence was false.
+     */
+    blank: "Your new password can't be only spaces.",
+    notInitialised: "We can't finish this account here. Write to support@evoli.fit and we'll sort it out.",
+    alreadyActiveTitle: "This account is already finished",
+    alreadyActive: "Sign in again with the password you chose.",
+    signInAgain: "Sign in again",
+    expiredTitle: "This account has expired",
+    /** The page, when `expiresAt` has passed before the form is shown. */
+    expired: (when: string, initialiser: string) =>
+      `It had to be finished by ${when}, and that time has passed. Ask ${initialiser} to set it up again.`,
+    /** `410 ACTIVATION_EXPIRED` on submit: the clock passed while the form was open. */
+    expiredOnSubmit: (when: string, initialiser: string) =>
+      `This account had to be finished by ${when}, and that time has passed. Ask ${initialiser} to set it up again.`,
+    traineeTitle: "Finish this account in the app",
+    trainee: "This account is set up for Evoli Fit, not Evoli Pro. Finish it in the Evoli Fit app.",
+    loadFailedTitle: "We couldn't load your account",
+    loadFailed: "Reload the page to try again.",
+    legalUnavailable:
+      "We can't show the Terms of Service and the Privacy Policy right now, so the account can't be finished yet. Reload the page to try again.",
+    /**
+     * `failed` and `unavailable` are ONE sentence on purpose (staff, EV-278c round 2): after
+     * an unrecognised answer or a lost reply the portal does not know whether the api
+     * finished the account, so neither may say it was "not changed". Reloading /activate
+     * asks `GET /me/activation` again and draws where it actually stands — the form if still
+     * pending, `alreadyActiveTitle` if it was finished.
+     */
+    failed: "We couldn't confirm your account was finished. Reload this page to see where it stands.",
+    unavailable: "We couldn't confirm your account was finished. Reload this page to see where it stands.",
+    signedInAgain: "Your account is finished. Sign in with your new password.",
+    /**
+     * EV-324 — who set the account up, when the api sent a kind and no name (the name was
+     * erased). `initialiserName` in coachApi.ts still carries its English pair — that file
+     * belongs to a parallel branch this week — so /activate maps these two kinds itself.
+     */
+    yourGym: "Your gym",
+    yourCoach: "Your coach",
   },
 
   shell: {
@@ -101,6 +207,12 @@ export const copy = {
     noWorkout: "No workouts yet",
     streak: (days: number) => `${days} day${days === 1 ? "" : "s"}`,
     noStreak: "No streak",
+    /**
+     * EV-283 In scope, verbatim: "a small *"Plan changed"* marker on rows with
+     * `routineChangedSinceYourPublish`". Said only for a literal `true` — null is "not
+     * shared" (no WORKOUTS) and says nothing, false says nothing.
+     */
+    planChanged: "Plan changed",
     statusActive: "ACTIVE",
     loadError: "The roster could not be loaded.",
     retry: "Reload",
@@ -167,7 +279,11 @@ export const copy = {
      */
     titleFrom: (coachName: string) => `${coachName} invited you to Evoli Fit`,
     body: "Open the invite in the Evoli Fit app to see who is inviting you. Nothing is shared until you accept.",
-    open: "Open in Evoli Fit",
+    /**
+     * EV-289, verbatim: "Open in Evoli Fit" and "Open in Evoli Fit Lite". The app name
+     * comes from `src/lib/traineeApps.ts`, so the lite label follows D-LITE-1 there.
+     */
+    openIn: (appName: string) => `Open in ${appName}`,
     // Edge case 3, verbatim: a phone without the app gets a sentence, not a white screen.
     fallback:
       "Don't have the app yet? Install Evoli Fit, then open this link again.",
@@ -487,6 +603,8 @@ export const copy = {
   },
 
   tabs: {
+    /** The tab strip's landmark name (was a literal in ClientTabs.tsx before EV-324). */
+    label: "Trainee sections",
     overview: "Overview",
     routine: "Routine", // EV-184 AC1, verbatim
     nutrition: "Nutrition", // EV-185 AC1, verbatim
@@ -518,6 +636,18 @@ export const copy = {
     build: "Build a plan", // AC1, verbatim
     // AC1, verbatim — the link is ACTIVE but carries no WORKOUTS scope.
     scopeMissing: "This trainee has not shared their workouts with you.",
+    /**
+     * EV-283 In scope, verbatim: "{Trainee first name} changed this plan on {date}. You're
+     * seeing their version." Shown above the editor when `lastChangedBy = TRAINEE`; the
+     * date is `formatInstant` (this portal's one date format, en-GB, UTC) and is labelled
+     * " (UTC)" — Raed's ruling 2026-09-28: keep UTC rather than guess the coach's zone,
+     * but say so, because a change made late evening in Europe reads as the next day.
+     * Deliberately NOT said: what changed (a diff is out of scope — no published copy is
+     * kept beside the live one) and anything about session edits, which the api does not
+     * record until EV-283c.
+     */
+    traineeChanged: (firstName: string, date: string) =>
+      `${firstName} changed this plan on ${date} (UTC). You're seeing their version.`,
     draftBadge: "Draft — not yet published", // AC2, verbatim
     publishedBadge: "Published plan",
     planNameLabel: "Plan name",
@@ -533,6 +663,8 @@ export const copy = {
      * a coach reads it as the field it is. Nothing else about the field changes.
      */
     dayFocusLabel: "Day focus",
+    /** The focus field's accessible name per day (was composed with a literal " focus" before EV-324). */
+    dayFocusName: (n: number) => `Day ${n} focus`,
     /**
      * EV-201 AC2, verbatim. Replace carries the row's sets, reps and rest onto the new
      * exercise (`onPick`); Remove-then-Add does not — it lands on the 3 / "8-12" / "90s"
@@ -675,6 +807,68 @@ export const copy = {
     // AC2: the coach picks from the catalog and can never type an exercise name.
     catalogPickOnly: "Pick from the catalog. Typed names are not accepted.",
     loadError: "This trainee's routine could not be loaded.",
+
+    /* ── BUG-195c: the whole document, and the write path that now works ──── */
+
+    /** The per-day optional `TrainingDay.estimatedMinutes`, which had no control until now. */
+    estimatedMinutesLabel: "Minutes (estimate)",
+    estimatedMinutesName: (n: number) => `Day ${n} estimated minutes`,
+    /**
+     * AC3.4 — `goal` and `level` on a TRAINEE's draft are the trainee's own answers and
+     * the server resolves them (ADR-0018 D3). A plan built from scratch has not been
+     * resolved yet, so it says when it will be rather than printing a placeholder as the
+     * trainee's goal.
+     */
+    subjectOnSave: "Set from their profile when you save.",
+    /** AC3.4's label for the two read-only fields — distinct from the page's guardrail sentence. */
+    subjectFromProfile:
+      "Goal and level are the trainee's own answers, from their profile. They are filled in when you save, and you cannot change them here.",
+    /**
+     * ADR-0018 D10 — the trainee's own progression rules ride along untouched (they are
+     * `CARRIED_UNSEEN` in src/lib/routineVisibility.ts). Said on screen so a coach is not
+     * surprised that something they cannot edit is part of what they publish.
+     */
+    progressionCarried: (n: number) =>
+      n === 1
+        ? "This plan has 1 week-by-week progression rule from the trainee's own plan. It is kept as it is; you cannot edit it here."
+        : `This plan has ${n} week-by-week progression rules from the trainee's own plan. They are kept as they are; you cannot edit them here.`,
+    notSaveableYet: "This plan is not ready to save yet:",
+    summaryHint: "Part of the plan you publish. Leave it empty if you have nothing to add.",
+    minutesRequired: "Set how many minutes a session lasts.",
+    setsBound: (day: number, exercise: string) =>
+      `Day ${day}: ${exercise} needs between 1 and 20 sets.`,
+    restRequired: (day: number, exercise: string) => `Day ${day}: ${exercise} needs a rest time.`,
+
+    /* The api's three 400s — each its own sentence, none quoting the api's message. */
+    invalid:
+      "Nothing was saved: the server did not accept a value in this plan. Check every day has a focus and at least one exercise, and every exercise has sets and a rest time.",
+    subjectField: (field: string) =>
+      `Nothing was saved: the draft carried the trainee's own “${field}”, which only they can set. Reload the page and try again.`,
+    repsOnDuration: (weekday: string, exercise: string) =>
+      `Nothing was saved. ${exercise} on ${weekday} is timed, so it cannot have reps. Clear its reps, or track it by weight and reps.`,
+    repsOnDurationUnlocated:
+      "Nothing was saved. A timed exercise in this plan has reps. Clear them, or track it by weight and reps.",
+
+    /*
+     * The 409 COACH_DRAFT_EXISTS dialog (AC3.6). Somebody saved this trainee's draft
+     * after this editor last read it — another tab, another device, or a template
+     * apply — and NOTHING was written. The dialog carries the same overwrite sentence
+     * apply uses (`templates.replacesDraft`) and the same "Replace the draft" control,
+     * and it never overwrites without that press.
+     */
+    conflictTitle: "This draft changed somewhere else",
+    conflictBody:
+      "Someone saved this trainee's draft from another tab or device after you opened it. Your changes have not been saved.",
+    conflictKeepEditing: "Keep editing",
+    conflictLoad: "Load the saved version",
+    /** Staff review S1 — the non-destructive-looking answer replaces the page's unsaved edits. */
+    conflictLoadWarning: "Loading it replaces what is on this page.",
+    conflictLoaded:
+      "You are looking at the version that was saved elsewhere. Your changes were not saved.",
+    conflictLoadFailed: "The saved version could not be loaded. Reload the page.",
+    /** A 409 with no readable timestamp: no overwrite is offered, because it would be a guess. */
+    conflictUnreadable:
+      "This draft changed while you were editing. Load the saved version to see it.",
   },
 
   /**
@@ -691,7 +885,8 @@ export const copy = {
     fat: "Fat",
     kcal: "kcal",
     grams: "g",
-    activity: "Activity level",
+    /** The targets card's badge. EV-324 made it a template so French can space its colon. */
+    activityBadge: (label: string) => `Activity level: ${label}`,
     activityLabels: {
       SEDENTARY: "Sedentary",
       LIGHT: "Lightly active",
@@ -722,6 +917,11 @@ export const copy = {
     scopeMissing: "This trainee has not shared their nutrition with you.",
     allergies: "Allergies",
     rules: "Dietary rules",
+    /**
+     * EV-324 — `FoodRule` tokens. English shows the token as it always has (AC2); French
+     * gets the word. An unknown token falls back to itself.
+     */
+    ruleLabels: { HALAL: "HALAL", KOSHER: "KOSHER" } as Record<string, string>,
     dislikes: "Dislikes",
     // Edge case 1, verbatim: no preferences row is not the same as an empty checked list.
     noRestrictions: "No dietary restrictions recorded.",
@@ -830,6 +1030,13 @@ export const copy = {
     swapLoading: "Loading options…",
     swapNone: "No swap options are available for this meal.",
     swapFailed: "The meal could not be swapped.",
+    /**
+     * EV-288, verbatim — the apply answered 409 `SWAP_OPTIONS_STALE` (BUG-271): the list
+     * on screen was re-read and replaced. Shared by both Swap sheets (flag off and on).
+     * Not shown when the re-read itself fails: there are no "current ones" to point at,
+     * so that case is today's options-error state (story edge case 1).
+     */
+    swapOptionsChanged: "These options changed. Here are the current ones.",
     noMeals: "No meals planned for this day.",
     /**
      * The marker on a meal the TRAINEE locked in their own app. ADR-0015 D6.7: an
@@ -851,6 +1058,48 @@ export const copy = {
     macros: (kcal: number, p: number, c: number, f: number) =>
       `${kcal} kcal · ${p} g protein · ${c} g carbs · ${f} g fat`,
     loadError: "This trainee's nutrition could not be loaded.",
+  },
+
+  /**
+   * EV-284b — the Food log section on the nutrition tab. Strings marked AC5 are the
+   * story's (hub EV-284, AC5 as amended 2026-09-27), VERBATIM; the rest are ours.
+   *
+   * Deliberately NOT said: "Scanned". A scan and a food-database search are stored
+   * identically (the app sends the product code for both), so AC5 merged the two into
+   * one label; telling them apart needs a cross-repo row nobody has asked for.
+   */
+  foodLog: {
+    title: "Food log",
+    /**
+     * OURS. The window is the api's default (seven days ending on its UTC today) and a
+     * day is the stored `food_log.logged_on`, which is the server's UTC day of the write
+     * (EV-284 AC4, BUG-274). Saying so is the only way a coach far from UTC can read a
+     * late dinner filed under the next day.
+     */
+    window: (from: string, to: string) => `${from} – ${to}. Days are counted in UTC.`,
+    nothingLogged: "Nothing logged", // EV-284b In scope + AC5, verbatim
+    calories: "Calories",
+    protein: "Protein",
+    carbs: "Carbs",
+    fat: "Fat",
+    /** "417 / 2,150 kcal" — eaten, then the day's target. */
+    pair: (eaten: string, target: string, unit: string) => `${eaten} / ${target} ${unit}`,
+    /** OURS. A trainee with no stored target: what they ate, and no invented target. */
+    noTarget: (eaten: string, unit: string) => `${eaten} ${unit} · No target`,
+    kcal: "kcal",
+    grams: "g",
+    /** AC5, verbatim, keyed by `FoodLogEntry.Source`. An unknown source gets no label. */
+    source: {
+      OFF: "From the food database",
+      QUICK: "Quick add",
+      MANUAL: "Entered by hand",
+    } as Record<string, string>,
+    fromThePlan: "From the plan", // AC5, verbatim
+    logged: "Logged",
+    serving: (grams: string) => `${grams} g`,
+    /** OURS. Times are the api's instants shown in UTC, like every date on this portal. */
+    at: (time: string) => `${time} UTC`,
+    loadError: "The food log could not be loaded.",
   },
 
   /**
@@ -1042,6 +1291,23 @@ export const copy = {
     newDayFocus: "New day",
     goalLabel: "Goal",
     levelLabel: "Level",
+    /**
+     * EV-324 — the goal and level options. English shows the api's token, exactly as it
+     * did before this row (AC2: English unchanged); French gets words. Giving English words
+     * too is a UX call for another row, not a side effect of this one.
+     */
+    goalLabels: {
+      BUILD_MUSCLE: "BUILD_MUSCLE",
+      LOSE_WEIGHT: "LOSE_WEIGHT",
+      GET_STRONGER: "GET_STRONGER",
+      ENDURANCE: "ENDURANCE",
+      MOBILITY: "MOBILITY",
+    } as Record<string, string>,
+    levelLabels: {
+      BEGINNER: "BEGINNER",
+      INTERMEDIATE: "INTERMEDIATE",
+      ADVANCED: "ADVANCED",
+    } as Record<string, string>,
     minutesLabel: "Minutes per session",
     summaryLabel: "Summary",
     summaryHint: "Shown to nobody but you. Leave it empty if you have nothing to add.",
@@ -1129,6 +1395,16 @@ export const copy = {
      * retry without the assertion is a draft destroyed on a guess, and the assertion is
      * the only thing that makes the sentence above true.
      */
+    /**
+     * Staff review B1 — template APPLY refused 400 COACH_DRAFT_REPS_ON_DURATION in
+     * BUG-195b round 2: a timed exercise saved by the old editor still has reps, and the
+     * editor shows no Reps field for a timed exercise. Since round 3 (api `fcc1ccd`, on
+     * api main at 741ed39) apply clears them instead, so this sentence is only reachable
+     * from an api rolled back past that commit. Saving the template once still clears
+     * them here too (`withoutDurationReps`).
+     */
+    repsOnDuration:
+      "A timed exercise in this template still has reps from the old editor. Open the template and save it, then use it again.",
     applyConflictUnreadable:
       "That trainee's draft changed while this dialog was open. Open it again.",
     /**
@@ -1382,6 +1658,8 @@ export const copy = {
     confirmTitle: (template: string, first: string) => `Use “${template}” on ${first}?`,
     now: "Now",
     after: "After",
+    /** A cell of the Now | After table. English prints the raw number, as the rows do. */
+    amount: (value: number, unit: string) => `${value} ${unit}`,
     notSet: "Not set", // AC4, verbatim — the trainee has no targets yet
     /** AC4, verbatim. `weekStart` is the date the dialog-open read returned. */
     confirmBody: (first: string, weekStart: string) =>
@@ -1408,6 +1686,170 @@ export const copy = {
       `We couldn't confirm whether ${first}'s targets changed. Check their nutrition page before you try again.`,
   },
 
+
+  /**
+   * /unavailable — a page load whose session rotation got no verdict from the api (it is
+   * down, or its per-IP refresh throttle answered 429). The cookies were kept, so "not
+   * signed out" is true. Only a GET or HEAD is ever shown this page — middleware answers
+   * a server action or any other write with a bare 503 and no page (staff round 4) — and
+   * a read refused before any page ran changed nothing, so "nothing was changed" is true
+   * too. Do not route a write here: after a refused write the sentence could be false.
+   */
+  /**
+   * EV-321b — step challenges (b-fit-api EV-321a). No story carries verbatim copy for the
+   * portal half; the one wording the api's contract rules on is the source label: the
+   * portal names where a number came from ("Health Connect", "Apple Health") and never
+   * calls it "verified". Numbers arrive PRE-FORMATTED (`formatSteps`), so a sentence here
+   * never groups digits itself.
+   */
+  challenges: {
+    nav: "Challenges",
+    title: "Challenges",
+    subtitle: "Step goals your clients join from the Evoli Fit app.",
+    create: "New challenge",
+    emptyTitle: "No challenges yet",
+    emptyBody: "Set a daily step goal for a week and invite your clients. You see their progress once they accept.",
+    loadError: "Your challenges could not be loaded.",
+    /** One body for a foreign id, one that never existed and one deleted in another tab. */
+    notYours: "That challenge is not in your list.",
+    backToList: "Back to challenges",
+    phase: {
+      UPCOMING: "Upcoming",
+      ACTIVE: "Active",
+      ENDED: "Ended",
+    },
+    window: (start: string, end: string) => `${start} → ${end}`,
+    days: (days: number) => `${days} day${days === 1 ? "" : "s"}`,
+    stepsGoal: (steps: string) => `${steps} steps a day`,
+    workoutsGoal: (count: string) => `${count} workouts in total`,
+    counts: (participants: number, accepted: number) =>
+      `${participants} invited · ${accepted} joined`,
+    previous: "Previous",
+    next: "Next",
+    pageOf: (page: number, pages: number) => `Page ${page} of ${pages}`,
+
+    /* ── the create dialog ─────────────────────────────────────────────────── */
+    dialogTitle: "New challenge",
+    dialogSub: "Your clients get an invitation in the Evoli Fit app.",
+    titleLabel: "Title",
+    titlePlaceholder: "e.g. 10,000 steps a day",
+    metricLabel: "Type",
+    metricSteps: "Daily steps",
+    targetLabel: "Daily step goal",
+    targetHint: (min: string, max: string) => `Between ${min} and ${max} steps.`,
+    startLabel: "Starts on",
+    endLabel: "Ends on",
+    windowHint: "Up to 93 days, starting at most 14 days ago or 60 days ahead.",
+    clientsLabel: "Clients to invite",
+    clientsHint: "You see a client's steps only after they accept the invitation.",
+    selectAll: "Select all",
+    selectNone: "Clear",
+    selected: (count: number) => `${count} selected`,
+    noClients: "You have no linked clients yet. Invite a client from the roster first.",
+    /** The roster read failed — not the same fact as having no clients. */
+    clientsLoadError: "Your clients could not be loaded. Reload the page to try again.",
+    submit: "Create and invite",
+    submitting: "Creating…",
+    cancel: "Cancel",
+    problems: {
+      titleRequired: "Give the challenge a title.",
+      titleTooLong: (max: string) => `A title is at most ${max} characters.`,
+      titleControl: "A title fits on one line.",
+      titleInvalid: (max: string) => `A title is 1 to ${max} characters, on one line.`,
+      targetInvalid: "Enter the goal as a whole number of steps.",
+      targetRange: (min: string, max: string) => `The daily goal is between ${min} and ${max} steps.`,
+      dateInvalid: "Choose a date.",
+      endBeforeStart: "The end date is on or after the start date.",
+      windowTooLong: (days: string) => `A challenge lasts at most ${days} days.`,
+      startTooEarly: (days: string) => `The start date is at most ${days} days ago.`,
+      startTooLate: (days: string) => `The start date is at most ${days} days ahead.`,
+      startRange: (past: string, ahead: string) =>
+        `The start date is between ${past} days ago and ${ahead} days ahead.`,
+      endRange: (days: string) => `The end date is on or after the start, and a challenge lasts at most ${days} days.`,
+      clientsRequired: "Choose at least one client.",
+      clientsTooMany: (max: string) => `You can invite up to ${max} clients.`,
+      clientsRange: (max: string) => `Choose between 1 and ${max} clients.`,
+    },
+    failures: {
+      /** 403 COACH_ACCESS_DENIED — one body for foreign, revoked and unknown clients. */
+      accessDenied:
+        "One of these clients is no longer linked to you. Nothing was created. Reload the page and choose again.",
+      /** 409 COACH_CHALLENGE_LIMIT_REACHED. */
+      limitReached: (max: string) =>
+        `You already have ${max} challenges that have not ended. Delete one to create another.`,
+      invalid: "The challenge could not be created. Check the form and try again.",
+      failed: "The challenge could not be created. Try again in a moment.",
+    },
+    created: "Challenge created. Your clients see the invitation in the Evoli Fit app.",
+
+    /* ── the challenge page ───────────────────────────────────────────────── */
+    refresh: "Refresh",
+    refreshing: "Refreshing…",
+    autoRefresh: "Updates every 45 seconds while this page is open.",
+    /** EV-321b — the coach's own clock (`LoadedAt`, rendered in the browser), so no zone suffix. */
+    loadedAt: (time: string) => `Updated at ${time}`,
+    consent: "Accepting the invitation is how a client agrees to share their steps with you.",
+    progressLabel: "Participants' progress",
+    colRank: "Rank",
+    colClient: "Client",
+    colStatus: "Status",
+    colToday: "Today",
+    colDaysMet: "Days met",
+    colTotal: "Total",
+    /** The sync time, with the source ("Health Connect") under it. */
+    colSynced: "Last sync",
+    colDays: "Day by day",
+    status: {
+      INVITED: "Invitation sent",
+      ACCEPTED: "Joined",
+    },
+    unnamed: "Unnamed client",
+    /** An INVITED row: no number, because accepting is the consent to share one. */
+    invitedNote: "Their steps appear here once they accept.",
+    rank: (rank: number) => `#${rank}`,
+    todaySteps: (value: string, target: string) => `${value} / ${target} steps`,
+    todayWorkouts: (value: string) => `${value} today`,
+    todayBar: (name: string) => `${name}: today's steps against the daily goal`,
+    daysMet: (met: number, elapsed: number) => `${met} / ${elapsed}`,
+    daysMetLabel: (met: number, elapsed: number) =>
+      `${met} of ${elapsed} day${elapsed === 1 ? "" : "s"} so far met the goal`,
+    totalSteps: (steps: string) => `${steps} steps`,
+    totalWorkouts: (count: string, target: string) => `${count} / ${target} workouts`,
+    source: {
+      HEALTH_CONNECT: "Health Connect",
+      HEALTHKIT: "Apple Health",
+      PEDOMETER: "Pedometer",
+      MANUAL: "Manual entry",
+    },
+    dayStatus: {
+      MET: "goal met",
+      MISSED: "goal missed",
+      IN_PROGRESS: "in progress",
+      NO_DATA: "no data",
+      FUTURE: "not yet",
+    },
+    dayLabel: (day: string, status: string) => `${day}: ${status}`,
+    dayLabelSteps: (day: string, steps: string, status: string) => `${day}: ${steps} steps, ${status}`,
+    daysList: (name: string) => `${name}, day by day`,
+    legend: "Key",
+    noParticipants:
+      "Nobody is listed on this challenge. A client who declined, left or is no longer linked to you does not appear.",
+
+    /* ── delete ───────────────────────────────────────────────────────────── */
+    remove: "Delete challenge",
+    deleteTitle: "Delete this challenge?",
+    deleteBody: (title: string) =>
+      `“${title}” is deleted, and it disappears from your clients' app. The steps your clients recorded stay theirs.`,
+    deleteConfirm: "Delete",
+    deleteFailed: "The challenge could not be deleted. Try again in a moment.",
+  },
+
+  unavailable: {
+    title: "We can't reach Evoli right now",
+    body: "Nothing was changed and you have not been signed out. Try again in a moment.",
+    retry: "Try again",
+  },
+
   common: {
     loading: "Loading…",
     // The route-level error boundary catches renders from every page, not just the
@@ -1415,5 +1857,70 @@ export const copy = {
     unexpectedError: "Something went wrong.",
     tryAgain: "Try again",
     dash: "—",
+    /** A modal's close button (was a literal in kit.tsx before EV-324). */
+    close: "Close",
+  },
+
+  /**
+   * EV-324 AC5b (scope §10.2), verbatim — the legal line under every page. Nutrition is
+   * not care: coaches may sell meal plans to healthy clients, and therapeutic nutrition
+   * belongs to dietitians. Rendered once, sticky, by `LegalFooter` in the root layout.
+   */
+  legalFooter:
+    "Meal plans for healthy people. They do not replace medical advice or care from a dietitian.",
+  /** The footer landmark's accessible name. Ours, not story copy. */
+  legalFooterLabel: "Legal notice",
+
+  /**
+   * The trainee's guardrail tokens as words (EV-324 moved them here from
+   * `src/lib/guardrailLabels.ts`, which keeps the lookup and the humanising fallback).
+   * b-fit-mobile's `equipment.*` strings, verbatim per language; ADR-0005 D1a's tokens.
+   */
+  guardrails: {
+    equipment: {
+      NONE: "Bodyweight only",
+      BODYWEIGHT: "Bodyweight only",
+      DUMBBELLS: "Dumbbells",
+      BARBELL: "Barbell",
+      BANDS: "Bands",
+      GYM: "Full gym",
+      KETTLEBELL: "Kettlebell",
+      PULL_UP_BAR: "Pull-up bar",
+      BENCH: "Bench",
+      CABLE_MACHINE: "Cable machine",
+      SQUAT_RACK: "Squat rack",
+    } as Record<string, string>,
+    injuries: {
+      KNEE: "Knees",
+      LOWER_BACK: "Lower back",
+      SHOULDER: "Shoulders",
+      NECK: "Neck",
+      WRIST: "Wrists",
+      HIP: "Hips",
+      ANKLE: "Ankles",
+      ELBOW: "Elbows",
+    } as Record<string, string>,
   },
 } as const;
+
+/**
+ * EV-324 AC4 — the shape both languages share. `en` is `as const`, so its strings are
+ * literal types; `Widen` turns every literal back into `string` (and keeps functions'
+ * parameters) so that `fr` can say different words in the SAME shape. `fr` is declared
+ * `satisfies Copy`: a key missing in French is a missing-property error, and a key French
+ * has that English does not is an excess-property error — both fail `tsc`.
+ *
+ * `Record<string, string>` maps (the enum labels) cannot be checked key-by-key this way;
+ * `qa/coach-i18n.spec.ts` compares the two dictionaries' key sets at run time too.
+ */
+type Widen<T> = T extends string
+  ? string
+  : T extends number
+    ? number
+    : T extends (...args: infer A) => infer R
+      ? (...args: A) => Widen<R>
+      : T extends object
+        ? { readonly [K in keyof T]: Widen<T[K]> }
+        : T;
+
+export type Copy = Omit<Widen<typeof en>, "locale"> & { readonly locale: Locale };

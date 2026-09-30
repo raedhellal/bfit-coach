@@ -62,7 +62,10 @@
 }
 
 html, body { margin:0; padding:0; min-height:100%; background:var(--bg); color:var(--ink); font-family:var(--font-body); }
-#app-root { width:100%; min-height:100vh; }
+/* EV-324: the frame is shortened by the sticky legal footer's height (LegalFooter.tsx), so a
+   page that fits the viewport is never covered by it. 0 below 768 px, where it is static. */
+:root { --legal-footer-h: 0px; }
+#app-root { width:100%; min-height:calc(100vh - var(--legal-footer-h)); }
 * { box-sizing:border-box; }
 a { color:inherit; text-decoration:none; }
 button { font-family:var(--font-body); }
@@ -90,8 +93,21 @@ input::placeholder { color:var(--ink-3); }
 
 .page { padding: 28px 32px 56px; max-width: 1180px; margin: 0 auto; }
 .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.login-split { min-height: 100vh; display: flex; }
-.login-brand { flex: 1; }
+.login-split { min-height: calc(100vh - var(--legal-footer-h)); display: flex; }
+/* BUG-380: the brand panel's WHOLE layout is here, never inline. An inline `display`
+   beats the ≤767 px `display: none` below (no media query can override an inline
+   declaration), which kept the panel on a phone and squeezed the form to 224 px at 320. */
+.login-brand {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px;
+  color: #fff;
+  background: var(--grad-energy);
+  position: relative;
+  overflow: hidden;
+}
 .login-form { width: 480px; max-width: 100%; }
 
 @media (max-width: 767px) {
@@ -143,13 +159,40 @@ input::placeholder { color:var(--ink-3); }
   .shell-nav {
     order: 3;
     flex-basis: 100%;
-    /* EV-273b: four links need two lines at 320 px. Wrapping keeps every link whole
-       and on screen. MEASURED without it (mutant M9): "Nutrition templates" ended at
-       381 px in a 320 px viewport and the page scrolled sideways by 77 px. */
+    /* EV-321b / EV-273b: four and then five links do not fit one 288 px line, so the
+       links wrap onto further rows rather than overflow into each other. MEASURED
+       without it (EV-273b mutant M9): "Nutrition templates" ended at 381 px in a 320 px
+       viewport and the page scrolled sideways by 77 px. */
     flex-wrap: wrap;
     row-gap: 2px;
   }
 }
+
+/* ── EV-321b: a challenge participant's day strip ────────────────────────────────
+   One square per window day. The colour is decoration; each square carries its date and
+   status as an accessible name and as `data-status`, and NO_DATA is drawn as an empty
+   dashed outline so it never reads as a zero-height (0-step) day. */
+.challenge-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 190px;
+}
+.challenge-day {
+  display: block;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+.challenge-day[data-status="MET"] { background: var(--ok); }
+.challenge-day[data-status="MISSED"] { background: var(--err-bg); border-color: var(--err); }
+.challenge-day[data-status="IN_PROGRESS"] { background: var(--blue-50); border-color: var(--blue-500); }
+.challenge-day[data-status="NO_DATA"] { background: transparent; border: 1px dashed var(--ink-3); }
+.challenge-day[data-status="FUTURE"] { background: var(--surface-2); border-color: var(--border); }
 
 /* EV-256b — the recipe editor's four macro inputs: two columns on a phone, four from
    720 px. A class, not inline, because the column count changes with the width. */
@@ -161,5 +204,73 @@ input::placeholder { color:var(--ink-3); }
 @media (min-width: 720px) {
   .recipe-macros {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* EV-284b — the Food log's days. A native <details> per logged day (keyboard and screen
+   reader support for free, no client JavaScript), with the marker replaced by a chevron
+   that turns when the day is open. The summary is a 44 px touch target. */
+.food-day > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 44px;
+  padding: 6px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.food-day > summary::-webkit-details-marker {
+  display: none;
+}
+.food-day > summary:focus-visible {
+  outline: 2px solid var(--blue-600);
+  outline-offset: 2px;
+  border-radius: var(--r-md);
+}
+.food-day-chev {
+  display: inline-flex;
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+.food-day[open] > summary .food-day-chev {
+  transform: rotate(90deg);
+}
+.food-macros {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin: 6px 0 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .food-day-chev {
+    transition: none;
+  }
+}
+
+/* ── EV-324 AC5b: the legal footer (LegalFooter.tsx) ─────────────────────────────
+   Sticky at the bottom on a wide screen, so the line is on screen at 1280 × 800 on every
+   page however long; a plain footer below 768 px (see the component for why). z-index
+   sits under the header (20), the revoke menu (30) and every modal (80). */
+.legal-footer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  padding: 8px 16px;
+}
+.legal-footer p { margin: 0; }
+@media (min-width: 768px) {
+  :root { --legal-footer-h: 35px; }
+  .legal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 15;
+    /* No nowrap/ellipsis: the sentence is legal copy and is shown whole (AC5b "verbatim").
+       At 1280 it is one line; between 768 and ~1000 px it wraps to two and covers a few
+       more pixels while scrolling, and nothing at the end of a page. */
+    min-height: var(--legal-footer-h);
   }
 }

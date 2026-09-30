@@ -1,5 +1,5 @@
 import type { WeightPoint } from "./coachApi";
-import { copy } from "./copy";
+import type { Copy } from "./copy";
 import { formatKgDelta } from "./format";
 
 /**
@@ -16,9 +16,9 @@ import { formatKgDelta } from "./format";
  * imported by a server component today, but nothing here touches a cookie or the api,
  * and a type import is erased.
  */
-export function weightCaption(series: WeightPoint[]): string {
+export function weightCaption(series: WeightPoint[], copy: Copy): string {
   if (series.length === 0) return copy.client.noWeighIns;
   if (series.length === 1) return copy.client.oneWeighIn;
   const delta = series[series.length - 1].weightKg - series[0].weightKg;
-  return copy.client.weighInDelta(formatKgDelta(delta), series.length);
+  return copy.client.weighInDelta(formatKgDelta(delta, copy.locale), series.length);
 }

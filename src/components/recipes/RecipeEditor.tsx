@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import type { Copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import {
   MACRO_FIELDS,
   MAX_INGREDIENTS,
@@ -53,12 +54,12 @@ import type { CoachIngredientOption, RecipeUnit } from "@/lib/coachApi";
  *    state the server does not have.
  */
 
-const MACRO_LABELS: Record<MacroField, string> = {
+const macroLabels = (copy: Copy): Record<MacroField, string> => ({
   kcal: copy.recipes.kcalLabel,
   proteinG: copy.recipes.proteinLabel,
   carbsG: copy.recipes.carbsLabel,
   fatG: copy.recipes.fatLabel,
-};
+});
 
 const FIELD = {
   height: MIN_TOUCH_TARGET,
@@ -86,6 +87,7 @@ export function RecipeEditor({
   /** `CoachRecipeResponse.unknownKeys` — lines whose key the api has since retired. */
   unknownKeys?: string[];
 }) {
+  const copy = useCopy();
   const router = useRouter();
   const [recipeId, setRecipeId] = useState<string | null>(initialRecipeId);
   const [draft, setDraft] = useState<RecipeDraft>(initial);
@@ -98,7 +100,7 @@ export function RecipeEditor({
   /** The line to focus once it has rendered — the one the coach just picked. */
   const [focusLine, setFocusLine] = useState<number | null>(null);
 
-  const local = localProblems(draft);
+  const local = localProblems(draft, copy);
   const saveable = local.length === 0;
 
   /**
@@ -181,7 +183,7 @@ export function RecipeEditor({
         // AC4 — addressed and shown; the form keeps everything the coach typed, and the
         // unsaved flag stands because the server still does not have this recipe.
         setNotice(null);
-        setRefused([serverProblem(result.failure, { kcal: body.kcal, ingredients: sentLines })]);
+        setRefused([serverProblem(result.failure, { kcal: body.kcal, ingredients: sentLines }, copy)]);
         return;
       }
       setRefused([]);
@@ -307,7 +309,7 @@ export function RecipeEditor({
             {MACRO_FIELDS.map((field) => (
               <div key={field} data-field={field} style={{ minWidth: 0 }}>
                 <label style={{ display: "block" }}>
-                  <div style={LABEL}>{MACRO_LABELS[field]}</div>
+                  <div style={LABEL}>{macroLabels(copy)[field]}</div>
                   <input
                     inputMode="numeric"
                     value={draft[field]}
@@ -486,6 +488,7 @@ function IngredientRow({
   onUnit: (unit: RecipeUnit) => void;
   onRemove: () => void;
 }) {
+  const copy = useCopy();
   return (
     <div
       role="group"
@@ -550,6 +553,7 @@ function IngredientSearch({
   /** A save is in flight: no line may be added until its refusal (if any) is addressed. */
   locked: boolean;
 }) {
+  const copy = useCopy();
   const [q, setQ] = useState("");
   const [options, setOptions] = useState<CoachIngredientOption[] | null>(null);
   const [failed, setFailed] = useState(false);

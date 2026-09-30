@@ -1,5 +1,6 @@
 import type { CoachProgressGoalRequest, TraineeProgressGoal, TraineeProgressReading } from "./coachApi";
-import { copy } from "./copy";
+import type { Copy } from "./copy";
+import type { Locale } from "./i18n/locale";
 import { formatDate, formatKg, formatKgDelta, formatPct, formatPtsDelta } from "./format";
 
 /**
@@ -266,10 +267,10 @@ export function refusedMilestone(body: CoachProgressGoalRequest): "WEIGHT" | "BO
  * is a change and a change has a direction. The two cells mean different things and
  * are formatted by different functions for that reason.
  */
-export function toGoValue(weightToGoKg: number): string {
+export function toGoValue(weightToGoKg: number, locale: Locale): string {
   const rounded = Number(weightToGoKg.toFixed(1));
-  if (rounded < 0) return formatKg(Math.abs(rounded));
-  return formatKgDelta(rounded);
+  if (rounded < 0) return formatKg(Math.abs(rounded), locale);
+  return formatKgDelta(rounded, locale);
 }
 
 /**
@@ -278,11 +279,14 @@ export function toGoValue(weightToGoKg: number): string {
  * current reading prints its magnitude ("4.0 pts to go"), one above keeps its plus
  * ("+2.0 pts to go"), and an exact hit is "0.0 pts to go" (edge case 2 of EV-274).
  */
-export function bodyFatToGoValue(bodyFatToGoPts: number): string {
+export function bodyFatToGoValue(bodyFatToGoPts: number, locale: Locale): string {
   const rounded = Number(bodyFatToGoPts.toFixed(1));
   // U+00A0 between number and unit, as `formatPtsDelta` does: they never wrap apart.
-  if (rounded < 0) return `${Math.abs(rounded).toFixed(1)}\u00a0pts`;
-  return formatPtsDelta(rounded);
+  if (rounded < 0) {
+    const magnitude = Math.abs(rounded).toFixed(1);
+    return `${locale === "fr" ? magnitude.replace(".", ",") : magnitude}\u00a0pts`;
+  }
+  return formatPtsDelta(rounded, locale);
 }
 
 /* ── 3 + 4. the two metric rows ─────────────────────────────────────────────── */
@@ -339,17 +343,18 @@ export function bodyFatAbsent(goal: TraineeProgressGoal): boolean {
  */
 function bodyFatText(
   reading: TraineeProgressReading,
-  weightReading: TraineeProgressReading | null
+  weightReading: TraineeProgressReading | null,
+  copy: Copy
 ): string {
-  const value = formatPct(reading.value);
+  const value = formatPct(reading.value, copy.locale);
   if (weightReading !== null && weightReading.date === reading.date) return value;
-  return copy.progressGoal.withDate(value, formatDate(reading.date));
+  return copy.progressGoal.withDate(value, formatDate(reading.date, copy.locale));
 }
 
-function weightText(reading: TraineeProgressReading): string {
+function weightText(reading: TraineeProgressReading, copy: Copy): string {
   // A weight reading ALWAYS prints its date (AC2), because the start baseline moves
   // with the start date and a coach has to see which reading was selected.
-  return copy.progressGoal.withDate(formatKg(reading.value), formatDate(reading.date));
+  return copy.progressGoal.withDate(formatKg(reading.value, copy.locale), formatDate(reading.date, copy.locale));
 }
 
 /**
@@ -367,7 +372,8 @@ function weightText(reading: TraineeProgressReading): string {
  * rendering for some other reason. Each cell carries `data-cell`, so QA asserts a
  * COUNT of zero.
  */
-function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): GoalRow {
+function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat", copy: Copy): GoalRow {
+  const locale = copy.locale;
   const isWeight = metric === "weight";
   const label = isWeight ? copy.progressGoal.weight : copy.progressGoal.bodyFat;
   const start = isWeight ? goal.startWeight : goal.startBodyFat;
@@ -386,15 +392,15 @@ function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): Goa
      * still shown.
      */
     if (bodyFatMilestone !== null) {
-      cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatPct(bodyFatMilestone)) });
+      cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatPct(bodyFatMilestone, locale)) });
     }
     return { metric, label, cells };
   }
 
   const text = (reading: TraineeProgressReading, column: "start" | "current"): string =>
     isWeight
-      ? weightText(reading)
-      : bodyFatText(reading, column === "start" ? goal.startWeight : goal.currentWeight);
+      ? weightText(reading, copy)
+      : bodyFatText(reading, column === "start" ? goal.startWeight : goal.currentWeight, copy);
 
   const cells: GoalCell[] = [];
 
@@ -406,7 +412,7 @@ function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): Goa
         : // AC3, verbatim: the start baseline never reaches backwards past the start
           // date, and when nothing is on or after it the column says so with the date
           // it was asked about — not with the earliest reading of all time.
-          copy.progressGoal.noReadingOnOrAfter(formatDate(goal.startedOn)),
+          copy.progressGoal.noReadingOnOrAfter(formatDate(goal.startedOn, locale)),
   });
 
   cells.push({
@@ -421,7 +427,7 @@ function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): Goa
   });
 
   if (delta !== null) {
-    cells.push({ key: "delta", text: isWeight ? formatKgDelta(delta) : formatPtsDelta(delta) });
+    cells.push({ key: "delta", text: isWeight ? formatKgDelta(delta, locale) : formatPtsDelta(delta, locale) });
   }
 
   /**
@@ -430,9 +436,9 @@ function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): Goa
    * ask. Waist, chest, hips, arm and thigh stay out on EV-202's original reasoning.
    */
   if (isWeight && goal.milestoneWeightKg !== null) {
-    cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatKg(goal.milestoneWeightKg)) });
+    cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatKg(goal.milestoneWeightKg, locale)) });
     if (goal.weightToGoKg !== null) {
-      cells.push({ key: "toGo", text: copy.progressGoal.toGo(toGoValue(goal.weightToGoKg)) });
+      cells.push({ key: "toGo", text: copy.progressGoal.toGo(toGoValue(goal.weightToGoKg, locale)) });
     }
   }
   /**
@@ -442,9 +448,9 @@ function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): Goa
    * other deployment as the absence it is.
    */
   if (!isWeight && bodyFatMilestone !== null) {
-    cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatPct(bodyFatMilestone)) });
+    cells.push({ key: "milestone", text: copy.progressGoal.milestone(formatPct(bodyFatMilestone, locale)) });
     if (typeof goal.bodyFatToGoPts === "number") {
-      cells.push({ key: "toGo", text: copy.progressGoal.toGo(bodyFatToGoValue(goal.bodyFatToGoPts)) });
+      cells.push({ key: "toGo", text: copy.progressGoal.toGo(bodyFatToGoValue(goal.bodyFatToGoPts, locale)) });
     }
   }
 
@@ -452,8 +458,8 @@ function metricRow(goal: TraineeProgressGoal, metric: "weight" | "bodyFat"): Goa
 }
 
 /** The two rows, weight first, exactly as AC2 prints them. */
-export function progressRows(goal: TraineeProgressGoal): GoalRow[] {
-  return [metricRow(goal, "weight"), metricRow(goal, "bodyFat")];
+export function progressRows(goal: TraineeProgressGoal, copy: Copy): GoalRow[] {
+  return [metricRow(goal, "weight", copy), metricRow(goal, "bodyFat", copy)];
 }
 
 /* ── the two provenance lines ───────────────────────────────────────────────── */
@@ -468,8 +474,8 @@ export function progressRows(goal: TraineeProgressGoal): GoalRow[] {
  * reach. The value exists on the wire (the column has a `SELF` source for a future
  * story); the SENTENCE is the claim, and it is withheld until something can produce it.
  */
-export function startedOnLine(goal: TraineeProgressGoal): string {
-  const date = copy.progressGoal.startedOn(formatDate(goal.startedOn));
+export function startedOnLine(goal: TraineeProgressGoal, copy: Copy): string {
+  const date = copy.progressGoal.startedOn(formatDate(goal.startedOn, copy.locale));
   if (goal.startedOnSource === "COACH") return `${date} · ${copy.progressGoal.startedOnCoach}`;
   if (goal.startedOnSource === "LINK_DEFAULT") {
     return `${date} · ${copy.progressGoal.startedOnLinkDefault}`;
@@ -488,13 +494,13 @@ export function startedOnLine(goal: TraineeProgressGoal): string {
  * `set_by` and one `updated_at`, and the api resolves `milestoneSetByName` for a row
  * carrying only a body-fat milestone too (b-fit-api `18fbcab`, `hasMilestone()`).
  */
-export function milestoneAttribution(goal: TraineeProgressGoal): string | null {
+export function milestoneAttribution(goal: TraineeProgressGoal, copy: Copy): string | null {
   if (goal.milestoneWeightKg === null && (goal.milestoneBodyFatPct ?? null) === null) return null;
   if (goal.milestoneSource === "SELF") return null;
   if (goal.milestoneSetByName === null) return copy.progressGoal.milestoneSetByGone;
   return copy.progressGoal.milestoneSetBy(
     goal.milestoneSetByName,
-    formatDate(goal.milestoneUpdatedAt ?? goal.startedOn)
+    formatDate(goal.milestoneUpdatedAt ?? goal.startedOn, copy.locale)
   );
 }
 

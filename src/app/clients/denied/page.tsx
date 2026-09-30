@@ -2,7 +2,7 @@ import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { DiscardTemplateOutcome } from "@/components/nutritionTemplates/DiscardTemplateOutcome";
 import { readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /clients/denied — the trainee-not-on-your-roster page, served with **403**
@@ -27,6 +27,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function ClientDeniedPage() {
+  const copy = getCopy();
   const me = await readCoachMe();
   return (
     <CoachShell coachName={me?.displayName}>

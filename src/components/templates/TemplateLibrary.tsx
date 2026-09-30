@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
-import { copy } from "@/lib/copy";
+import type { Copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { formatInstant, truncateName } from "@/lib/format";
 import { settled } from "@/lib/settled";
 import {
@@ -36,7 +37,7 @@ export interface ApplyTarget {
   traineeDisplayName: string;
 }
 
-const FAILURE_COPY: Record<TemplateFailure, string> = {
+const failureCopy = (copy: Copy): Record<TemplateFailure, string> => ({
   NAME_TAKEN: copy.templates.nameTaken,
   // The cap is served by the api; 50 is the shipped value and the sentence uses it
   // only as the fallback for a refusal that arrived without the list beside it.
@@ -46,9 +47,11 @@ const FAILURE_COPY: Record<TemplateFailure, string> = {
   NOT_PUBLISHABLE: copy.templates.saveFailed,
   PLAN_EMPTY: copy.routine.planEmpty,
   CATALOG_UNAVAILABLE: copy.routine.catalogUnavailable,
+  // Staff review B1 — its own sentence, never "could not be saved" for an apply.
+  REPS_ON_DURATION: copy.templates.repsOnDuration,
   ACCESS_DENIED: copy.templates.notYours,
   FAILED: copy.templates.saveFailed,
-};
+});
 
 type Dialog =
   | { kind: "rename"; template: CoachTemplateSummary }
@@ -62,6 +65,7 @@ export function TemplateLibrary({
   library: CoachTemplateList;
   trainees: ApplyTarget[];
 }) {
+  const copy = useCopy();
   const router = useRouter();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -223,6 +227,7 @@ function TemplateRow({
   onDelete: () => void;
   onUse: () => void;
 }) {
+  const copy = useCopy();
   return (
     <Card>
       {/*
@@ -263,7 +268,7 @@ function TemplateRow({
             <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
               {copy.templates.rowSummary(template.dayCount, template.exerciseCount)}
             </span>
-            <Badge tone="neutral">{updatedLabel(template.updatedAt)}</Badge>
+            <Badge tone="neutral">{updatedLabel(template.updatedAt, copy)}</Badge>
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -316,10 +321,10 @@ function TemplateRow({
  * timestamp. A server-rendered "just now" would be wrong the moment the page was
  * cached, which is exactly the kind of small lie this surface has been bitten by.
  */
-function updatedLabel(updatedAt: string): string {
+function updatedLabel(updatedAt: string, copy: Copy): string {
   const age = Date.now() - new Date(updatedAt).getTime();
   if (age >= 0 && age < 60_000) return copy.templates.updatedJustNow;
-  return copy.templates.updatedAt(formatInstant(updatedAt));
+  return copy.templates.updatedAt(formatInstant(updatedAt, copy.locale));
 }
 
 function RenameDialog({
@@ -333,6 +338,7 @@ function RenameDialog({
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
+  const copy = useCopy();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -438,6 +444,7 @@ function DeleteDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const copy = useCopy();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -524,6 +531,7 @@ function UseDialog({
   trainees: ApplyTarget[];
   onClose: () => void;
 }) {
+  const copy = useCopy();
   const router = useRouter();
   const [clientId, setClientId] = useState("");
   const [conflict, setConflict] = useState<string | null>(null);
@@ -568,7 +576,7 @@ function UseDialog({
           return;
         }
         setConflict(null);
-        setError(FAILURE_COPY[result.code]);
+        setError(failureCopy(copy)[result.code]);
         return;
       }
       /**

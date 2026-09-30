@@ -9,7 +9,7 @@ import {
   type RosterClient,
 } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /nutrition-templates — EV-273b AC1-AC3, the coach's own nutrition library.
@@ -30,6 +30,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function NutritionTemplatesPage() {
+  const copy = getCopy();
   const [me, library, roster] = await Promise.all([
     readCoachMe(),
     coachApi

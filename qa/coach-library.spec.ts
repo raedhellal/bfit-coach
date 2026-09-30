@@ -116,11 +116,13 @@ test.describe("AC2 — the library list", () => {
     // AC4, verbatim, stated once on the library page.
     await expect(page.getByText(PRIVATE, { exact: true })).toBeVisible();
 
-    // Newest-updated FIRST: the seeded rows are 2 and 11 days old, in that order.
+    // Newest-updated FIRST: the seeded rows are 2, 11 and 20 days old, in that order.
+    // The third ("Core circuit") is BUG-195c's legacy template with reps on a timed
+    // exercise — see qa/coach-library-apply.spec.ts.
     const order = await page
       .getByRole("group")
       .evaluateAll((groups) => groups.map((g) => g.getAttribute("aria-label") ?? ""));
-    expect(order).toEqual([SEEDED_A, SEEDED_B]);
+    expect(order).toEqual([SEEDED_A, SEEDED_B, "Core circuit"]);
 
     // The seeded rows: A was updated 2 days ago, B 11 days ago.
     await expect(page.getByText(SEEDED_A, { exact: true })).toBeVisible();

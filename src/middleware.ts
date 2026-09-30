@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { hasCoachRole, isExpired } from "@/lib/jwt";
+import { hasCoachRole, isExpired, isPendingOnly } from "@/lib/jwt";
+import { refreshOutcome } from "@/lib/refreshOutcome";
 
 /**
  * The route guard (EV-183 AC1, ADR-0012 D5).
@@ -19,6 +20,12 @@ import { hasCoachRole, isExpired } from "@/lib/jwt";
 const ACCESS_COOKIE = "evoli_pro_at";
 const REFRESH_COOKIE = "evoli_pro_rt";
 const LOGIN = "/login";
+/**
+ * EV-278c — the one page a PENDING session may reach (ADR-0022 D22.9e: "only to the
+ * activation route"), and a page a coach session never sees. /api/auth/activate, which
+ * does the work, is under the excluded `/api/auth` prefix and checks the session itself.
+ */
+const ACTIVATE = "/activate";
 
 /**
  * /clients/denied — the one route this app serves with a non-200 status
@@ -35,6 +42,21 @@ const LOGIN = "/login";
  * been denied is served with, which is why matching it does not weaken ADR-0012 D3.
  */
 const DENIED_ROUTE = /^\/clients\/denied\/?$/;
+
+/**
+ * /unavailable — what a page load is served, with **503**, when its rotation could not
+ * reach an answer (staff round 3 on EV-278c): `/auth/refresh` threw, answered 5xx, or
+ * answered 429 from `AuthRateLimitGuard.onRefresh`, which throttles the portal server's
+ * one IP for every coach at once. None of those is the session ending, so the cookies are
+ * NOT cleared and nobody is sent to /login; the page says so and offers a reload of the
+ * URL they asked for (a rewrite keeps it in the address bar).
+ *
+ * It is reached only by that rewrite, and only for a GET or HEAD (see `unavailable`), so
+ * the page's "Nothing was changed" is true: a read was refused before any page ran, and a
+ * write never gets this page at all. Middleware runs once per request and not again for
+ * its own rewrite, so a direct visit — the only way `pathname` can be this — is sent home.
+ */
+const UNAVAILABLE = "/unavailable";
 
 const API_BASE_URL = (process.env.API_BASE_URL || "http://localhost:8080").replace(
   /\/+$/,
@@ -63,33 +85,68 @@ function toLogin(req: NextRequest, reason?: "not_coach" | "expired") {
  * here and `apiFetch`'s 401 path stays as the fallback for a token that expires
  * mid-render.
  */
-async function refresh(refreshToken: string): Promise<{
-  accessToken: string;
-  refreshToken: string;
-  expiresIn?: number;
-} | null> {
+type Rotation =
+  | { kind: "token"; accessToken: string; refreshToken: string; expiresIn?: number }
+  | { kind: "expired" }
+  | { kind: "unavailable" };
+
+async function refresh(refreshToken: string): Promise<Rotation> {
+  let res: Response;
   try {
-    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    res = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
       cache: "no-store",
     });
-    if (!res.ok) return null;
+  } catch {
+    return { kind: "unavailable" };
+  }
+  // 401/403/4xx: the api refused this token. 429 and 5xx: it did not judge it at all.
+  if (!res.ok) return { kind: refreshOutcome(res.status) };
+  try {
     const body = (await res.json()) as {
       accessToken?: string;
       refreshToken?: string;
       expiresIn?: number;
     };
-    if (!body?.accessToken || !body?.refreshToken) return null;
+    if (!body?.accessToken || !body?.refreshToken) return { kind: "expired" };
     return {
+      kind: "token",
       accessToken: body.accessToken,
       refreshToken: body.refreshToken,
       expiresIn: body.expiresIn,
     };
   } catch {
-    return null;
+    // A 2xx whose body never arrived whole: the answer was lost, not a refusal.
+    return { kind: "unavailable" };
   }
+}
+
+/**
+ * 503 at the URL asked for, cookies untouched — see `UNAVAILABLE`.
+ *
+ * Only a GET or HEAD is rewritten to the page (staff round 4 on EV-278c). Anything else —
+ * above all a server action, which is a POST to the page's own URL with a `Next-Action`
+ * header — gets a bare 503 from here. Rewritten, it lands on /unavailable, which has no
+ * worker for the action, and Next 14 then FORWARDS it (cookies and all) to a page that
+ * has one; that request re-enters middleware, is rewritten again, and so on for as long
+ * as the refresh keeps failing — one `/auth/refresh` per lap, 18,381 of them from one
+ * click in staff's measurement, still going after the browser gave up, and running the
+ * abandoned write the moment the api recovered. A bare response ends the request here:
+ * the action never runs, the client's action call resolves with no result and the
+ * island shows its own "not saved" sentence, and the next page load gets the real page.
+ */
+function unavailable(req: NextRequest) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return new NextResponse(null, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+  const url = req.nextUrl.clone();
+  url.pathname = UNAVAILABLE;
+  url.search = "";
+  const res = NextResponse.rewrite(url, { status: 503 });
+  res.headers.set("Cache-Control", "no-store");
+  return res;
 }
 
 export async function middleware(req: NextRequest) {
@@ -139,23 +196,59 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname === UNAVAILABLE) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   if (!access && !refreshToken) return toLogin(req);
 
   let token = access;
-  let rotated: Awaited<ReturnType<typeof refresh>> = null;
+  let rotated: Extract<Rotation, { kind: "token" }> | null = null;
   if (isExpired(token) && refreshToken) {
-    rotated = await refresh(refreshToken);
-    if (!rotated) return toLogin(req, "expired");
+    const outcome = await refresh(refreshToken);
+    if (outcome.kind === "expired") return toLogin(req, "expired");
+    if (outcome.kind === "unavailable") return unavailable(req);
+    rotated = outcome;
     token = rotated.accessToken;
   }
 
   if (isExpired(token)) return toLogin(req, "expired");
-  // AC1: only COACH accounts may enter. The sentence itself is rendered by /login.
-  if (!hasCoachRole(token)) return toLogin(req, "not_coach");
 
-  const res = DENIED_ROUTE.test(pathname)
-    ? NextResponse.rewrite(req.nextUrl, { status: 403 })
-    : NextResponse.next();
+  /**
+   * EV-278c — a PENDING session is confined to /activate, and a coach session is kept off
+   * it. Checked BEFORE the coach test, and as a redirect rather than a login bounce: the
+   * sign-in handler only writes a PENDING cookie after b-fit-api said the account is a
+   * coach's to finish, so sending it back to /login would be a loop with no way forward.
+   * Every other path — the roster, a trainee, the libraries, the fixture routes — answers
+   * a 307 to /activate, so no page component that reads coach data ever renders for it.
+   * (b-fit-api refuses the token on /coach-portal/* anyway; this is which screen to draw.)
+   */
+  let res: NextResponse;
+  if (isPendingOnly(token)) {
+    if (pathname === ACTIVATE) {
+      res = NextResponse.next();
+    } else {
+      const url = req.nextUrl.clone();
+      url.pathname = ACTIVATE;
+      url.search = "";
+      res = NextResponse.redirect(url);
+    }
+  } else if (!hasCoachRole(token)) {
+    // AC1: only COACH accounts may enter. The sentence itself is rendered by /login.
+    return toLogin(req, "not_coach");
+  } else if (pathname === ACTIVATE) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    url.search = "";
+    res = NextResponse.redirect(url);
+  } else {
+    res = DENIED_ROUTE.test(pathname)
+      ? NextResponse.rewrite(req.nextUrl, { status: 403 })
+      : NextResponse.next();
+  }
   if (rotated) {
     res.cookies.set(ACCESS_COOKIE, rotated.accessToken, {
       ...cookieOptions(),

@@ -5,7 +5,7 @@ import { NutritionTemplateEditor } from "@/components/nutritionTemplates/Nutriti
 import { PageHead } from "@/components/ui/kit";
 import { coachApi, isForbidden, type NutritionTemplate } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /nutrition-templates/[id] — AC2's Edit.
@@ -21,6 +21,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function NutritionTemplatePage({ params }: { params: { id: string } }) {
+  const copy = getCopy();
   const [me, loaded] = await Promise.all([
     readCoachMe(),
     coachApi

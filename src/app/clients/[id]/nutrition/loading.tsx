@@ -16,6 +16,13 @@ export default function Loading() {
           <Skeleton key={i} h={84} r={14} style={{ marginTop: 12 }} />
         ))}
       </Card>
+      {/* EV-284b — the Food log's seven day rows. */}
+      <Card style={{ marginTop: 18 }}>
+        <Skeleton h={16} w={100} />
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+          <Skeleton key={i} h={32} style={{ marginTop: 12 }} />
+        ))}
+      </Card>
     </main>
   );
 }

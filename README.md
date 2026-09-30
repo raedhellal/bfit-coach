@@ -39,6 +39,7 @@ npm run dev                    # http://localhost:3300
 | `npm run build` | production build |
 | `npm run start` | serve the build on :3300 |
 | `npm run test:e2e:refresh` | the single-flight refresh spec, against `qa/stub-api.mjs` |
+| `npm run test:e2e:activation` | EV-278c's live path (sign-in check, token swap, `Retry-After`), against `qa/activation-stub-api.mjs` (:3304, stub :8097) |
 | `npm run lint` | `next lint --dir src --dir qa --max-warnings=0` |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:e2e` | Playwright smoke specs (fixture mode, boots its own server) |
@@ -117,7 +118,9 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 | `/` | Roster: capacity meter, empty state or rows (needs-attention first), invite modal. |
 | `/clients/[id]` | Read-only trainee overview: four stat tiles, 8-week weight trend, red flags, revoke. |
 | `/clients/denied` | The trainee-is-not-on-your-roster page, served with **403**. `/clients/[id]`'s layout redirects here when the api answers 403; `middleware.ts` sets the status, because a page render cannot. Carries no id and makes no api call. |
+| `/activate` | EV-278c: an account the admin initialised is finished here — new password + the person's own privacy/terms consent. The **only** page a `PENDING` session reaches (middleware sends it here from everywhere else; a coach session is sent from here to `/`). |
 | `POST /api/auth/login` | BFF sign-in — proxies `POST /auth/login`, sets the cookies. |
+| `POST /api/auth/activate` | EV-278c: proxies `POST /me/activate` for a PENDING session, refuses any `consentAccepted` that is not literal `true` before the api is called, and swaps both cookies to the fresh COACH tokens. |
 | `POST /api/auth/logout` | Clears both cookies. |
 | `GET /api/version` | **Public** deploy marker — the portal's `/actuator/info`. `{ commit, commitShort, buildTime, environment }`, never cached, GET/HEAD only. See below. |
 | `/i/[token]` | **Public** invite landing page — the page the QR encodes. Inside the middleware matcher, let through explicitly, **GET/HEAD only** (anything else answers 405). |
@@ -196,6 +199,12 @@ This app is a **BFF**: the browser never holds a token and never calls `b-fit-ap
   token through `POST /auth/refresh` (it is the only place that can write the rotated
   cookie back), requires `COACH` in the token's `roles` claim, and serves
   `/clients/denied` with **403** — the one non-200 status in the app.
+- The matcher excludes `/api/auth/*`, so those three handlers guard themselves: each
+  refuses a POST whose `Origin` is not the portal's own with **403 `CROSS_ORIGIN`**
+  (`src/lib/sameOrigin.ts`), and `/api/auth/activate` — the one that reads the session —
+  rotates a missing or expired access token with the refresh cookie before it acts
+  (`src/lib/routeSession.ts`). The access cookie's Max-Age is the api's `expiresIn`
+  (15 minutes), so without that a slow form submits with no access cookie at all.
 - The roster lives in the `(roster)` route group so that its `loading.tsx` skeleton
   belongs to `/` alone. A `loading.tsx` at the app root would flush every response
   before the render begins, and `/clients/[id]`'s layout would then be unable to
@@ -239,10 +248,20 @@ the staff challenge, this file moves and no screen changes.
 
 ## Copy
 
-Every user-visible string is in **`src/lib/copy.ts`**, English only. The strings marked
-`AC` are verbatim acceptance-criteria text from EV-183 and QA verifies them character by
-character — a "tidy-up" of one of those sentences is a story change. No invented
-benefits, no tier price (⛔ D8 is open).
+Every user-visible string is in **`src/lib/copy.ts`** (English, `en`) and
+**`src/lib/copy.fr.ts`** (French, `fr`, EV-324). The strings marked `AC` are verbatim
+acceptance-criteria text and QA verifies them character by character — a "tidy-up" of one
+of those sentences is a story change. No invented benefits, no tier price (⛔ D8 is open).
+
+**Language (EV-324).** The browser decides: the first `Accept-Language` entry starting
+with `fr` gets French, anything else English (`src/lib/i18n/locale.ts`). There is no
+switch in the UI. A server component calls `getCopy()` (`src/lib/i18n/server.ts`), a
+client component `useCopy()` (`src/lib/i18n/client.tsx`); nothing imports a dictionary
+directly. `fr` is typed `satisfies Copy`, so **a new string must be added in both files**
+or `tsc` fails; `qa/coach-i18n.spec.ts` also checks the enum-label maps `tsc` cannot.
+Dates and numbers take the locale too — every formatter in `src/lib/format.ts` requires it
+(`copy.locale`). `qa/coach-french.spec.ts` fails if a demo page shows an English UI string
+to a French browser.
 
 ## Design
 

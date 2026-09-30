@@ -1,5 +1,5 @@
 import { BlockNote, MonitoringBlock } from "@/components/client/MonitoringBlock";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import type { SessionHistory as History } from "@/lib/coachApi";
 
@@ -19,6 +19,7 @@ import type { SessionHistory as History } from "@/lib/coachApi";
  * ten, and this component has no control that could ask.
  */
 export function SessionHistory({ history }: { history: History }) {
+  const copy = getCopy();
   if (history.returned === 0 || history.items.length === 0) {
     return (
       <MonitoringBlock title={copy.client.sessionHistory} icon="calendar">
@@ -57,7 +58,7 @@ export function SessionHistory({ history }: { history: History }) {
             }}
           >
             <span style={{ color: "var(--ink-3)", whiteSpace: "nowrap" }}>
-              {formatDate(item.date)}
+              {formatDate(item.date, copy.locale)}
             </span>
             <span
               title={item.name ?? undefined}

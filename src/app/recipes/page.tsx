@@ -4,7 +4,7 @@ import { RecipeLibrary } from "@/components/recipes/RecipeLibrary";
 import { PageHead } from "@/components/ui/kit";
 import { coachApi, type CoachRecipeList } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
-import { copy } from "@/lib/copy";
+import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /recipes — EV-256b AC1, the coach's own recipe library.
@@ -19,6 +19,7 @@ import { copy } from "@/lib/copy";
 export const dynamic = "force-dynamic";
 
 export default async function RecipesPage() {
+  const copy = getCopy();
   const [me, library] = await Promise.all([
     readCoachMe(),
     coachApi

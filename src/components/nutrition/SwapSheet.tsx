@@ -9,7 +9,7 @@ import {
   type LibraryState,
   type PlacementTarget,
 } from "@/components/nutrition/RecipePicker";
-import { copy } from "@/lib/copy";
+import { useCopy } from "@/lib/i18n/client";
 import { truncateName } from "@/lib/format";
 import {
   applySwapAction,
@@ -36,6 +36,7 @@ export function SuggestionRow({
   onChoose: (index: number) => void;
   pending: boolean;
 }) {
+  const copy = useCopy();
   return (
     <button
       type="button"
@@ -128,12 +129,18 @@ export function SwapSheet({
   /** `router.refresh()` — an ended link redirects; a switched-off flag is re-read. */
   onRefresh: () => void;
 }) {
+  const copy = useCopy();
   const [library, setLibrary] = useState<LibraryState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<CoachRecipeSummary | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   /** `null` until the coach asks (AC5); then loading; then the candidates. */
   const [suggestions, setSuggestions] = useState<"loading" | SwapCandidate[] | null>(null);
+  /**
+   * EV-288 — the suggestions were re-read after a 409 `SWAP_OPTIONS_STALE`. A notice in
+   * the Suggestions area, not a refusal: nothing went wrong, the list moved.
+   */
+  const [suggestionsChanged, setSuggestionsChanged] = useState(false);
   const [pending, startTransition] = useTransition();
   const headingId = useId();
   /**
@@ -203,7 +210,7 @@ export function SwapSheet({
         return;
       }
       setRefusal({
-        text: refusalSentence(failure, recipe.name, firstName, target.weekday),
+        text: refusalSentence(failure, recipe.name, firstName, target.weekday, copy),
         retiredRecipeId: failure.code === "RETIRED_INGREDIENT" ? recipe.id : null,
         from: "placement",
       });
@@ -232,6 +239,28 @@ export function SwapSheet({
         ok: false,
         code: "FAILED",
       } as const);
+      if (!result.ok && result.code === "SWAP_OPTIONS_STALE") {
+        /**
+         * EV-288 (BUG-271, ADR-0028 §4.3b): the suggestion list is not the server's any
+         * more — the trainee or another tab swapped this meal. Nothing was written. The
+         * sheet stays open on the same spot, the suggestions are read ONCE more and shown
+         * with the line; the apply is not retried (the coach picks again). The recipes
+         * half is untouched.
+         */
+        setRefusal(null);
+        setSuggestionsChanged(false);
+        setSuggestions("loading");
+        const fresh = await settled(swapOptionsAction(clientId, target.mealId), {
+          ok: false,
+          code: "FAILED",
+        } as const);
+        if (!fresh.ok && fresh.code === "ACCESS_DENIED") return void onAccessEnded();
+        // Edge case 1: the re-read failed → today's options-error state, no line.
+        setSuggestions(fresh.ok ? fresh.options.candidates : []);
+        setSuggestionsChanged(fresh.ok);
+        return;
+      }
+      setSuggestionsChanged(false);
       if (!result.ok && (result.code === "MEAL_EATEN" || result.code === "MEAL_LOCKED")) {
         // EV-256e AC7 (BUG-245): the trainee owns this meal. Nothing was written.
         setRefusal({
@@ -357,6 +386,15 @@ export function SwapSheet({
                 >
                   {copy.swapSheet.suggestions}
                 </h3>
+                {suggestionsChanged && (
+                  <p
+                    role="status"
+                    data-testid="swap-options-changed"
+                    style={{ margin: 0, fontSize: 13, color: "var(--ink-2)", lineHeight: 1.5 }}
+                  >
+                    {copy.nutrition.swapOptionsChanged}
+                  </p>
+                )}
                 {suggestions === null ? (
                   <div>
                     <Button variant="secondary" icon="refresh" onClick={showSuggestions} disabled={pending}>
