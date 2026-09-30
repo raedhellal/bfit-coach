@@ -18,7 +18,7 @@ import {
   swapOptionsAction,
 } from "@/lib/nutritionActions";
 import { settled } from "@/lib/settled";
-import { recipeShare } from "@/lib/recipeShare";
+import { hasEngineMeal, recipeShare } from "@/lib/recipeShare";
 import type { MealWeekView, PlannedMealView, SwapCandidate } from "@/lib/coachApi";
 
 /**
@@ -465,14 +465,34 @@ export function NutritionWeekCard({
         </div>
       )}
 
-      <p style={{ margin: "16px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
-        {copy.nutrition.englishOnly}
-      </p>
+      {/*
+        EV-185 AC3's English-only note, shown only while the week holds at least one ENGINE
+        meal (Raed, 2026-09-30): on a week that is all coach recipes, the text on screen is
+        the coaches' own and the note would be false — right under AC17's "whole week" line.
+        See `hasEngineMeal` for why any coach's recipe counts, not only this coach's.
+      */}
+      {hasEngineMeal(week) && (
+        <p
+          data-testid="english-only-note"
+          style={{ margin: "16px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}
+        >
+          {copy.nutrition.englishOnly}
+        </p>
+      )}
       {/* ADR-0015 D6: "Regenerate day" is free to the coach and capped on the
           TRAINEE's plan row, so the coach is spending someone else's allowance. The
           ADR's accept-and-disclose — the sentence is only shown where the control is. */}
       {week !== null && (
-        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+        // First of the footer lines when the English-only note above is hidden: it takes
+        // the note's 16 px gap from the week.
+        <p
+          style={{
+            margin: `${hasEngineMeal(week) ? 6 : 16}px 0 0`,
+            fontSize: 12.5,
+            color: "var(--ink-3)",
+            lineHeight: 1.55,
+          }}
+        >
           {copy.nutrition.regenerateSharesLimit(trainee)}
         </p>
       )}
