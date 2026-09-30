@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fixtureCalls, fixtureReads } from "@/lib/coachApi.fixture";
+import { fixtureCalls, fixtureDraftPuts, fixtureReads } from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
 
 /**
@@ -12,6 +12,9 @@ import { COACH_API_MODE } from "@/lib/env";
  *   and `{ reads }` (EV-284b): page-load reads the fixture journals, today only
  *         `"GET /coach-portal/clients/{id}/nutrition/log"`. A separate list because
  *         `calls` is asserted EXACTLY empty after a page load by EV-272's specs.
+ *
+ *   and `{ draftPuts }` (BUG-195c): every `PUT …/routine/draft` with the token it
+ *         carried and the two subject lists it sent — AC3.10(i)'s witness.
  *
  * It exists because the browser sees server actions, never api paths, so "no swap
  * request until Show suggestions is pressed" has no other witness in fixture mode.
@@ -28,5 +31,8 @@ const NO_STORE = { "Cache-Control": "no-store" };
 
 export async function GET() {
   if (COACH_API_MODE !== "fixture") return new NextResponse(null, { status: 404, headers: NO_STORE });
-  return NextResponse.json({ calls: fixtureCalls(), reads: fixtureReads() }, { headers: NO_STORE });
+  return NextResponse.json(
+    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts() },
+    { headers: NO_STORE }
+  );
 }

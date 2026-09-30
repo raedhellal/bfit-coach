@@ -356,7 +356,9 @@ paths:
                 $ref: "#/components/schemas/RegisterResponse"
         "400":
           description: >-
-            Invalid request (VALIDATION_ERROR), or consent absent or refused (CONSENT_REQUIRED)
+            Invalid request (VALIDATION_ERROR, naming the field; e.g. a control character in
+            fullName, BUG-313, or a password over 72 bytes in UTF-8, BUG-415), or consent absent or
+            refused (CONSENT_REQUIRED)
           content:
             application/json:
               schema:
@@ -378,6 +380,163 @@ paths:
                 Whole seconds to wait before retrying — what is left of the fixed window that
                 refused the request (BUG-152). Always at least 1, and capped at 86400 so a
                 long reset (the monthly AI quota) is still a value a client can schedule.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /auth/mfa/recovery-codes/regenerate:
+    post:
+      summary: Replace every recovery code with 10 new ones (requires the password)
+      description: >-
+        Needs a full access token (not the scope=mfa token a login challenge returns), a verified
+        email address and the account password, and an enabled MFA factor. Answers the 10 new
+        codes, shown exactly once; every earlier code stops working.
+        A wrong password counts toward the per-account limit shared by the four routes that check
+        the account password (POST /me/account/password, POST /me/account/email, POST
+        /auth/mfa/recovery-codes/regenerate, DELETE /auth/mfa/totp; BUG-416): 5 per clock minute,
+        the same number and window as the per-account limit of /auth/login but a separate counter.
+        Once 5 wrong passwords are counted in the minute, every request to any of the four is
+        refused 429, the right password included, until the minute ends. Only a wrong password
+        counts: "MFA is not enabled" (401 AUTH_MFA_INVALID, which only the right password
+        reaches) does not, nor does a success.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordRequest"
+      responses:
+        "200":
+          description: The new recovery codes, shown exactly once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryCodesResponse"
+        "400":
+          description: >-
+            VALIDATION_ERROR naming the field (a blank password), or INVALID_REQUEST (a malformed
+            body)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            AUTH_UNAUTHORIZED (no token, an invalid or expired one, or a scope=mfa token),
+            AUTH_INVALID_CREDENTIALS (the password is wrong; counts toward the limit), or
+            AUTH_MFA_INVALID (the password is right but no MFA factor is enabled; nothing changes)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            EMAIL_NOT_VERIFIED (verify the address first), or AUTH_FORBIDDEN (a PENDING account:
+            activate first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND: the token is still valid but its account has been erased
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: >-
+            RATE_LIMITED: this account already has 5 wrong passwords in this clock minute, counted
+            across the four password-checking routes (BUG-416). The password is not checked and
+            nothing changes, even when it is right.
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds to wait before retrying (what is left of the window that refused
+                the request). Always at least 1, and capped at 86400.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /auth/mfa/totp:
+    delete:
+      summary: Disable TOTP (requires the password and a current TOTP or recovery code)
+      description: >-
+        Needs a full access token (not the scope=mfa token a login challenge returns), a verified
+        email address, the account password and a live TOTP code or an unused recovery code. The
+        password is checked before the code.
+        A wrong password counts toward the per-account limit shared by the four routes that check
+        the account password (POST /me/account/password, POST /me/account/email, POST
+        /auth/mfa/recovery-codes/regenerate, DELETE /auth/mfa/totp; BUG-416): 5 per clock minute,
+        the same number and window as the per-account limit of /auth/login but a separate counter.
+        Once 5 wrong passwords are counted in the minute, every request to any of the four is
+        refused 429, the right password included, until the minute ends. Only a wrong password
+        counts: a wrong TOTP or recovery code (401 AUTH_MFA_INVALID) does not, nor does "TOTP is
+        not enabled", nor a success.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisableTotpRequest"
+      responses:
+        "204":
+          description: TOTP disabled. No body.
+        "400":
+          description: >-
+            VALIDATION_ERROR naming the field (a blank password, a blank code, or a code over 32
+            characters), or INVALID_REQUEST (a malformed body)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            AUTH_UNAUTHORIZED (no token, an invalid or expired one, or a scope=mfa token),
+            AUTH_INVALID_CREDENTIALS (the password is wrong; counts toward the limit), or
+            AUTH_MFA_INVALID (the password is right but TOTP is not enabled, or the code is wrong;
+            does not count, and nothing changes)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            EMAIL_NOT_VERIFIED (verify the address first), or AUTH_FORBIDDEN (a PENDING account:
+            activate first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND: the token is still valid but its account has been erased
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: >-
+            RATE_LIMITED: this account already has 5 wrong passwords in this clock minute, counted
+            across the four password-checking routes (BUG-416). The password is not checked and
+            nothing changes, even when it is right.
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds to wait before retrying (what is left of the window that refused
+                the request). Always at least 1, and capped at 86400.
               schema:
                 type: integer
                 minimum: 1
@@ -475,7 +634,9 @@ paths:
                 $ref: "#/components/schemas/AuthTokens"
         "400":
           description: >-
-            VALIDATION_ERROR (a missing field or a new password under 8 characters),
+            VALIDATION_ERROR (a missing field, a new password under 8 characters or over 72 bytes in
+            UTF-8 (BUG-415), or a control, line-break or invisible format character in fullName,
+            BUG-313),
             TEMPORARY_PASSWORD_INVALID (the temporary password is not the latest one issued; a 400,
             not a 401, so clients do not refresh-and-retry and spend two attempts per typo),
             TEMPORARY_PASSWORD_REUSED (the new password equals the temporary one), or
@@ -526,6 +687,240 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /me/account/password:
+    post:
+      summary: Change the current user's password
+      description: >-
+        Needs the current password and a verified email address. Answers fresh tokens: the token
+        version is bumped, so every other session's refresh token stops working, and every trusted
+        device is revoked. The calling session's MFA state is carried into the new tokens, never
+        granted by this call (BUG-165). A wrong currentPassword counts toward a per-account limit
+        (BUG-416) whose number and window match the per-account limit of /auth/login (5 per clock
+        minute), but which is a separate counter: /auth/login's attempts never count here, and these
+        never count there. This counter is shared by the four routes that check the account password
+        (this one, POST /me/account/email, POST /auth/mfa/recovery-codes/regenerate and DELETE
+        /auth/mfa/totp). Unlike /auth/login, which still lets the right password through once its
+        limit is reached, here every request is refused 429 once 5 wrong passwords have been counted
+        in the clock minute, the right password included, until the minute ends. Only a wrong
+        password counts. A currentPassword of any length is accepted and compared by its first 72
+        UTF-8 bytes, bcrypt's limit (BUG-415): only a newPassword is held to 72 bytes.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password changed; use these tokens from now on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokens"
+        "400":
+          description: >-
+            VALIDATION_ERROR naming the field (a blank field, newPassword shorter than 8
+            characters, or newPassword over 72 bytes in UTF-8, bcrypt's limit, BUG-415), or
+            INVALID_REQUEST (a malformed body)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            AUTH_UNAUTHORIZED (no token, or an invalid or expired one), or AUTH_INVALID_CREDENTIALS
+            (currentPassword is wrong; nothing changes)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            EMAIL_NOT_VERIFIED (verify the address first), or AUTH_FORBIDDEN (a PENDING account:
+            activate first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND: the token is still valid but its account has been erased
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: >-
+            RATE_LIMITED: this account already has 5 wrong current passwords in this clock minute,
+            counted across the four password-checking routes (this one, POST /me/account/email, POST
+            /auth/mfa/recovery-codes/regenerate, DELETE /auth/mfa/totp; BUG-416), on a counter apart
+            from /auth/login's. The password is not checked and nothing changes, even when it is
+            right.
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds to wait before retrying (what is left of the window that refused
+                the request). Always at least 1, and capped at 86400.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/account/email:
+    post:
+      summary: Request an email change
+      description: >-
+        Step 1 of 2. Needs the current password and a verified email address. A six-digit code is
+        mailed to newEmail (not to the current address); nothing about the account changes until
+        POST /me/account/email/confirm. Two limits, both per account. (1) A wrong password counts
+        toward a per-account limit (BUG-416) whose number and window match the per-account limit of
+        /auth/login (5 per clock minute), but which is a separate counter: /auth/login's attempts
+        never count here, and these never count there. This counter is shared by the four routes
+        that check the account password (POST /me/account/password, this one, POST
+        /auth/mfa/recovery-codes/regenerate and DELETE /auth/mfa/totp). Unlike /auth/login, which
+        still lets the right password through once its limit is reached, here every request is
+        refused 429 once 5 wrong passwords have been counted in the clock minute, the right password
+        included, until the minute ends. Only a wrong password counts. (2) Codes: one per clock
+        minute and three per clock hour (fixed windows: two codes a second apart either side of a
+        minute boundary are both sent). A request refused with 400, 401, 403 or 409 stores and mails
+        nothing and does not count against the code limit; a 401 AUTH_INVALID_CREDENTIALS does count
+        against the wrong-password limit. A password of any length is accepted and compared by its
+        first 72 UTF-8 bytes, bcrypt's limit (BUG-415).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeEmailRequest"
+      responses:
+        "200":
+          description: A confirmation code was mailed to newEmail. No body.
+        "400":
+          description: >-
+            VALIDATION_ERROR naming the field: a blank field, newEmail not an address, or newEmail
+            holding a control, line-separator or invisible format character (Unicode Cc, Cf, Zl,
+            Zp; BUG-390). INVALID_REQUEST: an address the bean check admits and the account rule
+            refuses (for example no dot in the domain, "name@localhost"), or a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            AUTH_UNAUTHORIZED (no token, or an invalid or expired one), or AUTH_INVALID_CREDENTIALS
+            (password is wrong)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            EMAIL_NOT_VERIFIED (verify the current address first), or AUTH_FORBIDDEN (a PENDING
+            account: activate first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND: the token is still valid but its account has been erased
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            DUPLICATE_EMAIL: newEmail is already another account's address, or is already this
+            account's own
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: >-
+            RATE_LIMITED: a second code in the same clock minute, or a fourth in the same clock hour,
+            for this account; or this account already has 5 wrong current passwords in this clock minute
+            (this route and POST /me/account/password count together; BUG-416), in which case the
+            password is not checked. Nothing is mailed
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds to wait before retrying (what is left of the window that refused
+                the request). Always at least 1, and capped at 86400.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/account/email/confirm:
+    post:
+      summary: Confirm an email change with the mailed code
+      description: >-
+        Step 2 of 2. The code proves ownership of the new address, so the address is swapped in and
+        stored as verified, a notice goes to the old address, and fresh tokens are answered (the
+        token version is bumped, so other sessions' refresh tokens stop working). The code is
+        single use. Five wrong codes retire it: request a new one.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CodeRequest"
+      responses:
+        "200":
+          description: Address changed; use these tokens from now on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokens"
+        "400":
+          description: >-
+            VALIDATION_ERROR (code blank or not six digits), INVALID_REQUEST (a malformed body),
+            OTP_INVALID (a wrong code, or no pending email change), OTP_EXPIRED (the code is past
+            its lifetime), or OTP_TOO_MANY_ATTEMPTS (five wrong codes; the code is retired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: AUTH_UNAUTHORIZED (no token, or an invalid or expired one)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: AUTH_FORBIDDEN (a PENDING account; activate first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND: the token is still valid but its account has been erased
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            DUPLICATE_EMAIL: the new address became another account's between the request and the
+            confirm; nothing changes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /me/nomination:
     post:
       summary: Pull a fresh invite to the coach this account was set up for (EV-204a2, ADR-0019 A2g)
@@ -562,7 +957,7 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: >-
-            NOMINATION_NOT_FOUND — no initialisation row, no nominee coach, or the nominee no longer holds a coach profile
+            NOMINATION_NOT_FOUND — no initialisation row, no nominee coach, or the nominee is no longer a coach (no coach profile, or coach status revoked: the COACH role is gone while the profile is kept); nothing is written, and an earlier nomination invite is left as it was
           content:
             application/json:
               schema:
@@ -2528,7 +2923,10 @@ paths:
         Without q, or with an empty q: every user, newest first (createdAt descending), paged.
         With q (EV-261a): the users whose email OR full name contains q, case-insensitively, newest
         first with the id breaking ties so paging is stable. q is trimmed first (spaces, including
-        no-break spaces, and a pasted newline). %, _ and backslash in q are matched literally, never as
+        no-break spaces, and a pasted newline; and, EV-309, the invisible format characters a copied
+        address can carry, such as U+200B, U+200E, U+FEFF). Only the ends are trimmed: an invisible
+        character inside q is kept and matched as stored. q may be sent once: a repeated q is
+        refused, never joined. %, _ and backslash in q are matched literally, never as
         wildcards. There is no accent folding: q=zoe does not find "Zoé" (a recorded limit, not a
         defect). A search returns exactly the fields the list returns, for the same population
         (PENDING accounts included, as in the list); deleted accounts do not exist to be found.
@@ -2558,9 +2956,12 @@ paths:
           in: query
           required: false
           description: >-
-            Search text. Leading and trailing whitespace is trimmed first; the rest must be at
-            least 2 and at most 254 characters after trimming (counted as Unicode code points),
-            with no control character. There is deliberately no maxLength on the raw
+            Search text, sent at most once (a repeated q, whatever the values, is 400
+            ADMIN_SEARCH_INVALID, EV-309). Leading and trailing whitespace and invisible format
+            characters (Unicode Cf: U+200B, U+200E, U+200F, U+2060, U+FEFF, ...), in any order, are
+            trimmed first; one inside q is kept. The rest must be at least 2 and at most 254
+            characters after trimming (counted as Unicode code points), with no control character;
+            a q of spaces or format characters only is therefore ADMIN_SEARCH_TOO_SHORT. There is deliberately no maxLength on the raw
             parameter: a longer value that trims to 254 or fewer is accepted. Absent or empty means
             no search. Send it URL-encoded: a literal "+" must travel as %2B.
           schema:
@@ -2579,7 +2980,8 @@ paths:
             message "A request parameter could not be decoded.", BUG-332);
             ADMIN_SEARCH_TOO_SHORT (q under 2 characters after trimming, e.g. "%" sent as %25);
             ADMIN_SEARCH_TOO_LONG (q over 254 characters);
-            ADMIN_SEARCH_INVALID (q contains a control character). The message never echoes q.
+            ADMIN_SEARCH_INVALID (q contains a control character; or q sent more than once, message
+            "Send one search term (q) per request.", and no query runs). The message never echoes q.
           content:
             application/json:
               schema:
@@ -2845,15 +3247,81 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /admin/users/{id}:
+    get:
+      summary: Get one user (admin)
+      description: >-
+        The list item's five fields, then initialisation (EV-278a2, EV-278 AC12). initialisation is
+        present while the account is PENDING with an initialisation that has not been activated,
+        including an expired account the sweeper has not deleted yet (its expiresAt is then in the
+        past). Otherwise the key is present with the value null, including when an activation
+        commits while the read is in progress. initialiserName is the same name the 409 ACCOUNT_PENDING
+        body and GET /me/activation carry. No password, hash, token or initialiser email is returned.
+        The list and search items (GET /admin/users) do not carry initialisation.
+        ADMIN is granted only to a session that proved a second factor (BUG-165).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserDetailResponse"
+        "400":
+          description: INVALID_REQUEST — the id is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /admin/users/{id}/role:
     patch:
       summary: Replace a user's role (admin)
       description: >-
-        REPLACES the role set with the one role given (so promoting a trainee to COACH removes USER).
+        REPLACES the role set with the one role given. USER and ADMIN only (EV-260a): COACH as the
+        value, or any change to an account that holds COACH, is refused with 409
+        ADMIN_ROLE_USE_COACH_GRANT and nothing changes; coach status is granted and revoked through
+        /admin/coaches (EV-205a). Checked after the BUG-352 refusals below, which keep their precedence.
+        Every accepted change logs one ADMIN_ROLE_CHANGED line (actor and target ids, the old and new
+        role sets; no address).
         EV-204a1 / ADR-0022 D22.4d: a PENDING account is refused (409 ACCOUNT_PENDING) and nothing
         changes, because only its person can activate it; PENDING itself is never assignable
         (400 ROLE_NOT_ASSIGNABLE). When both hold, the 409 wins. The user must sign in again for a
         new role to reach their token.
+        BUG-352: a change that removes ADMIN is refused with 409 and nothing changes when the account
+        is the caller's own (ADMIN_SELF_DEMOTION, however many admins exist; another admin can still
+        do it), or when it is the last account holding ADMIN (LAST_ADMIN). The admin count is taken
+        under a lock, so two admins demoting each other at once cannot both succeed.
+        The caller must also hold ADMIN in the database, not only in the access token: a caller
+        demoted since the token was minted gets 403 AUTH_FORBIDDEN and nothing changes, whatever
+        the change (BUG-352).
       security:
         - bearerAuth: []
       parameters:
@@ -2891,7 +3359,8 @@ paths:
         "403":
           description: >-
             Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
-            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165), or a token that still says ADMIN
+            for an account that no longer holds it (AUTH_FORBIDDEN, BUG-352)
           content:
             application/json:
               schema:
@@ -2903,7 +3372,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
         "409":
-          description: ACCOUNT_PENDING — the account has not been activated; its role cannot be changed
+          description: >-
+            ACCOUNT_PENDING — the account has not been activated; its role cannot be changed.
+            ADMIN_SELF_DEMOTION — your own account, to a role other than ADMIN.
+            LAST_ADMIN — no account would hold ADMIN afterwards. Nothing is written (BUG-352).
+            ADMIN_ROLE_USE_COACH_GRANT — COACH requested, or the account holds COACH; use
+            /admin/coaches (EV-260a). Nothing is written
           content:
             application/json:
               schema:
@@ -3323,6 +3797,223 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /admin/coaches:
+    get:
+      summary: List coach profiles, newest first (admin)
+      description: >-
+        EV-205a. Every coach_profiles row with its account's email, the tier (read-only, STARTER only:
+        AC6, ADR-0019 D19.3), the ACTIVE link count (a REVOKED link counts 0), who last granted it and
+        when, and the status: ACTIVE (holds COACH), REVOKED (the profile without the role; a later grant
+        restores the same roster), PENDING (an admin-initialised coach who has not activated, ADR-0022
+        D22.8c). An account holding COACH with no profile is not listed; granting it repairs it.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: One page of coaches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCoachPageResponse"
+        "400":
+          description: INVALID_REQUEST (page below 0, size outside 1-100)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Make an existing account a coach (admin)
+      description: >-
+        EV-205a (ADR-0022 D22.1(b), D22.4d). Adds COACH to an existing, activated, email-verified
+        account (additive: USER stays) and writes its coach profile at STARTER. Creates no account and
+        sets no password (EV-205 Ruling 1). The same call re-grants a revoked coach (the typed
+        displayName wins, the first grantedAt is kept, lastGrantedAt is now and lastGrantedBy this
+        admin) and repairs an
+        account that holds COACH without a profile (BUG-371). Refusals, in this order, nothing written:
+        AUTH_FORBIDDEN (403, also when the token says ADMIN and the database no longer does),
+        ADMIN_SELF_GRANT (403), USER_NOT_FOUND (404), ACCOUNT_PENDING (409), COACH_ALREADY_GRANTED
+        (409: holds COACH and has a profile), COACH_EMAIL_UNVERIFIED (409). Of two concurrent grants of
+        one person exactly one succeeds; the other answers COACH_ALREADY_GRANTED. Roles are a JWT claim:
+        the person must sign out and sign in again before the coach portal works for them, which the
+        response states as requiresReauthentication. Logs one ADMIN_COACH_GRANTED line after the commit
+        (actor and target ids, outcome GRANTED, REGRANTED or REPAIRED), or one ADMIN_COACH_REFUSED line
+        naming the code; never an email address or a name.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCoachGrantRequest"
+      responses:
+        "201":
+          description: The coach, ACTIVE, with requiresReauthentication true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCoachResponse"
+        "400":
+          description: >-
+            VALIDATION_ERROR (userId missing; displayName missing, blank, over 80 characters, or holding
+            a control, line-break or invisible format character), INVALID_REQUEST (userId not a
+            canonical UUID), or ADMIN_COACH_INPUT_FORBIDDEN (any other key, e.g. capacityTier, roles,
+            password, email: refused, not ignored; the value is never echoed). Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            AUTH_FORBIDDEN (not ROLE_ADMIN, or no longer ADMIN in the database), AUTH_MFA_REQUIRED
+            (BUG-165), or ADMIN_SELF_GRANT (the caller's own account)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: USER_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: ACCOUNT_PENDING, COACH_ALREADY_GRANTED, or COACH_EMAIL_UNVERIFIED. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /admin/coaches/{userId}:
+    patch:
+      summary: Rename a coach (admin)
+      description: >-
+        EV-205a. The display name only, on any account with a coach profile (ACTIVE, REVOKED or
+        PENDING). grantedAt, lastGrantedAt and lastGrantedBy are unchanged. Logs one ADMIN_COACH_RENAMED
+        line.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCoachRenameRequest"
+      responses:
+        "200":
+          description: The coach
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCoachResponse"
+        "400":
+          description: VALIDATION_ERROR, or ADMIN_COACH_INPUT_FORBIDDEN for any key but displayName
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: AUTH_FORBIDDEN or AUTH_MFA_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: COACH_NOT_FOUND (the account has no coach profile)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Revoke coach status (admin)
+      description: >-
+        EV-205a AC3. Removes the COACH role and nothing else: the coach profile, every trainee link,
+        every draft and every published plan and its byline stay, so a later grant restores the same
+        roster. The roster cannot grow meanwhile: from the revoke on, the coach's outstanding invites
+        answer COACH_INVITE_INVALID and a new invite is refused, whatever their token says. An account
+        left with no role becomes USER. Everything else in the portal - reads and writes such as drafts
+        and publishing - continues on the person's current token until their next sign-in or refresh
+        (at most 15 minutes; requiresReauthentication). Logs one ADMIN_COACH_REVOKED line.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The coach, REVOKED, with requiresReauthentication true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCoachResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: AUTH_FORBIDDEN or AUTH_MFA_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: COACH_NOT_FOUND (not a coach, i.e. not both the COACH role and a coach profile)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /subscriptions/plans:
     get:
       summary: List subscription plans (free / premium / premium_plus)
@@ -3354,8 +4045,11 @@ paths:
       summary: The trainee's daily calorie/macro target
       description: >-
         Computes and PERSISTS a target from the profile on first access, so this read is the one
-        that creates the row. Undocumented until EV-185a, which added `setByName` to its body —
-        a field mobile could not see while the route was missing from this spec.
+        that creates the row. An AUTO target is also recomputed and persisted when the profile
+        changed since it was computed (BUG-434), the same rule the weekly plan, `/today`,
+        `/weigh-ins` and the weigh-in apply; MANUAL and COACH targets are served as stored.
+        Undocumented until EV-185a, which added `setByName` to its body — a field mobile could
+        not see while the route was missing from this spec.
       security:
         - bearerAuth: []
       responses:
@@ -3409,6 +4103,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  # NOTE (BUG-360 / BUG-362): two more routes whose answers changed are ABSENT from this spec entirely
+  # (pre-existing; documenting the missing /me routes is EV-066's story, not a bug fix's):
+  #   - GET /me/nutrition/plan/meal/{mealId}/swap-options (and ?refresh=true) now answers
+  #     422 NO_SAFE_MEAL_PLAN, the body below, when no candidate is safe under the account's rules
+  #     (it answered 500 INTERNAL_ERROR). Nothing is cached, and a refresh's CHAT credit is refunded.
+  #   - POST /me/coach/routine (JSON and multipart) now answers 409 ROUTINE_GENERATION_IN_PROGRESS
+  #     when a routine generation for the same account is already running (a double tap). It is
+  #     refused below the coached-mode gate and the catalogue pre-flight and ABOVE the meter, so it
+  #     costs nothing; before, the second tap was charged and answered 409 DATA_INTEGRITY_VIOLATION
+  #     (no plan yet) or 200 with a second plan. Re-read the plan instead of generating again. The
+  #     refusal lasts while the first request runs and at most 10 minutes from its start; after that
+  #     the first is presumed hung and the next request is accepted (and charged) in its place.
+  #
   # NOTE (EV-071a): POST /me/nutrition/plan/day/{dayId}/regenerate is ABSENT from this spec
   # entirely — pre-existing (absent at 8636119 too), not introduced here. It now answers 422
   # NO_SAFE_MEAL_PLAN like the two coach-portal operations below.
@@ -3454,6 +4161,24 @@ paths:
                 $ref: "#/components/schemas/WeeklyPlanResponse"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            **WEEK_GENERATION_IN_PROGRESS** (BUG-361) — a generation of the same week for this account
+            is already running (a double tap). This request is refused before any AI credit is
+            consumed and before anything is generated or written; the running request is answered as
+            if it were alone.
+
+
+            The client should not generate again: re-read the week (`GET /me/nutrition/plan/week`)
+            once the first request answers. The refusal lasts while that request is in flight, and
+            **at most 10 minutes** from when it started: after that the first request is presumed
+            hung and the next request for the week is accepted (and charged) in its place. The days
+            that stream in after the first request's 201 are not covered, so a tap after the 201 is
+            an ordinary regeneration. The `message` is developer-facing and is not copy.
           content:
             application/json:
               schema:
@@ -4035,7 +4760,8 @@ paths:
             Not a coach, or `COACH_CAPACITY_REACHED` — every profile the tier allows is in use.
             403 rather than 409 follows EV-183 edge case 5, which pins the status in the story text;
             the staff review noted 409 is the better status for "your plan is full" and routed it to
-            senior-po as a story change.
+            senior-po as a story change. Also AUTH_FORBIDDEN when the token still says COACH but the
+            account no longer holds it (revoked through DELETE /admin/coaches, EV-205a).
           content:
             application/json:
               schema:
@@ -4177,11 +4903,12 @@ paths:
         difference between the trainee's injuries and a stranger's claim about them (CS-22 /
         ADR-0001). The policy resolves injuries and equipment from `user_profiles`, and since
         BUG-185 so does the `plans.equipment` column the trainee's own app reads on `GET /me/plan`.
-        A submitted routine document does carry a `constraints` block — `constraints.equipment` and
-        `constraints.injuries` are both required on `Routine`, so a coach CANNOT omit them — but the
-        server reads neither as a claim about the trainee: submitted equipment is ignored outright,
-        and submitted injuries are unioned with the stored ones, which can only narrow what may be
-        prescribed and never widen it.
+        A draft document does carry a `constraints` block — `constraints.equipment` and
+        `constraints.injuries` are both required on `Routine`, so a coach CANNOT omit them — but
+        since BUG-195b (ADR-0018 D9) the coach sends both as `[]`: a non-empty value on
+        `PUT …/routine/draft` is refused with 400 COACH_DRAFT_SUBJECT_FIELD, and the stored draft
+        always carries `[]`. The trainee's own lists reach the policy and the plan from
+        `user_profiles` at publish time, never from the document.
         Requires the **WORKOUTS** scope on the link (ADR-0015 D5): a link that did not share
         workouts answers 403, not an empty editor.
       security:
@@ -4252,12 +4979,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
     put:
-      summary: Save the draft (last write wins)
+      summary: Save the draft (the whole document, with a staleness token)
       description: >-
-        EV-184 AC2. The body is a full Routine, validated by exactly the constraints
-        `PUT /me/coach/routine` validates, so a draft that could never be published cannot be stored.
-        Two tabs editing one draft: the second save wins and the stale tab's reload shows the winner
-        — not a merge and not a crash (edge case 2). The trainee's plan is untouched.
+        EV-184 AC2, re-contracted by BUG-195b (ADR-0018 D1 option 1-D). The body is
+        `CoachRoutineDraftRequest`: the WHOLE `Routine` in `document`, validated by exactly the
+        constraints `PUT /me/coach/routine` validates, plus `replacesDraftUpdatedAt`. A partial
+        document is refused (ADR-0016 V1b, strict now, relax later): the pre-BUG-195b portal body
+        `{name, trainingDays}` has no `document` and is a 400 VALIDATION_ERROR.
+
+
+        **Four fields are the TRAINEE's, not the coach's (ADR-0018 D3).** `goal` and `level` are
+        overwritten with the trainee's own onboarding answers from `user_profiles` (send what you
+        were served; a value that differs is replaced and logged, never refused). With no profile
+        row the save still succeeds with `GET_STRONGER` / `BEGINNER` and a WARN is logged.
+        `constraints.equipment` and `constraints.injuries` must be sent `[]` and are stored `[]`: a
+        non-empty value is 400 COACH_DRAFT_SUBJECT_FIELD, naming the field in `details.field` and
+        never echoing the value. `daysPerWeek` and `constraints.daysPerWeek` are DERIVED: both are
+        stored as `trainingDays.length`. Every other field — `name`, `summary`,
+        `weeklyProgression`, `constraints.minutesPerSession` and everything inside `trainingDays`
+        (`tempo`, `notes`, `trackingType`, `durationSeconds`, `weight`, `estimatedMinutes`, …) — is
+        the coach's and is stored exactly as sent, including a null that clears a field. The 200
+        response carries the STORED document, so re-render from it rather than from what was sent.
+
+
+        **A `DURATION` exercise carries no reps.** `reps` non-null on an exercise whose
+        `trackingType` is `DURATION` is 400 COACH_DRAFT_REPS_ON_DURATION, with `details.dayOfWeek`
+        and `details.exerciseIndex` (0-based within that day), because the plan writer drops it and
+        the coach would watch a prescription vanish without a message.
+
+
+        **Staleness (ADR-0018 D6).** `replacesDraftUpdatedAt` is the one token on this row, shared
+        with template apply. Absent or null: saved only if this link has NO draft. Present: must
+        equal the stored draft's `updatedAt`, echoed verbatim from the last GET, PUT or apply
+        response. Anything else is 409 COACH_DRAFT_EXISTS with `details.existingUpdatedAt`, and
+        NOTHING is written; retry with that instant only after the coach has confirmed they mean to
+        replace it. A token whose draft no longer exists (published or discarded in another tab)
+        saves a new draft. Every write moves `updatedAt` strictly forward, so an old token is never
+        accepted again. The trainee's plan is untouched by any save.
       security:
         - bearerAuth: []
       parameters:
@@ -4272,16 +5030,58 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Routine"
+              $ref: "#/components/schemas/CoachRoutineDraftRequest"
+            example:
+              replacesDraftUpdatedAt: "2026-10-01T09:14:07.123456Z"
+              document:
+                name: 3-Day Strength Base
+                goal: BUILD_MUSCLE
+                level: BEGINNER
+                daysPerWeek: 3
+                trainingDays:
+                  - dayOfWeek: 1
+                    focus: Lower
+                    estimatedMinutes: 45
+                    exercises:
+                      - {name: Goblet Squat, sets: 3, reps: "8-12", rest: 90s, tempo: 3-1-1,
+                         notes: Chest tall, trackingType: WEIGHT_REPS, durationSeconds: null,
+                         weight: 16 kg}
+                      - {name: Plank, sets: 3, reps: null, rest: 30s, tempo: null, notes: null,
+                         trackingType: DURATION, durationSeconds: 45, weight: null}
+                  - dayOfWeek: 3
+                    focus: Upper
+                    estimatedMinutes: 40
+                    exercises:
+                      - {name: Push-Up, sets: 3, reps: "10", rest: 60s, tempo: null, notes: null,
+                         trackingType: WEIGHT_REPS, durationSeconds: null, weight: bodyweight}
+                  - dayOfWeek: 5
+                    focus: Full
+                    estimatedMinutes: 45
+                    exercises:
+                      - {name: Inverted Row, sets: 3, reps: "8", rest: 90s, tempo: null,
+                         notes: null, trackingType: WEIGHT_REPS, durationSeconds: null,
+                         weight: null}
+                weeklyProgression:
+                  - {week: 2, adjustment: Add one set to the main lifts, rationale: null}
+                constraints: {equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: 3}
+                summary: Three full-body sessions a week.
       responses:
         "200":
-          description: The saved draft
+          description: >-
+            The saved draft. `document` is the STORED document — the trainee's goal and level, empty
+            equipment and injuries, derived day counts — and `updatedAt` is the token the NEXT save
+            must echo.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CoachRoutineDraftResponse"
         "400":
-          description: The routine is invalid
+          description: >-
+            VALIDATION_ERROR — no `document`, or a `Routine` that fails validation (a partial
+            document included); COACH_DRAFT_SUBJECT_FIELD — `constraints.equipment` or
+            `constraints.injuries` is non-empty, `details.field` names which, the value is never
+            echoed; COACH_DRAFT_REPS_ON_DURATION — a `DURATION` exercise carries `reps`,
+            `details.dayOfWeek` and `details.exerciseIndex` locate it. Nothing is written.
           content:
             application/json:
               schema:
@@ -4294,6 +5094,15 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "403":
           description: See GET /coach-portal/clients/{id}/routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            COACH_DRAFT_EXISTS — a draft exists and `replacesDraftUpdatedAt` is absent or is not
+            its `updatedAt`, or another first save for this link committed while this one was in
+            flight. `details.existingUpdatedAt` is the current instant. Nothing is written.
           content:
             application/json:
               schema:
@@ -4394,6 +5203,9 @@ paths:
         comparison, not the digest alone, is what closes the time-of-check/time-of-use window
         (edge case 2's second tab). A constant `confirm: true` was rejected: it carries no
         information about WHAT was acknowledged.
+        The published `goal` and `level` are the trainee's profile answers AT PUBLISH (BUG-195b),
+        not the ones copied into the draft when it was saved; preview resolves them the same way,
+        so the digest covers what is written.
         Writes `plans.source = COACH`, `plans.authored_by` = the coach and `plans.owner_id` = the
         trainee, as a **new** plan row with the previous one deactivated — never an in-place update,
         because the trainee's "Your coach updated your plan" line is keyed on the plan id in slice 1.
@@ -4834,9 +5646,16 @@ paths:
         comparison happens inside the write transaction, so a second tab that saved in between
         causes the retry to be refused AGAIN rather than to overwrite — which is the only thing that
         makes the portal's "this replaces your unpublished draft" sentence true.
-        Apply runs NO policy and reads NOTHING about the trainee: the trainee's injuries and
-        equipment are applied when the plan is PUBLISHED. `unbindableExercises` is advisory — every
-        exercise is copied verbatim and nothing is ever removed except by the coach pressing Remove.
+        Apply runs NO policy: the trainee's injuries and equipment are applied when the plan is
+        PUBLISHED. Since BUG-195b (ADR-0018 D8) apply runs the SAME resolution as
+        `PUT …/routine/draft`: the stored draft's `goal` and `level` are the TRAINEE's own answers,
+        not the template's, and its day counts are derived from `trainingDays`. The template's
+        `weeklyProgression` is NOT carried: the draft's is `[]` (ADR-0018 D10 — it was written about
+        whoever the template was saved from, and no coach control shows it). On a `DURATION`
+        exercise, `reps` is cleared rather than refused: templates saved by the earlier portal
+        carry its "8-12" default on timed exercises, and the plan writer never used it. The
+        template row itself is never changed. `unbindableExercises` is advisory — every exercise is copied
+        verbatim and nothing is ever removed except by the coach pressing Remove.
       security:
         - bearerAuth: []
       parameters:
@@ -4861,8 +5680,8 @@ paths:
                 $ref: "#/components/schemas/CoachTemplateApplyResponse"
         "400":
           description: >-
-            COACH_PLAN_EMPTY for a template with no training day, or
-            COACH_TEMPLATE_NOT_PUBLISHABLE for a day count a plan cannot carry
+            COACH_PLAN_EMPTY for a template with no training day,
+            COACH_TEMPLATE_NOT_PUBLISHABLE for a day count a plan cannot carry.
           content:
             application/json:
               schema:
@@ -5473,9 +6292,11 @@ paths:
         EV-185 AC1. One read for the whole tab. `targets` and `week` are null for a trainee who has
         neither, and that pair is AC1's "No nutrition set up yet" — never a zeroed card and never a
         `NaN`.
-        Reading this page does NOT compute a first target as a side effect: `NutritionService.getTarget`
-        computes and persists one on first access, so this reads the stored row directly. A coach
-        looking must not create the trainee's first target.
+        Reading this page never writes the trainee's target: `targets` is the target the trainee's
+        own next read serves (the fresh compute when a profile edit is owed a refresh, BUG-434),
+        never written by this read, and a coach looking never creates the trainee's first target.
+        For such a computed-but-not-stored AUTO target, `targets.updatedAt` is the time of this
+        request.
         `dietProfile` is READ-ONLY. No request on this prefix carries an allergy, a food rule or a
         dislike — the absence of the field IS the mechanism, and the exclusion policy reads
         `nutrition_preferences` inside the engine, which is the only place it has ever read them from.
@@ -5533,8 +6354,10 @@ paths:
         `totals` is computed by the SAME code as the trainee's `GET /me/nutrition/today` `consumed`
         — food log entries plus planned meals marked eaten — and is NULL on a day where nothing was
         recorded. Render "Nothing logged", never 0 kcal.
-        `targets` is the stored target adjusted for a training or rest day exactly as the trainee's
-        own day read adjusts it; null when the trainee has none. Reading never creates a target.
+        `targets` is the target the trainee's own next read serves (the fresh compute when a profile
+        edit is owed a refresh, BUG-434), never written by this read, adjusted for a training or rest
+        day exactly as the trainee's own day read adjusts it; null when the trainee has no target
+        yet. Reading never creates or writes a target.
         Read-only: a record is erased only by the person who entered it.
         Requires the **NUTRITION** scope on the link. Its consent text already covers "the meals you
         log", so this needs no new scope.
@@ -5735,6 +6558,18 @@ paths:
         spends and this one does not.
         The trainee's stored allergies, HALAL/KOSHER rules and dislikes decide the meals. This
         request carries none of them and there is no field that could.
+        EV-320a — **the coach's recipes first, the engine as the base, AI as the last resort.**
+        With BOTH `bfit.coach.recipes.placement.enabled` and `bfit.nutrition.recipe-fill.enabled`
+        on (both default off), the deterministic engine builds the week, and each engine meal is
+        replaced by one of the calling coach's recipes when the recipe's `mealSlots` hold the
+        meal's slot (untagged = LUNCH and DINNER), its kcal is within 20% of the engine meal's,
+        the day stays within 10% of its kcal target, above 80% of its protein target and above
+        the calorie floor, and the recipe passes the same checks as placing it by hand (a typed
+        allergy or KOSHER refuses every recipe). Recipes are checked by their declared ingredient keys; the recipe name is matched only against English terms. A recipe is used at most once a day and three
+        times a week. Filled meals read `provenance: COACH_RECIPE` with `placedByYou: true`; the
+        portal counts them for "N of M meals from your recipes". No model is called and nothing
+        is charged, unless the trainee's rules leave the engine no floor, in which case the week
+        is generated by the model exactly as before. With either flag off, nothing changes.
         EV-190a / N1: the OPTIONAL `mealStructure` (meals per day 1-6 + snacks) applies to THIS
         WEEK ONLY. It is recorded on `weekly_meal_plan`, read again by the day regeneration below
         so a regenerated day matches the week it belongs to, and CLEARED when the trainee
@@ -5964,6 +6799,16 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: NUTRITION_NOT_FOUND — no such meal for this trainee
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: >-
+            **NO_SAFE_MEAL_PLAN** (BUG-360) — nothing is cached for this meal and no candidate is safe
+            under the trainee's allergies and food rules, so there is no list to show. The same
+            code, and the same fixed `message`, as the week and the day regeneration; the portal
+            decides from the code. This read answered 500 before BUG-360.
           content:
             application/json:
               schema:
@@ -6207,7 +7052,8 @@ paths:
           description: >-
             `COACH_INVITE_INVALID` | `COACH_INVITE_USED` | `COACH_INVITE_EXPIRED` |
             `COACH_SELF_LINK` | `COACH_CAPACITY_REACHED`. The first three are one status and one
-            shape on purpose, so a token holder cannot probe which invites exist.
+            shape on purpose, so a token holder cannot probe which invites exist. An invite whose coach
+            no longer holds COACH (revoked, EV-205a) is COACH_INVITE_INVALID, and is not used up.
           content:
             application/json:
               schema:
@@ -6291,6 +7137,487 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /coach-portal/challenges:
+    get:
+      summary: The coach's challenges, paged (EV-321a)
+      description: >-
+        The authenticated coach's own challenges, newest window first (`endsOn` descending, then
+        `createdAt` descending, then id). A second coach sees an empty list, never this one's.
+        `phase` and the counts are computed at read time on the server's UTC date. The counts
+        include only participants whose coach link is still ACTIVE: a trainee whose link was
+        revoked disappears from every coach read of every challenge.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: A page of the coach's challenges
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachChallengePageResponse"
+        "400":
+          description: "`VALIDATION_ERROR` for a page below 0 or a size outside 1-50"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a coach, or no coach profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Create a challenge and invite trainees to it (EV-321a AC1-AC3, AC11)
+      description: >-
+        Creates the challenge and one INVITED participation per `clientIds` entry, in one
+        transaction. Before a trainee accepts, the coach sees `INVITED` and nothing else: no
+        number. Accepting is the trainee's consent to share this challenge's progress with this
+        coach (`POST /me/challenges/{id}/accept`).
+        `STEPS` takes a `dailyTarget` (1000-50000) and no `totalTarget`. `WORKOUTS` takes a
+        `totalTarget` (1-100 completed sessions in the window) and no `dailyTarget`, and every
+        participant's link must carry the `WORKOUTS` scope, because the count reads the trainee's
+        session history. `startsOn` may be at most 14 days before and at most 60 days after the
+        server's UTC date; `endsOn - startsOn` is 0 to 92 days. A duplicate client id counts once.
+        At most 20 of this coach's challenges may have `endsOn` on or after the server's UTC date.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachChallengeCreateRequest"
+      responses:
+        "201":
+          description: >-
+            Created. The same body `GET /coach-portal/challenges/{id}` returns, with every
+            participant `INVITED` and `progress: null`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachChallengeDetailResponse"
+        "400":
+          description: >-
+            `VALIDATION_ERROR` naming the field at the start of `message` (and in
+            `details.field` for the rules the request type cannot state): a title that is empty,
+            over 80 characters after trimming, or holds a control character or line break; a
+            missing or unknown `metric`; a STEPS `dailyTarget` outside 1000-50000 or missing; a
+            WORKOUTS `totalTarget` outside 1-100 or missing; the other metric's target present;
+            `endsOn` before `startsOn`; a window longer than 92 days; `startsOn` more than 14 days
+            before or more than 60 days after the server's UTC date; 0 or more than 50 client ids.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED`: not a coach, no coach profile, or ANY client id that is not an
+            ACTIVE link of this coach (another coach's client, a revoked link, an id that does not
+            exist) or, for WORKOUTS, a link without the `WORKOUTS` scope. One undifferentiated body
+            for all of them, and nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: "`COACH_CHALLENGE_LIMIT_REACHED`: 20 challenges of this coach have not ended"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/challenges/{id}:
+    get:
+      summary: One challenge with its participants' progress, ranked (EV-321a AC7, AC8)
+      description: >-
+        Progress is computed at read time, never stored. Only participants whose link to this
+        coach is ACTIVE are listed (for WORKOUTS, whose link still carries `WORKOUTS`); a revoked
+        link hides the trainee here at once, with no cache. A participant who declined or left is
+        gone: the participation is deleted.
+        ACCEPTED participants come first, in `rank` order (STEPS: `daysMet` descending then
+        `total` descending; WORKOUTS: `total` descending; equal keys share a rank, then by name).
+        INVITED participants follow by name, with `rank: null` and `progress: null`.
+        Each participant's "today" is THEIR local day: the zone their app last declared on an
+        accept or a steps sync. With no declared zone it is the day that has not yet ended
+        anywhere (UTC-12), so a day is never shown as missed early.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The challenge and its visible participants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachChallengeDetailResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED`. One undifferentiated body for another coach's challenge, an id
+            that never existed and a challenge deleted in another tab.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Delete a challenge (EV-321a AC9)
+      description: >-
+        Deletes the challenge and every participation. It disappears from each trainee's
+        `GET /me/challenges`. The trainees' own `daily_activity` rows are NOT deleted: they are
+        the trainee's data, and no coach read can reach them without another accepted challenge.
+        After it, the id answers the same 403 as a foreign or random id.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED`. One undifferentiated body for another coach's challenge, an id
+            that never existed and a challenge already deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/challenges:
+    get:
+      summary: The trainee's current challenges, invitations included (EV-321a AC4)
+      description: >-
+        Every challenge the caller is a participant of whose `endsOn` is no more than 3 days
+        before the caller's local today (so an ended challenge stays visible for 3 days), soonest
+        `endsOn` first, then title, then id. INVITED rows carry the coach's professional name, the
+        target and the window, and `progress: null`. A declined or left challenge is not listed
+        (the participation is deleted), and neither is one the coach deleted.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: A page of the caller's challenges
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyChallengePageResponse"
+        "400":
+          description: "`VALIDATION_ERROR` for a page below 0 or a size outside 1-50"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/challenges/{id}:
+    get:
+      summary: One of the trainee's challenges, with their own progress
+      description: >-
+        The caller's own view. `progress` is null while INVITED. "Today" is the caller's local
+        day from `X-Timezone`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The challenge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyChallengeResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            `CHALLENGE_NOT_FOUND`: the caller is not a participant, or the id does not exist. One
+            answer for both.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/challenges/{id}/accept:
+    post:
+      summary: Accept a challenge, which is the consent to share its progress with the coach
+      description: >-
+        **Accepting is the per-challenge consent.** For a STEPS challenge the caller shares their
+        daily step count with the coach, for the challenge's window only; for WORKOUTS, their
+        completed-session count in the window. The server records `acceptedAt` and the
+        `consentVersion` the app rendered, and from then on accepts steps for days inside this
+        window. The app's button names the share ("Accepter et partager mes pas").
+        Idempotent: accepting an ACCEPTED participation answers 200 and keeps the first
+        `acceptedAt` and version. The request's `X-Timezone` is remembered on the participation
+        (an exact IANA id only) so the coach's "today" is the trainee's.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChallengeAcceptRequest"
+      responses:
+        "200":
+          description: The challenge, now ACCEPTED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyChallengeResponse"
+        "400":
+          description: "`VALIDATION_ERROR` naming `consentVersion` when it is missing or not a known version"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: "`CHALLENGE_NOT_FOUND`: not a participant, or no such challenge"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `CHALLENGE_ENDED`: the window ended before the caller's local today, so there is
+            nothing left to share. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/challenges/{id}/decline:
+    post:
+      summary: Decline an invitation
+      description: >-
+        Deletes the INVITED participation; the coach no longer lists the trainee. Only an
+        invitation can be declined: an ACCEPTED participation is left with `/leave`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Declined; the participation is gone
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: "`CHALLENGE_NOT_FOUND`: not a participant, or no such challenge"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: "`CHALLENGE_ALREADY_ACCEPTED`: use `/leave`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/challenges/{id}/leave:
+    post:
+      summary: Leave a challenge (invited or accepted), deleting what was shared for it
+      description: >-
+        Deletes the participation, in any state, and the coach sees nothing of the trainee in
+        this challenge from then on. It also deletes the caller's stored step rows (every source)
+        for the days of this challenge's window that are NOT inside the window of another STEPS
+        challenge the caller has still accepted: a day that still serves another accepted
+        challenge is kept, because that challenge's consent still covers it; every other day in
+        this window is deleted. Steps outside this window are untouched.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Left; the participation and the steps stored only for it are gone
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: "`CHALLENGE_NOT_FOUND`: not a participant, or no such challenge"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/activity/steps:
+    put:
+      summary: Submit daily step totals (EV-321a AC5, AC6)
+      description: >-
+        An idempotent upsert per (caller, day, source): sending the same entry twice stores one
+        row, and a new value for the same day and source replaces the old one. One row is kept per
+        source; a day's value is the highest-precedence source present: the device health store
+        (HEALTHKIT or HEALTH_CONNECT, one tier), then PEDOMETER, then MANUAL. It is never a sum and
+        never a max.
+        **The batch is all or nothing.** Every entry's day must be inside the window of a STEPS
+        challenge the caller has ACCEPTED (otherwise `409 STEPS_OUTSIDE_JOINED_CHALLENGE`), no
+        more than 30 days before the caller's local today, and not after it. MANUAL is refused for
+        a day that already holds a HEALTHKIT, HEALTH_CONNECT or PEDOMETER row
+        (`409 STEPS_SOURCE_PRECEDENCE`);
+        a device source is always stored, and a MANUAL row it outranks is kept but not counted.
+        Past days inside an accepted window are accepted from any source, which is how a window
+        that started before the trainee joined is back-filled. A day with no data must be OMITTED,
+        never sent as 0: `steps: 0` is stored as a real zero.
+        The request's `X-Timezone` decides the caller's local today (absent or unresolvable: the
+        server's UTC today + 1 day, as on the completion routes) and, when it is an exact IANA id,
+        is remembered on the caller's accepted participations for the coach's "today".
+        Rate-limited per account: 60 requests an hour.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TimeZoneHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StepsSyncRequest"
+      responses:
+        "200":
+          description: Stored. The effective value of every day the batch touched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StepsSyncResponse"
+        "400":
+          description: >-
+            `VALIDATION_ERROR` naming the field (and `details.field` for the rules the request type
+            cannot state): 0 or more than 31 entries; a missing day, steps or source; an unknown
+            source; steps below 0 or above 100000; the same day and source twice in one batch; a
+            day after the caller's local today or more than 30 days before it. Nothing is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `STEPS_OUTSIDE_JOINED_CHALLENGE` (with `details.day`): a day inside no accepted STEPS
+            challenge's window, including any day while the caller is only INVITED.
+            `STEPS_SOURCE_PRECEDENCE` (with `details.day` and `details.source`, the device source
+            already stored): a MANUAL entry for a day that already holds a device value.
+            Nothing in the batch is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: "`STEPS_RATE_LIMITED`, with a `Retry-After` header in seconds"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   parameters:
     TimeZoneHeader:
@@ -7446,8 +8773,10 @@ components:
             - $ref: "#/components/schemas/CoachFoodLogMacros"
           nullable: true
           description: >-
-            The day's targets, training/rest-day adjusted as the trainee's own day read adjusts them;
-            null when the trainee has no stored target.
+            The day's targets: the target the trainee's own next read serves (the fresh compute
+            when a profile edit is owed a refresh, BUG-434), never written by this read,
+            training/rest-day adjusted as the trainee's own day read adjusts them; null when the
+            trainee has no target yet.
         entries:
           type: array
           description: The day's food log entries, oldest first.
@@ -7708,10 +9037,10 @@ components:
         AC1's read-only panel, rendered under "From the trainee's profile — you cannot change these
         here." Display only, and enforced server-side rather than by the UI: the policy resolves
         injuries and equipment from user_profiles, and so does the plans.equipment column the
-        trainee's own app reads on GET /me/plan (BUG-185). A submitted routine document must carry
-        a constraints block (both lists are required on Routine), but submitted equipment is
-        ignored, and submitted injuries are unioned with the stored ones — they can only narrow
-        what may be prescribed, never widen it.
+        trainee's own app reads on GET /me/plan (BUG-185). A draft document must carry a
+        constraints block (both lists are required on Routine), but since BUG-195b (ADR-0018 D9)
+        the coach sends both lists as [] and a non-empty value is refused with 400
+        COACH_DRAFT_SUBJECT_FIELD: a coach never supplies a claim about the trainee's body.
       properties:
         injuries:
           type: array
@@ -7728,6 +9057,29 @@ components:
             stored profile, never hardcoded: [] is "unanswered", which allows every rung and narrows
             nobody. The portal must render no equipment-safety sentence while this is false.
       required: [injuries, equipment, equipmentChecked]
+    CoachRoutineDraftRequest:
+      type: object
+      description: >-
+        BUG-195b / ADR-0018 D1 option 1-D. The WHOLE routine document plus the draft this save may
+        replace. See `PUT /coach-portal/clients/{id}/routine/draft` for which fields the server
+        resolves and which it refuses.
+      required: [document]
+      properties:
+        replacesDraftUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            The `updatedAt` of the draft this save may replace, echoed VERBATIM from the last GET,
+            PUT or apply response for this draft, or from a 409's `details.existingUpdatedAt`.
+            Absent or null means "only if there is no draft".
+        document:
+          allOf:
+            - $ref: "#/components/schemas/Routine"
+          description: >-
+            The full routine document. `goal`, `level`, `constraints.equipment` and
+            `constraints.injuries` are the TRAINEE's answers: send `goal`/`level` as served and
+            both lists as `[]`; the response carries what was stored.
     CoachRoutineDraftResponse:
       type: object
       description: The coach's unpublished draft for this link.
@@ -7795,7 +9147,9 @@ components:
             The routine document. `constraints.equipment` and `constraints.injuries` are @NotNull on
             the shared Routine type, so a caller CANNOT omit them — and the server reads neither as
             a claim about anybody: both are stored empty and any row where they are not is refused
-            when it is read back.
+            when it is read back. On a `DURATION` exercise `reps` is stored as null (BUG-195b): the
+            earlier portal sent its "8-12" default on timed exercises, and the value is normalised
+            rather than refused so that saving keeps working.
     CoachTemplateRenameRequest:
       type: object
       description: A new name for an existing template.
@@ -7990,6 +9344,22 @@ components:
             type: string
             maxLength: 300
             description: Not blank once trimmed. No control character or line break.
+        mealSlots:
+          type: array
+          nullable: true
+          minItems: 1
+          maxItems: 4
+          items:
+            type: string
+            enum: [BREAKFAST, LUNCH, DINNER, SNACK]
+          description: >-
+            EV-320a. OPTIONAL. Which slots of a week "Apply week" may fill with this recipe. A
+            repeated value is folded; the stored order is BREAKFAST, LUNCH, DINNER, SNACK. Omitted on
+            create: the recipe is untagged, and the fill treats it as LUNCH and DINNER only. Omitted
+            on update: the stored tags are KEPT (so a client that predates the field cannot wipe
+            them); sent on update, they replace the stored ones. `[]`, more than 4 values, or any
+            other value is 400 VALIDATION_ERROR naming `mealSlots`.
+          example: [LUNCH, DINNER]
     CoachRecipeIngredientRequest:
       type: object
       required: [key, quantity, unit]
@@ -8046,6 +9416,16 @@ components:
           description: >-
             Keys in this recipe that are no longer in the vocabulary (a key can be retired after the
             recipe was saved). The recipe still reads. Empty in the normal case.
+        mealSlots:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [BREAKFAST, LUNCH, DINNER, SNACK]
+          description: >-
+            EV-320a. The slots "Apply week" may fill with this recipe, in BREAKFAST, LUNCH, DINNER,
+            SNACK order. null when untagged (saved before the field existed, or without it), which
+            the fill treats as LUNCH and DINNER only.
     CoachRecipeIngredientResponse:
       type: object
       properties:
@@ -8081,6 +9461,13 @@ components:
           type: integer
         ingredientCount:
           type: integer
+        mealSlots:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [BREAKFAST, LUNCH, DINNER, SNACK]
+          description: EV-320a. The recipe's meal slots, or null when untagged (read as LUNCH and DINNER).
     CoachRecipeListResponse:
       type: object
       description: The coach's recipe library, alphabetical by name.
@@ -8842,14 +10229,41 @@ components:
         email:
           type: string
           format: email
+          # BUG-390: InitialiseTraineeRequest.EMAIL_TEXT, the same spelling on the server (one class,
+          # looped; REQUIRES the JavaScript u flag - without it the class inverts). The four account-email
+          # writers carry it (the three that create an account, plus POST /me/account/email, whose
+          # ChangeEmailRequest.newEmail is below, EV-316); /auth/login deliberately does not, so an
+          # address stored before the rule still signs in.
+          pattern: "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]*$"
+          description: >-
+            No control character, no U+2028/U+2029 and no invisible format character
+            (Unicode categories Cc, Cf, Zl, Zp: NEL, ZWSP, BOM, LRM, RLO, ZWNJ, ZWJ, ...), anywhere in the
+            address; 400 VALIDATION_ERROR on email. IDN domains and non-ASCII local parts are accepted
+            as before
         password:
           type: string
           format: password
           minLength: 8
           maxLength: 128
+          # BUG-415: maxLength counts characters; bcrypt counts UTF-8 bytes, which JSON Schema
+          # cannot state. The server's rule is @PasswordByteLimit.
+          description: >-
+            8 to 128 characters and at most 72 bytes in UTF-8 (bcrypt's limit; an accented letter
+            counts as 2 bytes, most emoji as 4). Longer: 400 VALIDATION_ERROR on password
         fullName:
           type: string
           maxLength: 120
+          # The server evaluates the same set as ONE Java character class, [[^...][\u200C\u200D]]*
+          # (InitialiseTraineeRequest.NAME_TEXT, BUG-313 B1): the starred alternation below made
+          # java.util.regex recurse per character and overflow the stack on long input. This
+          # spelling is documentation only (JavaScript has no nested class union); the two accept
+          # exactly the same code points (NameTextPatternTest).
+          pattern: "^(?:[^\\p{Cc}\\p{Cf}\\u2028\\u2029]|[\\u200C\\u200D])*$"
+          description: >-
+            Optional. No control character (CR, LF, tab, NUL, ...), no U+2028/U+2029 and no
+            invisible format character (bidi overrides and isolates, soft hyphen, BOM, ...); ZWNJ
+            and ZWJ are allowed. Otherwise 400 VALIDATION_ERROR on fullName and no account is
+            created (BUG-313; the rule EV-204a2 uses for an initialised name).
         consentAccepted:
           type: boolean
           description: >-
@@ -8896,10 +10310,101 @@ components:
         expiresIn:
           type: integer
           description: Access token lifetime in seconds
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the access token expires (UTC)
       required:
         - accessToken
         - refreshToken
         - expiresIn
+        - expiresAt
+    ChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          format: password
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          description: >-
+            At least 8 characters and at most 72 bytes in UTF-8 (bcrypt's limit; an accented
+            letter counts as 2 bytes, most emoji as 4). Longer: 400 VALIDATION_ERROR on newPassword
+            (BUG-415)
+      required:
+        - currentPassword
+        - newPassword
+    PasswordRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          format: password
+          description: >-
+            The account password. Any length is accepted; bcrypt compares the first 72 UTF-8
+            bytes (BUG-415).
+      required:
+        - password
+    DisableTotpRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          format: password
+          description: >-
+            The account password. Any length is accepted; bcrypt compares the first 72 UTF-8
+            bytes (BUG-415).
+        code:
+          type: string
+          maxLength: 32
+          description: A current TOTP code or an unused recovery code
+      required:
+        - password
+        - code
+    RecoveryCodesResponse:
+      type: object
+      properties:
+        recoveryCodes:
+          type: array
+          items:
+            type: string
+          description: Plaintext recovery codes, shown exactly once
+      required:
+        - recoveryCodes
+    ChangeEmailRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          format: password
+          description: The current password (confirms the change)
+        newEmail:
+          type: string
+          format: email
+          # BUG-390: InitialiseTraineeRequest.EMAIL_TEXT, the account-email writers' rule, the same
+          # spelling on the server (one class, looped; REQUIRES the JavaScript u flag - without it the
+          # class inverts).
+          pattern: "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]*$"
+          description: >-
+            The new address; the code is mailed here. No control character, no U+2028/U+2029 and no
+            invisible format character (Unicode categories Cc, Cf, Zl, Zp: NEL, ZWSP, BOM, LRM, RLO,
+            ZWNJ, ZWJ, ...), anywhere in the address; 400 VALIDATION_ERROR on newEmail. IDN domains
+            and non-ASCII local parts are accepted.
+      required:
+        - password
+        - newEmail
+    CodeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          pattern: "^\\d{6}$"
+          description: The six-digit code from the email
+          example: "123456"
+      required:
+        - code
     Role:
       type: string
       description: >-
@@ -8921,6 +10426,10 @@ components:
           format: password
           minLength: 8
           maxLength: 128
+          description: >-
+            8 to 128 characters and at most 72 bytes in UTF-8 (bcrypt's limit; an accented letter
+            counts as 2 bytes, most emoji as 4). Longer: 400 VALIDATION_ERROR on newPassword
+            (BUG-415)
         consentAccepted:
           type: boolean
           description: Acceptance of the privacy policy and the terms; must be true
@@ -8936,7 +10445,17 @@ components:
           type: string
           maxLength: 120
           nullable: true
-          description: Optional correction of the name the initialiser typed
+          # The server evaluates the same set as ONE Java character class, [[^...][\u200C\u200D]]*
+          # (InitialiseTraineeRequest.NAME_TEXT, BUG-313 B1): the starred alternation below made
+          # java.util.regex recurse per character and overflow the stack on long input. This
+          # spelling is documentation only (JavaScript has no nested class union); the two accept
+          # exactly the same code points (NameTextPatternTest).
+          pattern: "^(?:[^\\p{Cc}\\p{Cf}\\u2028\\u2029]|[\\u200C\\u200D])*$"
+          description: >-
+            Optional correction of the name the initialiser typed. No control character, no
+            U+2028/U+2029 and no invisible format character; ZWNJ and ZWJ are allowed. Otherwise
+            400 VALIDATION_ERROR on fullName and nothing is activated (BUG-313, the rule every
+            other writer of the account name uses)
       required:
         - temporaryPassword
         - newPassword
@@ -8977,9 +10496,25 @@ components:
           type: string
           format: email
           maxLength: 254
+          # BUG-390: InitialiseTraineeRequest.EMAIL_TEXT, the same spelling on the server (one class,
+          # looped; REQUIRES the JavaScript u flag - without it the class inverts). The four account-email
+          # writers carry it (the three that create an account, plus POST /me/account/email, whose
+          # ChangeEmailRequest.newEmail is below, EV-316); /auth/login deliberately does not, so an
+          # address stored before the rule still signs in.
+          pattern: "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]*$"
+          description: >-
+            No control character, no U+2028/U+2029 and no invisible format character
+            (Unicode categories Cc, Cf, Zl, Zp: NEL, ZWSP, BOM, LRM, RLO, ZWNJ, ZWJ, ...), anywhere in the
+            address; 400 VALIDATION_ERROR on email. IDN domains and non-ASCII local parts are accepted
+            as before
         fullName:
           type: string
           maxLength: 120
+          # The server evaluates the same set as ONE Java character class, [[^...][\u200C\u200D]]*
+          # (InitialiseTraineeRequest.NAME_TEXT, BUG-313 B1): the starred alternation below made
+          # java.util.regex recurse per character and overflow the stack on long input. This
+          # spelling is documentation only (JavaScript has no nested class union); the two accept
+          # exactly the same code points (NameTextPatternTest).
           pattern: "^(?:[^\\p{Cc}\\p{Cf}\\u2028\\u2029]|[\\u200C\\u200D])*$"
           description: >-
             The name as the coach knows it; the trainee can correct it at activation. No control
@@ -9002,9 +10537,25 @@ components:
           type: string
           format: email
           maxLength: 254
+          # BUG-390: InitialiseTraineeRequest.EMAIL_TEXT, the same spelling on the server (one class,
+          # looped; REQUIRES the JavaScript u flag - without it the class inverts). The four account-email
+          # writers carry it (the three that create an account, plus POST /me/account/email, whose
+          # ChangeEmailRequest.newEmail is below, EV-316); /auth/login deliberately does not, so an
+          # address stored before the rule still signs in.
+          pattern: "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]*$"
+          description: >-
+            No control character, no U+2028/U+2029 and no invisible format character
+            (Unicode categories Cc, Cf, Zl, Zp: NEL, ZWSP, BOM, LRM, RLO, ZWNJ, ZWJ, ...), anywhere in the
+            address; 400 VALIDATION_ERROR on email. IDN domains and non-ASCII local parts are accepted
+            as before
         fullName:
           type: string
           maxLength: 80
+          # The server evaluates the same set as ONE Java character class, [[^...][\u200C\u200D]]*
+          # (InitialiseTraineeRequest.NAME_TEXT, BUG-313 B1): the starred alternation below made
+          # java.util.regex recurse per character and overflow the stack on long input. This
+          # spelling is documentation only (JavaScript has no nested class union); the two accept
+          # exactly the same code points (NameTextPatternTest).
           pattern: "^(?:[^\\p{Cc}\\p{Cf}\\u2028\\u2029]|[\\u200C\\u200D])*$"
           description: >-
             The person's name; for a coach also the coach profile's display name (80 characters, the
@@ -9222,6 +10773,112 @@ components:
           format: date-time
           nullable: true
           description: Null while the coach is current
+    AdminCoachGrantRequest:
+      type: object
+      required: [userId, displayName]
+      additionalProperties: false
+      description: >-
+        EV-205a. Exactly these two keys; any other (capacityTier, roles, password, email, ...) is
+        400 ADMIN_COACH_INPUT_FORBIDDEN.
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: The existing, activated, email-verified account to make a coach
+        displayName:
+          type: string
+          maxLength: 80
+          description: >-
+            What trainees are shown (consent screen, Coached by, plan byline). Not blank; no control,
+            line-break or invisible format character (ZWJ/ZWNJ allowed). Stored without surrounding
+            whitespace.
+          example: Sam Coach
+    AdminCoachRenameRequest:
+      type: object
+      required: [displayName]
+      additionalProperties: false
+      description: EV-205a. The display name only; any other key is 400 ADMIN_COACH_INPUT_FORBIDDEN.
+      properties:
+        displayName:
+          type: string
+          maxLength: 80
+          example: Sam Coach
+    AdminCoachResponse:
+      type: object
+      required: [userId, email, displayName, tier, capacity, activeClients, status]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        tier:
+          type: string
+          enum: [STARTER]
+          description: Read-only; STARTER is the only tier (AC6, ADR-0019 D19.3)
+        capacity:
+          type: integer
+          description: ACTIVE links the tier allows
+          example: 10
+        activeClients:
+          type: integer
+          format: int64
+          description: ACTIVE coach_clients links now; a REVOKED link counts 0
+        status:
+          type: string
+          enum: [ACTIVE, REVOKED, PENDING]
+          description: >-
+            ACTIVE holds COACH; REVOKED keeps the profile without the role; PENDING is an
+            admin-initialised coach who has not activated
+        grantedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When coach status was FIRST granted through the console (a re-grant keeps it); null when no
+            grant wrote the profile. Who made the first grant is not recorded (EV-205 edge case 7): pair
+            this date with no admin
+        lastGrantedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the LATEST grant was made (a first grant, a re-grant after a revoke, or a repair); equal
+            to grantedAt until a re-grant. Null when no grant wrote the profile, or when the latest grant
+            was made before this field existed (not recorded). A revoke or a rename does not change it
+            (BUG-401)
+        lastGrantedBy:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            The admin who made the LATEST grant, the one lastGrantedAt dates; null when none did, or once
+            that admin is erased. Never the first granter (BUG-401). Replaces grantedBy, which carried
+            the same value under a name that paired it with grantedAt
+        requiresReauthentication:
+          type: boolean
+          description: >-
+            Present, and true, only on the answer to a grant or a revoke: the person must sign out and
+            sign in again before the coach portal reflects the change (EV-205 AC2)
+    AdminCoachPageResponse:
+      type: object
+      required: [items, page, size, totalElements, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCoachResponse"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
     AdminGymCoachRequest:
       type: object
       required: [coachUserId]
@@ -9267,7 +10924,61 @@ components:
             - $ref: "#/components/schemas/Role"
           description: >-
             The primary role: PENDING first (a pending account holds nothing else), then ADMIN,
-            COACH, else USER
+            COACH, else USER. Unchanged by BUG-400; read roles for every role held
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Role"
+          description: >-
+            Every role the account holds, sorted by name (BUG-400). An admin who also coaches reads
+            role ADMIN and roles [ADMIN, COACH, USER]; a pending account reads [PENDING]. Additive:
+            role keeps its meaning
+    AdminUserDetailResponse:
+      description: GET /admin/users/{id} — the list item's fields, then initialisation (EV-278a2)
+      allOf:
+        - $ref: "#/components/schemas/AdminUserResponse"
+        - type: object
+          properties:
+            initialisation:
+              allOf:
+                - $ref: "#/components/schemas/AdminUserInitialisation"
+              nullable: true
+              description: Present while the account holds PENDING; null otherwise
+          required:
+            - initialisation
+    AdminUserInitialisation:
+      type: object
+      description: >-
+        Who set up a pending account and its dates (EV-278a2). No password, hash, token or
+        initialiser email.
+      properties:
+        kind:
+          type: string
+          enum: [COACH, GYM, ADMIN]
+          description: The initialiser kind. GYM is written by nothing until EV-282a
+        initialiserName:
+          type: string
+          nullable: true
+          description: >-
+            The coach's display name, the gym's name, or "Evoli" for ADMIN; null once the initialiser
+            was erased
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: createdAt + 720 hours; may be in the past before the sweeper runs
+        passwordIssuedAt:
+          type: string
+          format: date-time
+          description: When the last temporary password was issued (creation or the last resend)
+      required:
+        - kind
+        - initialiserName
+        - createdAt
+        - expiresAt
+        - passwordIssuedAt
     AdminUserPageResponse:
       type: object
       properties:
@@ -11566,3 +13277,373 @@ components:
         - fatG
         - locked
         - eaten
+    ChallengeMetric:
+      type: string
+      description: >-
+        STEPS reads the trainee's submitted daily step totals. WORKOUTS counts the trainee's
+        completed workout sessions filed inside the window (api only in EV-321a; no portal or app
+        UI yet).
+      enum: [STEPS, WORKOUTS]
+    ActivitySource:
+      type: string
+      description: >-
+        Where a step total came from, as the app reports it. Precedence when a day holds several:
+        the device health store first (HEALTHKIT on iOS, HEALTH_CONNECT on Android; one tier, since
+        a user only ever has one of the two), then PEDOMETER, then MANUAL. Should a day ever hold
+        both health-store sources, the more recently synced one counts. The portal says "via Apple
+        Santé" or "via Health Connect", never "vérifié".
+      enum: [HEALTHKIT, HEALTH_CONNECT, PEDOMETER, MANUAL]
+    ChallengeParticipantStatus:
+      type: string
+      description: INVITED until the trainee accepts; a decline or a leave deletes the participation.
+      enum: [INVITED, ACCEPTED]
+    ChallengePhase:
+      type: string
+      description: >-
+        UPCOMING before `startsOn`, ACTIVE from `startsOn` to `endsOn` inclusive, ENDED after.
+        Coach reads use the server's UTC date; the trainee's reads use their `X-Timezone` day.
+      enum: [UPCOMING, ACTIVE, ENDED]
+    ChallengeDayStatus:
+      type: string
+      description: >-
+        MET: the day's value reached the daily target (exactly the target counts). MISSED: a past
+        day with a value below the target. IN_PROGRESS: today, with a value below the target (not
+        yet missed). NO_DATA: a day up to today with no value from any source; it is NOT a zero,
+        and it never counts as met or as steps. FUTURE: after the trainee's today.
+      enum: [MET, MISSED, IN_PROGRESS, NO_DATA, FUTURE]
+    CoachChallengeCreateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: 1-80 characters after trimming; no control character or line break.
+          example: 10 000 pas par jour
+        metric:
+          $ref: "#/components/schemas/ChallengeMetric"
+        dailyTarget:
+          type: integer
+          nullable: true
+          minimum: 1000
+          maximum: 50000
+          description: STEPS only (required), steps per day. Must be absent or null for WORKOUTS.
+          example: 10000
+        totalTarget:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 100
+          description: >-
+            WORKOUTS only (required), completed sessions over the window. Must be absent or null
+            for STEPS.
+        startsOn:
+          type: string
+          format: date
+          example: "2026-10-05"
+        endsOn:
+          type: string
+          format: date
+          example: "2026-10-11"
+        clientIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          description: >-
+            `coach_clients` row ids, as the roster returns them (`CoachClientSummaryResponse.id`).
+            Each must be an ACTIVE link of this coach.
+          items:
+            type: string
+            format: uuid
+      required: [title, metric, startsOn, endsOn, clientIds]
+    CoachChallengeSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        metric:
+          $ref: "#/components/schemas/ChallengeMetric"
+        dailyTarget:
+          type: integer
+          nullable: true
+          description: Set for STEPS, null for WORKOUTS.
+        totalTarget:
+          type: integer
+          nullable: true
+          description: Set for WORKOUTS, null for STEPS.
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: string
+          format: date
+        days:
+          type: integer
+          description: Days in the window, both ends included (1-93).
+        phase:
+          $ref: "#/components/schemas/ChallengePhase"
+        participantCount:
+          type: integer
+          description: Visible participants (INVITED and ACCEPTED) whose link is still ACTIVE.
+        acceptedCount:
+          type: integer
+          description: Of those, how many have accepted.
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, title, metric, dailyTarget, totalTarget, startsOn, endsOn, days, phase,
+                 participantCount, acceptedCount, createdAt]
+    CoachChallengePageResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachChallengeSummary"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+      required: [items, page, size, totalElements, totalPages]
+    ChallengeDay:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date
+          description: The trainee's local calendar day.
+        value:
+          type: integer
+          nullable: true
+          description: The winning source's steps; null when there is no data (never 0 for absent).
+        source:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ActivitySource"
+        status:
+          $ref: "#/components/schemas/ChallengeDayStatus"
+      required: [day, value, source, status]
+    ChallengeProgress:
+      type: object
+      description: >-
+        Computed at read time from stored rows, never stored. For STEPS every figure is taken over
+        the window's days up to the trainee's today, using each day's highest-precedence source.
+        For WORKOUTS the figures count completed sessions filed in that range, and `daysMet`,
+        `todaySource` and `days` are null.
+      properties:
+        today:
+          type: string
+          format: date
+          description: The trainee's local today, as this read determined it.
+        todayValue:
+          type: integer
+          nullable: true
+          description: >-
+            Today's value when today is inside the window. STEPS: null when there is no data for
+            today (or today is outside the window). WORKOUTS: sessions completed today (0 is real).
+        todaySource:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ActivitySource"
+        daysElapsed:
+          type: integer
+          description: Window days up to and including the trainee's today (0 before the start).
+        daysMet:
+          type: integer
+          nullable: true
+          description: STEPS days whose value reached the target. Null for WORKOUTS.
+        total:
+          type: integer
+          format: int64
+          description: >-
+            STEPS: the sum of each counted day's winning value (days with no data add nothing).
+            WORKOUTS: completed sessions.
+        target:
+          type: integer
+          description: The challenge's `dailyTarget` (STEPS) or `totalTarget` (WORKOUTS).
+        syncedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The latest write among the STEPS rows counted; null with none. Null for WORKOUTS.
+        days:
+          type: array
+          nullable: true
+          description: One entry per window day, in order. Null for WORKOUTS.
+          items:
+            $ref: "#/components/schemas/ChallengeDay"
+      required: [today, todayValue, todaySource, daysElapsed, daysMet, total, target, syncedAt, days]
+    CoachChallengeParticipant:
+      type: object
+      properties:
+        clientId:
+          type: string
+          format: uuid
+          description: The ACTIVE `coach_clients` row id; the portal's id for this trainee.
+        displayName:
+          type: string
+          nullable: true
+          description: The trainee's name, or null when the account holds none.
+        status:
+          $ref: "#/components/schemas/ChallengeParticipantStatus"
+        invitedAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        rank:
+          type: integer
+          nullable: true
+          description: 1-based among ACCEPTED participants; equal keys share a rank. Null while INVITED.
+        progress:
+          nullable: true
+          description: Null while INVITED. Before acceptance the coach sees the status and nothing else.
+          allOf:
+            - $ref: "#/components/schemas/ChallengeProgress"
+      required: [clientId, displayName, status, invitedAt, acceptedAt, rank, progress]
+    CoachChallengeDetailResponse:
+      type: object
+      properties:
+        challenge:
+          $ref: "#/components/schemas/CoachChallengeSummary"
+        participants:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/CoachChallengeParticipant"
+      required: [challenge, participants]
+    MyChallengeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        metric:
+          $ref: "#/components/schemas/ChallengeMetric"
+        dailyTarget:
+          type: integer
+          nullable: true
+        totalTarget:
+          type: integer
+          nullable: true
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: string
+          format: date
+        phase:
+          $ref: "#/components/schemas/ChallengePhase"
+        coachName:
+          type: string
+          nullable: true
+          description: The coach's professional name; null only when the coach's account is gone.
+        status:
+          $ref: "#/components/schemas/ChallengeParticipantStatus"
+        invitedAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        consentVersion:
+          type: string
+          nullable: true
+          description: The consent version recorded at acceptance; null while INVITED.
+        progress:
+          nullable: true
+          description: The caller's own progress; null while INVITED.
+          allOf:
+            - $ref: "#/components/schemas/ChallengeProgress"
+      required: [id, title, metric, dailyTarget, totalTarget, startsOn, endsOn, phase, coachName,
+                 status, invitedAt, acceptedAt, consentVersion, progress]
+    MyChallengePageResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MyChallengeResponse"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+      required: [items, page, size, totalElements, totalPages]
+    ChallengeAcceptRequest:
+      type: object
+      properties:
+        consentVersion:
+          type: string
+          description: >-
+            The version of the consent sentence the app rendered on the accept sheet. Recorded on
+            the participation with the acceptance time. `challenge-share-v1` is the sentence of
+            EV-321 R2 ("En rejoignant ce défi, vous partagez votre nombre de pas quotidien avec
+            {coach}, du {début} au {fin}. …").
+          enum: [challenge-share-v1]
+      required: [consentVersion]
+    StepsEntry:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date
+          description: The trainee's local calendar day.
+        steps:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          description: The day's total. 0 is a real zero; omit a day with no data.
+        source:
+          $ref: "#/components/schemas/ActivitySource"
+      required: [day, steps, source]
+    StepsSyncRequest:
+      type: object
+      properties:
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 31
+          items:
+            $ref: "#/components/schemas/StepsEntry"
+      required: [entries]
+    StepsDayResult:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date
+        steps:
+          type: integer
+          description: The day's effective value after the write (the winning source's).
+        source:
+          $ref: "#/components/schemas/ActivitySource"
+        syncedAt:
+          type: string
+          format: date-time
+          description: When the winning row was last written.
+      required: [day, steps, source, syncedAt]
+    StepsSyncResponse:
+      type: object
+      properties:
+        days:
+          type: array
+          description: One entry per distinct day in the request, in day order.
+          items:
+            $ref: "#/components/schemas/StepsDayResult"
+      required: [days]

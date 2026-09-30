@@ -8,6 +8,7 @@ import {
   isCatalogUnavailable,
   isForbidden,
   isPlanEmpty,
+  isRepsOnDuration,
   isTemplateLimitReached,
   isTemplateNameTaken,
   isTemplateNotPublishable,
@@ -46,6 +47,8 @@ export type TemplateFailure =
   | "NOT_PUBLISHABLE"
   | "PLAN_EMPTY"
   | "CATALOG_UNAVAILABLE"
+  /** BUG-195c B1 — apply refused a template whose timed exercise still has reps. */
+  | "REPS_ON_DURATION"
   | "FAILED";
 
 function classify(err: unknown): TemplateFailure {
@@ -56,6 +59,7 @@ function classify(err: unknown): TemplateFailure {
   if (isTemplateNotPublishable(err)) return "NOT_PUBLISHABLE";
   if (isPlanEmpty(err)) return "PLAN_EMPTY";
   if (isCatalogUnavailable(err)) return "CATALOG_UNAVAILABLE";
+  if (isRepsOnDuration(err)) return "REPS_ON_DURATION";
   /**
    * ADR-0012 D4 — the api answers ONE 403 for a foreign template, an id that never
    * existed and one deleted in another tab. The portal must not invent a distinction

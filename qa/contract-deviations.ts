@@ -25,39 +25,21 @@ export interface SchemaDeviation {
 }
 
 export const DEVIATIONS: Record<string, SchemaDeviation> = {
-  /* ════════════════════════════════════════════════════════════════════════
-   * ⛔ THE ROUTINE WRITE PATH — KNOWN BROKEN AGAINST LIVE.
-   *
-   * `PUT /coach-portal/clients/{id}/routine/draft` takes a whole `Routine`;
-   * `CoachRoutineDraftRequest` sends two of its eight fields, so a "Save draft"
-   * against a real api is a 400 and the editor shows its generic failure. This is
-   * pre-existing — it shipped with EV-184b, which was written against an api branch
-   * that had not merged — and it is registered rather than fixed because fixing it is
-   * not a web decision. See the ⛔ block in `src/lib/coachApi.ts`.
-   *
-   * → OWNER: architect + java-engineer. Two open questions, both theirs:
-   *   (1) a coach who is building a plan FROM SCRATCH (the api's own edge case 9) has
-   *       no goal, level or minutes-per-session to send, and the portal must not
-   *       invent them for somebody else's trainee;
-   *   (2) the coach's editor edits a LOSSY projection, so rebuilding the whole
-   *       document from it would silently delete `tempo`, `notes`, `trackingType`,
-   *       `durationSeconds`, `weight` and `estimatedMinutes` from a trainee's plan.
-   *
-   * These entries do NOT make the type green (EV-222). Five of the six are `required`
-   * by `Routine`, and `qa/contract-drift.spec.ts` never lets a `missingInPortal` entry
-   * excuse a required field on a schema the api receives — so the case
-   * "CoachRoutineDraftRequest carries every field Routine requires" is red, declared
-   * with `test.fail()` under the annotation BUG-195. They stay here only because the
-   * NAME check (the other direction) still reads them.
-   * ════════════════════════════════════════════════════════════════════════ */
-  CoachRoutineDraftRequest: {
+  /* ── BUG-195c: the routine write path is no longer a deviation ────────────────
+   * `CoachRoutineDraftRequest` was registered here as "⛔ KNOWN BROKEN AGAINST LIVE"
+   * from EV-184b until BUG-195c: it sent two of the eight fields `Routine` requires.
+   * It now carries `{replacesDraftUpdatedAt, document: Routine}` — the api's own
+   * `CoachRoutineDraftRequest` (BUG-195b, ADR-0018 D1 option 1-D) — so there is nothing
+   * left to register, and `qa/contract-drift.spec.ts` would fail on a stale entry
+   * (AC3.8). Its absence here is the forced deletion, not an omission.
+   * ────────────────────────────────────────────────────────────────────────── */
+
+  /* ── EV-316, arrived with the BUG-195c re-vendor ────────────────────────────── */
+
+  AuthTokens: {
     missingInPortal: {
-      goal: "⛔ Not sendable. `@NotBlank` on the wire and unknown to this surface for a from-scratch plan; the portal has no honest source for a trainee's training goal.",
-      level: "⛔ Not sendable. `@NotBlank`, same reason.",
-      daysPerWeek: "⛔ Derivable (`trainingDays.length`) but pointless alone — `RoutinePlanWriter.reconcileIdentity` recomputes it server-side and ignores what it is sent.",
-      weeklyProgression: "⛔ Not sendable. `@NotNull` on the wire; no coach control authors a progression rule and EV-184 gives them none.",
-      constraints: "⛔ Not sendable. `@NotNull`, and `minutesPerSession` is `@Positive` with no coach control and no stored value the portal receives.",
-      summary: "⛔ Not sendable. The generator's coach-voice overview; a portal-written one would put words in the engine's mouth.",
+      expiresAt:
+        "EV-316 (b-fit-api `239c8ab`, on api main before this branch's base) made it required in the spec because the api always SENDS it. The portal never sends an AuthTokens — it only reads `POST /me/activate`'s 200 — and it times the session from `expiresIn`, which the api still sends. Reading a second, redundant expiry would be two clocks for one session. Not a request body, so `required` here is a statement about the response, not a 400.",
     },
   },
 
@@ -91,7 +73,34 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
       imageEnd: "Same.",
       category: "Provider taxonomy; no control uses it.",
       provider: "Which catalog the row came from. A coach does not choose a provider and must not be shown one.",
-      exerciseType: "WEIGHTED / BODYWEIGHT / DURATION — the TRAINEE's logging mode. The coach's editor writes sets/reps/rest only, so reading it would imply a control that does not exist.",
+    },
+  },
+
+  /* ── EV-320a meal-slot tags: on api main, no portal control yet ─────────────
+   * b-fit-api `0d58432` (on api main, vendored at 741ed39) added `mealSlots` to the
+   * three recipe schemas so "Apply week" can fill breakfast and snacks from a coach's
+   * recipes. This portal neither sets nor shows them yet; the chips that would are an
+   * unwritten portal story. Identical on BUG-195c and EV-321b (both re-vendored 741ed39),
+   * so the two branches merge this block cleanly with each other.
+   * ---------------------------------------------------------------------- */
+  CoachRecipeSaveRequest: {
+    missingInPortal: {
+      mealSlots:
+        "OPTIONAL and nullable on the wire. Omitted on UPDATE the api KEEPS the stored tags (b-fit-api 741ed39 `CoachRecipeUseCase.update`: `checked.mealSlots() != null ? checked.mealSlots() : owned.recipe().mealSlots()`, where `CoachRecipeRules.mealSlots` returns null for an absent field; pinned by `CoachRecipeIntegrationTest.ev320a_mealSlotsAreSavedReadKeptOnAnUpdateThatOmitsThemAndBounded`), so a save from this editor cannot untag a recipe tagged elsewhere. Omitted on CREATE the recipe is stored untagged, which the fill reads as LUNCH and DINNER only: exactly what every recipe was before EV-320a. -> OWNER: senior-po to card the portal half (tag chips on the recipe editor); it declares the field and deletes this entry.",
+    },
+  },
+
+  CoachRecipe: {
+    missingInPortal: {
+      mealSlots:
+        "Not rendered: no screen here shows a recipe's slot tags until the portal half of EV-320 exists. Nullable on the wire (null = untagged = LUNCH and DINNER to the fill), so whoever declares it must not read null as an empty list.",
+    },
+  },
+
+  CoachRecipeSummary: {
+    missingInPortal: {
+      mealSlots:
+        "Not rendered: the recipe library row carries no slot badge until the portal half of EV-320 exists. Same null = untagged caveat as `CoachRecipe`.",
     },
   },
 
