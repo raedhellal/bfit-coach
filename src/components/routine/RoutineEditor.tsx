@@ -583,6 +583,10 @@ export function RoutineEditor({
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
             {copy.routine.conflictBody}
           </p>
+          {/* Staff review S1 — "Load" discards this page's edits, and says so first. */}
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
+            {copy.routine.conflictLoadWarning}
+          </p>
           <p
             role="alert"
             style={{

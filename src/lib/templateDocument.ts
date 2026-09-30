@@ -6,6 +6,7 @@ import {
   MIN_TRAINING_DAYS,
   documentReasons,
   emptyDay,
+  withoutDurationReps,
 } from "./routineDocument";
 
 /**
@@ -143,6 +144,10 @@ export function forSave(draft: TemplateDraft): CoachTemplateSaveRequest {
     name: draft.name.trim(),
     document: {
       ...draft.document,
+      // Staff review B1: a template must never carry reps on a timed exercise, or apply
+      // refuses it with COACH_DRAFT_REPS_ON_DURATION — and the editor has no control to
+      // clear them. Saving a template once in this editor is the repair.
+      trainingDays: withoutDurationReps(draft.document.trainingDays),
       daysPerWeek: days,
       constraints: {
         ...draft.document.constraints,

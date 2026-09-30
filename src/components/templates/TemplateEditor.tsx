@@ -71,6 +71,7 @@ const failureCopy = (copy: Copy): Record<TemplateFailure, string> => ({
   NOT_PUBLISHABLE: copy.templates.saveFailed,
   PLAN_EMPTY: copy.routine.planEmpty,
   CATALOG_UNAVAILABLE: copy.routine.catalogUnavailable,
+  REPS_ON_DURATION: copy.templates.repsOnDuration,
   ACCESS_DENIED: copy.templates.notYours,
   FAILED: copy.templates.saveFailed,
 });

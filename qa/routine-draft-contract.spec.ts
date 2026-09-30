@@ -11,7 +11,9 @@ import {
   newExercise,
   withServerFields,
   withTrackingType,
+  withoutDurationReps,
 } from "../src/lib/routineDocument";
+import { forSave as forTemplateSave } from "../src/lib/templateDocument";
 import { failureSentence, routineFailure } from "../src/lib/routineFailure";
 
 /**
@@ -215,6 +217,17 @@ test.describe("forDraftSave — the one body PUT …/routine/draft receives", ()
     expect(document.trainingDays[1].exercises[0].reps).toBeNull();
     expect(document.trainingDays[0].exercises[0].reps).toBe("8-12");
     expect(document.trainingDays[2].exercises[0].reps).toBe("8");
+  });
+
+  test("staff review B1 — a TEMPLATE save clears reps on a timed exercise too, through the same helper", () => {
+    const legacy = published();
+    legacy.trainingDays[0].exercises[1] = { ...legacy.trainingDays[0].exercises[1], reps: "8-12" };
+    const body = forTemplateSave({ name: "Core circuit", document: legacy });
+    expect(body.document.trainingDays[0].exercises[1].reps).toBeNull();
+    expect(body.document.trainingDays[0].exercises[0].reps).toBe("8-12");
+    // A day with nothing to clear is the same object: the helper rewrites nothing else.
+    const days = published().trainingDays;
+    expect(withoutDurationReps(days)[1]).toBe(days[1]);
   });
 
   test("it does not mutate the editor's document", () => {

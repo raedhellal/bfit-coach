@@ -1989,6 +1989,14 @@ export function draftExistsUpdatedAt(err: unknown): string | null {
   const value = err.details?.existingUpdatedAt;
   return typeof value === "string" ? value : null;
 }
+/**
+ * 400 `COACH_DRAFT_REPS_ON_DURATION` (BUG-195b, ADR-0018 D9) — on template APPLY, a
+ * template written by the pre-BUG-195c editor still carries reps on a timed exercise.
+ * Opening and saving the template in the current editor clears them.
+ */
+export function isRepsOnDuration(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_DRAFT_REPS_ON_DURATION";
+}
 export function isDraftExists(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_DRAFT_EXISTS";
 }

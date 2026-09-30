@@ -201,6 +201,33 @@ export function blankRoutine(name: string, dayFocus: string): Routine {
 }
 
 /**
+ * `reps: null` on every DURATION exercise — the ONE place that rule lives, called by BOTH
+ * body builders: `forDraftSave` here and `templateDocument.forSave`.
+ *
+ * The api refuses a timed exercise that carries reps (`400 COACH_DRAFT_REPS_ON_DURATION`,
+ * ADR-0018 D9) on the draft save AND on template apply, because the plan writer drops
+ * them. The shared editor hides the Reps control for a timed exercise, so a coach can
+ * neither see nor clear such a value — which is exactly how the pre-BUG-195c template
+ * editor left them behind (every new exercise started "8-12", and switching to
+ * DURATION never cleared it; staff review B1). Clearing them at every write means a
+ * template saved once in this editor can always be applied.
+ *
+ * Days with nothing to clear are returned as the same object.
+ */
+export function withoutDurationReps(days: RoutineTrainingDay[]): RoutineTrainingDay[] {
+  return days.map((day) =>
+    day.exercises.some((exercise) => isDuration(exercise) && exercise.reps !== null)
+      ? {
+          ...day,
+          exercises: day.exercises.map((exercise) =>
+            isDuration(exercise) ? { ...exercise, reps: null } : exercise
+          ),
+        }
+      : day
+  );
+}
+
+/**
  * THE draft request, built in exactly one place (ADR-0018 D7).
  *
  * The output is the editor's document with six components changed and nothing else
@@ -232,16 +259,7 @@ export function forDraftSave(document: Routine, token: string | null): CoachRout
     replacesDraftUpdatedAt: token,
     document: {
       ...document,
-      trainingDays: document.trainingDays.map((day) =>
-        day.exercises.some((exercise) => isDuration(exercise) && exercise.reps !== null)
-          ? {
-              ...day,
-              exercises: day.exercises.map((exercise) =>
-                isDuration(exercise) ? { ...exercise, reps: null } : exercise
-              ),
-            }
-          : day
-      ),
+      trainingDays: withoutDurationReps(document.trainingDays),
       daysPerWeek: days,
       constraints: {
         ...document.constraints,

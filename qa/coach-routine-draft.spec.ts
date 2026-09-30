@@ -237,6 +237,8 @@ test.describe("AC3.6 — a draft saved elsewhere is a 409, and the coach is aske
       conflict.getByText("This replaces your unpublished draft for Yusuf A. That draft cannot be recovered.")
     ).toBeVisible();
     await expect(conflict.getByRole("button", { name: "Replace the draft" })).toBeVisible();
+    // Staff review S1 — "Load" says what it costs before it is pressed.
+    await expect(conflict.getByText("Loading it replaces what is on this page.")).toBeVisible();
 
     const puts = (await draftPuts(page)).filter((p) => p.clientId === YUSUF);
     expect(puts.map((p) => p.outcome)).toEqual(["200", "200", "COACH_DRAFT_EXISTS"]);

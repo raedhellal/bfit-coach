@@ -2409,7 +2409,49 @@ function seedTemplates(): CoachTemplate[] {
       createdAt: at(60 * 24 * 30),
       updatedAt: at(60 * 24 * 11),
     },
+    {
+      /*
+       * Staff review B1 — a template written by the PRE-BUG-195c editor: every new
+       * exercise started with reps "8-12" and switching it to DURATION never cleared
+       * them. The api's apply refuses it (400 COACH_DRAFT_REPS_ON_DURATION) until the
+       * coach opens it and saves it in the current editor, which clears them.
+       */
+      id: "7c2d0a11-0000-4000-8000-0000000000b3",
+      name: "Core circuit",
+      schemaVersion: 1,
+      document: legacyTimedReps(
+        templateDocument("Core circuit", [
+          {
+            dayOfWeek: 3,
+            focus: "Core",
+            exercises: [exercise("plank", 3, "8-12", "30s"), exercise("hanging-knee-raise", 3, "10-12", "60s")],
+          },
+          {
+            dayOfWeek: 6,
+            focus: "Conditioning",
+            exercises: [exercise("push-up", 3, "10-15", "60s"), exercise("goblet-squat", 3, "12-15", "60s")],
+          },
+        ]),
+        "Plank",
+        45
+      ),
+      createdAt: at(60 * 24 * 40),
+      updatedAt: at(60 * 24 * 20),
+    },
   ];
+}
+
+/** The B1 shape: one exercise switched to DURATION with its old reps left on it. */
+function legacyTimedReps(document: Routine, name: string, seconds: number): Routine {
+  return {
+    ...document,
+    trainingDays: document.trainingDays.map((day) => ({
+      ...day,
+      exercises: day.exercises.map((ex) =>
+        ex.name === name ? { ...ex, trackingType: "DURATION" as const, durationSeconds: seconds } : ex
+      ),
+    })),
+  };
 }
 
 /** `GET /coach-portal/templates` order: newest-updated first. */
@@ -4444,6 +4486,27 @@ export const fixtureCoachApi: CoachApi = {
      * — a second tab saved in between — it is refused AGAIN. That is the only thing
      * that makes the portal's "this replaces your unpublished draft" sentence true.
      */
+    /**
+     * BUG-195b (ADR-0018 D9) — apply runs the draft boundary's refusal too: a timed
+     * exercise carrying reps is 400 COACH_DRAFT_REPS_ON_DURATION, located, and nothing
+     * is written. (195b round 3 makes the api strip them instead; the portal must not
+     * depend on that, so this reproduces the round-2 refusal the portal was reviewed
+     * against.)
+     */
+    for (const day of template.document.trainingDays) {
+      for (let index = 0; index < day.exercises.length; index += 1) {
+        const ex = day.exercises[index];
+        if (String(ex.trackingType ?? "").toUpperCase() === "DURATION" && ex.reps != null) {
+          await failWithDetails(
+            400,
+            "COACH_DRAFT_REPS_ON_DURATION",
+            `Exercise ${index + 1} on day ${day.dayOfWeek} is timed (DURATION) and also carries reps.`,
+            { dayOfWeek: day.dayOfWeek, exerciseIndex: index, field: "reps" }
+          );
+        }
+      }
+    }
+
     const existing = state().drafts.get(clientId) ?? null;
     if (existing && existing.updatedAt !== replacesDraftUpdatedAt) {
       await failWithDetails(409, "COACH_DRAFT_EXISTS", "This trainee already has a draft.", {

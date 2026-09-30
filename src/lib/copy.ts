@@ -861,6 +861,8 @@ export const en = {
       "Someone saved this trainee's draft from another tab or device after you opened it. Your changes have not been saved.",
     conflictKeepEditing: "Keep editing",
     conflictLoad: "Load the saved version",
+    /** Staff review S1 — the non-destructive-looking answer replaces the page's unsaved edits. */
+    conflictLoadWarning: "Loading it replaces what is on this page.",
     conflictLoaded:
       "You are looking at the version that was saved elsewhere. Your changes were not saved.",
     conflictLoadFailed: "The saved version could not be loaded. Reload the page.",
@@ -1393,6 +1395,13 @@ export const en = {
      * retry without the assertion is a draft destroyed on a guess, and the assertion is
      * the only thing that makes the sentence above true.
      */
+    /**
+     * Staff review B1 — template APPLY refused 400 COACH_DRAFT_REPS_ON_DURATION: a timed
+     * exercise saved by the old editor still has reps, and the editor shows no Reps field
+     * for a timed exercise. Saving the template once clears them (`withoutDurationReps`).
+     */
+    repsOnDuration:
+      "A timed exercise in this template still has reps from the old editor. Open the template and save it, then use it again.",
     applyConflictUnreadable:
       "That trainee's draft changed while this dialog was open. Open it again.",
     /**

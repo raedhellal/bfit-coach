@@ -418,6 +418,7 @@ export const fr = {
       "Quelqu'un a enregistré le brouillon de ce client depuis un autre onglet ou un autre appareil après son ouverture ici. Vos modifications ne sont pas enregistrées.",
     conflictKeepEditing: "Continuer à modifier",
     conflictLoad: "Charger la version enregistrée",
+    conflictLoadWarning: "La charger remplace ce qui est affiché sur cette page.",
     conflictLoaded:
       "Vous voyez la version enregistrée ailleurs. Vos modifications n'ont pas été enregistrées.",
     conflictLoadFailed: "La version enregistrée n'a pas pu être chargée. Rechargez la page.",
@@ -687,6 +688,8 @@ export const fr = {
     cancel: "Annuler",
     noTrainees: "Aucun de vos clients n'a partagé ses séances avec vous.",
     applyFailed: "Le modèle n'a pas pu être appliqué à ce client.",
+    repsOnDuration:
+      "Un exercice chronométré de ce modèle a encore des répétitions de l'ancien éditeur. Ouvrez le modèle et enregistrez-le, puis réutilisez-le.",
     applyConflictUnreadable:
       "Le brouillon de ce client a changé pendant que cette fenêtre était ouverte. Rouvrez-la.",
     /** 🔴 Apply writes the coach's draft and nothing else — said before the confirm, as in English. */

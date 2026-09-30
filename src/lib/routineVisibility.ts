@@ -50,8 +50,11 @@ export type Visibility =
       set: "CONTROLLED";
       /** An accessible LABEL on the English routine page, or the start of a BUTTON's name. */
       control: { label: string } | { button: string };
-      /** Only rendered in a state the check must set up first (a timed exercise). */
-      when?: "DURATION";
+      /**
+       * Only rendered for one tracking mode: `durationSeconds` for a timed exercise,
+       * `reps` for a weight-and-reps one.
+       */
+      when?: "DURATION" | "WEIGHT_REPS";
     }
   | { set: "DERIVED_BY_FORSAVE"; by: string }
   | { set: "CARRIED_UNSEEN"; reason: string };
@@ -97,7 +100,13 @@ export const VISIBILITY = {
 
   "RoutineExercise#name": { set: "CONTROLLED", control: { button: "Replace:" } },
   "RoutineExercise#sets": { set: "CONTROLLED", control: { label: "Sets" } },
-  "RoutineExercise#reps": { set: "CONTROLLED", control: { label: "Reps" } },
+  /*
+   * Controlled for a WEIGHT_REPS exercise only. On a DURATION exercise the Reps control
+   * is not rendered and BOTH body builders (`forDraftSave`, `templateDocument.forSave`)
+   * send `reps: null` through `withoutDurationReps` — so a timed exercise's reps are
+   * never a value that travels unseen (staff review S2).
+   */
+  "RoutineExercise#reps": { set: "CONTROLLED", control: { label: "Reps" }, when: "WEIGHT_REPS" },
   "RoutineExercise#rest": { set: "CONTROLLED", control: { label: "Rest" } },
   "RoutineExercise#tempo": { set: "CONTROLLED", control: { label: "Tempo" } },
   "RoutineExercise#notes": { set: "CONTROLLED", control: { label: "Notes:" } },
