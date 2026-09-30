@@ -807,6 +807,66 @@ export const en = {
     // AC2: the coach picks from the catalog and can never type an exercise name.
     catalogPickOnly: "Pick from the catalog. Typed names are not accepted.",
     loadError: "This trainee's routine could not be loaded.",
+
+    /* ── BUG-195c: the whole document, and the write path that now works ──── */
+
+    /** The per-day optional `TrainingDay.estimatedMinutes`, which had no control until now. */
+    estimatedMinutesLabel: "Minutes (estimate)",
+    estimatedMinutesName: (n: number) => `Day ${n} estimated minutes`,
+    /**
+     * AC3.4 — `goal` and `level` on a TRAINEE's draft are the trainee's own answers and
+     * the server resolves them (ADR-0018 D3). A plan built from scratch has not been
+     * resolved yet, so it says when it will be rather than printing a placeholder as the
+     * trainee's goal.
+     */
+    subjectOnSave: "Set from their profile when you save.",
+    /** AC3.4's label for the two read-only fields — distinct from the page's guardrail sentence. */
+    subjectFromProfile:
+      "Goal and level are the trainee's own answers, from their profile. They are filled in when you save, and you cannot change them here.",
+    /**
+     * ADR-0018 D10 — the trainee's own progression rules ride along untouched (they are
+     * `CARRIED_UNSEEN` in src/lib/routineVisibility.ts). Said on screen so a coach is not
+     * surprised that something they cannot edit is part of what they publish.
+     */
+    progressionCarried: (n: number) =>
+      n === 1
+        ? "This plan has 1 week-by-week progression rule from the trainee's own plan. It is kept as it is; you cannot edit it here."
+        : `This plan has ${n} week-by-week progression rules from the trainee's own plan. They are kept as they are; you cannot edit them here.`,
+    notSaveableYet: "This plan is not ready to save yet:",
+    summaryHint: "Part of the plan you publish. Leave it empty if you have nothing to add.",
+    minutesRequired: "Set how many minutes a session lasts.",
+    setsBound: (day: number, exercise: string) =>
+      `Day ${day}: ${exercise} needs between 1 and 20 sets.`,
+    restRequired: (day: number, exercise: string) => `Day ${day}: ${exercise} needs a rest time.`,
+
+    /* The api's three 400s — each its own sentence, none quoting the api's message. */
+    invalid:
+      "Nothing was saved: the server did not accept a value in this plan. Check every day has a focus and at least one exercise, and every exercise has sets and a rest time.",
+    subjectField: (field: string) =>
+      `Nothing was saved: the draft carried the trainee's own “${field}”, which only they can set. Reload the page and try again.`,
+    repsOnDuration: (weekday: string, exercise: string) =>
+      `Nothing was saved. ${exercise} on ${weekday} is timed, so it cannot have reps. Clear its reps, or track it by weight and reps.`,
+    repsOnDurationUnlocated:
+      "Nothing was saved. A timed exercise in this plan has reps. Clear them, or track it by weight and reps.",
+
+    /*
+     * The 409 COACH_DRAFT_EXISTS dialog (AC3.6). Somebody saved this trainee's draft
+     * after this editor last read it — another tab, another device, or a template
+     * apply — and NOTHING was written. The dialog carries the same overwrite sentence
+     * apply uses (`templates.replacesDraft`) and the same "Replace the draft" control,
+     * and it never overwrites without that press.
+     */
+    conflictTitle: "This draft changed somewhere else",
+    conflictBody:
+      "Someone saved this trainee's draft from another tab or device after you opened it. Your changes have not been saved.",
+    conflictKeepEditing: "Keep editing",
+    conflictLoad: "Load the saved version",
+    conflictLoaded:
+      "You are looking at the version that was saved elsewhere. Your changes were not saved.",
+    conflictLoadFailed: "The saved version could not be loaded. Reload the page.",
+    /** A 409 with no readable timestamp: no overwrite is offered, because it would be a guess. */
+    conflictUnreadable:
+      "This draft changed while you were editing. Load the saved version to see it.",
   },
 
   /**

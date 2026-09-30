@@ -3,18 +3,16 @@ import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientHeader } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
-import { RoutineEditor } from "@/components/routine/RoutineEditor";
+import {
+  RoutineEditor,
+  type PublishedRoutine,
+  type SavedRoutineDraft,
+} from "@/components/routine/RoutineEditor";
 import { TraineeChangedBanner } from "@/components/routine/TraineeChangedBanner";
 import { SaveAsTemplateButton } from "@/components/templates/SaveAsTemplateButton";
-import {
-  coachApi,
-  hasScope,
-  isForbidden,
-  type CoachRoutineDraft,
-  type CoachRoutineResponse,
-} from "@/lib/coachApi";
+import { coachApi, hasScope, isForbidden, type CoachRoutineResponse } from "@/lib/coachApi";
 import { equipmentLabels, injuryLabels } from "@/lib/guardrailLabels";
-import { toDraftView, toPlanView } from "@/lib/routineDocument";
+import { editableDocument } from "@/lib/routineDocument";
 import { traineeChangeNotice } from "@/lib/routineChange";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
@@ -67,7 +65,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    * says the routine could not be loaded, which is exactly what happened.
    */
   let routine: CoachRoutineResponse | null = null;
-  let draft: CoachRoutineDraft | null = null;
+  let draft: SavedRoutineDraft | null = null;
   let message: string | null = null;
   /** EV-188 AC5 — advisory, re-derived by the api on every read, never stored here. */
   let unbindableExercises: string[] = [];
@@ -94,7 +92,17 @@ export default async function RoutinePage({ params }: { params: { id: string } }
        */
       if (routine.hasDraft) {
         const saved = await coachApi.getRoutineDraft(params.id);
-        draft = toDraftView(saved?.document, saved?.updatedAt);
+        /**
+         * BUG-195c — the draft is the WHOLE document plus the token it was read at. A
+         * draft document with no `updatedAt` is a response this surface cannot save
+         * over safely (it would have no token to echo), so it is treated as unreadable:
+         * the editor opens the published plan, and a save from there is a 409 the coach
+         * is asked about rather than an overwrite of a draft they never saw.
+         */
+        draft =
+          saved?.document && saved.updatedAt
+            ? { document: editableDocument(null, saved.document), updatedAt: saved.updatedAt }
+            : null;
         /**
          * Guarded, not dereferenced. These three fields are EV-188a's and EV-188a has
          * not merged, so an api that predates it sends none of them — which is exactly
@@ -134,7 +142,15 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   if (denied) redirect("/clients/denied");
 
   const displayName = overview?.traineeDisplayName ?? "";
-  const activePlan = routine ? toPlanView(routine.planId, routine.planName, routine.routine) : null;
+  /**
+   * The live plan as the editor holds it: the WHOLE document (BUG-195c), named by the
+   * `plans` row. Null when there is no routine document, whatever `planId` says — a plan
+   * id with nothing to edit is AC1's "No active plan".
+   */
+  const activePlan: PublishedRoutine | null =
+    routine?.routine
+      ? { planId: routine.planId, document: editableDocument(routine.planName, routine.routine) }
+      : null;
 
   /**
    * The guardrail panel is rendered only when the api actually sent the guardrails.
@@ -197,11 +213,12 @@ export default async function RoutinePage({ params }: { params: { id: string } }
           */}
           <SaveAsTemplateButton
             clientId={params.id}
-            planName={activePlan ? activePlan.name : null}
+            planName={activePlan ? activePlan.document.name : null}
             hasDraft={draft !== null}
           />
           <RoutineEditor
             clientId={params.id}
+            traineeName={displayName}
             activePlan={activePlan}
             initialDraft={draft}
             sourceTemplateName={sourceTemplateName}

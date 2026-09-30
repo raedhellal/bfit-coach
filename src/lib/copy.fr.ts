@@ -387,6 +387,42 @@ export const fr = {
     catalogSearching: "Recherche…",
     catalogPickOnly: "Choisissez dans le catalogue. Les noms saisis ne sont pas acceptés.",
     loadError: "Le programme de ce client n'a pas pu être chargé.",
+
+    /* ── BUG-195c ─────────────────────────────────────────────────────────── */
+    estimatedMinutesLabel: "Minutes (estimation)",
+    estimatedMinutesName: (n: number) => `Minutes estimées du jour ${n}`,
+    subjectOnSave: "Repris de son profil à l'enregistrement.",
+    subjectFromProfile:
+      "L'objectif et le niveau sont les réponses du client, issues de son profil. Ils sont repris à l'enregistrement et vous ne pouvez pas les modifier ici.",
+    progressionCarried: (n: number) =>
+      n < 2
+        ? "Ce plan contient 1 règle de progression hebdomadaire issue du plan du client. Elle est conservée telle quelle ; vous ne pouvez pas la modifier ici."
+        : `Ce plan contient ${n} règles de progression hebdomadaire issues du plan du client. Elles sont conservées telles quelles ; vous ne pouvez pas les modifier ici.`,
+    notSaveableYet: "Ce plan n'est pas encore prêt à être enregistré :",
+    summaryHint: "Fait partie du plan que vous publiez. Laissez vide si vous n'avez rien à ajouter.",
+    minutesRequired: "Indiquez la durée d'une séance en minutes.",
+    setsBound: (day: number, exercise: string) =>
+      `Jour ${day} : ${exercise} doit compter entre 1 et 20 séries.`,
+    restRequired: (day: number, exercise: string) =>
+      `Jour ${day} : indiquez un temps de repos pour ${exercise}.`,
+    invalid:
+      "Rien n'a été enregistré : le serveur n'a pas accepté une valeur de ce plan. Vérifiez que chaque jour a un focus et au moins un exercice, et que chaque exercice a des séries et un temps de repos.",
+    subjectField: (field: string) =>
+      `Rien n'a été enregistré : le brouillon contenait ${q(field)} du client, que lui seul peut renseigner. Rechargez la page et réessayez.`,
+    repsOnDuration: (weekday: string, exercise: string) =>
+      `Rien n'a été enregistré. ${exercise} (le ${weekday.toLowerCase()}) est chronométré, il ne peut donc pas avoir de répétitions. Effacez-les, ou suivez-le en charge et répétitions.`,
+    repsOnDurationUnlocated:
+      "Rien n'a été enregistré. Un exercice chronométré de ce plan a des répétitions. Effacez-les, ou suivez-le en charge et répétitions.",
+    conflictTitle: "Ce brouillon a été modifié ailleurs",
+    conflictBody:
+      "Quelqu'un a enregistré le brouillon de ce client depuis un autre onglet ou un autre appareil après son ouverture ici. Vos modifications ne sont pas enregistrées.",
+    conflictKeepEditing: "Continuer à modifier",
+    conflictLoad: "Charger la version enregistrée",
+    conflictLoaded:
+      "Vous voyez la version enregistrée ailleurs. Vos modifications n'ont pas été enregistrées.",
+    conflictLoadFailed: "La version enregistrée n'a pas pu être chargée. Rechargez la page.",
+    conflictUnreadable:
+      "Ce brouillon a changé pendant votre modification. Chargez la version enregistrée pour la voir.",
   },
 
   nutrition: {
