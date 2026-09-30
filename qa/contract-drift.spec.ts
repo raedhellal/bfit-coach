@@ -285,7 +285,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 75; // EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types
+const SCHEMAS_EXPECTED = 80; // EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -411,6 +411,8 @@ const REQUEST_FACING_EXPECTED = [
   "CoachTemplateFromRoutineRequest",
   "CoachTemplateRenameRequest",
   "CoachTemplateSaveRequest",
+  "NutritionTemplateSaveRequest",
+  "NutritionTemplateTargetsRequest",
   "ProgressionRule",
   "Routine",
   "RoutineConstraints",
@@ -430,8 +432,6 @@ const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
     "POST /coach-portal/trainees (EV-204a2, arrived with the EV-278c re-vendor at b-fit-api c69c287): the coach initialises a trainee's account. The portal sends NO request to it yet; EV-204b (b-fit-coach, 'Add a trainee') tags the type — delete this entry when it lands, or the exact comparison goes red.",
   ResendInvitationRequest:
     "POST /coach-portal/trainees/{id}/resend (EV-204a2, same re-vendor): the coach's Resend for an Invited row. The portal sends NO request to it yet; EV-204b tags it — delete this entry when it lands.",
-  NutritionTemplateSaveRequest:
-    "POST/PUT /coach-portal/nutrition-templates (EV-273a, on api main since the 2026-09-28 re-vendor at 6264142): the portal sends NO request to it yet. EV-273b (`feat/ev273b-portal-nutrition-templates`) tags the type; delete this entry when it lands, or the exact comparison goes red.",
 };
 
 const receivable = requestSchemas(spec);

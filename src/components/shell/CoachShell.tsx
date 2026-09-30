@@ -28,7 +28,7 @@ export function CoachShell({
 }: {
   coachName?: string | null;
   /** Which nav entry is the page under this shell. Undefined on a trainee screen. */
-  section?: "roster" | "templates" | "recipes" | "challenges";
+  section?: "roster" | "templates" | "recipes" | "nutrition-templates" | "challenges";
   children: React.ReactNode;
 }) {
   const copy = getCopy();
@@ -71,7 +71,16 @@ export function CoachShell({
             <ShellLink href="/recipes" current={section === "recipes"}>
               {copy.recipes.nav}
             </ShellLink>
-            {/* EV-321b — step challenges, the fourth destination. */}
+            {/*
+              EV-273b AC1 — "Nutrition templates" next to Templates and Recipes. AFTER
+              Recipes, so EV-256b's "Recipes sits immediately after Templates" still holds.
+              Five links do not fit one 288 px line, so below 520 px the nav WRAPS
+              (`.shell-nav` in globals.css) rather than scrolling or clipping.
+            */}
+            <ShellLink href="/nutrition-templates" current={section === "nutrition-templates"}>
+              {copy.nutritionTemplates.nav}
+            </ShellLink>
+            {/* EV-321b — step challenges. */}
             <ShellLink href="/challenges" current={section === "challenges"}>
               {copy.challenges.nav}
             </ShellLink>

@@ -407,8 +407,13 @@ test.describe("layout", () => {
     const nav = page.getByRole("navigation", { name: "Portal" });
     const signOut = page.getByRole("button", { name: "Sign out" });
     await atEachWidth(page, async () => {
-      for (const name of ["Roster", "Templates", "Recipes", "Challenges"]) {
-        await expectUnoccluded(page, nav.getByRole("link", { name }), { over: signOut, label: `${name} nav link` });
+      // `exact`: EV-273b's "Nutrition templates" contains "Templates", and a substring
+      // match resolves to two links (strict mode).
+      for (const name of ["Roster", "Templates", "Recipes", "Nutrition templates", "Challenges"]) {
+        await expectUnoccluded(page, nav.getByRole("link", { name, exact: true }), {
+          over: signOut,
+          label: `${name} nav link`,
+        });
       }
       await expectNoSidewaysScroll(page, "the challenge list");
     });

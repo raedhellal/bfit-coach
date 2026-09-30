@@ -1571,6 +1571,122 @@ export const en = {
     ingredientsBound: "A recipe has between 1 and 25 ingredients.",
   },
 
+  /* ══ EV-273b — the coach's nutrition templates, TARGETS ONLY ═════════════════════
+   *
+   * Sentences marked "AC" are verbatim EV-273b (hub `docs/product/stories/
+   * EV-273-coach-nutrition-templates.md`). Curly double quotes, straight apostrophes,
+   * exactly as the story writes them.
+   *
+   * Deliberately absent: any word about meals per day, snacks or "Meal k". The meal
+   * structure is EV-273e's, after EV-190's N1 has cleared (N6), so nothing here may
+   * suggest the template sets one — the week is rebuilt at the trainee's OWN structure,
+   * and the confirm sentence says exactly that.
+   */
+  nutritionTemplates: {
+    nav: "Nutrition templates", // AC1, verbatim
+    title: "Nutrition templates",
+    subtitle: "Calorie and macro targets you can use on any trainee.",
+    /** AC1, verbatim. Stated once, on the library page. */
+    private: "Nutrition templates are yours. No trainee ever sees them.",
+    emptyTitle: "You have no nutrition templates yet.", // AC1, verbatim
+    emptyBody: "Set the targets once and use them on any trainee.",
+    create: "New template", // AC1, verbatim
+    loadError: "Your nutrition templates could not be loaded.",
+    /** ONE sentence for a foreign, an unknown and a deleted template (EV-273a AC4). */
+    notYours: "That nutrition template is not in your library.",
+    backToLibrary: "Back to nutrition templates",
+    limitReached: (limit: number) =>
+      `You can keep up to ${limit} nutrition templates. Delete one to make room.`,
+    /** The 409 when the served limit is unknown (the library read failed): no number invented. */
+    limitReachedUnknown: "You have reached your nutrition template limit. Delete one to make room.",
+    remaining: (left: number, limit: number) => `${left} of ${limit} left`,
+
+    /* ── a library row (AC1: name, kcal and P/C/F — and no meal structure) ── */
+    macroLine: (kcal: number, p: number, c: number, f: number) =>
+      `${kcal} kcal · P ${p} g · C ${c} g · F ${f} g`,
+    updatedAt: (when: string) => `Updated ${when}`,
+    edit: "Edit",
+    duplicate: "Duplicate",
+    rename: "Rename",
+    remove: "Delete",
+    use: "Use on a trainee", // AC3, verbatim
+    duplicated: (name: string) => `“${name}” is in your nutrition templates.`,
+    duplicateFailed: "The template could not be duplicated.",
+
+    /* ── rename ───────────────────────────────────────────────────────────── */
+    renameTitle: "Rename template",
+    nameLabel: "Template name",
+    nameRequired: "Give the template a name.",
+    nameTooLong: "A template name is at most 80 characters.",
+    nameTaken: "You already have a nutrition template called that.",
+    renameFailed: "The template could not be renamed.",
+    renamed: (name: string) => `Renamed to “${name}”.`,
+
+    /* ── delete (AC2) ─────────────────────────────────────────────────────── */
+    deleteTitle: "Delete template?",
+    /** AC2, verbatim. A snapshot (N5): nothing already applied changes. */
+    deleteBody: (name: string) =>
+      `Delete “${name}”? Trainees you already used it on keep their targets and meals.`,
+    deleteFailed: "The template could not be deleted.",
+    cancel: "Cancel",
+
+    /* ── the editor (AC2) ─────────────────────────────────────────────────── */
+    newTitle: "New nutrition template",
+    editTitle: "Edit nutrition template",
+    targetsLabel: "Daily targets",
+    /** AC2, verbatim — the targets form's client-side rule; nothing is sent. */
+    invalidNumber: "Enter a number above 0.",
+    /** The api's bounds (`NutritionTemplateTargetsRequest`), after a 400 VALIDATION_ERROR. */
+    outOfBounds:
+      "Use whole numbers: calories 800 to 8000 kcal, protein up to 500 g, carbs up to 1200 g and fat up to 400 g.",
+    /** AC2, verbatim — EV-185 AC2's standing line, for the template. */
+    floorStanding:
+      "Evoli checks calories against a safe minimum when you use this template. It does not yet check protein or fat.",
+    save: "Save template",
+    saving: "Saving…",
+    saved: "Template saved.",
+    saveFailed: "The template could not be saved.",
+
+    /* ── use on a trainee (AC3-AC5) ───────────────────────────────────────── */
+    pickTitle: "Use on a trainee",
+    pickSub: (template: string) => `Choose who gets “${template}”.`,
+    /** AC3: only ACTIVE links with NUTRITION are offered, so nobody is refused after. */
+    noTrainees: "You have no trainees who have shared their nutrition with you.",
+    /** The roster read failed: nobody is offered, and "no trainees" would be false. */
+    traineesLoadError: "Your trainees could not be loaded. Close this and try again.",
+    /** AC4, verbatim. */
+    confirmTitle: (template: string, first: string) => `Use “${template}” on ${first}?`,
+    now: "Now",
+    after: "After",
+    /** A cell of the Now | After table. English prints the raw number, as the rows do. */
+    amount: (value: number, unit: string) => `${value} ${unit}`,
+    notSet: "Not set", // AC4, verbatim — the trainee has no targets yet
+    /** AC4, verbatim. `weekStart` is the date the dialog-open read returned. */
+    confirmBody: (first: string, weekStart: string) =>
+      `${first}'s meals for this week (from ${weekStart}) are rebuilt to these targets straight away, with their own number of meals a day. Their allergies and dietary rules still apply. Meals they have locked or already eaten are kept.`,
+    /** AC4, verbatim — when the template's calories are below 1500, the higher floor. */
+    floorWarning: (first: string) =>
+      `If this is below ${first}'s safe minimum, Evoli raises it to the minimum and tells you.`,
+    reading: (first: string) => `Reading ${first}'s current targets…`,
+    readFailed: (first: string) =>
+      `${first}'s current targets could not be read, so nothing was sent. Close this and try again.`,
+    confirm: "Confirm",
+    applying: "Applying…",
+
+    /* ── AC5's outcomes, shown on the trainee's nutrition page ────────────── */
+    applied: (template: string, first: string) => `“${template}” is now ${first}'s plan.`,
+    weekRateLimited: (first: string) =>
+      `${first}'s targets are updated. Their meals weren't rebuilt: a week has already been applied for them today. Try again tomorrow.`,
+    weekFailed: (first: string) =>
+      `${first}'s targets are updated. Their meals couldn't be rebuilt. Use “Apply to ${first}” to try again.`,
+    weekUnknown: (first: string) =>
+      `${first}'s targets are updated. We couldn't confirm whether their meals were rebuilt. Check their nutrition page before you try again.`,
+    targetsFailed: (first: string) => `Nothing was changed for ${first}. Try again.`,
+    targetsUnknown: (first: string) =>
+      `We couldn't confirm whether ${first}'s targets changed. Check their nutrition page before you try again.`,
+  },
+
+
   /**
    * /unavailable — a page load whose session rotation got no verdict from the api (it is
    * down, or its per-IP refresh throttle answered 429). The cookies were kept, so "not

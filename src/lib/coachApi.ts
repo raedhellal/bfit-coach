@@ -1660,6 +1660,79 @@ export interface CoachPlaceRecipeRequest {
   recipeId: string;
 }
 
+// ── EV-273b: the coach's nutrition template library (b-fit-api 8b23d45, merged) ──
+//
+// TARGETS ONLY (EV-273 N6). The api stores an optional meal structure (EV-273a) and
+// this surface neither reads it nor sends it: the structure is EV-190's N1 control,
+// and N1 has not met its release conditions (ADR-0016b D16b.11). So there is no
+// `mealStructure` on the request or response types below, and the omission is
+// registered in `qa/contract-deviations.ts` rather than left to look like drift. A
+// save body is `{ name, targets }` and nothing else, and "use on a trainee" is the two
+// EXISTING writes (`PUT …/targets`, then `POST …/week/apply` with `{ weekStart }`),
+// never a template id, so the api never receives a template at use (ADR-0016b D16b.7).
+
+/**
+ * 🔌 WIRE — the four absolute targets a nutrition template holds. Whole numbers, with
+ * `CoachTargetsRequest`'s bounds (calories 800-8000, P 0-500, C 0-1200, F 0-400). The
+ * calorie FLOOR is not applied at save: a template has no sex, so the floor applies
+ * when it is used, through the targets write (EV-273 N4).
+ *
+ * @wire NutritionTemplateTargetsRequest
+ */
+export interface NutritionTemplateTargetsRequest {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
+
+/**
+ * 🔌 WIRE — the body of `POST /coach-portal/nutrition-templates` and `PUT …/{id}`.
+ * Exactly two keys (EV-273b AC2). A closed list on the api side too: any other key, at
+ * any depth, is 400 `COACH_FIELD_NOT_ACCEPTED`.
+ *
+ * @wire NutritionTemplateSaveRequest
+ */
+export interface NutritionTemplateSaveRequest {
+  name: string;
+  targets: NutritionTemplateTargetsRequest;
+}
+
+/** @wire NutritionTemplateTargets */
+export interface NutritionTemplateTargets {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
+
+/**
+ * 🔌 WIRE — one nutrition template. The list carries these whole, so the library's
+ * rename, duplicate and "Use on a trainee" need no second read.
+ *
+ * @wire NutritionTemplateResponse
+ */
+export interface NutritionTemplate {
+  id: string;
+  name: string;
+  targets: NutritionTemplateTargets;
+  /** ISO instant. The list is newest-updated first and this surface does not re-sort it. */
+  updatedAt: string;
+}
+
+/**
+ * 🔌 WIRE — `GET /coach-portal/nutrition-templates`. `limit` and `remaining` are served
+ * so the cap is never hardcoded here.
+ *
+ * @wire NutritionTemplateListResponse
+ */
+export interface NutritionTemplateList {
+  templates: NutritionTemplate[];
+  limit: number;
+  remaining: number;
+}
+
+
 // ── EV-284a: the trainee's food log ──────────────────────────────────────────
 //
 // 🔌 WIRE — `GET /coach-portal/clients/{id}/nutrition/log?from&to` (b-fit-api main
@@ -2077,6 +2150,18 @@ export function isRepairsUnacknowledged(err: unknown): boolean {
  * `CoachTemplateErrorCodeResolutionTest` holds the handler to these names; these five
  * predicates are the only place the portal reads them.
  */
+
+/**
+ * EV-273a — the nutrition library's own two 409s. NOT `COACH_TEMPLATE_*`: that prefix
+ * means routine templates on the wire (ADR-0016b D16b.3), and a coach may hold a
+ * routine template and a nutrition template with the same name.
+ */
+export function isNutritionTemplateNameTaken(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_NUTRITION_TEMPLATE_NAME_TAKEN";
+}
+export function isNutritionTemplateLimitReached(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_NUTRITION_TEMPLATE_LIMIT_REACHED";
+}
 
 /** 409 — AC2: the coach already has a template with that name (folded for case). */
 export function isTemplateNameTaken(err: unknown): boolean {
@@ -2670,6 +2755,45 @@ const liveCoachApi = {
     return apiFetch<CoachIngredientOption[]>(`/coach-portal/ingredients?${query.toString()}`);
   },
 
+  // ── EV-273b the coach's nutrition template library (b-fit-api 8b23d45) ─────
+
+  listNutritionTemplates(): Promise<NutritionTemplateList> {
+    return apiFetch<NutritionTemplateList>("/coach-portal/nutrition-templates");
+  },
+  getNutritionTemplate(id: string): Promise<NutritionTemplate> {
+    return apiFetch<NutritionTemplate>(
+      `/coach-portal/nutrition-templates/${encodeURIComponent(id)}`
+    );
+  },
+  createNutritionTemplate(body: NutritionTemplateSaveRequest): Promise<NutritionTemplate> {
+    return apiFetch<NutritionTemplate>("/coach-portal/nutrition-templates", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  /** Also the rename: the api has no rename mapping, so a rename is a whole PUT. */
+  updateNutritionTemplate(
+    id: string,
+    body: NutritionTemplateSaveRequest
+  ): Promise<NutritionTemplate> {
+    return apiFetch<NutritionTemplate>(
+      `/coach-portal/nutrition-templates/${encodeURIComponent(id)}`,
+      { method: "PUT", body: JSON.stringify(body) }
+    );
+  },
+  duplicateNutritionTemplate(id: string): Promise<NutritionTemplate> {
+    return apiFetch<NutritionTemplate>(
+      `/coach-portal/nutrition-templates/${encodeURIComponent(id)}/duplicate`,
+      { method: "POST" }
+    );
+  },
+  async deleteNutritionTemplate(id: string): Promise<void> {
+    // 204 No Content.
+    await apiFetch<void>(`/coach-portal/nutrition-templates/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+
   // ── EV-185b nutrition (PROVISIONAL paths) ─────────────────────────────────
 
   getNutrition(id: string): Promise<CoachNutritionResponse> {
@@ -2688,8 +2812,13 @@ const liveCoachApi = {
       body: JSON.stringify(body),
     });
   },
-  applyMealWeek(id: string, weekStart: string): Promise<MealWeekView> {
-    const body: CoachApplyWeekRequest = { weekStart };
+  /**
+   * EV-273b: the BODY is the parameter, not a `weekStart` string, so the fixture's
+   * request log records the key set of the object that is actually serialised here.
+   * Built from a named field at every call site (`{ weekStart }`); nothing spreads
+   * another object into it, which is what keeps `mealStructure` off the wire (N6).
+   */
+  applyMealWeek(id: string, body: CoachApplyWeekRequest): Promise<MealWeekView> {
     return apiFetch<MealWeekView>(`${client(id)}/nutrition/week/apply`, {
       method: "POST",
       body: JSON.stringify(body),

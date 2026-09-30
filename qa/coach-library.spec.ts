@@ -72,14 +72,14 @@ test.describe("AC1 — Templates is in the portal's main navigation", () => {
   test("the roster carries a Templates link that opens the library", async ({ page }) => {
     await signIn(page);
     const nav = page.getByRole("navigation", { name: "Portal" });
-    await expect(nav.getByRole("link", { name: "Templates" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Templates", exact: true })).toBeVisible();
 
-    await nav.getByRole("link", { name: "Templates" }).click();
+    await nav.getByRole("link", { name: "Templates", exact: true }).click();
     await page.waitForURL("/templates");
     await expect(page.getByRole("heading", { name: "Templates" })).toBeVisible();
     // The nav says where you are, and says it to a screen reader too.
     await expect(
-      page.getByRole("navigation", { name: "Portal" }).getByRole("link", { name: "Templates" })
+      page.getByRole("navigation", { name: "Portal" }).getByRole("link", { name: "Templates", exact: true })
     ).toHaveAttribute("aria-current", "page");
   });
 
@@ -94,6 +94,7 @@ test.describe("AC1 — Templates is in the portal's main navigation", () => {
     await page.goto("/templates");
     const templates = page.getByRole("navigation", { name: "Portal" }).getByRole("link", {
       name: "Templates",
+      exact: true,
     });
     const signOut = page.getByRole("button", { name: "Sign out" });
 

@@ -822,7 +822,7 @@ test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
     await expect(page.getByText("Draft — not yet published")).toBeVisible();
     await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 
-    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.getByRole("link", { name: "Nutrition", exact: true }).click();
     await page.waitForURL(`/clients/${YUSUF}/nutrition`);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
@@ -834,7 +834,7 @@ test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
     await page.getByLabel("Plan name").fill("Two Day Full Body — block 2");
     await expect(page.getByText("Unsaved changes")).toBeVisible();
 
-    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.getByRole("link", { name: "Nutrition", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toHaveAccessibleName("Leave with unsaved changes?");
     // The navigation has NOT happened: the coach is asked before, not after.
@@ -994,7 +994,7 @@ test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
     await expect(page.getByText("Something went wrong.")).toHaveCount(0);
     // Still holding unsaved work, so the marker stands and the guard still fires.
     await expect(page.getByText("Unsaved changes")).toBeVisible();
-    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.getByRole("link", { name: "Nutrition", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveAccessibleName(
       "Leave with unsaved changes?"
     );
@@ -1006,7 +1006,7 @@ test.describe("EV-190 AC2 — unsaved work is not lost silently", () => {
     await expect(page.getByText(/^Draft saved /)).toBeVisible();
     await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 
-    await page.getByRole("link", { name: "Nutrition" }).click();
+    await page.getByRole("link", { name: "Nutrition", exact: true }).click();
     await page.waitForURL(`/clients/${YUSUF}/nutrition`);
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });

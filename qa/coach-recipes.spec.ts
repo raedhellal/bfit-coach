@@ -120,9 +120,10 @@ test.describe("AC1 — Recipes is in the nav, and the library lists the coach's 
   test("Recipes sits next to Templates and opens the library", async ({ page }) => {
     await signIn(page);
     const nav = page.getByRole("navigation", { name: "Portal" });
-    // "next to Templates": adjacent, immediately after it. EV-321b added Challenges AFTER
-    // Recipes, which leaves the adjacency this AC is about unchanged.
-    await expect(nav.getByRole("link")).toHaveText(["Roster", "Templates", "Recipes", "Challenges"]);
+    // "next to Templates": adjacent, immediately after it. EV-273b added Nutrition
+    // templates and EV-321b added Challenges, both AFTER Recipes, which leaves the
+    // adjacency this AC is about unchanged.
+    await expect(nav.getByRole("link")).toHaveText(["Roster", "Templates", "Recipes", "Nutrition templates", "Challenges"]);
 
     await nav.getByRole("link", { name: "Recipes" }).click();
     await page.waitForURL("/recipes");
@@ -137,7 +138,7 @@ test.describe("AC1 — Recipes is in the nav, and the library lists the coach's 
     const signOut = page.getByRole("button", { name: "Sign out" });
     await atEachWidth(page, async () => {
       for (const name of ["Templates", "Recipes"]) {
-        await expectUnoccluded(page, nav.getByRole("link", { name }), { over: signOut, label: `${name} nav link` });
+        await expectUnoccluded(page, nav.getByRole("link", { name, exact: true }), { over: signOut, label: `${name} nav link` });
       }
       await expectNoSidewaysScroll(page, "the recipe library");
     });

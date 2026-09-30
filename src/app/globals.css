@@ -159,8 +159,10 @@ input::placeholder { color:var(--ink-3); }
   .shell-nav {
     order: 3;
     flex-basis: 100%;
-    /* EV-321b: a fourth link ("Challenges") does not fit one 288 px line in English, so
-       the links wrap onto a second row rather than overflow into each other. */
+    /* EV-321b / EV-273b: four and then five links do not fit one 288 px line, so the
+       links wrap onto further rows rather than overflow into each other. MEASURED
+       without it (EV-273b mutant M9): "Nutrition templates" ended at 381 px in a 320 px
+       viewport and the page scrolled sideways by 77 px. */
     flex-wrap: wrap;
     row-gap: 2px;
   }

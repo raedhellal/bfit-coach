@@ -6,6 +6,7 @@ import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { NutritionTargetsCard } from "@/components/nutrition/NutritionTargetsCard";
 import { NutritionWeekCard } from "@/components/nutrition/NutritionWeekCard";
 import { FoodLogCard } from "@/components/nutrition/FoodLogCard";
+import { TemplateUseOutcome } from "@/components/nutritionTemplates/TemplateUseOutcome";
 import { Card, EmptyState } from "@/components/ui/kit";
 import {
   coachApi,
@@ -15,6 +16,7 @@ import {
   type CoachNutritionResponse,
 } from "@/lib/coachApi";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
+import { firstName } from "@/lib/format";
 import { getCopy } from "@/lib/i18n/server";
 import { recipePlacementOn } from "@/lib/recipePlacement";
 
@@ -89,6 +91,13 @@ export default async function NutritionPage({ params }: { params: { id: string }
         since={overview?.since}
         active="nutrition"
       />
+
+      {/*
+        EV-273b AC5 — what "Use on a trainee" observed, above what the api holds. ABOVE
+        the load-error split (staff review, blocker 1): a landing on the scope sentence or
+        the load error still shows and consumes it, rather than leaving it for a later visit.
+      */}
+      <TemplateUseOutcome clientId={params.id} firstName={firstName(displayName, copy.locale)} />
 
       {message || !nutrition ? (
         <ClientNotice message={message ?? copy.nutrition.loadError} />

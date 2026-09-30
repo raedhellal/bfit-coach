@@ -1,5 +1,6 @@
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
+import { DiscardTemplateOutcome } from "@/components/nutritionTemplates/DiscardTemplateOutcome";
 import { readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
 
@@ -31,6 +32,8 @@ export default async function ClientDeniedPage() {
   return (
     <CoachShell coachName={me?.displayName}>
       <ClientNotice message={copy.client.notFound} />
+      {/* EV-273b: access-lost drops any pending "Use on a trainee" outcome, unread. */}
+      <DiscardTemplateOutcome />
     </CoachShell>
   );
 }

@@ -804,6 +804,106 @@ export const fr = {
     ingredientsBound: "Une recette compte entre 1 et 25 ingrédients.",
   },
 
+  /**
+   * EV-273b — les modèles nutrition, OBJECTIFS SEULEMENT. Read `copy.ts` for why each
+   * sentence says what it says. As in English, nothing here mentions meals per day or
+   * snacks: the meal structure is EV-273e's (N6), and the week is rebuilt at the client's
+   * OWN structure.
+   *
+   * French decisions of their own:
+   *   · "Modèles nutrition", never bare "Modèles": that word is already the routine
+   *     library's nav label, and a coach must tell the two pages apart.
+   *   · The trainee's gender is unknown to this surface, so no sentence agrees a
+   *     participle with them ("verrouillés par ce client", not "qu'il a verrouillés").
+   *   · "Appliquer à {prénom}" in `weekFailed` is `nutrition.apply`'s own words, the
+   *     button the coach is sent to.
+   */
+  nutritionTemplates: {
+    nav: "Modèles nutrition",
+    title: "Modèles nutrition",
+    subtitle: "Des objectifs de calories et de macros à utiliser pour n'importe quel client.",
+    private: "Vos modèles nutrition vous appartiennent. Aucun client ne les voit.",
+    emptyTitle: "Vous n'avez encore aucun modèle nutrition.",
+    emptyBody: "Définissez les objectifs une fois et utilisez-les pour n'importe quel client.",
+    create: "Nouveau modèle",
+    loadError: "Vos modèles nutrition n'ont pas pu être chargés.",
+    notYours: "Ce modèle nutrition ne fait pas partie de votre bibliothèque.",
+    backToLibrary: "Retour aux modèles nutrition",
+    limitReached: (limit: number) =>
+      `Vous pouvez conserver jusqu'à ${n(limit)} modèles nutrition. Supprimez-en un pour faire de la place.`,
+    limitReachedUnknown:
+      "Vous avez atteint la limite de modèles nutrition. Supprimez-en un pour faire de la place.",
+    remaining: (left: number, limit: number) => `${n(left)} sur ${n(limit)} restant${s(left)}`,
+
+    /** P / G / L — protéines, glucides, lipides, as the recipe library writes it. */
+    macroLine: (kcal: number, p: number, c: number, f: number) =>
+      `${n(kcal)} kcal · P ${n(p)} g · G ${n(c)} g · L ${n(f)} g`,
+    updatedAt: (when: string) => `Mis à jour le ${when}`,
+    edit: "Modifier",
+    duplicate: "Dupliquer",
+    rename: "Renommer",
+    remove: "Supprimer",
+    use: "Utiliser pour un client",
+    duplicated: (name: string) => `${q(name)} est dans vos modèles nutrition.`,
+    duplicateFailed: "Le modèle n'a pas pu être dupliqué.",
+
+    renameTitle: "Renommer le modèle",
+    nameLabel: "Nom du modèle",
+    nameRequired: "Donnez un nom au modèle.",
+    nameTooLong: "Le nom d'un modèle ne dépasse pas 80 caractères.",
+    nameTaken: "Vous avez déjà un modèle nutrition portant ce nom.",
+    renameFailed: "Le modèle n'a pas pu être renommé.",
+    renamed: (name: string) => `Renommé en ${q(name)}.`,
+
+    deleteTitle: "Supprimer le modèle ?",
+    deleteBody: (name: string) =>
+      `Supprimer ${q(name)} ? Les clients pour qui vous l'avez déjà utilisé conservent leurs objectifs et leurs repas.`,
+    deleteFailed: "Le modèle n'a pas pu être supprimé.",
+    cancel: "Annuler",
+
+    newTitle: "Nouveau modèle nutrition",
+    editTitle: "Modifier le modèle nutrition",
+    targetsLabel: "Objectifs quotidiens",
+    invalidNumber: "Saisissez un nombre supérieur à 0.",
+    outOfBounds: `Utilisez des nombres entiers : calories de ${n(800)} à ${n(8000)} kcal, protéines jusqu'à ${n(500)} g, glucides jusqu'à ${n(1200)} g et lipides jusqu'à ${n(400)} g.`,
+    floorStanding:
+      "Evoli vérifie les calories par rapport à un minimum sûr quand vous utilisez ce modèle. Il ne vérifie pas encore les protéines ni les lipides.",
+    save: "Enregistrer le modèle",
+    saving: "Enregistrement…",
+    saved: "Modèle enregistré.",
+    saveFailed: "Le modèle n'a pas pu être enregistré.",
+
+    pickTitle: "Utiliser pour un client",
+    pickSub: (template: string) => `Choisissez le client qui recevra ${q(template)}.`,
+    noTrainees: "Aucun de vos clients n'a partagé sa nutrition avec vous.",
+    traineesLoadError: "Vos clients n'ont pas pu être chargés. Fermez cette fenêtre et réessayez.",
+    confirmTitle: (template: string, first: string) => `Utiliser ${q(template)} pour ${first} ?`,
+    now: "Actuel",
+    after: "Après",
+    amount: (value: number, unit: string) => `${n(value)} ${unit}`,
+    notSet: "Non défini",
+    confirmBody: (first: string, weekStart: string) =>
+      `Les repas de ${first} pour cette semaine (à partir du ${weekStart}) sont reconstruits immédiatement selon ces objectifs, avec son propre nombre de repas par jour. Ses allergies et ses règles alimentaires s'appliquent toujours. Les repas verrouillés ou déjà mangés par ce client sont conservés.`,
+    floorWarning: (first: string) =>
+      `Si c'est en dessous du minimum sûr de ${first}, Evoli le relève à ce minimum et vous le signale.`,
+    reading: (first: string) => `Lecture des objectifs actuels de ${first}…`,
+    readFailed: (first: string) =>
+      `Les objectifs actuels de ${first} n'ont pas pu être lus, donc rien n'a été envoyé. Fermez cette fenêtre et réessayez.`,
+    confirm: "Confirmer",
+    applying: "Application…",
+
+    applied: (template: string, first: string) => `${q(template)} est désormais le plan de ${first}.`,
+    weekRateLimited: (first: string) =>
+      `Les objectifs de ${first} sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain.`,
+    weekFailed: (first: string) =>
+      `Les objectifs de ${first} sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${q(`Appliquer à ${first}`)} pour réessayer.`,
+    weekUnknown: (first: string) =>
+      `Les objectifs de ${first} sont mis à jour. Nous n'avons pas pu confirmer si ses repas ont été reconstruits. Vérifiez sa page nutrition avant de réessayer.`,
+    targetsFailed: (first: string) => `Rien n'a été modifié pour ${first}. Réessayez.`,
+    targetsUnknown: (first: string) =>
+      `Nous n'avons pas pu confirmer si les objectifs de ${first} ont changé. Vérifiez sa page nutrition avant de réessayer.`,
+  },
+
   /** EV-321b — les défis de pas. Les nombres arrivent déjà formatés (`formatSteps`). */
   challenges: {
     nav: "Défis",

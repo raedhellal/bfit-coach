@@ -128,6 +128,25 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
     },
   },
 
+  /* ── EV-273b: nutrition templates ship TARGETS ONLY (EV-273 N6) ─────────────
+   * The api stores and serves an optional meal structure (EV-273a). The portal neither
+   * sends it nor reads it until EV-190's N1 control has met its release conditions
+   * (ADR-0016b D16b.11): EV-190d's kill-clause PASS in AI-EVAL-LOG.md, then EV-190e,
+   * then EV-273e, which is the row that deletes these two entries.
+   * ---------------------------------------------------------------------- */
+  NutritionTemplateSaveRequest: {
+    missingInPortal: {
+      mealStructure:
+        "EV-273 N6 — OPTIONAL on the wire (omitted = the trainee's own structure). The first portal control to send it would be N1's, which has not cleared. EV-273b AC5/AC2's key-set assertions hold it off the wire; EV-273e adds it. ⚠ Omitting it on PUT CLEARS a stored one (the api replaces the whole row), so an EV-273b edit or rename wipes a structure stored through the api; EV-273e must read it and carry it through edit and rename.",
+    },
+  },
+  NutritionTemplate: {
+    missingInPortal: {
+      mealStructure:
+        "EV-273 N6 / AC1 — 'No meal structure is shown, even for a template that has one stored through the api.' Not declared, so nothing can render it. EV-273e adds it.",
+    },
+  },
+
   CoachApplyWeekRequest: {
     missingInPortal: {
       mealStructure:
