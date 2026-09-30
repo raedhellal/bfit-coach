@@ -101,7 +101,15 @@ function AcceptedRow({
   const n = (value: number) => formatSteps(value, copy.locale);
   const source = latestSource(p);
   const today = progress.todayValue;
-  const pct = today === null || progress.target <= 0 ? 0 : Math.min(100, Math.round((today / progress.target) * 100));
+  /**
+   * The bar's width FLOORS and its colour follows the goal, not the width. With
+   * `Math.round`, 9,950–9,999 of 10,000 drew a full green bar on a day the api still
+   * calls IN_PROGRESS: the picture said "done" before the number did. Floor keeps
+   * anything short of the goal visibly short (99 %), and green means `today >= target`,
+   * the same comparison the api's calculator makes for MET.
+   */
+  const met = today !== null && progress.target > 0 && today >= progress.target;
+  const pct = today === null || progress.target <= 0 ? 0 : Math.min(100, Math.floor((today / progress.target) * 100));
 
   return (
     <tr data-participant={p.clientId} data-status="ACCEPTED" data-rank={p.rank ?? ""}>
@@ -125,6 +133,7 @@ function AcceptedRow({
                 aria-valuenow={today}
                 aria-valuetext={c.todaySteps(n(today), n(progress.target))}
                 data-pct={pct}
+                data-met={met ? "true" : "false"}
                 style={{ marginTop: 6, height: 6, borderRadius: 3, background: "var(--surface-2)", overflow: "hidden", maxWidth: 160 }}
               >
                 <div
@@ -132,7 +141,7 @@ function AcceptedRow({
                     width: `${pct}%`,
                     height: "100%",
                     borderRadius: 3,
-                    background: pct >= 100 ? "var(--ok)" : "var(--blue-500)",
+                    background: met ? "var(--ok)" : "var(--blue-500)",
                   }}
                 />
               </div>

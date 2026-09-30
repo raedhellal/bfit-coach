@@ -17,7 +17,8 @@ import { getCopy } from "@/lib/i18n/server";
  *   · the roster, for the create dialog's invite list — every ACTIVE row. A STEPS
  *     invitation reads no trainee data, so it needs the LINK and no data scope (the api's
  *     `requireManagedLink`); the trainee's own acceptance is the consent to share steps.
- *     A roster failure leaves the list up and the dialog saying there is nobody to invite.
+ *     A roster failure leaves the list up and the dialog saying the clients could not be
+ *     loaded — never that there are none, which would be a different fact.
  *
  * Three states, all explicit: load error · no challenges · the list.
  */
@@ -35,10 +36,10 @@ export default async function ChallengesPage({ searchParams }: { searchParams: {
       .catch(() => null),
     coachApi
       .listClients()
-      .then((p) => p.items)
-      .catch((): RosterClient[] => []),
+      .then((p): RosterClient[] | null => p.items)
+      .catch(() => null),
   ]);
-  const clients: InviteTarget[] = roster
+  const clients: InviteTarget[] = (roster ?? [])
     .filter((row) => row.status === "ACTIVE")
     .map((row) => ({ id: row.id, traineeDisplayName: row.traineeDisplayName }));
 
@@ -47,7 +48,7 @@ export default async function ChallengesPage({ searchParams }: { searchParams: {
       <PageHead
         title={copy.challenges.title}
         sub={copy.challenges.subtitle}
-        actions={list === null ? undefined : <CreateChallengeDialog clients={clients} />}
+        actions={list === null ? undefined : <CreateChallengeDialog clients={clients} rosterFailed={roster === null} />}
       />
       {list === null ? (
         <ClientNotice message={copy.challenges.loadError} />

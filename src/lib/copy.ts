@@ -1558,6 +1558,8 @@ export const en = {
     selectNone: "Clear",
     selected: (count: number) => `${count} selected`,
     noClients: "You have no linked clients yet. Invite a client from the roster first.",
+    /** The roster read failed — not the same fact as having no clients. */
+    clientsLoadError: "Your clients could not be loaded. Reload the page to try again.",
     submit: "Create and invite",
     submitting: "Creating…",
     cancel: "Cancel",
@@ -1596,7 +1598,8 @@ export const en = {
     refresh: "Refresh",
     refreshing: "Refreshing…",
     autoRefresh: "Updates every 45 seconds while this page is open.",
-    loadedAt: (time: string) => `Updated at ${time} UTC`,
+    /** EV-321b — the coach's own clock (`LoadedAt`, rendered in the browser), so no zone suffix. */
+    loadedAt: (time: string) => `Updated at ${time}`,
     consent: "Accepting the invitation is how a client agrees to share their steps with you.",
     progressLabel: "Participants' progress",
     colRank: "Rank",

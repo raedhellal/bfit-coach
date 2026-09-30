@@ -3,11 +3,11 @@ import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ChallengeControls } from "@/components/challenges/ChallengeControls";
 import { PHASE_TONE, goalLine, windowLine } from "@/components/challenges/ChallengeList";
+import { LoadedAt } from "@/components/challenges/LoadedAt";
 import { ProgressTable } from "@/components/challenges/ProgressTable";
 import { Badge, Card, PageHead } from "@/components/ui/kit";
 import { coachApi, isForbidden, type CoachChallengeDetail } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
-import { formatUtcTime } from "@/lib/format";
 import { getCopy } from "@/lib/i18n/server";
 
 /**
@@ -91,9 +91,7 @@ export default async function ChallengePage({
         }}
       >
         <span>{c.counts(challenge.participantCount, challenge.acceptedCount)}</span>
-        <span data-loaded-at={new Date(now).toISOString()}>
-          {c.loadedAt(formatUtcTime(new Date(now).toISOString()))} · {c.autoRefresh}
-        </span>
+        <LoadedAt iso={new Date(now).toISOString()} />
       </div>
 
       {participants.length === 0 ? (

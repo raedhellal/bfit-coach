@@ -3023,12 +3023,17 @@ function withPlanFlag(row: RosterClient): RosterClient {
  * revoked process, the `empty` scenario, `evoli_fixture_link=ended`) is ABSENT, which
  * is the api's `VISIBLE_LINK` rule — a revoked trainee is hidden, not a 403.
  *
- * Two fixture-only cookie switches, for the refusals the dialog cannot reach from a
- * browser that only offers linked clients:
+ * Fixture-only cookie switches (one browser context each). Two for the refusals the
+ * dialog cannot reach from a browser that only offers linked clients:
  *   `evoli_fixture_link=ended`               → the create's 403 (a link ended after the
  *                                              page loaded);
  *   `evoli_fixture_challenge_cap=reached`    → the create's 409 (a second tab filled
  *                                              the 20 unended).
+ * And two for states the seed does not hold:
+ *   `evoli_fixture_today_steps=<n>`          → Lina's TODAY row on the ACTIVE challenge
+ *                                              reads n steps (the 9,950-of-10,000 bar);
+ *   `evoli_fixture_roster=fail`              → `GET /coach-portal/clients` is a 500 (the
+ *                                              create dialog's roster-failure sentence).
  * ════════════════════════════════════════════════════════════════════════════ */
 
 const CHALLENGE_UNENDED_MAX = 20; // CoachChallengeUseCase.MAX_UNENDED_CHALLENGES
@@ -3278,7 +3283,26 @@ function toChallengeSummary(c: StoredChallenge, participants: number, accepted: 
   };
 }
 
-async function challengeDetail(c: StoredChallenge): Promise<CoachChallengeDetail> {
+/**
+ * `evoli_fixture_today_steps=<n>` — Lina's today row on the ACTIVE challenge reads `n`,
+ * everything else as seeded. For the near-goal bar (9,950 of 10,000 is IN_PROGRESS, not
+ * met), which no seeded row sits at. A malformed value is ignored, never coerced to 0.
+ */
+async function withTodayStepsSwitch(c: StoredChallenge): Promise<StoredChallenge> {
+  const raw = await fixtureSwitch("evoli_fixture_today_steps");
+  const value = raw === null || raw.trim() === "" ? Number.NaN : Number(raw);
+  if (c.id !== FIXTURE_CHALLENGE_IDS.active || !Number.isInteger(value) || value < 0) return c;
+  const day = utcDay(0);
+  return {
+    ...c,
+    participants: c.participants.map((p) =>
+      p.clientId === LINA_ID && p.steps[day] ? { ...p, steps: { ...p.steps, [day]: { ...p.steps[day], value } } } : p
+    ),
+  };
+}
+
+async function challengeDetail(stored: StoredChallenge): Promise<CoachChallengeDetail> {
+  const c = await withTodayStepsSwitch(stored);
   const links = await visibleLinks();
   const visible = c.participants.filter((p) => links.has(p.clientId));
   const name = (p: StoredParticipant) => links.get(p.clientId)?.traineeDisplayName ?? null;
@@ -4158,6 +4182,10 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async listClients(sort = "needs_attention" as RosterSort, page = 0, size = 100): Promise<RosterPage> {
+    // EV-321b — the roster read fails (this browser context only).
+    if ((await fixtureSwitch("evoli_fixture_roster")) === "fail") {
+      await fail(500, "INTERNAL_ERROR", "Internal error");
+    }
     /**
      * Six ACTIVE links — AC2's seeded roster, and every rendering of the flag column
      * on one screen: two flags (Tobias), one flag (Lina, Sara), a real zero and no

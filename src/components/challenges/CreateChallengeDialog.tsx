@@ -39,8 +39,17 @@ export interface InviteTarget {
  *
  * Problems are shown only after the first Create press: a coach who has not typed a
  * title yet is not in error, they are filling in a form.
+ *
+ * `rosterFailed`: the page's roster read failed. That is not "no linked clients", and
+ * saying so would send a coach who has clients off to invite them again.
  */
-export function CreateChallengeDialog({ clients }: { clients: InviteTarget[] }) {
+export function CreateChallengeDialog({
+  clients,
+  rosterFailed = false,
+}: {
+  clients: InviteTarget[];
+  rosterFailed?: boolean;
+}) {
   const copy = useCopy();
   const c = copy.challenges;
   const router = useRouter();
@@ -212,7 +221,7 @@ export function CreateChallengeDialog({ clients }: { clients: InviteTarget[] }) 
             </legend>
             {clients.length === 0 ? (
               <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--ink-3)", lineHeight: 1.5 }}>
-                {c.noClients}
+                {rosterFailed ? c.clientsLoadError : c.noClients}
               </p>
             ) : (
               <>

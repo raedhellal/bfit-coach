@@ -147,6 +147,99 @@ test.describe("the ranked progress table", () => {
     await page.getByRole("button", { name: "Refresh" }).click();
     await expect(stamp).not.toHaveAttribute("data-loaded-at", before ?? "");
   });
+
+  /**
+   * Staff nit (a): the bar used `Math.round`, so 9,950–9,999 of 10,000 drew a FULL GREEN
+   * bar on a day the api still calls IN_PROGRESS. The width floors (99 %) and the colour
+   * follows `today >= target`. Painted, not just attributed: the fill's measured width
+   * against its track, and its computed colour against Yusuf's bar (10,400, met).
+   * `evoli_fixture_today_steps` sets Lina's today row; nothing else moves.
+   */
+  test("9,950 and 9,999 of 10,000 are a short blue bar; 10,000 is a full green one", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(page);
+    const lina = row(page, LINA);
+    const paint = () =>
+      lina.getByRole("progressbar").evaluate((bar) => {
+        const fill = bar.firstElementChild as HTMLElement;
+        return {
+          ratio: fill.getBoundingClientRect().width / bar.getBoundingClientRect().width,
+          colour: getComputedStyle(fill).backgroundColor,
+        };
+      });
+    const metColour = () =>
+      row(page, YUSUF)
+        .getByRole("progressbar")
+        .evaluate((bar) => getComputedStyle(bar.firstElementChild as HTMLElement).backgroundColor);
+
+    for (const steps of [9_950, 9_999]) {
+      await context.addCookies([{ name: "evoli_fixture_today_steps", value: String(steps), url: baseURL! }]);
+      await page.goto(`/challenges/${ACTIVE}`);
+      const bar = lina.getByRole("progressbar");
+      await expect(bar).toHaveAttribute("aria-valuenow", String(steps));
+      await expect(lina.locator('[data-status="IN_PROGRESS"]')).toHaveCount(1);
+      await expect(bar).toHaveAttribute("data-pct", "99");
+      await expect(bar).toHaveAttribute("data-met", "false");
+      const painted = await paint();
+      expect(painted.ratio, `${steps} steps must not paint a full bar`).toBeLessThan(0.995);
+      expect(painted.colour, `${steps} steps must not paint the goal colour`).not.toBe(await metColour());
+    }
+
+    await context.addCookies([{ name: "evoli_fixture_today_steps", value: "10000", url: baseURL! }]);
+    await page.goto(`/challenges/${ACTIVE}`);
+    await expect(lina.locator('[data-status="IN_PROGRESS"]')).toHaveCount(0);
+    await expect(lina.getByRole("progressbar")).toHaveAttribute("data-pct", "100");
+    await expect(lina.getByRole("progressbar")).toHaveAttribute("data-met", "true");
+    const painted = await paint();
+    expect(painted.ratio).toBeCloseTo(1, 2);
+    expect(painted.colour).toBe(await metColour());
+  });
+});
+
+/**
+ * Staff nit (b): "Mis à jour à 12:42 UTC" asked a coach in Paris to add two hours. The
+ * time is now formatted in the browser, in the browser's zone, with no zone suffix. Each
+ * zone below is never on UTC's wall clock (Kiritimati is UTC+14, Paris +1/+2), so a
+ * server-rendered UTC time cannot pass. The expected value is computed here with Intl,
+ * not read back from the portal's formatter.
+ */
+function wallClock(iso: string, locale: string, timeZone: string): string {
+  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(
+    new Date(iso)
+  );
+}
+
+test.describe("the refresh time is the coach's own clock (UTC+14)", () => {
+  test.use({ timezoneId: "Pacific/Kiritimati" });
+
+  test("English: 'Updated at HH:MM' in the browser's zone, no 'UTC'", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/challenges/${ACTIVE}`);
+    const stamp = page.locator("[data-loaded-at]");
+    const iso = (await stamp.getAttribute("data-loaded-at"))!;
+    await expect(stamp).toHaveText(
+      `Updated at ${wallClock(iso, "en-GB", "Pacific/Kiritimati")} · Updates every 45 seconds while this page is open.`
+    );
+    await expect(stamp).not.toContainText("UTC");
+  });
+});
+
+test.describe("the refresh time is the coach's own clock (Paris, fr-FR)", () => {
+  test.use({ locale: "fr-FR", timezoneId: "Europe/Paris" });
+
+  test("French: 'Mis à jour à HH:MM' in Paris time, no 'UTC'", async ({ page }) => {
+    await signInFrench(page);
+    await page.goto(`/challenges/${ACTIVE}`);
+    const stamp = page.locator("[data-loaded-at]");
+    const iso = (await stamp.getAttribute("data-loaded-at"))!;
+    await expect(stamp).toHaveText(
+      `Mis à jour à ${wallClock(iso, "fr-FR", "Europe/Paris")} · Mise à jour toutes les 45 secondes tant que cette page est ouverte.`
+    );
+    await expect(stamp).not.toContainText("UTC");
+  });
 });
 
 test.describe("create", () => {
@@ -218,6 +311,21 @@ test.describe("create", () => {
     await expect(dialog.getByRole("alert")).toHaveText(
       "You already have 20 challenges that have not ended. Delete one to create another."
     );
+  });
+
+  // Staff nit (c): a failed roster read is not "no linked clients" — that sentence sends
+  // a coach who HAS clients off to invite them again.
+  test("a failed roster read says the clients could not be loaded, never that there are none", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(page);
+    await context.addCookies([{ name: "evoli_fixture_roster", value: "fail", url: baseURL! }]);
+    const dialog = await openDialog(page);
+    await expect(dialog.getByText("Your clients could not be loaded. Reload the page to try again.")).toBeVisible();
+    await expect(dialog.getByText("You have no linked clients yet.", { exact: false })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Create and invite" })).toBeDisabled();
   });
 });
 

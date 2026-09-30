@@ -232,6 +232,19 @@ export function formatUtcTime(iso: string | null | undefined): string {
   return TIME.format(d);
 }
 
+/**
+ * An ISO instant → "14:42" in the RUNTIME's time zone — for a client component, where
+ * that zone is the coach's browser. On the server it would be the host's zone (UTC on
+ * Vercel), which is exactly why the challenge page does not call it there. 24-hour in
+ * both locales, like `formatUtcTime`.
+ */
+export function formatLocalTime(iso: string | null | undefined, locale: Locale): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat(intlLocale(locale), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+}
+
 /* ── EV-321b: step challenges ──────────────────────────────────────────────── */
 
 /**
