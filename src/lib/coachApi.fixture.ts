@@ -3333,8 +3333,18 @@ async function assertNutritionNameFree(name: string, exceptId: string | null): P
   }
 }
 
+/**
+ * The api's `requireRoom`: count, then 409. `evoli_fixture_nutrition_template_cap=reached`
+ * (a cookie, scoped to the browser context) refuses as if the library were full, WITHOUT
+ * changing what the list serves. That is a real interleaving, not a fiction: another tab
+ * filled the library after this page read `remaining`. Filling 50 through the UI would
+ * cost a spec minutes to reach the same 409.
+ */
 async function assertNutritionRoom(): Promise<void> {
-  if (state().nutritionTemplates.size >= NUTRITION_TEMPLATE_LIMIT) {
+  if (
+    state().nutritionTemplates.size >= NUTRITION_TEMPLATE_LIMIT ||
+    (await fixtureSwitch("evoli_fixture_nutrition_template_cap")) === "reached"
+  ) {
     await fail(409, "COACH_NUTRITION_TEMPLATE_LIMIT_REACHED", "Nutrition template limit reached");
   }
 }

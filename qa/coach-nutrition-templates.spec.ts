@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { expectNoEnglish, signInFrench } from "./french";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
 /**
@@ -225,13 +226,13 @@ test.describe("AC3 — with nobody to use it on", () => {
 });
 
 test.describe("AC8 — 320 / 360 / 390 / 414", () => {
-  test("the four-link nav wraps: every link is whole, on screen and unoccluded", async ({ page }) => {
+  test("the five-link nav wraps: every link is whole, on screen and unoccluded", async ({ page }) => {
     await signIn(page);
     await page.goto("/nutrition-templates");
     const nav = page.getByRole("navigation", { name: "Portal" });
     const signOut = page.getByRole("button", { name: "Sign out" });
     await atEachWidth(page, async (width) => {
-      for (const name of ["Roster", "Templates", "Recipes", "Nutrition templates"]) {
+      for (const name of ["Roster", "Templates", "Recipes", "Nutrition templates", "Challenges"]) {
         const link = nav.getByRole("link", { name, exact: true });
         await expectUnoccluded(page, link, { over: signOut, label: `${name} nav link` });
         const box = await link.boundingBox();
@@ -260,6 +261,187 @@ test.describe("AC8 — 320 / 360 / 390 / 414", () => {
     await atEachWidth(page, async () => {
       await expectNoSidewaysScroll(page, "the editor");
       await expectUnoccluded(page, page.getByRole("button", { name: "Save template" }), { label: "Save" });
+    });
+  });
+});
+
+/* ── EV-273a AC5 — the cap, as the portal says it ────────────────────────────
+ * `evoli_fixture_nutrition_template_cap=reached` makes the fixture's `requireRoom` refuse
+ * without changing what the list served: another tab filled the library after this page
+ * read `remaining`. The sentence names the limit the api SERVED (50), never a constant. */
+const LIMIT_EN = "You can keep up to 50 nutrition templates. Delete one to make room.";
+
+test.describe("EV-273a AC5 — the 51st template", () => {
+  test("duplicate and create past the cap are refused with the served limit, and nothing is added", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(page);
+    await createTemplate(page, "Cut 1800", ["1800", "150", "170", "60"]);
+    await context.addCookies([{ name: "evoli_fixture_nutrition_template_cap", value: "reached", url: baseURL! }]);
+
+    await row(page, "Cut 1800").getByRole("button", { name: "Duplicate" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: LIMIT_EN })).toBeVisible();
+    await expect(row(page, "Cut 1800 (copy)")).toHaveCount(0);
+
+    await page.goto("/nutrition-templates/new");
+    await page.getByLabel("Template name").fill("Bulk 3000");
+    await page.getByLabel("Calories", { exact: true }).fill("3000");
+    await page.getByLabel("Protein", { exact: true }).fill("180");
+    await page.getByLabel("Carbs", { exact: true }).fill("380");
+    await page.getByLabel("Fat", { exact: true }).fill("85");
+    await page.getByRole("button", { name: "Save template" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: LIMIT_EN })).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/nutrition-templates/new");
+
+    await page.goto("/nutrition-templates");
+    await expect(page.locator("main").getByRole("group")).toHaveCount(1);
+  });
+});
+
+/* ── EV-324 — the library in a French browser ────────────────────────────────
+ * Every sentence is a LITERAL. French numbers are grouped with U+202F (the narrow no-break
+ * space `Intl` fr-FR uses), and quotes are « » with U+00A0 inside, as `copy.fr.ts`'s `q`
+ * writes them. `expectNoEnglish` fails on any English UI string left on the page. */
+const NNBSP = " ";
+const guillemets = (text: string) => `« ${text} »`;
+
+test.describe("EV-324 — nutrition templates in a French browser (fr-FR)", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("the empty library, the nav and the empty picker are French", async ({ page }) => {
+    await signInFrench(page);
+    const nav = page.getByRole("navigation", { name: "Portail" });
+    await expect(nav.getByRole("link")).toHaveText(["Clients", "Modèles", "Recettes", "Modèles nutrition", "Défis"]);
+    await nav.getByRole("link", { name: "Modèles nutrition", exact: true }).click();
+    await page.waitForURL("/nutrition-templates");
+    await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+    await expect(page.getByRole("heading", { name: "Modèles nutrition", level: 1 })).toBeVisible();
+    await expect(
+      page.getByText("Vos modèles nutrition vous appartiennent. Aucun client ne les voit.", { exact: true })
+    ).toHaveCount(1);
+    await expect(page.getByText("Vous n'avez encore aucun modèle nutrition.", { exact: true })).toBeVisible();
+    await expectNoEnglish(page, "the empty nutrition library");
+  });
+
+  test("the editor: labels, the above-0 rule, the api's bounds with U+202F, and a save", async ({ page }) => {
+    await signInFrench(page);
+    await page.goto("/nutrition-templates/new");
+    await expect(page.getByRole("heading", { name: "Nouveau modèle nutrition", level: 1 })).toBeVisible();
+    await expect(page.getByText("Donnez un nom au modèle.", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Evoli vérifie les calories par rapport à un minimum sûr quand vous utilisez ce modèle. Il ne vérifie pas encore les protéines ni les lipides.",
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expectNoEnglish(page, "the new nutrition template editor");
+
+    await page.getByLabel("Nom du modèle").fill("Sèche 1800");
+    await page.getByLabel("Calories", { exact: true }).fill("1800");
+    await page.getByLabel("Protéines", { exact: true }).fill("150");
+    await page.getByLabel("Glucides", { exact: true }).fill("170");
+    await page.getByLabel("Lipides", { exact: true }).fill("0");
+    await page.getByRole("button", { name: "Enregistrer le modèle" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Saisissez un nombre supérieur à 0." })).toBeVisible();
+
+    await page.getByLabel("Lipides", { exact: true }).fill("60");
+    await page.getByLabel("Calories", { exact: true }).fill("9000");
+    await page.getByRole("button", { name: "Enregistrer le modèle" }).click();
+    await expect(
+      page.getByText(
+        `Utilisez des nombres entiers : calories de 800 à 8${NNBSP}000 kcal, protéines jusqu'à 500 g, glucides jusqu'à 1${NNBSP}200 g et lipides jusqu'à 400 g.`,
+        { exact: true }
+      )
+    ).toBeVisible();
+
+    await page.getByLabel("Calories", { exact: true }).fill("1800");
+    await page.getByRole("button", { name: "Enregistrer le modèle" }).click();
+    await page.waitForURL("/nutrition-templates");
+    const sèche = row(page, "Sèche 1800");
+    await expect(sèche.getByText(`1${NNBSP}800 kcal · P 150 g · G 170 g · L 60 g`, { exact: true })).toBeVisible();
+    await expect(sèche.getByText(/^Mis à jour le \d{1,2} \S+ \d{4}$/)).toBeVisible();
+    await expect(sèche.getByRole("button", { name: "Utiliser pour un client" })).toBeVisible();
+    await expectNoEnglish(page, "the nutrition library with a template");
+  });
+
+  test("duplicate, a taken name, the cap, delete and the empty picker are French", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signInFrench(page);
+    await page.goto("/nutrition-templates/new");
+    await page.getByLabel("Nom du modèle").fill("Sèche 1800");
+    await page.getByLabel("Calories", { exact: true }).fill("1800");
+    await page.getByLabel("Protéines", { exact: true }).fill("150");
+    await page.getByLabel("Glucides", { exact: true }).fill("170");
+    await page.getByLabel("Lipides", { exact: true }).fill("60");
+    await page.getByRole("button", { name: "Enregistrer le modèle" }).click();
+    await page.waitForURL("/nutrition-templates");
+
+    // Duplicate. "(copy)" is the API's suffix (EV-273a `withSuffix`): the name is data.
+    await row(page, "Sèche 1800").getByRole("button", { name: "Dupliquer" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: `${guillemets("Sèche 1800 (copy)")} est dans vos modèles nutrition.` })
+    ).toBeVisible();
+
+    // A taken name, folded as the api folds it.
+    await row(page, "Sèche 1800 (copy)").getByRole("button", { name: "Renommer" }).click();
+    const rename = page.getByRole("dialog", { name: "Renommer le modèle" });
+    await rename.getByLabel("Nom du modèle").fill("  sèche 1800 ");
+    await rename.getByRole("button", { name: "Renommer" }).click();
+    await expect(rename.getByText("Vous avez déjà un modèle nutrition portant ce nom.", { exact: true })).toBeVisible();
+    await expectNoEnglish(page, "the rename dialog");
+    await rename.getByRole("button", { name: "Annuler" }).click();
+
+    // The cap.
+    await context.addCookies([{ name: "evoli_fixture_nutrition_template_cap", value: "reached", url: baseURL! }]);
+    await row(page, "Sèche 1800").getByRole("button", { name: "Dupliquer" }).click();
+    await expect(
+      page.getByRole("alert").filter({
+        hasText: "Vous pouvez conserver jusqu'à 50 modèles nutrition. Supprimez-en un pour faire de la place.",
+      })
+    ).toBeVisible();
+
+    // Delete, confirmed.
+    await row(page, "Sèche 1800 (copy)").getByRole("button", { name: "Supprimer" }).click();
+    const del = page.getByRole("dialog", { name: "Supprimer le modèle ?" });
+    await expect(
+      del.getByText(
+        `Supprimer ${guillemets("Sèche 1800 (copy)")} ? Les clients pour qui vous l'avez déjà utilisé conservent leurs objectifs et leurs repas.`,
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expectNoEnglish(page, "the delete dialog");
+    await del.getByRole("button", { name: "Supprimer" }).click();
+    await expect(row(page, "Sèche 1800 (copy)")).toHaveCount(0);
+
+    // Nobody to use it on (this suite's roster is empty).
+    await row(page, "Sèche 1800").getByRole("button", { name: "Utiliser pour un client" }).click();
+    const picker = page.getByRole("dialog", { name: "Utiliser pour un client" });
+    await expect(picker.getByText(`Choisissez le client qui recevra ${guillemets("Sèche 1800")}.`, { exact: true })).toBeVisible();
+    await expect(
+      picker.getByText("Aucun de vos clients n'a partagé sa nutrition avec vous.", { exact: true })
+    ).toBeVisible();
+    await expectNoEnglish(page, "the empty picker");
+  });
+
+  test("the five French nav links wrap whole at 320 / 360 / 390 / 414", async ({ page }) => {
+    await signInFrench(page);
+    await page.goto("/nutrition-templates");
+    const nav = page.getByRole("navigation", { name: "Portail" });
+    const signOut = page.getByRole("button", { name: "Se déconnecter" });
+    await atEachWidth(page, async (width) => {
+      for (const name of ["Clients", "Modèles", "Recettes", "Modèles nutrition", "Défis"]) {
+        const link = nav.getByRole("link", { name, exact: true });
+        await expectUnoccluded(page, link, { over: signOut, label: `${name} nav link` });
+        const box = await link.boundingBox();
+        const right = box ? Math.round(box.x + box.width) : NaN;
+        expect(box && box.x >= 0 && right <= width, `${name}: right edge at ${right}px in a ${width}px viewport`).toBe(true);
+      }
+      await expectNoSidewaysScroll(page, "the French nutrition library");
     });
   });
 });

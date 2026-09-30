@@ -1,5 +1,6 @@
 import { expect, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { test } from "./fixture-test";
+import { expectNoEnglish, signInFrench } from "./french";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
 /**
@@ -566,6 +567,116 @@ test.describe("AC8 — the dialog at 320 / 360 / 390 / 414", () => {
       expect(box && box.x >= 0 && box.x + box.width <= width + 0.5, `dialog inside ${width}px`).toBe(true);
       await expectUnoccluded(page, dialog.getByRole("button", { name: "Confirm" }), { label: "Confirm" });
     });
+  });
+});
+
+/* ── EV-324 — "Utiliser pour un client" in a French browser ───────────────────
+ * The same two writes and the same order as above; what changes is every word, the date
+ * (fr-FR, "28 sept. 2026") and the numbers (U+202F grouping). Literals throughout. */
+const NNBSP = " ";
+const g = (text: string) => `« ${text} »`;
+const frConfirmTitle = (t: string, first: string) => `Utiliser ${g(t)} pour ${first} ?`;
+
+function frenchWeekStartLabel(): string {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(d);
+}
+
+async function openConfirmFrench(page: Page, template: string, trainee: string, first: string) {
+  await page.goto("/nutrition-templates");
+  const picker = page.getByRole("dialog", { name: "Utiliser pour un client" });
+  await expect(async () => {
+    await row(page, template).getByRole("button", { name: "Utiliser pour un client" }).click();
+    await expect(picker).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 20_000 });
+  await picker.getByRole("button", { name: trainee, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: frConfirmTitle(template, first) });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Confirmer" })).toBeEnabled();
+  return dialog;
+}
+
+test.describe("EV-324 — use on a client, in a French browser (fr-FR)", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("the dialog is French, grouped with U+202F, dated fr-FR; the plan and the floor are said in French", async ({ page }) => {
+    await signInFrench(page);
+    const dialog = await openConfirmFrench(page, RESET, "Petra L.", "Petra");
+    expect(await tableRows(dialog)).toEqual([
+      ["Calories", `1${NNBSP}850 kcal`, `1${NNBSP}100 kcal`],
+      ["Protéines", "130 g", "90 g"],
+      ["Glucides", "180 g", "110 g"],
+      ["Lipides", "60 g", "35 g"],
+    ]);
+    await expect(dialog.getByRole("columnheader", { name: "Actuel" })).toBeVisible();
+    await expect(dialog.getByRole("columnheader", { name: "Après" })).toBeVisible();
+    await expect(
+      dialog.getByText(
+        `Les repas de Petra pour cette semaine (à partir du ${frenchWeekStartLabel()}) sont reconstruits immédiatement selon ces objectifs, avec son propre nombre de repas par jour. Ses allergies et ses règles alimentaires s'appliquent toujours. Les repas verrouillés ou déjà mangés par ce client sont conservés.`,
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(
+      dialog.getByText("Si c'est en dessous du minimum sûr de Petra, Evoli le relève à ce minimum et vous le signale.", {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expectNoEnglish(page, "the French confirm dialog");
+
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toContainText(`${g(RESET)} est désormais le plan de Petra.`);
+    await expect(outcome(page)).toContainText(`Calories relevées au minimum sûr de 1${NNBSP}200 kcal.`);
+    expect(traineeWrites(await calls(page))).toEqual([
+      `PUT /coach-portal/clients/${PETRA}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
+      `POST /coach-portal/clients/${PETRA}/nutrition/week/apply {weekStart}`,
+    ]);
+    await expectNoEnglish(page, "the French outcome on the trainee's page");
+  });
+
+  test("a client with no targets reads Non défini", async ({ page }) => {
+    await signInFrench(page);
+    const dialog = await openConfirmFrench(page, CUT, "Tobias R.", "Tobias");
+    expect((await tableRows(dialog)).map((r) => r[1])).toEqual(["Non défini", "Non défini", "Non défini", "Non défini"]);
+    // 1800 is not below 1500: no floor sentence.
+    await expect(dialog.getByText(/minimum sûr/)).toHaveCount(0);
+  });
+
+  test("week 429: the targets are saved, and tomorrow is named, in French", async ({ page, context, baseURL }) => {
+    await signInFrench(page);
+    const dialog = await openConfirmFrench(page, CUT, "Tobias R.", "Tobias");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "rate_limited");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${TOBIAS}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      "Les objectifs de Tobias sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain."
+    );
+    await expect(page.getByLabel("Calories", { exact: true })).toHaveValue("1800");
+    expect(traineeWrites(await calls(page))).toEqual([
+      `PUT /coach-portal/clients/${TOBIAS}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
+      `POST /coach-portal/clients/${TOBIAS}/nutrition/week/apply {weekStart}`,
+    ]);
+    await expectNoEnglish(page, "the French 429 outcome");
+  });
+
+  test("week refused otherwise, and targets refused: the French sentences", async ({ page, context, baseURL }) => {
+    await signInFrench(page);
+    let dialog = await openConfirmFrench(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "out_of_range");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      `Les objectifs de Petra sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${g("Appliquer à Petra")} pour réessayer.`
+    );
+
+    await context.clearCookies({ name: "evoli_fixture_week" });
+    await setSwitch(context, baseURL as string, "evoli_fixture_targets", "refused");
+    dialog = await openConfirmFrench(page, CUT, "Petra L.", "Petra");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText("Rien n'a été modifié pour Petra. Réessayez.");
   });
 });
 
