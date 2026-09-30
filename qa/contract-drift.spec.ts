@@ -423,6 +423,8 @@ const REQUEST_FACING_EXPECTED = [
  * it. The comparison is exact, so an entry that gains a tag goes stale and red.
  */
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
+  CoachChallengeCreateRequest:
+    "POST /coach-portal/challenges (EV-321a, on api main at 741ed39, arrived with BUG-195c's re-vendor): the portal sends NO request to it on this branch. EV-321b (`feat/ev321b-portal-challenges`) tags the type. Whichever of BUG-195c / EV-321b merges SECOND deletes this entry, or the exact comparison goes red.",
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
   InitialiseTraineeRequest:
