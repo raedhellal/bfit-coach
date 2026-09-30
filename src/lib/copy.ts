@@ -1723,7 +1723,7 @@ export const en = {
     remove: "Delete challenge",
     deleteTitle: "Delete this challenge?",
     deleteBody: (title: string) =>
-      `“${title}” is deleted, and it disappears from your clients' app. The steps your clients recorded stay theirs.`,
+      `“${title}” is deleted, and it disappears from your clients' app. The steps your clients shared for this challenge are deleted, except days another challenge they have joined still covers.`,
     deleteConfirm: "Delete",
     deleteFailed: "The challenge could not be deleted. Try again in a moment.",
   },

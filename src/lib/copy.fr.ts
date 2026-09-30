@@ -933,7 +933,7 @@ export const fr = {
     remove: "Supprimer le défi",
     deleteTitle: "Supprimer ce défi ?",
     deleteBody: (title: string) =>
-      `${q(title)} est supprimé et disparaît de l'app de vos clients. Les pas enregistrés par vos clients leur appartiennent et sont conservés.`,
+      `${q(title)} est supprimé et disparaît de l'app de vos clients. Les pas que vos clients ont partagés pour ce défi sont supprimés, sauf les jours couverts par un autre défi auquel ils participent.`,
     deleteConfirm: "Supprimer",
     deleteFailed: "Le défi n'a pas pu être supprimé. Réessayez dans un instant.",
   },

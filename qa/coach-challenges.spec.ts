@@ -336,7 +336,7 @@ test.describe("delete", () => {
     await page.getByRole("button", { name: "Delete challenge" }).click();
     const confirm = page.getByRole("dialog", { name: "Delete this challenge?" });
     await expect(confirm).toContainText("“Semaine de rentrée” is deleted");
-    await expect(confirm).toContainText("The steps your clients recorded stay theirs.");
+    await expect(confirm).toContainText("The steps your clients shared for this challenge are deleted, except days another challenge they have joined still covers.");
     await confirm.getByRole("button", { name: "Delete", exact: true }).click();
     await page.waitForURL("/challenges");
     const cards = page.getByRole("list", { name: "Challenges" }).getByRole("listitem");
