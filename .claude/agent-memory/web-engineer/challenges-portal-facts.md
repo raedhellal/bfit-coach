@@ -41,7 +41,16 @@ would break silently. Raed's investor demo (Sat 2026-10-03) peaks on this page.
   the page's language under the fields (`data-testid="challenge-window"`).
 - **Fixture:** seeded in the POPULATED scenario only (fixed ids `FIXTURE_CHALLENGE_IDS`);
   cookies `evoli_fixture_link=ended` → create 403, `evoli_fixture_challenge_cap=reached`
-  → 409. Visibility follows the roster, like the api's `VISIBLE_LINK` (hidden, not 403).
+  → 409, `evoli_fixture_today_steps=<n>` → Lina's today row on the ACTIVE challenge,
+  `evoli_fixture_roster=fail` → the roster read 500s (the dialog says the clients could not
+  be loaded, never "no linked clients"). Visibility follows the roster, like the api's
+  `VISIBLE_LINK` (hidden, not 403).
+- **The progress bar floors and its green is `today >= target`** (staff nit): `Math.round`
+  painted 9,950–9,999 as a full green bar on an IN_PROGRESS day. `data-met` states it; the
+  spec measures fill width against the track and compares colours with a met row.
+- **"Updated at" is the browser's clock** (`LoadedAt` client island): a server render can
+  only say UTC. The time is absent from SSR to avoid a zone hydration mismatch; specs pin
+  `timezoneId` to Kiritimati (+14) and Paris so a UTC string cannot pass.
 - **Where the specs run:** `coach-challenges.spec.ts` on the ROSTER config (the default
   suite's roster is empty), `coach-challenges-empty.spec.ts` + `challenge-rules.spec.ts` on
   the default one, `coach-challenges.live.spec.ts` on the live config. The testIgnore /
