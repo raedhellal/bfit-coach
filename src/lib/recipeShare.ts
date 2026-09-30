@@ -21,3 +21,24 @@ export function recipeShare(week: MealWeekView | null): { recipeMeals: number; t
     totalMeals: meals.length,
   };
 }
+
+/**
+ * EV-320b follow-up (Raed's ruling, 2026-09-30) — does the week hold ANY meal whose text the
+ * meal ENGINE wrote? The English-only note ("Meal plans are generated in English…") is
+ * about that text, so it is shown only when at least one meal is not a coach recipe.
+ *
+ * "Coach recipe" is ANY coach's (`provenance === "COACH_RECIPE"`), not only `placedByYou`:
+ * the note is about who WROTE the meal's words, and a recipe a previous coach placed was
+ * written by a coach in their own language, exactly like this coach's. (AC17's count is
+ * different: it says "YOUR recipes", so it needs `placedByYou`.)
+ *
+ * Read as `!== "COACH_RECIPE"`: a meal whose provenance is missing counts as the engine's,
+ * so an api that omits the field keeps the note rather than hiding a true limitation.
+ *
+ * With NO week (or a week with no meals) this answers true: the next Apply writes engine
+ * meals, so the note is still about what the coach is about to get.
+ */
+export function hasEngineMeal(week: MealWeekView | null): boolean {
+  const meals = week ? week.days.flatMap((d) => d.meals) : [];
+  return meals.length === 0 || meals.some((m) => m.provenance !== "COACH_RECIPE");
+}

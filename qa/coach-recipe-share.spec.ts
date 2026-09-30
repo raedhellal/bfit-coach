@@ -3,7 +3,7 @@ import { test } from "./fixture-test";
 import { atEachWidth, expectNoSidewaysScroll } from "./layout";
 import { en } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
-import { recipeShare } from "../src/lib/recipeShare";
+import { hasEngineMeal, recipeShare } from "../src/lib/recipeShare";
 import type { MealWeekView, PlannedMealView } from "../src/lib/coachApi";
 
 /**
@@ -254,5 +254,79 @@ test.describe("in French", () => {
     const { n } = await drawn(page);
     expect(n).toBeLessThan(28);
     await expect(line(page)).toHaveText(`${n} repas sur 28 viennent de vos recettes`);
+  });
+});
+
+/* ── EV-320b follow-up: the English-only note (Raed, 2026-09-30) ─────────────
+ * "Meal plans are generated in English…" is about the ENGINE's meal text. It is shown
+ * while the week holds at least one engine meal, and hidden when every meal is a coach
+ * recipe (any coach's: the words are a coach's own, whoever placed them).
+ */
+
+const NOTE_EN = "Meal plans are generated in English. Ingredient checks run on the English names.";
+const NOTE_FR =
+  "Les plans de repas sont générés en anglais. Les vérifications d'ingrédients portent sur les noms anglais.";
+
+function note(page: Page) {
+  return page.getByTestId("english-only-note");
+}
+
+test.describe("the English-only note follows the engine's meals", () => {
+  test("the rule: any engine meal keeps it; a week of coach recipes — any coach's — drops it", () => {
+    const day = (meals: PlannedMealView[]) => ({ index: 0, date: "2026-09-28", trainingDay: true, meals });
+    const week = (meals: PlannedMealView[]): MealWeekView => ({ weekStart: "2026-09-28", status: "ACTIVE", days: [day(meals)] });
+    const mine = meal({ provenance: "COACH_RECIPE", placedByYou: true });
+    const previousCoach = meal({ provenance: "COACH_RECIPE", placedByYou: false });
+    expect(hasEngineMeal(week([mine, previousCoach]))).toBe(false);
+    expect(hasEngineMeal(week([mine, meal({})]))).toBe(true);
+    // A provenance the api did not send counts as the engine's: the note stays.
+    expect(hasEngineMeal(week([mine, { ...mine, provenance: undefined as unknown as "ENGINE" }]))).toBe(true);
+    // No week yet: the next Apply writes engine meals, so the note still applies.
+    expect(hasEngineMeal(null)).toBe(true);
+  });
+
+  test("an engine-only week shows the note", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${DANA}/nutrition`);
+    await expect(note(page)).toHaveText(NOTE_EN);
+  });
+
+  test("a mixed week shows the note", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${VERA}/nutrition`);
+    await expect(page.getByText("Your recipe", { exact: true })).toHaveCount(1);
+    await expect(note(page)).toHaveText(NOTE_EN);
+  });
+
+  test("a week that is all coach recipes hides it, and the footer lines stay", async ({ page, context }) => {
+    await signIn(page, "coach.fill@evoli.fit");
+    await fillOn(context, page);
+    await page.goto(`/clients/${DANA}/nutrition`);
+    await expect(note(page)).toHaveText(NOTE_EN);
+
+    await applyWeek(page);
+    await expect(line(page)).toHaveText("The whole week comes from your recipes");
+    await expect(note(page)).toHaveCount(0);
+    await expect(page.getByText(NOTE_EN)).toHaveCount(0);
+    await expect(page.getByText(/^Swapping a meal doesn.t use /)).toBeVisible();
+
+    await page.reload();
+    await expect(line(page)).toHaveText("The whole week comes from your recipes");
+    await expect(note(page)).toHaveCount(0);
+  });
+});
+
+test.describe("the English-only note, in French", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("shown in French over an engine week, gone over a week of coach recipes", async ({ page, context }) => {
+    await signIn(page, "coach.fill@evoli.fit", true);
+    await page.goto(`/clients/${DANA}/nutrition`);
+    await expect(note(page)).toHaveText(NOTE_FR);
+    await fillOn(context, page);
+    await applyWeek(page, true);
+    await expect(line(page)).toHaveText("Toute la semaine vient de vos recettes");
+    await expect(note(page)).toHaveCount(0);
+    await expect(page.getByText(NOTE_FR)).toHaveCount(0);
   });
 });

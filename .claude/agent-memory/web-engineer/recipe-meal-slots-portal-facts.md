@@ -65,5 +65,11 @@ untagged. On read, `null` means untagged, and the fill treats it as LUNCH + DINN
   the day guard's ±10 % band (1782). The breakfast is tried first, so a lower breakfast is
   refused and the week ends at 27/28.
 
+**The English-only note** (EV-185 AC3) is shown only while the week holds an ENGINE meal
+(`hasEngineMeal`, Raed 2026-09-30):
+- Any coach's recipe counts as coach text, because the note is about who wrote the words.
+- A missing provenance counts as engine, and "no week" keeps the note.
+- Unlike the note, AC17's count needs `placedByYou`. Do not merge the two predicates.
+
 See [[recipe-library-portal-facts]], [[progress-goal-absent-key-semantics]],
 [[a-whole-representation-put-needs-a-required-nullable-type]] (this field is the exception to that rule).
