@@ -4903,11 +4903,12 @@ paths:
         difference between the trainee's injuries and a stranger's claim about them (CS-22 /
         ADR-0001). The policy resolves injuries and equipment from `user_profiles`, and since
         BUG-185 so does the `plans.equipment` column the trainee's own app reads on `GET /me/plan`.
-        A submitted routine document does carry a `constraints` block — `constraints.equipment` and
-        `constraints.injuries` are both required on `Routine`, so a coach CANNOT omit them — but the
-        server reads neither as a claim about the trainee: submitted equipment is ignored outright,
-        and submitted injuries are unioned with the stored ones, which can only narrow what may be
-        prescribed and never widen it.
+        A draft document does carry a `constraints` block — `constraints.equipment` and
+        `constraints.injuries` are both required on `Routine`, so a coach CANNOT omit them — but
+        since BUG-195b (ADR-0018 D9) the coach sends both as `[]`: a non-empty value on
+        `PUT …/routine/draft` is refused with 400 COACH_DRAFT_SUBJECT_FIELD, and the stored draft
+        always carries `[]`. The trainee's own lists reach the policy and the plan from
+        `user_profiles` at publish time, never from the document.
         Requires the **WORKOUTS** scope on the link (ADR-0015 D5): a link that did not share
         workouts answers 403, not an empty editor.
       security:
@@ -4978,12 +4979,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
     put:
-      summary: Save the draft (last write wins)
+      summary: Save the draft (the whole document, with a staleness token)
       description: >-
-        EV-184 AC2. The body is a full Routine, validated by exactly the constraints
-        `PUT /me/coach/routine` validates, so a draft that could never be published cannot be stored.
-        Two tabs editing one draft: the second save wins and the stale tab's reload shows the winner
-        — not a merge and not a crash (edge case 2). The trainee's plan is untouched.
+        EV-184 AC2, re-contracted by BUG-195b (ADR-0018 D1 option 1-D). The body is
+        `CoachRoutineDraftRequest`: the WHOLE `Routine` in `document`, validated by exactly the
+        constraints `PUT /me/coach/routine` validates, plus `replacesDraftUpdatedAt`. A partial
+        document is refused (ADR-0016 V1b, strict now, relax later): the pre-BUG-195b portal body
+        `{name, trainingDays}` has no `document` and is a 400 VALIDATION_ERROR.
+
+
+        **Four fields are the TRAINEE's, not the coach's (ADR-0018 D3).** `goal` and `level` are
+        overwritten with the trainee's own onboarding answers from `user_profiles` (send what you
+        were served; a value that differs is replaced and logged, never refused). With no profile
+        row the save still succeeds with `GET_STRONGER` / `BEGINNER` and a WARN is logged.
+        `constraints.equipment` and `constraints.injuries` must be sent `[]` and are stored `[]`: a
+        non-empty value is 400 COACH_DRAFT_SUBJECT_FIELD, naming the field in `details.field` and
+        never echoing the value. `daysPerWeek` and `constraints.daysPerWeek` are DERIVED: both are
+        stored as `trainingDays.length`. Every other field — `name`, `summary`,
+        `weeklyProgression`, `constraints.minutesPerSession` and everything inside `trainingDays`
+        (`tempo`, `notes`, `trackingType`, `durationSeconds`, `weight`, `estimatedMinutes`, …) — is
+        the coach's and is stored exactly as sent, including a null that clears a field. The 200
+        response carries the STORED document, so re-render from it rather than from what was sent.
+
+
+        **A `DURATION` exercise carries no reps.** `reps` non-null on an exercise whose
+        `trackingType` is `DURATION` is 400 COACH_DRAFT_REPS_ON_DURATION, with `details.dayOfWeek`
+        and `details.exerciseIndex` (0-based within that day), because the plan writer drops it and
+        the coach would watch a prescription vanish without a message.
+
+
+        **Staleness (ADR-0018 D6).** `replacesDraftUpdatedAt` is the one token on this row, shared
+        with template apply. Absent or null: saved only if this link has NO draft. Present: must
+        equal the stored draft's `updatedAt`, echoed verbatim from the last GET, PUT or apply
+        response. Anything else is 409 COACH_DRAFT_EXISTS with `details.existingUpdatedAt`, and
+        NOTHING is written; retry with that instant only after the coach has confirmed they mean to
+        replace it. A token whose draft no longer exists (published or discarded in another tab)
+        saves a new draft. Every write moves `updatedAt` strictly forward, so an old token is never
+        accepted again. The trainee's plan is untouched by any save.
       security:
         - bearerAuth: []
       parameters:
@@ -4998,16 +5030,58 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Routine"
+              $ref: "#/components/schemas/CoachRoutineDraftRequest"
+            example:
+              replacesDraftUpdatedAt: "2026-10-01T09:14:07.123456Z"
+              document:
+                name: 3-Day Strength Base
+                goal: BUILD_MUSCLE
+                level: BEGINNER
+                daysPerWeek: 3
+                trainingDays:
+                  - dayOfWeek: 1
+                    focus: Lower
+                    estimatedMinutes: 45
+                    exercises:
+                      - {name: Goblet Squat, sets: 3, reps: "8-12", rest: 90s, tempo: 3-1-1,
+                         notes: Chest tall, trackingType: WEIGHT_REPS, durationSeconds: null,
+                         weight: 16 kg}
+                      - {name: Plank, sets: 3, reps: null, rest: 30s, tempo: null, notes: null,
+                         trackingType: DURATION, durationSeconds: 45, weight: null}
+                  - dayOfWeek: 3
+                    focus: Upper
+                    estimatedMinutes: 40
+                    exercises:
+                      - {name: Push-Up, sets: 3, reps: "10", rest: 60s, tempo: null, notes: null,
+                         trackingType: WEIGHT_REPS, durationSeconds: null, weight: bodyweight}
+                  - dayOfWeek: 5
+                    focus: Full
+                    estimatedMinutes: 45
+                    exercises:
+                      - {name: Inverted Row, sets: 3, reps: "8", rest: 90s, tempo: null,
+                         notes: null, trackingType: WEIGHT_REPS, durationSeconds: null,
+                         weight: null}
+                weeklyProgression:
+                  - {week: 2, adjustment: Add one set to the main lifts, rationale: null}
+                constraints: {equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: 3}
+                summary: Three full-body sessions a week.
       responses:
         "200":
-          description: The saved draft
+          description: >-
+            The saved draft. `document` is the STORED document — the trainee's goal and level, empty
+            equipment and injuries, derived day counts — and `updatedAt` is the token the NEXT save
+            must echo.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CoachRoutineDraftResponse"
         "400":
-          description: The routine is invalid
+          description: >-
+            VALIDATION_ERROR — no `document`, or a `Routine` that fails validation (a partial
+            document included); COACH_DRAFT_SUBJECT_FIELD — `constraints.equipment` or
+            `constraints.injuries` is non-empty, `details.field` names which, the value is never
+            echoed; COACH_DRAFT_REPS_ON_DURATION — a `DURATION` exercise carries `reps`,
+            `details.dayOfWeek` and `details.exerciseIndex` locate it. Nothing is written.
           content:
             application/json:
               schema:
@@ -5020,6 +5094,15 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "403":
           description: See GET /coach-portal/clients/{id}/routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            COACH_DRAFT_EXISTS — a draft exists and `replacesDraftUpdatedAt` is absent or is not
+            its `updatedAt`, or another first save for this link committed while this one was in
+            flight. `details.existingUpdatedAt` is the current instant. Nothing is written.
           content:
             application/json:
               schema:
@@ -5120,6 +5203,9 @@ paths:
         comparison, not the digest alone, is what closes the time-of-check/time-of-use window
         (edge case 2's second tab). A constant `confirm: true` was rejected: it carries no
         information about WHAT was acknowledged.
+        The published `goal` and `level` are the trainee's profile answers AT PUBLISH (BUG-195b),
+        not the ones copied into the draft when it was saved; preview resolves them the same way,
+        so the digest covers what is written.
         Writes `plans.source = COACH`, `plans.authored_by` = the coach and `plans.owner_id` = the
         trainee, as a **new** plan row with the previous one deactivated — never an in-place update,
         because the trainee's "Your coach updated your plan" line is keyed on the plan id in slice 1.
@@ -5560,9 +5646,16 @@ paths:
         comparison happens inside the write transaction, so a second tab that saved in between
         causes the retry to be refused AGAIN rather than to overwrite — which is the only thing that
         makes the portal's "this replaces your unpublished draft" sentence true.
-        Apply runs NO policy and reads NOTHING about the trainee: the trainee's injuries and
-        equipment are applied when the plan is PUBLISHED. `unbindableExercises` is advisory — every
-        exercise is copied verbatim and nothing is ever removed except by the coach pressing Remove.
+        Apply runs NO policy: the trainee's injuries and equipment are applied when the plan is
+        PUBLISHED. Since BUG-195b (ADR-0018 D8) apply runs the SAME resolution as
+        `PUT …/routine/draft`: the stored draft's `goal` and `level` are the TRAINEE's own answers,
+        not the template's, and its day counts are derived from `trainingDays`. The template's
+        `weeklyProgression` is NOT carried: the draft's is `[]` (ADR-0018 D10 — it was written about
+        whoever the template was saved from, and no coach control shows it). On a `DURATION`
+        exercise, `reps` is cleared rather than refused: templates saved by the earlier portal
+        carry its "8-12" default on timed exercises, and the plan writer never used it. The
+        template row itself is never changed. `unbindableExercises` is advisory — every exercise is copied
+        verbatim and nothing is ever removed except by the coach pressing Remove.
       security:
         - bearerAuth: []
       parameters:
@@ -5587,8 +5680,8 @@ paths:
                 $ref: "#/components/schemas/CoachTemplateApplyResponse"
         "400":
           description: >-
-            COACH_PLAN_EMPTY for a template with no training day, or
-            COACH_TEMPLATE_NOT_PUBLISHABLE for a day count a plan cannot carry
+            COACH_PLAN_EMPTY for a template with no training day,
+            COACH_TEMPLATE_NOT_PUBLISHABLE for a day count a plan cannot carry.
           content:
             application/json:
               schema:
@@ -6465,6 +6558,18 @@ paths:
         spends and this one does not.
         The trainee's stored allergies, HALAL/KOSHER rules and dislikes decide the meals. This
         request carries none of them and there is no field that could.
+        EV-320a — **the coach's recipes first, the engine as the base, AI as the last resort.**
+        With BOTH `bfit.coach.recipes.placement.enabled` and `bfit.nutrition.recipe-fill.enabled`
+        on (both default off), the deterministic engine builds the week, and each engine meal is
+        replaced by one of the calling coach's recipes when the recipe's `mealSlots` hold the
+        meal's slot (untagged = LUNCH and DINNER), its kcal is within 20% of the engine meal's,
+        the day stays within 10% of its kcal target, above 80% of its protein target and above
+        the calorie floor, and the recipe passes the same checks as placing it by hand (a typed
+        allergy or KOSHER refuses every recipe). Recipes are checked by their declared ingredient keys; the recipe name is matched only against English terms. A recipe is used at most once a day and three
+        times a week. Filled meals read `provenance: COACH_RECIPE` with `placedByYou: true`; the
+        portal counts them for "N of M meals from your recipes". No model is called and nothing
+        is charged, unless the trainee's rules leave the engine no floor, in which case the week
+        is generated by the model exactly as before. With either flag off, nothing changes.
         EV-190a / N1: the OPTIONAL `mealStructure` (meals per day 1-6 + snacks) applies to THIS
         WEEK ONLY. It is recorded on `weekly_meal_plan`, read again by the day regeneration below
         so a regenerated day matches the week it belongs to, and CLEARED when the trainee
@@ -8932,10 +9037,10 @@ components:
         AC1's read-only panel, rendered under "From the trainee's profile — you cannot change these
         here." Display only, and enforced server-side rather than by the UI: the policy resolves
         injuries and equipment from user_profiles, and so does the plans.equipment column the
-        trainee's own app reads on GET /me/plan (BUG-185). A submitted routine document must carry
-        a constraints block (both lists are required on Routine), but submitted equipment is
-        ignored, and submitted injuries are unioned with the stored ones — they can only narrow
-        what may be prescribed, never widen it.
+        trainee's own app reads on GET /me/plan (BUG-185). A draft document must carry a
+        constraints block (both lists are required on Routine), but since BUG-195b (ADR-0018 D9)
+        the coach sends both lists as [] and a non-empty value is refused with 400
+        COACH_DRAFT_SUBJECT_FIELD: a coach never supplies a claim about the trainee's body.
       properties:
         injuries:
           type: array
@@ -8952,6 +9057,29 @@ components:
             stored profile, never hardcoded: [] is "unanswered", which allows every rung and narrows
             nobody. The portal must render no equipment-safety sentence while this is false.
       required: [injuries, equipment, equipmentChecked]
+    CoachRoutineDraftRequest:
+      type: object
+      description: >-
+        BUG-195b / ADR-0018 D1 option 1-D. The WHOLE routine document plus the draft this save may
+        replace. See `PUT /coach-portal/clients/{id}/routine/draft` for which fields the server
+        resolves and which it refuses.
+      required: [document]
+      properties:
+        replacesDraftUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            The `updatedAt` of the draft this save may replace, echoed VERBATIM from the last GET,
+            PUT or apply response for this draft, or from a 409's `details.existingUpdatedAt`.
+            Absent or null means "only if there is no draft".
+        document:
+          allOf:
+            - $ref: "#/components/schemas/Routine"
+          description: >-
+            The full routine document. `goal`, `level`, `constraints.equipment` and
+            `constraints.injuries` are the TRAINEE's answers: send `goal`/`level` as served and
+            both lists as `[]`; the response carries what was stored.
     CoachRoutineDraftResponse:
       type: object
       description: The coach's unpublished draft for this link.
@@ -9019,7 +9147,9 @@ components:
             The routine document. `constraints.equipment` and `constraints.injuries` are @NotNull on
             the shared Routine type, so a caller CANNOT omit them — and the server reads neither as
             a claim about anybody: both are stored empty and any row where they are not is refused
-            when it is read back.
+            when it is read back. On a `DURATION` exercise `reps` is stored as null (BUG-195b): the
+            earlier portal sent its "8-12" default on timed exercises, and the value is normalised
+            rather than refused so that saving keeps working.
     CoachTemplateRenameRequest:
       type: object
       description: A new name for an existing template.
@@ -9214,6 +9344,22 @@ components:
             type: string
             maxLength: 300
             description: Not blank once trimmed. No control character or line break.
+        mealSlots:
+          type: array
+          nullable: true
+          minItems: 1
+          maxItems: 4
+          items:
+            type: string
+            enum: [BREAKFAST, LUNCH, DINNER, SNACK]
+          description: >-
+            EV-320a. OPTIONAL. Which slots of a week "Apply week" may fill with this recipe. A
+            repeated value is folded; the stored order is BREAKFAST, LUNCH, DINNER, SNACK. Omitted on
+            create: the recipe is untagged, and the fill treats it as LUNCH and DINNER only. Omitted
+            on update: the stored tags are KEPT (so a client that predates the field cannot wipe
+            them); sent on update, they replace the stored ones. `[]`, more than 4 values, or any
+            other value is 400 VALIDATION_ERROR naming `mealSlots`.
+          example: [LUNCH, DINNER]
     CoachRecipeIngredientRequest:
       type: object
       required: [key, quantity, unit]
@@ -9270,6 +9416,16 @@ components:
           description: >-
             Keys in this recipe that are no longer in the vocabulary (a key can be retired after the
             recipe was saved). The recipe still reads. Empty in the normal case.
+        mealSlots:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [BREAKFAST, LUNCH, DINNER, SNACK]
+          description: >-
+            EV-320a. The slots "Apply week" may fill with this recipe, in BREAKFAST, LUNCH, DINNER,
+            SNACK order. null when untagged (saved before the field existed, or without it), which
+            the fill treats as LUNCH and DINNER only.
     CoachRecipeIngredientResponse:
       type: object
       properties:
@@ -9305,6 +9461,13 @@ components:
           type: integer
         ingredientCount:
           type: integer
+        mealSlots:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [BREAKFAST, LUNCH, DINNER, SNACK]
+          description: EV-320a. The recipe's meal slots, or null when untagged (read as LUNCH and DINNER).
     CoachRecipeListResponse:
       type: object
       description: The coach's recipe library, alphabetical by name.

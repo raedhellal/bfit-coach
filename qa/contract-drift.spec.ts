@@ -424,6 +424,8 @@ const REQUEST_FACING_EXPECTED = [
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
+  CoachRoutineDraftRequest:
+    "PUT …/routine/draft's BUG-195b body `{ replacesDraftUpdatedAt, document }` (on api main at 741ed39, arrived with EV-321b's re-vendor). NOT a safe omission: it is BUG-195 itself. This branch, like main, still sends the pre-195b body from an interface tagged `@wire Routine` (held red by KNOWN_REQUIRED_OMISSIONS), so Save draft is a 400 VALIDATION_ERROR against 741ed39 whether or not this entry exists (`CoachRoutineController` takes `@Valid @RequestBody CoachRoutineDraftRequest`, whose `document` is `@NotNull`; the old body has no `document`). The fix is `fix/bug195c-portal-routine-draft`, which tags the type. Whichever of BUG-195c / EV-321b merges SECOND deletes this entry, or the exact comparison goes red.",
   InitialiseTraineeRequest:
     "POST /coach-portal/trainees (EV-204a2, arrived with the EV-278c re-vendor at b-fit-api c69c287): the coach initialises a trainee's account. The portal sends NO request to it yet; EV-204b (b-fit-coach, 'Add a trainee') tags the type — delete this entry when it lands, or the exact comparison goes red.",
   ResendInvitationRequest:
