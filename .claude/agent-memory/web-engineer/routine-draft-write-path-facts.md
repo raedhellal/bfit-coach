@@ -45,6 +45,13 @@ draft and Publish work. Facts that are decisions, not details:
   at `GET /api/fixture/calls` → `draftPuts` (AC3.10's witness; the browser never sees
   the body).
 
+- **Hiding a control is not clearing its value** (staff B1, round 2). The Reps field is
+  hidden for a timed exercise, so reps left there by the OLD template editor were
+  unseeable and uncleanable, and template apply 400'd with `COACH_DRAFT_REPS_ON_DURATION`
+  under the wrong sentence. `withoutDurationReps` now runs in BOTH body builders, and
+  templateActions maps the code. When a control is conditional, check every stored
+  document that predates the condition — and every write path, not only the one you built.
+
 Live-proof traps: `POST /coach-portal/invites` answers **201**; the seed catalog names
 are "Push Up" (not Push-Up) and search sorts by name ("Copenhagen Plank" before
 "Plank" for q=plank — match `^name` and take `.first()`); no trainee endpoint clears a
