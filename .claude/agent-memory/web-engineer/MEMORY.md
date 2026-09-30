@@ -51,4 +51,4 @@
 - [French portal, EV-324](coach-portal-i18n-facts.md) — Record maps escape `satisfies Copy`; api text stays English; fixture signs in anyone; AC2 beats AC3 on EN dates
 - [Routine draft write path (BUG-195c)](routine-draft-write-path-facts.md) — one editor, forDraftSave, token echoed as a string, 409 dialog, 4-e partition, live traps
 - [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale
-- [Recipe meal slots (EV-320c/b)](recipe-meal-slots-portal-facts.md) — update sends mealSlots only if changed vs baseline; null=Lunch+Dinner; wrapped-label select name trap
+- [Recipe meal slots + count line (EV-320c/b)](recipe-meal-slots-portal-facts.md) — mealSlots sent only if changed; count = COACH_RECIPE && placedByYou; fixture fill cookie

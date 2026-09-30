@@ -18,6 +18,7 @@ import {
   swapOptionsAction,
 } from "@/lib/nutritionActions";
 import { settled } from "@/lib/settled";
+import { recipeShare } from "@/lib/recipeShare";
 import type { MealWeekView, PlannedMealView, SwapCandidate } from "@/lib/coachApi";
 
 /**
@@ -126,6 +127,7 @@ export function NutritionWeekCard({
   const trainee = truncateName(traineeDisplayName);
   const first = firstName(traineeDisplayName, copy.locale);
   const recipeMeals = replaceableRecipeMeals(week);
+  const share = recipeShare(week);
 
   /**
    * A write answered 403 — the link ended under the coach (the trainee revoked, in
@@ -289,6 +291,27 @@ export function NutritionWeekCard({
           </Button>
         }
       />
+
+      {/*
+        EV-320 AC17 — one line: how much of the week comes from this coach's recipes. Hidden
+        while recipe placement is off (`recipePlacementEnabled`, the only flag the coach wire
+        serves; the fill flag is not on it) and when there is no week to count. A zero is
+        shown ("0 of 28"): it is the true answer after an engine-only apply (edge case 1).
+        A status region, so the new count is announced after Apply.
+      */}
+      {recipePlacementEnabled === true && share.totalMeals > 0 && (
+        <p
+          role="status"
+          data-testid="recipe-share"
+          data-recipe-meals={share.recipeMeals}
+          data-total-meals={share.totalMeals}
+          style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "var(--ink-2)", lineHeight: 1.5 }}
+        >
+          {share.recipeMeals === share.totalMeals
+            ? copy.nutrition.recipeShareAll
+            : copy.nutrition.recipeShare(share.recipeMeals, share.totalMeals)}
+        </p>
+      )}
 
       {error && (
         <p role="alert" style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)" }}>

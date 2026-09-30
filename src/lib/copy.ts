@@ -1046,6 +1046,16 @@ export const en = {
      */
     mealKept: "Kept",
     mealKeptTitle: "Locked by the trainee — kept when a week is applied",
+    /**
+     * EV-320 AC17 — the week's recipe share. `n` counts the meals of YOUR recipes
+     * (`COACH_RECIPE` and `placedByYou`): a recipe another coach placed is not "yours",
+     * so it is not counted in a sentence that says "your recipes". The verb agrees with
+     * n ("1 of 28 meals comes"); the story's template is the plural form.
+     */
+    recipeShare: (count: number, total: number) =>
+      `${count} of ${total} meals ${count === 1 ? "comes" : "come"} from your recipes`,
+    /** AC17, verbatim — when n = m. */
+    recipeShareAll: "The whole week comes from your recipes",
     // AC3, verbatim — EV-015's locale lock, removed by EV-073 and not before.
     englishOnly:
       "Meal plans are generated in English. Ingredient checks run on the English names.",

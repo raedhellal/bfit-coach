@@ -9,8 +9,8 @@ metadata:
 added meal-slot chips to the recipe editor plus badges and a slot filter on /recipes.
 **The ID is disputed.** The hub story names the portal row **EV-320b** (chips + the
 "N repas sur M" count line, AC16–AC18) and says "EV-320c" was withdrawn. The orchestrator
-used EV-320c as a provisional ID. senior-po settles it. AC17's count line is NOT on this
-branch.
+used EV-320c as a provisional ID. senior-po settles it. AC17's count line was added in a
+second commit on the same branch.
 
 **Why:** the api's `mealSlots` is not whole-representation. On update, omitted or JSON
 `null` KEEPS the stored tags. `[]` is a 400, so a tagged recipe can never go back to
@@ -39,6 +39,22 @@ untagged. On read, `null` means untagged, and the fill treats it as LUNCH + DINN
   "Petit-déjeuner". Use `exact: true` for every slot name.
 - Chips before hydration: click only if `aria-pressed` is not yet the target state. A
   blind retry toggles the chip back (`setChip` in the spec).
+
+**AC17's count line** (`src/lib/recipeShare.ts`, the week card):
+- Needed no api change. Every coach meal already carries `provenance` + `placedByYou`, and
+  the fill writes `coachRecipe(applyingCoach)`.
+- It counts `COACH_RECIPE && placedByYou`, not the story's bare `COACH_RECIPE`: Vera's
+  previous-coach recipe is not "vos recettes".
+- The verb agrees with n ("1 repas sur 28 vient"). Both are deviations flagged to senior-po.
+- It is hidden only on `recipePlacementEnabled: false`. The coach wire does NOT expose the
+  fill flag, so with placement on and fill off an apply reads "0 of 28", which is true.
+- The fixture's apply runs a REDUCED port of the fill, only when the context sets the
+  `evoli_fixture_recipe_fill=on` cookie. Off by default, because on-by-default would rewrite
+  every earlier apply spec's week.
+- `coach.fill@evoli.fit` has 12 slot-tagged recipes that fill all 28 of Dana's meals. Its
+  breakfasts sit at the top of the engine range because an engine day (1770) starts BELOW
+  the day guard's ±10 % band (1782). The breakfast is tried first, so a lower breakfast is
+  refused and the week ends at 27/28.
 
 See [[recipe-library-portal-facts]], [[progress-goal-absent-key-semantics]],
 [[a-whole-representation-put-needs-a-required-nullable-type]] (this field is the exception to that rule).

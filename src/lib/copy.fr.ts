@@ -502,6 +502,10 @@ export const fr = {
     noMeals: "Aucun repas prévu ce jour-là.",
     mealKept: "Conservé",
     mealKeptTitle: "Verrouillé par le client — conservé quand une semaine est appliquée",
+    /** AC17. House rule: 0 and 1 take the singular, so "1 repas sur 28 vient…". */
+    recipeShare: (count: number, total: number) =>
+      `${n(count)} repas sur ${n(total)} ${count < 2 ? "vient" : "viennent"} de vos recettes`,
+    recipeShareAll: "Toute la semaine vient de vos recettes",
     /** Still true in French, and more so: the generated meal names are English (EV-015). */
     englishOnly:
       "Les plans de repas sont générés en anglais. Les vérifications d'ingrédients portent sur les noms anglais.",
