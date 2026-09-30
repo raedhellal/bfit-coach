@@ -62,6 +62,7 @@ export default async function RecipePage({ params }: { params: { id: string } })
           recipeId={loaded.recipe.id}
           initial={fromRecipe(loaded.recipe)}
           unknownKeys={loaded.recipe.unknownKeys}
+          storedMealSlots={loaded.recipe.mealSlots}
         />
       ) : (
         <ClientNotice

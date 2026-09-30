@@ -1046,6 +1046,16 @@ export const en = {
      */
     mealKept: "Kept",
     mealKeptTitle: "Locked by the trainee — kept when a week is applied",
+    /**
+     * EV-320 AC17 — the week's recipe share. `n` counts the meals of YOUR recipes
+     * (`COACH_RECIPE` and `placedByYou`): a recipe another coach placed is not "yours",
+     * so it is not counted in a sentence that says "your recipes". The verb agrees with
+     * n ("1 of 28 meals comes"); the story's template is the plural form.
+     */
+    recipeShare: (count: number, total: number) =>
+      `${count} of ${total} meals ${count === 1 ? "comes" : "come"} from your recipes`,
+    /** AC17, verbatim — when n = m. */
+    recipeShareAll: "The whole week comes from your recipes",
     // AC3, verbatim — EV-015's locale lock, removed by EV-073 and not before.
     englishOnly:
       "Meal plans are generated in English. Ingredient checks run on the English names.",
@@ -1473,6 +1483,17 @@ export const en = {
     macroLine: (kcal: number, p: number, c: number, f: number) =>
       `${kcal} kcal · P ${p} g · C ${c} g · F ${f} g`,
     ingredientCount: (n: number) => `${n} ingredient${n === 1 ? "" : "s"}`,
+    /**
+     * EV-320c — an UNTAGGED recipe's badge (`mealSlots: null`). It names what the week fill
+     * uses it for (`CoachRecipeLibrary.UNTAGGED_SLOTS`) and says it is the default, never
+     * "no meal time": null is not an empty list.
+     */
+    slotsDefault: (lunch: string, dinner: string) => `${lunch}, ${dinner} (default)`,
+    slotsDefaultTitle: "No meal time saved: this recipe is used for lunch and dinner by default.",
+    /** The library's filter. It filters on what the fill reads, so untagged counts as lunch and dinner. */
+    filterLabel: "Meal time",
+    filterAll: "All meal times",
+    filterEmpty: "No recipe for this meal time yet.",
     edit: "Edit",
     remove: "Delete",
 
@@ -1522,6 +1543,20 @@ export const en = {
     removeStep: "Remove",
     removeStepNamed: (n: number) => `Remove step ${n}`,
     stepsFull: "A recipe has at most 15 steps.",
+    /**
+     * EV-320c — the meal-slot chips (api EV-320a). The note is scoped to APPLYING A WEEK on
+     * purpose: that is the only place the api reads the tags (the swap and a placement do
+     * not), and while the fill's flag is off a recipe is not used there at all, which the
+     * sentence also leaves true.
+     */
+    slotsHeading: "Meal times",
+    slotsNote: "When you apply a meal week, this recipe is only used for the meals chosen here.",
+    /** EV-320 AC16, verbatim: Save's reason while no chip is on. */
+    slotsRequired: "Choose at least one meal type.",
+    /** The api's 400 naming `mealSlots` (unreachable from four toggles; kept addressed). */
+    slotsInvalid: "Choose one to four meal times.",
+    /** Shown on a stored UNTAGGED recipe while its chips are untouched. */
+    slotsUntagged: "No meal time saved yet: this recipe is used for lunch and dinner by default.",
     save: "Save recipe",
     saving: "Saving…",
     saved: "Recipe saved.",

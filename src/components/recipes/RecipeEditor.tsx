@@ -3,17 +3,23 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { UiIcon } from "@/components/ui/icons";
 import type { Copy } from "@/lib/copy";
 import { useCopy } from "@/lib/i18n/client";
 import {
   MACRO_FIELDS,
+  MEAL_SLOTS,
   MAX_INGREDIENTS,
   MAX_STEPS,
   SEARCH_MAX,
   UNITS,
+  UNTAGGED_SLOTS,
+  effectiveSlots,
   forSave,
   ingredientAddress,
   localProblems,
+  orderSlots,
+  sameSlots,
   serverProblem,
   stepAddress,
   type FieldAddress,
@@ -21,6 +27,7 @@ import {
   type MacroField,
   type Problem,
   type RecipeDraft,
+  type SlotBaseline,
 } from "@/lib/recipeDocument";
 import {
   createRecipeAction,
@@ -29,7 +36,7 @@ import {
 } from "@/lib/recipeActions";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import type { CoachIngredientOption, RecipeUnit } from "@/lib/coachApi";
+import type { CoachIngredientOption, MealSlot, RecipeUnit } from "@/lib/coachApi";
 
 /**
  * EV-256b AC2/AC4/AC6 — the recipe editor.
@@ -52,6 +59,12 @@ import type { CoachIngredientOption, RecipeUnit } from "@/lib/coachApi";
  * 4. **No autosave; the unsaved-changes guard holds the work** — the template editor's
  *    arrangement, for the template editor's reason: a coach typing a recipe is holding
  *    state the server does not have.
+ *
+ * EV-320c adds the meal-slot chips. The one rule they add: **a save never untags or
+ * re-tags a recipe the coach did not change.** The chips show what the fill uses (an
+ * untagged recipe shows Lunch + Dinner, marked as the default), and `slotsForSave` sends
+ * `mealSlots` on an update only when the selection differs from `slotBaseline` — the
+ * server's tags from the last read or the last SUCCESSFUL save.
  */
 
 const macroLabels = (copy: Copy): Record<MacroField, string> => ({
@@ -80,12 +93,15 @@ export function RecipeEditor({
   recipeId: initialRecipeId,
   initial,
   unknownKeys = [],
+  storedMealSlots = null,
 }: {
   /** Null for "New recipe": the first successful save is a POST. */
   recipeId: string | null;
   initial: RecipeDraft;
   /** `CoachRecipeResponse.unknownKeys` — lines whose key the api has since retired. */
   unknownKeys?: string[];
+  /** `CoachRecipeResponse.mealSlots` as READ (null = untagged). Ignored for a new recipe. */
+  storedMealSlots?: MealSlot[] | null;
 }) {
   const copy = useCopy();
   const router = useRouter();
@@ -99,6 +115,19 @@ export function RecipeEditor({
   const leaving = useUnsavedChanges(dirty);
   /** The line to focus once it has rendered — the one the coach just picked. */
   const [focusLine, setFocusLine] = useState<number | null>(null);
+  /**
+   * What the server holds for the slots. Moves ONLY on a successful save (to the tags the
+   * api answered with), never when a save is sent: a refused save leaves the change
+   * pending, so the next Save still sends it.
+   */
+  /**
+   * Counts chip toggles. A save remembers the count it was sent at; if it is unchanged
+   * when the save succeeds, the chips are re-synced to the tags the server answered with.
+   */
+  const slotEdits = useRef(0);
+  const [slotBaseline, setSlotBaseline] = useState<SlotBaseline>(
+    initialRecipeId === null ? { recipe: "new" } : { recipe: "stored", mealSlots: storedMealSlots }
+  );
 
   const local = localProblems(draft, copy);
   const saveable = local.length === 0;
@@ -170,9 +199,18 @@ export function RecipeEditor({
     );
   }
 
+  function toggleSlot(slot: MealSlot) {
+    slotEdits.current += 1;
+    const next = draft.mealSlots.includes(slot)
+      ? draft.mealSlots.filter((s) => s !== slot)
+      : orderSlots([...draft.mealSlots, slot]);
+    edit({ ...draft, mealSlots: next }, (address) => address === "mealSlots");
+  }
+
   function save() {
     if (!saveable || pending) return;
-    const body = forSave(draft);
+    const body = forSave(draft, slotBaseline);
+    const slotEditsAtSend = slotEdits.current;
     const sentLines = draft.ingredients.map((l) => ({ key: l.key, label: l.label }));
     startTransition(async () => {
       const result = await settled(
@@ -189,6 +227,17 @@ export function RecipeEditor({
       setRefused([]);
       setNotice(copy.recipes.saved);
       setDirty(false);
+      setSlotBaseline({ recipe: "stored", mealSlots: result.recipe.mealSlots });
+      /*
+       * Re-sync the chips to what the server now holds. After a save that OMITTED the key,
+       * that can be another tab's tags; leaving the stale chips on screen would make the
+       * next untouched save differ from the new baseline and send them back (staff review).
+       * Not if the coach toggled a chip mid-flight: that choice is theirs and still unsaved.
+       */
+      if (slotEdits.current === slotEditsAtSend) {
+        const stored = effectiveSlots(result.recipe.mealSlots);
+        setDraft((current) => ({ ...current, mealSlots: stored }));
+      }
       if (recipeId === null) {
         /**
          * A create becomes an edit WITHOUT a router navigation — the template editor's
@@ -214,6 +263,17 @@ export function RecipeEditor({
 
   const full = draft.ingredients.length >= MAX_INGREDIENTS;
   const formProblem = refused.find((p) => p.at === "form") ?? null;
+  /** AC16's reason, shown under Save — once, so it is not beside the chips as well. */
+  const slotsReason = local.find((p) => p.at === "mealSlots") ?? null;
+  const otherLocal = local.some((p) => p.at !== "mealSlots");
+  /**
+   * A stored UNTAGGED recipe whose chips still show the default: say why Lunch and Dinner
+   * are on. The moment the coach changes them, they will be sent and the note is untrue.
+   */
+  const showsDefault =
+    slotBaseline.recipe === "stored" &&
+    slotBaseline.mealSlots === null &&
+    sameSlots(draft.mealSlots, UNTAGGED_SLOTS);
 
   return (
     <div>
@@ -256,6 +316,48 @@ export function RecipeEditor({
             <FieldMessage problem={problemAt("name")} />
           </div>
           {dirty && <Badge tone="red">{copy.recipes.unsavedBadge}</Badge>}
+        </div>
+      </Card>
+
+      {/* ── meal times (EV-320c) ─────────────────────────────────────────── */}
+      <Card style={{ marginBottom: 16 }}>
+        <div data-field="mealSlots">
+          <h2
+            id="recipe-slots-heading"
+            className="dt"
+            style={{ margin: 0, fontSize: 15.5, fontWeight: 600, color: "var(--ink)" }}
+          >
+            {copy.recipes.slotsHeading}
+          </h2>
+          <p style={{ margin: "6px 0 12px", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+            {copy.recipes.slotsNote}
+          </p>
+          <div
+            role="group"
+            aria-labelledby="recipe-slots-heading"
+            aria-describedby={slotsReason ? "recipe-slots-reason" : undefined}
+            data-slots={draft.mealSlots.join(",")}
+            style={{ display: "flex", flexWrap: "wrap", gap: 8 }}
+          >
+            {MEAL_SLOTS.map((slot) => (
+              <SlotChip
+                key={slot}
+                label={copy.nutrition.mealSlots[slot] ?? slot}
+                on={draft.mealSlots.includes(slot)}
+                onToggle={() => toggleSlot(slot)}
+              />
+            ))}
+          </div>
+          {showsDefault && (
+            <p
+              data-testid="recipe-slots-default"
+              style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}
+            >
+              {copy.recipes.slotsUntagged}
+            </p>
+          )}
+          {/* Only the SERVER's refusal here: the local "none on" reason is AC16's, under Save. */}
+          <FieldMessage problem={refused.find((p) => p.at === "mealSlots") ?? null} />
         </div>
       </Card>
 
@@ -403,7 +505,13 @@ export function RecipeEditor({
           <Button icon="check" onClick={save} disabled={pending || !saveable}>
             {pending ? copy.recipes.saving : copy.recipes.save}
           </Button>
-          {!saveable && (
+          {slotsReason && (
+            // EV-320 AC16 — the button's reason while no meal type is on.
+            <p id="recipe-slots-reason" style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+              {slotsReason.message}
+            </p>
+          )}
+          {otherLocal && (
             <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>{copy.recipes.notReady}</p>
           )}
           {notice && (
@@ -438,6 +546,41 @@ export function RecipeEditor({
         </p>
       </Modal>
     </div>
+  );
+}
+
+/**
+ * One meal-time chip: a toggle BUTTON (`aria-pressed`), 44 px high like every control
+ * here. The on state is a tick as well as a colour, so it does not rest on colour alone.
+ */
+function SlotChip({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onToggle}
+      style={{
+        minHeight: MIN_TOUCH_TARGET,
+        padding: "0 14px",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        borderRadius: "var(--r-pill)",
+        border: on ? "1px solid var(--blue-400)" : "1px solid var(--border-2)",
+        background: on ? "var(--blue-50)" : "var(--surface)",
+        color: on ? "var(--blue-700)" : "var(--ink-2)",
+        fontFamily: "var(--font-body)",
+        fontSize: 13.5,
+        fontWeight: 600,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span aria-hidden="true" style={{ display: "inline-flex", width: 16, justifyContent: "center" }}>
+        {on ? <UiIcon name="check" size={15} /> : null}
+      </span>
+      {label}
+    </button>
   );
 }
 

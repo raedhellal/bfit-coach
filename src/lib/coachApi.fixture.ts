@@ -1442,7 +1442,16 @@ interface StoredRecipe {
   fatG: number;
   ingredients: { key: string; quantity: number; unit: RecipeUnit }[];
   steps: string[];
+  /**
+   * EV-320a's V74 `meal_slots`: `null` is UNTAGGED (every recipe saved before V74, or
+   * without the field) and is kept as null, never as `[]` — the fill reads it as LUNCH +
+   * DINNER, and the portal must meet a real null to prove it does not read it as nothing.
+   */
+  mealSlots: MealSlot[] | null;
 }
+
+/** `WeeklyMealPlan.MealSlot` order — the order `CoachRecipeRules.mealSlots` folds to. */
+const FIXTURE_MEAL_SLOT_ORDER: readonly MealSlot[] = B.mealSlotValues;
 
 function toRecipeResponse(row: StoredRecipe): CoachRecipe {
   return {
@@ -1456,6 +1465,7 @@ function toRecipeResponse(row: StoredRecipe): CoachRecipe {
     steps: [...row.steps],
     // D26.2 (a): a retired key never breaks a read; it is reported.
     unknownKeys: row.ingredients.map((l) => l.key).filter((key) => !VOCABULARY_SET.has(key)),
+    mealSlots: row.mealSlots === null ? null : [...row.mealSlots],
   };
 }
 
@@ -1481,6 +1491,8 @@ function seedRecipes(): StoredRecipe[] {
         { key: "olive_oil", quantity: 10, unit: "ml" },
       ],
       steps: ["Cook the rice.", "Grill the chicken."],
+      // EV-320c: UNTAGGED, as every recipe saved before V74 reads — the "(default)" row.
+      mealSlots: null,
     },
     {
       id: "8e3f1b22-0000-4000-8000-0000000000c2",
@@ -1495,6 +1507,7 @@ function seedRecipes(): StoredRecipe[] {
         { key: "mixed_berries", quantity: 80, unit: "g" },
       ],
       steps: ["Mix everything the night before.", "Keep it in the fridge."],
+      mealSlots: ["BREAKFAST", "SNACK"],
     },
     {
       id: "8e3f1b22-0000-4000-8000-0000000000c3",
@@ -1511,6 +1524,7 @@ function seedRecipes(): StoredRecipe[] {
         { key: "oats", quantity: 40, unit: "g" },
       ],
       steps: ["Blend everything.", "Cook in a hot pan."],
+      mealSlots: ["BREAKFAST"],
     },
     /**
      * EV-256e. EV-256c AC4's own example: every ingredient is excluded by NO rule, and
@@ -1530,6 +1544,7 @@ function seedRecipes(): StoredRecipe[] {
         { key: "tomato_passata", quantity: 150, unit: "g" },
       ],
       steps: ["Soften the onion.", "Simmer the lentils in the passata."],
+      mealSlots: ["DINNER"],
     },
     /**
      * EV-256e — an 80-character name, the api's maximum, so the picker, the confirm and
@@ -1552,6 +1567,9 @@ function seedRecipes(): StoredRecipe[] {
         { key: "olive_oil", quantity: 10, unit: "ml" },
       ],
       steps: ["Roast the sweet potato and chickpeas.", "Wilt the spinach and dress with lemon."],
+      // Tagged Lunch + Dinner EXPLICITLY: the same two slots as an untagged recipe, drawn
+      // as two tags and without "(default)", so a spec can tell the two apart.
+      mealSlots: ["LUNCH", "DINNER"],
     },
   ];
 }
@@ -1580,6 +1598,7 @@ function seedC1Recipes(): StoredRecipe[] {
     fatG,
     ingredients,
     steps: ["Prepare everything.", "Cook and serve."],
+    mealSlots: null,
   });
   return [
     row(1, "Salmon quinoa", 610, 42, 50, 26, [
@@ -1613,6 +1632,45 @@ function seedC1Recipes(): StoredRecipe[] {
 }
 
 /**
+ * EV-320c — `coach.fill@evoli.fit`: the EV-320 story's library L in miniature. Three
+ * recipes per slot, each TAGGED for its slot and sized within the fill's window
+ * (±20 % kcal, ≥ 70 % protein) of every `MEAL_POOL` meal of that slot, so an apply with
+ * the fill on replaces ALL 28 of an ordinary trainee's meals ("Toute la semaine…").
+ * 12 eligible recipes → weekly cap max(2, ceil(28 / 12)) = 3, and 3 × 3 ≥ 7 per slot.
+ * Macros add up (4·P + 4·C + 9·F within the api's tolerance), like recipes the api accepts.
+ */
+function seedFillRecipes(): StoredRecipe[] {
+  const rows: [string, MealSlot, number, number, number, number, string][] = [
+    // Breakfasts sit at the TOP of the engine's range: an engine day can start below the
+    // day guard's band (1770 vs 1782 for a 1980 target), and the breakfast is the first
+    // substitution tried, so it has to raise the day or it is refused.
+    ["Skyr, oat and berry bowl", "BREAKFAST", 440, 32, 54, 10, "greek_yogurt"],
+    ["Egg and spinach wrap", "BREAKFAST", 450, 30, 42, 18, "egg"],
+    ["Protein porridge", "BREAKFAST", 445, 31, 60, 8, "oats"],
+    ["Chicken couscous salad", "LUNCH", 600, 45, 60, 20, "chicken_breast"],
+    ["Turkey and rice bowl", "LUNCH", 610, 46, 66, 18, "turkey_breast"],
+    ["Tofu noodle bowl", "LUNCH", 590, 40, 62, 20, "tofu"],
+    ["Salmon, potato and greens", "DINNER", 620, 42, 55, 24, "salmon_fillet"],
+    ["Beef and vegetable stir-fry", "DINNER", 630, 44, 60, 22, "lean_beef"],
+    ["Cod with quinoa", "DINNER", 600, 45, 58, 18, "cod_fillet"],
+    ["Cottage cheese and apple", "SNACK", 200, 20, 20, 4, "apple"],
+    ["Whey and banana shake", "SNACK", 210, 24, 22, 3, "banana"],
+    ["Greek yogurt and almonds", "SNACK", 210, 19, 12, 11, "almonds"],
+  ];
+  return rows.map(([name, slot, kcal, proteinG, carbsG, fatG, key], i) => ({
+    id: `8e3f1b22-0000-4000-8000-0000000320${String(i).padStart(2, "0")}`,
+    name,
+    kcal,
+    proteinG,
+    carbsG,
+    fatG,
+    ingredients: [{ key, quantity: 150, unit: "g" as RecipeUnit }],
+    steps: ["Prepare and serve."],
+    mealSlots: [slot],
+  }));
+}
+
+/**
  * EV-272 edge case 5 — a library at EV-256a's cap (100), so "typing stays responsive"
  * is measured on the largest list a coach can have. Names are distinct and sortable.
  */
@@ -1626,6 +1684,7 @@ function seedCapRecipes(): StoredRecipe[] {
     fatG: 10,
     ingredients: [{ key: "rice", quantity: 100, unit: "g" as RecipeUnit }],
     steps: ["Cook."],
+    mealSlots: null,
   }));
 }
 
@@ -1639,6 +1698,7 @@ function seedCapRecipes(): StoredRecipe[] {
  */
 const DEFAULT_LIBRARY = "default";
 const COACH_LIBRARIES: Record<string, () => StoredRecipe[]> = {
+  "coach.fill@evoli.fit": seedFillRecipes,
   "coach.c1@evoli.fit": seedC1Recipes,
   "coach.c0@evoli.fit": () => [],
   "coach.c100@evoli.fit": seedCapRecipes,
@@ -1762,6 +1822,21 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
       await beanRefusal(`ingredients[${i}].unit`, "must be one of g, ml, piece");
     }
   }
+  // EV-320a — `@Size(min = 1, max = 4) List<@NotNull @Pattern(MEAL_SLOT) String> mealSlots`.
+  // JSON null is Java null: exactly "omitted" (`CoachRecipeRules.mealSlots(null)` → null).
+  const rawSlots = (body as { mealSlots?: unknown }).mealSlots;
+  if (rawSlots !== undefined && rawSlots !== null) {
+    if (!Array.isArray(rawSlots) || rawSlots.length < B.mealSlotsMin || rawSlots.length > B.mealSlotsMax) {
+      await beanRefusal("mealSlots", `must hold between ${B.mealSlotsMin} and ${B.mealSlotsMax} meal slots`);
+    }
+    const values = rawSlots as unknown[];
+    for (let i = 0; i < values.length; i += 1) {
+      if (values[i] === null || values[i] === undefined) await beanRefusal(`mealSlots[${i}]`, "is required");
+      if (typeof values[i] !== "string" || !(B.mealSlotValues as readonly string[]).includes(values[i] as string)) {
+        await beanRefusal(`mealSlots[${i}]`, "must be one of BREAKFAST, LUNCH, DINNER, SNACK");
+      }
+    }
+  }
 
   // ── 2. CoachRecipeRules: name, steps, ingredients, macros ───────────────────
   const name = javaNormalise(body.name);
@@ -1809,6 +1884,12 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
     fatG: body.fatG,
     ingredients: body.ingredients.map((l) => ({ key: l.key, quantity: l.quantity, unit: l.unit })),
     steps,
+    // Folded to the enum's order with no repeats (staff challenge S5); null when omitted.
+    // `createRecipe` stores that null (untagged); `updateRecipe` reads it as "keep".
+    mealSlots:
+      rawSlots === undefined || rawSlots === null
+        ? null
+        : FIXTURE_MEAL_SLOT_ORDER.filter((slot) => (rawSlots as unknown[]).includes(slot)),
   };
 }
 
@@ -2723,7 +2804,8 @@ function buildWeek(
   seeds: number[],
   pool: typeof MEAL_POOL = MEAL_POOL
 ): MealWeekView {
-  return { weekStart, days: seeds.map((seed, i) => buildDay(weekStart, i, seed, pool)) };
+  // Every week the fixture builds is ACTIVE, as a finished generation or apply is on the api.
+  return { weekStart, days: seeds.map((seed, i) => buildDay(weekStart, i, seed, pool)), status: "ACTIVE" };
 }
 
 /** Rewrite one slot on one day. Fixture seeding only. */
@@ -2927,6 +3009,17 @@ async function fixtureSwitch(name: string): Promise<string | null> {
 async function placementOff(id: string): Promise<boolean> {
   return PLACEMENT_OFF_IDS.has(id) || (await fixtureSwitch("evoli_fixture_placement")) === "off";
 }
+/**
+ * EV-320c — ⚠ fixture affordance: `evoli_fixture_week_status=<STATUS>` serves the nutrition
+ * READ's week in another lifecycle state (one browser context only), so AC17's "ACTIVE
+ * only" is testable without porting EV-071b's refusal. The meals are left as they are, and
+ * the stored state is not touched: a shallow copy is served.
+ */
+async function withServedWeekStatus(state: NutritionState): Promise<NutritionState> {
+  const status = await fixtureSwitch("evoli_fixture_week_status");
+  if (!state.week || (status !== "GENERATING" && status !== "REFUSED" && status !== "ARCHIVED")) return state;
+  return { ...state, week: { ...state.week, status } };
+}
 async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
 }
@@ -2957,6 +3050,95 @@ function initialNutrition(id: string): NutritionState {
     pool: seeded.pool ?? MEAL_POOL,
     excludedKeys: seeded.excludedKeys ?? (halal ? HALAL_EXCLUDED_KEYS : new Set()),
     excludedNameWords: seeded.excludedNameWords ?? (halal ? HALAL_NAME_WORDS : []),
+  };
+}
+
+/**
+ * EV-320a's week fill (`CoachRecipeFill` + `RecipeFit`, b-fit-api `0d58432`), REDUCED to
+ * what the portal can observe: which meals come back `COACH_RECIPE` + `placedByYou`.
+ * Ported rules: no recipe at all for a typed allergy or KOSHER; a retired key, an excluded
+ * key or an excluded name word drops a recipe; a slot must be in the recipe's tags (null =
+ * LUNCH + DINNER); once per day; weekly cap max(2, ceil(meals / eligible)); kcal within
+ * ±20 %, protein ≥ 70 %; lowest score wins, ties rotate on (epochDay + dayIndex); the day
+ * guard (floor, and ±10 % of the target when the fixture has one); locked and eaten meals
+ * are skipped. NOT ported: portion details, ingredients on the meal, telemetry.
+ *
+ * ⚠ Fixture affordance: OFF unless the browser context sets `evoli_fixture_recipe_fill=on`
+ * — the api's flag also defaults off, and turning it on for every apply would rewrite the
+ * weeks every earlier nutrition spec asserts.
+ */
+async function fillFromCoachRecipes(state: NutritionState, week: MealWeekView): Promise<MealWeekView> {
+  const profile = state.dietProfile;
+  if (profile.allergies.length > 0 || profile.rules.includes("KOSHER")) return week;
+  const eligible = [...(await library()).values()]
+    .filter(
+      (r) =>
+        r.ingredients.every((l) => VOCABULARY_SET.has(l.key) && !state.excludedKeys.has(l.key)) &&
+        !state.excludedNameWords.some((w) => r.name.toLowerCase().includes(w))
+    )
+    .sort((a, b) => (a.id < b.id ? -1 : 1));
+  if (eligible.length === 0) return week;
+  const total = week.days.reduce((sum, d) => sum + d.meals.length, 0);
+  const cap = Math.max(2, Math.ceil(total / eligible.length));
+  const uses = new Map<string, number>();
+  const epochDay = Math.floor(Date.parse(`${week.weekStart}T00:00:00Z`) / 86_400_000);
+  const target = state.targets?.calories ?? null;
+  const dayOk = (meals: PlannedMealView[]) => {
+    const kcal = meals.reduce((sum, m) => sum + m.kcal, 0);
+    return kcal >= state.floorCalories && (target === null || Math.abs(kcal - target) <= 0.1 * target);
+  };
+  return {
+    ...week,
+    days: week.days.map((day, dayIndex) => {
+      let meals = day.meals;
+      const usedToday = new Set<string>();
+      meals.forEach((meal, i) => {
+        if (meal.locked || state.eaten.has(meal.mealId)) return;
+        const scored = eligible
+          .filter(
+            (r) =>
+              (r.mealSlots ?? ["LUNCH", "DINNER"]).includes(meal.slot) &&
+              !usedToday.has(r.id) &&
+              (uses.get(r.id) ?? 0) < cap &&
+              Math.abs(r.kcal - meal.kcal) <= 0.2 * meal.kcal &&
+              r.proteinG >= 0.7 * meal.proteinG
+          )
+          .map((r) => ({
+            r,
+            score:
+              Math.abs(r.kcal - meal.kcal) / meal.kcal +
+              (0.5 * Math.abs(r.proteinG - meal.proteinG)) / Math.max(meal.proteinG, 10),
+          }))
+          .sort((a, b) => a.score - b.score);
+        if (scored.length === 0) return;
+        // A tie on the lowest score rotates; the rest follow in score order.
+        const best = scored.filter((c) => c.score === scored[0].score);
+        const first = best[(epochDay + dayIndex) % best.length];
+        const order = [first, ...scored.filter((c) => c !== first)];
+        for (const { r } of order) {
+          const trial = meals.map((m, j) =>
+            j === i
+              ? {
+                  ...m,
+                  name: r.name,
+                  kcal: r.kcal,
+                  proteinG: r.proteinG,
+                  carbsG: r.carbsG,
+                  fatG: r.fatG,
+                  provenance: "COACH_RECIPE" as const,
+                  placedByYou: true,
+                }
+              : m
+          );
+          if (!dayOk(trial)) continue;
+          meals = trial;
+          usedToday.add(r.id);
+          uses.set(r.id, (uses.get(r.id) ?? 0) + 1);
+          return;
+        }
+      });
+      return { ...day, meals };
+    }),
   };
 }
 
@@ -5275,6 +5457,7 @@ export const fixtureCoachApi: CoachApi = {
         carbsG: row.carbsG,
         fatG: row.fatG,
         ingredientCount: row.ingredients.length,
+        mealSlots: row.mealSlots === null ? null : [...row.mealSlots],
       })),
       limit: RECIPE_LIMIT,
       remaining: Math.max(0, RECIPE_LIMIT - rows.length),
@@ -5310,7 +5493,9 @@ export const fixtureCoachApi: CoachApi = {
     ) {
       await fail(409, "COACH_RECIPE_NAME_TAKEN", "You already have a recipe with that name");
     }
-    const saved: StoredRecipe = { id, ...checked };
+    // EV-320a / staff challenge S4: an update that OMITS mealSlots keeps the stored tags
+    // (`checked.mealSlots() != null ? checked.mealSlots() : owned.recipe().mealSlots()`).
+    const saved: StoredRecipe = { id, ...checked, mealSlots: checked.mealSlots ?? existing.mealSlots };
     (await library()).set(id, saved);
     return toRecipeResponse(saved);
   },
@@ -5413,7 +5598,7 @@ export const fixtureCoachApi: CoachApi = {
     // EV-273b AC4: the dialog-open read is witnessed here, where the api would see it.
     recordCall(`GET /coach-portal/clients/${id}/nutrition`);
     await assertScope(id, "NUTRITION");
-    const state = nutritionState(id);
+    const state = await withServedWeekStatus(nutritionState(id));
     return {
       clientId: id,
       traineeDisplayName: OVERVIEWS[id]().traineeDisplayName,
@@ -5514,6 +5699,11 @@ export const fixtureCoachApi: CoachApi = {
     const fresh = buildWeek(weekStart, state.seeds, state.pool);
     // D6.7: "idempotent replace" is true of the row and false of the locked meals.
     state.week = previous ? carryLockedForward(previous, fresh, state.eaten) : fresh;
+    // EV-320a: with the placement AND recipe-fill flags on, the coach's recipes replace
+    // engine meals before the week is saved (Apply only, as built).
+    if (!(await placementOff(id)) && (await fixtureSwitch("evoli_fixture_recipe_fill")) === "on") {
+      state.week = await fillFromCoachRecipes(state, state.week);
+    }
     return state.week;
   },
 

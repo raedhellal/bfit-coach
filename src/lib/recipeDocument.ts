@@ -2,6 +2,7 @@ import type { Copy } from "./copy";
 import type {
   CoachRecipe,
   CoachRecipeSaveRequest,
+  MealSlot,
   RecipeUnit,
 } from "./coachApi";
 
@@ -57,6 +58,81 @@ export const SEARCH_MAX = 100;
 
 export const UNITS: readonly RecipeUnit[] = ["g", "ml", "piece"];
 
+/* ── EV-320c: the meal-slot tags (api EV-320a) ──────────────────────────────────── */
+
+/** `WeeklyMealPlan.MealSlot` in the api's own order — the order the api stores and reads. */
+export const MEAL_SLOTS: readonly MealSlot[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
+/** `mealSlots: minItems 1, maxItems 4` on `CoachRecipeSaveRequest`. */
+export const MEAL_SLOTS_MIN = 1;
+export const MEAL_SLOTS_MAX = 4;
+/**
+ * `CoachRecipeLibrary.Entry.UNTAGGED_SLOTS` — what the fill reads a recipe with NO tags
+ * (`mealSlots: null`) as. The portal shows an untagged recipe as these two, marked as the
+ * default, and never as "no slot".
+ */
+export const UNTAGGED_SLOTS: readonly MealSlot[] = ["LUNCH", "DINNER"];
+
+/** The slots in the api's order, each once — what `CoachRecipeRules.mealSlots` folds to. */
+export function orderSlots(slots: readonly MealSlot[]): MealSlot[] {
+  return MEAL_SLOTS.filter((slot) => slots.includes(slot));
+}
+
+/**
+ * The ONE reader of a wire `mealSlots`: `null` is untagged and means LUNCH + DINNER. Never
+ * `?? []` — an empty list would show an untagged recipe as used for nothing, the opposite
+ * of what the fill does with it.
+ */
+export function effectiveSlots(mealSlots: readonly MealSlot[] | null): MealSlot[] {
+  return orderSlots(mealSlots ?? UNTAGGED_SLOTS);
+}
+
+export function sameSlots(a: readonly MealSlot[], b: readonly MealSlot[]): boolean {
+  const x = orderSlots(a);
+  const y = orderSlots(b);
+  return x.length === y.length && x.every((slot, i) => slot === y[i]);
+}
+
+/**
+ * What the SERVER holds for the recipe being edited, as far as the editor knows: nothing
+ * yet (a new recipe), or the stored tags from the last read or the last successful save
+ * (the tags the save's RESPONSE carried, which may be another tab's if the key was omitted).
+ */
+export type SlotBaseline = { recipe: "new" } | { recipe: "stored"; mealSlots: MealSlot[] | null };
+
+/**
+ * EV-320c — the `mealSlots` a save sends, decided in ONE place.
+ *
+ *   · A NEW recipe always sends the selection (AC16: it starts as Lunch + Dinner, and the
+ *     coach's chips are what gets stored).
+ *   · An UPDATE sends the selection only when it DIFFERS from what the server holds, read
+ *     through `effectiveSlots`. Otherwise the key is omitted and the api keeps the stored
+ *     tags (`CoachRecipeUseCase.update`). That is why it is not "always send the full set":
+ *       – fixing a typo in an untagged recipe would silently turn it into an explicit
+ *         Lunch + Dinner tag, and the "(default)" mark with it;
+ *       – a tab opened before the seed (or another tab) re-tagged the recipe would put
+ *         back the stale tags it loaded, on a save that did not touch them.
+ *
+ *     What this function alone does NOT prevent — the editor's half of the rule: after a
+ *     save that omitted the key, the server may hold tags this tab never showed (another
+ *     tab's). The baseline moves to the response's tags, so if the chips kept showing the
+ *     stale set, the NEXT save would see a difference and send it — re-tagging on the
+ *     second untouched save (staff, EV-320c review). `RecipeEditor` therefore re-syncs the
+ *     chips to the response after every successful save, unless the coach toggled a chip
+ *     while it was in flight.
+ *
+ *     Nor does it arbitrate a real conflict: a stale tab whose coach DOES change the chips
+ *     sends its whole selection, and the last save wins, as for every other field here.
+ *
+ *     It is a comparison with the baseline rather than a "touched" flag on purpose: a
+ *     touched-then-restored selection sends nothing, and a selection changed before a
+ *     REFUSED save is still different at the next Save — a flag cleared when a save is
+ *     sent would drop it (the EV-274b trap).
+ */
+export function slotsForSave(selected: readonly MealSlot[], baseline: SlotBaseline): MealSlot[] | undefined {
+  if (baseline.recipe === "new") return orderSlots(selected);
+  return sameSlots(selected, effectiveSlots(baseline.mealSlots)) ? undefined : orderSlots(selected);
+}
+
 export type MacroField = "kcal" | "proteinG" | "carbsG" | "fatG";
 export const MACRO_FIELDS: readonly MacroField[] = ["kcal", "proteinG", "carbsG", "fatG"];
 
@@ -82,10 +158,25 @@ export interface RecipeDraft {
   carbsG: string;
   fatG: string;
   steps: string[];
+  /**
+   * EV-320c — the chips that are ON. For a stored untagged recipe this is LUNCH + DINNER
+   * (what the fill uses); whether it is SENT is `slotsForSave`'s decision, not this field's.
+   */
+  mealSlots: MealSlot[];
 }
 
 export function blankRecipe(): RecipeDraft {
-  return { name: "", ingredients: [], kcal: "", proteinG: "", carbsG: "", fatG: "", steps: [] };
+  return {
+    name: "",
+    ingredients: [],
+    kcal: "",
+    proteinG: "",
+    carbsG: "",
+    fatG: "",
+    steps: [],
+    // EV-320 AC16: "A new recipe starts with Déjeuner and Dîner on."
+    mealSlots: [...UNTAGGED_SLOTS],
+  };
 }
 
 export function fromRecipe(recipe: CoachRecipe): RecipeDraft {
@@ -102,6 +193,7 @@ export function fromRecipe(recipe: CoachRecipe): RecipeDraft {
     carbsG: String(recipe.carbsG),
     fatG: String(recipe.fatG),
     steps: [...recipe.steps],
+    mealSlots: effectiveSlots(recipe.mealSlots),
   };
 }
 
@@ -197,6 +289,7 @@ export function parseQuantity(raw: string): number | null {
  *   name · macros (the consistency sentence, under the four inputs) · kcal · proteinG
  *   · carbsG · fatG · ingredients (the list as a whole) · ingredients.N (one line)
  *   · steps (the list as a whole) · steps.N (one step) · form (no field: under Save)
+ *   · mealSlots (the chip group; the local "none on" reason is shown under Save, AC16)
  */
 export type FieldAddress = string;
 
@@ -288,6 +381,12 @@ export function localProblems(draft: RecipeDraft, copy: Copy): Problem[] {
     }
   });
 
+  // EV-320 AC16 — at least one chip before Save. The api's other bounds (at most 4, each
+  // once, the closed set) cannot be broken from four toggles.
+  if (draft.mealSlots.length < MEAL_SLOTS_MIN) {
+    problems.push({ at: "mealSlots", message: copy.recipes.slotsRequired });
+  }
+
   return problems;
 }
 
@@ -300,11 +399,12 @@ export function localProblems(draft: RecipeDraft, copy: Copy): Problem[] {
  * string before its own strip: a 300-character step with a trailing space would be a
  * 301-character refusal of text the coach cannot see.
  */
-export function forSave(draft: RecipeDraft): CoachRecipeSaveRequest {
+export function forSave(draft: RecipeDraft, slots: SlotBaseline): CoachRecipeSaveRequest {
   const whole = (raw: string) => {
     const parsed = parseWhole(raw);
     return parsed.kind === "whole" ? parsed.value : 0;
   };
+  const mealSlots = slotsForSave(draft.mealSlots, slots);
   return {
     name: draft.name,
     ingredients: draft.ingredients.map((line) => ({
@@ -317,6 +417,9 @@ export function forSave(draft: RecipeDraft): CoachRecipeSaveRequest {
     carbsG: whole(draft.carbsG),
     fatG: whole(draft.fatG),
     steps: draft.steps.map(javaStrip),
+    // The KEY is absent, not undefined-valued, when nothing is to be sent: "omitted" is the
+    // api's keep-the-tags signal and a spec asserts `Object.keys(body)`.
+    ...(mealSlots === undefined ? {} : { mealSlots }),
   };
 }
 
@@ -357,7 +460,7 @@ export interface RecipeFailure {
  * other sentence cannot be mistaken for a field.
  */
 const FIELD_PATH =
-  /^(name|kcal|proteinG|carbsG|fatG|ingredients(?:\[\d+\](?:\.(?:key|quantity|unit))?)?|steps(?:\[\d+\])?)(?=\s|$)/;
+  /^(name|kcal|proteinG|carbsG|fatG|ingredients(?:\[\d+\](?:\.(?:key|quantity|unit))?)?|steps(?:\[\d+\])?|mealSlots(?:\[\d+\])?)(?=\s|$)/;
 
 export function recipeFieldOf(
   details: Record<string, unknown> | null,
@@ -376,6 +479,8 @@ export function addressOf(field: string | null): FieldAddress {
   if (line) return ingredientAddress(Number(line[1]));
   const step = /^steps\[(\d+)\]/.exec(field);
   if (step) return stepAddress(Number(step[1]));
+  // One address for the chip group: a slot value is a chip, not a line of its own.
+  if (/^mealSlots(\[\d+\])?$/.test(field)) return "mealSlots";
   return field;
 }
 
@@ -437,5 +542,6 @@ function invalidFieldMessage(field: string | null, copy: Copy): string {
   if (field === "ingredients") return copy.recipes.ingredientsBound;
   if (field === "steps") return copy.recipes.stepsFull;
   if (/^steps\[\d+\]$/.test(field)) return copy.recipes.stepInvalid;
+  if (/^mealSlots(\[\d+\])?$/.test(field)) return copy.recipes.slotsInvalid;
   return copy.recipes.saveFailed;
 }

@@ -502,6 +502,10 @@ export const fr = {
     noMeals: "Aucun repas prévu ce jour-là.",
     mealKept: "Conservé",
     mealKeptTitle: "Verrouillé par le client — conservé quand une semaine est appliquée",
+    /** AC17. House rule: 0 and 1 take the singular, so "1 repas sur 28 vient…". */
+    recipeShare: (count: number, total: number) =>
+      `${n(count)} repas sur ${n(total)} ${count < 2 ? "vient" : "viennent"} de vos recettes`,
+    recipeShareAll: "Toute la semaine vient de vos recettes",
     /** Still true in French, and more so: the generated meal names are English (EV-015). */
     englishOnly:
       "Les plans de repas sont générés en anglais. Les vérifications d'ingrédients portent sur les noms anglais.",
@@ -725,6 +729,11 @@ export const fr = {
     macroLine: (kcal: number, p: number, c: number, f: number) =>
       `${n(kcal)} kcal · P ${n(p)} g · G ${n(c)} g · L ${n(f)} g`,
     ingredientCount: (count: number) => `${count} ingrédient${s(count)}`,
+    slotsDefault: (lunch: string, dinner: string) => `${lunch}, ${dinner} (par défaut)`,
+    slotsDefaultTitle: "Aucun moment enregistré : cette recette sert au déjeuner et au dîner par défaut.",
+    filterLabel: "Moment du repas",
+    filterAll: "Tous les moments",
+    filterEmpty: "Aucune recette pour ce moment du repas.",
     edit: "Modifier",
     remove: "Supprimer",
     deleteTitle: "Supprimer la recette ?",
@@ -772,6 +781,13 @@ export const fr = {
     removeStep: "Retirer",
     removeStepNamed: (n: number) => `Retirer l'étape ${n}`,
     stepsFull: "Une recette compte au maximum 15 étapes.",
+    slotsHeading: "Moments du repas",
+    slotsNote:
+      "Quand vous appliquez une semaine de repas, cette recette ne sert que pour les repas choisis ici.",
+    slotsRequired: "Choisissez au moins un type de repas.",
+    slotsInvalid: "Choisissez de un à quatre moments de repas.",
+    slotsUntagged:
+      "Aucun moment enregistré pour l'instant : cette recette sert au déjeuner et au dîner par défaut.",
     save: "Enregistrer la recette",
     saving: "Enregistrement…",
     saved: "Recette enregistrée.",
