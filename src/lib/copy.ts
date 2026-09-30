@@ -1396,9 +1396,12 @@ export const en = {
      * the only thing that makes the sentence above true.
      */
     /**
-     * Staff review B1 — template APPLY refused 400 COACH_DRAFT_REPS_ON_DURATION: a timed
-     * exercise saved by the old editor still has reps, and the editor shows no Reps field
-     * for a timed exercise. Saving the template once clears them (`withoutDurationReps`).
+     * Staff review B1 — template APPLY refused 400 COACH_DRAFT_REPS_ON_DURATION in
+     * BUG-195b round 2: a timed exercise saved by the old editor still has reps, and the
+     * editor shows no Reps field for a timed exercise. Since round 3 (api `fcc1ccd`, on
+     * api main at 741ed39) apply clears them instead, so this sentence is only reachable
+     * from an api rolled back past that commit. Saving the template once still clears
+     * them here too (`withoutDurationReps`).
      */
     repsOnDuration:
       "A timed exercise in this template still has reps from the old editor. Open the template and save it, then use it again.",

@@ -144,9 +144,10 @@ export function forSave(draft: TemplateDraft): CoachTemplateSaveRequest {
     name: draft.name.trim(),
     document: {
       ...draft.document,
-      // Staff review B1: a template must never carry reps on a timed exercise, or apply
-      // refuses it with COACH_DRAFT_REPS_ON_DURATION — and the editor has no control to
-      // clear them. Saving a template once in this editor is the repair.
+      // Staff review B1: a template must never carry reps on a timed exercise — the editor
+      // has no control to clear them. The api clears them too since BUG-195b round 3
+      // (`fcc1ccd`); round 2 refused apply with COACH_DRAFT_REPS_ON_DURATION. Sending the
+      // clean body keeps the portal correct against either.
       trainingDays: withoutDurationReps(draft.document.trainingDays),
       daysPerWeek: days,
       constraints: {

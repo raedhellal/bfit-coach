@@ -1990,9 +1990,12 @@ export function draftExistsUpdatedAt(err: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 /**
- * 400 `COACH_DRAFT_REPS_ON_DURATION` (BUG-195b, ADR-0018 D9) — on template APPLY, a
- * template written by the pre-BUG-195c editor still carries reps on a timed exercise.
- * Opening and saving the template in the current editor clears them.
+ * 400 `COACH_DRAFT_REPS_ON_DURATION` (BUG-195b, ADR-0018 D9) — a timed exercise that
+ * carries reps. On the coach's draft SAVE the api still refuses it (and `routineFailure`
+ * locates it). On template APPLY and template writes it was refused only in BUG-195b
+ * round 2: round 3 (`fcc1ccd`, on api main at 741ed39) clears the reps instead, so the
+ * template screens cannot meet this code from that api. Their mapping stays so an api
+ * rolled back past `fcc1ccd` still gets a sentence rather than "could not be saved".
  */
 export function isRepsOnDuration(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_DRAFT_REPS_ON_DURATION";

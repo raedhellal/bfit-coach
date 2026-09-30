@@ -305,42 +305,30 @@ async function readDays(page: Page) {
  * BUG-195c staff review B1 — the demo beat: a template → a trainee → Publish.
  *
  * "Core circuit" was written by the pre-BUG-195c editor, which left reps "8-12" on a
- * Plank it switched to DURATION. The api refuses to apply it (400
- * COACH_DRAFT_REPS_ON_DURATION) and the editor has no Reps control for a timed exercise,
- * so the only repair is to open the template and save it — `templateDocument.forSave`
- * clears them. The refusal must read as ITS sentence, not "could not be saved".
+ * Plank it switched to DURATION. Stored rows are never migrated. Round 2 of BUG-195b
+ * refused to apply such a template (400 COACH_DRAFT_REPS_ON_DURATION) and the coach had
+ * to open and re-save it first; round 3 (b-fit-api `fcc1ccd`, on api main at 741ed39)
+ * CLEARS those reps at apply instead. So the legacy template must apply on the first
+ * try, with no repair step and no refusal sentence, and the draft it writes must carry
+ * no reps on the timed exercise (the Reps control is absent for DURATION, and Publish's
+ * guarded preview would otherwise meet the draft boundary's refusal).
  */
 test.describe("B1 — a legacy template with reps on a timed exercise", () => {
-  test("apply names the repair; saving the template once fixes it; apply then Publish lands", async ({
+  test("applies on the first try (the api clears the stray reps); Publish then lands", async ({
     page,
   }) => {
     await signIn(page);
-    const dialog = await openUseDialog(page, "Core circuit");
-    await dialog.locator("select").selectOption({ label: "Yusuf A." });
-    await dialog.getByRole("button", { name: "Use this template" }).click();
+    await applyToYusuf(page, "Core circuit");
+    await expect(page.getByText(DRAFT_BADGE)).toBeVisible();
     await expect(
-      dialog.getByText(
+      page.getByText(
         "A timed exercise in this template still has reps from the old editor. Open the template and save it, then use it again."
       )
-    ).toBeVisible();
-    await expect(dialog.getByText("The template could not be saved.")).toHaveCount(0);
-    // Nothing was written: the trainee is still on their published plan.
-    await page.goto(`/clients/${YUSUF}/routine`);
-    await expect(page.getByText("Published plan")).toBeVisible();
-
-    // The repair: open it and save it, touching nothing.
-    await page.goto("/templates");
-    await row(page, "Core circuit").getByRole("link", { name: "Edit" }).click();
-    await page.waitForURL(/\/templates\/[0-9a-f-]+$/);
+    ).toHaveCount(0);
     const plank = page.getByRole("group", { name: "Plank", exact: true });
     await expect(plank.getByLabel("Tracked as")).toHaveValue("DURATION");
     await expect(plank.getByLabel("Reps")).toHaveCount(0);
-    await page.getByRole("button", { name: "Save template" }).click();
-    await expect(page.getByText("Template saved")).toBeVisible();
 
-    // Apply lands on the trainee's routine, and Publish goes through the guarded preview.
-    await applyToYusuf(page, "Core circuit");
-    await expect(page.getByText(DRAFT_BADGE)).toBeVisible();
     await page.getByRole("button", { name: "Publish", exact: true }).click();
     const modal = page.getByRole("dialog");
     await expect(modal).toHaveAccessibleName("No changes were needed");

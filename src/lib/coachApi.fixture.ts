@@ -2413,8 +2413,8 @@ function seedTemplates(): CoachTemplate[] {
       /*
        * Staff review B1 — a template written by the PRE-BUG-195c editor: every new
        * exercise started with reps "8-12" and switching it to DURATION never cleared
-       * them. The api's apply refuses it (400 COACH_DRAFT_REPS_ON_DURATION) until the
-       * coach opens it and saves it in the current editor, which clears them.
+       * them. Stored rows are never migrated; since BUG-195b round 3 the api's apply
+       * clears those reps (`clearRepsOnDuration`) rather than refusing the template.
        */
       id: "7c2d0a11-0000-4000-8000-0000000000b3",
       name: "Core circuit",
@@ -2449,6 +2449,29 @@ function legacyTimedReps(document: Routine, name: string, seconds: number): Rout
       ...day,
       exercises: day.exercises.map((ex) =>
         ex.name === name ? { ...ex, trackingType: "DURATION" as const, durationSeconds: seconds } : ex
+      ),
+    })),
+  };
+}
+
+/**
+ * b-fit-api `CoachTemplateDocument.clearRepsOnDuration` (BUG-195b round 3, `fcc1ccd`, on
+ * api main at 741ed39): the TEMPLATE path clears `reps` on a timed exercise instead of
+ * refusing it — at apply, and at every template write (create, update, duplicate,
+ * save-as-template). The coach's own draft SAVE still refuses the pair
+ * (`resolveDraftDocument`). Ported here rather than imported from
+ * `routineDocument.withoutDurationReps` on purpose: a fixture that borrows the portal's
+ * helper would agree with any bug in it.
+ */
+function clearRepsOnDuration(document: Routine): Routine {
+  return {
+    ...document,
+    trainingDays: document.trainingDays.map((day) => ({
+      ...day,
+      exercises: day.exercises.map((ex) =>
+        String(ex.trackingType ?? "").toUpperCase() === "DURATION" && ex.reps != null
+          ? { ...ex, reps: null }
+          : ex
       ),
     })),
   };
@@ -4384,10 +4407,10 @@ export const fixtureCoachApi: CoachApi = {
       // The api strips the two trainee-answer lists at the write boundary whatever the
       // body carries. The fixture does the same, so a portal bug that started sending
       // them could never look like it worked here.
-      document: {
+      document: clearRepsOnDuration({
         ...body.document,
         constraints: { ...body.document.constraints, equipment: [], injuries: [] },
-      },
+      }),
       createdAt: now,
       updatedAt: now,
     };
@@ -4402,10 +4425,10 @@ export const fixtureCoachApi: CoachApi = {
     const saved: CoachTemplate = {
       ...existing,
       name: body.name.trim(),
-      document: {
+      document: clearRepsOnDuration({
         ...body.document,
         constraints: { ...body.document.constraints, equipment: [], injuries: [] },
-      },
+      }),
       updatedAt: new Date().toISOString(),
     };
     state().templates.set(id, saved);
@@ -4441,7 +4464,7 @@ export const fixtureCoachApi: CoachApi = {
       id: crypto.randomUUID(),
       name: copyName(original.name),
       schemaVersion: original.schemaVersion,
-      document: JSON.parse(JSON.stringify(original.document)) as Routine,
+      document: clearRepsOnDuration(JSON.parse(JSON.stringify(original.document)) as Routine),
       createdAt: now,
       updatedAt: now,
     };
@@ -4487,25 +4510,13 @@ export const fixtureCoachApi: CoachApi = {
      * that makes the portal's "this replaces your unpublished draft" sentence true.
      */
     /**
-     * BUG-195b (ADR-0018 D9) — apply runs the draft boundary's refusal too: a timed
-     * exercise carrying reps is 400 COACH_DRAFT_REPS_ON_DURATION, located, and nothing
-     * is written. (195b round 3 makes the api strip them instead; the portal must not
-     * depend on that, so this reproduces the round-2 refusal the portal was reviewed
-     * against.)
+     * BUG-195b round 3 (api `fcc1ccd`, on api main at 741ed39) — apply CLEARS reps on a
+     * timed exercise before the resolution, so a template the pre-BUG-195c editor stored
+     * with "8-12" on a Plank still applies. Round 2 refused it with 400
+     * COACH_DRAFT_REPS_ON_DURATION; that refusal no longer exists on the api this portal
+     * ships against, so reproducing it here would test a path no coach can reach.
      */
-    for (const day of template.document.trainingDays) {
-      for (let index = 0; index < day.exercises.length; index += 1) {
-        const ex = day.exercises[index];
-        if (String(ex.trackingType ?? "").toUpperCase() === "DURATION" && ex.reps != null) {
-          await failWithDetails(
-            400,
-            "COACH_DRAFT_REPS_ON_DURATION",
-            `Exercise ${index + 1} on day ${day.dayOfWeek} is timed (DURATION) and also carries reps.`,
-            { dayOfWeek: day.dayOfWeek, exerciseIndex: index, field: "reps" }
-          );
-        }
-      }
-    }
+    const source = clearRepsOnDuration(template.document);
 
     const existing = state().drafts.get(clientId) ?? null;
     if (existing && existing.updatedAt !== replacesDraftUpdatedAt) {
@@ -4520,16 +4531,16 @@ export const fixtureCoachApi: CoachApi = {
      * the stored draft's goal and level are the TRAINEE's, not the template's, and its
      * day counts are derived. The template row itself is never changed.
      */
-    const n = template.document.trainingDays.length;
+    const n = source.trainingDays.length;
     const resolved: Routine = {
-      ...template.document,
+      ...source,
       goal: FIXTURE_SUBJECT.goal,
       level: FIXTURE_SUBJECT.level,
       daysPerWeek: n,
       // BUG-195b round 2: apply clears the progression too — a template's is never the
       // trainee's own, so it must not ride into their draft (W-2's rule on this path).
       weeklyProgression: [],
-      constraints: { ...template.document.constraints, equipment: [], injuries: [], daysPerWeek: n },
+      constraints: { ...source.constraints, equipment: [], injuries: [], daysPerWeek: n },
     };
     state().drafts.set(clientId, { document: resolved, updatedAt });
     state().draftTemplate.set(clientId, template.id);
@@ -4569,7 +4580,7 @@ export const fixtureCoachApi: CoachApi = {
     }
     await assertRoom();
     await assertNameFree(body.name, null);
-    const document = templateFromDocument(source as Routine);
+    const document = clearRepsOnDuration(templateFromDocument(source as Routine));
     await assertDaySizes(document);
     const now = new Date().toISOString();
     const created: CoachTemplate = {
