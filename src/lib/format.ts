@@ -241,9 +241,15 @@ export function formatUtcTime(iso: string | null | undefined): string {
  * Never called with a null: a day with no data is "—" (`copy.common.dash`), and the
  * caller that has a null must say so rather than format a 0.
  */
+/*
+ * `useGrouping: "always"`, not the default: ICU's French data decides whether a FOUR-digit
+ * number is grouped (`minimumGroupingDigits`), and Node and Chrome were measured to
+ * disagree — the server printed "1 000" where the browser printed "1000". A step count
+ * rendered on the server and re-rendered in a client island must be one string.
+ */
 const STEPS: Record<Locale, Intl.NumberFormat> = {
-  en: new Intl.NumberFormat(intlLocale("en"), { maximumFractionDigits: 0 }),
-  fr: new Intl.NumberFormat(intlLocale("fr"), { maximumFractionDigits: 0 }),
+  en: new Intl.NumberFormat(intlLocale("en"), { maximumFractionDigits: 0, useGrouping: "always" }),
+  fr: new Intl.NumberFormat(intlLocale("fr"), { maximumFractionDigits: 0, useGrouping: "always" }),
 };
 export function formatSteps(value: number, locale: Locale): string {
   return STEPS[locale].format(Math.round(value));

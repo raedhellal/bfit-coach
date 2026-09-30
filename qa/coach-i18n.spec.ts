@@ -113,6 +113,11 @@ const SAME_IN_BOTH: Record<string, string> = {
   "recipes.unitNames.ml": "unit",
   "recipes.kcalLabel": "French 'Calories (kcal)'",
   "common.dash": "a dash",
+  "challenges.colClient": "French 'Client'",
+  "challenges.colSource": "French 'Source'",
+  "challenges.colTotal": "French 'Total'",
+  "challenges.metricLabel": "French 'Type'",
+  "challenges.source.HEALTH_CONNECT": "Google's product name, never translated",
   "guardrails.equipment.KETTLEBELL": "French 'Kettlebell' (b-fit-mobile fr.json)",
 };
 

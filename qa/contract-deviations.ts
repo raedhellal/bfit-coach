@@ -72,6 +72,17 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
 
   /* ── read-path omissions, all of them decisions ─────────────────────────── */
 
+  /**
+   * EV-316 (b-fit-api `239c8ab`, on api main) made `AuthTokens.expiresAt` required on the
+   * wire; it arrived here with EV-321b's re-vendor at `1749060`, not with a portal change.
+   */
+  AuthTokens: {
+    missingInPortal: {
+      expiresAt:
+        "The same instant as `expiresIn`, absolute. The session cookie's lifetime is set from `expiresIn` (`src/lib/session.ts`), and reading both would give one lifetime two sources that could disagree by the request's latency.",
+    },
+  },
+
   CatalogExercise: {
     missingInPortal: {
       type: "A second, older catalog taxonomy. Rendering it would put two vocabularies beside each other on one picker row.",
