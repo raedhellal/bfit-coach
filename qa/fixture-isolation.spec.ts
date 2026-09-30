@@ -63,6 +63,7 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
   "coach-live.spec.ts": "live config: a real b-fit-api and Postgres, no fixture store",
   "coach-affordance.live.spec.ts": "live config, same",
   "coach-routine-draft.live.spec.ts": "live config, same (BUG-195c)",
+  "coach-challenges.live.spec.ts": "live config, same (EV-321b)",
   "coach-legacy-api.spec.ts": "legacy config: COACH_API_MODE=live against qa/legacy-api.mjs",
   "refresh-single-flight.spec.ts": "refresh config: COACH_API_MODE=live against qa/stub-api.mjs",
   "coach-activation.stub.spec.ts": "activation config: COACH_API_MODE=live against qa/activation-stub-api.mjs; resets the stub per test",

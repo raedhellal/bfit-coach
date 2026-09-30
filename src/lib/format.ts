@@ -231,3 +231,69 @@ export function formatUtcTime(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return "";
   return TIME.format(d);
 }
+
+/**
+ * An ISO instant → "14:42" in the RUNTIME's time zone — for a client component, where
+ * that zone is the coach's browser. On the server it would be the host's zone (UTC on
+ * Vercel), which is exactly why the challenge page does not call it there. 24-hour in
+ * both locales, like `formatUtcTime`.
+ */
+export function formatLocalTime(iso: string | null | undefined, locale: Locale): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat(intlLocale(locale), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+}
+
+/* ── EV-321b: step challenges ──────────────────────────────────────────────── */
+
+/**
+ * 10000 → "10,000" / "10 000" (U+202F, the narrow no-break space ICU groups French
+ * digits with — four digits too: 1000 → "1 000", in Node 22's ICU 78 and Chrome 153 alike,
+ * read from the DOM's code points. The U+202F is nearly invisible in the portal's font, so a
+ * screenshot looks like "1000"; do not "fix" it from a picture). Rounded only defensively.
+ *
+ * Never called with a null: a day with no data is "—" (`copy.common.dash`), and the
+ * caller that has a null must say so rather than format a 0.
+ */
+const STEPS: Record<Locale, Intl.NumberFormat> = {
+  en: new Intl.NumberFormat(intlLocale("en"), { maximumFractionDigits: 0 }),
+  fr: new Intl.NumberFormat(intlLocale("fr"), { maximumFractionDigits: 0 }),
+};
+export function formatSteps(value: number, locale: Locale): string {
+  return STEPS[locale].format(Math.round(value));
+}
+
+/**
+ * `YYYY-MM-DD` → "Mon 29 Sept" / "lun. 29 sept." — the day strip's accessible label.
+ * A calendar date in the TRAINEE's day (the api's `ChallengeDay.day`), so it is
+ * formatted in UTC like every other plain date here: no zone shifts it.
+ */
+export function formatDayLabel(iso: string, locale: Locale): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(d);
+}
+
+/**
+ * An instant relative to `now`: "5 minutes ago" / "il y a 5 minutes", for anything under
+ * a day; older than that, the date (`formatInstant`). Null → "—". A `syncedAt` slightly in
+ * the FUTURE (a phone clock ahead of the server) reads as "now" rather than "in 2 minutes".
+ */
+export function formatSince(iso: string | null | undefined, now: number, locale: Locale): string {
+  if (!iso) return DASH;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return DASH;
+  const seconds = Math.max(0, Math.round((now - t) / 1000));
+  const rtf = new Intl.RelativeTimeFormat(intlLocale(locale), { numeric: "auto" });
+  if (seconds < 60) return rtf.format(0, "second");
+  if (seconds < 3600) return rtf.format(-Math.floor(seconds / 60), "minute");
+  if (seconds < 86_400) return rtf.format(-Math.floor(seconds / 3600), "hour");
+  return formatInstant(iso, locale);
+}

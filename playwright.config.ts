@@ -29,7 +29,7 @@ export default defineConfig({
   // stay runnable with no backend at all — that is what makes it the gate.
   // coach-activation.stub.spec.ts drives EV-278c's LIVE path against
   // qa/activation-stub-api.mjs (playwright.activation.config.ts).
-  testIgnore: /(coach-live|coach-affordance\.live|coach-routine-draft\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-activation\.stub|coach-french-roster)\.spec\.ts/,
+  testIgnore: /(coach-live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-activation\.stub|coach-french-roster|coach-challenges)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

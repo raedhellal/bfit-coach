@@ -81,7 +81,7 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
    * three recipe schemas so "Apply week" can fill breakfast and snacks from a coach's
    * recipes. This portal neither sets nor shows them yet; the chips that would are an
    * unwritten portal story. Identical on BUG-195c and EV-321b (both re-vendored 741ed39),
-   * so the two branches merge this block cleanly with each other.
+   * so both added it; the duplicate was dropped when they merged (both 2026-09-30).
    * ---------------------------------------------------------------------- */
   CoachRecipeSaveRequest: {
     missingInPortal: {

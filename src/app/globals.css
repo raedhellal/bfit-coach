@@ -159,8 +159,38 @@ input::placeholder { color:var(--ink-3); }
   .shell-nav {
     order: 3;
     flex-basis: 100%;
+    /* EV-321b: a fourth link ("Challenges") does not fit one 288 px line in English, so
+       the links wrap onto a second row rather than overflow into each other. */
+    flex-wrap: wrap;
+    row-gap: 2px;
   }
 }
+
+/* ── EV-321b: a challenge participant's day strip ────────────────────────────────
+   One square per window day. The colour is decoration; each square carries its date and
+   status as an accessible name and as `data-status`, and NO_DATA is drawn as an empty
+   dashed outline so it never reads as a zero-height (0-step) day. */
+.challenge-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 190px;
+}
+.challenge-day {
+  display: block;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+.challenge-day[data-status="MET"] { background: var(--ok); }
+.challenge-day[data-status="MISSED"] { background: var(--err-bg); border-color: var(--err); }
+.challenge-day[data-status="IN_PROGRESS"] { background: var(--blue-50); border-color: var(--blue-500); }
+.challenge-day[data-status="NO_DATA"] { background: transparent; border: 1px dashed var(--ink-3); }
+.challenge-day[data-status="FUTURE"] { background: var(--surface-2); border-color: var(--border); }
 
 /* EV-256b — the recipe editor's four macro inputs: two columns on a phone, four from
    720 px. A class, not inline, because the column count changes with the width. */

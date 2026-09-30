@@ -120,8 +120,9 @@ test.describe("AC1 — Recipes is in the nav, and the library lists the coach's 
   test("Recipes sits next to Templates and opens the library", async ({ page }) => {
     await signIn(page);
     const nav = page.getByRole("navigation", { name: "Portal" });
-    // "next to Templates": adjacent, immediately after it.
-    await expect(nav.getByRole("link")).toHaveText(["Roster", "Templates", "Recipes"]);
+    // "next to Templates": adjacent, immediately after it. EV-321b added Challenges AFTER
+    // Recipes, which leaves the adjacency this AC is about unchanged.
+    await expect(nav.getByRole("link")).toHaveText(["Roster", "Templates", "Recipes", "Challenges"]);
 
     await nav.getByRole("link", { name: "Recipes" }).click();
     await page.waitForURL("/recipes");

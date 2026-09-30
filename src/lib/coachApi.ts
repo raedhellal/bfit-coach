@@ -1881,6 +1881,147 @@ export function initialiserName(status: Pick<ActivationStatus, "creatorName" | "
   }
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-321b — step challenges, against b-fit-api `feat/ev321a-coach-challenges-api`
+ * @ `1749060` (EV-321a). ⛔ UNMERGED when this was written: `spec/b-fit-api.sha` says
+ * `on-api-main: NO`, and `qa/api-merge-condition.spec.ts` holds the merge condition.
+ *
+ * Four properties of this contract the types cannot state:
+ *
+ *   1. **`clientIds` are `coach_clients` row ids** — the roster's `RosterClient.id`,
+ *      never a user id. Any foreign, revoked or unknown id refuses the WHOLE create with
+ *      one undifferentiated `403 COACH_ACCESS_DENIED`, and nothing is written.
+ *   2. **`ChallengeDay.value: null` is NO DATA, never a zero.** The api stores no row for
+ *      a day the phone had nothing for, and a stored 0 is a real MISSED day. So nothing
+ *      on this surface may coalesce a null to 0 — `todayValue` included.
+ *   3. **An INVITED participant carries `rank: null` and `progress: null`.** Before the
+ *      trainee accepts, the coach sees the status and nothing else: accepting IS the
+ *      per-challenge consent to share steps (R2). The portal renders no number for them.
+ *   4. **The api ranks; the portal does not.** ACCEPTED first in `rank` order (STEPS:
+ *      daysMet desc, then total desc; equal keys share a rank, then name), INVITED after
+ *      by name. The table renders `participants` in the order served.
+ *
+ * WORKOUTS exists on the wire (the api's `ChallengeMetric` says "no portal or app UI
+ * yet"). The portal CREATES only STEPS; it renders a WORKOUTS challenge it is served
+ * (null `daysMet` and `days`) rather than crashing on one.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** `ChallengeMetric`. */
+export type ChallengeMetric = "STEPS" | "WORKOUTS";
+/** `ActivitySource` — where a day's step total came from, as the app reports it. */
+export type ActivitySource = "HEALTHKIT" | "HEALTH_CONNECT" | "PEDOMETER" | "MANUAL";
+/** `ChallengeParticipantStatus`. A decline or a leave DELETES the participation. */
+export type ChallengeParticipantStatus = "INVITED" | "ACCEPTED";
+/** `ChallengePhase`, computed on the server's UTC date for coach reads. */
+export type ChallengePhase = "UPCOMING" | "ACTIVE" | "ENDED";
+/**
+ * `ChallengeDayStatus`. NO_DATA is "a day up to today with no value from any source" —
+ * it is NOT a zero, never counts as met and never adds steps.
+ */
+export type ChallengeDayStatus = "MET" | "MISSED" | "IN_PROGRESS" | "NO_DATA" | "FUTURE";
+
+/**
+ * `POST /coach-portal/challenges`. Built in ONE place (`buildChallengeRequest`,
+ * `src/lib/challengeDocument.ts`), which is also what the unit spec drives.
+ * @wire CoachChallengeCreateRequest
+ */
+export interface CoachChallengeCreateRequest {
+  /** 1–80 characters after the api's normalisation; no control character or line break. */
+  title: string;
+  metric: ChallengeMetric;
+  /** STEPS only (required, 1 000–50 000). Must be absent or null for WORKOUTS. */
+  dailyTarget?: number | null;
+  /** WORKOUTS only (required, 1–100). Must be absent or null for STEPS. */
+  totalTarget?: number | null;
+  /** `YYYY-MM-DD`, at most 14 days before and 60 days after the server's UTC date. */
+  startsOn: string;
+  /** `YYYY-MM-DD`, 0–92 days after `startsOn`. */
+  endsOn: string;
+  /** 1–50 `coach_clients` ids from the roster. A duplicate counts once. */
+  clientIds: string[];
+}
+
+/** @wire CoachChallengeSummary */
+export interface CoachChallengeSummary {
+  id: string;
+  title: string;
+  metric: ChallengeMetric;
+  dailyTarget: number | null;
+  totalTarget: number | null;
+  startsOn: string;
+  endsOn: string;
+  /** Days in the window, both ends included (1–93). */
+  days: number;
+  phase: ChallengePhase;
+  /** Visible participants (INVITED + ACCEPTED) whose link is still ACTIVE. */
+  participantCount: number;
+  acceptedCount: number;
+  createdAt: string;
+}
+
+/** `GET /coach-portal/challenges` — newest window first. @wire CoachChallengePageResponse */
+export interface CoachChallengePage {
+  items: CoachChallengeSummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+/** One window day, in the TRAINEE's local calendar. @wire ChallengeDay */
+export interface ChallengeDay {
+  day: string;
+  /** Null = no data (never 0 for absent). */
+  value: number | null;
+  source: ActivitySource | null;
+  status: ChallengeDayStatus;
+}
+
+/**
+ * Computed at read time, never stored. For WORKOUTS `daysMet`, `todaySource`,
+ * `syncedAt` and `days` are null and `total` counts completed sessions.
+ * @wire ChallengeProgress
+ */
+export interface ChallengeProgress {
+  /** The trainee's local today, as this read determined it. */
+  today: string;
+  /** STEPS: null when there is no data for today, or today is outside the window. */
+  todayValue: number | null;
+  todaySource: ActivitySource | null;
+  /** Window days up to and including the trainee's today (0 before the start). */
+  daysElapsed: number;
+  daysMet: number | null;
+  total: number;
+  /** `dailyTarget` (STEPS) or `totalTarget` (WORKOUTS). */
+  target: number;
+  syncedAt: string | null;
+  days: ChallengeDay[] | null;
+}
+
+/** @wire CoachChallengeParticipant */
+export interface CoachChallengeParticipant {
+  /** The ACTIVE `coach_clients` row id — the portal's id for this trainee. */
+  clientId: string;
+  /** Null when the account holds no name. */
+  displayName: string | null;
+  status: ChallengeParticipantStatus;
+  invitedAt: string;
+  acceptedAt: string | null;
+  /** 1-based among ACCEPTED; equal keys share a rank. Null while INVITED. */
+  rank: number | null;
+  /** Null while INVITED. */
+  progress: ChallengeProgress | null;
+}
+
+/** `GET /coach-portal/challenges/{id}` and the 201 of the create. @wire CoachChallengeDetailResponse */
+export interface CoachChallengeDetail {
+  challenge: CoachChallengeSummary;
+  participants: CoachChallengeParticipant[];
+}
+
+/** The page size the list asks for: the api's maximum. */
+export const CHALLENGE_PAGE_SIZE = 50;
+
 // ── error helpers ────────────────────────────────────────────────────────────
 
 export { ApiError } from "./apiFetch";
@@ -2116,6 +2257,10 @@ export function isRouteNotFound(err: unknown): boolean {
 /** 400 — any other bound. The field is in `details.field` OR leads `message`. */
 export function isValidationError(err: unknown): boolean {
   return err instanceof ApiError && err.code === "VALIDATION_ERROR";
+}
+/** 409 — EV-321a AC3: 20 of this coach's challenges have not ended. */
+export function isChallengeLimitReached(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_CHALLENGE_LIMIT_REACHED";
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -2579,6 +2724,24 @@ const liveCoachApi = {
       `${client(id)}/nutrition/week/meals/${encodeURIComponent(mealId)}/recipe`,
       { method: "POST", body: JSON.stringify(body) }
     );
+  },
+
+  // ── EV-321b step challenges (b-fit-api EV-321a @ 1749060, unmerged) ────────
+  listChallenges(page = 0, size = CHALLENGE_PAGE_SIZE): Promise<CoachChallengePage> {
+    return apiFetch<CoachChallengePage>(`/coach-portal/challenges?page=${page}&size=${size}`);
+  },
+  getChallenge(id: string): Promise<CoachChallengeDetail> {
+    return apiFetch<CoachChallengeDetail>(`/coach-portal/challenges/${encodeURIComponent(id)}`);
+  },
+  createChallenge(body: CoachChallengeCreateRequest): Promise<CoachChallengeDetail> {
+    return apiFetch<CoachChallengeDetail>("/coach-portal/challenges", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  async deleteChallenge(id: string): Promise<void> {
+    // 204 No Content.
+    await apiFetch<void>(`/coach-portal/challenges/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
 };
 
