@@ -330,10 +330,44 @@ test.describe("the editor's meal-time chips", () => {
     await saveAndSettle(page);
     await expect(page.getByText("Recipe saved.", { exact: true })).toBeVisible();
 
-    // The key was omitted, so the api kept tab B's tags. "Always send the full set" would
-    // have put Breakfast back.
+    // The key was omitted, so the api kept tab B's tags — and tab A's chips now SHOW what
+    // the server holds, without a reload (staff review: they used to keep the stale pair).
+    await expect.poll(() => pressed(page)).toEqual(["Snack"]);
+
+    // A SECOND name-only save, still without reloading, must not put Breakfast back. It
+    // did: the baseline had moved to [Snack] while the chips still said Breakfast + Snack,
+    // so the second save saw a "change" and sent the stale pair.
+    await page.getByLabel("Recipe name").fill("Overnight oats with honey and nuts");
+    await saveAndSettle(page);
+    await expect(page.getByText("Recipe saved.", { exact: true })).toBeVisible();
     await page.reload();
     expect(await pressed(page)).toEqual(["Snack"]);
+    await expect(page.getByLabel("Recipe name")).toHaveValue("Overnight oats with honey and nuts");
+  });
+
+  test("a chip toggled while a save is in flight is kept, not re-synced away", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    await signIn(page);
+    await page.goto(`/recipes/${OATS_ID}`);
+    await firstEdit(page, page.getByLabel("Recipe name"), "Overnight oats, slow save");
+    // Hold the save's POST so a chip can be toggled while it is in flight.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/recipes/**", async (route) => {
+      if (route.request().method() === "POST" && route.request().headers()["next-action"]) await held;
+      await route.continue();
+    });
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    await page.getByRole("button", { name: "Save recipe" }).click();
+    await setChip(page, "Lunch", true);
+    release();
+    await answered;
+    await expect(page.getByText("Recipe saved.", { exact: true })).toBeVisible();
+    // The coach's mid-flight toggle survives the re-sync.
+    expect(await pressed(page)).toEqual(["Breakfast", "Lunch", "Snack"]);
+    await page.unroute("**/recipes/**");
   });
 
   test("changed chips are sent, and still sent after a REFUSED save", async ({ page }) => {

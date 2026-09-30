@@ -28,6 +28,12 @@ untagged. On read, `null` means untagged, and the fill treats it as LUNCH + DINN
   LUNCH,DINNER. A stale tab would also overwrite tags the seed wrote through the api.
 - Specs in `qa/coach-recipe-slots.spec.ts` prove both. Three mutants were each caught:
   "always send", "baseline moves on send", and `null → []`.
+- **A baseline alone is not enough.** After a save that OMITTED the key, the response can
+  carry another tab's tags. The baseline moves to them. If the chips still show the stale
+  set, the NEXT untouched save "differs" and re-tags. Staff witnessed it at b0aa611. So
+  after every successful save the editor re-syncs the chips to `effectiveSlots(response)`,
+  unless a chip was toggled in flight (a `useRef` counter). The spec covers both: the second
+  save WITHOUT a reload, and a toggle while the POST is held by `page.route`.
 - On /recipes, every `role=group` is a recipe row. `coach-recipes.spec.ts` reads the
   alphabetical order from `getByRole("group")`, so the badge list is a `<ul aria-label>`
   and the filter is a `<select>`. Neither is a group.
@@ -46,7 +52,10 @@ untagged. On read, `null` means untagged, and the fill treats it as LUNCH + DINN
 - It counts `COACH_RECIPE && placedByYou`, not the story's bare `COACH_RECIPE`: Vera's
   previous-coach recipe is not "vos recettes".
 - The verb agrees with n ("1 repas sur 28 vient"). Both are deviations flagged to senior-po.
-- It is hidden only on `recipePlacementEnabled: false`. The coach wire does NOT expose the
+- It shows on an ACTIVE week only. `MealWeekView.status` was declared for this (EV-071b's
+  register entry was deleted). The fixture switch `evoli_fixture_week_status` serves the
+  other states.
+- Beyond that, it is hidden only on `recipePlacementEnabled: false`. The coach wire does NOT expose the
   fill flag, so with placement on and fill off an apply reads "0 of 28", which is true.
 - The fixture's apply runs a REDUCED port of the fill, only when the context sets the
   `evoli_fixture_recipe_fill=on` cookie. Off by default, because on-by-default would rewrite

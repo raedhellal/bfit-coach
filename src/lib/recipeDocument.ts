@@ -94,7 +94,8 @@ export function sameSlots(a: readonly MealSlot[], b: readonly MealSlot[]): boole
 
 /**
  * What the SERVER holds for the recipe being edited, as far as the editor knows: nothing
- * yet (a new recipe), or the stored tags from the last read or the last successful save.
+ * yet (a new recipe), or the stored tags from the last read or the last successful save
+ * (the tags the save's RESPONSE carried, which may be another tab's if the key was omitted).
  */
 export type SlotBaseline = { recipe: "new" } | { recipe: "stored"; mealSlots: MealSlot[] | null };
 
@@ -108,8 +109,20 @@ export type SlotBaseline = { recipe: "new" } | { recipe: "stored"; mealSlots: Me
  *     tags (`CoachRecipeUseCase.update`). That is why it is not "always send the full set":
  *       – fixing a typo in an untagged recipe would silently turn it into an explicit
  *         Lunch + Dinner tag, and the "(default)" mark with it;
- *       – a tab opened before the seed (or another tab) tagged the recipe through the api
- *         would overwrite those tags with the stale ones it loaded.
+ *       – a tab opened before the seed (or another tab) re-tagged the recipe would put
+ *         back the stale tags it loaded, on a save that did not touch them.
+ *
+ *     What this function alone does NOT prevent — the editor's half of the rule: after a
+ *     save that omitted the key, the server may hold tags this tab never showed (another
+ *     tab's). The baseline moves to the response's tags, so if the chips kept showing the
+ *     stale set, the NEXT save would see a difference and send it — re-tagging on the
+ *     second untouched save (staff, EV-320c review). `RecipeEditor` therefore re-syncs the
+ *     chips to the response after every successful save, unless the coach toggled a chip
+ *     while it was in flight.
+ *
+ *     Nor does it arbitrate a real conflict: a stale tab whose coach DOES change the chips
+ *     sends its whole selection, and the last save wins, as for every other field here.
+ *
  *     It is a comparison with the baseline rather than a "touched" flag on purpose: a
  *     touched-then-restored selection sends nothing, and a selection changed before a
  *     REFUSED save is still different at the next Save — a flag cleared when a save is

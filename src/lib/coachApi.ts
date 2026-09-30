@@ -1549,7 +1549,19 @@ export interface MealWeekView {
   /** `YYYY-MM-DD`, the Monday. */
   weekStart: string;
   days: PlannedDayView[];
+  /**
+   * EV-071b addendum 6.1 — the week's lifecycle state (`required` on the wire since
+   * b-fit-api carries it). Declared by EV-320c for ONE reader: AC17's recipe line shows on
+   * an ACTIVE week only — a REFUSED week keeps just the eaten meals and a GENERATING one is
+   * not finished, so "0 repas sur 3" there would describe a week that is not the plan.
+   * Read as `=== "ACTIVE"`, so a missing value shows nothing. The refusal read-side (C)
+   * that EV-071b specifies is still not rendered here.
+   */
+  status: MealWeekStatus;
 }
+
+/** `CoachMealWeek.status`, the api's enum verbatim. */
+export type MealWeekStatus = "GENERATING" | "ACTIVE" | "REFUSED" | "ARCHIVED";
 
 /**
  * The trainee's stored `nutrition_preferences`, READ-ONLY.

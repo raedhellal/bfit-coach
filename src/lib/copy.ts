@@ -1489,7 +1489,7 @@ export const en = {
      * "no meal time": null is not an empty list.
      */
     slotsDefault: (lunch: string, dinner: string) => `${lunch}, ${dinner} (default)`,
-    slotsDefaultTitle: "No meal time saved: used for lunch and dinner by default.",
+    slotsDefaultTitle: "No meal time saved: this recipe is used for lunch and dinner by default.",
     /** The library's filter. It filters on what the fill reads, so untagged counts as lunch and dinner. */
     filterLabel: "Meal time",
     filterAll: "All meal times",

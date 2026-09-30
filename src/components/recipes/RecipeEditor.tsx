@@ -14,6 +14,7 @@ import {
   SEARCH_MAX,
   UNITS,
   UNTAGGED_SLOTS,
+  effectiveSlots,
   forSave,
   ingredientAddress,
   localProblems,
@@ -119,6 +120,11 @@ export function RecipeEditor({
    * api answered with), never when a save is sent: a refused save leaves the change
    * pending, so the next Save still sends it.
    */
+  /**
+   * Counts chip toggles. A save remembers the count it was sent at; if it is unchanged
+   * when the save succeeds, the chips are re-synced to the tags the server answered with.
+   */
+  const slotEdits = useRef(0);
   const [slotBaseline, setSlotBaseline] = useState<SlotBaseline>(
     initialRecipeId === null ? { recipe: "new" } : { recipe: "stored", mealSlots: storedMealSlots }
   );
@@ -194,6 +200,7 @@ export function RecipeEditor({
   }
 
   function toggleSlot(slot: MealSlot) {
+    slotEdits.current += 1;
     const next = draft.mealSlots.includes(slot)
       ? draft.mealSlots.filter((s) => s !== slot)
       : orderSlots([...draft.mealSlots, slot]);
@@ -203,6 +210,7 @@ export function RecipeEditor({
   function save() {
     if (!saveable || pending) return;
     const body = forSave(draft, slotBaseline);
+    const slotEditsAtSend = slotEdits.current;
     const sentLines = draft.ingredients.map((l) => ({ key: l.key, label: l.label }));
     startTransition(async () => {
       const result = await settled(
@@ -220,6 +228,16 @@ export function RecipeEditor({
       setNotice(copy.recipes.saved);
       setDirty(false);
       setSlotBaseline({ recipe: "stored", mealSlots: result.recipe.mealSlots });
+      /*
+       * Re-sync the chips to what the server now holds. After a save that OMITTED the key,
+       * that can be another tab's tags; leaving the stale chips on screen would make the
+       * next untouched save differ from the new baseline and send them back (staff review).
+       * Not if the coach toggled a chip mid-flight: that choice is theirs and still unsaved.
+       */
+      if (slotEdits.current === slotEditsAtSend) {
+        const stored = effectiveSlots(result.recipe.mealSlots);
+        setDraft((current) => ({ ...current, mealSlots: stored }));
+      }
       if (recipeId === null) {
         /**
          * A create becomes an edit WITHOUT a router navigation — the template editor's

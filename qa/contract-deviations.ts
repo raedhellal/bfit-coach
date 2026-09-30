@@ -77,7 +77,8 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
   },
 
   /* ── EV-071b / EV-190a, landing on another branch ────────────────────────
-   * These three are NOT drift to close here. They are the api half of EV-071b
+   * These two are NOT drift to close here (a third, `MealWeekView.status`, was declared by
+   * EV-320c for AC17's recipe line and left the register). They are the api half of EV-071b
    * ruling 6 addendum 6.1 and EV-190a N1, and the portal half is on
    * `feat/ev071b-coach-refusal` (b-fit-coach, unmerged at 72563e8), which is
    * rewriting these exact types. Declaring them here would be a merge conflict in
@@ -86,8 +87,8 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
    * ---------------------------------------------------------------------- */
   MealWeekView: {
     missingInPortal: {
-      status:
-        "EV-071b addendum 6.1's GENERATING | ACTIVE | REFUSED | ARCHIVED — the read-side of the refusal state. Owned by feat/ev071b-coach-refusal.",
+      // `status` was declared by EV-320c (AC17's line reads it); the refusal read-side it
+      // exists for is still EV-071b's.
       mealStructure:
         "EV-190a / N1 — the structure the week was generated against, for AC5's reconciliation line. Same branch.",
     },

@@ -295,11 +295,13 @@ export function NutritionWeekCard({
       {/*
         EV-320 AC17 — one line: how much of the week comes from this coach's recipes. Hidden
         while recipe placement is off (`recipePlacementEnabled`, the only flag the coach wire
-        serves; the fill flag is not on it) and when there is no week to count. A zero is
+        serves; the fill flag is not on it), when there is no week to count, and on any week
+        that is not ACTIVE: a REFUSED week keeps only the eaten meals and a GENERATING one is
+        unfinished, so "0 of 3" there would describe a week that is not the plan. A zero is
         shown ("0 of 28"): it is the true answer after an engine-only apply (edge case 1).
         A status region, so the new count is announced after Apply.
       */}
-      {recipePlacementEnabled === true && share.totalMeals > 0 && (
+      {recipePlacementEnabled === true && week?.status === "ACTIVE" && share.totalMeals > 0 && (
         <p
           role="status"
           data-testid="recipe-share"

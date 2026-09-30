@@ -2800,7 +2800,8 @@ function buildWeek(
   seeds: number[],
   pool: typeof MEAL_POOL = MEAL_POOL
 ): MealWeekView {
-  return { weekStart, days: seeds.map((seed, i) => buildDay(weekStart, i, seed, pool)) };
+  // Every week the fixture builds is ACTIVE, as a finished generation or apply is on the api.
+  return { weekStart, days: seeds.map((seed, i) => buildDay(weekStart, i, seed, pool)), status: "ACTIVE" };
 }
 
 /** Rewrite one slot on one day. Fixture seeding only. */
@@ -3003,6 +3004,17 @@ async function fixtureSwitch(name: string): Promise<string | null> {
 }
 async function placementOff(id: string): Promise<boolean> {
   return PLACEMENT_OFF_IDS.has(id) || (await fixtureSwitch("evoli_fixture_placement")) === "off";
+}
+/**
+ * EV-320c — ⚠ fixture affordance: `evoli_fixture_week_status=<STATUS>` serves the nutrition
+ * READ's week in another lifecycle state (one browser context only), so AC17's "ACTIVE
+ * only" is testable without porting EV-071b's refusal. The meals are left as they are, and
+ * the stored state is not touched: a shallow copy is served.
+ */
+async function withServedWeekStatus(state: NutritionState): Promise<NutritionState> {
+  const status = await fixtureSwitch("evoli_fixture_week_status");
+  if (!state.week || (status !== "GENERATING" && status !== "REFUSED" && status !== "ARCHIVED")) return state;
+  return { ...state, week: { ...state.week, status } };
 }
 async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
@@ -5266,7 +5278,7 @@ export const fixtureCoachApi: CoachApi = {
 
   async getNutrition(id: string): Promise<CoachNutritionResponse> {
     await assertScope(id, "NUTRITION");
-    const state = nutritionState(id);
+    const state = await withServedWeekStatus(nutritionState(id));
     return {
       clientId: id,
       traineeDisplayName: OVERVIEWS[id]().traineeDisplayName,

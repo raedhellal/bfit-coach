@@ -89,6 +89,7 @@ test.describe("the count", () => {
   test("counts the viewing coach's recipe meals only, over every meal of the week", () => {
     const week: MealWeekView = {
       weekStart: "2026-09-28",
+      status: "ACTIVE",
       days: [
         {
           index: 0,
@@ -152,6 +153,22 @@ test.describe("the week view's line (AC17)", () => {
     await page.reload();
     await expect(page.getByRole("button", { name: /^Apply to / })).toBeVisible();
     await expect(line(page)).toHaveCount(0);
+  });
+
+  test("shown on an ACTIVE week only: hidden on a GENERATING, REFUSED or ARCHIVED one", async ({ page, context }) => {
+    await signIn(page);
+    await page.goto(`/clients/${VERA}/nutrition`);
+    await expect(line(page)).toHaveText("1 of 28 meals comes from your recipes");
+    for (const status of ["GENERATING", "REFUSED", "ARCHIVED"]) {
+      await context.addCookies([{ name: "evoli_fixture_week_status", value: status, url: page.url() }]);
+      await page.reload();
+      // The week itself is still on screen — only the line is withheld.
+      await expect(page.getByText("Your recipe", { exact: true })).toHaveCount(1);
+      await expect(line(page), status).toHaveCount(0);
+    }
+    await context.clearCookies({ name: "evoli_fixture_week_status" });
+    await page.reload();
+    await expect(line(page)).toHaveText("1 of 28 meals comes from your recipes");
   });
 
   test("after Apply with a library that covers every slot: 'The whole week comes from your recipes'", async ({ page, context }) => {

@@ -730,7 +730,7 @@ export const fr = {
       `${n(kcal)} kcal · P ${n(p)} g · G ${n(c)} g · L ${n(f)} g`,
     ingredientCount: (count: number) => `${count} ingrédient${s(count)}`,
     slotsDefault: (lunch: string, dinner: string) => `${lunch}, ${dinner} (par défaut)`,
-    slotsDefaultTitle: "Aucun moment enregistré : utilisée pour le déjeuner et le dîner par défaut.",
+    slotsDefaultTitle: "Aucun moment enregistré : cette recette sert au déjeuner et au dîner par défaut.",
     filterLabel: "Moment du repas",
     filterAll: "Tous les moments",
     filterEmpty: "Aucune recette pour ce moment du repas.",
