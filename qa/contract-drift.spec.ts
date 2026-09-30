@@ -363,10 +363,11 @@ for (const entry of interfaces) {
  *     declared non-optional — it reads names, like the rest of this file;
  *   ✗ a body the portal builds from an UNTAGGED type. At the TOP level this is bounded:
  *     every `/coach-portal` requestBody root must have an `@wire` interface or a written
- *     exemption (`UNTAGGED_REQUEST_ROOTS`; one today, `CoachPublishRequest`, sent inline
- *     as `{ digest }`). NESTED types are not bounded: the editor's `RoutineDayEntry` rides
- *     inside `CoachRoutineDraftRequest.trainingDays` with no tag, so the nested half of
- *     BUG-195 is invisible here; the top-level half is enough to hold the case red.
+ *     exemption (`UNTAGGED_REQUEST_ROOTS`, e.g. `CoachPublishRequest`, sent inline as
+ *     `{ digest }`). NESTED types are only as good as their own tags: since BUG-195c the
+ *     draft body's `document` is the tagged `Routine`, whose nested `RoutineTrainingDay`
+ *     and `RoutineExercise` are tagged and checked in this same loop — the untagged
+ *     `RoutineDayEntry` that hid BUG-195's nested half no longer exists.
  *
  * NO SERVER-RESOLVED ALLOWANCE, deliberately. The authority is the api, not a design
  * record: on b-fit-api main `Routine.goal` / `.level` are `@NotBlank` and
@@ -383,11 +384,12 @@ for (const entry of interfaces) {
  * Interfaces whose required-field case is KNOWN red, each wrapped in `test.fail()` with
  * the bug as its annotation. The marker is not an exemption: the day the case starts
  * passing, `test.fail` fails the run, so the entry has to be deleted by the fix that
- * closes it (BUG-195c) rather than forgotten.
+ * closes it rather than forgotten.
+ *
+ * EMPTY since BUG-195c, which deleted `CoachRoutineDraftRequest: "BUG-195"` — the case
+ * went green, `test.fail` went red, and the deletion was forced exactly as designed.
  */
-const KNOWN_REQUIRED_OMISSIONS: Record<string, string> = {
-  CoachRoutineDraftRequest: "BUG-195",
-};
+const KNOWN_REQUIRED_OMISSIONS: Record<string, string> = {};
 
 /**
  * The `@wire` interfaces that face a schema the api can receive, BY NAME. Pinned for the
@@ -424,8 +426,6 @@ const REQUEST_FACING_EXPECTED = [
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
-  CoachRoutineDraftRequest:
-    "PUT …/routine/draft's BUG-195b body `{ replacesDraftUpdatedAt, document }` (on api main at 741ed39, arrived with EV-321b's re-vendor). NOT a safe omission: it is BUG-195 itself. This branch, like main, still sends the pre-195b body from an interface tagged `@wire Routine` (held red by KNOWN_REQUIRED_OMISSIONS), so Save draft is a 400 VALIDATION_ERROR against 741ed39 whether or not this entry exists (`CoachRoutineController` takes `@Valid @RequestBody CoachRoutineDraftRequest`, whose `document` is `@NotNull`; the old body has no `document`). The fix is `fix/bug195c-portal-routine-draft`, which tags the type. Whichever of BUG-195c / EV-321b merges SECOND deletes this entry, or the exact comparison goes red.",
   InitialiseTraineeRequest:
     "POST /coach-portal/trainees (EV-204a2, arrived with the EV-278c re-vendor at b-fit-api c69c287): the coach initialises a trainee's account. The portal sends NO request to it yet; EV-204b (b-fit-coach, 'Add a trainee') tags the type — delete this entry when it lands, or the exact comparison goes red.",
   ResendInvitationRequest:

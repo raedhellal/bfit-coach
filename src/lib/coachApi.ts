@@ -40,8 +40,10 @@ import { sanitiseCoachName } from "./inviteName";
  *   GET    /coach-portal/clients/{id}/routine            [scope WORKOUTS]
  *          → CoachRoutineResponse — active plan + days + exercises, the saved
  *            draft if one exists, and the trainee's READ-ONLY injuries/equipment.
- *   GET    /coach-portal/clients/{id}/routine/draft   → CoachRoutineDraft | 404
- *   PUT    /coach-portal/clients/{id}/routine/draft   ← CoachRoutineDraftRequest
+ *   GET    /coach-portal/clients/{id}/routine/draft   → CoachRoutineDraftResponse (nulls, never 404)
+ *   PUT    /coach-portal/clients/{id}/routine/draft   ← CoachRoutineDraftRequest (BUG-195c)
+ *          400 VALIDATION_ERROR · COACH_DRAFT_SUBJECT_FIELD · COACH_DRAFT_REPS_ON_DURATION
+ *          409 COACH_DRAFT_EXISTS (details.existingUpdatedAt)
  *   DELETE /coach-portal/clients/{id}/routine/draft   → 204
  *   POST   /coach-portal/clients/{id}/routine/publish/preview
  *          → { repairs: [{ exercise, replacedWith, rule }], digest }
@@ -636,11 +638,13 @@ export interface TraineeProgress {
  *     `qa/contract-drift.test.mjs` checks every one of those claims against the
  *     vendored `spec/b-fit-api.openapi.yaml`.
  *
- *   · `RoutinePlanView` / `RoutineDayEntry` / `RoutineExerciseEntry` are THE EDITOR'S
- *     MODEL — a flatter shape the routine editor edits, derived from the wire by
- *     `src/lib/routineDocument.ts`. They are NOT a contract and must never be typed as
- *     one; the previous version of this file blurred exactly that line, which is how a
- *     field nobody serves ended up looking like a field somebody serves.
+ *   · There is NO second, editor-shaped layer any more (BUG-195c). EV-184b's editor
+ *     used to edit a flatter projection (`RoutinePlanView` and friends), which is what
+ *     made its write path unwritable: rebuilding a `Routine` from it would have deleted
+ *     `tempo`, `notes`, `trackingType`, `durationSeconds`, `weight` and
+ *     `estimatedMinutes`. Both coach editors now edit the `Routine` itself, through one
+ *     component (`src/components/routine/RoutineDocumentEditor.tsx`), and the only
+ *     transformation is `src/lib/routineDocument.ts`'s, in both directions.
  * ════════════════════════════════════════════════════════════════════════════
  */
 
@@ -654,9 +658,9 @@ export type TrackingType = "WEIGHT_REPS" | "DURATION";
  * there is **no `catalogSlug`, no `primaryMuscles` and no `equipment`**. The persisted
  * routine document carries an exercise NAME and nothing that identifies a catalog row,
  * so the identity the coach picked in `CatalogPicker` does not survive a save/publish
- * round trip — `RoutinePolicy` matches on the name, which is why it can. The editor's
- * `RoutineExerciseEntry` therefore carries those three as NULLABLE: populated for an
- * exercise the coach just picked in this session, null for every exercise read back.
+ * round trip — `RoutinePolicy` matches on the name, which is why it can. The editor
+ * therefore shows a picked exercise's muscle and equipment badges only for the session
+ * in which it was picked, and never for an exercise read back.
  * @wire RoutineExercise
  *
  */
@@ -864,92 +868,49 @@ export interface CoachRoutineDraftResponse {
   catalogChecked: boolean;
 }
 
-// ── the editor's model (NOT a contract — derived by src/lib/routineDocument.ts) ──
-
-/**
- * ✏️ EDITOR MODEL — one prescription row as the editor holds it.
- *
- * `catalogSlug`, `primaryMuscles` and `equipment` are nullable because the WIRE does
- * not carry them (see `RoutineExercise`). They are populated only for an exercise the
- * coach picked from the catalog in this session, and they are lost on the next read —
- * which is worth knowing before anything is built on them. `sets` is a number; `reps`
- * and `rest` are strings because the persisted record's are.
- */
-export interface RoutineExerciseEntry {
-  /** `ExerciseCatalogEntry.slug` — the identity the coach PICKED, when they just did. */
-  catalogSlug: string | null;
-  name: string;
-  primaryMuscles: string | null;
-  equipment: string | null;
-  sets: number;
-  reps: string;
-  rest: string;
-}
-
-/** ✏️ EDITOR MODEL — one training day. `dayOfWeek` is ISO 1=Monday…7=Sunday. */
-export interface RoutineDayEntry {
-  dayOfWeek: number;
-  /** The split label the coach reads ("Upper body"). */
-  focus: string;
-  exercises: RoutineExerciseEntry[];
-}
-
-/** ✏️ EDITOR MODEL — a plan as the coach edits it: name + days. */
-export interface RoutinePlanView {
-  /** Null for a draft that has never been published. */
-  planId: string | null;
-  name: string;
-  /** Schedule order is the api's order; this surface does not re-sort it. */
-  trainingDays: RoutineDayEntry[];
-}
-
-/** ✏️ EDITOR MODEL — a saved draft. `updatedAt` is an ISO instant; last write wins. */
-export interface CoachRoutineDraft extends RoutinePlanView {
-  updatedAt: string;
-}
-
 /* ════════════════════════════════════════════════════════════════════════════
- * ⛔ KNOWN BROKEN AGAINST LIVE — the routine WRITE path (EV-184 AC2/AC3).
+ * BUG-195c — THE ROUTINE WRITE PATH (ADR-0018 D1 option 1-D, D6, D7).
  *
- * The read path above was realigned to b-fit-api main on 2026-09-18. The write path
- * was NOT, and this block is why, so that nobody reads the silence as agreement.
+ * Until this row the portal sent `{name, trainingDays}` — two of the eight fields of
+ * the `@Valid Routine` the api required — so every "Save draft" and every Publish
+ * (which saves first) was a 400 against a real api, from EV-184b's merge onwards. It
+ * was registered as ⛔ KNOWN BROKEN AGAINST LIVE here for two reasons, and ADR-0018
+ * answered both:
  *
- * `PUT /coach-portal/clients/{id}/routine/draft` takes `@Valid @RequestBody Routine` —
- * the WHOLE document — and answers `CoachRoutineDraftResponse`. This surface sends
- * `{name, trainingDays}` and expects a flat draft back, so against a real api a "Save
- * draft" is a 400 and the editor shows its generic failure. That is pre-existing and
- * unchanged by this branch; it is registered field by field in
- * `qa/contract-deviations.mjs` so the contract test keeps it visible.
+ *   1. *"The portal has no honest source for a trainee's goal and level."* It does not
+ *      need one: the SERVER owns them (D3). The portal sends whatever it was served (a
+ *      placeholder for a from-scratch plan), the api overwrites both with the trainee's
+ *      own onboarding answers, and the response carries what was stored.
+ *   2. *"The editor edits a lossy projection."* It no longer does: the routine editor
+ *      now holds the WHOLE document, with a control for every field that survives a
+ *      round trip, and `weeklyProgression` is carried untouched and declared so
+ *      (`src/lib/routineVisibility.ts`, ADR-0018 guard 4-e).
  *
- * It is NOT fixed here because fixing it is not a web decision:
- *
- *   1. `Routine` requires `goal`, `level` (`@NotBlank`), `weeklyProgression`,
- *      `constraints` and `constraints.minutesPerSession` (`@Positive`). For a trainee
- *      who has never had a routine — the api's own edge case 9, "the coach builds one
- *      from scratch" — the portal has no honest source for any of them, and inventing
- *      a goal and a training level for somebody else's trainee in the web tier is
- *      exactly the kind of fabrication this surface refuses.
- *   2. Even with an existing document to carry forward, the editor edits a LOSSY
- *      projection: `tempo`, `notes`, `trackingType`, `durationSeconds`, `weight` and
- *      `estimatedMinutes` are on the wire and on no coach control, so a naive rebuild
- *      of the document would silently delete a DURATION exercise's prescription from a
- *      trainee's plan. Deciding how a partial edit merges is a story/api question.
- *
- * → Needs `architect` + `java-engineer`: either the api accepts a coach-shaped draft
- *   body (name + days, merged server-side against the stored document, defaults for a
- *   from-scratch plan), or EV-184 gains the fields a coach must author. Until one of
- *   those lands, these two types describe a request b-fit-api refuses.
+ * The body is built in exactly one place, `forDraftSave` in `src/lib/routineDocument.ts`.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 /**
- * ⛔ `PUT …/routine/draft` as this surface sends it — see the block above.
+ * 🔌 WIRE — the body of `PUT /coach-portal/clients/{id}/routine/draft`.
  *
- * @wire Routine
+ * `replacesDraftUpdatedAt` is REQUIRED-AND-NULLABLE here although the wire lets it be
+ * absent, for the whole-representation reason: absent and null mean the same thing to
+ * the api ("only if there is no draft"), so a call site that forgot the token would
+ * silently turn every overwrite into a 409 — typing it required makes forgetting it a
+ * compile error. Echo it VERBATIM from the last GET, PUT or apply response, or from a
+ * 409's `details.existingUpdatedAt`; never compute it.
+ *
+ * `document.goal` / `.level` are the TRAINEE's (the server overwrites them),
+ * `constraints.equipment` / `.injuries` must be `[]` (a non-empty value is
+ * `400 COACH_DRAFT_SUBJECT_FIELD`), and both day counts are derived from
+ * `trainingDays.length`.
+ *
+ * @wire CoachRoutineDraftRequest
  */
 export interface CoachRoutineDraftRequest {
-  name: string;
-  trainingDays: RoutineDayEntry[];
+  replacesDraftUpdatedAt: string | null;
+  document: Routine;
 }
+
 
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -1401,7 +1362,18 @@ export interface CatalogExercise {
   name: string;
   primaryMuscles: string | null;
   equipment: string | null;
+  /**
+   * How a trainee logs the exercise: WEIGHTED / BODYWEIGHT / DURATION. Read for ONE
+   * thing (ADR-0018 D1's residual, BUG-195c AC3.5): a newly picked exercise's
+   * `trackingType` is DURATION when the catalog row is, instead of the constant
+   * WEIGHT_REPS that made a coach's Plank a sets × reps plank. Optional: not `required`
+   * on the wire, and an older catalog row may not carry it — absent is WEIGHT_REPS.
+   */
+  exerciseType?: CatalogExerciseType | null;
 }
+
+/** `ExerciseCatalogDto.exerciseType`. */
+export type CatalogExerciseType = "WEIGHTED" | "BODYWEIGHT" | "DURATION";
 
 /**
  * 🔌 WIRE — `GET /coach-portal/catalog/exercises` → `CoachCatalogPageResponse`.
@@ -2158,6 +2130,17 @@ export function draftExistsUpdatedAt(err: unknown): string | null {
   const value = err.details?.existingUpdatedAt;
   return typeof value === "string" ? value : null;
 }
+/**
+ * 400 `COACH_DRAFT_REPS_ON_DURATION` (BUG-195b, ADR-0018 D9) — a timed exercise that
+ * carries reps. On the coach's draft SAVE the api still refuses it (and `routineFailure`
+ * locates it). On template APPLY and template writes it was refused only in BUG-195b
+ * round 2: round 3 (`fcc1ccd`, on api main at 741ed39) clears the reps instead, so the
+ * template screens cannot meet this code from that api. Their mapping stays so an api
+ * rolled back past `fcc1ccd` still gets a sentence rather than "could not be saved".
+ */
+export function isRepsOnDuration(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_DRAFT_REPS_ON_DURATION";
+}
 export function isDraftExists(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_DRAFT_EXISTS";
 }
@@ -2550,10 +2533,10 @@ const liveCoachApi = {
   getRoutineDraft(id: string): Promise<CoachRoutineDraftResponse> {
     return apiFetch<CoachRoutineDraftResponse>(`${client(id)}/routine/draft`);
   },
-  saveRoutineDraft(id: string, draft: CoachRoutineDraftRequest): Promise<CoachRoutineDraft> {
-    return apiFetch<CoachRoutineDraft>(`${client(id)}/routine/draft`, {
+  saveRoutineDraft(id: string, body: CoachRoutineDraftRequest): Promise<CoachRoutineDraftResponse> {
+    return apiFetch<CoachRoutineDraftResponse>(`${client(id)}/routine/draft`, {
       method: "PUT",
-      body: JSON.stringify(draft),
+      body: JSON.stringify(body),
     });
   },
   async discardRoutineDraft(id: string): Promise<void> {

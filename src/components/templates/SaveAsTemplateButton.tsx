@@ -79,6 +79,7 @@ export function SaveAsTemplateButton({
     NOT_PUBLISHABLE: copy.templates.saveAsTemplateFailed,
     PLAN_EMPTY: copy.routine.planEmpty,
     CATALOG_UNAVAILABLE: copy.routine.catalogUnavailable,
+    REPS_ON_DURATION: copy.templates.saveAsTemplateFailed,
     ACCESS_DENIED: copy.client.notFound,
     FAILED: copy.templates.saveAsTemplateFailed,
   };

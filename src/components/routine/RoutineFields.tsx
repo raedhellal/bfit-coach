@@ -200,3 +200,87 @@ export function DayFocusField({
     </label>
   );
 }
+
+/**
+ * A number the document may leave EMPTY — `TrainingDay.estimatedMinutes` and
+ * `RoutineExercise.durationSeconds` are nullable on the wire, and null is "not
+ * prescribed". An empty box is null, never a fabricated default: the template editor
+ * used to DISPLAY 60 seconds for a null duration while storing null, which was a number
+ * on screen that nothing had said (ADR-0018 D3: "durationSeconds: null rather than a
+ * fabricated 60").
+ */
+export function OptionalNumberField({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+  min = 1,
+  max,
+  width,
+}: {
+  label: string;
+  /** For a control repeated per day, so each one is addressable on its own. */
+  ariaLabel?: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  min?: number;
+  max?: number;
+  width?: number;
+}) {
+  return (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}>
+        {label}
+      </div>
+      <input
+        type="number"
+        aria-label={ariaLabel}
+        min={min}
+        max={max}
+        value={value ?? ""}
+        onChange={(e) => {
+          const raw = e.target.value.trim();
+          if (raw === "") return onChange(null);
+          const n = Math.round(Number(raw));
+          onChange(Number.isFinite(n) ? Math.max(min, max === undefined ? n : Math.min(max, n)) : null);
+        }}
+        style={width ? { ...FIELD_STYLE, width } : FIELD_STYLE}
+      />
+    </label>
+  );
+}
+
+/** A closed vocabulary rendered as a select. `labels` maps a wire token to a word. */
+export function SelectField<T extends string>({
+  label,
+  value,
+  options,
+  labels,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly T[];
+  labels?: Record<string, string>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}>
+        {label}
+      </div>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ ...FIELD_STYLE, width: "auto", minWidth: 120 }}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {labels?.[option] ?? option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
