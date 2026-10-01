@@ -620,6 +620,12 @@ export const fr = {
     confirm: "Confirmer",
   },
 
+  recipePolish: {
+    onlyCurrent: "Votre seule recette est déjà sur ce repas.",
+    quantityAmbiguous: (typed: string) =>
+      `${q(typed)} peut se lire de deux façons. Les quantités sont en g, ml ou pièces\u00a0: écrivez ${n(1500)} pour mille cinq cents, ou 1,5 pour un et demi.`,
+  },
+
   /** Nothing here implies that using a template changes anything the client sees (see copy.ts). */
   templates: {
     nav: "Modèles",

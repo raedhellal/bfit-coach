@@ -6,9 +6,32 @@
  * search runs in the browser (story NOT-list 1): no request per keystroke.
  */
 
-/** Case- and accent-insensitive form: "Crêpes aux ÉPINARDS" → "crepes aux epinards". */
+/**
+ * Apostrophes a coach's keyboard may write: U+2019 (macOS / iOS smart punctuation turns
+ * the straight one into it as you type), U+2018, U+02BC and the backtick. Written as
+ * escapes so no editor can quietly turn them back into the straight one.
+ */
+const APOSTROPHES = /[\u2019\u2018\u02BC`]/g;
+
+/**
+ * The search form of a name or a query: "Crêpes aux ÉPINARDS" → "crepes aux epinards".
+ *
+ * EV-272 AC3 folds case and accents; EV-276 widens it, on BOTH sides, with
+ *   · the ligatures œ / Œ → "oe" and æ / Æ → "ae" — NFD does not split them (they are
+ *     letters, not a letter plus an accent), and most keyboards cannot type them, so
+ *     "boeuf" finds « Bœuf bourguignon »;
+ *   · every apostrophe above → the straight one, so "chef's" finds « Chef’s salad » and
+ *     "mom’s" finds "Mom's stew".
+ * Nothing else is folded (EV-276 NOT-list): no ß, no hyphens, no spaces.
+ */
 export function foldForSearch(text: string): string {
-  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  return text
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/œ/g, "oe")
+    .replace(/æ/g, "ae")
+    .replace(APOSTROPHES, "'");
 }
 
 /**
@@ -45,4 +68,45 @@ export function recipesFor<T extends { name: string; kcal: number }>(
   query: string
 ): T[] {
   return orderByKcalDistance(recipes, mealKcal).filter((r) => matchesQuery(r.name, query));
+}
+
+/** What a swap sheet knows about the meal it was opened on, for BUG-537. */
+export interface MealContent {
+  name: string;
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  provenance: string;
+  placedByYou: boolean;
+}
+
+/**
+ * BUG-537 — `recipe` is the one ALREADY on `meal`, so choosing it would write a no-op
+ * swap (« Hachis parmentier de dinde » → « Hachis parmentier de dinde »).
+ *
+ * The coach's meal carries no recipe id (`CoachPlannedMeal` has none, and this branch
+ * changes no api), so it is told by content. The placement copies the recipe's name,
+ * kcal and macros onto the meal verbatim (`RecipeFit.asMeal`), so a meal this coach
+ * placed (`COACH_RECIPE` + `placedByYou`) with the same name AND the same four numbers
+ * would be rewritten with what it already holds. Anything short of that is a REAL
+ * write and stays offered:
+ *   · an engine meal that shares the name — placing changes who wrote it;
+ *   · another coach's placement — placing makes it « Your recipe »;
+ *   · the recipe edited since it was placed (other numbers) — placing brings it up to date.
+ */
+export function isMealsOwnRecipe(
+  recipe: { name: string; kcal: number; proteinG: number; carbsG: number; fatG: number },
+  meal: MealContent | null
+): boolean {
+  return (
+    meal !== null &&
+    meal.provenance === "COACH_RECIPE" &&
+    meal.placedByYou === true &&
+    recipe.name === meal.name &&
+    recipe.kcal === meal.kcal &&
+    recipe.proteinG === meal.proteinG &&
+    recipe.carbsG === meal.carbsG &&
+    recipe.fatG === meal.fatG
+  );
 }

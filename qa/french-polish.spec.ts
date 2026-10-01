@@ -294,12 +294,17 @@ test.describe("number-input tail", () => {
     expect(forSave(withQuantity("1 000"), { recipe: "new" }).ingredients[0].quantity).toBe(1000);
 
     // Read, and refused by the api's rule — with the range sentence, which is true for them.
-    // "1.000" / "1,500" have three decimals as decimals, and are a guess as thousands: never sent.
-    for (const typed of ["1.000", "1,500", "150.000", "1 000,125", "5 000,01", "5 001", "0", "0,00", "-1", "abc"]) {
+    for (const typed of ["1 000,125", "5 000,01", "5 001", "0", "0,00", "-1", "abc"]) {
       expect(readQuantity(typed), typed).toEqual({ kind: "outOfRange" });
       expect(parseQuantity(typed), typed).toBeNull();
     }
-    expect(localProblems(withQuantity("1.000"), fr)).toEqual([
+    // "1.000" / "1,500" have three decimals as decimals, and are a guess as thousands: never
+    // sent. BUG-574 — they are told WHY (`qa/recipes-and-editor-polish.spec.ts`), not the range.
+    for (const typed of ["1.000", "1,500", "150.000"]) {
+      expect(readQuantity(typed), typed).toEqual({ kind: "ambiguous" });
+      expect(parseQuantity(typed), typed).toBeNull();
+    }
+    expect(localProblems(withQuantity("5 001"), fr)).toEqual([
       { at: "ingredients.0", message: "Une quantité est supérieure à 0 et au plus égale à 5000, avec 2 décimales au plus." },
     ]);
     expect(localProblems(withQuantity(""), fr)).toEqual([

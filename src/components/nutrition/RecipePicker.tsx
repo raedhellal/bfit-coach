@@ -83,6 +83,7 @@ export function RecipePicker({
   onQuery,
   onChoose,
   disabled,
+  onlyCurrent = false,
 }: {
   library: LibraryState;
   shown: CoachRecipeSummary[];
@@ -90,6 +91,12 @@ export function RecipePicker({
   onQuery: (query: string) => void;
   onChoose: (recipe: CoachRecipeSummary) => void;
   disabled: boolean;
+  /**
+   * BUG-537 — the library's only recipe is the one already on this meal, which is not
+   * offered. Told so, with the same way forward as an empty library: "no recipes yet"
+   * would be false, and "no recipe matches “”" says nothing.
+   */
+  onlyCurrent?: boolean;
 }) {
   const copy = useCopy();
   if (library.status === "loading") {
@@ -106,10 +113,12 @@ export function RecipePicker({
       </p>
     );
   }
-  if (library.recipes.length === 0) {
+  if (library.recipes.length === 0 || onlyCurrent) {
     return (
       <div style={{ display: "grid", gap: 10, justifyItems: "start" }}>
-        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>{copy.placement.empty}</p>
+        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
+          {library.recipes.length === 0 ? copy.placement.empty : copy.recipePolish.onlyCurrent}
+        </p>
         <Link
           href="/recipes/new"
           style={{

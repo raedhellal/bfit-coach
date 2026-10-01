@@ -514,6 +514,27 @@ function ExerciseRow({
 }) {
   const copy = useCopy();
   const timed = isDuration(exercise);
+  /**
+   * BUG-490 — the seconds this row held when the coach switched it to « Charge et
+   * répétitions ». `withTrackingType` still CLEARS them from the document (a number under
+   * a control nobody can see must not travel, so nothing is sent while the mode is
+   * Charge), and they are kept HERE, in the row, so switching back to « Durée » brings
+   * them back instead of an empty box. A reload starts the row afresh: what was never
+   * saved is not remembered.
+   */
+  const [stashedSeconds, setStashedSeconds] = useState<number | null>(null);
+  function changeTracking(value: string) {
+    if (value === "DURATION") {
+      const restore = stashedSeconds;
+      onChange((ex) => {
+        const next = withTrackingType(ex, "DURATION");
+        return next.durationSeconds === null && restore !== null ? { ...next, durationSeconds: restore } : next;
+      });
+      return;
+    }
+    if (timed) setStashedSeconds(exercise.durationSeconds);
+    onChange((ex) => withTrackingType(ex, "WEIGHT_REPS"));
+  }
   return (
     <div
       /**
@@ -605,9 +626,7 @@ function ExerciseRow({
             WEIGHT_REPS: copy.templates.trackingWeightReps,
             DURATION: copy.templates.trackingDuration,
           }}
-          onChange={(value) =>
-            onChange((ex) => withTrackingType(ex, value === "DURATION" ? "DURATION" : "WEIGHT_REPS"))
-          }
+          onChange={changeTracking}
         />
       </div>
 

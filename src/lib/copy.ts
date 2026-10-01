@@ -1225,6 +1225,22 @@ export const en = {
   },
 
   /**
+   * `fix/recipes-and-editor-polish` (BUG-537, BUG-574) — its own section, so the branches
+   * editing the dictionary's tail and the recipe sentences cannot collide with it.
+   */
+  recipePolish: {
+    /** BUG-537 — the swap sheet: the only recipe in the library is already on this meal. */
+    onlyCurrent: "Your only recipe is already on this meal.",
+    /**
+     * BUG-574 — "1,500" / "1.000" as a quantity: a thousand-and-something or a decimal,
+     * nobody can tell, so neither is sent (BUG-460/554). The range sentence did not say
+     * why. Both examples are accepted as written.
+     */
+    quantityAmbiguous: (typed: string) =>
+      `“${typed}” can be read two ways. Quantities are in g, ml or pieces: write 1500 for fifteen hundred, or 1.5 for one and a half.`,
+  },
+
+  /**
    * EV-188b — the coach's routine library. Sentences marked AC are verbatim story text
    * and `senior-qa` checks them character by character; rewording one is a story change.
    *
