@@ -735,6 +735,9 @@ export const fr = {
         ? "1 exercice n'est peut-être pas dans le catalogue d'exercices. Vérifiez-le avant de publier."
         : `${n} exercices ne sont peut-être pas dans le catalogue d'exercices. Vérifiez-les avant de publier.`,
     notInCatalogue: "Introuvable dans le catalogue",
+    /** BUG-196 — a refused "Remplacer le brouillon": the draft changed again. See copy.ts. */
+    replaceRefusedAgain: (trainee: string) =>
+      `Rien n'a été remplacé. Le brouillon ${de(trainee)} a de nouveau été enregistré après votre confirmation. Appuyez encore sur ${q("Remplacer le brouillon")} pour le remplacer tel qu'il est maintenant.`,
   },
 
   /** Deliberately absent, as in English: any claim that a recipe is checked against a client. */

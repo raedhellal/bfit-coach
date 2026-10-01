@@ -1450,6 +1450,14 @@ export const en = {
         : `${n} exercises may not be in the exercise catalogue. Check them before you publish.`,
     /** AC5, verbatim — marked IN PLACE, on the row, in the day it belongs to. */
     notInCatalogue: "Not found in the catalogue",
+    /**
+     * BUG-196 — "Replace the draft" was pressed and REFUSED: the draft changed again (a
+     * second tab, another device) after the coach was asked about it. Nothing was
+     * written; the next press replaces the draft as it is now. Without this sentence the
+     * dialog re-armed byte-identical and the refusal was invisible (EV-201's class).
+     */
+    replaceRefusedAgain: (trainee: string) =>
+      `Nothing was replaced. The draft for ${trainee} was saved again after you were asked. Press “Replace the draft” again to replace it as it is now.`,
   },
 
   /* ══ EV-256b — the coach's recipe library ══════════════════════════════════════
