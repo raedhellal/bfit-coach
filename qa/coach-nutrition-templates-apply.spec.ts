@@ -84,7 +84,10 @@ function weekStartLabel(): string {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(d);
+  // BUG-210: the portal pins September to "Sep"; ICU 72+ writes "Sept" in en-GB.
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+    .format(d)
+    .replace(/\bSept\b/, "Sep");
 }
 
 type Step = "read" | "targets" | "week" | "other";
@@ -462,7 +465,9 @@ test.describe("staff review of EV-273b — the transport, the latch, the read, t
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) + 7);
     const served = d.toISOString().slice(0, 10);
-    const label = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(d);
+    const label = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+      .format(d)
+      .replace(/\bSept\b/, "Sep"); // BUG-210
     await signIn(page);
     await setSwitch(context, baseURL as string, "evoli_fixture_week_start", served);
     const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
@@ -598,7 +603,10 @@ function frenchWeekStartLabel(): string {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(d);
+  // BUG-491: the first of a month is "1er" in a French date; ICU writes "1".
+  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+    .format(d)
+    .replace(/^1 /, "1er ");
 }
 
 async function openConfirmFrench(page: Page, template: string, trainee: string, first: string) {

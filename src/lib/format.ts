@@ -38,6 +38,32 @@ const DATE: Record<Locale, Intl.DateTimeFormat> = {
   }),
 };
 
+/**
+ * The two places a printed date departs from what ICU writes, both in ONE part of it:
+ *
+ *   · BUG-210 — English: ICU 72+ abbreviates September "Sept" in en-GB, and no other month
+ *     to four letters, so a column of dates changed width in September and every story's
+ *     verbatim "15 Sep 2026" was false. Pinned to "Sep" here rather than left to whichever
+ *     ICU builds the page (an older one already printed "Sep", which is how it shipped).
+ *   · BUG-491 — French: the first of the month is "1er" (premier), the ordinal French
+ *     writes in a date: "1er oct. 2026", "jeu. 1er oct.". Every other day is a cardinal.
+ *     `Intl.DateTimeFormat` has no ordinal, so the day part is rewritten.
+ *
+ * `formatToParts`, not a string replace: "Sept" and "1" are matched as the MONTH and the
+ * DAY part, never as text that happens to look like them. French "sept." is the correct
+ * French abbreviation and is left alone.
+ */
+function datePrinted(format: Intl.DateTimeFormat, d: Date, locale: Locale): string {
+  return format
+    .formatToParts(d)
+    .map((part) => {
+      if (locale === "fr" && part.type === "day" && part.value === "1") return "1er";
+      if (locale === "en" && part.type === "month" && part.value === "Sept") return "Sep";
+      return part.value;
+    })
+    .join("");
+}
+
 /** A French decimal takes a comma: "70.4" → "70,4". English is untouched. */
 function decimal(text: string, locale: Locale): string {
   return locale === "fr" ? text.replace(".", ",") : text;
@@ -48,13 +74,13 @@ function unitSpace(locale: Locale): string {
   return locale === "fr" ? "\u00a0" : " ";
 }
 
-/** `YYYY-MM-DD` (a plain calendar date) → "8 Sep 2026" / "8 sept. 2026". */
+/** `YYYY-MM-DD` (a plain calendar date) → "8 Sep 2026" / "8 sept. 2026" / "1er oct. 2026". */
 export function formatDate(iso: string | null | undefined, locale: Locale): string {
   if (!iso) return DASH;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return DASH;
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return DATE[locale].format(d);
+  return datePrinted(DATE[locale], d, locale);
 }
 
 /** An ISO instant → "8 Sep 2026" / "8 sept. 2026", in UTC (see the note above). */
@@ -62,7 +88,7 @@ export function formatInstant(iso: string | null | undefined, locale: Locale): s
   if (!iso) return DASH;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return DASH;
-  return DATE[locale].format(d);
+  return datePrinted(DATE[locale], d, locale);
 }
 
 /** "23 Aug" / "23 août" — the compact form the weight chart's axis uses. */
@@ -70,11 +96,11 @@ export function formatShortDate(iso: string, locale: Locale): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return "";
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return new Intl.DateTimeFormat(intlLocale(locale), {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(d);
+  return datePrinted(
+    new Intl.DateTimeFormat(intlLocale(locale), { day: "numeric", month: "short", timeZone: "UTC" }),
+    d,
+    locale
+  );
 }
 
 /** 70.4 → "70.4 kg" / "70,4 kg". One decimal, which is what a body scale reports. */
@@ -87,6 +113,36 @@ export function formatKgDelta(delta: number, locale: Locale): string {
   const rounded = Number(delta.toFixed(1));
   if (rounded === 0) return `${decimal("0.0", locale)}${unitSpace(locale)}kg`;
   return `${rounded > 0 ? "+" : "−"}${decimal(Math.abs(rounded).toFixed(1), locale)}${unitSpace(locale)}kg`;
+}
+
+/**
+ * A stored number written back INTO a field the coach edits — BUG-464 (the weight
+ * milestone), BUG-465 / BUG-571 (a recipe quantity). The row above the field already
+ * printed "70,4 kg"; the field itself said "70.4".
+ *
+ * English is `String(value)`, exactly as before. French takes a decimal comma and, when
+ * `grouped`, groups thousands with U+202F the way `formatKcal` prints them: 1000.5 →
+ * "1 000,5", 12.5 → "12,5", 0.25 → "0,25".
+ *
+ * 🔴 It must ROUND-TRIP through the field's reader, unchanged: a pre-filled value saved
+ * untouched sends the stored number. `readNumber` (`numberInput.ts`) reads a comma
+ * fraction and U+202F thousands; the milestone's own parser (`buildProgressGoalRequest`)
+ * reads a comma but NOT a grouping space, which is why it calls this ungrouped (25..300 kg
+ * never reaches a thousand anyway). `qa/french-polish-2.spec.ts` pins both round trips.
+ *
+ * `String()`, not `Intl`: it is the shortest text that reads back as the same double, so
+ * no digit is rounded away or invented — a stored third decimal stays visible and is
+ * refused as before, rather than silently rounded to two. Anything `String()` writes in
+ * another shape (exponent notation) is returned as it was.
+ */
+const NNBSP = String.fromCharCode(0x202f);
+export function formatNumberInput(value: number, locale: Locale, grouped: boolean): string {
+  const text = String(value);
+  if (locale === "en") return text;
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!m) return text;
+  const integer = grouped ? m[2].replace(/\B(?=(\d{3})+$)/g, NNBSP) : m[2];
+  return `${m[1]}${integer}${m[3] === undefined ? "" : `,${m[3]}`}`;
 }
 
 /**
@@ -265,7 +321,7 @@ export function formatSteps(value: number, locale: Locale): string {
 }
 
 /**
- * `YYYY-MM-DD` → "Mon 29 Sept" / "lun. 29 sept." — the day strip's accessible label.
+ * `YYYY-MM-DD` → "Tue 29 Sep" / "mar. 29 sept." / "jeu. 1er oct." — the day strip's label.
  * A calendar date in the TRAINEE's day (the api's `ChallengeDay.day`), so it is
  * formatted in UTC like every other plain date here: no zone shifts it.
  */
@@ -273,12 +329,11 @@ export function formatDayLabel(iso: string, locale: Locale): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return iso;
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return new Intl.DateTimeFormat(intlLocale(locale), {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(d);
+  return datePrinted(
+    new Intl.DateTimeFormat(intlLocale(locale), { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }),
+    d,
+    locale
+  );
 }
 
 /**

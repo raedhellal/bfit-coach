@@ -1932,6 +1932,12 @@ export const en = {
     dash: "—",
     /** A modal's close button (was a literal in kit.tsx before EV-324). */
     close: "Close",
+    /**
+     * "Label: value" — a label and what it labels, in one string (BUG-461 / BUG-462). The
+     * colon was composed in JSX ("{label}: {value}"), which gave French "Monter: …" where
+     * French typography writes "Monter : …". English is unchanged.
+     */
+    labelled: (label: string, value: string) => `${label}: ${value}`,
   },
 
   /**
@@ -1972,6 +1978,76 @@ export const en = {
       HIP: "Hips",
       ANKLE: "Ankles",
       ELBOW: "Elbows",
+    } as Record<string, string>,
+  },
+
+  /**
+   * BUG-489 — the exercise catalogue's muscle and equipment VALUES as words, for the picker's
+   * two filters and the badges on a catalogue row. The api serves raw catalogue data
+   * (`CoachCatalogPageResponse.muscles` / `.equipment`, `primaryMuscles` "quads,glutes",
+   * `equipment` "DUMBBELLS"), and the picker printed it as it came: "t_spine", "NONE".
+   *
+   * Keys are NORMALISED (`src/lib/catalogLabels.ts`: lower case, spaces and hyphens as "_"),
+   * so "BARBELL", "Barbell" and "barbell" are one entry.
+   *
+   * What is witnessed: the 24 muscles and 8 equipment values of b-fit-api's seeded catalogue
+   * (`V21__exercise_library.sql`), which are also exactly what the BUG-195c / EV-321b gate
+   * read off a live api's picker (`logs/b1-i6-copy-dump.json`). The rows marked MuscleWiki
+   * are that provider's own words (the api's default catalogue, `EXERCISE_PROVIDER`), NOT
+   * read off a b-fit catalogue; anything neither list has is shown humanised
+   * (`catalogLabels.ts`), never raw and never dropped.
+   *
+   * Not the guardrail tables above: `user_profiles.equipment` and the catalogue's
+   * `equipment` are two columns with two vocabularies (`guardrailLabels.ts`).
+   */
+  catalog: {
+    muscles: {
+      adductors: "Adductors",
+      back: "Back",
+      biceps: "Biceps",
+      calves: "Calves",
+      cardio: "Cardio",
+      chest: "Chest",
+      core: "Core",
+      forearms: "Forearms",
+      front_delts: "Front delts",
+      full_body: "Full body",
+      glutes: "Glutes",
+      grip: "Grip",
+      hamstrings: "Hamstrings",
+      hip_flexors: "Hip flexors",
+      hips: "Hips",
+      lats: "Lats",
+      legs: "Legs",
+      obliques: "Obliques",
+      quads: "Quads",
+      rear_delts: "Rear delts",
+      shoulders: "Shoulders",
+      spine: "Spine",
+      t_spine: "Thoracic spine",
+      triceps: "Triceps",
+      upper_back: "Upper back",
+      // MuscleWiki
+      abdominals: "Abdominals",
+      lower_back: "Lower back",
+      traps: "Traps",
+    } as Record<string, string>,
+    equipment: {
+      band: "Band",
+      barbell: "Barbell",
+      bodyweight: "Bodyweight",
+      cable: "Cable",
+      dumbbells: "Dumbbells",
+      kettlebell: "Kettlebell",
+      machine: "Machine",
+      // An exercise that needs nothing — not "None", which reads as "no answer".
+      none: "No equipment",
+      // MuscleWiki
+      cables: "Cables",
+      kettlebells: "Kettlebells",
+      plate: "Plate",
+      smith_machine: "Smith machine",
+      stretches: "Stretches",
     } as Record<string, string>,
   },
 } as const;

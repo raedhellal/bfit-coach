@@ -829,7 +829,9 @@ export const fr = {
     noLineBreaks: "Écrivez ceci sur une seule ligne, sans caractères spéciaux.",
     ingredientsRequired: "Ajoutez au moins un ingrédient.",
     quantityRequired: "Saisissez une quantité.",
-    quantityRange: "Une quantité est supérieure à 0 et au plus égale à 5000, avec 2 décimales au plus.",
+    // BUG-572: grouped like every number in a French sentence ("5 000", U+202F), as the
+    // format sentence beside it writes "1 000".
+    quantityRange: `Une quantité est supérieure à 0 et au plus égale à ${n(5000)}, avec 2 décimales au plus.`,
     quantityFormat: `Saisissez une quantité, par exemple ${n(1000)} ou 12,5.`,
     wholeNumber: "Saisissez un nombre entier, sans décimales.",
     wholeNumbersOnly: (below: number, above: number) =>
@@ -1101,6 +1103,11 @@ export const fr = {
     tryAgain: "Réessayer",
     dash: "—",
     close: "Fermer",
+    /**
+     * BUG-461 / BUG-462 — French typography: a no-break space (U+00A0) before the colon, so
+     * "Dernière séance" and its colon never break across two lines on a phone card.
+     */
+    labelled: (label: string, value: string) => `${label}\u00a0: ${value}`,
   },
 
   /** EV-324 AC5b, verbatim. */
@@ -1132,6 +1139,55 @@ export const fr = {
       HIP: "Hanches",
       ANKLE: "Chevilles",
       ELBOW: "Coudes",
+    } as Record<string, string>,
+  },
+
+  /** BUG-489 — see `copy.ts` for what is witnessed and what is not. */
+  catalog: {
+    muscles: {
+      adductors: "Adducteurs",
+      back: "Dos",
+      biceps: "Biceps",
+      calves: "Mollets",
+      cardio: "Cardio",
+      chest: "Pectoraux",
+      core: "Sangle abdominale",
+      forearms: "Avant-bras",
+      front_delts: "Deltoïdes antérieurs",
+      full_body: "Corps entier",
+      glutes: "Fessiers",
+      grip: "Préhension",
+      hamstrings: "Ischio-jambiers",
+      hip_flexors: "Fléchisseurs de la hanche",
+      hips: "Hanches",
+      lats: "Grands dorsaux",
+      legs: "Jambes",
+      obliques: "Obliques",
+      quads: "Quadriceps",
+      rear_delts: "Deltoïdes postérieurs",
+      shoulders: "Épaules",
+      spine: "Colonne vertébrale",
+      t_spine: "Colonne thoracique",
+      triceps: "Triceps",
+      upper_back: "Haut du dos",
+      abdominals: "Abdominaux",
+      lower_back: "Bas du dos",
+      traps: "Trapèzes",
+    } as Record<string, string>,
+    equipment: {
+      band: "Élastique",
+      barbell: "Barre",
+      bodyweight: "Poids du corps",
+      cable: "Poulie",
+      dumbbells: "Haltères",
+      kettlebell: "Kettlebell",
+      machine: "Machine",
+      none: "Sans matériel",
+      cables: "Poulies",
+      kettlebells: "Kettlebells",
+      plate: "Disque",
+      smith_machine: "Cadre guidé",
+      stretches: "Étirements",
     } as Record<string, string>,
   },
 } satisfies Copy;

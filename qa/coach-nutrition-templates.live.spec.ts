@@ -205,7 +205,9 @@ test("EV-273b live: save, the api's refusals, duplicate, delete, then use on a l
       month: "short",
       year: "numeric",
       timeZone: "UTC",
-    }).format(new Date(`${read.body.currentWeekStart}T00:00:00Z`));
+    })
+      .format(new Date(`${read.body.currentWeekStart}T00:00:00Z`))
+      .replace(/\bSept\b/, "Sep"); // BUG-210
     await expect(dialog.getByText(`(from ${weekLabel})`)).toBeVisible();
 
     await dialog.getByRole("button", { name: "Confirm" }).click();

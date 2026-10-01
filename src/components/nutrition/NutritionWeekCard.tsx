@@ -371,7 +371,7 @@ export function NutritionWeekCard({
                   variant="ghost"
                   size="sm"
                   icon="refresh"
-                  ariaLabel={`${copy.nutrition.regenerate}: ${formatWeekday(day.date, copy.locale)}`}
+                  ariaLabel={copy.common.labelled(copy.nutrition.regenerate, formatWeekday(day.date, copy.locale))}
                   onClick={() => regenerate(day.index)}
                   disabled={pending}
                 >
@@ -455,7 +455,7 @@ export function NutritionWeekCard({
                           variant="ghost"
                           size="sm"
                           icon="refresh"
-                          ariaLabel={`${copy.nutrition.swap}: ${meal.name}`}
+                          ariaLabel={copy.common.labelled(copy.nutrition.swap, meal.name)}
                           onClick={() =>
                             recipePlacementEnabled
                               ? openRecipeSwap(meal, formatWeekday(day.date, copy.locale))
