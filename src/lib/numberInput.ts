@@ -21,8 +21,9 @@
  * What a POINT or a COMMA followed by EXACTLY three digits after a 1–3 digit integer
  * means — "1.000", "1,500" — nobody can tell: a thousand to one coach, one-point-zero to
  * another. Reading it either way sends the wrong number for half of them (BUG-460 sent
- * "1,000" as kcal 1; "1.000" did the same in a recipe). It is `thousands`, and both
- * readers refuse it with the same sentence: a whole number, without decimals.
+ * "1,000" as kcal 1; "1.000" did the same in a recipe). It is `thousands`, and every
+ * reader refuses it: a whole-number field says "a whole number, without decimals"; a
+ * quantity says it can be read two ways, in g / ml (BUG-574).
  *
  * Built from strings, not regex literals, so this file carries no literal no-break
  * space for an editor to lose (`unicode-escapes-in-written-source`).
@@ -52,8 +53,9 @@ const NEGATIVE = new RegExp(`^-${SPACE}*${INTEGER_PART}(?:[.,]\\d+)?$`);
  *   decimal   — an integer part and a fraction after "." or ",": "1200,5" → "1200" / "5".
  *   thousands — "1.000", "1,500": refused by every whole-number field, never guessed.
  *   negative  — a minus before a number.
- *   malformed — a DIGIT was typed, and no reading fits: "18 00", "1 25", "12abc".
- *   notNumber — no digit at all: "abc", "-".
+ *   malformed — a DIGIT was typed, and no reading fits: "18 00", "1 25", "12abc", and
+ *               (BUG-573) digits of another script, « １８００ » or « ١٨٠٠ ».
+ *   notNumber — no digit at all, in any script: "abc", "-".
  */
 export type NumberText =
   | { kind: "empty" }
@@ -73,7 +75,12 @@ export function readNumber(raw: string): NumberText {
   const decimal = DECIMAL.exec(text);
   if (decimal) return { kind: "decimal", digits: decimal[1].replace(SPACES, ""), fraction: decimal[2] };
   if (NEGATIVE.test(text)) return { kind: "negative" };
-  return /\d/.test(text) ? { kind: "malformed" } : { kind: "notNumber" };
+  // BUG-573 — every rule above reads ASCII digits only, and stays that way (they are
+  // Raed-approved): full-width « １８００ » and Arabic-Indic « ١٨٠٠ » are still REFUSED.
+  // But they ARE digits, so they are `malformed` (the format sentence, « par exemple
+  // 1 800 »), never `notNumber`, whose "above 0" / range sentences were false of them.
+  // `\p{Nd}` is every script's decimal digit, ASCII included.
+  return /\p{Nd}/u.test(text) ? { kind: "malformed" } : { kind: "notNumber" };
 }
 
 /**

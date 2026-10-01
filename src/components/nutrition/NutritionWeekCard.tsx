@@ -226,6 +226,8 @@ export function NutritionWeekCard({
       weekday,
       kcal: meal.kcal,
       locked: meal.locked,
+      // BUG-537: what the meal holds now, so the recipe matching it is marked « On this meal ».
+      current: meal,
       // AC2: ONE library read per opening, sent from this click; AC6: none when locked.
       library: meal.locked ? null : readLibrary(),
     });

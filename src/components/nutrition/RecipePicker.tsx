@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Input, MIN_TOUCH_TARGET } from "@/components/ui/kit";
+import { useId } from "react";
+import { Badge, Input, MIN_TOUCH_TARGET } from "@/components/ui/kit";
 import type { Copy } from "@/lib/copy";
 import { useCopy } from "@/lib/i18n/client";
 import type { PlacementFailure } from "@/lib/nutritionActions";
@@ -83,6 +84,7 @@ export function RecipePicker({
   onQuery,
   onChoose,
   disabled,
+  onThisMeal,
 }: {
   library: LibraryState;
   shown: CoachRecipeSummary[];
@@ -90,8 +92,15 @@ export function RecipePicker({
   onQuery: (query: string) => void;
   onChoose: (recipe: CoachRecipeSummary) => void;
   disabled: boolean;
+  /**
+   * BUG-537 — ids of the recipes whose name and numbers are what this meal already shows
+   * (`matchesMealContent`). They are MARKED, never hidden: re-placing one is how a coach
+   * refreshes a meal after editing the recipe's ingredients or steps.
+   */
+  onThisMeal: ReadonlySet<string>;
 }) {
   const copy = useCopy();
+  const markId = useId();
   if (library.status === "loading") {
     return (
       <p role="status" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
@@ -168,6 +177,7 @@ export function RecipePicker({
                 disabled={disabled}
                 title={recipe.name}
                 aria-label={copy.placement.chooseNamed(recipe.name)}
+                aria-describedby={onThisMeal.has(recipe.id) ? `${markId}-${recipe.id}` : undefined}
                 style={{
                   width: "100%",
                   minHeight: MIN_TOUCH_TARGET,
@@ -200,6 +210,11 @@ export function RecipePicker({
                 <span className="tnum" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
                   {copy.nutrition.macros(recipe.kcal, recipe.proteinG, recipe.carbsG, recipe.fatG)}
                 </span>
+                {onThisMeal.has(recipe.id) && (
+                  <span id={`${markId}-${recipe.id}`} data-testid="recipe-on-this-meal">
+                    <Badge tone="neutral">{copy.recipePolish.onThisMeal}</Badge>
+                  </span>
+                )}
               </button>
             </li>
           ))}
