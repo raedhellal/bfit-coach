@@ -1,5 +1,5 @@
 import type { Copy } from "./copy";
-import { ungroupInteger } from "./numberInput";
+import { readNumber } from "./numberInput";
 import type {
   CoachRecipe,
   CoachRecipeSaveRequest,
@@ -250,27 +250,40 @@ export function hasControl(value: string): boolean {
  * A macro or kcal field, read the way `@WholeNumber` reads a JSON number: `50` and
  * `50.0` are whole, `50.7` is NOT (and is never rounded or truncated), anything that is
  * not a plain non-negative decimal is not a number at all.
+ *
+ * The text is read by `readNumber` (`numberInput.ts`), the reader the daily targets use:
+ *   · grouping spaces ("1 800", any of the five spaces) are read, as since PB-2;
+ *   · a decimal COMMA is a decimal, like the point (BUG-553): "1200,5" is the fraction
+ *     1200.5, told "Use 1200 or 1201" exactly as "1200.5" is, and "50,0" is 50;
+ *   · "1.000" / "1,500" — a 1–3 digit integer and exactly three digits after the
+ *     separator — is `ambiguous`, never 1 and never 1000. Reading "1.000" as 1.0 saved a
+ *     recipe at 1 kcal (the dot twin of BUG-460, on main since EV-256b).
  */
 export type ParsedWhole =
   | { kind: "empty" }
   | { kind: "whole"; value: number }
   | { kind: "fraction"; value: number }
+  | { kind: "ambiguous" }
   | { kind: "invalid" };
 
 export function parseWhole(raw: string): ParsedWhole {
-  // No comma rewrite here: "1,000" kcal is an English thousands separator, and reading it
-  // as 1.000 sent kcal 1 (BUG-460). A comma is refused as invalid instead.
-  // A SPACE grouping thousands is read (PB-2): "1 800", with a plain, no-break or narrow
-  // no-break space, is 1800 — the way the French portal itself prints it.
-  const text = raw.trim();
-  if (text === "") return { kind: "empty" };
-  const dot = text.indexOf(".");
-  const digits = ungroupInteger(dot === -1 ? text : text.slice(0, dot));
-  const fraction = dot === -1 ? "" : text.slice(dot);
-  if (digits === null || !/^(\.\d+)?$/.test(fraction)) return { kind: "invalid" };
-  const value = Number(digits + fraction);
-  if (!Number.isFinite(value)) return { kind: "invalid" };
-  return Number.isInteger(value) ? { kind: "whole", value } : { kind: "fraction", value };
+  const read = readNumber(raw);
+  switch (read.kind) {
+    case "empty":
+      return { kind: "empty" };
+    case "thousands":
+      return { kind: "ambiguous" };
+    case "integer":
+    case "decimal": {
+      const value = Number(read.kind === "integer" ? read.digits : `${read.digits}.${read.fraction}`);
+      if (!Number.isFinite(value)) return { kind: "invalid" };
+      return Number.isInteger(value) ? { kind: "whole", value } : { kind: "fraction", value };
+    }
+    case "negative":
+    case "malformed":
+    case "notNumber":
+      return { kind: "invalid" };
+  }
 }
 
 /**
@@ -326,6 +339,10 @@ function macroProblem(field: MacroField, raw: string, copy: Copy): Problem | nul
   const max = field === "kcal" ? KCAL_MAX : MACRO_MAX;
   if (parsed.kind === "empty") {
     return { at: field, message: copy.recipes.required, missing: true };
+  }
+  if (parsed.kind === "ambiguous") {
+    // "1.000" / "1,500": the targets' sentence, because it is the targets' rule.
+    return { at: field, message: copy.recipes.wholeNumber };
   }
   if (parsed.kind === "fraction") {
     // The rule the api review turned up: 50.7 is REFUSED, never truncated to 50. The

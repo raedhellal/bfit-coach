@@ -7,7 +7,7 @@ import { useCopy } from "@/lib/i18n/client";
 import { formatInstant, formatKcal, truncateName } from "@/lib/format";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { saveTargetsAction } from "@/lib/nutritionActions";
-import { parseTarget } from "@/lib/numberInput";
+import { parseTarget, targetRefusal } from "@/lib/numberInput";
 import { settled } from "@/lib/settled";
 import type { NutritionTargets } from "@/lib/coachApi";
 
@@ -37,6 +37,8 @@ import type { NutritionTargets } from "@/lib/coachApi";
  * thousands) is 1800; a decimal part ("1800,5", "1800.5", and "1,000", never a
  * thousands separator — BUG-460) gets "Enter a whole number…", which is true of it,
  * instead of "above 0", which was not. Either way nothing is sent.
+ * BUG-552: digits that cannot be read ("18 00", "1  800", "1 25") get the format
+ * sentence (`numberFormat`); "above 0" is kept for empty, zero and negative fields.
  */
 export function NutritionTargetsCard({
   clientId,
@@ -119,11 +121,12 @@ export function NutritionTargetsCard({
   function requestSave() {
     const read = [calories, protein, carbs, fat].map(parseTarget);
     // A value that is not a whole number above 0 is rejected HERE and nothing is sent.
-    // "Above 0" is the sentence unless every refused field has a decimal part.
-    if (read.some((field) => field.kind !== "whole")) {
-      setRefusal(
-        read.some((field) => field.kind === "invalid") ? copy.nutrition.invalidNumber : copy.nutrition.wholeNumber
-      );
+    // "Above 0" only while a field is empty, zero or negative; digits that cannot be read
+    // are told the format (BUG-552), a decimal part "no decimals".
+    const refused = targetRefusal(read);
+    if (refused !== null) {
+      const t = copy.nutrition;
+      setRefusal(refused === "malformed" ? t.numberFormat : refused === "notWhole" ? t.wholeNumber : t.invalidNumber);
       setNotice(null);
       setError(null);
       return;

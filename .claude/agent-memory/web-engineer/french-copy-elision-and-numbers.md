@@ -18,11 +18,17 @@ Since `fix/portal-french-polish-1001` (2026-10-01, PB-2/PB-4/PB-5 of the EV-273b
   weekdays ("le 8 oct.", "de 0 à 5000", "le lundi"). The list is exact, so adding a copy
   function with a date or weekday argument after "le"/"de" means adding it there, with
   the reason.
-- **Whole-number targets go through `parseTarget` (`src/lib/numberInput.ts`).** It accepts
-  a space, U+00A0 or U+202F between thousand groups only ("1 800" yes, "18 00" no). A
-  decimal part after "." OR "," is `notWhole` → "Saisissez un nombre entier, sans
-  décimales." "1,000" is ALWAYS `notWhole`, never 1 or 1000 (BUG-460). `parseWhole`
-  (recipe macros) reads the same grouping; quantities keep comma-as-decimal.
+- **Every whole-number field reads through `readNumber` (`src/lib/numberInput.ts`)**
+  since `fix/portal-number-input-followups`: `parseTarget` (targets, nutrition templates)
+  and `parseWhole` (recipe kcal/macros) both map its kinds. Grouping spaces: U+0020,
+  U+00A0, U+202F, U+2009, U+2007, between thousand groups only. `^\d{1,3}[.,]\d{3}$`
+  ("1.000", "1,500", "150.000") is `thousands` → refused by BOTH, never 1 or 1000
+  (BUG-460 and its dot twin). Targets: decimal → `notWhole` ("sans décimales"); digits
+  that fit no reading ("18 00", "1 25") → `malformed` → `numberFormat` ("par exemple
+  1 800", BUG-552); "supérieur à 0" ONLY for empty/zero/negative/no digit. The card
+  shows one sentence for four fields via `targetRefusal` (invalid > malformed >
+  notWhole). Recipes: a comma is a decimal like the point (BUG-553: "1200,5" → "Utilisez
+  1200 ou 1201", "50,0" → 50). Quantities have their own `parseQuantity`, untouched.
 - `weekFailed(first, applyLabel)` quotes the week card's button via `weekApplyLabel`
   (exported from `NutritionWeekCard`). Never rebuild a button label in a sentence.
 - **Fixture switch `evoli_fixture_display_name=<clientId>:<encodeURIComponent(name)>`**
