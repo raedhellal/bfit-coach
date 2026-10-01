@@ -2,6 +2,7 @@ import "server-only";
 import { apiFetch, apiGet, apiGetAs, ApiError } from "./apiFetch";
 import { COACH_API_MODE, INVITE_BASE_URL } from "./env";
 import { fixtureCoachApi } from "./coachApi.fixture";
+import { journalled } from "./fixtureApiJournal";
 import { sanitiseCoachName } from "./inviteName";
 
 /**
@@ -2909,7 +2910,10 @@ const liveCoachApi = {
 
 export type CoachApi = typeof liveCoachApi;
 
-const impl: CoachApi = COACH_API_MODE === "fixture" ? fixtureCoachApi : liveCoachApi;
+// Fixture mode only: every call is journalled (and can be held by a latency cookie) so
+// `qa/page-read-budget.spec.ts` can count and time a page's api reads. The live client
+// is not wrapped.
+const impl: CoachApi = COACH_API_MODE === "fixture" ? journalled(fixtureCoachApi) : liveCoachApi;
 
 export const coachApi = {
   ...impl,

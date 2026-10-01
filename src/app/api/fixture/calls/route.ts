@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fixtureCalls, fixtureDraftPuts, fixtureReads } from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
+import { apiJournal } from "@/lib/fixtureApiJournal";
 
 /**
  * EV-272 — the fixture's call journal, for the Playwright gate ONLY.
@@ -12,6 +13,9 @@ import { COACH_API_MODE } from "@/lib/env";
  *   and `{ reads }` (EV-284b): page-load reads the fixture journals, today only
  *         `"GET /coach-portal/clients/{id}/nutrition/log"`. A separate list because
  *         `calls` is asserted EXACTLY empty after a page load by EV-272's specs.
+ *
+ *   and `{ api }` (perf/coach-parallel-page-reads): EVERY `CoachApi` call, with its
+ *         timing, prefetch flag and render tag — see `src/lib/fixtureApiJournal.ts`.
  *
  *   and `{ draftPuts }` (BUG-195c): every `PUT …/routine/draft` with the token it
  *         carried and the two subject lists it sent — AC3.10(i)'s witness.
@@ -32,7 +36,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 export async function GET() {
   if (COACH_API_MODE !== "fixture") return new NextResponse(null, { status: 404, headers: NO_STORE });
   return NextResponse.json(
-    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts() },
+    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), api: apiJournal() },
     { headers: NO_STORE }
   );
 }

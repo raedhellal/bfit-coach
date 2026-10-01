@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fixtureStateIsPristine, resetFixtureState } from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
+import { resetApiJournal } from "@/lib/fixtureApiJournal";
 
 /**
  * EV-223 — the fixture store's reset and seed check, for the Playwright gate ONLY.
@@ -41,5 +42,6 @@ export async function GET() {
 export async function DELETE() {
   if (COACH_API_MODE !== "fixture") return notFound();
   resetFixtureState();
+  resetApiJournal();
   return NextResponse.json({ pristine: fixtureStateIsPristine() }, { headers: NO_STORE });
 }
