@@ -1823,6 +1823,12 @@ export const en = {
     weekRateLimited: (first: string) =>
       `${first}'s targets are updated. Their meals weren't rebuilt: a week has already been applied for them today. Try again tomorrow.`,
     /**
+     * The lead every WEEK_* outcome opens with, on its own: the 409
+     * `WEEK_GENERATION_IN_PROGRESS` outcome follows it with `nutrition.weekGenerating`,
+     * the week card's sentence, rather than a second wording of the same refusal.
+     */
+    targetsUpdated: (first: string) => `${first}'s targets are updated.`,
+    /**
      * `applyLabel` is the button's OWN label, `nutrition.apply(truncateName(displayName))`,
      * built by the caller from the same display name the week card uses. PB-5
      * (2026-09-30): this quoted "Apply to {first name}" while the button reads the FULL

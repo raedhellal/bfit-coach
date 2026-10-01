@@ -978,6 +978,7 @@ export const fr = {
     applied: (template: string, first: string) => `${q(template)} est désormais le plan ${de(first)}.`,
     weekRateLimited: (first: string) =>
       `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain.`,
+    targetsUpdated: (first: string) => `Les objectifs ${de(first)} sont mis à jour.`,
     weekFailed: (first: string, applyLabel: string) =>
       `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${q(applyLabel)} pour réessayer.`,
     weekUnknown: (first: string) =>

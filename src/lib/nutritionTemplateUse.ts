@@ -25,6 +25,8 @@ export const FLOOR_WARNING_BELOW = 1500;
 export type UseOutcomeKind =
   | "APPLIED"
   | "WEEK_RATE_LIMITED"
+  /** 409 `WEEK_GENERATION_IN_PROGRESS` on the week step (ADR-0030): retry in a few minutes. */
+  | "WEEK_GENERATING"
   | "WEEK_FAILED"
   | "WEEK_UNKNOWN"
   | "TARGETS_FAILED"
@@ -87,6 +89,7 @@ export function discardOutcome(): void {
 const KINDS: readonly UseOutcomeKind[] = [
   "APPLIED",
   "WEEK_RATE_LIMITED",
+  "WEEK_GENERATING",
   "WEEK_FAILED",
   "WEEK_UNKNOWN",
   "TARGETS_FAILED",
