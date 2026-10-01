@@ -10,3 +10,8 @@ playwright-report/
 
 # JetBrains IDE settings — per-developer, never shared.
 .idea/
+
+# BUG-610 — Vercel CLI output: `vercel pull` writes .vercel/.env.<env>.local with the
+# project's real environment values (production secrets included). Never commit either.
+.vercel/
+.env*.local
