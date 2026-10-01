@@ -29,3 +29,9 @@ make sure the test fails on it. `senior-qa` and staff review both probe by hand;
 that only passes is not evidence either way. Related:
 [[an-island-must-re-seed-from-props-not-from-its-own-save]],
 [[playwright-gettext-is-case-insensitive-substring]].
+
+**Same trap, a debounced filter (BUG-489, staff B2, 2026-10-01):** after `selectOption` the
+picker still shows the UNFILTERED list for 180 ms, so "Lat Pulldown visible" passed with the
+option sending its LABEL ("Dos") and matching nothing. Assert the thing that must DISAPPEAR
+first (the squat `toHaveCount(0)`), then what must remain, and read the server action's
+argument list (`next-action` POST body). Witness with the mutant `value={option.label}`.
