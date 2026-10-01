@@ -69,6 +69,15 @@ would break silently. Raed's investor demo (Sat 2026-10-03) peaks on this page.
   earlier day's source beside today's "—" misattributed the number; Tobias (no row today,
   MANUAL two days ago) is the seeded witness.
 - The French delete confirm (BUG-458 sentence) is asserted in the fr-FR describe (BUG-527).
+- **Every metric-dependent sentence is picked by metric, unknown → none** (2026-10-01,
+  `fix/workouts-challenge-copy`): `consent`/`consentWorkouts` (page), `invitedNote`/
+  `invitedNoteWorkouts` (ProgressTable), `deleteBody`/`deleteBodyWorkouts` (ChallengeControls,
+  which now takes `metric`). A new sentence that mentions steps needs a WORKOUTS twin.
+  Facts behind the WORKOUTS delete copy: api `CoachChallengeUseCase.delete` purges activity for
+  STEPS only (WORKOUTS stores nothing, it reads the training log), and the app shows NO WORKOUTS
+  challenge (`challengeCardState` → null unless STEPS), so "disappears from your clients' app"
+  is false for WORKOUTS. Fixture cookie `evoli_fixture_challenge_metric=<name>` serves an
+  unknown metric on the detail read; witness it by the absent "Day by day" column.
 
 See [[coach-portal-i18n-facts]], [[coach-portal-fixture-mode]],
 [[a-picture-with-no-text-is-unassertable]].

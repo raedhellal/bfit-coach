@@ -6,6 +6,7 @@ import { Button, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
 import { deleteChallengeAction } from "@/lib/challengeActions";
+import type { ChallengeMetric } from "@/lib/coachApi";
 
 /** How often the open page re-reads progress while it is visible. */
 export const AUTO_REFRESH_MS = 45_000;
@@ -19,9 +20,12 @@ export const AUTO_REFRESH_MS = 45_000;
  * polling the api all afternoon is load for nobody), and once on becoming visible again
  * if a tick was missed.
  */
-export function ChallengeControls({ id, title }: { id: string; title: string }) {
+export function ChallengeControls({ id, title, metric }: { id: string; title: string; metric: ChallengeMetric }) {
   const copy = useCopy();
   const c = copy.challenges;
+  // What the delete takes with it depends on the metric (the api purges shared steps for
+  // STEPS only). An unknown metric gets no sentence rather than a guessed one.
+  const body = metric === "STEPS" ? c.deleteBody(title) : metric === "WORKOUTS" ? c.deleteBodyWorkouts(title) : null;
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
   const [deleting, startDelete] = useTransition();
@@ -96,9 +100,9 @@ export function ChallengeControls({ id, title }: { id: string; title: string }) 
           </>
         }
       >
-        <p style={{ margin: 0, fontSize: 14, color: "var(--ink-2)", lineHeight: 1.55 }}>{c.deleteBody(title)}</p>
+        {body && <p style={{ margin: 0, fontSize: 14, color: "var(--ink-2)", lineHeight: 1.55 }}>{body}</p>}
         {error && (
-          <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
+          <p role="alert" style={{ margin: body ? "12px 0 0" : 0, fontSize: 13, color: "var(--err-ink)" }}>
             {error}
           </p>
         )}

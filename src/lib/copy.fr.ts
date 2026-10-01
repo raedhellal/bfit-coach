@@ -1059,6 +1059,7 @@ export const fr = {
     },
     unnamed: "Client sans nom",
     invitedNote: "Ses pas apparaîtront ici après acceptation.",
+    invitedNoteWorkouts: "Ses séances apparaîtront ici après acceptation.",
     rank: (rank: number) => `${rank}${rank === 1 ? "er" : "e"}`,
     todaySteps: (value: string, target: string) => `${value} / ${target} pas`,
     todayWorkouts: (value: string) => `${value} aujourd'hui`,
@@ -1093,6 +1094,8 @@ export const fr = {
     deleteTitle: "Supprimer ce défi ?",
     deleteBody: (title: string) =>
       `${q(title)} est supprimé et disparaît de l'app de vos clients. Les pas que vos clients ont partagés pour ce défi sont supprimés, sauf les jours couverts par un autre défi auquel ils participent.`,
+    deleteBodyWorkouts: (title: string) =>
+      `${q(title)} est supprimé, avec ses invitations et ses participants. Les séances terminées par vos clients ne sont pas supprimées\u00a0: ce défi ne faisait que les compter.`,
     deleteConfirm: "Supprimer",
     deleteFailed: "Le défi n'a pas pu être supprimé. Réessayez dans un instant.",
   },
