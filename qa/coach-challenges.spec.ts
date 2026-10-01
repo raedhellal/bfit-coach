@@ -313,6 +313,25 @@ test.describe("create", () => {
     );
   });
 
+  // BUG-472: the roster is paged at 100 and the dialog read page 0 only, so client 101
+  // could not be invited. 6 seeded + 120 extra = 126 ACTIVE rows over two pages.
+  test("a roster past one page: every ACTIVE client is offered, the 101st through the 126th too", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(page);
+    await context.addCookies([{ name: "evoli_fixture_roster_extra", value: "120", url: baseURL! }]);
+    const dialog = await openDialog(page);
+    await expect(dialog.getByRole("checkbox")).toHaveCount(126);
+    for (const name of ["Lina M.", "Client 094", "Client 095", "Client 120"]) {
+      await expect(dialog.getByRole("checkbox", { name, exact: true })).toHaveCount(1);
+    }
+    // Past the first page, and invitable: the selection counts it.
+    await dialog.getByRole("checkbox", { name: "Client 120", exact: true }).check();
+    await expect(dialog.getByText("1 selected")).toBeVisible();
+  });
+
   // Staff nit (c): a failed roster read is not "no linked clients" — that sentence sends
   // a coach who HAS clients off to invite them again.
   test("a failed roster read says the clients could not be loaded, never that there are none", async ({

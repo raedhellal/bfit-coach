@@ -3701,7 +3701,9 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *   `evoli_fixture_today_steps=<n>`          → Lina's TODAY row on the ACTIVE challenge
  *                                              reads n steps (the 9,950-of-10,000 bar);
  *   `evoli_fixture_roster=fail`              → `GET /coach-portal/clients` is a 500 (the
- *                                              create dialog's roster-failure sentence).
+ *                                              create dialog's roster-failure sentence);
+ *   `evoli_fixture_roster_extra=<n>`         → n more ACTIVE roster rows after the six
+ *                                              (BUG-472: a roster past one 100-row page).
  * ════════════════════════════════════════════════════════════════════════════ */
 
 const CHALLENGE_UNENDED_MAX = 20; // CoachChallengeUseCase.MAX_UNENDED_CHALLENGES
@@ -4909,12 +4911,36 @@ export const fixtureCoachApi: CoachApi = {
             ),
             sort
           );
+    /**
+     * BUG-472 — `evoli_fixture_roster_extra=<n>` (this browser context only) appends n
+     * ACTIVE rows with no shared data, "Client 001"…, after the six, so the roster is
+     * longer than one page. Paged the api's way: `page`/`size` slice it and
+     * `totalPages` counts the pages, which is what a reader of only page 0 gets wrong.
+     * They are roster rows and nothing else: no other read knows their ids.
+     */
+    const extra = Number.parseInt((await fixtureSwitch("evoli_fixture_roster_extra")) ?? "", 10);
+    if (items.length > 0 && Number.isInteger(extra) && extra > 0) {
+      for (let i = 1; i <= Math.min(extra, 1_000); i++) {
+        const nnn = String(i).padStart(3, "0");
+        items.push({
+          id: `e7e7e7e7-0000-4000-8000-${String(i).padStart(12, "0")}`,
+          traineeDisplayName: `Client ${nnn}`,
+          scopes: [],
+          currentPlanName: null,
+          lastCompletedWorkoutDate: null,
+          currentStreakDays: null,
+          redFlagCount: null,
+          status: "ACTIVE",
+          since: isoInstant(30),
+        });
+      }
+    }
     return {
-      items: page === 0 ? items : [],
+      items: items.slice(page * size, (page + 1) * size),
       page,
       size,
       totalElements: items.length,
-      totalPages: items.length === 0 ? 0 : 1,
+      totalPages: Math.ceil(items.length / size),
     };
   },
 

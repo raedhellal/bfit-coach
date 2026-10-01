@@ -4,8 +4,9 @@ import { ClientNotice } from "@/components/client/ClientNotice";
 import { ChallengeList } from "@/components/challenges/ChallengeList";
 import { CreateChallengeDialog, type InviteTarget } from "@/components/challenges/CreateChallengeDialog";
 import { Card, EmptyState, PageHead } from "@/components/ui/kit";
-import { coachApi, type CoachChallengePage, type RosterClient } from "@/lib/coachApi";
+import { coachApi, DEFAULT_ROSTER_SORT, type CoachChallengePage, type RosterClient } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
+import { readWholeRoster } from "@/lib/rosterAll";
 import { getCopy } from "@/lib/i18n/server";
 
 /**
@@ -14,7 +15,8 @@ import { getCopy } from "@/lib/i18n/server";
  * `force-dynamic` like every screen here (ADR-0012 D3: an authorization outcome is never
  * cached). Three reads in parallel, and a failure in one does not take the others down:
  *   · the page of challenges — its failure is the load-error card;
- *   · the roster, for the create dialog's invite list — every ACTIVE row. A STEPS
+ *   · the roster, for the create dialog's invite list — every ACTIVE row, from EVERY
+ *     page (BUG-472: page 0 alone stopped at the 100th client). A STEPS
  *     invitation reads no trainee data, so it needs the LINK and no data scope (the api's
  *     `requireManagedLink`); the trainee's own acceptance is the consent to share steps.
  *     A roster failure leaves the list up and the dialog saying the clients could not be
@@ -34,9 +36,8 @@ export default async function ChallengesPage({ searchParams }: { searchParams: {
       .listChallenges(page)
       .then((value): CoachChallengePage | null => value)
       .catch(() => null),
-    coachApi
-      .listClients()
-      .then((p): RosterClient[] | null => p.items)
+    readWholeRoster((p) => coachApi.listClients(DEFAULT_ROSTER_SORT, p))
+      .then((rows): RosterClient[] | null => rows)
       .catch(() => null),
   ]);
   const clients: InviteTarget[] = (roster ?? [])
