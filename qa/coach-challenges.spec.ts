@@ -478,6 +478,17 @@ async function createWorkoutsChallenge(page: Page, labels: { open: string; title
 }
 
 test.describe("workouts consent wording", () => {
+  // The list subtitle used to say "Step goals…" over a list that held a WORKOUTS challenge.
+  test("English: the list subtitle names no metric once a WORKOUTS challenge is listed", async ({ page }) => {
+    await signIn(page);
+    await createWorkoutsChallenge(page, { open: "New challenge", title: "Title", submit: "Create and invite" });
+    await page.goto("/challenges");
+    await expect(page.getByRole("list", { name: "Challenges" })).toContainText("6 workouts in total");
+    const subtitle = page.locator("h1 + p");
+    await expect(subtitle).toHaveText("Challenges your clients join from the Evoli Fit app.");
+    await expect(subtitle).not.toContainText(/step/i);
+  });
+
   test("English: a WORKOUTS challenge says it shares completed sessions; a STEPS one still says steps", async ({
     page,
   }) => {
@@ -494,6 +505,16 @@ test.describe("workouts consent wording", () => {
 
   test.describe("fr-FR", () => {
     test.use({ locale: "fr-FR" });
+
+    test("French: the list subtitle names no metric once a WORKOUTS challenge is listed", async ({ page }) => {
+      await signInFrench(page);
+      await createWorkoutsChallenge(page, { open: "Nouveau défi", title: "Titre", submit: "Créer et inviter" });
+      await page.goto("/challenges");
+      await expect(page.getByRole("list", { name: "Défis" })).toContainText("6 séances au total");
+      const subtitle = page.locator("h1 + p");
+      await expect(subtitle).toHaveText("Des défis que vos clients rejoignent depuis l'app Evoli Fit.");
+      await expect(subtitle).not.toContainText(/\bpas\b/);
+    });
 
     test("French: a WORKOUTS challenge says « séances terminées »; a STEPS one still says « ses pas »", async ({
       page,

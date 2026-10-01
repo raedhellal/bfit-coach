@@ -989,7 +989,8 @@ export const fr = {
   challenges: {
     nav: "Défis",
     title: "Défis",
-    subtitle: "Des objectifs de pas que vos clients rejoignent depuis l'app Evoli Fit.",
+    // Toute métrique : la liste contient aussi des défis WORKOUTS, le sous-titre n'en nomme aucune.
+    subtitle: "Des défis que vos clients rejoignent depuis l'app Evoli Fit.",
     create: "Nouveau défi",
     emptyTitle: "Aucun défi pour l'instant",
     emptyBody:

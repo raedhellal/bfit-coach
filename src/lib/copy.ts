@@ -1848,7 +1848,8 @@ export const en = {
   challenges: {
     nav: "Challenges",
     title: "Challenges",
-    subtitle: "Step goals your clients join from the Evoli Fit app.",
+    // Any metric: the list holds WORKOUTS challenges too, so the subtitle names none.
+    subtitle: "Challenges your clients join from the Evoli Fit app.",
     create: "New challenge",
     emptyTitle: "No challenges yet",
     emptyBody: "Set a daily step goal for a week and invite your clients. You see their progress once they accept.",
