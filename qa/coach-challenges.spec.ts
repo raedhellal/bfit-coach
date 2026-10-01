@@ -414,6 +414,25 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await expect(dialog.getByText("Donnez un titre au défi.")).toBeVisible();
     await expectNoEnglish(page, "the create dialog");
   });
+
+  // BUG-527 — EV-321 AC17 asks for AC16 (BUG-458's delete sentence) in both locales; only
+  // the English one was asserted, so reverting the French to « …sont conservés » stayed green.
+  test("the delete confirm says, in French, that the shared steps are deleted", async ({ page }) => {
+    await signInFrench(page);
+    await page.goto(`/challenges/${ENDED}`);
+    await page.getByRole("button", { name: "Supprimer le défi" }).click();
+    const confirm = page.getByRole("dialog", { name: "Supprimer ce défi ?" });
+    await expect(confirm).toContainText("«\u00a0Semaine de rentrée\u00a0» est supprimé");
+    await expect(confirm).toContainText(
+      "Les pas que vos clients ont partagés pour ce défi sont supprimés, sauf les jours couverts par un autre défi auquel ils participent."
+    );
+    await expect(confirm).not.toContainText("conservés");
+    await expectNoEnglish(page, "the delete confirm");
+
+    await confirm.getByRole("button", { name: "Supprimer", exact: true }).click();
+    await page.waitForURL("/challenges");
+    await expect(page.getByRole("list", { name: "Défis" }).getByRole("listitem")).toHaveCount(2);
+  });
 });
 
 test.describe("layout", () => {
