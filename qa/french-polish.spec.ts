@@ -2,8 +2,8 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInFrench } from "./french";
 import { de, elides, fr, que } from "../src/lib/copy.fr";
-import { parseTarget } from "../src/lib/numberInput";
-import { parseQuantity, parseWhole } from "../src/lib/recipeDocument";
+import { parseTarget, targetRefusal } from "../src/lib/numberInput";
+import { localProblems, parseQuantity, parseWhole, type RecipeDraft } from "../src/lib/recipeDocument";
 
 /**
  * The French polish pass before the 2026-10-03 demo (EV-273b gate, PB-2 / PB-4 / PB-5;
@@ -25,6 +25,23 @@ import { parseQuantity, parseWhole } from "../src/lib/recipeDocument";
 const OMAR = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
 const NBSP = "\u00a0";
 const NNBSP = "\u202f";
+// Built from code points so the source carries no literal space a tool or editor could fold.
+const THIN = String.fromCharCode(0x2009);
+const FIGURE = String.fromCharCode(0x2007);
+const CHICKEN_RICE_BOWL = "8e3f1b22-0000-4000-8000-0000000000c1";
+
+/** A recipe draft with nothing wrong in it but `over` (the seeded chicken rice bowl). */
+const recipe = (over: Partial<RecipeDraft> = {}): RecipeDraft => ({
+  name: "Chicken rice bowl",
+  ingredients: [{ key: "chicken_breast", label: "chicken breast", quantity: "150", unit: "g" }],
+  kcal: "560",
+  proteinG: "50",
+  carbsG: "62",
+  fatG: "12",
+  steps: ["Cook the rice."],
+  mealSlots: ["LUNCH", "DINNER"],
+  ...over,
+});
 
 /* ── PB-4: the helper ───────────────────────────────────────────────────────── */
 
@@ -163,20 +180,85 @@ test.describe("PB-2 — whole numbers as a French coach types them", () => {
     expect(parseTarget("-5")).toEqual({ kind: "invalid" });
     expect(parseTarget("")).toEqual({ kind: "invalid" });
     expect(parseTarget("abc")).toEqual({ kind: "invalid" });
-    // A space that does not group thousands is not a grouping anyone meant.
-    expect(parseTarget("18 00")).toEqual({ kind: "invalid" });
-    expect(parseTarget("1  800")).toEqual({ kind: "invalid" });
+    // A space that does not group thousands is not a grouping anyone meant — and it is a
+    // format problem, not an "above 0" one (BUG-552).
+    expect(parseTarget("18 00")).toEqual({ kind: "malformed" });
+    expect(parseTarget("1  800")).toEqual({ kind: "malformed" });
   });
 
-  test("a recipe macro (parseWhole): grouped thousands read, the comma still refused; quantities unchanged", () => {
+  test("a recipe macro (parseWhole): grouped thousands read, '1,000' never read; quantities unchanged", () => {
     expect(parseWhole("1 800")).toEqual({ kind: "whole", value: 1800 });
     expect(parseWhole(`1${NNBSP}800`)).toEqual({ kind: "whole", value: 1800 });
     expect(parseWhole("1 800.0")).toEqual({ kind: "whole", value: 1800 });
     expect(parseWhole("50.7")).toEqual({ kind: "fraction", value: 50.7 });
-    expect(parseWhole("1,000")).toEqual({ kind: "invalid" });
+    expect(parseWhole("1,000")).toEqual({ kind: "ambiguous" });
     expect(parseWhole("18 00")).toEqual({ kind: "invalid" });
     // A quantity keeps its decimal comma (EV-256b): "150,5" g is 150.5.
     expect(parseQuantity("150,5")).toBe(150.5);
+  });
+});
+
+/* ── the number-input follow-ups (staff review of PB-2, QA's BUG-552 / BUG-553) ── */
+
+test.describe("number-input follow-ups", () => {
+  test("a thin space (U+2009) or a figure space (U+2007) groups thousands too, in both readers", () => {
+    for (const space of [THIN, FIGURE, NBSP]) {
+      const typed = `1${space}800`;
+      expect(parseTarget(typed), typed).toEqual({ kind: "whole", value: 1800 });
+      expect(parseWhole(typed), typed).toEqual({ kind: "whole", value: 1800 });
+    }
+    expect(parseTarget(`12${THIN}500${FIGURE}000`)).toEqual({ kind: "whole", value: 12_500_000 });
+  });
+
+  test("BUG-552 — a typed digit that cannot be read is a FORMAT problem, never 'above 0'", () => {
+    for (const typed of ["18 00", "1  800", "1 25", "12abc", "1.000.000", ".5", "1e3"]) {
+      expect(parseTarget(typed), typed).toEqual({ kind: "malformed" });
+    }
+    // What IS above-0 territory stays there: nothing typed, no digit, zero, a negative.
+    for (const typed of ["", "   ", "abc", "0", "0 000", "-5", "-1 800"]) {
+      expect(parseTarget(typed), typed).toEqual({ kind: "invalid" });
+    }
+    // The card shows ONE sentence for four fields: "above 0" while any field needs it,
+    // then the format sentence, then "no decimals".
+    const whole = parseTarget("1800");
+    expect(targetRefusal([whole, whole, whole, whole])).toBeNull();
+    expect(targetRefusal([parseTarget("18 00"), parseTarget("1800,5"), whole, whole])).toBe("malformed");
+    expect(targetRefusal([parseTarget("1800,5"), parseTarget("1.000"), whole, whole])).toBe("notWhole");
+    expect(targetRefusal([parseTarget("18 00"), parseTarget(""), whole, whole])).toBe("invalid");
+  });
+
+  test("'1.000' and '1,500' are ambiguous thousands in a recipe macro, as they are in a target", () => {
+    for (const typed of ["1.000", "1,500", "100.000", "12,345"]) {
+      expect(parseWhole(typed), typed).toEqual({ kind: "ambiguous" });
+      expect(parseTarget(typed), typed).toEqual({ kind: "notWhole" });
+    }
+    // A real decimal keeps the fraction handling recipe macros always had.
+    expect(parseWhole("12.5")).toEqual({ kind: "fraction", value: 12.5 });
+    expect(parseWhole("50.0")).toEqual({ kind: "whole", value: 50 });
+    expect(parseWhole("1 800.000")).toEqual({ kind: "whole", value: 1800 });
+    expect(parseWhole("1.0000")).toEqual({ kind: "whole", value: 1 });
+
+    // The recipe editor says it in the targets' sentence, beside kcal, and never sends 1.
+    const problems = localProblems(recipe({ kcal: "1.000" }), fr);
+    expect(problems).toEqual([{ at: "kcal", message: "Saisissez un nombre entier, sans décimales." }]);
+    expect(localProblems(recipe({ proteinG: "1,500" }), fr)).toEqual([
+      { at: "proteinG", message: "Saisissez un nombre entier, sans décimales." },
+    ]);
+    expect(localProblems(recipe({ proteinG: "12.5" }), fr)).toEqual([
+      { at: "proteinG", message: "Nombres entiers uniquement. Utilisez 12 ou 13." },
+    ]);
+  });
+
+  test("BUG-553 — a French decimal comma in a recipe macro is a decimal, told like '1200.5'", () => {
+    expect(parseWhole("1200,5")).toEqual({ kind: "fraction", value: 1200.5 });
+    expect(parseWhole("1 200,5")).toEqual({ kind: "fraction", value: 1200.5 });
+    expect(parseWhole("50,7")).toEqual({ kind: "fraction", value: 50.7 });
+    expect(parseWhole("50,0")).toEqual({ kind: "whole", value: 50 });
+    for (const typed of ["1200,5", `1${NNBSP}200,5`]) {
+      expect(localProblems(recipe({ kcal: typed }), fr), typed).toEqual([
+        { at: "kcal", message: "Nombres entiers uniquement. Utilisez 1200 ou 1201." },
+      ]);
+    }
   });
 });
 
@@ -236,6 +318,73 @@ test.describe("a French browser (fr-FR)", () => {
     await expect(page.getByText("Objectifs enregistrés.", { exact: true })).toBeVisible();
     // What was STORED, as the card re-reads it: 1800, not 1 and not 18.
     await expect(calories).toHaveValue("1800");
+  });
+
+  test("BUG-552 — the targets card: a misplaced space is told the format, never '> 0'; a thin space reaches the confirm", async ({
+    page,
+  }) => {
+    await signInFrench(page);
+    await page.goto(`/clients/${OMAR}/nutrition`);
+    const calories = page.getByLabel("Calories", { exact: true });
+    const protein = page.getByLabel("Protéines", { exact: true });
+    const save = page.getByRole("button", { name: "Enregistrer les objectifs", exact: true });
+    const alert = page.locator('p[role="alert"]');
+    const sent = posts(page);
+    const original = await protein.inputValue();
+
+    for (const [input, typed] of [
+      [calories, "18 00"],
+      [calories, "1  800"],
+      [protein, "1 25"],
+    ] as const) {
+      await input.fill(typed);
+      await save.click();
+      await expect(alert, typed).toHaveText(`Saisissez un nombre entier, par exemple 1${NNBSP}800.`);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await input.fill(input === protein ? original : "1800");
+    }
+    expect(sent, "no request may leave the browser for a refused target").toEqual([]);
+
+    for (const space of [THIN, FIGURE]) {
+      await calories.fill(`1${space}800`);
+      await save.click();
+      await expect(alert).toHaveCount(0);
+      const dialog = page.getByRole("dialog", { name: "Enregistrer les objectifs ?" });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Annuler" }).click();
+      await expect(dialog).toHaveCount(0);
+    }
+    expect(sent).toEqual([]);
+  });
+
+  test("item 1 / BUG-553 — the recipe editor refuses '1.000' and '1200,5' kcal beside the field, and sends nothing", async ({
+    page,
+  }) => {
+    await signInFrench(page);
+    await page.goto(`/recipes/${CHICKEN_RICE_BOWL}`);
+    const kcal = page.getByLabel("Calories (kcal)");
+    const field = page.locator('[data-field="kcal"]');
+    const save = page.getByRole("button", { name: "Enregistrer la recette" });
+    const sent = posts(page);
+    // fill() before hydration is a no-op for React state: retry until the island says it has it.
+    await expect(async () => {
+      await kcal.fill("1.000");
+      await expect(page.getByText("Modifications non enregistrées", { exact: true })).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+
+    await expect(field.getByText("Saisissez un nombre entier, sans décimales.", { exact: true })).toBeVisible();
+    await expect(kcal).toHaveAttribute("aria-invalid", "true");
+    await expect(save).toBeDisabled();
+
+    await kcal.fill("1200,5");
+    await expect(field.getByText("Nombres entiers uniquement. Utilisez 1200 ou 1201.", { exact: true })).toBeVisible();
+    await expect(save).toBeDisabled();
+    expect(sent, "a refused kcal sends nothing — '1.000' was saved as 1 kcal").toEqual([]);
+
+    // The control: the recipe's own value is accepted again.
+    await kcal.fill("560");
+    await expect(field.getByText(/Saisissez|Nombres entiers/)).toHaveCount(0);
+    await expect(save).toBeEnabled();
   });
 
   test("PB-4 — the week card's confirm names Omar with elision", async ({ page }) => {

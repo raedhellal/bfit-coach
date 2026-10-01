@@ -484,6 +484,8 @@ export const fr = {
     invalidNumber: "Saisissez un nombre supérieur à 0.",
     /** PB-2: "1800,5" is a decimal to a French coach, and "1,000" reads the same way. */
     wholeNumber: "Saisissez un nombre entier, sans décimales.",
+    /** BUG-552: "18 00", "1  800", "1 25" — des chiffres mal groupés, pas un nombre ≤ 0. */
+    numberFormat: `Saisissez un nombre entier, par exemple ${n(1800)}.`,
     floorApplied: (kcal: number) => `Calories relevées au minimum sûr de ${n(kcal)} kcal.`,
     floorStanding:
       "Evoli vérifie les calories par rapport à un minimum sûr. Il ne vérifie pas encore les protéines ni les lipides.",
@@ -828,6 +830,7 @@ export const fr = {
     ingredientsRequired: "Ajoutez au moins un ingrédient.",
     quantityRequired: "Saisissez une quantité.",
     quantityRange: "Une quantité est supérieure à 0 et au plus égale à 5000, avec 2 décimales au plus.",
+    wholeNumber: "Saisissez un nombre entier, sans décimales.",
     wholeNumbersOnly: (below: number, above: number) =>
       `Nombres entiers uniquement. Utilisez ${below} ou ${above}.`,
     numberRange: (label: string, min: number, max: number) =>
@@ -910,6 +913,7 @@ export const fr = {
     targetsLabel: "Objectifs quotidiens",
     invalidNumber: "Saisissez un nombre supérieur à 0.",
     wholeNumber: "Saisissez un nombre entier, sans décimales.",
+    numberFormat: `Saisissez un nombre entier, par exemple ${n(1800)}.`,
     outOfBounds: `Utilisez des nombres entiers : calories de ${n(800)} à ${n(8000)} kcal, protéines jusqu'à ${n(500)} g, glucides jusqu'à ${n(1200)} g et lipides jusqu'à ${n(400)} g.`,
     floorStanding:
       "Evoli vérifie les calories par rapport à un minimum sûr quand vous utilisez ce modèle. Il ne vérifie pas encore les protéines ni les lipides.",

@@ -935,6 +935,11 @@ export const en = {
      * never read as a thousands separator (BUG-460), and the coach is told what to drop.
      */
     wholeNumber: "Enter a whole number, without a decimal point or comma.",
+    /**
+     * BUG-552 — digits that cannot be read ("18 00", "1  800", "1 25"). "Above 0" was
+     * false for them; the sentence shows a number written the way the portal reads it.
+     */
+    numberFormat: "Enter a whole number, for example 1800.",
     // AC2, verbatim: the engine's own flag, rendered only when the api returns it.
     floorApplied: (n: number) => `Calories raised to a safe minimum of ${n} kcal.`,
     // AC2, verbatim. It stands whether or not a floor fired, because what it states is
@@ -1579,6 +1584,11 @@ export const en = {
     ingredientsRequired: "Add at least one ingredient.",
     quantityRequired: "Enter a quantity.",
     quantityRange: "A quantity is more than 0 and at most 5000, with up to 2 decimals.",
+    /**
+     * "1.000" / "1,500" kcal or grams: a thousand or one, nobody can tell, so neither is
+     * sent. The targets' sentence (`nutrition.wholeNumber`), because it is their rule.
+     */
+    wholeNumber: "Enter a whole number, without a decimal point or comma.",
     /** The EV-256a review's rule: 50.7 is refused, never truncated. */
     wholeNumbersOnly: (below: number, above: number) =>
       `Whole numbers only. Use ${below} or ${above}.`,
@@ -1679,6 +1689,8 @@ export const en = {
     invalidNumber: "Enter a number above 0.",
     /** PB-2 — `nutrition.wholeNumber`'s sentence, for the template's four targets. */
     wholeNumber: "Enter a whole number, without a decimal point or comma.",
+    /** BUG-552 — `nutrition.numberFormat`'s sentence, for the template's four targets. */
+    numberFormat: "Enter a whole number, for example 1800.",
     /** The api's bounds (`NutritionTemplateTargetsRequest`), after a 400 VALIDATION_ERROR. */
     outOfBounds:
       "Use whole numbers: calories 800 to 8000 kcal, protein up to 500 g, carbs up to 1200 g and fat up to 400 g.",

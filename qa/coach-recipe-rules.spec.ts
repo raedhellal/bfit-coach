@@ -112,13 +112,22 @@ test.describe("numbers", () => {
     }
   });
 
-  test("a French decimal comma reads as a point (EV-324 staff should-fix 2)", () => {
+  test("a French decimal comma reads as a point (EV-324 staff should-fix 2; BUG-553 for macros)", () => {
     expect(parseQuantity("150,5")).toBe(150.5);
     expect(parseQuantity("0,25")).toBe(0.25);
-    // kcal and macros keep refusing a comma: "1,000" must never become kcal 1 (BUG-460).
-    for (const text of ["1,000", "1,500", "50,7"]) {
-      expect(parseWhole(text), text).toEqual({ kind: "invalid" });
+    // "1,000" must never become kcal 1 (BUG-460), nor "1.000" (its dot twin): a 1-3
+    // digit integer and exactly three digits after the separator is ambiguous. Any other
+    // comma is a French decimal comma, read like the point (BUG-553).
+    for (const text of ["1,000", "1,500", "1.000"]) {
+      expect(parseWhole(text), text).toEqual({ kind: "ambiguous" });
     }
+    expect(parseWhole("50,7")).toEqual({ kind: "fraction", value: 50.7 });
+    expect(localProblems(filled({ proteinG: "50,7" }), en)).toEqual([
+      { at: "proteinG", message: "Whole numbers only. Use 50 or 51." },
+    ]);
+    expect(localProblems(filled({ kcal: "1,000" }), en)).toEqual([
+      { at: "kcal", message: "Enter a whole number, without a decimal point or comma." },
+    ]);
     for (const bad of ["150,000", "1,5,5", ","]) {
       expect(parseQuantity(bad), bad).toBeNull();
     }

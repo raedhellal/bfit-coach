@@ -10,7 +10,7 @@ import {
   type NutritionTemplateFailure,
 } from "@/lib/nutritionTemplateActions";
 import { NUTRITION_TEMPLATE_NAME_MAX } from "@/lib/nutritionTemplateUse";
-import { parseTarget } from "@/lib/numberInput";
+import { parseTarget, targetRefusal } from "@/lib/numberInput";
 import { settled } from "@/lib/settled";
 import type { NutritionTemplateTargetsRequest } from "@/lib/coachApi";
 
@@ -81,12 +81,14 @@ export function NutritionTemplateEditor({
     setError(null);
     // AC2 — refused HERE, and nothing is sent. PB-2: "1 800" is 1800, and a decimal part
     // ("1800,5", or "1,000", never a thousands separator) is told "a whole number" — the
-    // same reader and the same two sentences as the trainee's targets card.
+    // same reader and the same sentences as the trainee's targets card. BUG-552: digits
+    // that cannot be read ("18 00") are shown the format, never "above 0".
     const read = [calories, protein, carbs, fat].map(parseTarget);
     const values: number[] = [];
     for (const field of read) if (field.kind === "whole") values.push(field.value);
-    if (values.length !== read.length) {
-      setRefusal(read.some((field) => field.kind === "invalid") ? t.invalidNumber : t.wholeNumber);
+    const refused = targetRefusal(read);
+    if (refused !== null) {
+      setRefusal(refused === "malformed" ? t.numberFormat : refused === "notWhole" ? t.wholeNumber : t.invalidNumber);
       return;
     }
     setRefusal(null);
