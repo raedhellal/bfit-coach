@@ -38,12 +38,14 @@
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
 - [Recipe placement (EV-256e)](recipe-placement-portal-facts.md) — no `eaten` on the coach wire; flag server-wide, per-trainee in fixture; fail-open read is fixture-blind; button gone since EV-272
+- [Refusal + regen cap (EV-071b/242b)](refusal-and-regen-cap-portal-facts.md) — api releases the apply on EVERY refusal so no quota line (staff); cap is the trainee's, Apply lifts it; no reset instant
 - [Routine changed banner (EV-283b)](routine-changed-banner-facts.md) — keys on lastChangedBy not the flag; one fixture record feeds page + roster; ICU "Sept"
 - [An allowance cannot excuse a required field](an-allowance-cannot-excuse-a-required-field.md) — EV-222: one checkRequired fed the register in both real and synthetic runs; register-side rule; untagged-root coverage
 - [Every fixture test starts from the seed](every-fixture-test-starts-from-the-seed.md) — EV-223: import test from qa/fixture-test.ts; seed cloned once per process; file-alone loop was green on main
 - [One worker per fixture server](one-worker-per-fixture-server.md) — BUG-249: >1 worker is refused; CI parallelises by --shard; proven via child runs, never a 2nd next dev
 - [A guard reads at a sample; say which](a-guard-reads-at-a-sample-say-which.md) — EV-217: settle wait from EVERY page animation (a sibling reaches via container query) + finished-check; diff vs origin/main...HEAD
 - [Swap sheet, recipes first (EV-272)](swap-sheet-portal-facts.md) — StrictMode doubles mount-effect reads in next dev; /api/fixture/calls is the no-request witness; C1/C0/c100 by email
+- [Recipes + editor polish (EV-276, BUG-537/490/573/574)](recipes-and-editor-polish-facts.md) — meal has no recipe id (mark by content, never hide); seconds stashed in the row, re-keyed on moves; sentences-only number fixes; next-start wrapper config
 - [Nutrition templates (EV-273b)](nutrition-templates-portal-facts.md) — targets only; two server actions, answered = `response` event; French port, `amount`, cap switch; an existing local branch
 - [Progress-goal absent-key semantics](progress-goal-absent-key-semantics.md) — EV-274: body fat absent=unchanged, null=clear; "touched" must outlive a refused save
 - [Fixture swap-candidate cache (EV-288)](fixture-swap-candidate-cache.md) — apply with nothing cached is 409 SWAP_OPTIONS_STALE; read options first; cache outside FixtureState, reset empties it

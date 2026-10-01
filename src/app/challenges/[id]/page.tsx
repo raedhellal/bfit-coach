@@ -72,7 +72,7 @@ export default async function ChallengePage({
           </span>
         }
         sub={`${goalLine(challenge, copy)} · ${windowLine(challenge, copy)}`}
-        actions={<ChallengeControls id={challenge.id} title={challenge.title} />}
+        actions={<ChallengeControls id={challenge.id} title={challenge.title} metric={challenge.metric} />}
       />
 
       {searchParams.created === "1" && (

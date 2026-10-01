@@ -17,7 +17,7 @@ import { test } from "./fixture-test";
 const PATH = "/api/version";
 
 /** Every field the body is allowed to contain. A new key here is a deliberate act. */
-const ALLOWED_KEYS = ["commit", "commitShort", "buildTime", "environment"];
+const ALLOWED_KEYS = ["commit", "commitShort", "buildTime", "environment", "region"];
 
 test("answers 200 with the version shape and no session cookie", async ({ request }) => {
   const res = await request.get(PATH);
@@ -39,10 +39,15 @@ test("answers 200 with the version shape and no session cookie", async ({ reques
   }
   expect(body.buildTime).toMatch(/^(unknown|\d{4}-\d{2}-\d{2}T[\d:.]+Z)$/);
   expect(["production", "preview", "development", "local"]).toContain(body.environment);
+  // The serving region (the witness for vercel.json's cdg1 pin): a Vercel region id or
+  // an honest "unknown" — never the build machine's region, never an echoed raw value.
+  expect(body.region).toMatch(/^(unknown|[a-z]{3}\d)$/);
 
-  // No Vercel environment locally: the honest answers, not a stale SHA from git.
+  // No Vercel environment locally: the honest answers, not a stale SHA from git, and no
+  // region invented for a process that is not running in one.
   expect(body.commit).toBe("unknown");
   expect(body.environment).toBe("local");
+  expect(body.region).toBe("unknown");
 });
 
 test("middleware does not bounce it to /login", async ({ page, context }) => {

@@ -3606,6 +3606,12 @@ async function nutritionCopyName(original: string): Promise<string> {
  *                                      (D6.6's one-apply-per-day cap, already used today);
  *   `evoli_fixture_week=out_of_range` — the week apply answers 400 `COACH_WEEK_OUT_OF_RANGE`
  *                                      (edge case 10, the Monday rollover).
+ *   `evoli_fixture_week=no_safe_plan` — the week apply answers 422 `NO_SAFE_MEAL_PLAN` with
+ *                                      the api's fixed message, and writes nothing (EV-071b).
+ *   `evoli_fixture_regen=no_safe_plan|capped|fail` — a day regenerate answers 422
+ *                                      `NO_SAFE_MEAL_PLAN` (EV-071b ruling 2.4), 429
+ *                                      `COACH_DAY_REGEN_LIMIT` (EV-242b; `{code, message}`
+ *                                      only, as the api sends it) or a 500. Nothing written.
  *
  *   `evoli_fixture_targets=no_answer` / `evoli_fixture_week=no_answer` — the api hop dies
  *                                      with no status: `fetch` throws `TypeError("fetch
@@ -3624,6 +3630,9 @@ async function targetsSwitch(): Promise<string | null> {
 async function weekSwitch(): Promise<string | null> {
   return fixtureSwitch("evoli_fixture_week");
 }
+/** `RestExceptionHandler.handleNoSafeMealPlan`'s constant — developer-facing, never copy. */
+const NO_SAFE_MEAL_PLAN_MESSAGE =
+  "No meal plan could be produced that satisfies this account's dietary rules.";
 /** The api's "current week" for this context: the override, else the UTC Monday. */
 async function servedWeekStart(): Promise<string> {
   const forced = await fixtureSwitch("evoli_fixture_week_start");
@@ -3732,7 +3741,11 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *   `evoli_fixture_roster=fail`              → `GET /coach-portal/clients` is a 500 (the
  *                                              create dialog's roster-failure sentence);
  *   `evoli_fixture_roster_extra=<n>`         → n more ACTIVE roster rows after the six
- *                                              (BUG-472: a roster past one 100-row page).
+ *                                              (BUG-472: a roster past one 100-row page);
+ *   `evoli_fixture_challenge_metric=<name>`  → `GET /coach-portal/challenges/{id}` serves
+ *                                              `metric: <name>`, a metric this portal does
+ *                                              not know (a newer api): its page must claim
+ *                                              neither steps nor sessions.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 const CHALLENGE_UNENDED_MAX = 20; // CoachChallengeUseCase.MAX_UNENDED_CHALLENGES
@@ -5766,6 +5779,7 @@ export const fixtureCoachApi: CoachApi = {
     const forced = await weekSwitch();
     if (forced === "rate_limited") await fail(429, "COACH_WEEK_APPLY_RATE_LIMIT", "Rate limited");
     if (forced === "out_of_range") await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");
+    if (forced === "no_safe_plan") await fail(422, "NO_SAFE_MEAL_PLAN", NO_SAFE_MEAL_PLAN_MESSAGE);
     if (forced === "no_answer") throw new TypeError("fetch failed");
     if (weekStart !== (await servedWeekStart())) {
       // Edge case 3: slice 1 applies the current week only.
@@ -5798,6 +5812,18 @@ export const fixtureCoachApi: CoachApi = {
     await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     if (!state.week) await fail(400, "COACH_WEEK_OUT_OF_RANGE", "No week");
+    const forcedRegen = await fixtureSwitch("evoli_fixture_regen");
+    if (forcedRegen === "no_safe_plan") await fail(422, "NO_SAFE_MEAL_PLAN", NO_SAFE_MEAL_PLAN_MESSAGE);
+    if (forcedRegen === "capped") {
+      // CoachDayRegenLimitException's sentence verbatim — it names "tomorrow", and the
+      // portal must still not read it (EV-242's failure clause).
+      await fail(
+        429,
+        "COACH_DAY_REGEN_LIMIT",
+        "This client has used all 3 of today's meal-day regenerations. Day regenerations share the client's own daily limit — they reset tomorrow."
+      );
+    }
+    if (forcedRegen === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
     const week = state.week as MealWeekView;
     clearAllSwapCandidates(id);
     state.seeds = state.seeds.map((s, i) => (i === index ? s + 1 : s));
@@ -6025,7 +6051,10 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getChallenge(id: string): Promise<CoachChallengeDetail> {
-    return challengeDetail(await ownedChallenge(id));
+    const detail = await challengeDetail(await ownedChallenge(id));
+    const metric = await fixtureSwitch("evoli_fixture_challenge_metric");
+    // Off the TypeScript union on purpose: the wire is a string, and a newer api may add one.
+    return metric ? { ...detail, challenge: { ...detail.challenge, metric: metric as ChallengeMetric } } : detail;
   },
 
   async createChallenge(body: CoachChallengeCreateRequest): Promise<CoachChallengeDetail> {

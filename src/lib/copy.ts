@@ -994,6 +994,29 @@ export const en = {
      */
     weekRateLimited: "A meal week can be applied once a day for each trainee. Try again tomorrow.",
     /**
+     * EV-071b ruling 2.3, verbatim — the 422 `NO_SAFE_MEAL_PLAN` on an apply. A refusal
+     * for the trainee's safety, not an error: nothing was written, and only the TRAINEE
+     * can change the outcome (EV-185 forbids a coach editing their food preferences), so
+     * the block ends by saying so. One block, two slots: placement and quota.
+     */
+    weekRefusedTitle: (first: string) => `We couldn't build a meal week for ${first}.`,
+    weekRefusedBody:
+      "Their recorded allergies and food rules rule out every recipe we're able to check. Nothing was changed.",
+    /** P1 — a week is on screen and stays fully rendered under the block (ruling 2.2). */
+    weekRefusedKept: (first: string) =>
+      `The week below is still ${first}'s current week — it hasn't been touched.`,
+    /** P2 — no week on screen: the block renders instead of one. */
+    weekRefusedNoWeek: (first: string) => `${first} has no meal week right now.`,
+    /*
+     * NO quota sentence (staff ruling, 2026-10-01, option a). Ruling 2.1's three are all
+     * false or unwitnessed against b-fit-api main: `CoachNutritionUseCase.applyWeek`
+     * releases the claim on EVERY refusal (NoSafeMealPlanException is a RuntimeException),
+     * so Q2 ("This has used today's apply") and Q3's "trying again will use it" are false,
+     * and Q1 needs the api to say so (EV-196). Do not add one back without that witness.
+     */
+    refusedAskThem: (first: string) =>
+      `You can't change ${first}'s food preferences from here. Ask them to review them in the app.`,
+    /**
      * ADR-0015 D6.7: applying a week reuses the plan row and CARRIES LOCKED MEALS
      * FORWARD, so "replaces the week" is true of the row and not of every meal in it.
      * The ADR asks the confirm dialog to say so; without this line the dialog promises
@@ -1036,6 +1059,25 @@ export const en = {
       `Swapping a meal doesn't use ${trainee}'s daily regenerations.`,
     regenerating: "Regenerating…",
     regenerateFailed: "The day could not be regenerated.",
+    /**
+     * EV-071b ruling 2.4, verbatim — the 422 `NO_SAFE_MEAL_PLAN` on a day regenerate,
+     * shown in that day's card, followed by `refusedAskThem`. No quota sentence, ever:
+     * this path never holds the apply reservation. `day` is the weekday's name.
+     */
+    dayRefusedTitle: (day: string, first: string) => `We couldn't rebuild ${day} for ${first}.`,
+    dayRefusedBody:
+      "Their recorded allergies and food rules rule out every recipe we're able to check for that day.",
+    dayRefusedKept: (day: string) => `${day} is unchanged — nothing was replaced.`,
+    /**
+     * EV-242 AC3 — the 429 `COACH_DAY_REGEN_LIMIT`, reworded by the staff ruling of
+     * 2026-10-01: the counter is the TRAINEE's plan row, so "You've used…" was false
+     * whenever the trainee used them. Its second sentence ("You can regenerate again
+     * after {local time}.") needs the reset instant EV-242a puts on the body, and
+     * b-fit-api main does not send one: no time is shown rather than a made-up one.
+     * `first` is French's (« de Lina »); English names the trainee as the line above does.
+     */
+    dayRegenCapped: (trainee: string, _first: string) =>
+      `Today's day regenerations for ${trainee} are used up.`,
     swap: "Swap meal", // AC3, verbatim
     swapTitle: "Swap meal",
     swapLoading: "Loading options…",
@@ -1222,6 +1264,26 @@ export const en = {
     noMatch: (query: string) => `No recipe matches “${query}”.`,
     cancel: "Cancel", // AC4, verbatim — back to the list, the query kept
     confirm: "Confirm", // AC4, verbatim
+  },
+
+  /**
+   * `fix/recipes-and-editor-polish` (BUG-537, BUG-574) — its own section, so the branches
+   * editing the dictionary's tail and the recipe sentences cannot collide with it.
+   */
+  recipePolish: {
+    /**
+     * BUG-537 — the swap sheet's mark on a recipe whose name and numbers are what the meal
+     * already shows. A mark, not a refusal: choosing it re-places the recipe's current
+     * version (the way to refresh a meal after editing the recipe).
+     */
+    onThisMeal: "On this meal",
+    /**
+     * BUG-574 — "1,500" / "1.000" as a quantity: a thousand-and-something or a decimal,
+     * nobody can tell, so neither is sent (BUG-460/554). The range sentence did not say
+     * why. Both examples are accepted as written.
+     */
+    quantityAmbiguous: (typed: string) =>
+      `“${typed}” can be read two ways. Quantities are in g, ml or pieces: write 1500 for fifteen hundred, or 1.5 for one and a half.`,
   },
 
   /**
@@ -1786,7 +1848,8 @@ export const en = {
   challenges: {
     nav: "Challenges",
     title: "Challenges",
-    subtitle: "Step goals your clients join from the Evoli Fit app.",
+    // Any metric: the list holds WORKOUTS challenges too, so the subtitle names none.
+    subtitle: "Challenges your clients join from the Evoli Fit app.",
     create: "New challenge",
     emptyTitle: "No challenges yet",
     emptyBody: "Set a daily step goal for a week and invite your clients. You see their progress once they accept.",
@@ -1877,7 +1940,7 @@ export const en = {
      */
     consent: "Accepting the invitation is how a client agrees to share their steps with you.",
     consentWorkouts:
-      "By accepting the invitation, your client agrees to share with you how many sessions they complete during the challenge.",
+      "Accepting the invitation is how a client agrees to share with you how many sessions they complete during the challenge.",
     progressLabel: "Participants' progress",
     colRank: "Rank",
     colClient: "Client",
@@ -1893,8 +1956,13 @@ export const en = {
       ACCEPTED: "Joined",
     },
     unnamed: "Unnamed client",
-    /** An INVITED row: no number, because accepting is the consent to share one. */
+    /**
+     * An INVITED row: no number, because accepting is the consent to share one. Picked by
+     * metric like `consent`: an accepted WORKOUTS row shows sessions completed today and in
+     * the window, never steps.
+     */
     invitedNote: "Their steps appear here once they accept.",
+    invitedNoteWorkouts: "Their completed sessions appear here once they accept.",
     rank: (rank: number) => `#${rank}`,
     todaySteps: (value: string, target: string) => `${value} / ${target} steps`,
     todayWorkouts: (value: string) => `${value} today`,
@@ -1927,8 +1995,17 @@ export const en = {
     /* ── delete ───────────────────────────────────────────────────────────── */
     remove: "Delete challenge",
     deleteTitle: "Delete this challenge?",
+    /**
+     * Picked by metric like `consent`. The api's delete (BUG-458) purges shared steps for a
+     * STEPS challenge only: a WORKOUTS challenge stores nothing, it counts sessions from the
+     * client's own training log, and those are untouched. Nor does the WORKOUTS sentence say
+     * the challenge leaves the clients' app: the app shows no WORKOUTS challenge at all
+     * (b-fit-mobile `challengeCardState`, STEPS only).
+     */
     deleteBody: (title: string) =>
       `“${title}” is deleted, and it disappears from your clients' app. The steps your clients shared for this challenge are deleted, except days another challenge they have joined still covers.`,
+    deleteBodyWorkouts: (title: string) =>
+      `“${title}” is deleted, with its invitations and participants. The sessions your clients completed are not deleted: this challenge only counted them.`,
     deleteConfirm: "Delete",
     deleteFailed: "The challenge could not be deleted. Try again in a moment.",
   },

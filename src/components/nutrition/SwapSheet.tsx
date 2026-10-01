@@ -18,7 +18,7 @@ import {
   swapOptionsAction,
   type RecipeChoicesResult,
 } from "@/lib/nutritionActions";
-import { recipesFor } from "@/lib/recipeSearch";
+import { matchesMealContent, recipesFor, type MealContent } from "@/lib/recipeSearch";
 import { settled } from "@/lib/settled";
 import type { CoachRecipeSummary, MealWeekView, SwapCandidate } from "@/lib/coachApi";
 
@@ -72,6 +72,11 @@ export interface SwapSheetTarget extends PlacementTarget {
   kcal: number;
   /** Locked by the trainee (AC6): the sheet says so and asks the api nothing. */
   locked: boolean;
+  /**
+   * BUG-537 — the meal's content as the week shows it: a recipe with the same name and
+   * numbers is marked « On this meal » (`matchesMealContent`). Null marks none.
+   */
+  current: MealContent | null;
   /**
    * The library read, STARTED BY THE CLICK that opened the sheet (null for a locked
    * meal). Not from an effect: React's dev StrictMode mounts twice, and an effect read
@@ -283,6 +288,12 @@ export function SwapSheet({
   }
 
   const shown = library.status === "ready" ? recipesFor(library.recipes, target.kcal, query) : [];
+  /** BUG-537 — marked « On this meal », never hidden (see `matchesMealContent`). */
+  const onThisMeal = new Set(
+    library.status === "ready"
+      ? library.recipes.filter((r) => matchesMealContent(r, target.current)).map((r) => r.id)
+      : []
+  );
 
   const footer = chosen ? (
     <>
@@ -368,6 +379,7 @@ export function SwapSheet({
                 onQuery={setQuery}
                 onChoose={choose}
                 disabled={pending}
+                onThisMeal={onThisMeal}
               />
               <section
                 aria-labelledby={headingId}

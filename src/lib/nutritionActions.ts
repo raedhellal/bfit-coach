@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import {
   ApiError,
   coachApi,
+  isDayRegenCapped,
   isForbidden,
   isMealEaten,
   isMealLocked,
+  isNoSafeMealPlan,
   isNutritionNotFound,
   isRecipeAllergiesUncheckable,
   isRecipeBelowFloor,
@@ -60,6 +62,14 @@ export type NutritionFailure =
    * server's. Only the apply answers it; the sheet re-reads the options and stays open.
    */
   | "SWAP_OPTIONS_STALE"
+  /**
+   * EV-071b — 422 `NO_SAFE_MEAL_PLAN` on the week apply or a day regenerate: refused for
+   * the trainee's safety, nothing written. Its own code so the card renders the refusal
+   * block, never "could not be applied", which reads as a fault worth retrying.
+   */
+  | "NO_SAFE_MEAL_PLAN"
+  /** EV-242b — 429 `COACH_DAY_REGEN_LIMIT`: today's day regenerations are used up. */
+  | "DAY_REGEN_CAPPED"
   | "INVALID"
   | "FAILED";
 
@@ -68,6 +78,8 @@ function classify(err: unknown): NutritionFailure {
   if (isMealLocked(err)) return "MEAL_LOCKED";
   if (isSwapOptionsStale(err)) return "SWAP_OPTIONS_STALE";
   if (isWeekOutOfRange(err)) return "WEEK_OUT_OF_RANGE";
+  if (isNoSafeMealPlan(err)) return "NO_SAFE_MEAL_PLAN";
+  if (isDayRegenCapped(err)) return "DAY_REGEN_CAPPED";
   // ADR-0015 D6.6. Collapsed into FAILED, this read as "try again" — and the retry it
   // invited could not succeed until the next day.
   if (isWeekApplyRateLimited(err)) return "WEEK_RATE_LIMITED";

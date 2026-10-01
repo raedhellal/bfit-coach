@@ -313,20 +313,24 @@ export function parseWhole(raw: string): ParsedWhole {
  *     1000. It was refused with "more than 0 and at most 5000", false for 1000;
  *   · a decimal COMMA is a decimal, like the point: "150,5" is 150.5 (EV-256b);
  *   · "1.000" / "1,500" stay REFUSED. Read as decimals they have three places, which the
- *     api refuses; read as thousands nobody can be sure of them. Neither reading is sent;
+ *     api refuses; read as thousands nobody can be sure of them. Neither reading is sent.
+ *     They are `ambiguous` (BUG-574): the range sentence did not say why, to a coach who
+ *     typed « 1,500 » meaning one and a half kilos;
  *   · digits that cannot be read ("1 00", "1e3", "1,5,5") are `malformed`, shown the
  *     format sentence rather than the range one.
  *
  *   empty     — nothing typed.
  *   quantity  — a sendable value.
  *   malformed — a digit was typed and no reading fits.
+ *   ambiguous — "1.000", "1,500": a thousand-and-something or a decimal (BUG-574).
  *   outOfRange — read, and refused by the api's rule: 0, a negative, above 5000, more
- *               than two decimals, ambiguous thousands, or no digit at all.
+ *               than two decimals, or no digit at all.
  */
 export type ParsedQuantity =
   | { kind: "empty" }
   | { kind: "quantity"; value: number }
   | { kind: "malformed" }
+  | { kind: "ambiguous" }
   | { kind: "outOfRange" };
 
 const QUANTITY_DECIMALS = 2;
@@ -345,6 +349,10 @@ export function readQuantity(raw: string): ParsedQuantity {
     case "malformed":
       return { kind: "malformed" };
     case "thousands":
+      // N1 (staff) — a grouping never starts with 0, so "0,001" / "0.500" are not
+      // ambiguous: they are decimals with three places, refused by the range sentence
+      // ("up to 2 decimals"), which is true of them.
+      return /^0/.test(raw.trim()) ? { kind: "outOfRange" } : { kind: "ambiguous" };
     case "negative":
     case "notNumber":
       return { kind: "outOfRange" };
@@ -446,6 +454,8 @@ export function localProblems(draft: RecipeDraft, copy: Copy): Problem[] {
       problems.push({ at: ingredientAddress(index), message: copy.recipes.quantityRequired, missing: true });
     } else if (quantity.kind === "malformed") {
       problems.push({ at: ingredientAddress(index), message: copy.recipes.quantityFormat });
+    } else if (quantity.kind === "ambiguous") {
+      problems.push({ at: ingredientAddress(index), message: copy.recipePolish.quantityAmbiguous(line.quantity.trim()) });
     } else if (quantity.kind === "outOfRange") {
       problems.push({ at: ingredientAddress(index), message: copy.recipes.quantityRange });
     }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge, DataTable, Td } from "@/components/ui/kit";
-import type { ActivitySource, CoachChallengeDetail, CoachChallengeParticipant } from "@/lib/coachApi";
+import type { ActivitySource, ChallengeMetric, CoachChallengeDetail, CoachChallengeParticipant } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 import { formatSince, formatSteps } from "@/lib/format";
 import { DayLegend, DayStrip } from "./DayStrip";
@@ -35,7 +35,7 @@ export function ProgressTable({ detail, copy, now }: { detail: CoachChallengeDet
       <DataTable columns={columns} minWidth={steps ? 1040 : 860}>
         {detail.participants.map((p) =>
           p.progress === null ? (
-            <InvitedRow key={p.clientId} p={p} copy={copy} span={columns.length - 3} />
+            <InvitedRow key={p.clientId} p={p} copy={copy} metric={detail.challenge.metric} span={columns.length - 3} />
           ) : (
             <AcceptedRow key={p.clientId} p={p} copy={copy} now={now} steps={steps} />
           )
@@ -60,7 +60,20 @@ function NameCell({ p, copy }: { p: CoachChallengeParticipant; copy: Copy }) {
   );
 }
 
-function InvitedRow({ p, copy, span }: { p: CoachChallengeParticipant; copy: Copy; span: number }) {
+function InvitedRow({
+  p,
+  copy,
+  metric,
+  span,
+}: {
+  p: CoachChallengeParticipant;
+  copy: Copy;
+  metric: ChallengeMetric;
+  span: number;
+}) {
+  const c = copy.challenges;
+  // By metric, like the consent line: an unknown metric says nothing rather than claim steps.
+  const note = metric === "STEPS" ? c.invitedNote : metric === "WORKOUTS" ? c.invitedNoteWorkouts : null;
   return (
     <tr data-participant={p.clientId} data-status="INVITED">
       <Td>{copy.common.dash}</Td>
@@ -69,7 +82,7 @@ function InvitedRow({ p, copy, span }: { p: CoachChallengeParticipant; copy: Cop
         <Badge tone="amber">{copy.challenges.status.INVITED}</Badge>
       </Td>
       <td colSpan={span} style={{ padding: "13px 16px", fontSize: 12.5, color: "var(--ink-3)", borderTop: "1px solid var(--hairline)" }}>
-        {copy.challenges.invitedNote}
+        {note}
       </td>
     </tr>
   );

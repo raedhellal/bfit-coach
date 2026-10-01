@@ -445,7 +445,7 @@ const CONSENT = {
   en: {
     steps: "Accepting the invitation is how a client agrees to share their steps with you.",
     workouts:
-      "By accepting the invitation, your client agrees to share with you how many sessions they complete during the challenge.",
+      "Accepting the invitation is how a client agrees to share with you how many sessions they complete during the challenge.",
   },
   fr: {
     steps: "En acceptant l'invitation, le client accepte de partager ses pas avec vous.",
@@ -478,6 +478,17 @@ async function createWorkoutsChallenge(page: Page, labels: { open: string; title
 }
 
 test.describe("workouts consent wording", () => {
+  // The list subtitle used to say "Step goals…" over a list that held a WORKOUTS challenge.
+  test("English: the list subtitle names no metric once a WORKOUTS challenge is listed", async ({ page }) => {
+    await signIn(page);
+    await createWorkoutsChallenge(page, { open: "New challenge", title: "Title", submit: "Create and invite" });
+    await page.goto("/challenges");
+    await expect(page.getByRole("list", { name: "Challenges" })).toContainText("6 workouts in total");
+    const subtitle = page.locator("h1 + p");
+    await expect(subtitle).toHaveText("Challenges your clients join from the Evoli Fit app.");
+    await expect(subtitle).not.toContainText(/step/i);
+  });
+
   test("English: a WORKOUTS challenge says it shares completed sessions; a STEPS one still says steps", async ({
     page,
   }) => {
@@ -495,6 +506,16 @@ test.describe("workouts consent wording", () => {
   test.describe("fr-FR", () => {
     test.use({ locale: "fr-FR" });
 
+    test("French: the list subtitle names no metric once a WORKOUTS challenge is listed", async ({ page }) => {
+      await signInFrench(page);
+      await createWorkoutsChallenge(page, { open: "Nouveau défi", title: "Titre", submit: "Créer et inviter" });
+      await page.goto("/challenges");
+      await expect(page.getByRole("list", { name: "Défis" })).toContainText("6 séances au total");
+      const subtitle = page.locator("h1 + p");
+      await expect(subtitle).toHaveText("Des défis que vos clients rejoignent depuis l'app Evoli Fit.");
+      await expect(subtitle).not.toContainText(/\bpas\b/);
+    });
+
     test("French: a WORKOUTS challenge says « séances terminées »; a STEPS one still says « ses pas »", async ({
       page,
     }) => {
@@ -509,6 +530,141 @@ test.describe("workouts consent wording", () => {
       await page.goto(`/challenges/${ACTIVE}`);
       await expect(main).toContainText(CONSENT.fr.steps);
       await expect(main).not.toContainText(CONSENT.fr.workouts);
+    });
+  });
+});
+
+/* ── The rest of a WORKOUTS page's copy: the invited row and the delete confirm ──────────
+ * Both still said steps on a WORKOUTS challenge. Per b-fit-api main, a WORKOUTS delete
+ * purges nothing (BUG-458's purge is STEPS-only: the challenge counts sessions from the
+ * client's own training log) and the app shows no WORKOUTS challenge (b-fit-mobile
+ * `challengeCardState`, STEPS only), so the WORKOUTS confirm claims neither. An accepted
+ * WORKOUTS row shows sessions today and in the window, which is what the invited row
+ * promises. */
+const WORKOUTS_COPY = {
+  en: {
+    invitedSteps: "Their steps appear here once they accept.",
+    invitedWorkouts: "Their completed sessions appear here once they accept.",
+    deleteSteps:
+      "“Semaine de rentrée” is deleted, and it disappears from your clients' app. The steps your clients shared for this challenge are deleted, except days another challenge they have joined still covers.",
+    deleteWorkouts:
+      "“Six séances” is deleted, with its invitations and participants. The sessions your clients completed are not deleted: this challenge only counted them.",
+  },
+  fr: {
+    invitedSteps: "Ses pas apparaîtront ici après acceptation.",
+    invitedWorkouts: "Ses séances apparaîtront ici après acceptation.",
+    deleteSteps:
+      "« Semaine de rentrée » est supprimé et disparaît de l'app de vos clients. Les pas que vos clients ont partagés pour ce défi sont supprimés, sauf les jours couverts par un autre défi auquel ils participent.",
+    deleteWorkouts:
+      "« Six séances » est supprimé, avec ses invitations et ses participants. Les séances terminées par vos clients ne sont pas supprimées : ce défi ne faisait que les compter.",
+  },
+} as const;
+
+const EN_LABELS = { open: "New challenge", title: "Title", submit: "Create and invite" };
+const FR_LABELS = { open: "Nouveau défi", title: "Titre", submit: "Créer et inviter" };
+
+test.describe("workouts invited row and delete confirm", () => {
+  test("English: a WORKOUTS invited row promises completed sessions; a STEPS one still promises steps", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await createWorkoutsChallenge(page, EN_LABELS);
+    const lina = row(page, LINA);
+    await expect(lina).toHaveAttribute("data-status", "INVITED");
+    await expect(lina).toContainText(WORKOUTS_COPY.en.invitedWorkouts);
+    await expect(table(page)).not.toContainText(/steps/i);
+
+    await page.goto(`/challenges/${ACTIVE}`);
+    await expect(row(page, MARA)).toContainText(WORKOUTS_COPY.en.invitedSteps);
+    await expect(table(page)).not.toContainText(WORKOUTS_COPY.en.invitedWorkouts);
+  });
+
+  test("English: the WORKOUTS delete confirm deletes no shared data and names no app; STEPS unchanged", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/challenges/${ENDED}`);
+    await page.getByRole("button", { name: "Delete challenge" }).click();
+    const confirm = page.getByRole("dialog", { name: "Delete this challenge?" });
+    await expect(confirm.locator("p").first()).toHaveText(WORKOUTS_COPY.en.deleteSteps);
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(confirm).toBeHidden();
+
+    await createWorkoutsChallenge(page, EN_LABELS);
+    await page.getByRole("button", { name: "Delete challenge" }).click();
+    await expect(confirm.locator("p").first()).toHaveText(WORKOUTS_COPY.en.deleteWorkouts);
+    await expect(confirm).not.toContainText(/steps|\bapp\b/i);
+
+    await confirm.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.waitForURL("/challenges");
+    await expect(page.getByRole("list", { name: "Challenges" }).getByRole("listitem").filter({ hasText: "Six séances" })).toHaveCount(0);
+  });
+
+  test("a metric this portal does not know: no consent line, no invited promise, no delete sentence", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await context.addCookies([{ name: "evoli_fixture_challenge_metric", value: "DISTANCE", url: baseURL! }]);
+    await signIn(page);
+    await page.goto(`/challenges/${ACTIVE}`);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("10 000 pas par jour");
+    // Witness that the served metric is not STEPS: the STEPS-only day-by-day column is gone.
+    await expect(table(page).locator("th", { hasText: "Rank" })).toHaveCount(1);
+    await expect(table(page).locator("th", { hasText: "Day by day" })).toHaveCount(0);
+
+    const main = page.locator("main");
+    await expect(main).not.toContainText(CONSENT.en.steps);
+    await expect(main).not.toContainText(CONSENT.en.workouts);
+    await expect(main).not.toContainText(/Accepting the invitation/);
+    await expect(row(page, MARA)).toHaveAttribute("data-status", "INVITED");
+    await expect(row(page, MARA)).not.toContainText(/steps|sessions/i);
+
+    await page.getByRole("button", { name: "Delete challenge" }).click();
+    const confirm = page.getByRole("dialog", { name: "Delete this challenge?" });
+    await expect(confirm.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+    await expect(confirm).not.toContainText(/steps|sessions|is deleted/i);
+  });
+
+  test.describe("fr-FR", () => {
+    test.use({ locale: "fr-FR" });
+
+    test("French: a WORKOUTS invited row says « Ses séances »; a STEPS one still says « Ses pas »", async ({
+      page,
+    }) => {
+      await signInFrench(page);
+      await createWorkoutsChallenge(page, FR_LABELS);
+      const lina = row(page, LINA);
+      await expect(lina).toHaveAttribute("data-status", "INVITED");
+      await expect(lina).toContainText(WORKOUTS_COPY.fr.invitedWorkouts);
+      await expect(lina).not.toContainText(WORKOUTS_COPY.fr.invitedSteps);
+      await expectNoEnglish(page, "a WORKOUTS invited row");
+
+      await page.goto(`/challenges/${ACTIVE}`);
+      await expect(row(page, MARA)).toContainText(WORKOUTS_COPY.fr.invitedSteps);
+      await expect(page.locator("main")).not.toContainText(WORKOUTS_COPY.fr.invitedWorkouts);
+    });
+
+    test("French: the WORKOUTS delete confirm deletes no shared data and names no app; STEPS unchanged", async ({
+      page,
+    }) => {
+      await signInFrench(page);
+      await page.goto(`/challenges/${ENDED}`);
+      await page.getByRole("button", { name: "Supprimer le défi" }).click();
+      const confirm = page.getByRole("dialog", { name: "Supprimer ce défi ?" });
+      await expect(confirm.locator("p").first()).toHaveText(WORKOUTS_COPY.fr.deleteSteps);
+      await confirm.getByRole("button", { name: "Annuler" }).click();
+      await expect(confirm).toBeHidden();
+
+      await createWorkoutsChallenge(page, FR_LABELS);
+      await page.getByRole("button", { name: "Supprimer le défi" }).click();
+      await expect(confirm.locator("p").first()).toHaveText(WORKOUTS_COPY.fr.deleteWorkouts);
+      await expect(confirm).not.toContainText(/Les pas|\bapp\b/);
+      await expectNoEnglish(page, "the WORKOUTS delete confirm");
+
+      await confirm.getByRole("button", { name: "Supprimer", exact: true }).click();
+      await page.waitForURL("/challenges");
+      await expect(page.getByRole("list", { name: "Défis" }).getByRole("listitem").filter({ hasText: "Six séances" })).toHaveCount(0);
     });
   });
 });
