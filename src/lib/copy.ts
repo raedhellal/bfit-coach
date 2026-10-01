@@ -1007,15 +1007,13 @@ export const en = {
       `The week below is still ${first}'s current week — it hasn't been touched.`,
     /** P2 — no week on screen: the block renders instead of one. */
     weekRefusedNoWeek: (first: string) => `${first} has no meal week right now.`,
-    /**
-     * Q3, the "unknown" quota variant, and the ONLY one rendered. Q1 needs the api to say
-     * the apply was released (EV-196, not built). Q2 ("This has used today's apply") is
-     * NOT rendered on a second refusal, although ruling 2.1 allows it: on b-fit-api main
-     * `CoachNutritionUseCase.applyWeek` releases the claim on EVERY refusal, not on the
-     * first one per day, so Q2 would be false there.
+    /*
+     * NO quota sentence (staff ruling, 2026-10-01, option a). Ruling 2.1's three are all
+     * false or unwitnessed against b-fit-api main: `CoachNutritionUseCase.applyWeek`
+     * releases the claim on EVERY refusal (NoSafeMealPlanException is a RuntimeException),
+     * so Q2 ("This has used today's apply") and Q3's "trying again will use it" are false,
+     * and Q1 needs the api to say so (EV-196). Do not add one back without that witness.
      */
-    weekRefusedQuota:
-      "Your first refusal for a trainee each day doesn't use your daily apply. If this is the second one today, trying again will use it.",
     refusedAskThem: (first: string) =>
       `You can't change ${first}'s food preferences from here. Ask them to review them in the app.`,
     /**
@@ -1071,13 +1069,15 @@ export const en = {
       "Their recorded allergies and food rules rule out every recipe we're able to check for that day.",
     dayRefusedKept: (day: string) => `${day} is unchanged — nothing was replaced.`,
     /**
-     * EV-242 AC3's first sentence — the 429 `COACH_DAY_REGEN_LIMIT`. Its second sentence
-     * ("You can regenerate again after {local time}.") needs the reset instant EV-242a
-     * puts on the body, and b-fit-api main does not send one: no time is shown rather
-     * than one the portal would have to make up.
+     * EV-242 AC3 — the 429 `COACH_DAY_REGEN_LIMIT`, reworded by the staff ruling of
+     * 2026-10-01: the counter is the TRAINEE's plan row, so "You've used…" was false
+     * whenever the trainee used them. Its second sentence ("You can regenerate again
+     * after {local time}.") needs the reset instant EV-242a puts on the body, and
+     * b-fit-api main does not send one: no time is shown rather than a made-up one.
+     * `first` is French's (« de Lina »); English names the trainee as the line above does.
      */
-    dayRegenCapped: (trainee: string) =>
-      `You've used today's regenerations for ${endSentence(trainee)}`,
+    dayRegenCapped: (trainee: string, _first: string) =>
+      `Today's day regenerations for ${trainee} are used up.`,
     swap: "Swap meal", // AC3, verbatim
     swapTitle: "Swap meal",
     swapLoading: "Loading options…",

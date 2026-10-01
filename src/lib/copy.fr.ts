@@ -519,9 +519,6 @@ export const fr = {
     weekRefusedKept: (first: string) =>
       `La semaine ci-dessous reste la semaine en cours ${de(first)} — elle n'a pas été modifiée.`,
     weekRefusedNoWeek: (first: string) => `${first} n'a pas de semaine de repas pour le moment.`,
-    /** "votre application quotidienne" alone reads as "your daily app": the act is named. */
-    weekRefusedQuota:
-      "Un premier refus dans la journée pour un client ne vous coûte pas votre application de semaine du jour. Si c'est le deuxième aujourd'hui, réessayer vous la coûtera.",
     refusedAskThem: (first: string) =>
       `Vous ne pouvez pas modifier les préférences alimentaires ${de(first)} ici. Demandez-lui de les vérifier dans l'app.`,
     lockedMealsKept: "Les repas que le client a verrouillés sont conservés.",
@@ -539,8 +536,9 @@ export const fr = {
       "Ses allergies et règles alimentaires enregistrées excluent toutes les recettes que nous pouvons vérifier pour ce jour.",
     dayRefusedKept: (day: string) =>
       `Le ${day.toLowerCase()} n'a pas changé — aucun repas n'a été remplacé.`,
-    dayRegenCapped: (trainee: string) =>
-      `Vous avez utilisé les régénérations du jour pour ${endSentence(trainee)}`,
+    /** Staff ruling 2026-10-01: the trainee's counter, so it is stated about them, not "vous". */
+    dayRegenCapped: (_trainee: string, first: string) =>
+      `Les régénérations de jour ${de(first)} sont épuisées pour aujourd'hui.`,
     /** The demo script's word ("Remplacer"); the app says "Échanger" for the trainee's own swap. */
     swap: "Remplacer le repas",
     swapTitle: "Remplacer le repas",

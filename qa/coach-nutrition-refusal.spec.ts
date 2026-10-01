@@ -12,11 +12,15 @@ import { test } from "./fixture-test";
  * rule of 2.2 (a week on screen stays, identical, under the block; with none, the block
  * stands in for it) and AC13's "no quota sentence on a day".
  *
- * Q2 ("This has used today's apply…") is asserted ABSENT even on a second refusal in one
- * page: b-fit-api main releases the apply claim on every refusal, so Q2 would be false.
+ * NO quota sentence is on the week block (staff ruling 2026-10-01, option a): Q1, Q2 and
+ * Q3 are all asserted ABSENT, on a first and a second refusal in one page. b-fit-api main
+ * releases the apply claim on EVERY refusal, so Q2 and Q3's "trying again will use it" are
+ * false, and Q1 needs the api to say so (EV-196).
  *
- * EV-242b — 429 `COACH_DAY_REGEN_LIMIT` names the cap (AC3's first sentence), disables
- * every Regenerate, logs `coach_day_regen_capped` with no properties, and does not read the
+ * EV-242b — 429 `COACH_DAY_REGEN_LIMIT` names the cap (AC3's first sentence, in the staff
+ * ruling's wording: the counter is the TRAINEE's), disables every Regenerate until an
+ * Apply succeeds (the apply resets the trainee's counter), logs `coach_day_regen_capped`
+ * with no properties, and does not read the
  * api's message: the fixture's 429 carries the api's own sentence, "…they reset tomorrow",
  * and the page must not show "tomorrow". AC3's "after {local time}" is NOT asserted: the
  * api sends no reset instant (EV-242a's second half is not on api main).
@@ -38,6 +42,7 @@ const RULED_OUT =
   "Their recorded allergies and food rules rule out every recipe we're able to check. Nothing was changed.";
 const Q1 = "This hasn't used today's apply — you can try again.";
 const Q2_LEAD = "This has used today's apply.";
+/** The three quota sentences ruling 2.1 wrote; none may render (see the header). */
 const Q3 =
   "Your first refusal for a trainee each day doesn't use your daily apply. If this is the second one today, trying again will use it.";
 const APPLY_FAILED = "The meal week could not be applied.";
@@ -86,6 +91,13 @@ async function apply(page: Page, buttonName: string, confirmName: string) {
   await expect(dialog).toHaveCount(0);
 }
 
+/** None of ruling 2.1's quota sentences, nor any part of one, is on the page. */
+async function expectNoQuotaLine(page: Page) {
+  for (const sentence of [Q1, Q2_LEAD, Q3]) await expect(page.getByText(sentence)).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("today's apply");
+  await expect(page.locator("body")).not.toContainText("daily apply");
+}
+
 /** The weekday heading of the day card a block sits in (its parent is the card). */
 async function cardWeekday(block: Locator): Promise<string | null> {
   return block.evaluate((el) =>
@@ -94,7 +106,7 @@ async function cardWeekday(block: Locator): Promise<string | null> {
 }
 
 test.describe("EV-071b — a refused week apply is a refusal, not an error", () => {
-  test("P1: the block is above the week, the week is untouched, and the quota line is Q3", async ({
+  test("P1: the block is above the week, the week is untouched, and there is no quota line", async ({
     page,
   }) => {
     await signIn(page);
@@ -112,7 +124,6 @@ test.describe("EV-071b — a refused week apply is a refusal, not an error", () 
       "We couldn't build a meal week for Lina.",
       RULED_OUT,
       "The week below is still Lina's current week — it hasn't been touched.",
-      Q3,
       "You can't change Lina's food preferences from here. Ask them to review them in the app.",
     ]);
     await expect(page.getByText(APPLY_FAILED)).toHaveCount(0);
@@ -129,13 +140,14 @@ test.describe("EV-071b — a refused week apply is a refusal, not an error", () 
     // The api's developer sentence never reaches the screen.
     await expect(page.locator("body")).not.toContainText("satisfies this account's dietary rules");
 
-    // A second refusal in the same page: still Q3. Q2 would be false on b-fit-api main,
-    // which releases the apply claim on every refusal; Q1 needs the api to say so (EV-196).
+    await expectNoQuotaLine(page);
+
+    // A second refusal in the same page: still no quota line. Every refusal gives the
+    // apply back on b-fit-api main, so "this has used today's apply" would be false.
     await apply(page, "Apply to Lina M.", "Apply");
     await expect(block).toBeVisible();
-    await expect(block.getByText(Q3, { exact: true })).toBeVisible();
-    await expect(page.getByText(Q1)).toHaveCount(0);
-    await expect(page.getByText(Q2_LEAD)).toHaveCount(0);
+    expect(await lines(block)).toHaveLength(4);
+    await expectNoQuotaLine(page);
     expect(await weekText(page)).toEqual(before);
   });
 
@@ -155,11 +167,11 @@ test.describe("EV-071b — a refused week apply is a refusal, not an error", () 
       "We couldn't build a meal week for Nils.",
       RULED_OUT,
       "Nils has no meal week right now.",
-      Q3,
       "You can't change Nils's food preferences from here. Ask them to review them in the app.",
     ]);
     await expect(page.getByText(APPLY_FAILED)).toHaveCount(0);
     await expect(weekEmpty).toHaveCount(0);
+    await expectNoQuotaLine(page);
     await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(0);
   });
 });
@@ -196,6 +208,12 @@ test.describe("EV-071b ruling 2.4 — a refused day says what was refused", () =
     await expect(page.getByTestId("week-refusal")).toHaveCount(0);
     // That day's meals and the other six are exactly as they were.
     expect(await weekText(page)).toEqual(before);
+
+    // A regenerate that SUCCEEDS replaces the day, so the block no longer describes it.
+    await fixtureCookie(page, "evoli_fixture_regen", "off");
+    await page.getByRole("button", { name: "Regenerate day: Wednesday" }).click();
+    await expect.poll(async () => (await weekText(page)).slice(8, 12)).not.toEqual(before.slice(8, 12));
+    await expect(page.getByTestId("day-refusal")).toHaveCount(0);
   });
 
   test("a non-422 failure still reads the generic sentence", async ({ page }) => {
@@ -229,7 +247,7 @@ test.describe("EV-242b — the day-regeneration cap is named", () => {
     }).toPass({ timeout: 20_000 });
 
     await expect(page.getByTestId("day-regen-capped")).toHaveText(
-      "You've used today's regenerations for Lina M."
+      "Today's day regenerations for Lina M. are used up."
     );
     await expect(page.getByText(REGEN_FAILED)).toHaveCount(0);
     const regenerate = page.getByRole("button", { name: /^Regenerate day: / });
@@ -243,6 +261,30 @@ test.describe("EV-242b — the day-regeneration cap is named", () => {
     expect(await weekText(page)).toEqual(before);
     await expect.poll(() => events.length).toBe(1);
     expect(JSON.parse(events[0])).toEqual({ event: "coach_day_regen_capped" });
+  });
+
+  test("an Apply that succeeds lifts the cap: the line goes and every Regenerate is enabled", async ({
+    page,
+  }) => {
+    // The coach apply writes the week with the trainee's regenDate null and regenCount 0
+    // (b-fit-api WeeklyMealPlanService's week save), so after it the cap line is false.
+    await signIn(page);
+    await fixtureCookie(page, "evoli_fixture_regen", "capped");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(async () => {
+      await page.getByRole("button", { name: "Regenerate day: Monday" }).click();
+      await expect(page.getByTestId("day-regen-capped")).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    const regenerate = page.getByRole("button", { name: /^Regenerate day: / });
+    for (let i = 0; i < 7; i += 1) await expect(regenerate.nth(i)).toBeDisabled();
+    const before = await weekText(page);
+
+    await apply(page, "Apply to Lina M.", "Apply");
+    await expect.poll(() => weekText(page)).not.toEqual(before);
+
+    await expect(page.getByTestId("day-regen-capped")).toHaveCount(0);
+    await expect(regenerate).toHaveCount(7);
+    for (let i = 0; i < 7; i += 1) await expect(regenerate.nth(i)).toBeEnabled();
   });
 });
 
@@ -266,10 +308,10 @@ test.describe("French — both refusals and the cap, with the elisions", () => {
       "Nous n'avons pas pu construire de semaine de repas pour Inès.",
       "Ses allergies et règles alimentaires enregistrées excluent toutes les recettes que nous pouvons vérifier. Rien n'a été modifié.",
       "La semaine ci-dessous reste la semaine en cours d'Inès — elle n'a pas été modifiée.",
-      "Un premier refus dans la journée pour un client ne vous coûte pas votre application de semaine du jour. Si c'est le deuxième aujourd'hui, réessayer vous la coûtera.",
       "Vous ne pouvez pas modifier les préférences alimentaires d'Inès ici. Demandez-lui de les vérifier dans l'app.",
     ]);
     await expect(page.getByText("La semaine de repas n'a pas pu être appliquée.")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("premier refus");
 
     await page.getByRole("button", { name: /^Régénérer le jour.*Mercredi$/ }).click();
     const day = page.getByTestId("day-refusal");
@@ -283,6 +325,20 @@ test.describe("French — both refusals and the cap, with the elisions", () => {
     await expect(page.getByText("Le jour n'a pas pu être régénéré.")).toHaveCount(0);
   });
 
+  test("the cap reads in French, with « d'Inès »", async ({ page }) => {
+    await signInFrench(page);
+    await fixtureCookie(page, "evoli_fixture_display_name", `${LINA}:${encodeURIComponent("Inès Roux")}`);
+    await fixtureCookie(page, "evoli_fixture_regen", "capped");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(async () => {
+      await page.getByRole("button", { name: /^Régénérer le jour.*Lundi$/ }).click();
+      await expect(page.getByTestId("day-regen-capped")).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(page.getByTestId("day-regen-capped")).toHaveText(
+      "Les régénérations de jour d'Inès sont épuisées pour aujourd'hui."
+    );
+  });
+
   test("the cap reads in French, and a consonant-initial name does not elide", async ({ page }) => {
     await signInFrench(page);
     await fixtureCookie(page, "evoli_fixture_regen", "capped");
@@ -293,7 +349,7 @@ test.describe("French — both refusals and the cap, with the elisions", () => {
       await expect(page.getByTestId("day-regen-capped")).toBeVisible({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
     await expect(page.getByTestId("day-regen-capped")).toHaveText(
-      "Vous avez utilisé les régénérations du jour pour Lina M."
+      "Les régénérations de jour de Lina sont épuisées pour aujourd'hui."
     );
     await expect(page.locator("body")).not.toContainText("demain");
 

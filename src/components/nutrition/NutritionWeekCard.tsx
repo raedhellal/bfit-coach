@@ -146,10 +146,6 @@ export function NutritionWeekCard({
    * "re-fetches the week", and a re-fetch the card ignores is no re-fetch.
    */
   const [seenInitial, setSeenInitial] = useState<MealWeekView | null>(initialWeek);
-  if (initialWeek !== seenInitial) {
-    setSeenInitial(initialWeek);
-    setWeek(initialWeek);
-  }
   const [confirming, setConfirming] = useState(false);
   const [swapping, setSwapping] = useState<{ mealId: string; mealName: string } | null>(null);
   /**
@@ -181,6 +177,15 @@ export function NutritionWeekCard({
    */
   const [regenCapped, setRegenCapped] = useState(false);
   const [pending, startTransition] = useTransition();
+  // Below the refusal state on purpose: it clears them, so it must run after they exist.
+  if (initialWeek !== seenInitial) {
+    setSeenInitial(initialWeek);
+    setWeek(initialWeek);
+    // A different week from the server: no refusal on screen still describes it. The cap
+    // is NOT cleared here — a swap refreshes the week and leaves the trainee's counter.
+    setWeekRefused(false);
+    setDayRefused(null);
+  }
 
   const trainee = truncateName(traineeDisplayName);
   const first = firstName(traineeDisplayName, copy.locale);
@@ -241,6 +246,10 @@ export function NutritionWeekCard({
       }
       setError(null);
       clearRefusals();
+      // The apply writes a new week row with the trainee's day-regen counter at zero
+      // (WeeklyMealPlanService's week save: regenDate null, regenCount 0), so the cap
+      // line and the disabled Regenerate buttons would now be false.
+      setRegenCapped(false);
       setWeek(result.week);
       router.refresh();
     });
@@ -433,7 +442,7 @@ export function NutritionWeekCard({
           data-testid="day-regen-capped"
           style={{ margin: "0 0 12px", fontSize: 13, color: "var(--warn-ink)", lineHeight: 1.5 }}
         >
-          {copy.nutrition.dayRegenCapped(trainee)}
+          {copy.nutrition.dayRegenCapped(trainee, first)}
         </p>
       )}
 
@@ -446,7 +455,6 @@ export function NutritionWeekCard({
             copy.nutrition.weekRefusedTitle(first),
             copy.nutrition.weekRefusedBody,
             week ? copy.nutrition.weekRefusedKept(first) : copy.nutrition.weekRefusedNoWeek(first),
-            copy.nutrition.weekRefusedQuota,
             copy.nutrition.refusedAskThem(first),
           ]}
         />
