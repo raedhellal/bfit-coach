@@ -58,9 +58,11 @@ export default async function ClientPage({ params }: { params: { id: string } })
   ]);
 
   if (!overview) {
+    // The notice is this page's only content, so its sentence is the h1. Without
+    // `asHeading` the load error had no heading at all, the same gap /clients/denied had.
     return (
       <CoachShell coachName={me?.displayName}>
-        <ClientNotice message={copy.client.loadError} />
+        <ClientNotice message={copy.client.loadError} asHeading />
       </CoachShell>
     );
   }

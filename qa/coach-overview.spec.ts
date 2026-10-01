@@ -126,6 +126,61 @@ test.describe("AC5 — a trainee the coach is not linked to", () => {
   });
 });
 
+/**
+ * The overview's OTHER whole-page notice: the read failed with something that is not a
+ * 403 (the api is down or answers 5xx). The layout does not redirect that, so the page
+ * renders `ClientNotice` alone in the shell, and before this fix the page had no heading
+ * at all, the same gap /clients/denied had. `evoli_fixture_overview=fail` makes the
+ * fixture's overview read a 500 for this browser context only.
+ */
+test.describe("the overview read fails (not a 403)", () => {
+  async function failOverview(page: Page) {
+    await page.context().addCookies([{ name: "evoli_fixture_overview", value: "fail", url: page.url() }]);
+  }
+
+  test("the load-error page has exactly one h1, and it is the load-error sentence", async ({ page }) => {
+    await signIn(page);
+    await failOverview(page);
+    await page.goto(`/clients/${LINA}`);
+    // Not the denial: a 500 must not tell the coach they are not linked.
+    await expect(page).toHaveURL(`/clients/${LINA}`);
+    const h1 = page.getByRole("heading", { level: 1 });
+    await expect(h1).toHaveCount(1);
+    await expect(h1).toHaveText("This trainee could not be loaded.");
+  });
+
+  test.describe("in French (fr-FR)", () => {
+    test.use({ locale: "fr-FR" });
+
+    test("the load-error page's one h1 is the French sentence", async ({ page }) => {
+      await signInFrench(page);
+      await failOverview(page);
+      await page.goto(`/clients/${LINA}`);
+      await expect(page).toHaveURL(`/clients/${LINA}`);
+      await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+      const h1 = page.getByRole("heading", { level: 1 });
+      await expect(h1).toHaveCount(1);
+      await expect(h1).toHaveText("Ce client n'a pas pu être chargé.");
+    });
+  });
+});
+
+/**
+ * `asHeading` is OPT-IN, and this test pins that. /recipes puts the same notice under a
+ * `PageHead` that already holds the page's h1. If the notice became a heading by default,
+ * that page would get a second h1 and this test would see 2.
+ */
+test("a notice under a PageHead stays a non-heading: /recipes with a failed list keeps one h1", async ({ page }) => {
+  await signIn(page);
+  await page.context().addCookies([{ name: "evoli_fixture_recipes", value: "fail", url: page.url() }]);
+  await page.goto("/recipes");
+  await expect(page.getByText("Your recipes could not be loaded.", { exact: true })).toBeVisible();
+  const h1 = page.getByRole("heading", { level: 1 });
+  await expect(h1).toHaveCount(1);
+  await expect(h1).toHaveText("Recipes");
+  await expect(page.getByRole("heading", { name: "Your recipes could not be loaded." })).toHaveCount(0);
+});
+
 test.describe("AC5 block 4 — the weight tile and its caption agree", () => {
   test("several weigh-ins: the caption is the delta over the series", async ({ page }) => {
     await signIn(page);
