@@ -1990,12 +1990,17 @@ export const en = {
    * Keys are NORMALISED (`src/lib/catalogLabels.ts`: lower case, spaces and hyphens as "_"),
    * so "BARBELL", "Barbell" and "barbell" are one entry.
    *
-   * What is witnessed: the 24 muscles and 8 equipment values of b-fit-api's seeded catalogue
-   * (`V21__exercise_library.sql`), which are also exactly what the BUG-195c / EV-321b gate
-   * read off a live api's picker (`logs/b1-i6-copy-dump.json`). The rows marked MuscleWiki
-   * are that provider's own words (the api's default catalogue, `EXERCISE_PROVIDER`), NOT
-   * read off a b-fit catalogue; anything neither list has is shown humanised
-   * (`catalogLabels.ts`), never raw and never dropped.
+   * Two vocabularies, both witnessed:
+   *   · PRODUCTION's is MuscleWiki's (`application.yml` `EXERCISE_PROVIDER:musclewiki`).
+   *     `SyncExercisesUseCase.toEntry` stores the first primary muscle VERBATIM ("Anterior
+   *     Deltoid", "Traps (mid-back)") and the category UPPER-CASED ("BOSU-BALL", "TRX").
+   *     The rows under "MuscleWiki" are the values read off a local catalogue synced by that
+   *     provider (staff review of `fix/portal-french-polish-2`, 2026-10-01).
+   *   · A SEED-provider api (`EXERCISE_PROVIDER=seed`, local dev and the BUG-195c / EV-321b
+   *     gate, `logs/b1-i6-copy-dump.json`) serves b-fit-api's seeded catalogue,
+   *     `V21__exercise_library.sql`: 24 lower-case muscle tokens and 8 equipment values.
+   * Anything neither list has is shown humanised when it is a token ("BOSU-BALL" → "Bosu
+   * ball") and as served when it is already words (`catalogLabels.ts`); never dropped.
    *
    * Not the guardrail tables above: `user_profiles.equipment` and the catalogue's
    * `equipment` are two columns with two vocabularies (`guardrailLabels.ts`).
@@ -2031,6 +2036,13 @@ export const en = {
       abdominals: "Abdominals",
       lower_back: "Lower back",
       traps: "Traps",
+      anterior_deltoid: "Anterior deltoid",
+      lateral_deltoid: "Lateral deltoid",
+      posterior_deltoid: "Posterior deltoid",
+      lower_abdominals: "Lower abdominals",
+      upper_abdominals: "Upper abdominals",
+      tibialis: "Tibialis",
+      "traps_(mid_back)": "Traps (mid-back)",
     } as Record<string, string>,
     equipment: {
       band: "Band",
@@ -2048,6 +2060,12 @@ export const en = {
       plate: "Plate",
       smith_machine: "Smith machine",
       stretches: "Stretches",
+      bosu_ball: "Bosu ball",
+      medicine_ball: "Medicine ball",
+      trx: "TRX",
+      vitruvian: "Vitruvian",
+      yoga: "Yoga",
+      cardio: "Cardio",
     } as Record<string, string>,
   },
 } as const;

@@ -1076,8 +1076,9 @@ export const fr = {
       NO_DATA: "aucune donnée",
       FUTURE: "à venir",
     },
-    dayLabel: (day: string, status: string) => `${day} : ${status}`,
-    dayLabelSteps: (day: string, steps: string, status: string) => `${day} : ${steps} pas, ${status}`,
+    // U+00A0 before the colon, as `common.labelled` writes it (BUG-462's rule).
+    dayLabel: (day: string, status: string) => `${day}\u00a0: ${status}`,
+    dayLabelSteps: (day: string, steps: string, status: string) => `${day}\u00a0: ${steps} pas, ${status}`,
     daysList: (name: string) => `${name}, jour par jour`,
     legend: "Légende",
     noParticipants:
@@ -1173,6 +1174,13 @@ export const fr = {
       abdominals: "Abdominaux",
       lower_back: "Bas du dos",
       traps: "Trapèzes",
+      anterior_deltoid: "Deltoïde antérieur",
+      lateral_deltoid: "Deltoïde latéral",
+      posterior_deltoid: "Deltoïde postérieur",
+      lower_abdominals: "Abdominaux inférieurs",
+      upper_abdominals: "Abdominaux supérieurs",
+      tibialis: "Tibial antérieur",
+      "traps_(mid_back)": "Trapèzes (milieu du dos)",
     } as Record<string, string>,
     equipment: {
       band: "Élastique",
@@ -1188,6 +1196,12 @@ export const fr = {
       plate: "Disque",
       smith_machine: "Cadre guidé",
       stretches: "Étirements",
+      bosu_ball: "Bosu",
+      medicine_ball: "Médecine-ball",
+      trx: "TRX",
+      vitruvian: "Vitruvian",
+      yoga: "Yoga",
+      cardio: "Cardio",
     } as Record<string, string>,
   },
 } satisfies Copy;

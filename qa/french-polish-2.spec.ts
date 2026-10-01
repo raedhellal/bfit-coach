@@ -170,6 +170,14 @@ test("BUG-572 — the French quantity range sentence groups 5 000 like the forma
 
 /* ── BUG-461 / BUG-462: "label : value" ────────────────────────────────────────── */
 
+test("staff nit 4 — the challenge day strip's labels put U+00A0 before the colon too", () => {
+  expect(fr.challenges.dayLabel("jeu. 1er oct.", "à venir")).toBe(`jeu. 1er oct.${NBSP}: à venir`);
+  expect(fr.challenges.dayLabelSteps("mer. 30 sept.", `8${NNBSP}000`, "objectif atteint")).toBe(
+    `mer. 30 sept.${NBSP}: 8${NNBSP}000 pas, objectif atteint`
+  );
+  expect(en.challenges.dayLabel("Thu 1 Oct", "upcoming")).toBe("Thu 1 Oct: upcoming");
+});
+
 test("BUG-461 / BUG-462 — « label : value » in French (U+00A0 before the colon), « label: value » in English", () => {
   expect(fr.common.labelled("Monter", "Barbell Back Squat")).toBe(`Monter${NBSP}: Barbell Back Squat`);
   expect(fr.common.labelled("Dernière séance", "21 sept. 2026")).toBe(`Dernière séance${NBSP}: 21 sept. 2026`);
@@ -179,9 +187,10 @@ test("BUG-461 / BUG-462 — « label : value » in French (U+00A0 before the col
 /* ── BUG-489: the catalogue's values as words ─────────────────────────────────── */
 
 /**
- * The vocabulary a live api's picker served at the BUG-195c / EV-321b gate
- * (`docs/qa/evidence/2026-09-30-BUG-195c-EV-321b-gate/logs/b1-i6-copy-dump.json`), which is
- * b-fit-api's seeded catalogue (V21) — plus V21's `front_delts`, `obliques` and `upper_back`.
+ * A SEED-provider api's vocabulary (`EXERCISE_PROVIDER=seed`): b-fit-api's seeded catalogue,
+ * V21, as the BUG-195c / EV-321b gate's picker served it
+ * (`docs/qa/evidence/2026-09-30-BUG-195c-EV-321b-gate/logs/b1-i6-copy-dump.json`) — plus V21's
+ * `front_delts`, `obliques` and `upper_back`. NOT production's: see MUSCLEWIKI_* below.
  */
 const LIVE_MUSCLES = [
   "adductors", "back", "biceps", "calves", "cardio", "chest", "core", "forearms", "full_body",
@@ -189,6 +198,21 @@ const LIVE_MUSCLES = [
   "shoulders", "spine", "triceps", "t_spine", "front_delts", "obliques", "upper_back",
 ];
 const LIVE_EQUIPMENT = ["BAND", "BARBELL", "BODYWEIGHT", "CABLE", "DUMBBELLS", "KETTLEBELL", "MACHINE", "NONE"];
+
+/**
+ * PRODUCTION's vocabulary (`EXERCISE_PROVIDER:musclewiki`): `SyncExercisesUseCase.toEntry`
+ * stores MuscleWiki's first primary muscle verbatim and its category upper-cased. These are
+ * the values a local catalogue synced by that provider held that the first cut of BUG-489 did
+ * not label (staff review, 2026-10-01) — "BOSU-BALL" and "MEDICINE-BALL" printed RAW.
+ */
+const MUSCLEWIKI_MUSCLES = [
+  "Anterior Deltoid", "Lateral Deltoid", "Posterior Deltoid", "Lower Abdominals", "Upper Abdominals",
+  "Tibialis", "Traps (mid-back)",
+];
+const MUSCLEWIKI_EQUIPMENT = ["BOSU-BALL", "MEDICINE-BALL", "TRX", "VITRUVIAN", "YOGA", "CARDIO"];
+
+/** A raw token on screen: an underscore, or an upper-case word of four or more with or without hyphens. */
+const RAW_TOKEN = /_|^[A-Z0-9-]{4,}$/;
 
 test.describe("BUG-489 — catalogue muscles and equipment are words, never the api's raw values", () => {
   test("French labels for every value the live api serves", () => {
@@ -214,6 +238,39 @@ test.describe("BUG-489 — catalogue muscles and equipment are words, never the 
     ]);
   });
 
+  test("production's MuscleWiki values get words in both languages; none prints raw", () => {
+    expect(MUSCLEWIKI_MUSCLES.map((m) => muscleLabel(m, fr))).toEqual([
+      "Deltoïde antérieur", "Deltoïde latéral", "Deltoïde postérieur", "Abdominaux inférieurs",
+      "Abdominaux supérieurs", "Tibial antérieur", "Trapèzes (milieu du dos)",
+    ]);
+    expect(MUSCLEWIKI_MUSCLES.map((m) => muscleLabel(m, en))).toEqual([
+      "Anterior deltoid", "Lateral deltoid", "Posterior deltoid", "Lower abdominals", "Upper abdominals",
+      "Tibialis", "Traps (mid-back)",
+    ]);
+    expect(MUSCLEWIKI_EQUIPMENT.map((e) => equipmentLabel(e, fr))).toEqual([
+      "Bosu", "Médecine-ball", "TRX", "Vitruvian", "Yoga", "Cardio",
+    ]);
+    expect(MUSCLEWIKI_EQUIPMENT.map((e) => equipmentLabel(e, en))).toEqual([
+      "Bosu ball", "Medicine ball", "TRX", "Vitruvian", "Yoga", "Cardio",
+    ]);
+    // Title case as MuscleWiki writes it is the same key.
+    expect(equipmentLabel("Medicine-Ball", fr)).toBe("Médecine-ball");
+    for (const copy of [en, fr]) {
+      for (const raw of [...LIVE_MUSCLES, ...MUSCLEWIKI_MUSCLES]) {
+        expect(muscleLabel(raw, copy), raw).not.toMatch(RAW_TOKEN);
+      }
+      for (const raw of [...LIVE_EQUIPMENT, ...MUSCLEWIKI_EQUIPMENT]) {
+        expect(equipmentLabel(raw, copy), raw).not.toMatch(RAW_TOKEN);
+      }
+    }
+  });
+
+  test("an UNSEEN upper-case hyphenated value is humanised, not printed raw", () => {
+    expect(equipmentLabel("FOAM-ROLLER", fr)).toBe("Foam roller");
+    expect(equipmentLabel("SMITH-MACHINE-PLUS", en)).toBe("Smith machine plus");
+    expect(muscleLabel("Rear-Delt Head", en)).toBe("Rear-Delt Head"); // words: as served
+  });
+
   test("a row's comma-joined muscles; any spelling of a known value; an unknown one is humanised, never raw", () => {
     expect(musclesLabel("quads,glutes", fr)).toBe("Quadriceps, Fessiers");
     expect(musclesLabel("quads, glutes,quads", en)).toBe("Quads, Glutes");
@@ -221,7 +278,7 @@ test.describe("BUG-489 — catalogue muscles and equipment are words, never the 
     expect(equipmentLabel("smith-machine", en)).toBe("Smith machine");
     expect(muscleLabel("upper_arms", fr)).toBe("Upper arms");
     expect(equipmentLabel("RESISTANCE_BAND", en)).toBe("Resistance band");
-    expect(muscleLabel("Traps (mid-back)", fr)).toBe("Traps (mid-back)");
+    expect(muscleLabel("Inner Thigh (adductors)", fr)).toBe("Inner Thigh (adductors)"); // unseen words: as served
     expect(equipmentLabel("TRX", en)).toBe("TRX");
   });
 });
@@ -281,10 +338,21 @@ test.describe("a French browser (fr-FR)", () => {
       await expect(picker.getByText(raw, { exact: true })).toHaveCount(0);
     }
 
-    // The option's VALUE is the api's: "Dos" filters on `back`.
+    // The option's VALUE is the api's: "Dos" filters on `back`. Both halves are checked
+    // after the filter lands (the squat GONE first — before the 180 ms debounce the whole
+    // list, Lat Pulldown included, is still showing), and the server action's own argument
+    // list is read: `searchCatalogAction(query, muscle, equipment)`.
+    const searches: unknown[][] = [];
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.headers()["next-action"] !== undefined) {
+        searches.push(JSON.parse(req.postData() ?? "[]") as unknown[]);
+      }
+    });
     await picker.getByLabel("Muscle").selectOption({ label: "Dos" });
-    await expect(picker.getByRole("button", { name: /^Lat Pulldown/ })).toBeVisible();
     await expect(picker.getByRole("button", { name: /^Barbell Back Squat/ })).toHaveCount(0);
+    await expect(picker.getByRole("button", { name: /^Lat Pulldown/ })).toBeVisible();
+    await expect.poll(() => searches.map((args) => JSON.stringify(args))).toContain(JSON.stringify(["", "back", ""]));
+    expect(searches.some((args) => args.includes("Dos")), "the label is never sent").toBe(false);
   });
 
   test("BUG-464 — a milestone saved as « 70,4 » is shown as « 70,4 » after a reload, and sent as 70.4", async ({

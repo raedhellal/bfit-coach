@@ -126,6 +126,10 @@ const SAME_IN_BOTH: Record<string, string> = {
   "catalog.equipment.kettlebell": "French 'Kettlebell', as in guardrails",
   "catalog.equipment.kettlebells": "French 'Kettlebells'",
   "catalog.equipment.machine": "French 'Machine'",
+  "catalog.equipment.trx": "a brand name",
+  "catalog.equipment.vitruvian": "a brand name",
+  "catalog.equipment.yoga": "French 'Yoga'",
+  "catalog.equipment.cardio": "French 'Cardio'",
 };
 
 test("no French string or template output is left identical to English, outside the allowlist", () => {

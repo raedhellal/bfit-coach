@@ -21,16 +21,18 @@ function normalise(value: string): string {
 }
 
 /**
- * A value no table has. A TOKEN ("upper_arms", "RESISTANCE_BAND") is humanised — "Upper
- * arms", "Resistance band" — because a raw token is what this row exists to stop printing.
- * A value that is already words ("Traps (mid-back)") is shown exactly as served: lower-casing
+ * A value no table has. A TOKEN ("upper_arms", "RESISTANCE_BAND", "BOSU-BALL") is humanised —
+ * "Upper arms", "Resistance band", "Bosu ball" — because a raw token is what this row exists
+ * to stop printing. Production upper-cases MuscleWiki's category (`SyncExercisesUseCase`), so
+ * a hyphen inside an upper-case value is a token separator too. A value that is already
+ * words ("Traps (mid-back)", "Anterior Deltoid") is shown exactly as served: lower-casing
  * and splitting it would only damage it.
  */
 function fallback(raw: string): string {
   const value = raw.trim();
-  const isToken = value.includes("_") || (/^[A-Z0-9]+$/.test(value) && value.length > 3);
+  const isToken = value.includes("_") || (/^[A-Z0-9_-]+$/.test(value) && value.length > 3);
   if (!isToken) return value;
-  const words = value.toLowerCase().split("_").filter(Boolean).join(" ");
+  const words = value.toLowerCase().split(/[_-]+/).filter(Boolean).join(" ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 

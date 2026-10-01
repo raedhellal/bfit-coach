@@ -1908,11 +1908,12 @@ async function recipeNameTaken(name: string, exceptId: string | null): Promise<b
  * A small stand-in for the 1,235-row catalog. The four fields are
  * `ExerciseCatalogEntry`'s: slug, name, primaryMuscles, equipment.
  *
- * BUG-489: in the api's OWN vocabulary — lower-case muscle tokens, a comma-joined
- * `primaryMuscles` ("quads,glutes"), upper-case equipment ("DUMBBELLS") — as b-fit-api's
- * seeded catalogue (V21) and a live picker serve them. It used to say "Quadriceps" and
- * "Barbell", words the api never sends, so the picker printing its values raw looked fine
- * here and showed "t_spine" and "NONE" to a coach.
+ * BUG-489: in a real api's vocabulary — the SEED provider's (V21): lower-case muscle
+ * tokens, a comma-joined `primaryMuscles` ("quads,glutes"), upper-case equipment
+ * ("DUMBBELLS"), as a seed-provider api's picker serves them. Production's MuscleWiki
+ * vocabulary ("Anterior Deltoid", "BOSU-BALL") is pinned in `qa/french-polish-2.spec.ts`.
+ * It used to say "Quadriceps" and "Barbell", words neither provider sends, so the picker
+ * printing its values raw looked fine here and showed "t_spine" and "NONE" to a coach.
  */
 /**
  * The fixture's SEED shape — a compact way to write a plan down (catalog slug + sets,
