@@ -8,7 +8,9 @@
  *
  * ONE reader (`readNumber`) for both whole-number fields the portal has — the daily
  * targets (`parseTarget`) and a recipe's kcal and macros (`parseWhole` in
- * `recipeDocument.ts`) — so the two can no longer disagree about what "1.000" is.
+ * `recipeDocument.ts`) — so the two can no longer disagree about what "1.000" is. A
+ * recipe ingredient's quantity (`readQuantity`, BUG-556) reads through it too: "1 000" g
+ * is 1000, and its own rule (at most two decimals, ≤ 5000) is applied to what it reads.
  *
  * What a SPACE may do: separate thousands, and nothing else. "1 800", "12 500" and
  * "1 234 567" are whole numbers; "18 00" and "1  800" are not (a space in the wrong
