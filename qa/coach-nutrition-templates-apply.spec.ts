@@ -54,8 +54,9 @@ const applied = (t: string, first: string) => `“${t}” is now ${first}'s plan
 const floorRaised = (n: number) => `Calories raised to a safe minimum of ${n} kcal.`;
 const weekRateLimited = (first: string) =>
   `${first}'s targets are updated. Their meals weren't rebuilt: a week has already been applied for them today. Try again tomorrow.`;
-const weekFailed = (first: string) =>
-  `${first}'s targets are updated. Their meals couldn't be rebuilt. Use “Apply to ${first}” to try again.`;
+/** PB-5: the sentence quotes the week card's button by its own label, the FULL name. */
+const weekFailed = (first: string, button: string) =>
+  `${first}'s targets are updated. Their meals couldn't be rebuilt. Use “${button}” to try again.`;
 const weekUnknown = (first: string) =>
   `${first}'s targets are updated. We couldn't confirm whether their meals were rebuilt. Check their nutrition page before you try again.`;
 const targetsFailed = (first: string) => `Nothing was changed for ${first}. Try again.`;
@@ -304,7 +305,9 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
     await setSwitch(context, baseURL as string, "evoli_fixture_week", "out_of_range");
     await dialog.getByRole("button", { name: "Confirm" }).click();
     await page.waitForURL(`/clients/${PETRA}/nutrition`);
-    await expect(outcome(page)).toHaveText(weekFailed("Petra"));
+    await expect(outcome(page)).toHaveText(weekFailed("Petra", "Apply to Petra L."));
+    // PB-5: the button the sentence names is on the page, labelled exactly so.
+    await expect(page.getByRole("button", { name: "Apply to Petra L.", exact: true })).toBeVisible();
   });
 
   test("week NO ANSWER (aborted): targets updated, the week unconfirmed — not 'failed'", async ({ page }) => {
@@ -682,7 +685,7 @@ test.describe("EV-324 — use on a client, in a French browser (fr-FR)", () => {
     await dialog.getByRole("button", { name: "Confirmer" }).click();
     await page.waitForURL(`/clients/${PETRA}/nutrition`);
     await expect(outcome(page)).toHaveText(
-      `Les objectifs de Petra sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${g("Appliquer à Petra")} pour réessayer.`
+      `Les objectifs de Petra sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${g("Appliquer à Petra L.")} pour réessayer.`
     );
 
     await context.clearCookies({ name: "evoli_fixture_week" });
@@ -691,6 +694,85 @@ test.describe("EV-324 — use on a client, in a French browser (fr-FR)", () => {
     await dialog.getByRole("button", { name: "Confirmer" }).click();
     await page.waitForURL(`/clients/${PETRA}/nutrition`);
     await expect(outcome(page)).toHaveText("Rien n'a été modifié pour Petra. Réessayez.");
+  });
+});
+
+/**
+ * PB-4 / PB-5 — a client whose first name starts with a vowel, end to end in French.
+ *
+ * The populated roster has no such client, so Petra (NUTRITION only) is served as
+ * "Inès Roux" for this context by the fixture's `evoli_fixture_display_name` switch, on
+ * the roster, overview and nutrition reads alike. "Inès Roux" is QA's own repro: the
+ * dialog speaks of "Inès", the week card's button reads the FULL name.
+ */
+test.describe("PB-4 / PB-5 — Inès Roux, in a French browser (fr-FR)", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("the dialog elides (d'Inès), and the week-failed outcome quotes the button as it is labelled", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await setSwitch(
+      context,
+      baseURL as string,
+      "evoli_fixture_display_name",
+      `${PETRA}:${encodeURIComponent("Inès Roux")}`
+    );
+    await signInFrench(page);
+    // Reset 1100 is below Petra's floor, so the floor sentence is on the dialog.
+    const dialog = await openConfirmFrench(page, RESET, "Inès Roux", "Inès");
+    await expect(
+      dialog.getByText(
+        `Les repas d'Inès pour cette semaine (à partir du ${frenchWeekStartLabel()}) sont reconstruits immédiatement selon ces objectifs, avec son propre nombre de repas par jour. Ses allergies et ses règles alimentaires s'appliquent toujours. Les repas verrouillés ou déjà mangés par ce client sont conservés.`,
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(
+      dialog.getByText("Si c'est en dessous du minimum sûr d'Inès, Evoli le relève à ce minimum et vous le signale.", {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(dialog.getByText(/\bde Inès/)).toHaveCount(0);
+
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "out_of_range");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    // Two paragraphs: the sentence, then the floor line (Reset 1100 is below Petra's floor).
+    await expect(outcome(page).locator("p").first()).toHaveText(
+      `Les objectifs d'Inès sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${g("Appliquer à Inès Roux")} pour réessayer.`
+    );
+    await expect(outcome(page).locator("p").nth(1)).toHaveText(`Calories relevées au minimum sûr de 1${NNBSP}200 kcal.`);
+    await expect(page.getByRole("button", { name: "Appliquer à Inès Roux", exact: true })).toBeVisible();
+  });
+
+  test("the other outcomes elide too: applied, 429, unknown", async ({ page, context, baseURL }) => {
+    await setSwitch(
+      context,
+      baseURL as string,
+      "evoli_fixture_display_name",
+      `${PETRA}:${encodeURIComponent("Inès Roux")}`
+    );
+    await signInFrench(page);
+    let dialog = await openConfirmFrench(page, CUT, "Inès Roux", "Inès");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(`${g(CUT)} est désormais le plan d'Inès.`);
+
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "rate_limited");
+    dialog = await openConfirmFrench(page, LEAN, "Inès Roux", "Inès");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toContainText("Les objectifs d'Inès sont mis à jour. Ses repas n'ont pas été reconstruits");
+
+    await context.clearCookies({ name: "evoli_fixture_week" });
+    dialog = await openConfirmFrench(page, CUT, "Inès Roux", "Inès");
+    await abortStep(page, "week");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      "Les objectifs d'Inès sont mis à jour. Nous n'avons pas pu confirmer si ses repas ont été reconstruits. Vérifiez sa page nutrition avant de réessayer."
+    );
   });
 });
 

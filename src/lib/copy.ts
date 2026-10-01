@@ -929,6 +929,12 @@ export const en = {
     saving: "Saving…",
     // AC2, verbatim — client-side, and no request is sent.
     invalidNumber: "Enter a number above 0.",
+    /**
+     * PB-2 — a number WITH a decimal part ("1800.5", "1800,5") in a whole-number field.
+     * "Above 0" was false for it. A comma is named because "1,000" lands here too: it is
+     * never read as a thousands separator (BUG-460), and the coach is told what to drop.
+     */
+    wholeNumber: "Enter a whole number, without a decimal point or comma.",
     // AC2, verbatim: the engine's own flag, rendered only when the api returns it.
     floorApplied: (n: number) => `Calories raised to a safe minimum of ${n} kcal.`,
     // AC2, verbatim. It stands whether or not a floor fired, because what it states is
@@ -1671,6 +1677,8 @@ export const en = {
     targetsLabel: "Daily targets",
     /** AC2, verbatim — the targets form's client-side rule; nothing is sent. */
     invalidNumber: "Enter a number above 0.",
+    /** PB-2 — `nutrition.wholeNumber`'s sentence, for the template's four targets. */
+    wholeNumber: "Enter a whole number, without a decimal point or comma.",
     /** The api's bounds (`NutritionTemplateTargetsRequest`), after a 400 VALIDATION_ERROR. */
     outOfBounds:
       "Use whole numbers: calories 800 to 8000 kcal, protein up to 500 g, carbs up to 1200 g and fat up to 400 g.",
@@ -1712,8 +1720,14 @@ export const en = {
     applied: (template: string, first: string) => `“${template}” is now ${first}'s plan.`,
     weekRateLimited: (first: string) =>
       `${first}'s targets are updated. Their meals weren't rebuilt: a week has already been applied for them today. Try again tomorrow.`,
-    weekFailed: (first: string) =>
-      `${first}'s targets are updated. Their meals couldn't be rebuilt. Use “Apply to ${first}” to try again.`,
+    /**
+     * `applyLabel` is the button's OWN label, `nutrition.apply(truncateName(displayName))`,
+     * built by the caller from the same display name the week card uses. PB-5
+     * (2026-09-30): this quoted "Apply to {first name}" while the button reads the FULL
+     * name, so the coach was sent to a button that is not on the page.
+     */
+    weekFailed: (first: string, applyLabel: string) =>
+      `${first}'s targets are updated. Their meals couldn't be rebuilt. Use “${applyLabel}” to try again.`,
     weekUnknown: (first: string) =>
       `${first}'s targets are updated. We couldn't confirm whether their meals were rebuilt. Check their nutrition page before you try again.`,
     targetsFailed: (first: string) => `Nothing was changed for ${first}. Try again.`,

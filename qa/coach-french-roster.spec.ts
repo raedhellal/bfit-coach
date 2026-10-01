@@ -50,4 +50,34 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     ).toBeVisible();
     await expectNoEnglish(page, "the use-on-a-client dialog");
   });
+
+  /**
+   * PB-4 / BUG-463 — "le matériel de Inès Moreau" read at the BUG-195c gate. Lina is
+   * served as "Inès Moreau" in this context only (`evoli_fixture_display_name`); the
+   * populated roster has no vowel-initial client of its own.
+   */
+  test("the template dialog elides before a vowel-initial client: le matériel d'Inès Moreau", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await context.addCookies([
+      {
+        name: "evoli_fixture_display_name",
+        value: `6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001:${encodeURIComponent("Inès Moreau")}`,
+        url: baseURL as string,
+      },
+    ]);
+    await signInFrench(page);
+    await page.goto("/templates");
+    await page.getByRole("button", { name: "Utiliser pour un client" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("combobox").selectOption({ label: "Inès Moreau" });
+    await expect(
+      dialog.getByText("Les blessures et le matériel d'Inès Moreau sont pris en compte à la publication.", {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(dialog.getByText(/de Inès/)).toHaveCount(0);
+  });
 });

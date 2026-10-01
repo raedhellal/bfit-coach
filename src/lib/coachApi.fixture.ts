@@ -3024,6 +3024,26 @@ async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
 }
 /**
+ * PB-4 / PB-5 (French polish, 2026-10-01) — ⚠ fixture affordance:
+ * `evoli_fixture_display_name=<clientId>:<URI-encoded name>` serves that link's display
+ * name as `name` on the three reads that carry it — the roster, the overview and the
+ * nutrition read — in ONE browser context. It is how a French sentence built around a
+ * vowel-initial name ("Les repas d'Inès", « Appliquer à Inès Roux ») is reachable on
+ * the populated roster's NUTRITION links without a seventh roster row, which every
+ * roster-count, triage-order and picker-list spec would have to absorb. Nothing else
+ * about the link changes, and no stored state is touched.
+ */
+async function servedDisplayName(id: string, name: string): Promise<string> {
+  const raw = await fixtureSwitch("evoli_fixture_display_name");
+  const colon = raw?.indexOf(":") ?? -1;
+  if (!raw || colon < 0 || raw.slice(0, colon) !== id) return name;
+  try {
+    return decodeURIComponent(raw.slice(colon + 1)) || name;
+  } catch {
+    return name;
+  }
+}
+/**
  * EV-272 (staff review) — the STALE PAGE: `evoli_fixture_lock=<mealId>` means the
  * trainee locked that meal after the coach's page loaded. The week read still shows it
  * unlocked; the swap and placement writes answer 409 `COACH_MEAL_LOCKED`, as the api
@@ -4881,7 +4901,14 @@ export const fixtureCoachApi: CoachApi = {
     const items =
       SCENARIO === "empty" || state().revoked
         ? []
-        : sortRoster([lina(), petra(), yusuf(), sara(), tobias(), mara()].map(withPlanFlag), sort);
+        : sortRoster(
+            await Promise.all(
+              [lina(), petra(), yusuf(), sara(), tobias(), mara()].map(async (row) =>
+                withPlanFlag({ ...row, traineeDisplayName: await servedDisplayName(row.id, row.traineeDisplayName) })
+              )
+            ),
+            sort
+          );
     return {
       items: page === 0 ? items : [],
       page,
@@ -4910,7 +4937,8 @@ export const fixtureCoachApi: CoachApi = {
       const { ApiError } = await import("./apiFetch");
       throw new ApiError(403, "Forbidden", "COACH_ACCESS_DENIED");
     }
-    return known();
+    const overview = known();
+    return { ...overview, traineeDisplayName: await servedDisplayName(id, overview.traineeDisplayName) };
   },
 
   /**
@@ -5601,7 +5629,7 @@ export const fixtureCoachApi: CoachApi = {
     const state = await withServedWeekStatus(nutritionState(id));
     return {
       clientId: id,
-      traineeDisplayName: OVERVIEWS[id]().traineeDisplayName,
+      traineeDisplayName: await servedDisplayName(id, OVERVIEWS[id]().traineeDisplayName),
       targets: state.targets,
       week: state.week,
       currentWeekStart: await servedWeekStart(),

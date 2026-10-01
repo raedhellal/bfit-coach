@@ -10,6 +10,7 @@ import {
   type NutritionTemplateFailure,
 } from "@/lib/nutritionTemplateActions";
 import { NUTRITION_TEMPLATE_NAME_MAX } from "@/lib/nutritionTemplateUse";
+import { parseTarget } from "@/lib/numberInput";
 import { settled } from "@/lib/settled";
 import type { NutritionTemplateTargetsRequest } from "@/lib/coachApi";
 
@@ -45,7 +46,9 @@ export function NutritionTemplateEditor({
   const [protein, setProtein] = useState(initial ? String(initial.targets.proteinG) : "");
   const [carbs, setCarbs] = useState(initial ? String(initial.targets.carbsG) : "");
   const [fat, setFat] = useState(initial ? String(initial.targets.fatG) : "");
-  const [invalid, setInvalid] = useState(false);
+  /** The refusal on screen (AC2 or PB-2's sentence), or null. No request was sent. */
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const invalid = refusal !== null;
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -76,13 +79,17 @@ export function NutritionTemplateEditor({
   function save() {
     setNotice(null);
     setError(null);
-    const values = [calories, protein, carbs, fat].map((v) => (v.trim() === "" ? NaN : Number(v.trim())));
-    // AC2 — refused HERE, and nothing is sent.
-    if (values.some((v) => !Number.isFinite(v) || v <= 0)) {
-      setInvalid(true);
+    // AC2 — refused HERE, and nothing is sent. PB-2: "1 800" is 1800, and a decimal part
+    // ("1800,5", or "1,000", never a thousands separator) is told "a whole number" — the
+    // same reader and the same two sentences as the trainee's targets card.
+    const read = [calories, protein, carbs, fat].map(parseTarget);
+    const values: number[] = [];
+    for (const field of read) if (field.kind === "whole") values.push(field.value);
+    if (values.length !== read.length) {
+      setRefusal(read.some((field) => field.kind === "invalid") ? t.invalidNumber : t.wholeNumber);
       return;
     }
-    setInvalid(false);
+    setRefusal(null);
     if (nameRefusal) return;
     const [kcal, proteinG, carbsG, fatG] = values;
     const targets = { calories: kcal, proteinG, carbsG, fatG };
@@ -157,7 +164,7 @@ export function NutritionTemplateEditor({
               value={field.value}
               onChange={(e) => {
                 field.set(e.target.value);
-                setInvalid(false);
+                setRefusal(null);
               }}
               style={{
                 height: MIN_TOUCH_TARGET,
@@ -175,10 +182,10 @@ export function NutritionTemplateEditor({
         ))}
       </div>
 
-      {invalid && (
-        // AC2, verbatim. No request was sent.
+      {refusal && (
+        // AC2, verbatim (or PB-2's whole-number sentence). No request was sent.
         <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
-          {t.invalidNumber}
+          {refusal}
         </p>
       )}
 

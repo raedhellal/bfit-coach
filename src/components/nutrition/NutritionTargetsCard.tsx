@@ -7,6 +7,7 @@ import { useCopy } from "@/lib/i18n/client";
 import { formatInstant, formatKcal, truncateName } from "@/lib/format";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { saveTargetsAction } from "@/lib/nutritionActions";
+import { parseTarget } from "@/lib/numberInput";
 import { settled } from "@/lib/settled";
 import type { NutritionTargets } from "@/lib/coachApi";
 
@@ -31,6 +32,11 @@ import type { NutritionTargets } from "@/lib/coachApi";
  * "Enter a number above 0." is client-side and sends NO request, which is AC2's
  * wording. `saveTargetsAction` repeats the check because a server action is a public
  * endpoint, not because the coach can reach it.
+ *
+ * PB-2: the four fields are read by `parseTarget`. "1 800" (any space grouping
+ * thousands) is 1800; a decimal part ("1800,5", "1800.5", and "1,000", never a
+ * thousands separator — BUG-460) gets "Enter a whole number…", which is true of it,
+ * instead of "above 0", which was not. Either way nothing is sent.
  */
 export function NutritionTargetsCard({
   clientId,
@@ -47,7 +53,9 @@ export function NutritionTargetsCard({
   const [protein, setProtein] = useState(targets ? String(targets.proteinG) : "");
   const [carbs, setCarbs] = useState(targets ? String(targets.carbsG) : "");
   const [fat, setFat] = useState(targets ? String(targets.fatG) : "");
-  const [invalid, setInvalid] = useState(false);
+  /** The refusal on screen (AC2 or PB-2's sentence), or null. No request was sent. */
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const invalid = refusal !== null;
   const [confirming, setConfirming] = useState(false);
   const [floorCalories, setFloorCalories] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -61,8 +69,12 @@ export function NutritionTargetsCard({
     { key: "fat", label: copy.nutrition.fat, unit: copy.nutrition.grams, value: fat, set: setFat },
   ];
 
-  function parsed(): number[] {
-    return [calories, protein, carbs, fat].map((v) => Number(v.trim()));
+  /** The four targets, or null for any field that is not a whole number above 0. */
+  function parsed(): (number | null)[] {
+    return [calories, protein, carbs, fat].map((v) => {
+      const target = parseTarget(v);
+      return target.kind === "whole" ? target.value : null;
+    });
   }
 
   /**
@@ -86,8 +98,7 @@ export function NutritionTargetsCard({
 
   function reconciliation(): { line: string; delta: number } | null {
     const [kcal, proteinG, carbsG, fatG] = parsed();
-    const values = [kcal, proteinG, carbsG, fatG];
-    if (values.some((v) => !Number.isFinite(v) || v <= 0)) return null;
+    if (kcal === null || proteinG === null || carbsG === null || fatG === null) return null;
     const macroKcal = Math.round(proteinG * 4 + carbsG * 4 + fatG * 9);
     const delta = macroKcal - Math.round(kcal);
     const sum = formatKcal(macroKcal, copy.locale);
@@ -106,20 +117,25 @@ export function NutritionTargetsCard({
   const macros = reconciliation();
 
   function requestSave() {
-    const values = parsed();
-    // A non-numeric or non-positive value is rejected HERE and nothing is sent.
-    if (values.some((v) => !Number.isFinite(v) || v <= 0)) {
-      setInvalid(true);
+    const read = [calories, protein, carbs, fat].map(parseTarget);
+    // A value that is not a whole number above 0 is rejected HERE and nothing is sent.
+    // "Above 0" is the sentence unless every refused field has a decimal part.
+    if (read.some((field) => field.kind !== "whole")) {
+      setRefusal(
+        read.some((field) => field.kind === "invalid") ? copy.nutrition.invalidNumber : copy.nutrition.wholeNumber
+      );
       setNotice(null);
       setError(null);
       return;
     }
-    setInvalid(false);
+    setRefusal(null);
     setConfirming(true);
   }
 
   function save() {
     const [kcal, proteinG, carbsG, fatG] = parsed();
+    // Unreachable: `requestSave` opened this dialog only on four whole numbers.
+    if (kcal === null || proteinG === null || carbsG === null || fatG === null) return;
     if (macros && Math.abs(macros.delta) > MATCH_TOLERANCE_KCAL) {
       // EV-190's own measurement of whether this line is worth keeping: if coaches
       // always save straight through it, it is decorative and it comes out.
@@ -247,10 +263,10 @@ export function NutritionTargetsCard({
         </p>
       )}
 
-      {invalid && (
-        // AC2, verbatim. No request was sent.
+      {refusal && (
+        // AC2, verbatim (or PB-2's whole-number sentence). No request was sent.
         <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
-          {copy.nutrition.invalidNumber}
+          {refusal}
         </p>
       )}
 
