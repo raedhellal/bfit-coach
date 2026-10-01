@@ -404,6 +404,41 @@ test.describe("ADR-0030 — an apply over a week still generating says to retry 
     await expect(page.getByText(APPLY_FAILED)).toHaveCount(0);
   });
 
+  test("a 409 then a plain 500: the in-progress line goes, and « could not be applied » replaces it", async ({
+    page,
+  }) => {
+    // Pins the reset at the top of the apply's answer: the 500 is a different answer, so
+    // the earlier "try again in a few minutes" no longer describes anything.
+    await signIn(page);
+    await fixtureCookie(page, "evoli_fixture_week", "generating");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(7);
+
+    await apply(page, "Apply to Lina M.", "Apply");
+    await expect(page.getByTestId("week-generating")).toBeVisible();
+
+    await fixtureCookie(page, "evoli_fixture_week", "fail");
+    await apply(page, "Apply to Lina M.", "Apply");
+    await expect(page.getByText(APPLY_FAILED, { exact: true })).toBeVisible();
+    await expect(page.getByTestId("week-generating")).toHaveCount(0);
+  });
+
+  test("the code alone decides: the same 409 code with another message reads the same sentence", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await fixtureCookie(page, "evoli_fixture_week", "generating_foreign");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(7);
+
+    await apply(page, "Apply to Lina M.", "Apply");
+    await expect(page.getByTestId("week-generating")).toHaveText(
+      "Lina's meal week is still being prepared. Try again in a few minutes."
+    );
+    await expect(page.getByText(APPLY_FAILED)).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("reworded developer message");
+  });
+
   test("a plain 500 still reads « could not be applied », in the error tone", async ({ page }) => {
     await signIn(page);
     await fixtureCookie(page, "evoli_fixture_week", "fail");

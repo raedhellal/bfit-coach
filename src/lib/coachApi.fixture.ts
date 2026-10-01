@@ -3612,6 +3612,8 @@ async function nutritionCopyName(original: string): Promise<string> {
  *                                      with the api's fixed message, and writes nothing: the
  *                                      trainee's own generation of the week is still running
  *                                      (ADR-0030; b-fit-api `fix/week-generation-in-progress-409`).
+ *   `evoli_fixture_week=generating_foreign` — the same 409 code with a DIFFERENT message: the
+ *                                      portal matches the code only, so it must read the same.
  *   `evoli_fixture_week=fail`         — the week apply answers a plain 500 `INTERNAL_ERROR`.
  *   `evoli_fixture_regen=no_safe_plan|capped|fail` — a day regenerate answers 422
  *                                      `NO_SAFE_MEAL_PLAN` (EV-071b ruling 2.4), 429
@@ -5793,6 +5795,10 @@ export const fixtureCoachApi: CoachApi = {
     if (forced === "no_safe_plan") await fail(422, "NO_SAFE_MEAL_PLAN", NO_SAFE_MEAL_PLAN_MESSAGE);
     if (forced === "generating") {
       await fail(409, "WEEK_GENERATION_IN_PROGRESS", WEEK_GENERATION_IN_PROGRESS_MESSAGE);
+    }
+    if (forced === "generating_foreign") {
+      // Not the api's sentence on purpose: `message` is developer-facing and may change.
+      await fail(409, "WEEK_GENERATION_IN_PROGRESS", "Week busy (reworded developer message).");
     }
     // `RestExceptionHandler.handleUnexpected`'s body.
     if (forced === "fail") await fail(500, "INTERNAL_ERROR", "Something went wrong. Please try again.");
