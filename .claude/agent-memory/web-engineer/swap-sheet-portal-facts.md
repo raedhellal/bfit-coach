@@ -42,5 +42,18 @@ Flag off = the old sheet, same DOM (`SuggestionRow` is shared by both).
 - The EV-256e specs were serial, so one red test hid 50 others as "did not run". The red
   run used a throwaway copy with serial lifted. The new spec is not serial.
 
+- **The coach's meal has no recipe id** (`CoachPlannedMeal`: name, macros, `provenance`,
+  `placedByYou`, nothing else). So BUG-537 ("don't offer the meal's own recipe") matches
+  by CONTENT in `isMealsOwnRecipe` (`lib/recipeSearch.ts`): `COACH_RECIPE` + `placedByYou`
+  + same name + same kcal/P/C/F. That is exact, not a heuristic, because
+  `RecipeFit.asMeal` (b-fit-api) copies the recipe's name and numbers onto the meal
+  verbatim. An edited recipe (other numbers) or another coach's placement stays offered:
+  placing it is a real write. If the api ever serves a recipe id, switch to it.
+- **Sorting is by distance to the meal's kcal**, so after a placement the remaining list
+  re-orders around the PLACED recipe's kcal. An assertion of "the other five in the seed
+  order" is wrong; compute the order for the new meal.
+- **EV-276's folding** (œ→oe, æ→ae, ’‘ʼ` → ') is done AFTER `toLowerCase()`, so Œ/Æ are
+  covered by the lowercase forms. NFD does not split ligatures; they need explicit maps.
+
 See [[recipe-placement-portal-facts]], [[one-worker-per-fixture-server]],
-[[every-fixture-test-starts-from-the-seed]].
+[[every-fixture-test-starts-from-the-seed]], [[recipes-and-editor-polish-facts]].
