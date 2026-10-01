@@ -512,6 +512,18 @@ export const fr = {
     weekOutOfRange: "Seule la semaine en cours peut être appliquée.",
     weekRateLimited:
       "Une semaine de repas peut être appliquée une fois par jour pour chaque client. Réessayez demain.",
+    weekRefusedTitle: (first: string) =>
+      `Nous n'avons pas pu construire de semaine de repas pour ${first}.`,
+    weekRefusedBody:
+      "Ses allergies et règles alimentaires enregistrées excluent toutes les recettes que nous pouvons vérifier. Rien n'a été modifié.",
+    weekRefusedKept: (first: string) =>
+      `La semaine ci-dessous reste la semaine en cours ${de(first)} — elle n'a pas été modifiée.`,
+    weekRefusedNoWeek: (first: string) => `${first} n'a pas de semaine de repas pour le moment.`,
+    /** "votre application quotidienne" alone reads as "your daily app": the act is named. */
+    weekRefusedQuota:
+      "Un premier refus dans la journée pour un client ne vous coûte pas votre application de semaine du jour. Si c'est le deuxième aujourd'hui, réessayer vous la coûtera.",
+    refusedAskThem: (first: string) =>
+      `Vous ne pouvez pas modifier les préférences alimentaires ${de(first)} ici. Demandez-lui de les vérifier dans l'app.`,
     lockedMealsKept: "Les repas que le client a verrouillés sont conservés.",
     regenerate: "Régénérer le jour",
     regenerateSharesLimit: (trainee: string) =>
@@ -520,6 +532,15 @@ export const fr = {
       `Remplacer un repas n'utilise pas les régénérations quotidiennes ${de(endSentence(trainee))}`,
     regenerating: "Régénération…",
     regenerateFailed: "Le jour n'a pas pu être régénéré.",
+    /** The weekday mid-sentence is lower-cased ("le lundi"), the house style. */
+    dayRefusedTitle: (day: string, first: string) =>
+      `Nous n'avons pas pu reconstruire le ${day.toLowerCase()} pour ${first}.`,
+    dayRefusedBody:
+      "Ses allergies et règles alimentaires enregistrées excluent toutes les recettes que nous pouvons vérifier pour ce jour.",
+    dayRefusedKept: (day: string) =>
+      `Le ${day.toLowerCase()} n'a pas changé — aucun repas n'a été remplacé.`,
+    dayRegenCapped: (trainee: string) =>
+      `Vous avez utilisé les régénérations du jour pour ${endSentence(trainee)}`,
     /** The demo script's word ("Remplacer"); the app says "Échanger" for the trainee's own swap. */
     swap: "Remplacer le repas",
     swapTitle: "Remplacer le repas",

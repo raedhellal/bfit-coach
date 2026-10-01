@@ -18,6 +18,7 @@ import {
   swapOptionsAction,
 } from "@/lib/nutritionActions";
 import { settled } from "@/lib/settled";
+import { logPortalEvent } from "@/lib/portalEvents";
 import { hasEngineMeal, recipeShare } from "@/lib/recipeShare";
 import type { MealWeekView, PlannedMealView, SwapCandidate } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
@@ -55,6 +56,40 @@ function RecipeMarker({ meal }: { meal: PlannedMealView }) {
     <Badge tone="purple" title={copy.placement.coachRecipeTitle}>
       {copy.placement.coachRecipe}
     </Badge>
+  );
+}
+
+/**
+ * EV-071b ruling 2.3/2.4 — a 422 `NO_SAFE_MEAL_PLAN`, rendered as what it is: a refusal
+ * for the trainee's safety, with nothing written. Not the error colour and not the error
+ * sentence: the request was fine, and "could not be applied" sent coaches into retries.
+ * Every line is a separate sentence the story fixes verbatim; nothing from the api's
+ * body reaches it (its `message` is a fixed developer string).
+ */
+function RefusalBlock({ testId, lines }: { testId: string; lines: [string, ...string[]] }) {
+  const [title, ...rest] = lines;
+  return (
+    <div
+      role="alert"
+      data-testid={testId}
+      style={{
+        margin: "0 0 12px",
+        padding: "10px 12px",
+        borderRadius: "var(--r-lg)",
+        border: "1px solid var(--warn)",
+        background: "var(--warn-bg)",
+        fontSize: 13,
+        lineHeight: 1.5,
+        color: "var(--ink)",
+      }}
+    >
+      <p style={{ margin: 0, fontWeight: 700 }}>{title}</p>
+      {rest.map((line) => (
+        <p key={line} style={{ margin: "4px 0 0", color: "var(--ink-2)" }}>
+          {line}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -132,6 +167,19 @@ export function NutritionWeekCard({
    */
   const [swapNotice, setSwapNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * EV-071b — the last apply was refused (422 `NO_SAFE_MEAL_PLAN`). Cleared by the next
+   * write that succeeds: after one, P1's "it hasn't been touched" is no longer true.
+   */
+  const [weekRefused, setWeekRefused] = useState(false);
+  /** EV-071b ruling 2.4 — the index of the day whose regenerate was refused. */
+  const [dayRefused, setDayRefused] = useState<number | null>(null);
+  /**
+   * EV-242b — 429 `COACH_DAY_REGEN_LIMIT`. Every Regenerate stays disabled for the rest
+   * of this page: each would meet the same 429 until the cap resets, and the api sends
+   * no reset instant to re-enable them at. A reload re-asks the api.
+   */
+  const [regenCapped, setRegenCapped] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const trainee = truncateName(traineeDisplayName);
@@ -155,6 +203,12 @@ export function NutritionWeekCard({
     return true;
   }
 
+  /** A write succeeded: no refusal on screen still describes the week. */
+  function clearRefusals() {
+    setWeekRefused(false);
+    setDayRefused(null);
+  }
+
   function applyWeek() {
     startTransition(async () => {
       // `settled` on every action in this card: a failed request resolves with
@@ -167,6 +221,15 @@ export function NutritionWeekCard({
       setConfirming(false);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
+        if (result.code === "NO_SAFE_MEAL_PLAN") {
+          // Nothing was written (openapi: "a coach's refusal is a non-event for that
+          // week"), so the week on screen is left exactly as it is, under the block.
+          setError(null);
+          setDayRefused(null);
+          setWeekRefused(true);
+          return;
+        }
+        setWeekRefused(false);
         setError(
           result.code === "WEEK_OUT_OF_RANGE"
             ? copy.nutrition.weekOutOfRange
@@ -177,6 +240,7 @@ export function NutritionWeekCard({
         return;
       }
       setError(null);
+      clearRefusals();
       setWeek(result.week);
       router.refresh();
     });
@@ -190,10 +254,23 @@ export function NutritionWeekCard({
       } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
+        if (result.code === "NO_SAFE_MEAL_PLAN") {
+          setError(null);
+          setDayRefused(index);
+          return;
+        }
+        setDayRefused(null);
+        if (result.code === "DAY_REGEN_CAPPED") {
+          setError(null);
+          setRegenCapped(true);
+          logPortalEvent({ event: "coach_day_regen_capped" });
+          return;
+        }
         setError(copy.nutrition.regenerateFailed);
         return;
       }
       setError(null);
+      clearRefusals();
       setWeek(result.week);
       router.refresh();
     });
@@ -284,6 +361,7 @@ export function NutritionWeekCard({
         return;
       }
       setError(null);
+      clearRefusals();
       setWeek(result.week);
       router.refresh();
     });
@@ -349,10 +427,37 @@ export function NutritionWeekCard({
         </p>
       )}
 
-      {!week ? (
-        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
-          {copy.nutrition.emptyBody}
+      {regenCapped && week !== null && (
+        <p
+          role="alert"
+          data-testid="day-regen-capped"
+          style={{ margin: "0 0 12px", fontSize: 13, color: "var(--warn-ink)", lineHeight: 1.5 }}
+        >
+          {copy.nutrition.dayRegenCapped(trainee)}
         </p>
+      )}
+
+      {/* EV-071b ruling 2.2: placement follows what exists. A week on screen stays fully
+          rendered under the block (P1); with none, the block stands in for it (P2). */}
+      {weekRefused && (
+        <RefusalBlock
+          testId="week-refusal"
+          lines={[
+            copy.nutrition.weekRefusedTitle(first),
+            copy.nutrition.weekRefusedBody,
+            week ? copy.nutrition.weekRefusedKept(first) : copy.nutrition.weekRefusedNoWeek(first),
+            copy.nutrition.weekRefusedQuota,
+            copy.nutrition.refusedAskThem(first),
+          ]}
+        />
+      )}
+
+      {!week ? (
+        weekRefused ? null : (
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
+            {copy.nutrition.emptyBody}
+          </p>
+        )
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
           {week.days.map((day) => (
@@ -391,11 +496,24 @@ export function NutritionWeekCard({
                   icon="refresh"
                   ariaLabel={copy.common.labelled(copy.nutrition.regenerate, formatWeekday(day.date, copy.locale))}
                   onClick={() => regenerate(day.index)}
-                  disabled={pending}
+                  disabled={pending || regenCapped}
                 >
                   {copy.nutrition.regenerate}
                 </Button>
               </div>
+
+              {/* EV-071b ruling 2.4 — in the refused day's own card, its meals left under it. */}
+              {dayRefused === day.index && (
+                <RefusalBlock
+                  testId="day-refusal"
+                  lines={[
+                    copy.nutrition.dayRefusedTitle(formatWeekday(day.date, copy.locale), first),
+                    copy.nutrition.dayRefusedBody,
+                    copy.nutrition.dayRefusedKept(formatWeekday(day.date, copy.locale)),
+                    copy.nutrition.refusedAskThem(first),
+                  ]}
+                />
+              )}
 
               {day.meals.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 13, color: "var(--ink-3)" }}>
@@ -640,6 +758,7 @@ export function NutritionWeekCard({
           onWeek={(next) => {
             setRecipeSwap(null);
             setError(null);
+            clearRefusals();
             setWeek(next);
             router.refresh();
           }}
