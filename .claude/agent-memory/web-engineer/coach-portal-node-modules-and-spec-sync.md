@@ -28,3 +28,9 @@ any code was written:
 operation (`npm run spec:sync`, then raise `SCHEMAS_EXPECTED` in
 `qa/contract-drift.spec.ts` by the number of new `@wire` interfaces — it is pinned so a
 guard cannot pass by checking nothing). See [[coach-portal-fixture-mode]].
+
+**Re-vendoring from api `origin/main` (2026-10-01):** the api's main checkout is shared
+and its LOCAL `main` can lag `origin/main` (4dd0166 vs c82e55b that day). Do not move it.
+`git -C b-fit-api worktree add --detach <scratch> <sha>`, then
+`B_FIT_API_DIR=<scratch> npm run spec:sync`, then remove that worktree. The sha file
+then reads `ref: (detached)`; `on-api-main: YES` is what the guard checks.
