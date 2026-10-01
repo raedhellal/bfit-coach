@@ -86,7 +86,12 @@ test.describe("the ranked progress table", () => {
     await expect(row(page, YUSUF).locator("[data-synced]")).toHaveText(/^\d+ minutes ago$/); // seeded 40 min before the process started
     await expect(row(page, YUSUF).locator("[data-source]")).toHaveText("Apple Health");
     await expect(row(page, LINA).locator("[data-source]")).toHaveText("Health Connect");
-    await expect(row(page, TOBIAS).locator("[data-source]")).toHaveText("Manual entry");
+    // BUG-473: Tobias has NO row today — his last row (two days ago) was typed by hand.
+    // The label names today's source or nothing; never an earlier day's beside today's "—".
+    await expect(row(page, TOBIAS).locator("[data-today]")).toHaveAttribute("data-today", "");
+    await expect(row(page, TOBIAS).locator("[data-source]")).toHaveCount(0);
+    await expect(row(page, TOBIAS)).not.toContainText("Manual entry");
+    await expect(row(page, TOBIAS)).not.toContainText("Pedometer");
     await expect(row(page, LINA)).toContainText("49,720 steps");
     // The bar is capped at the goal and states its numbers.
     await expect(row(page, YUSUF).getByRole("progressbar")).toHaveAttribute("data-pct", "100");
@@ -391,7 +396,9 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await expect(region.locator(`tr[data-participant="${YUSUF}"]`)).toContainText("10\u202f400 / 10\u202f000 pas");
     await expect(region.locator(`tr[data-participant="${YUSUF}"]`)).toContainText("Apple Santé");
     await expect(region.locator(`tr[data-participant="${TOBIAS}"]`)).toContainText("— / 10\u202f000 pas");
-    await expect(region.locator(`tr[data-participant="${TOBIAS}"]`)).toContainText("Saisie manuelle");
+    // BUG-473: no row today, so no source — not the hand-typed day before yesterday.
+    await expect(region.locator(`tr[data-participant="${TOBIAS}"] [data-source]`)).toHaveCount(0);
+    await expect(region.locator(`tr[data-participant="${TOBIAS}"]`)).not.toContainText("Saisie manuelle");
     await expect(region.locator(`tr[data-participant="${SARA}"]`)).toContainText("Invitation envoyée");
     await expect(region.locator(`tr[data-participant="${TOBIAS}"] [data-status="NO_DATA"]`).first()).toHaveAttribute(
       "aria-label",
