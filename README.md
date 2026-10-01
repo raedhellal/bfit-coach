@@ -122,7 +122,7 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 | `POST /api/auth/login` | BFF sign-in — proxies `POST /auth/login`, sets the cookies. |
 | `POST /api/auth/activate` | EV-278c: proxies `POST /me/activate` for a PENDING session, refuses any `consentAccepted` that is not literal `true` before the api is called, and swaps both cookies to the fresh COACH tokens. |
 | `POST /api/auth/logout` | Clears both cookies. |
-| `GET /api/version` | **Public** deploy marker — the portal's `/actuator/info`. `{ commit, commitShort, buildTime, environment }`, never cached, GET/HEAD only. See below. |
+| `GET /api/version` | **Public** deploy marker — the portal's `/actuator/info`. `{ commit, commitShort, buildTime, environment, region }`, never cached, GET/HEAD only. See below. |
 | `/i/[token]` | **Public** invite landing page — the page the QR encodes. Inside the middleware matcher, let through explicitly, **GET/HEAD only** (anything else answers 405). |
 
 ### Verifying a deploy
@@ -144,6 +144,36 @@ frozen into the output, with a runtime fallback. Off Vercel — `npm run dev`, o
 `next build` on your laptop — there is no such variable and the endpoint answers
 `"commit": "unknown"`, `"environment": "local"`. It never guesses from local git:
 a stale SHA would confirm a deploy that never happened.
+
+### Function region — `cdg1`, pinned in `vercel.json`
+
+Every page is `force-dynamic` and calls b-fit-api server-side (the roster makes about
+a dozen calls per render), so the function must run next to the api. Vercel runs new
+projects' functions in `iad1` (Washington, D.C.) by default; b-fit-api is in Railway's
+EU West (Amsterdam), so until `vercel.json` pinned `"regions": ["cdg1"]` every api
+call crossed the Atlantic. `cdg1` (Paris) is the closest Vercel region to Amsterdam
+together with `fra1`; `cdg1` also matches where the coaches are.
+
+- A single region is allowed on every plan, Hobby included ("Hobby plans can select
+  any single region" — Vercel docs, `vercel.json` → `regions`). Do not add a second
+  region without checking the plan: too many regions fails the deployment before the
+  build step.
+- `vercel.json` sets nothing but `regions`. The security headers stay in
+  `next.config.mjs` (`headers()`); do not add a `headers` key here.
+- Middleware is not affected: Vercel deploys Routing Middleware to every region, so it
+  still runs in the region nearest the visitor, and its `/auth/refresh` call starts from
+  there.
+
+Witness it on a deployment without signing in:
+
+```sh
+curl -sI https://bfit-coach-seven.vercel.app/login | grep -i x-vercel-id   # <edge>::cdg1::…
+curl -s https://bfit-coach-seven.vercel.app/api/version                      # "region":"cdg1"
+```
+
+`region` is `VERCEL_REGION`, read at runtime (Vercel documents it as runtime-only, and
+only while the project exposes system environment variables); off Vercel it is
+`"unknown"`. The second segment of `x-vercel-id` is the authoritative witness either way.
 
 ### The invite link
 

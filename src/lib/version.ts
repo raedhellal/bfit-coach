@@ -30,6 +30,17 @@ export interface VersionInfo {
   buildTime: string;
   /** "production" | "preview" | "development" on Vercel, otherwise "local". */
   environment: string;
+  /**
+   * The Vercel region THIS invocation ran in (e.g. "cdg1"), or "unknown".
+   *
+   * Read at RUNTIME, never inlined at build: the build runs on a build machine, and
+   * the question is where the function serves from. `vercel.json` pins functions to
+   * cdg1 (Paris), next to b-fit-api in Railway's EU West; before that pin they ran in
+   * the iad1 default and every server-side api call crossed the Atlantic. Source:
+   * Vercel's "System environment variables" — `VERCEL_REGION`, "Available at:
+   * Runtime", "The ID of the Region where the app is running".
+   */
+  region: string;
 }
 
 const UNKNOWN = "unknown";
@@ -62,10 +73,16 @@ export function getVersionInfo(): VersionInfo {
   const rawEnv = firstNonEmpty(process.env.COACH_BUILD_ENV, process.env.VERCEL_ENV);
   const environment = (ENVIRONMENTS as readonly string[]).includes(rawEnv) ? rawEnv : "local";
 
+  // Shape-checked like the others: a Vercel region id is three letters and a digit
+  // ("cdg1", "iad1"). Anything else is discarded rather than echoed.
+  const rawRegion = firstNonEmpty(process.env.VERCEL_REGION);
+  const region = /^[a-z]{3}\d$/.test(rawRegion) ? rawRegion : UNKNOWN;
+
   return {
     commit,
     commitShort: commit === UNKNOWN ? UNKNOWN : commit.slice(0, 7),
     buildTime,
     environment,
+    region,
   };
 }
