@@ -28,9 +28,11 @@ README's Copy section says how to add a string; these are the non-obvious parts.
 - English on a French page that is NOT a defect (api content, R3): meal names (engine and
   model, EV-015), exercise names and the catalogue's muscle/equipment filter values,
   workout names, the api's `repairs` sentences in the publish preview, trainee-typed
-  allergies/dislikes, ingredient labels. Do NOT label-map the catalogue: the live api
-  vocabulary (`chest`, `front_delts`, `BARBELL`, V21) differs from the fixture's
-  (`Chest`, `Barbell`), so a map built on the fixture is unwitnessed.
+  allergies/dislikes, ingredient labels. SUPERSEDED for the catalogue's muscle/equipment
+  VALUES by BUG-489 (`fix/portal-french-polish-2`): they are labelled via `copy.catalog` +
+  `src/lib/catalogLabels.ts`, and the fixture catalogue was moved onto the api's own
+  vocabulary (V21: `quads,glutes`, `DUMBBELLS`) so the map is exercised by fixture specs.
+  Exercise NAMES stay English.
 - Ingredient search matches ENGLISH labels (`IngredientLabels.of(key)`, keys like
   `chicken_breast`, api `CoachRecipeUseCase.searchIngredients`), so the French
   placeholder says "En anglais : chicken, rice, oats…".
