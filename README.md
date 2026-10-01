@@ -175,6 +175,10 @@ curl -s https://bfit-coach-seven.vercel.app/api/version                      # "
 only while the project exposes system environment variables); off Vercel it is
 `"unknown"`. The second segment of `x-vercel-id` is the authoritative witness either way.
 
+Rollback: use Vercel Instant Rollback, or revert `vercel.json` and push. The dashboard
+Function Region setting is ignored while `vercel.json` sets `regions`, so changing it
+there does nothing.
+
 ### The invite link
 
 `src/lib/coachApi.ts` composes exactly one shape, shown in the modal and QR-encoded
