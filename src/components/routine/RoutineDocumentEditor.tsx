@@ -115,6 +115,19 @@ export function RoutineDocumentEditor({
   const [picked, setPicked] = useState<Record<string, CatalogExercise>>({});
 
   const days = document.trainingDays;
+  /**
+   * BUG-490 follow-up (staff S1) — bumped by every edit that MOVES or DROPS a row: Move,
+   * Remove, Remove day and Replace. It is part of each row's key, so those edits remount
+   * every row and drop the seconds a row had put aside (`ExerciseRow`'s stash).
+   *
+   * Without it, a row keyed by name + position stayed mounted when ANOTHER exercise of the
+   * same name landed in its place (two Planks swapped by Move up; Wednesday removed so
+   * Friday's Plank takes the same card and index), and the stash came back on the wrong
+   * exercise as a wrong, editable number. Dropping it costs the coach one retype; carrying
+   * it to another exercise prescribes a number nobody chose.
+   */
+  const [structure, setStructure] = useState(0);
+  const reshaped = () => setStructure((n) => n + 1);
 
   function change(next: Routine) {
     setWeekdayError(null);
@@ -137,6 +150,7 @@ export function RoutineDocumentEditor({
     }));
   }
   function move(dayIndex: number, from: number, to: number) {
+    reshaped();
     editDay(dayIndex, (day) => {
       if (to < 0 || to >= day.exercises.length) return day;
       const next = [...day.exercises];
@@ -168,7 +182,10 @@ export function RoutineDocumentEditor({
     const target = picker;
     if (!target) return;
     // EV-190 U4: an ADD leaves the picker open for the next one; a REPLACE is one act.
-    if (target.mode === "replace") setPicker(null);
+    if (target.mode === "replace") {
+      setPicker(null);
+      reshaped();
+    }
     setPicked((current) => ({ ...current, [exercise.name.toLowerCase()]: exercise }));
     editDay(target.dayIndex, (day) => {
       if (target.mode === "add") {
@@ -375,7 +392,10 @@ export function RoutineDocumentEditor({
                 ariaLabel={copy.common.labelled(copy.routine.removeDay, isoWeekdayLabel(day.dayOfWeek, copy.locale))}
                 title={days.length <= MIN_TRAINING_DAYS ? dayCountBound : undefined}
                 disabled={days.length <= MIN_TRAINING_DAYS}
-                onClick={() => editDays((list) => list.filter((_, i) => i !== dayIndex))}
+                onClick={() => {
+                  reshaped();
+                  editDays((list) => list.filter((_, i) => i !== dayIndex));
+                }}
               >
                 {copy.routine.removeDay}
               </Button>
@@ -397,7 +417,7 @@ export function RoutineDocumentEditor({
             <div style={{ display: "grid", gap: 10 }}>
               {day.exercises.map((exercise, exerciseIndex) => (
                 <ExerciseRow
-                  key={`${exercise.name}-${exerciseIndex}`}
+                  key={`${structure}-${exercise.name}-${exerciseIndex}`}
                   exercise={exercise}
                   first={exerciseIndex === 0}
                   last={exerciseIndex === day.exercises.length - 1}
@@ -406,12 +426,13 @@ export function RoutineDocumentEditor({
                   onChange={(mutate) => editExercise(dayIndex, exerciseIndex, mutate)}
                   onMove={(delta) => move(dayIndex, exerciseIndex, exerciseIndex + delta)}
                   onReplace={() => setPicker({ mode: "replace", dayIndex, exerciseIndex })}
-                  onRemove={() =>
+                  onRemove={() => {
+                    reshaped();
                     editDay(dayIndex, (d) => ({
                       ...d,
                       exercises: d.exercises.filter((_, i) => i !== exerciseIndex),
-                    }))
-                  }
+                    }));
+                  }}
                 />
               ))}
             </div>
@@ -521,7 +542,12 @@ function ExerciseRow({
    * a control nobody can see must not travel, so nothing is sent while the mode is
    * Charge), and they are kept HERE, in the row, so switching back to « Durée » brings
    * them back instead of an empty box. A reload starts the row afresh: what was never
-   * saved is not remembered.
+   * saved is not remembered, and neither is it across a Move, Remove, Remove day or
+   * Replace: the editor re-keys every row on those (`structure`), so none of those edits
+   * can hand the stash to another exercise that took this row's place. (A document
+   * swapped in from outside — « Load the saved version » — keeps the keys; the row then
+   * holds the same name at the same position, and a stash it had is the coach's own
+   * number for that slot.)
    */
   const [stashedSeconds, setStashedSeconds] = useState<number | null>(null);
   function changeTracking(value: string) {

@@ -349,7 +349,10 @@ export function readQuantity(raw: string): ParsedQuantity {
     case "malformed":
       return { kind: "malformed" };
     case "thousands":
-      return { kind: "ambiguous" };
+      // N1 (staff) — a grouping never starts with 0, so "0,001" / "0.500" are not
+      // ambiguous: they are decimals with three places, refused by the range sentence
+      // ("up to 2 decimals"), which is true of them.
+      return /^0/.test(raw.trim()) ? { kind: "outOfRange" } : { kind: "ambiguous" };
     case "negative":
     case "notNumber":
       return { kind: "outOfRange" };

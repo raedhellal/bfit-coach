@@ -18,7 +18,7 @@ import {
   swapOptionsAction,
   type RecipeChoicesResult,
 } from "@/lib/nutritionActions";
-import { isMealsOwnRecipe, recipesFor, type MealContent } from "@/lib/recipeSearch";
+import { matchesMealContent, recipesFor, type MealContent } from "@/lib/recipeSearch";
 import { settled } from "@/lib/settled";
 import type { CoachRecipeSummary, MealWeekView, SwapCandidate } from "@/lib/coachApi";
 
@@ -73,8 +73,8 @@ export interface SwapSheetTarget extends PlacementTarget {
   /** Locked by the trainee (AC6): the sheet says so and asks the api nothing. */
   locked: boolean;
   /**
-   * BUG-537 — the meal's content as the week shows it: the recipe already on it is not
-   * offered (`isMealsOwnRecipe`). Null offers every recipe.
+   * BUG-537 — the meal's content as the week shows it: a recipe with the same name and
+   * numbers is marked « On this meal » (`matchesMealContent`). Null marks none.
    */
   current: MealContent | null;
   /**
@@ -287,12 +287,13 @@ export function SwapSheet({
     });
   }
 
-  // BUG-537: the meal's own recipe is never a choice; choosing it rewrote the meal as itself.
-  const offered =
-    library.status === "ready" ? library.recipes.filter((r) => !isMealsOwnRecipe(r, target.current)) : [];
-  const shown = recipesFor(offered, target.kcal, query);
-  /** The library is not empty, but its only recipe is the one already on this meal. */
-  const onlyCurrent = library.status === "ready" && library.recipes.length > 0 && offered.length === 0;
+  const shown = library.status === "ready" ? recipesFor(library.recipes, target.kcal, query) : [];
+  /** BUG-537 — marked « On this meal », never hidden (see `matchesMealContent`). */
+  const onThisMeal = new Set(
+    library.status === "ready"
+      ? library.recipes.filter((r) => matchesMealContent(r, target.current)).map((r) => r.id)
+      : []
+  );
 
   const footer = chosen ? (
     <>
@@ -378,7 +379,7 @@ export function SwapSheet({
                 onQuery={setQuery}
                 onChoose={choose}
                 disabled={pending}
-                onlyCurrent={onlyCurrent}
+                onThisMeal={onThisMeal}
               />
               <section
                 aria-labelledby={headingId}

@@ -1,6 +1,6 @@
 ---
 name: recipes-and-editor-polish-facts
-description: fix/recipes-and-editor-polish (2026-10-01) — BUG-490 seconds kept in the ROW not the document; BUG-573/574 changed only refusal sentences (\p{Nd} → malformed, readQuantity `ambiguous`); prod-build gates need a wrapper config; zsh eats "$T:q"
+description: fix/recipes-and-editor-polish (2026-10-01) — BUG-490 seconds kept in the ROW (structure counter in the key, staff S1); BUG-573/574 changed only refusal sentences (\p{Nd} → malformed, readQuantity `ambiguous`); prod-build gates need a wrapper config; zsh eats "$T:q"
 metadata:
   type: project
 ---
@@ -17,6 +17,14 @@ BUG-490, BUG-573, BUG-574. Swap-sheet facts are in [[swap-sheet-portal-facts]].
   stash, on purpose: a value that was never saved is not remembered. The proof that it
   is "not sent": the fixture stores the draft AS SENT. Save in Weight & reps, reload,
   switch to Duration, and Seconds must be empty.
+- **Row-local state needs a key that changes when rows move.** Rows were keyed
+  `${name}-${index}` inside `<Card key={dayIndex}>`. When another exercise with the same
+  name landed in the same place (two Planks after Move up, or Friday's Plank after
+  Wednesday was removed), React kept the row mounted and the stash showed on the WRONG
+  exercise, as an editable number (staff S1). The fix is a `structure` counter in the
+  editor, bumped on Move, Remove, Remove day and Replace, and put in every row key. Those
+  edits drop the stash instead of moving it. Before you add any `useState` to
+  `ExerciseRow`, check that it survives this.
 - **BUG-573/574 changed SENTENCES, not acceptance (Raed approved the reader's rules).**
   `readNumber`'s last line is `/\p{Nd}/u` → `malformed`. JS `\d` is ASCII-only even
   with the `u` flag, so « ١٨٠٠ » used to fall through to `notNumber` ("above 0"). No

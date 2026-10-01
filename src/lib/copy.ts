@@ -1229,8 +1229,12 @@ export const en = {
    * editing the dictionary's tail and the recipe sentences cannot collide with it.
    */
   recipePolish: {
-    /** BUG-537 — the swap sheet: the only recipe in the library is already on this meal. */
-    onlyCurrent: "Your only recipe is already on this meal.",
+    /**
+     * BUG-537 — the swap sheet's mark on a recipe whose name and numbers are what the meal
+     * already shows. A mark, not a refusal: choosing it re-places the recipe's current
+     * version (the way to refresh a meal after editing the recipe).
+     */
+    onThisMeal: "On this meal",
     /**
      * BUG-574 — "1,500" / "1.000" as a quantity: a thousand-and-something or a decimal,
      * nobody can tell, so neither is sent (BUG-460/554). The range sentence did not say

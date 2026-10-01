@@ -82,20 +82,22 @@ export interface MealContent {
 }
 
 /**
- * BUG-537 — `recipe` is the one ALREADY on `meal`, so choosing it would write a no-op
- * swap (« Hachis parmentier de dinde » → « Hachis parmentier de dinde »).
+ * BUG-537 — `meal` shows `recipe`'s name and numbers, and THIS coach placed a recipe on it:
+ * the swap sheet marks that recipe « On this meal », so the coach does not re-place it
+ * without meaning to (« Hachis parmentier de dinde » → « Hachis parmentier de dinde »).
  *
- * The coach's meal carries no recipe id (`CoachPlannedMeal` has none, and this branch
- * changes no api), so it is told by content. The placement copies the recipe's name,
- * kcal and macros onto the meal verbatim (`RecipeFit.asMeal`), so a meal this coach
- * placed (`COACH_RECIPE` + `placedByYou`) with the same name AND the same four numbers
- * would be rewritten with what it already holds. Anything short of that is a REAL
- * write and stays offered:
- *   · an engine meal that shares the name — placing changes who wrote it;
- *   · another coach's placement — placing makes it « Your recipe »;
- *   · the recipe edited since it was placed (other numbers) — placing brings it up to date.
+ * It is a match by CONTENT, because the coach's meal carries no recipe id
+ * (`CoachPlannedMeal` has none). What it can tell: the placement copies the recipe's name,
+ * kcal and macros onto the meal (`RecipeFit.asMeal`), so a recipe placed and not edited
+ * since always matches. What it cannot tell: whether the recipe's ingredients or steps
+ * were edited after it was placed (the meal keeps the version placed), or which of two
+ * recipes with the same name and numbers was the one placed. So the match MARKS and
+ * never hides, and the recipe stays choosable: re-placing it is how the coach brings
+ * the meal up to the recipe's current version.
+ *
+ * Not marked: an engine meal that shares the name, and another coach's placement.
  */
-export function isMealsOwnRecipe(
+export function matchesMealContent(
   recipe: { name: string; kcal: number; proteinG: number; carbsG: number; fatG: number },
   meal: MealContent | null
 ): boolean {

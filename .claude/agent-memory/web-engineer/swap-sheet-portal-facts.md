@@ -43,12 +43,14 @@ Flag off = the old sheet, same DOM (`SuggestionRow` is shared by both).
   run used a throwaway copy with serial lifted. The new spec is not serial.
 
 - **The coach's meal has no recipe id** (`CoachPlannedMeal`: name, macros, `provenance`,
-  `placedByYou`, nothing else). So BUG-537 ("don't offer the meal's own recipe") matches
-  by CONTENT in `isMealsOwnRecipe` (`lib/recipeSearch.ts`): `COACH_RECIPE` + `placedByYou`
-  + same name + same kcal/P/C/F. That is exact, not a heuristic, because
-  `RecipeFit.asMeal` (b-fit-api) copies the recipe's name and numbers onto the meal
-  verbatim. An edited recipe (other numbers) or another coach's placement stays offered:
-  placing it is a real write. If the api ever serves a recipe id, switch to it.
+  `placedByYou`, nothing else). So BUG-537 matches by CONTENT in `matchesMealContent`
+  (`lib/recipeSearch.ts`): `COACH_RECIPE` + `placedByYou` + same name + same kcal/P/C/F.
+  The match MARKS the recipe « Sur ce repas » / "On this meal" and NEVER hides it. The
+  first cut hid it, and staff found the hole: a recipe whose ingredients or steps were
+  edited after placing still matches (the macros are typed, not computed). Re-placing
+  it is the coach's only way to refresh the meal, and hiding it removed that way.
+  Content cannot tell versions apart, so any rule built on it must stay reversible: mark,
+  do not filter. If the api ever serves a recipe id, switch to it.
 - **Sorting is by distance to the meal's kcal**, so after a placement the remaining list
   re-orders around the PLACED recipe's kcal. An assertion of "the other five in the seed
   order" is wrong; compute the order for the new meal.

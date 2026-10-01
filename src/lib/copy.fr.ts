@@ -621,7 +621,7 @@ export const fr = {
   },
 
   recipePolish: {
-    onlyCurrent: "Votre seule recette est déjà sur ce repas.",
+    onThisMeal: "Sur ce repas",
     quantityAmbiguous: (typed: string) =>
       `${q(typed)} peut se lire de deux façons. Les quantités sont en g, ml ou pièces\u00a0: écrivez ${n(1500)} pour mille cinq cents, ou 1,5 pour un et demi.`,
   },

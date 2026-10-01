@@ -4,16 +4,20 @@ import { signInFrench } from "./french";
 import { fr } from "../src/lib/copy.fr";
 import { parseTarget, readNumber, targetRefusal } from "../src/lib/numberInput";
 import { localProblems, parseQuantity, readQuantity, type RecipeDraft } from "../src/lib/recipeDocument";
-import { isMealsOwnRecipe, matchesQuery, recipesFor, type MealContent } from "../src/lib/recipeSearch";
+import { matchesMealContent, matchesQuery, recipesFor, type MealContent } from "../src/lib/recipeSearch";
 
 /**
- * `fix/recipes-and-editor-polish` — five small rows before the 2026-10-03 demo, each red on
- * `origin/main` (da881af) and green on this branch:
+ * `fix/recipes-and-editor-polish` — five small rows before the 2026-10-03 demo, each with a
+ * test red on `origin/main` (8a7ca50) and green on this branch:
  *
  *   EV-276  — the swap sheet's recipe search folds œ / æ and the apostrophe styles.
- *   BUG-537 — the swap sheet does not offer the meal's own recipe (a no-op swap).
+ *   BUG-537 — the swap sheet MARKS the recipe whose name and numbers the meal already
+ *             shows (« On this meal »), so a no-op swap is not made by mistake. It stays
+ *             choosable: re-placing it refreshes a meal after the recipe was edited.
  *   BUG-490 — « Durée » → « Charge et répétitions » → « Durée » keeps the seconds, and
- *             nothing is sent for them while the mode is Charge.
+ *             nothing is sent for them while the mode is Charge. A Move, Remove, Remove
+ *             day or Replace drops them (staff S1: they must never land on ANOTHER
+ *             exercise; those two tests are red on this branch's 727edfa, not on main).
  *   BUG-573 — full-width / Arabic-Indic digits are told the FORMAT sentence, never
  *             "above 0" or the range. They are still refused (the reader's rules are
  *             Raed-approved; only the sentence changed).
@@ -35,8 +39,6 @@ const NNBSP = "\u202f";
 const NBSP = "\u00a0";
 const M_ROW = "Wednesday Lunch";
 
-/** C1's six, in AC2's order for a 600 kcal meal. */
-const SIX = ["Salmon quinoa", "Tofu stir-fry", "Chicken rice", "Lentil bowl", "Crêpes aux épinards", "Overnight oats"];
 
 async function signIn(page: Page, email: string) {
   await page.goto("/login");
@@ -126,68 +128,111 @@ test.describe("EV-276 — œ / æ and apostrophe styles fold on both sides", () 
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * BUG-537 — the meal's own recipe is not offered back
+ * BUG-537 — the recipe the meal already shows is marked, and still choosable
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-test.describe("BUG-537 — the swap sheet does not offer the meal's own recipe", () => {
+const LENTIL_ID = "8e3f1b22-0000-4000-8000-000000027204";
+/** C1's six, in AC2's order for the meal once Lentil bowl (520 kcal) is on it. */
+const SIX_AROUND_LENTIL = [
+  "Lentil bowl",
+  "Tofu stir-fry",
+  "Crêpes aux épinards",
+  "Salmon quinoa",
+  "Chicken rice",
+  "Overnight oats",
+];
+
+async function calls(page: Page): Promise<string[]> {
+  const res = await page.request.get("/api/fixture/calls", { maxRedirects: 0 });
+  expect(res.status()).toBe(200);
+  return ((await res.json()) as { calls: string[] }).calls;
+}
+
+/** The recipe rows that carry the mark, by full name. */
+async function markedNames(sheet: Locator): Promise<string[]> {
+  return sheet
+    .getByTestId("recipe-choices")
+    .getByRole("button")
+    .filter({ has: sheet.page().getByTestId("recipe-on-this-meal") })
+    .evaluateAll((els) => els.map((el) => el.getAttribute("title") ?? ""));
+}
+
+test.describe("BUG-537 — the swap sheet marks the recipe the meal already shows", () => {
   const LENTIL = { name: "Lentil bowl", kcal: 520, proteinG: 28, carbsG: 72, fatG: 13 };
   const placed: MealContent = { ...LENTIL, provenance: "COACH_RECIPE", placedByYou: true };
 
-  test("the rule: same name and numbers on a meal THIS coach placed — anything else is a real write", () => {
-    expect(isMealsOwnRecipe(LENTIL, placed)).toBe(true);
-    expect(isMealsOwnRecipe(LENTIL, null)).toBe(false);
-    // An engine meal that happens to share the name: placing makes it the coach's.
-    expect(isMealsOwnRecipe(LENTIL, { ...placed, provenance: "ENGINE", placedByYou: false })).toBe(false);
-    // Another coach's placement: placing makes it « Your recipe ».
-    expect(isMealsOwnRecipe(LENTIL, { ...placed, placedByYou: false })).toBe(false);
-    // The recipe edited since it was placed: placing brings the meal up to date.
-    expect(isMealsOwnRecipe({ ...LENTIL, kcal: 540 }, placed)).toBe(false);
-    expect(isMealsOwnRecipe({ ...LENTIL, fatG: 14 }, placed)).toBe(false);
-    expect(isMealsOwnRecipe({ ...LENTIL, name: "Lentil bowl 2" }, placed)).toBe(false);
+  test("the rule: same name and numbers on a meal THIS coach placed", () => {
+    expect(matchesMealContent(LENTIL, placed)).toBe(true);
+    expect(matchesMealContent(LENTIL, null)).toBe(false);
+    // An engine meal that happens to share the name and numbers.
+    expect(matchesMealContent(LENTIL, { ...placed, provenance: "ENGINE", placedByYou: false })).toBe(false);
+    // Another coach's placement.
+    expect(matchesMealContent(LENTIL, { ...placed, placedByYou: false })).toBe(false);
+    // Other numbers or another name: not what the meal shows.
+    expect(matchesMealContent({ ...LENTIL, kcal: 540 }, placed)).toBe(false);
+    expect(matchesMealContent({ ...LENTIL, fatG: 14 }, placed)).toBe(false);
+    expect(matchesMealContent({ ...LENTIL, name: "Lentil bowl 2" }, placed)).toBe(false);
     // The ordering itself is untouched by the rule.
     expect(recipesFor([LENTIL], 600, "")).toEqual([LENTIL]);
   });
 
-  test("placed, then reopened: Lentil bowl is not in the list; the other five are", async ({ page }) => {
+  test("placed, then reopened: all six are listed; Lentil bowl alone is marked « On this meal »", async ({ page }) => {
     await signIn(page, C1);
     const row = await placeLentilBowl(page);
 
     // The server's week, not the card's optimism.
     await page.reload();
     const sheet = await openSheet(page, group(page, M_ROW));
-    // The other five, in AC2's order for the meal as it now is (Lentil bowl, 520 kcal).
-    expect(await recipeNames(sheet)).toEqual([
-      "Tofu stir-fry",
-      "Crêpes aux épinards",
-      "Salmon quinoa",
-      "Chicken rice",
-      "Overnight oats",
-    ]);
-    await expect(sheet.getByRole("button", { name: "Choose Lentil bowl", exact: true })).toHaveCount(0);
-    // A search that only the meal's own recipe would match says so — it is not hidden as "no recipes".
-    await sheet.getByLabel("Search your recipes").fill("lent");
-    await expect(sheet.getByText("No recipe matches “lent”.", { exact: true })).toBeVisible();
+    expect(await recipeNames(sheet)).toEqual(SIX_AROUND_LENTIL);
+    expect(await markedNames(sheet)).toEqual(["Lentil bowl"]);
+    const lentil = sheet.getByRole("button", { name: "Choose Lentil bowl", exact: true });
+    await expect(lentil).toHaveAccessibleDescription("On this meal");
+    await expect(lentil.getByText("On this meal", { exact: true })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Choose Tofu stir-fry", exact: true })).not.toHaveAttribute(
+      "aria-describedby",
+      /.+/
+    );
     expect(await mealName(row)).toBe("Lentil bowl");
   });
 
-  test("the library's only recipe is the one on the meal: the sheet says so, not « no recipes yet »", async ({ page }) => {
+  test("staff S2 — the recipe edited after placing (an ingredient, macros unchanged) is still there, marked, and re-placing it writes", async ({
+    page,
+  }) => {
     await signIn(page, C1);
-    await placeLentilBowl(page);
+    const row = await placeLentilBowl(page);
+    const mealId = await row.getAttribute("data-meal-id");
 
-    // Delete the other five; the placed meal keeps its content (EV-256b's promise).
-    await page.goto("/recipes");
-    for (const name of SIX.filter((n) => n !== "Lentil bowl")) {
-      await group(page, name).getByRole("button", { name: "Delete" }).click();
-      await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-      await expect(group(page, name)).toHaveCount(0);
-    }
+    // An ingredient quantity edited, the four numbers left alone.
+    await page.goto(`/recipes/${LENTIL_ID}`);
+    const quantity = page.locator('[data-field="ingredients.0"] input').first();
+    const before = await quantity.inputValue();
+    await expect(async () => {
+      await quantity.fill(before === "321" ? "320" : "321");
+      await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Save recipe" }).click();
+    await expect(page.getByText("Recipe saved.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 
     await page.goto(`/clients/${TESS}/nutrition`);
     const sheet = await openSheet(page, group(page, M_ROW));
-    await expect(sheet.getByText("Your only recipe is already on this meal.", { exact: true })).toBeVisible();
-    await expect(sheet.getByText("You have no recipes yet.", { exact: true })).toHaveCount(0);
-    await expect(sheet.getByRole("link", { name: "New recipe" })).toBeVisible();
-    await expect(sheet.getByRole("button", { name: /^Choose / })).toHaveCount(0);
+    expect(await recipeNames(sheet)).toEqual(SIX_AROUND_LENTIL);
+    expect(await markedNames(sheet)).toEqual(["Lentil bowl"]);
+
+    // Choosing it still goes through the confirm and places the recipe's CURRENT version.
+    const placedBefore = (await calls(page)).filter((c) => c.includes("/recipe ")).length;
+    await sheet.getByRole("button", { name: "Choose Lentil bowl", exact: true }).click();
+    await expect(
+      sheet.getByText("Replace “Lentil bowl” with “Lentil bowl” on Wednesday?", { exact: true })
+    ).toBeVisible();
+    await sheet.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const placements = (await calls(page)).filter((c) => c.includes("/recipe "));
+    expect(placements).toHaveLength(placedBefore + 1);
+    expect(placements[placements.length - 1]).toBe(
+      `POST /coach-portal/clients/${TESS}/nutrition/week/meals/${mealId}/recipe ${LENTIL_ID}`
+    );
+    expect(await mealName(group(page, M_ROW))).toBe("Lentil bowl");
   });
 });
 
@@ -248,6 +293,88 @@ test.describe("BUG-490 — Duration → Weight & reps → Duration keeps the sec
     await expect(after.getByLabel("Tracked as")).toHaveValue("WEIGHT_REPS");
     await after.getByLabel("Tracked as").selectOption("DURATION");
     await expect(after.getByLabel("Seconds")).toHaveValue("");
+  });
+});
+
+/**
+ * Staff S1 — the stash lives in the row, and a row keyed by name + position stayed
+ * mounted when ANOTHER exercise of the same name took its place. Both tests are red on
+ * 727edfa (the seconds came back on the wrong Plank) and green from the fix on: a Move,
+ * Remove, Remove day or Replace re-keys every row, so the stash is dropped, never moved.
+ * Run in the TEMPLATE editor, which is the same component (and a new template starts with
+ * two empty days, so the positions are exactly the ones the test builds).
+ */
+async function addTo(page: Page, dayIndex: number, name: string) {
+  await page.getByRole("button", { name: "Add exercise" }).nth(dayIndex).click();
+  const picker = page.getByRole("dialog");
+  await picker.getByLabel("Search the catalog").fill(name);
+  await picker.getByRole("button", { name: new RegExp(`^${name}`) }).click();
+  await expect(picker.getByText(`Added ${name}.`)).toBeVisible();
+  await picker.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
+test.describe("staff S1 — a structural edit drops the stashed seconds; they never land on another exercise", () => {
+  test("(A) two Planks (45 s, 60 s) in one day, both to Weight & reps, Move up, back to Duration: no swapped values", async ({
+    page,
+  }) => {
+    await signIn(page, "coach@evoli.fit");
+    await page.goto("/templates/new");
+    await addTo(page, 0, "Plank");
+    await addTo(page, 0, "Plank");
+    const planks = group(page, "Plank");
+    await expect(planks).toHaveCount(2);
+    await planks.nth(0).getByLabel("Seconds").fill("45");
+    await planks.nth(1).getByLabel("Seconds").fill("60");
+    await planks.nth(0).getByLabel("Tracked as").selectOption("WEIGHT_REPS");
+    await planks.nth(1).getByLabel("Tracked as").selectOption("WEIGHT_REPS");
+
+    await planks.nth(1).getByRole("button", { name: "Move up: Plank" }).click();
+
+    await planks.nth(0).getByLabel("Tracked as").selectOption("DURATION");
+    await planks.nth(1).getByLabel("Tracked as").selectOption("DURATION");
+    // 727edfa showed 45 on the Plank that had 60, and 60 on the one that had 45.
+    await expect(planks.nth(0).getByLabel("Seconds")).toHaveValue("");
+    await expect(planks.nth(1).getByLabel("Seconds")).toHaveValue("");
+  });
+
+  test("(C) a Plank on day 2 (45 s) and day 3 (20 s), both to Weight & reps, day 2 removed: day 3's Plank is not given 45", async ({
+    page,
+  }) => {
+    await signIn(page, "coach@evoli.fit");
+    await page.goto("/templates/new");
+    await page.getByRole("button", { name: "Add day" }).click();
+    await expect(page.getByRole("button", { name: "Add exercise" })).toHaveCount(3);
+    await addTo(page, 1, "Plank");
+    await addTo(page, 2, "Plank");
+    const planks = group(page, "Plank");
+    await expect(planks).toHaveCount(2);
+    await planks.nth(0).getByLabel("Seconds").fill("45");
+    await planks.nth(1).getByLabel("Seconds").fill("20");
+    await planks.nth(0).getByLabel("Tracked as").selectOption("WEIGHT_REPS");
+    await planks.nth(1).getByLabel("Tracked as").selectOption("WEIGHT_REPS");
+
+    await page.getByRole("button", { name: /^Remove day/ }).nth(1).click();
+    await expect(page.getByRole("button", { name: "Add exercise" })).toHaveCount(2);
+    await expect(planks).toHaveCount(1);
+
+    await planks.nth(0).getByLabel("Tracked as").selectOption("DURATION");
+    // 727edfa showed 45 — the REMOVED day's number — on the remaining Plank.
+    await expect(planks.nth(0).getByLabel("Seconds")).toHaveValue("");
+  });
+
+  test("an edit that moves nothing keeps the stash: a sets change, then back to Duration, is 45", async ({
+    page,
+  }) => {
+    await signIn(page, "coach@evoli.fit");
+    await page.goto("/templates/new");
+    await addTo(page, 0, "Plank");
+    const plank = group(page, "Plank");
+    await plank.getByLabel("Seconds").fill("45");
+    await plank.getByLabel("Tracked as").selectOption("WEIGHT_REPS");
+    await plank.getByLabel("Sets").fill("4");
+    await plank.getByLabel("Tracked as").selectOption("DURATION");
+    await expect(plank.getByLabel("Seconds")).toHaveValue("45");
   });
 });
 
@@ -347,6 +474,20 @@ test.describe("BUG-574 — « 1,500 » as a quantity says it can be read two way
     expect(parseQuantity("1.5")).toBe(1.5);
     // The range sentence keeps what IS range territory.
     expect(readQuantity("5 001")).toEqual({ kind: "outOfRange" });
+  });
+
+  test("staff N1 — a leading 0 is never a thousands grouping: « 0,001 » is three decimals, told the range", () => {
+    for (const typed of ["0,001", "0.500", "00,500", "012.345"]) {
+      expect(readQuantity(typed), typed).toEqual({ kind: "outOfRange" });
+      expect(parseQuantity(typed), typed).toBeNull();
+    }
+    expect(localProblems(withQuantity("0,001"), fr)).toEqual([
+      { at: "ingredients.0", message: `Une quantité est supérieure à 0 et au plus égale à 5${NNBSP}000, avec 2 décimales au plus.` },
+    ]);
+    // A 1-3 digit integer that does not start with 0 stays ambiguous.
+    for (const typed of ["1,500", "10.000", "100,000"]) {
+      expect(readQuantity(typed), typed).toEqual({ kind: "ambiguous" });
+    }
   });
 
   test("the recipe editor, in French: « 1,500 » is refused beside the line with the ambiguity sentence; nothing is sent", async ({
