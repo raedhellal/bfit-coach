@@ -3608,6 +3608,11 @@ async function nutritionCopyName(original: string): Promise<string> {
  *                                      (edge case 10, the Monday rollover).
  *   `evoli_fixture_week=no_safe_plan` — the week apply answers 422 `NO_SAFE_MEAL_PLAN` with
  *                                      the api's fixed message, and writes nothing (EV-071b).
+ *   `evoli_fixture_week=generating`   — the week apply answers 409 `WEEK_GENERATION_IN_PROGRESS`
+ *                                      with the api's fixed message, and writes nothing: the
+ *                                      trainee's own generation of the week is still running
+ *                                      (ADR-0030; b-fit-api `fix/week-generation-in-progress-409`).
+ *   `evoli_fixture_week=fail`         — the week apply answers a plain 500 `INTERNAL_ERROR`.
  *   `evoli_fixture_regen=no_safe_plan|capped|fail` — a day regenerate answers 422
  *                                      `NO_SAFE_MEAL_PLAN` (EV-071b ruling 2.4), 429
  *                                      `COACH_DAY_REGEN_LIMIT` (EV-242b; `{code, message}`
@@ -3633,6 +3638,12 @@ async function weekSwitch(): Promise<string | null> {
 /** `RestExceptionHandler.handleNoSafeMealPlan`'s constant — developer-facing, never copy. */
 const NO_SAFE_MEAL_PLAN_MESSAGE =
   "No meal plan could be produced that satisfies this account's dietary rules.";
+/**
+ * `GenerationInProgressException.Kind.WEEK`'s fixed sentence, as `RestExceptionHandler.
+ * handleGenerationInProgress` sends it (`details` is null on the wire, as `fail` builds it).
+ */
+const WEEK_GENERATION_IN_PROGRESS_MESSAGE =
+  "A meal plan is already being generated for this week. Wait for it instead of generating again.";
 /** The api's "current week" for this context: the override, else the UTC Monday. */
 async function servedWeekStart(): Promise<string> {
   const forced = await fixtureSwitch("evoli_fixture_week_start");
@@ -5780,6 +5791,11 @@ export const fixtureCoachApi: CoachApi = {
     if (forced === "rate_limited") await fail(429, "COACH_WEEK_APPLY_RATE_LIMIT", "Rate limited");
     if (forced === "out_of_range") await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");
     if (forced === "no_safe_plan") await fail(422, "NO_SAFE_MEAL_PLAN", NO_SAFE_MEAL_PLAN_MESSAGE);
+    if (forced === "generating") {
+      await fail(409, "WEEK_GENERATION_IN_PROGRESS", WEEK_GENERATION_IN_PROGRESS_MESSAGE);
+    }
+    // `RestExceptionHandler.handleUnexpected`'s body.
+    if (forced === "fail") await fail(500, "INTERNAL_ERROR", "Something went wrong. Please try again.");
     if (forced === "no_answer") throw new TypeError("fetch failed");
     if (weekStart !== (await servedWeekStart())) {
       // Edge case 3: slice 1 applies the current week only.

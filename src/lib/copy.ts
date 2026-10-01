@@ -994,6 +994,14 @@ export const en = {
      */
     weekRateLimited: "A meal week can be applied once a day for each trainee. Try again tomorrow.",
     /**
+     * 409 `WEEK_GENERATION_IN_PROGRESS` (ADR-0030) — the trainee's own generation of this
+     * week is still running. Not "could not be applied", which says nothing about when to
+     * retry: nothing was changed and the api released today's apply, so a retry once the
+     * week is ready is the right move. A warning, not an error, in the card.
+     */
+    weekGenerating: (first: string) =>
+      `${first}'s meal week is still being prepared. Try again in a few minutes.`,
+    /**
      * EV-071b ruling 2.3, verbatim — the 422 `NO_SAFE_MEAL_PLAN` on an apply. A refusal
      * for the trainee's safety, not an error: nothing was written, and only the TRAINEE
      * can change the outcome (EV-185 forbids a coach editing their food preferences), so

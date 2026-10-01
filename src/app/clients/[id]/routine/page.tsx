@@ -84,11 +84,13 @@ export default async function RoutinePage({ params }: { params: { id: string } }
        * whether the second call happens at all: asking for a draft the envelope has
        * already said is absent can only ever be told the same thing again.
        *
-       * A draft read that fails is NOT a load error for the whole tab. The published
-       * plan is in hand and is the trainee's live plan, which is the thing AC1 is about;
-       * losing the unpublished draft silently would be worse, so the draft's absence
-       * here means the editor opens on the published plan — the same state a discard
-       * produces — rather than the tab refusing to render.
+       * A draft read that THROWS (a 500 or any other status `apiFetch` throws on, a lost
+       * connection) IS a load error for the whole tab: it is inside this `try`, so the
+       * `catch` below sets `copy.routine.loadError` — or redirects to the denial page on
+       * a 403 — even though the published plan was read successfully just above. Only a
+       * draft read that ANSWERS with a document this surface cannot use (no `document`,
+       * or no `updatedAt`: BUG-195c below) opens the editor on the published plan, the
+       * same state a discard produces.
        */
       if (routine.hasDraft) {
         const saved = await coachApi.getRoutineDraft(params.id);

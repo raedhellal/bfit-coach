@@ -512,6 +512,8 @@ export const fr = {
     weekOutOfRange: "Seule la semaine en cours peut être appliquée.",
     weekRateLimited:
       "Une semaine de repas peut être appliquée une fois par jour pour chaque client. Réessayez demain.",
+    weekGenerating: (first: string) =>
+      `La semaine de repas ${de(first)} est encore en préparation. Réessayez dans quelques minutes.`,
     weekRefusedTitle: (first: string) =>
       `Nous n'avons pas pu construire de semaine de repas pour ${first}.`,
     weekRefusedBody:
