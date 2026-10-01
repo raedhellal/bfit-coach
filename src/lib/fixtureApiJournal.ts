@@ -27,8 +27,11 @@ import { cache } from "react";
  * ⚠ The `evoli_fixture_api_latency=<ms>` cookie (capped at 2 s, ONE browser context)
  * holds EVERY call for that long before the fixture answers. A fixture call takes
  * microseconds, so without it a waterfall costs nothing and cannot be seen. With it,
- * a page's wall time is roughly (sequential steps × latency). That is the simulated
- * iad1 → EU West round trip the read-budget spec measures against.
+ * a page's wall time is roughly (sequential steps × latency). It stands in for the
+ * round trip from the functions (pinned to cdg1 since main 8d72e4c) to b-fit-api in
+ * EU West. The 80 / 120 ms the specs use is a deliberately EXAGGERATED value, chosen
+ * so one waterfall step is far larger than timer noise, not a prediction of
+ * production latency.
  *
  * Outside `FixtureState`, like the other journals in `coachApi.fixture.ts`, so the seed
  * check is not affected by a read. Emptied by `DELETE /api/fixture/state`. Kept on

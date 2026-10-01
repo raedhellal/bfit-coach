@@ -5,23 +5,33 @@ import { test } from "./fixture-test";
  * perf/coach-parallel-page-reads — what each main route costs b-fit-api, and how many
  * of those reads wait for another one.
  *
- * Every page is `force-dynamic` and reads the api on the server. The functions run in
- * iad1 and the api is in EU West, so each read is a ~85 ms round trip, and reads made
- * one after another add up. The witness is the fixture's api journal
+ * Every page is `force-dynamic` and reads the api on the server. Since main 8d72e4c the
+ * functions are pinned to cdg1, and each read is a round trip from cdg1 to b-fit-api in
+ * EU West. That trip is short, but reads made one after another still add up. The
+ * witness is the fixture's api journal
  * (`src/lib/fixtureApiJournal.ts`, read from `GET /api/fixture/calls` as `api`). It holds
  * one entry per `CoachApi` call, which in live mode is one b-fit-api request, with its
  * start, end, render tag and whether it came from a document load or an RSC fetch.
  *
  * The `evoli_fixture_api_latency` cookie holds every call for that long, so a read that
- * waits for another one shows up in the timestamps. "Depth" below is the longest chain
+ * waits for another one shows up in the timestamps. The 120 ms hold here (80 ms in the
+ * branch's measurements) is a deliberately EXAGGERATED stand-in for the round trip,
+ * chosen so a waterfall step is far larger than timer noise. It is not a prediction of
+ * production latency. "Depth" below is the longest chain
  * of calls where each one starts after the previous one has ENDED. With a 120 ms hold, a
  * concurrent call starts within a few ms of its siblings, so the count does not depend
  * on machine speed.
  *
  * Measured on `next start` with an 80 ms hold, before → after this branch:
- *   · the routine tab with a template-applied draft: depth 4 → 3, api path 329 → ~245 ms;
  *   · a prefetch of `/clients/{id}` (one per roster row and per challenge participant):
  *     2 reads → 1. The roster with six rows made 12 background reads; now it makes 6.
+ *
+ * The routine tab with a draft stays sequential BY RULING (staff, 2026-10-01): the draft
+ * is read only after `hasDraft`, and the template library only after the draft names a
+ * template. Reading the library alongside the draft saved one short cdg1 round trip, and
+ * it cost two unused `GET /coach-portal/templates` per Save draft on every non-template
+ * draft, because a save re-renders the page twice (revalidatePath + router.refresh).
+ * Both draft rows are pinned below, so that ordering is a decision a test holds.
  * Every other main route was already one round trip, or two where a consent check must
  * come first, and had no read made twice in one render. Those rows are pinned here so a
  * later change cannot add a waterfall or a duplicate without a red test.
@@ -144,8 +154,8 @@ test.describe("each main route's document render", () => {
   });
 });
 
-test.describe("the routine tab with a draft applied from a template", () => {
-  test("reads the library alongside the draft: three round trips, not four", async ({ page, baseURL }) => {
+test.describe("the routine tab with a draft", () => {
+  test("applied from a template: reads the library only after the draft names it", async ({ page, baseURL }) => {
     await signIn(page);
     // Through the dialog a coach uses, from the seed (EV-223): Yusuf has no draft.
     await page.goto("/templates");
@@ -160,10 +170,27 @@ test.describe("the routine tab with a draft applied from a template", () => {
 
     await hold(page, baseURL, HOLD_MS);
     const entries = await documentLoad(page, `/clients/${YUSUF}/routine`);
-    // What the coach sees is unchanged: the same line, from the same library read.
     await expect(page.getByText(/^Started from /)).toHaveText(line!);
     expect(ops(entries)).toEqual(["getClient", "getMe", "getRoutine", "getRoutineDraft", "listTemplates"]);
-    // overview → routine → (draft ∥ library). Was overview → routine → draft → library.
+    // overview → routine → draft → library: each read is decided by the one before it.
+    expect(depth(entries)).toBe(4);
+  });
+
+  test("written by hand: never reads the template library", async ({ page, baseURL }) => {
+    await signIn(page);
+    // From the seed (EV-223): Lina has a published plan and no draft. One edit and a
+    // save make a draft with no `sourceTemplateId`.
+    await page.goto(`/clients/${LINA}/routine`);
+    await page.getByLabel("Sets").first().fill("5");
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+
+    await hold(page, baseURL, HOLD_MS);
+    const entries = await documentLoad(page, `/clients/${LINA}/routine`);
+    await expect(page.getByText("Draft — not yet published")).toBeVisible();
+    await expect(page.getByText(/^Started from /)).toHaveCount(0);
+    expect(ops(entries)).toEqual(["getClient", "getMe", "getRoutine", "getRoutineDraft"]);
+    // overview → routine → draft.
     expect(depth(entries)).toBe(3);
   });
 });
