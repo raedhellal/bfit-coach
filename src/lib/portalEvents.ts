@@ -50,7 +50,9 @@ export type PortalEvent =
       changed: "start" | "milestone" | "bodyfat" | "both" | "cleared" | "unchanged";
     }
   | { event: "coach_progress_block_empty"; coachId: string | null; clientId: string }
-  | { event: "coach_progress_bodyfat_absent"; coachId: string | null; clientId: string };
+  | { event: "coach_progress_bodyfat_absent"; coachId: string | null; clientId: string }
+  /** EV-242 — the day-regeneration cap refused a coach's Regenerate. No properties, by the story. */
+  | { event: "coach_day_regen_capped" };
 
 export function logPortalEvent(payload: PortalEvent): void {
   if (typeof window === "undefined") return;

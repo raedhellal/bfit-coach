@@ -60,12 +60,14 @@ import { sanitiseCoachName } from "./inviteName";
  *   PUT    /coach-portal/clients/{id}/nutrition/targets ← CoachTargetsRequest
  *   POST   /coach-portal/clients/{id}/nutrition/week/apply ← { weekStart }
  *          400 COACH_WEEK_OUT_OF_RANGE (current week only — D6)
+ *          422 NO_SAFE_MEAL_PLAN (EV-071: refused for the trainee's safety, nothing written)
  *          429 COACH_WEEK_APPLY_RATE_LIMIT (D6.6's cap: 1 apply per link per day)
  *   POST   /coach-portal/clients/{id}/nutrition/week/days/{index}/regenerate
- *          ⛔ OPEN: the day-regen cap lives on the TRAINEE's plan row (D6) and the
- *          api has not named its refusal. Until it does, the portal can only
- *          disclose the sharing up front ("Day regenerations share {trainee}'s
- *          daily limit."); a coach who hits the cap gets the generic failure.
+ *          422 NO_SAFE_MEAL_PLAN (EV-071 ruling 2.4: that day refused, nothing replaced)
+ *          429 COACH_DAY_REGEN_LIMIT (EV-185a: the TRAINEE's daily allowance is spent).
+ *          The body is `{ code, message }` only: no reset instant, no Retry-After
+ *          (EV-242a's second half is not on api main), so the portal names the cap
+ *          and states no time.
  *   GET    /coach-portal/clients/{id}/nutrition/week/meals/{mealId}/swap
  *          MUST bind to the CACHED reader (`WeeklyMealPlanService.getSwapOptions`),
  *          never `refreshSwapOptions`, which charges the trainee a CHAT credit.
@@ -2271,6 +2273,27 @@ export function isDraftExists(err: unknown): boolean {
  */
 export function isWeekApplyRateLimited(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_WEEK_APPLY_RATE_LIMIT";
+}
+
+/**
+ * 422 — EV-071 state (C): the trainee's recorded allergies and food rules rule out every
+ * recipe the server can check. Answered by the week apply (nothing written, the trainee's
+ * week untouched) and by a day regenerate (that day left as it was). A REFUSAL, not a
+ * failure: "could not be applied" read as a transient error and invited a retry. The code
+ * is the whole signal — the `message` is a fixed developer sentence and is never copy.
+ */
+export function isNoSafeMealPlan(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "NO_SAFE_MEAL_PLAN";
+}
+
+/**
+ * 429 — EV-185a / EV-242: the day-regeneration allowance on the TRAINEE's plan row is
+ * spent (the coach may not have used any of it). Its own code, distinct from the
+ * trainee's `DAY_REGEN_LIMIT`. Matched on the code, never on the message (EV-242's
+ * failure clause). The api sends no reset instant, so nothing here returns one.
+ */
+export function isDayRegenCapped(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "COACH_DAY_REGEN_LIMIT";
 }
 
 /**

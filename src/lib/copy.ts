@@ -994,6 +994,29 @@ export const en = {
      */
     weekRateLimited: "A meal week can be applied once a day for each trainee. Try again tomorrow.",
     /**
+     * EV-071b ruling 2.3, verbatim — the 422 `NO_SAFE_MEAL_PLAN` on an apply. A refusal
+     * for the trainee's safety, not an error: nothing was written, and only the TRAINEE
+     * can change the outcome (EV-185 forbids a coach editing their food preferences), so
+     * the block ends by saying so. One block, two slots: placement and quota.
+     */
+    weekRefusedTitle: (first: string) => `We couldn't build a meal week for ${first}.`,
+    weekRefusedBody:
+      "Their recorded allergies and food rules rule out every recipe we're able to check. Nothing was changed.",
+    /** P1 — a week is on screen and stays fully rendered under the block (ruling 2.2). */
+    weekRefusedKept: (first: string) =>
+      `The week below is still ${first}'s current week — it hasn't been touched.`,
+    /** P2 — no week on screen: the block renders instead of one. */
+    weekRefusedNoWeek: (first: string) => `${first} has no meal week right now.`,
+    /*
+     * NO quota sentence (staff ruling, 2026-10-01, option a). Ruling 2.1's three are all
+     * false or unwitnessed against b-fit-api main: `CoachNutritionUseCase.applyWeek`
+     * releases the claim on EVERY refusal (NoSafeMealPlanException is a RuntimeException),
+     * so Q2 ("This has used today's apply") and Q3's "trying again will use it" are false,
+     * and Q1 needs the api to say so (EV-196). Do not add one back without that witness.
+     */
+    refusedAskThem: (first: string) =>
+      `You can't change ${first}'s food preferences from here. Ask them to review them in the app.`,
+    /**
      * ADR-0015 D6.7: applying a week reuses the plan row and CARRIES LOCKED MEALS
      * FORWARD, so "replaces the week" is true of the row and not of every meal in it.
      * The ADR asks the confirm dialog to say so; without this line the dialog promises
@@ -1036,6 +1059,25 @@ export const en = {
       `Swapping a meal doesn't use ${trainee}'s daily regenerations.`,
     regenerating: "Regenerating…",
     regenerateFailed: "The day could not be regenerated.",
+    /**
+     * EV-071b ruling 2.4, verbatim — the 422 `NO_SAFE_MEAL_PLAN` on a day regenerate,
+     * shown in that day's card, followed by `refusedAskThem`. No quota sentence, ever:
+     * this path never holds the apply reservation. `day` is the weekday's name.
+     */
+    dayRefusedTitle: (day: string, first: string) => `We couldn't rebuild ${day} for ${first}.`,
+    dayRefusedBody:
+      "Their recorded allergies and food rules rule out every recipe we're able to check for that day.",
+    dayRefusedKept: (day: string) => `${day} is unchanged — nothing was replaced.`,
+    /**
+     * EV-242 AC3 — the 429 `COACH_DAY_REGEN_LIMIT`, reworded by the staff ruling of
+     * 2026-10-01: the counter is the TRAINEE's plan row, so "You've used…" was false
+     * whenever the trainee used them. Its second sentence ("You can regenerate again
+     * after {local time}.") needs the reset instant EV-242a puts on the body, and
+     * b-fit-api main does not send one: no time is shown rather than a made-up one.
+     * `first` is French's (« de Lina »); English names the trainee as the line above does.
+     */
+    dayRegenCapped: (trainee: string, _first: string) =>
+      `Today's day regenerations for ${trainee} are used up.`,
     swap: "Swap meal", // AC3, verbatim
     swapTitle: "Swap meal",
     swapLoading: "Loading options…",

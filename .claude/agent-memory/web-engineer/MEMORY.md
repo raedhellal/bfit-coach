@@ -38,6 +38,7 @@
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
 - [Recipe placement (EV-256e)](recipe-placement-portal-facts.md) — no `eaten` on the coach wire; flag server-wide, per-trainee in fixture; fail-open read is fixture-blind; button gone since EV-272
+- [Refusal + regen cap (EV-071b/242b)](refusal-and-regen-cap-portal-facts.md) — api releases the apply on EVERY refusal so no quota line (staff); cap is the trainee's, Apply lifts it; no reset instant
 - [Routine changed banner (EV-283b)](routine-changed-banner-facts.md) — keys on lastChangedBy not the flag; one fixture record feeds page + roster; ICU "Sept"
 - [An allowance cannot excuse a required field](an-allowance-cannot-excuse-a-required-field.md) — EV-222: one checkRequired fed the register in both real and synthetic runs; register-side rule; untagged-root coverage
 - [Every fixture test starts from the seed](every-fixture-test-starts-from-the-seed.md) — EV-223: import test from qa/fixture-test.ts; seed cloned once per process; file-alone loop was green on main
