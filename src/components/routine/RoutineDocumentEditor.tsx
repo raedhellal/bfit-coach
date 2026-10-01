@@ -14,6 +14,7 @@ import {
 } from "./RoutineFields";
 import { useCopy } from "@/lib/i18n/client";
 import { isoWeekdayLabel, truncateName } from "@/lib/format";
+import { equipmentLabel, musclesLabel } from "@/lib/catalogLabels";
 import {
   GOALS,
   LEVELS,
@@ -371,7 +372,7 @@ export function RoutineDocumentEditor({
                 variant="ghost"
                 size="sm"
                 icon="trash"
-                ariaLabel={`${copy.routine.removeDay}: ${isoWeekdayLabel(day.dayOfWeek, copy.locale)}`}
+                ariaLabel={copy.common.labelled(copy.routine.removeDay, isoWeekdayLabel(day.dayOfWeek, copy.locale))}
                 title={days.length <= MIN_TRAINING_DAYS ? dayCountBound : undefined}
                 disabled={days.length <= MIN_TRAINING_DAYS}
                 onClick={() => editDays((list) => list.filter((_, i) => i !== dayIndex))}
@@ -567,8 +568,8 @@ function ExerciseRow({
         <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {/* EV-188 AC5 — marked in place; Replace and Remove below both act on it. */}
           {unbindable && <Badge tone="amber">{copy.templates.notInCatalogue}</Badge>}
-          {picked?.primaryMuscles && <Badge tone="neutral">{picked.primaryMuscles}</Badge>}
-          {picked?.equipment && <Badge tone="neutral">{picked.equipment}</Badge>}
+          {picked?.primaryMuscles && <Badge tone="neutral">{musclesLabel(picked.primaryMuscles, copy)}</Badge>}
+          {picked?.equipment && <Badge tone="neutral">{equipmentLabel(picked.equipment, copy)}</Badge>}
         </span>
       </div>
 
@@ -636,7 +637,7 @@ function ExerciseRow({
           {copy.templates.notesLabel}
         </div>
         <input
-          aria-label={`${copy.templates.notesLabel}: ${exercise.name}`}
+          aria-label={copy.common.labelled(copy.templates.notesLabel, exercise.name)}
           value={exercise.notes ?? ""}
           onChange={(e) =>
             onChange((ex) => ({ ...ex, notes: e.target.value.trim() === "" ? null : e.target.value }))
@@ -650,7 +651,7 @@ function ExerciseRow({
           variant="ghost"
           size="sm"
           icon="up"
-          ariaLabel={`${copy.routine.moveUp}: ${exercise.name}`}
+          ariaLabel={copy.common.labelled(copy.routine.moveUp, exercise.name)}
           onClick={() => onMove(-1)}
           disabled={first}
         >
@@ -660,7 +661,7 @@ function ExerciseRow({
           variant="ghost"
           size="sm"
           icon="down"
-          ariaLabel={`${copy.routine.moveDown}: ${exercise.name}`}
+          ariaLabel={copy.common.labelled(copy.routine.moveDown, exercise.name)}
           onClick={() => onMove(1)}
           disabled={last}
         >
@@ -670,12 +671,12 @@ function ExerciseRow({
           variant="ghost"
           size="sm"
           icon="refresh"
-          ariaLabel={`${copy.routine.replace}: ${exercise.name}`}
+          ariaLabel={copy.common.labelled(copy.routine.replace, exercise.name)}
           onClick={onReplace}
         >
           {copy.routine.replace}
         </Button>
-        <Button variant="ghost" size="sm" icon="x" ariaLabel={`${copy.routine.remove}: ${exercise.name}`} onClick={onRemove}>
+        <Button variant="ghost" size="sm" icon="x" ariaLabel={copy.common.labelled(copy.routine.remove, exercise.name)} onClick={onRemove}>
           {copy.routine.remove}
         </Button>
       </div>

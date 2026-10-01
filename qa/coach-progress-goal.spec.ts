@@ -170,10 +170,11 @@ test.describe("AC2 — start and current are derived, and the arithmetic is repr
      * api sends SIGNED and this row must not print with its minus sign.
      *
      * The two dates are matched loosely because they are relative to today; the
-     * numbers, the separators, the order and the words are exact.
+     * numbers, the separators, the order and the words are exact. A regex is not
+     * whitespace-normalised, so the U+00A0 before each "kg" (BUG-270) is spelt out.
      */
     await expect(row(page, "weight")).toHaveText(
-      /^Weight — Start 71\.2 kg \(.+\) · Current 70\.4 kg \(.+\) · −0\.8 kg · Milestone 68\.0 kg · 2\.4 kg to go$/
+      /^Weight — Start 71\.2\u00a0kg \(.+\) · Current 70\.4\u00a0kg \(.+\) · −0\.8\u00a0kg · Milestone 68\.0\u00a0kg · 2\.4\u00a0kg to go$/
     );
   });
 
@@ -482,7 +483,7 @@ test.describe("the request is a whole representation", () => {
      * returns a fresh RSC payload with the action's response), so "props changed" is
      * not evidence that the coach has finished typing.
      */
-    const opened = seedFormState(storedGoal("2026-06-01", 80));
+    const opened = seedFormState(storedGoal("2026-06-01", 80), "en");
     expect(opened).toEqual({
       startedOn: "2026-06-01",
       milestone: "80",
@@ -492,7 +493,7 @@ test.describe("the request is a whole representation", () => {
     });
 
     const typing = editField(opened, "milestone", "69");
-    const pushed = reseedPreservingEdits(typing, storedGoal("2026-07-01", 67));
+    const pushed = reseedPreservingEdits(typing, storedGoal("2026-07-01", 67), "en");
 
     // The touched field is the coach's…
     expect(pushed.milestone, "an edited field was re-seeded from props").toBe("69");
@@ -502,7 +503,7 @@ test.describe("the request is a whole representation", () => {
     expect(pushed.dirty).toEqual({ startedOn: false, milestone: true, bodyFat: false });
 
     // Only a sent save settles them — after which both track the server again.
-    const afterSend = reseedPreservingEdits(markSent(typing), storedGoal("2026-07-01", 67));
+    const afterSend = reseedPreservingEdits(markSent(typing), storedGoal("2026-07-01", 67), "en");
     expect(afterSend.milestone).toBe("67");
   });
 
@@ -537,9 +538,10 @@ test.describe("the request is a whole representation", () => {
   });
 
   test("the signed 'to go' figure renders in all three directions", () => {
-    expect(toGoValue(-6, "en")).toBe("6.0 kg"); // AC2's cut — magnitude, unsigned
-    expect(toGoValue(4, "en")).toBe("+4.0 kg"); // edge case 4's bulk — the plus is the direction
-    expect(toGoValue(0, "en")).toBe("0.0 kg"); // edge case 5's exact hit
+    // The unit follows a U+00A0 (BUG-270), so the number and "kg" never wrap apart.
+    expect(toGoValue(-6, "en")).toBe("6.0\u00a0kg"); // AC2's cut — magnitude, unsigned
+    expect(toGoValue(4, "en")).toBe("+4.0\u00a0kg"); // edge case 4's bulk — the plus is the direction
+    expect(toGoValue(0, "en")).toBe("0.0\u00a0kg"); // edge case 5's exact hit
   });
 });
 
@@ -615,7 +617,7 @@ test.describe("AC1 and AC3 — the two values persist, and the baseline moves wi
     await saveAndSettle(page);
     await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
 
-    await expect(cell(page, "weight", "start")).toHaveText(/^Start 70\.9 kg \(.+\)$/);
+    await expect(cell(page, "weight", "start")).toHaveText(/^Start 70\.9\u00a0kg \(.+\)$/);
     // 70.4 − 70.9 = −0.5, recomputed by the api and not by the browser.
     await expect(cell(page, "weight", "delta")).toHaveText("−0.5 kg");
   });
@@ -649,7 +651,7 @@ test.describe("AC1 and AC3 — the two values persist, and the baseline moves wi
     expect(weight, "the start column reached backwards past the start date").not.toContain("71.2");
 
     // The CURRENT column is untouched: the latest reading has no date filter on it.
-    await expect(cell(page, "weight", "current")).toHaveText(/^Current 70\.4 kg \(.+\)$/);
+    await expect(cell(page, "weight", "current")).toHaveText(/^Current 70\.4\u00a0kg \(.+\)$/);
   });
 });
 
@@ -1379,14 +1381,14 @@ test.describe("EV-274b — the pure rules", () => {
 
   test("touched survives a sent save and ends only at a re-seed from the server", () => {
     const goal = traineeA();
-    const typed = editField(seedFormState(goal), "bodyFat", "21");
+    const typed = editField(seedFormState(goal, "en"), "bodyFat", "21");
     expect(typed.bodyFatTouched).toBe(true);
     // Sent: dirty clears so the reply may re-seed — touched does NOT.
     const sent = markSent(typed);
     expect(sent.dirty.bodyFat).toBe(false);
     expect(sent.bodyFatTouched).toBe(true);
     // The server's answer re-seeds the field, and only then is the text the server's.
-    const reseeded = reseedPreservingEdits(sent, { ...goal, milestoneBodyFatPct: 21 });
+    const reseeded = reseedPreservingEdits(sent, { ...goal, milestoneBodyFatPct: 21 }, "en");
     expect(reseeded.bodyFat).toBe("21");
     expect(reseeded.bodyFatTouched).toBe(false);
   });

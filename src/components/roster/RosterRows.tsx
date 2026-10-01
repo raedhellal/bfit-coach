@@ -269,12 +269,14 @@ export function RosterRows({ clients }: { clients: RosterClient[] }) {
                   <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status === "ACTIVE" ? copy.roster.statusActive : c.status}</Badge>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-                  {copy.roster.colLastWorkout}:{" "}
-                  {c.lastCompletedWorkoutDate
-                    ? formatDate(c.lastCompletedWorkoutDate, copy.locale)
-                    : hasScope(c.scopes, "PROGRESS")
-                      ? copy.roster.noWorkout
-                      : copy.client.notShared}
+                  {copy.common.labelled(
+                    copy.roster.colLastWorkout,
+                    c.lastCompletedWorkoutDate
+                      ? formatDate(c.lastCompletedWorkoutDate, copy.locale)
+                      : hasScope(c.scopes, "PROGRESS")
+                        ? copy.roster.noWorkout
+                        : copy.client.notShared
+                  )}
                 </div>
               </div>
             </Link>

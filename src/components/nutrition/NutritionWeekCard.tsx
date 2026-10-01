@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Card, CardHead, Modal } from "@/components/ui/kit";
+import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import {
   readLibrary,
   SuggestionRow,
@@ -297,8 +297,26 @@ export function NutritionWeekCard({
         title={copy.nutrition.weekTitle}
         icon="calendar"
         sub={copy.nutrition.weekOf(formatDate(week?.weekStart ?? currentWeekStart, copy.locale))}
+        // BUG-252's second leaf: "Appliquer à Lina M." is a nowrap button that pushed the
+        // page 17 px sideways at 320 px in French once the activity badge stopped doing so.
+        // The head wraps, so the button drops under the title when the two do not fit, and
+        // the label may wrap inside the button: a 40-character name ("Apply to …", 393 px)
+        // overflowed every phone width even on a line of its own. Height stays >= 44 px.
+        style={{ flexWrap: "wrap" }}
         action={
-          <Button icon="refresh" onClick={() => setConfirming(true)} disabled={pending}>
+          <Button
+            icon="refresh"
+            onClick={() => setConfirming(true)}
+            disabled={pending}
+            style={{
+              whiteSpace: "normal",
+              height: "auto",
+              minHeight: MIN_TOUCH_TARGET,
+              maxWidth: "100%",
+              paddingTop: 6,
+              paddingBottom: 6,
+            }}
+          >
             {pending ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
           </Button>
         }
@@ -373,7 +391,7 @@ export function NutritionWeekCard({
                   variant="ghost"
                   size="sm"
                   icon="refresh"
-                  ariaLabel={`${copy.nutrition.regenerate}: ${formatWeekday(day.date, copy.locale)}`}
+                  ariaLabel={copy.common.labelled(copy.nutrition.regenerate, formatWeekday(day.date, copy.locale))}
                   onClick={() => regenerate(day.index)}
                   disabled={pending}
                 >
@@ -457,7 +475,7 @@ export function NutritionWeekCard({
                           variant="ghost"
                           size="sm"
                           icon="refresh"
-                          ariaLabel={`${copy.nutrition.swap}: ${meal.name}`}
+                          ariaLabel={copy.common.labelled(copy.nutrition.swap, meal.name)}
                           onClick={() =>
                             recipePlacementEnabled
                               ? openRecipeSwap(meal, formatWeekday(day.date, copy.locale))

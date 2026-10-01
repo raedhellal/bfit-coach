@@ -216,9 +216,10 @@ export default async function ClientPage({ params }: { params: { id: string } })
         ) : series.length > 0 ? (
           <TrendChart
             points={series.map((p) => ({ label: formatShortDate(p.date, copy.locale), value: p.weightKg }))}
-            ariaLabel={`${copy.client.weightTrend}: ${series
-              .map((p) => `${formatShortDate(p.date, copy.locale)} ${formatKg(p.weightKg, copy.locale)}`)
-              .join(", ")}`}
+            ariaLabel={copy.common.labelled(
+              copy.client.weightTrend,
+              series.map((p) => `${formatShortDate(p.date, copy.locale)} ${formatKg(p.weightKg, copy.locale)}`).join(", ")
+            )}
           />
         ) : (
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>

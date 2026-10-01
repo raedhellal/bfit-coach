@@ -226,9 +226,11 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 
 function Macros({ values, dashes }: { values: CoachFoodLogMacros; dashes: boolean }) {
   const copy = getCopy();
-  const grams = (n: number) => (dashes ? copy.common.dash : `${formatGrams(n, copy.locale)} ${copy.foodLog.grams}`);
+  // U+00A0 between number and unit (BUG-300): a 54 px grid cell at 320 px broke "320 kcal" at the space.
+  const grams = (n: number) =>
+    dashes ? copy.common.dash : `${formatGrams(n, copy.locale)}\u00a0${copy.foodLog.grams}`;
   const cells: [string, string][] = [
-    [copy.foodLog.calories, `${formatKcal(values.calories, copy.locale)} ${copy.foodLog.kcal}`],
+    [copy.foodLog.calories, `${formatKcal(values.calories, copy.locale)}\u00a0${copy.foodLog.kcal}`],
     [copy.foodLog.protein, grams(values.proteinG)],
     [copy.foodLog.carbs, grams(values.carbsG)],
     [copy.foodLog.fat, grams(values.fatG)],

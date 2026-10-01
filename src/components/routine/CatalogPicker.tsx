@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import { truncateName } from "@/lib/format";
+import { equipmentLabel, filterOptions, muscleLabel, musclesLabel } from "@/lib/catalogLabels";
 import { searchCatalogAction } from "@/lib/routineActions";
 import { settled } from "@/lib/settled";
 import type { CatalogExercise } from "@/lib/coachApi";
@@ -191,13 +192,13 @@ export function CatalogPicker({
             <FilterSelect
               label={copy.routine.catalogMuscle}
               value={muscle}
-              options={muscles}
+              options={filterOptions(muscles, muscleLabel, copy)}
               onChange={setMuscle}
             />
             <FilterSelect
               label={copy.routine.catalogEquipment}
               value={equipment}
-              options={equipmentOptions}
+              options={filterOptions(equipmentOptions, equipmentLabel, copy)}
               onChange={setEquipment}
             />
           </div>
@@ -261,8 +262,9 @@ export function CatalogPicker({
                   {truncateName(item.name)}
                 </span>
                 <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  {item.primaryMuscles && <Badge tone="blue">{item.primaryMuscles}</Badge>}
-                  {item.equipment && <Badge tone="neutral">{item.equipment}</Badge>}
+                  {/* BUG-489: words, not the catalogue's raw values ("quads,glutes", "NONE"). */}
+                  {item.primaryMuscles && <Badge tone="blue">{musclesLabel(item.primaryMuscles, copy)}</Badge>}
+                  {item.equipment && <Badge tone="neutral">{equipmentLabel(item.equipment, copy)}</Badge>}
                 </span>
               </button>
             ))}
@@ -296,7 +298,8 @@ function FilterSelect({
 }: {
   label: string;
   value: string;
-  options: string[];
+  /** `value` is the api's raw filter value; `label` is what the coach reads (BUG-489). */
+  options: { value: string; label: string }[];
   onChange: (value: string) => void;
 }) {
   const copy = useCopy();
@@ -323,8 +326,8 @@ function FilterSelect({
       >
         <option value="">{copy.routine.catalogAll}</option>
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>
