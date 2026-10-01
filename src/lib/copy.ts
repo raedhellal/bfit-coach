@@ -1982,6 +1982,19 @@ export const en = {
       ELBOW: "Elbows",
     } as Record<string, string>,
   },
+
+  /**
+   * EV-241 — `app/not-found.tsx`: a URL that matches no page, served 404. A signed-in
+   * coach gets the portal's frame and a way back to the roster; anybody else gets a way
+   * to sign in, because every page but /login and /i/* sends them there anyway.
+   */
+  notFound: {
+    title: "Page not found",
+    body: "There is no page at this address. Check the link, or go back to your clients.",
+    toRoster: "Back to your clients",
+    bodySignedOut: "There is no page at this address. Check the link, or sign in to Evoli Pro.",
+    toLogin: "Go to sign-in",
+  },
 } as const;
 
 /**
