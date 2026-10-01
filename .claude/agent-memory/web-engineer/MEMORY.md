@@ -51,6 +51,7 @@
 - [Activation (EV-278c)](activation-portal-facts.md) — PENDING reaches 3 api routes, `GET /me` 403; login checks /me/activation pre-cookie; api "blank" is Java trim (BUG-381); live stub config
 - [French portal, EV-324](coach-portal-i18n-facts.md) — Record maps escape `satisfies Copy`; api text stays English; fixture signs in anyone; AC2 beats AC3 on EN dates
 - [Routine draft write path (BUG-195c)](routine-draft-write-path-facts.md) — one editor, forDraftSave, token echoed as a string, 409 dialog, 4-e partition, live traps
-- [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale
+- [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale; roster picker reads every page (BUG-472); source = today only
 - [Recipe meal slots + count line (EV-320c/b)](recipe-meal-slots-portal-facts.md) — mealSlots sent only if changed; count = COACH_RECIPE && placedByYou; fixture fill cookie
 - [French copy: elision and numbers](french-copy-elision-and-numbers.md) — use de()/que() never `de ${x}`; h left alone; readNumber is the one whole-number reader ("1.000" refused, format vs > 0); display-name fixture switch; route announcer is role=alert
+- [Not-found page (EV-241)](not-found-page-facts.md) — unmatched paths are a real 404; /clients/<typo> is the 403 denied page; signed-out only under /i/
