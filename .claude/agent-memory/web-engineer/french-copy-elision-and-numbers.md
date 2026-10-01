@@ -50,3 +50,19 @@ Since `fix/portal-french-polish-1001` (2026-10-01, PB-2/PB-4/PB-5 of the EV-273b
   again on this branch, including a U+0301 in a test string. Scan after every Write.
 
 See [[stories-carry-verbatim-copy]] before rewording any sentence an AC quotes.
+
+Since `fix/portal-french-polish-2` (2026-10-01, BUG-461/462/464/465/489/491/571/572/210):
+
+- **Never compose "label: value" in JSX or a template.** `copy.common.labelled(label, value)`
+  gives "Monter : …" in French (U+00A0, the register's Expected; the rest of
+  `copy.fr.ts` still writes a PLAIN space before ":" — not swept, nobody asked) and
+  "Move up: …" in English. `french-polish-2.spec.ts` sweeps the routine editor's
+  aria-labels for a colon not preceded by U+00A0 — a time like "07:45" would trip it.
+- **A stored number pre-filled into a field goes through `formatNumberInput(value, locale,
+  grouped)`** (`format.ts`): `String()` then comma + U+202F grouping in French. Grouped for
+  recipe quantities (`readNumber` reads U+202F); UNGROUPED for the progress-goal fields,
+  whose parser is `Number(x.replace(",", "."))`, not `readNumber`. `seedFormState`,
+  `reseedPreservingEdits` and `fromRecipe` take a REQUIRED locale.
+- **Dates: `datePrinted` in `format.ts`** rewrites ICU's parts: French day "1" → "1er",
+  English month "Sept" → "Sep". Specs that derive a French date from raw `Intl` must
+  accept `(?:1er|\d{1,2})` — three did not, and would have gone red on any 1st.

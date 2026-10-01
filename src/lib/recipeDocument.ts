@@ -1,4 +1,6 @@
 import type { Copy } from "./copy";
+import { formatNumberInput } from "./format";
+import type { Locale } from "./i18n/locale";
 import { readNumber } from "./numberInput";
 import type {
   CoachRecipe,
@@ -180,13 +182,21 @@ export function blankRecipe(): RecipeDraft {
   };
 }
 
-export function fromRecipe(recipe: CoachRecipe): RecipeDraft {
+/**
+ * The stored recipe as the editor's working copy.
+ *
+ * BUG-465 / BUG-571 — a quantity is written the page's way: "12,5" and "1 000,5" (U+202F)
+ * on a French page, whose own sentence says « par exemple 1 000 ou 12,5 ». Both read back
+ * through `readQuantity` as the stored number, so a name-only save sends it unchanged.
+ * kcal and macros are whole numbers and stay as they were.
+ */
+export function fromRecipe(recipe: CoachRecipe, locale: Locale): RecipeDraft {
   return {
     name: recipe.name,
     ingredients: recipe.ingredients.map((line) => ({
       key: line.key,
       label: line.label,
-      quantity: String(line.quantity),
+      quantity: formatNumberInput(line.quantity, locale, true),
       unit: line.unit,
     })),
     kcal: String(recipe.kcal),

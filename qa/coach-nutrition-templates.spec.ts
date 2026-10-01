@@ -392,7 +392,7 @@ test.describe("EV-324 — nutrition templates in a French browser (fr-FR)", () =
     await page.waitForURL("/nutrition-templates");
     const sèche = row(page, "Sèche 1800");
     await expect(sèche.getByText(`1${NNBSP}800 kcal · P 150 g · G 170 g · L 60 g`, { exact: true })).toBeVisible();
-    await expect(sèche.getByText(/^Mis à jour le \d{1,2} \S+ \d{4}$/)).toBeVisible();
+    await expect(sèche.getByText(/^Mis à jour le (?:1er|\d{1,2}) \S+ \d{4}$/)).toBeVisible();
     await expect(sèche.getByRole("button", { name: "Utiliser pour un client" })).toBeVisible();
     await expectNoEnglish(page, "the nutrition library with a template");
   });

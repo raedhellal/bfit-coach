@@ -1907,6 +1907,13 @@ async function recipeNameTaken(name: string, exceptId: string | null): Promise<b
 /**
  * A small stand-in for the 1,235-row catalog. The four fields are
  * `ExerciseCatalogEntry`'s: slug, name, primaryMuscles, equipment.
+ *
+ * BUG-489: in a real api's vocabulary — the SEED provider's (V21): lower-case muscle
+ * tokens, a comma-joined `primaryMuscles` ("quads,glutes"), upper-case equipment
+ * ("DUMBBELLS"), as a seed-provider api's picker serves them. Production's MuscleWiki
+ * vocabulary ("Anterior Deltoid", "BOSU-BALL") is pinned in `qa/french-polish-2.spec.ts`.
+ * It used to say "Quadriceps" and "Barbell", words neither provider sends, so the picker
+ * printing its values raw looked fine here and showed "t_spine" and "NONE" to a coach.
  */
 /**
  * The fixture's SEED shape — a compact way to write a plan down (catalog slug + sets,
@@ -1935,39 +1942,49 @@ interface SeedPlan {
 }
 
 const CATALOG: CatalogExercise[] = [
-  { slug: "barbell-back-squat", name: "Barbell Back Squat", primaryMuscles: "Quadriceps", equipment: "Barbell" },
-  { slug: "goblet-squat", name: "Goblet Squat", primaryMuscles: "Quadriceps", equipment: "Dumbbell" },
-  { slug: "leg-press", name: "Leg Press", primaryMuscles: "Quadriceps", equipment: "Machine" },
-  { slug: "romanian-deadlift", name: "Romanian Deadlift", primaryMuscles: "Hamstrings", equipment: "Barbell" },
-  { slug: "seated-leg-curl", name: "Seated Leg Curl", primaryMuscles: "Hamstrings", equipment: "Machine" },
-  { slug: "hip-thrust", name: "Hip Thrust", primaryMuscles: "Glutes", equipment: "Barbell" },
-  { slug: "walking-lunge", name: "Walking Lunge", primaryMuscles: "Glutes", equipment: "Dumbbell" },
-  { slug: "standing-calf-raise", name: "Standing Calf Raise", primaryMuscles: "Calves", equipment: "Machine" },
-  { slug: "barbell-bench-press", name: "Barbell Bench Press", primaryMuscles: "Chest", equipment: "Barbell" },
-  { slug: "dumbbell-bench-press", name: "Dumbbell Bench Press", primaryMuscles: "Chest", equipment: "Dumbbell" },
-  { slug: "machine-chest-press", name: "Machine Chest Press", primaryMuscles: "Chest", equipment: "Machine" },
-  { slug: "push-up", name: "Push-Up", primaryMuscles: "Chest", equipment: null, exerciseType: "BODYWEIGHT" },
-  { slug: "barbell-overhead-press", name: "Barbell Overhead Press", primaryMuscles: "Shoulders", equipment: "Barbell" },
-  { slug: "landmine-press", name: "Landmine Press", primaryMuscles: "Shoulders", equipment: "Barbell" },
-  { slug: "cable-lateral-raise", name: "Cable Lateral Raise", primaryMuscles: "Shoulders", equipment: "Cable" },
+  { slug: "barbell-back-squat", name: "Barbell Back Squat", primaryMuscles: "quads,glutes", equipment: "BARBELL" },
+  { slug: "goblet-squat", name: "Goblet Squat", primaryMuscles: "quads", equipment: "DUMBBELLS" },
+  { slug: "leg-press", name: "Leg Press", primaryMuscles: "quads", equipment: "MACHINE" },
+  { slug: "romanian-deadlift", name: "Romanian Deadlift", primaryMuscles: "hamstrings,glutes", equipment: "BARBELL" },
+  { slug: "seated-leg-curl", name: "Seated Leg Curl", primaryMuscles: "hamstrings", equipment: "MACHINE" },
+  { slug: "hip-thrust", name: "Hip Thrust", primaryMuscles: "glutes", equipment: "BARBELL" },
+  { slug: "walking-lunge", name: "Walking Lunge", primaryMuscles: "glutes", equipment: "DUMBBELLS" },
+  { slug: "standing-calf-raise", name: "Standing Calf Raise", primaryMuscles: "calves", equipment: "MACHINE" },
+  { slug: "barbell-bench-press", name: "Barbell Bench Press", primaryMuscles: "chest", equipment: "BARBELL" },
+  { slug: "dumbbell-bench-press", name: "Dumbbell Bench Press", primaryMuscles: "chest", equipment: "DUMBBELLS" },
+  { slug: "machine-chest-press", name: "Machine Chest Press", primaryMuscles: "chest", equipment: "MACHINE" },
+  { slug: "push-up", name: "Push-Up", primaryMuscles: "chest", equipment: null, exerciseType: "BODYWEIGHT" },
+  { slug: "barbell-overhead-press", name: "Barbell Overhead Press", primaryMuscles: "shoulders", equipment: "BARBELL" },
+  { slug: "landmine-press", name: "Landmine Press", primaryMuscles: "shoulders", equipment: "BARBELL" },
+  { slug: "cable-lateral-raise", name: "Cable Lateral Raise", primaryMuscles: "shoulders", equipment: "CABLE" },
   {
     slug: "single-arm-standing-cable-lateral-raise-with-pause",
     // 49 characters — EV-184 edge case 6's long name, in the catalog so it is
     // reachable by picking rather than only by fixture seeding.
     name: "Single-Arm Standing Cable Lateral Raise With Pause",
-    primaryMuscles: "Shoulders",
-    equipment: "Cable",
+    primaryMuscles: "shoulders",
+    equipment: "CABLE",
   },
-  { slug: "lat-pulldown", name: "Lat Pulldown", primaryMuscles: "Back", equipment: "Cable" },
-  { slug: "seated-cable-row", name: "Seated Cable Row", primaryMuscles: "Back", equipment: "Cable" },
-  { slug: "chest-supported-row", name: "Chest-Supported Row", primaryMuscles: "Back", equipment: "Dumbbell" },
-  { slug: "pull-up", name: "Pull-Up", primaryMuscles: "Back", equipment: null },
-  { slug: "barbell-curl", name: "Barbell Curl", primaryMuscles: "Biceps", equipment: "Barbell" },
-  { slug: "incline-dumbbell-curl", name: "Incline Dumbbell Curl", primaryMuscles: "Biceps", equipment: "Dumbbell" },
-  { slug: "cable-triceps-pushdown", name: "Cable Triceps Pushdown", primaryMuscles: "Triceps", equipment: "Cable" },
-  { slug: "plank", name: "Plank", primaryMuscles: "Core", equipment: null, exerciseType: "DURATION" },
-  { slug: "hanging-knee-raise", name: "Hanging Knee Raise", primaryMuscles: "Core", equipment: null },
+  { slug: "lat-pulldown", name: "Lat Pulldown", primaryMuscles: "back", equipment: "CABLE" },
+  { slug: "seated-cable-row", name: "Seated Cable Row", primaryMuscles: "back", equipment: "CABLE" },
+  { slug: "chest-supported-row", name: "Chest-Supported Row", primaryMuscles: "back", equipment: "DUMBBELLS" },
+  { slug: "pull-up", name: "Pull-Up", primaryMuscles: "back", equipment: null },
+  { slug: "barbell-curl", name: "Barbell Curl", primaryMuscles: "biceps", equipment: "BARBELL" },
+  { slug: "incline-dumbbell-curl", name: "Incline Dumbbell Curl", primaryMuscles: "biceps", equipment: "DUMBBELLS" },
+  { slug: "cable-triceps-pushdown", name: "Cable Triceps Pushdown", primaryMuscles: "triceps", equipment: "CABLE" },
+  { slug: "plank", name: "Plank", primaryMuscles: "core", equipment: null, exerciseType: "DURATION" },
+  { slug: "hanging-knee-raise", name: "Hanging Knee Raise", primaryMuscles: "core", equipment: null },
 ];
+
+/**
+ * The api's `targetMuscle`: the FIRST of `primaryMuscles` (`ExerciseCatalogEntry.
+ * deriveTargetMuscle`). The muscle filter's OPTIONS are these (`distinctTargetMuscles`) —
+ * "quads,glutes" is a row, not an option; the match itself is on the whole list.
+ */
+function targetMuscle(entry: CatalogExercise): string | null {
+  const first = entry.primaryMuscles?.split(",")[0]?.trim();
+  return first ? first : null;
+}
 
 function catalogBySlug(slug: string): CatalogExercise | undefined {
   return CATALOG.find((e) => e.slug === slug);
@@ -5260,7 +5277,8 @@ export const fixtureCoachApi: CoachApi = {
     const items = CATALOG.filter(
       (e) =>
         (!needle || e.name.toLowerCase().includes(needle)) &&
-        (!muscle || e.primaryMuscles === muscle) &&
+        // The api's match: a case-insensitive substring of the whole list (`LIKE %muscle%`).
+        (!muscle || (e.primaryMuscles ?? "").toLowerCase().includes(muscle.toLowerCase())) &&
         (!equipment || (e.equipment ?? "") === equipment)
     );
     // The api's default page size, and the api's ordinary paged envelope — there is no
@@ -5274,7 +5292,7 @@ export const fixtureCoachApi: CoachApi = {
       totalElements: items.length,
       totalPages: items.length === 0 ? 0 : Math.ceil(items.length / LIMIT),
       muscles: Array.from(
-        new Set(CATALOG.map((e) => e.primaryMuscles).filter((m): m is string => !!m))
+        new Set(CATALOG.map(targetMuscle).filter((m): m is string => !!m))
       ).sort(),
       equipment: Array.from(
         new Set(CATALOG.map((e) => e.equipment).filter((m): m is string => !!m))
