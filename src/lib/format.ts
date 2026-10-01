@@ -43,9 +43,16 @@ function decimal(text: string, locale: Locale): string {
   return locale === "fr" ? text.replace(".", ",") : text;
 }
 
-/** The space between a number and its unit: U+00A0 in French typography, as before in English. */
-function unitSpace(locale: Locale): string {
-  return locale === "fr" ? "\u00a0" : " ";
+/**
+ * The space between a number and its unit: U+00A0, NO-BREAK, in both languages.
+ *
+ * BUG-270: English used an ordinary space, so at 320 px the Weight row ended one line
+ * with "−6.0" and started the next with "kg" — the failure `formatPct` already names.
+ * The glyph is the same width; only the line-break opportunity is gone. `locale` stays a
+ * parameter so a language that ever wants another separator has one place to say so.
+ */
+function unitSpace(_locale: Locale): string {
+  return "\u00a0";
 }
 
 /** `YYYY-MM-DD` (a plain calendar date) → "8 Sep 2026" / "8 sept. 2026". */

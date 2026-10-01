@@ -1104,9 +1104,9 @@ export const en = {
     carbs: "Carbs",
     fat: "Fat",
     /** "417 / 2,150 kcal" — eaten, then the day's target. */
-    pair: (eaten: string, target: string, unit: string) => `${eaten} / ${target} ${unit}`,
+    pair: (eaten: string, target: string, unit: string) => `${eaten} / ${target}\u00a0${unit}`,
     /** OURS. A trainee with no stored target: what they ate, and no invented target. */
-    noTarget: (eaten: string, unit: string) => `${eaten} ${unit} · No target`,
+    noTarget: (eaten: string, unit: string) => `${eaten}\u00a0${unit} · No target`,
     kcal: "kcal",
     grams: "g",
     /** AC5, verbatim, keyed by `FoodLogEntry.Source`. An unknown source gets no label. */
@@ -1117,7 +1117,7 @@ export const en = {
     } as Record<string, string>,
     fromThePlan: "From the plan", // AC5, verbatim
     logged: "Logged",
-    serving: (grams: string) => `${grams} g`,
+    serving: (grams: string) => `${grams}\u00a0g`,
     /** OURS. Times are the api's instants shown in UTC, like every date on this portal. */
     at: (time: string) => `${time} UTC`,
     loadError: "The food log could not be loaded.",

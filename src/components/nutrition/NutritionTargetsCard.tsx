@@ -212,9 +212,17 @@ export function NutritionTargetsCard({
         title={copy.nutrition.targetsTitle}
         icon="apple"
         sub={source ?? undefined}
+        /**
+         * BUG-252: the badge is `nowrap` and 204 px ("Activity level: Moderately active"),
+         * 228 px in French, so at phone widths it pushed past the card and scrolled the page
+         * sideways. The head may now wrap, which drops the badge under the title when the
+         * two do not fit side by side; the badge's own text may wrap too, for a width where
+         * even a line of its own is too narrow. Desktop is unchanged: both fit on one line.
+         */
+        style={{ flexWrap: "wrap" }}
         action={
           targets?.activity ? (
-            <Badge tone="purple">
+            <Badge tone="purple" style={{ whiteSpace: "normal", maxWidth: "100%" }}>
               {copy.nutrition.activityBadge(
                 copy.nutrition.activityLabels[targets.activity] ?? targets.activity
               )}

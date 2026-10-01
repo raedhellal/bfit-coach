@@ -162,7 +162,8 @@ test("AC3 — dates and numbers take the page's locale; English is unchanged", (
   expect(formatDate("2026-10-03", "en")).toBe("3 Oct 2026");
   expect(formatKcal(7412, "en")).toBe("7,412");
   expect(formatGrams(17.3, "en")).toBe("17.3");
-  expect(formatKg(70.4, "en")).toBe("70.4 kg");
+  // BUG-270: U+00A0 since, so "70.4" and "kg" never wrap apart; it renders as the same space.
+  expect(formatKg(70.4, "en")).toBe("70.4\u00a0kg");
   expect(formatWeekday("2026-10-05", "en")).toBe("Monday");
 });
 
