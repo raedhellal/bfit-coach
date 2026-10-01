@@ -33,6 +33,10 @@ BUG-490, BUG-573, BUG-574. Swap-sheet facts are in [[swap-sheet-portal-facts]].
   `key` of `<RoutineDocumentEditor>`. `TemplateEditor` has no such path: `setDraft` is called only
   from `edit`, and `initial` is never re-read. Any new "replace the document" path in a shell must
   call `replaced()`. Specs: `qa/routine-editor-remount.spec.ts`, each red with its own bump removed.
+  **Sync on the remount, not on the notice** (staff, 3/33 flaky under load): the Publish re-seed runs in
+  an effect AFTER `router.refresh()` brings the new `planId`, later than « Published. ». Mark the row's
+  DOM node (`el.__old = 1`) and `expect.poll` until it is gone. Load and Discard swap in the same update
+  as their cue, so they need no wait.
 - **BUG-573/574 changed SENTENCES, not acceptance (Raed approved the reader's rules).**
   `readNumber`'s last line is `/\p{Nd}/u` → `malformed`. JS `\d` is ASCII-only even
   with the `u` flag, so « ١٨٠٠ » used to fall through to `notNumber` ("above 0"). No
