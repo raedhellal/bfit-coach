@@ -1877,7 +1877,7 @@ export const en = {
      */
     consent: "Accepting the invitation is how a client agrees to share their steps with you.",
     consentWorkouts:
-      "By accepting the invitation, your client agrees to share with you how many sessions they complete during the challenge.",
+      "Accepting the invitation is how a client agrees to share with you how many sessions they complete during the challenge.",
     progressLabel: "Participants' progress",
     colRank: "Rank",
     colClient: "Client",
@@ -1893,8 +1893,13 @@ export const en = {
       ACCEPTED: "Joined",
     },
     unnamed: "Unnamed client",
-    /** An INVITED row: no number, because accepting is the consent to share one. */
+    /**
+     * An INVITED row: no number, because accepting is the consent to share one. Picked by
+     * metric like `consent`: an accepted WORKOUTS row shows sessions completed today and in
+     * the window, never steps.
+     */
     invitedNote: "Their steps appear here once they accept.",
+    invitedNoteWorkouts: "Their completed sessions appear here once they accept.",
     rank: (rank: number) => `#${rank}`,
     todaySteps: (value: string, target: string) => `${value} / ${target} steps`,
     todayWorkouts: (value: string) => `${value} today`,
@@ -1927,8 +1932,17 @@ export const en = {
     /* ── delete ───────────────────────────────────────────────────────────── */
     remove: "Delete challenge",
     deleteTitle: "Delete this challenge?",
+    /**
+     * Picked by metric like `consent`. The api's delete (BUG-458) purges shared steps for a
+     * STEPS challenge only: a WORKOUTS challenge stores nothing, it counts sessions from the
+     * client's own training log, and those are untouched. Nor does the WORKOUTS sentence say
+     * the challenge leaves the clients' app: the app shows no WORKOUTS challenge at all
+     * (b-fit-mobile `challengeCardState`, STEPS only).
+     */
     deleteBody: (title: string) =>
       `“${title}” is deleted, and it disappears from your clients' app. The steps your clients shared for this challenge are deleted, except days another challenge they have joined still covers.`,
+    deleteBodyWorkouts: (title: string) =>
+      `“${title}” is deleted, with its invitations and participants. The sessions your clients completed are not deleted: this challenge only counted them.`,
     deleteConfirm: "Delete",
     deleteFailed: "The challenge could not be deleted. Try again in a moment.",
   },

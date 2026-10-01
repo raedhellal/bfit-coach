@@ -3732,7 +3732,11 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *   `evoli_fixture_roster=fail`              → `GET /coach-portal/clients` is a 500 (the
  *                                              create dialog's roster-failure sentence);
  *   `evoli_fixture_roster_extra=<n>`         → n more ACTIVE roster rows after the six
- *                                              (BUG-472: a roster past one 100-row page).
+ *                                              (BUG-472: a roster past one 100-row page);
+ *   `evoli_fixture_challenge_metric=<name>`  → `GET /coach-portal/challenges/{id}` serves
+ *                                              `metric: <name>`, a metric this portal does
+ *                                              not know (a newer api): its page must claim
+ *                                              neither steps nor sessions.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 const CHALLENGE_UNENDED_MAX = 20; // CoachChallengeUseCase.MAX_UNENDED_CHALLENGES
@@ -6025,7 +6029,10 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getChallenge(id: string): Promise<CoachChallengeDetail> {
-    return challengeDetail(await ownedChallenge(id));
+    const detail = await challengeDetail(await ownedChallenge(id));
+    const metric = await fixtureSwitch("evoli_fixture_challenge_metric");
+    // Off the TypeScript union on purpose: the wire is a string, and a newer api may add one.
+    return metric ? { ...detail, challenge: { ...detail.challenge, metric: metric as ChallengeMetric } } : detail;
   },
 
   async createChallenge(body: CoachChallengeCreateRequest): Promise<CoachChallengeDetail> {
