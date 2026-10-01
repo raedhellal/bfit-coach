@@ -7299,12 +7299,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
     delete:
-      summary: Delete a challenge (EV-321a AC9)
+      summary: Delete a challenge, and the steps shared only for it (EV-321a AC9, BUG-458)
       description: >-
-        Deletes the challenge and every participation. It disappears from each trainee's
-        `GET /me/challenges`. The trainees' own `daily_activity` rows are NOT deleted: they are
-        the trainee's data, and no coach read can reach them without another accepted challenge.
-        After it, the id answers the same 403 as a foreign or random id.
+        Deletes the challenge and every participation, in one transaction. It disappears from
+        each trainee's `GET /me/challenges`. For a STEPS challenge it also deletes, for every
+        participant who had ACCEPTED it, their stored step rows (every source) for the days of
+        this challenge's window that are NOT inside the window of another STEPS challenge that
+        participant has still accepted: the same rule as `POST /me/challenges/{id}/leave`. A day
+        that still serves another accepted challenge is kept; steps outside this window, steps of
+        a participant who was only INVITED, and every row of a WORKOUTS challenge's participants
+        are untouched. After it, the id answers the same 403 as a foreign or random id.
       security:
         - bearerAuth: []
       parameters:
