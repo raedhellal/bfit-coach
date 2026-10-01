@@ -512,6 +512,15 @@ export const fr = {
     weekOutOfRange: "Seule la semaine en cours peut être appliquée.",
     weekRateLimited:
       "Une semaine de repas peut être appliquée une fois par jour pour chaque client. Réessayez demain.",
+    weekRefusedTitle: (first: string) =>
+      `Nous n'avons pas pu construire de semaine de repas pour ${first}.`,
+    weekRefusedBody:
+      "Ses allergies et règles alimentaires enregistrées excluent toutes les recettes que nous pouvons vérifier. Rien n'a été modifié.",
+    weekRefusedKept: (first: string) =>
+      `La semaine ci-dessous reste la semaine en cours ${de(first)} — elle n'a pas été modifiée.`,
+    weekRefusedNoWeek: (first: string) => `${first} n'a pas de semaine de repas pour le moment.`,
+    refusedAskThem: (first: string) =>
+      `Vous ne pouvez pas modifier les préférences alimentaires ${de(first)} ici. Demandez-lui de les vérifier dans l'app.`,
     lockedMealsKept: "Les repas que le client a verrouillés sont conservés.",
     regenerate: "Régénérer le jour",
     regenerateSharesLimit: (trainee: string) =>
@@ -520,6 +529,16 @@ export const fr = {
       `Remplacer un repas n'utilise pas les régénérations quotidiennes ${de(endSentence(trainee))}`,
     regenerating: "Régénération…",
     regenerateFailed: "Le jour n'a pas pu être régénéré.",
+    /** The weekday mid-sentence is lower-cased ("le lundi"), the house style. */
+    dayRefusedTitle: (day: string, first: string) =>
+      `Nous n'avons pas pu reconstruire le ${day.toLowerCase()} pour ${first}.`,
+    dayRefusedBody:
+      "Ses allergies et règles alimentaires enregistrées excluent toutes les recettes que nous pouvons vérifier pour ce jour.",
+    dayRefusedKept: (day: string) =>
+      `Le ${day.toLowerCase()} n'a pas changé — aucun repas n'a été remplacé.`,
+    /** Staff ruling 2026-10-01: the trainee's counter, so it is stated about them, not "vous". */
+    dayRegenCapped: (_trainee: string, first: string) =>
+      `Les régénérations de jour ${de(first)} sont épuisées pour aujourd'hui.`,
     /** The demo script's word ("Remplacer"); the app says "Échanger" for the trainee's own swap. */
     swap: "Remplacer le repas",
     swapTitle: "Remplacer le repas",
@@ -544,7 +563,7 @@ export const fr = {
       SNACK: "Collation",
     } as Record<string, string>,
     macros: (kcal: number, p: number, c: number, f: number) =>
-      `${n(kcal)} kcal · ${n(p)} g de protéines · ${n(c)} g de glucides · ${n(f)} g de lipides`,
+      `${n(kcal)}\u00a0kcal · ${n(p)}\u00a0g de protéines · ${n(c)}\u00a0g de glucides · ${n(f)}\u00a0g de lipides`,
     loadError: "La nutrition de ce client n'a pas pu être chargée.",
   },
 
@@ -970,7 +989,8 @@ export const fr = {
   challenges: {
     nav: "Défis",
     title: "Défis",
-    subtitle: "Des objectifs de pas que vos clients rejoignent depuis l'app Evoli Fit.",
+    // Toute métrique : la liste contient aussi des défis WORKOUTS, le sous-titre n'en nomme aucune.
+    subtitle: "Des défis que vos clients rejoignent depuis l'app Evoli Fit.",
     create: "Nouveau défi",
     emptyTitle: "Aucun défi pour l'instant",
     emptyBody:
@@ -1048,6 +1068,8 @@ export const fr = {
     autoRefresh: "Mise à jour toutes les 45 secondes tant que cette page est ouverte.",
     loadedAt: (time: string) => `Mis à jour à ${time}`,
     consent: "En acceptant l'invitation, le client accepte de partager ses pas avec vous.",
+    consentWorkouts:
+      "En acceptant l'invitation, le client accepte de partager avec vous le nombre de séances terminées pendant le défi.",
     progressLabel: "Progression des participants",
     colRank: "Rang",
     colClient: "Client",
@@ -1063,6 +1085,7 @@ export const fr = {
     },
     unnamed: "Client sans nom",
     invitedNote: "Ses pas apparaîtront ici après acceptation.",
+    invitedNoteWorkouts: "Ses séances apparaîtront ici après acceptation.",
     rank: (rank: number) => `${rank}${rank === 1 ? "er" : "e"}`,
     todaySteps: (value: string, target: string) => `${value} / ${target} pas`,
     todayWorkouts: (value: string) => `${value} aujourd'hui`,
@@ -1097,6 +1120,8 @@ export const fr = {
     deleteTitle: "Supprimer ce défi ?",
     deleteBody: (title: string) =>
       `${q(title)} est supprimé et disparaît de l'app de vos clients. Les pas que vos clients ont partagés pour ce défi sont supprimés, sauf les jours couverts par un autre défi auquel ils participent.`,
+    deleteBodyWorkouts: (title: string) =>
+      `${q(title)} est supprimé, avec ses invitations et ses participants. Les séances terminées par vos clients ne sont pas supprimées\u00a0: ce défi ne faisait que les compter.`,
     deleteConfirm: "Supprimer",
     deleteFailed: "Le défi n'a pas pu être supprimé. Réessayez dans un instant.",
   },

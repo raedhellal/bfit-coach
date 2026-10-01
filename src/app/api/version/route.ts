@@ -9,8 +9,9 @@ import { getVersionInfo } from "@/lib/version";
  * caught. `src/middleware.ts` lets it through explicitly — as a statement in code,
  * not as a gap in the matcher regex — and narrows it to GET/HEAD.
  *
- * It leaks nothing. The body is built by `getVersionInfo()` from a fixed set of four
- * fields: a git SHA, its short form, a build timestamp and the environment name. No
+ * It leaks nothing. The body is built by `getVersionInfo()` from a fixed set of five
+ * fields: a git SHA, its short form, a build timestamp, the environment name and the
+ * Vercel region serving the request (the witness for `vercel.json`'s cdg1 pin). No
  * environment variables, no API base URL, no config, no dependency list, no paths.
  * Treat every addition here as published to the internet, because it is.
  *

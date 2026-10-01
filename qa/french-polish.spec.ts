@@ -117,6 +117,8 @@ const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
   "client.coachedSince#0",
   "client.lastWeighIn#0",
   "nutrition.applyBody#1",
+  "nutrition.dayRefusedKept#0", // weekday
+  "nutrition.dayRefusedTitle#0", // weekday
   "nutrition.sourceCoach#0",
   "nutrition.sourceCoachOther#0",
   "nutritionTemplates.updatedAt#0",
