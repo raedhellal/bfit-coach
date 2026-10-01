@@ -15,9 +15,10 @@ import { test } from "./fixture-test";
  *   (R) The Remove bump (`onRemove` → `reshaped()`) had no test of its own: staff S1's
  *       (C) covers Remove DAY, and (A) covers Move.
  *
- * Every test here is red with its fix removed, at its LAST assertion (« Seconds » shows
- * 45): Load and Discard on 69618e8; Publish with only the re-seed effect's `replaced()`
- * taken out; (R) with only `reshaped()` taken out of `onRemove`.
+ * Every test here is red with its fix removed: Load and Discard on 69618e8, and (R) with
+ * only `reshaped()` taken out of `onRemove`, each at its LAST assertion (« Seconds »
+ * shows 45). Publish, with only the re-seed effect's `replaced()` taken out, is red at
+ * its remount wait: without the bump the row is never remounted.
  *
  * Sentences are LITERALS, never imported from `src/lib/copy.ts`.
  */
@@ -139,6 +140,16 @@ test.describe("(E) a document replaced from the server remounts the rows; no sta
     await bench.getByLabel("Seconds").fill("45");
     await bench.getByLabel("Tracked as").selectOption("WEIGHT_REPS");
     await bench.getByLabel("Reps").fill("6-8");
+    /**
+     * The sync point is the REMOUNT, not the notice. Load and Discard replace the document
+     * in the same update that shows their cue; Publish does not. « Published. » is set by
+     * the action's continuation, and the re-seed runs later, in RoutineEditor's effect,
+     * when `router.refresh()` delivers the new `planId`. Staff measured the gap under load:
+     * 3 of 33 runs read the old row. So mark this row's DOM node, and wait for a new one.
+     */
+    await bench.evaluate((el) => {
+      (el as HTMLElement & { __old?: number }).__old = 1;
+    });
 
     await page.getByRole("button", { name: "Publish", exact: true }).click();
     const modal = page.getByRole("dialog", { name: "No changes were needed" });
@@ -146,6 +157,9 @@ test.describe("(E) a document replaced from the server remounts the rows; no sta
     await modal.getByRole("button", { name: "Publish", exact: true }).click();
     await expect(page.getByText("Published. The trainee sees it next time they open the app.")).toBeVisible();
     await expect(page.getByText("Published plan")).toBeVisible();
+    await expect
+      .poll(() => bench.evaluate((el) => !(el as HTMLElement & { __old?: number }).__old))
+      .toBe(true);
 
     // What was published is Weight & reps with no seconds; the editor now shows that plan.
     await bench.getByLabel("Tracked as").selectOption("DURATION");
