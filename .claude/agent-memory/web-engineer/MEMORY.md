@@ -54,3 +54,4 @@
 - [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale
 - [Recipe meal slots + count line (EV-320c/b)](recipe-meal-slots-portal-facts.md) — mealSlots sent only if changed; count = COACH_RECIPE && placedByYou; fixture fill cookie
 - [French copy: elision and numbers](french-copy-elision-and-numbers.md) — use de()/que() never `de ${x}`; h left alone; readNumber is the one whole-number reader ("1.000" refused, format vs > 0); display-name fixture switch; route announcer is role=alert
+- [Security headers + framing tests (EV-229)](security-headers-and-framing-tests.md) — headers() reaches middleware 307/405; framer must be a real loopback server; --ink-3 forked
