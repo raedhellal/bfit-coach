@@ -125,6 +125,10 @@ export function RoutineDocumentEditor({
    * Friday's Plank takes the same card and index), and the stash came back on the wrong
    * exercise as a wrong, editable number. Dropping it costs the coach one retype; carrying
    * it to another exercise prescribes a number nobody chose.
+   *
+   * It covers edits made HERE. A document replaced by the parent is the parent's to
+   * signal: `RoutineEditor` keys this component on a load counter. (`TemplateEditor`
+   * never replaces its document after mount, so it passes no key.)
    */
   const [structure, setStructure] = useState(0);
   const reshaped = () => setStructure((n) => n + 1);
@@ -544,10 +548,12 @@ function ExerciseRow({
    * them back instead of an empty box. A reload starts the row afresh: what was never
    * saved is not remembered, and neither is it across a Move, Remove, Remove day or
    * Replace: the editor re-keys every row on those (`structure`), so none of those edits
-   * can hand the stash to another exercise that took this row's place. (A document
-   * swapped in from outside — « Load the saved version » — keeps the keys; the row then
-   * holds the same name at the same position, and a stash it had is the coach's own
-   * number for that slot.)
+   * can hand the stash to another exercise that took this row's place. A document
+   * swapped in from outside (« Load the saved version », Discard, the re-seed after a
+   * publish) drops it too: `RoutineEditor` re-keys this whole editor on those. A row
+   * that only matches by name and position may hold another exercise from the new
+   * document (another tab removed day 2, so day 3's Plank sits in day 2's slot), so a
+   * stash cannot be assumed to belong to the exercise now under it.
    */
   const [stashedSeconds, setStashedSeconds] = useState<number | null>(null);
   function changeTracking(value: string) {
