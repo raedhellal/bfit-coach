@@ -53,4 +53,4 @@
 - [Routine draft write path (BUG-195c)](routine-draft-write-path-facts.md) — one editor, forDraftSave, token echoed as a string, 409 dialog, 4-e partition, live traps
 - [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale
 - [Recipe meal slots + count line (EV-320c/b)](recipe-meal-slots-portal-facts.md) — mealSlots sent only if changed; count = COACH_RECIPE && placedByYou; fixture fill cookie
-- [French copy: elision and numbers](french-copy-elision-and-numbers.md) — use de()/que() never `de ${x}`; h left alone; parseTarget reads "1 800"; display-name fixture switch; route announcer is role=alert
+- [French copy: elision and numbers](french-copy-elision-and-numbers.md) — use de()/que() never `de ${x}`; h left alone; readNumber is the one whole-number reader ("1.000" refused, format vs > 0); display-name fixture switch; route announcer is role=alert
