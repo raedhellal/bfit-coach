@@ -1042,6 +1042,8 @@ export const fr = {
     autoRefresh: "Mise à jour toutes les 45 secondes tant que cette page est ouverte.",
     loadedAt: (time: string) => `Mis à jour à ${time}`,
     consent: "En acceptant l'invitation, le client accepte de partager ses pas avec vous.",
+    consentWorkouts:
+      "En acceptant l'invitation, le client accepte de partager avec vous le nombre de séances terminées pendant le défi.",
     progressLabel: "Progression des participants",
     colRank: "Rang",
     colClient: "Client",
