@@ -60,7 +60,7 @@ export default async function RecipePage({ params }: { params: { id: string } })
       {loaded.recipe ? (
         <RecipeEditor
           recipeId={loaded.recipe.id}
-          initial={fromRecipe(loaded.recipe)}
+          initial={fromRecipe(loaded.recipe, copy.locale)}
           unknownKeys={loaded.recipe.unknownKeys}
           storedMealSlots={loaded.recipe.mealSlots}
         />

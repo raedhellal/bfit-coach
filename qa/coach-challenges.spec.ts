@@ -386,7 +386,7 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await expect(cards.nth(1)).toContainText("5 invités · 3 ont rejoint");
     await expect(cards.nth(0)).toContainText("À venir");
     await expect(cards.nth(2)).toContainText("Terminé");
-    await expect(cards.nth(1)).toContainText(/Du \d{1,2} [a-zéû.]+ \d{4} au \d{1,2} [a-zéû.]+ \d{4} · 7 jours/);
+    await expect(cards.nth(1)).toContainText(/Du (?:1er|\d{1,2}) [a-zéû.]+ \d{4} au (?:1er|\d{1,2}) [a-zéû.]+ \d{4} · 7 jours/);
     await expectNoEnglish(page, "the challenge list");
 
     await page.goto(`/challenges/${ACTIVE}`);

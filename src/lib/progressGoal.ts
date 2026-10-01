@@ -1,7 +1,7 @@
 import type { CoachProgressGoalRequest, TraineeProgressGoal, TraineeProgressReading } from "./coachApi";
 import type { Copy } from "./copy";
 import type { Locale } from "./i18n/locale";
-import { formatDate, formatKg, formatKgDelta, formatPct, formatPtsDelta } from "./format";
+import { formatDate, formatKg, formatKgDelta, formatNumberInput, formatPct, formatPtsDelta } from "./format";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -513,8 +513,12 @@ export function milestoneAttribution(goal: TraineeProgressGoal, copy: Copy): str
  * one: seeding it with the fallback would make the coach's first save write the link
  * date as if they had typed it, turning a defaulted value into a coach-attributed one
  * without anybody deciding to.
+ *
+ * BUG-464 — the two numbers are written the page's way: "70,4" on a French page, where
+ * the row above already reads "70,4 kg". Ungrouped, because `buildProgressGoalRequest`
+ * reads a decimal comma but not a grouping space; a "70,4" saved untouched sends 70.4.
  */
-export function seedFields(goal: TraineeProgressGoal): {
+export function seedFields(goal: TraineeProgressGoal, locale: Locale): {
   startedOn: string;
   milestone: string;
   bodyFat: string;
@@ -522,8 +526,8 @@ export function seedFields(goal: TraineeProgressGoal): {
   const bodyFat = goal.milestoneBodyFatPct ?? null;
   return {
     startedOn: goal.startedOnSource === "LINK_DEFAULT" ? "" : goal.startedOn.slice(0, 10),
-    milestone: goal.milestoneWeightKg === null ? "" : String(goal.milestoneWeightKg),
-    bodyFat: bodyFat === null ? "" : String(bodyFat),
+    milestone: goal.milestoneWeightKg === null ? "" : formatNumberInput(goal.milestoneWeightKg, locale, false),
+    bodyFat: bodyFat === null ? "" : formatNumberInput(bodyFat, locale, false),
   };
 }
 
@@ -575,9 +579,9 @@ export interface ProgressGoalFormState {
 }
 
 /** A clean form, seeded from the server. Every field tracks the server again. */
-export function seedFormState(goal: TraineeProgressGoal): ProgressGoalFormState {
+export function seedFormState(goal: TraineeProgressGoal, locale: Locale): ProgressGoalFormState {
   return {
-    ...seedFields(goal),
+    ...seedFields(goal, locale),
     dirty: { startedOn: false, milestone: false, bodyFat: false },
     bodyFatTouched: false,
   };
@@ -592,9 +596,10 @@ export function seedFormState(goal: TraineeProgressGoal): ProgressGoalFormState 
  */
 export function reseedPreservingEdits(
   current: ProgressGoalFormState,
-  goal: TraineeProgressGoal
+  goal: TraineeProgressGoal,
+  locale: Locale
 ): ProgressGoalFormState {
-  const seeded = seedFields(goal);
+  const seeded = seedFields(goal, locale);
   return {
     startedOn: current.dirty.startedOn ? current.startedOn : seeded.startedOn,
     milestone: current.dirty.milestone ? current.milestone : seeded.milestone,

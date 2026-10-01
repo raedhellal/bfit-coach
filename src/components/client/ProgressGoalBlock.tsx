@@ -97,7 +97,7 @@ export function ProgressGoalBlock({
   const signature = `${incoming.startedOn}|${incoming.startedOnSource}|${incoming.milestoneWeightKg}|${incoming.milestoneBodyFatPct ?? null}|${incoming.milestoneUpdatedAt}`;
   const [propSignature, setPropSignature] = useState(signature);
   const [goal, setGoal] = useState(incoming);
-  const [fields, setFields] = useState(() => seedFormState(incoming));
+  const [fields, setFields] = useState(() => seedFormState(incoming, copy.locale));
 
   if (signature !== propSignature) {
     // The signature is advanced whether or not a field was re-seeded — otherwise a
@@ -105,7 +105,7 @@ export function ProgressGoalBlock({
     // unrelated prop push would re-seed against a signature that is two changes old.
     setPropSignature(signature);
     setGoal(incoming);
-    setFields((current) => reseedPreservingEdits(current, incoming));
+    setFields((current) => reseedPreservingEdits(current, incoming, copy.locale));
   }
 
   const [notice, setNotice] = useState<string | null>(null);
@@ -207,7 +207,7 @@ export function ProgressGoalBlock({
       // Same rule as the prop path: a field touched while the save was in flight is
       // the coach's, and the api's echo of the value they had already sent does not
       // get to overwrite it.
-      setFields((current) => reseedPreservingEdits(current, result.goal));
+      setFields((current) => reseedPreservingEdits(current, result.goal, copy.locale));
       logPortalEvent({
         event: "coach_progress_goal_set",
         coachId,

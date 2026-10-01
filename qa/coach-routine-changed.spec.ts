@@ -34,8 +34,8 @@ const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 /**
  * The portal's one date format (en-GB, UTC — `src/lib/format.ts`), built here from
  * `Intl` directly rather than imported, so a change to the portal's formatter is not
- * agreed with by construction. ICU spells September "Sept" in en-GB today; deriving it
- * keeps the assertion about the SENTENCE, not about one ICU build.
+ * agreed with by construction. ICU spells September "Sept" in en-GB today and the portal
+ * pins it to "Sep" (BUG-210), which is the one rewrite applied here.
  */
 const onDay = (iso: string) =>
   new Intl.DateTimeFormat("en-GB", {
@@ -43,7 +43,9 @@ const onDay = (iso: string) =>
     month: "short",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(iso));
+  })
+    .format(new Date(iso))
+    .replace(/\bSept\b/, "Sep");
 
 const YUSUF_SENTENCE = `Yusuf changed this plan on ${onDay("2026-09-24T18:40:00Z")} (UTC). You're seeing their version.`;
 const OMAR_SENTENCE = `Omar changed this plan on ${onDay("2026-09-19T08:15:00Z")} (UTC). You're seeing their version.`;

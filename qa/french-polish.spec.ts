@@ -300,7 +300,8 @@ test.describe("number-input tail", () => {
       expect(parseQuantity(typed), typed).toBeNull();
     }
     expect(localProblems(withQuantity("1.000"), fr)).toEqual([
-      { at: "ingredients.0", message: "Une quantité est supérieure à 0 et au plus égale à 5000, avec 2 décimales au plus." },
+      // BUG-572: the range sentence groups 5 000 (U+202F) like the format sentence.
+      { at: "ingredients.0", message: `Une quantité est supérieure à 0 et au plus égale à 5${NNBSP}000, avec 2 décimales au plus.` },
     ]);
     expect(localProblems(withQuantity(""), fr)).toEqual([
       { at: "ingredients.0", message: "Saisissez une quantité.", missing: true },
@@ -527,7 +528,8 @@ test.describe("a French browser (fr-FR)", () => {
     await expect(page.getByText("Recette enregistrée.", { exact: true })).toBeVisible();
     await expect(page.getByText("Modifications non enregistrées", { exact: true })).toHaveCount(0);
     await page.goto(`/recipes/${CHICKEN_RICE_BOWL}`);
-    await expect(page.locator('[data-field="ingredients.0"] input').first()).toHaveValue("1000");
+    // BUG-571: reopened in French, it is written the French way — and reads back as 1000.
+    await expect(page.locator('[data-field="ingredients.0"] input').first()).toHaveValue(`1${NNBSP}000`);
   });
 
   test("PB-4 — the week card's confirm names Omar with elision", async ({ page }) => {

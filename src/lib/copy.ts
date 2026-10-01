@@ -1953,6 +1953,12 @@ export const en = {
     dash: "—",
     /** A modal's close button (was a literal in kit.tsx before EV-324). */
     close: "Close",
+    /**
+     * "Label: value" — a label and what it labels, in one string (BUG-461 / BUG-462). The
+     * colon was composed in JSX ("{label}: {value}"), which gave French "Monter: …" where
+     * French typography writes "Monter : …". English is unchanged.
+     */
+    labelled: (label: string, value: string) => `${label}: ${value}`,
   },
 
   /**
@@ -1993,6 +1999,94 @@ export const en = {
       HIP: "Hips",
       ANKLE: "Ankles",
       ELBOW: "Elbows",
+    } as Record<string, string>,
+  },
+
+  /**
+   * BUG-489 — the exercise catalogue's muscle and equipment VALUES as words, for the picker's
+   * two filters and the badges on a catalogue row. The api serves raw catalogue data
+   * (`CoachCatalogPageResponse.muscles` / `.equipment`, `primaryMuscles` "quads,glutes",
+   * `equipment` "DUMBBELLS"), and the picker printed it as it came: "t_spine", "NONE".
+   *
+   * Keys are NORMALISED (`src/lib/catalogLabels.ts`: lower case, spaces and hyphens as "_"),
+   * so "BARBELL", "Barbell" and "barbell" are one entry.
+   *
+   * Two vocabularies, both witnessed:
+   *   · PRODUCTION's is MuscleWiki's (`application.yml` `EXERCISE_PROVIDER:musclewiki`).
+   *     `SyncExercisesUseCase.toEntry` stores the first primary muscle VERBATIM ("Anterior
+   *     Deltoid", "Traps (mid-back)") and the category UPPER-CASED ("BOSU-BALL", "TRX").
+   *     The rows under "MuscleWiki" are the values read off a local catalogue synced by that
+   *     provider (staff review of `fix/portal-french-polish-2`, 2026-10-01).
+   *   · A SEED-provider api (`EXERCISE_PROVIDER=seed`, local dev and the BUG-195c / EV-321b
+   *     gate, `logs/b1-i6-copy-dump.json`) serves b-fit-api's seeded catalogue,
+   *     `V21__exercise_library.sql`: 24 lower-case muscle tokens and 8 equipment values.
+   * Anything neither list has is shown humanised when it is a token ("BOSU-BALL" → "Bosu
+   * ball") and as served when it is already words (`catalogLabels.ts`); never dropped.
+   *
+   * Not the guardrail tables above: `user_profiles.equipment` and the catalogue's
+   * `equipment` are two columns with two vocabularies (`guardrailLabels.ts`).
+   */
+  catalog: {
+    muscles: {
+      adductors: "Adductors",
+      back: "Back",
+      biceps: "Biceps",
+      calves: "Calves",
+      cardio: "Cardio",
+      chest: "Chest",
+      core: "Core",
+      forearms: "Forearms",
+      front_delts: "Front delts",
+      full_body: "Full body",
+      glutes: "Glutes",
+      grip: "Grip",
+      hamstrings: "Hamstrings",
+      hip_flexors: "Hip flexors",
+      hips: "Hips",
+      lats: "Lats",
+      legs: "Legs",
+      obliques: "Obliques",
+      quads: "Quads",
+      rear_delts: "Rear delts",
+      shoulders: "Shoulders",
+      spine: "Spine",
+      t_spine: "Thoracic spine",
+      triceps: "Triceps",
+      upper_back: "Upper back",
+      // MuscleWiki
+      abdominals: "Abdominals",
+      lower_back: "Lower back",
+      traps: "Traps",
+      anterior_deltoid: "Anterior deltoid",
+      lateral_deltoid: "Lateral deltoid",
+      posterior_deltoid: "Posterior deltoid",
+      lower_abdominals: "Lower abdominals",
+      upper_abdominals: "Upper abdominals",
+      tibialis: "Tibialis",
+      "traps_(mid_back)": "Traps (mid-back)",
+    } as Record<string, string>,
+    equipment: {
+      band: "Band",
+      barbell: "Barbell",
+      bodyweight: "Bodyweight",
+      cable: "Cable",
+      dumbbells: "Dumbbells",
+      kettlebell: "Kettlebell",
+      machine: "Machine",
+      // An exercise that needs nothing — not "None", which reads as "no answer".
+      none: "No equipment",
+      // MuscleWiki
+      cables: "Cables",
+      kettlebells: "Kettlebells",
+      plate: "Plate",
+      smith_machine: "Smith machine",
+      stretches: "Stretches",
+      bosu_ball: "Bosu ball",
+      medicine_ball: "Medicine ball",
+      trx: "TRX",
+      vitruvian: "Vitruvian",
+      yoga: "Yoga",
+      cardio: "Cardio",
     } as Record<string, string>,
   },
 } as const;

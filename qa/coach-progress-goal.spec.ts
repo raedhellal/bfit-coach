@@ -483,7 +483,7 @@ test.describe("the request is a whole representation", () => {
      * returns a fresh RSC payload with the action's response), so "props changed" is
      * not evidence that the coach has finished typing.
      */
-    const opened = seedFormState(storedGoal("2026-06-01", 80));
+    const opened = seedFormState(storedGoal("2026-06-01", 80), "en");
     expect(opened).toEqual({
       startedOn: "2026-06-01",
       milestone: "80",
@@ -493,7 +493,7 @@ test.describe("the request is a whole representation", () => {
     });
 
     const typing = editField(opened, "milestone", "69");
-    const pushed = reseedPreservingEdits(typing, storedGoal("2026-07-01", 67));
+    const pushed = reseedPreservingEdits(typing, storedGoal("2026-07-01", 67), "en");
 
     // The touched field is the coach's…
     expect(pushed.milestone, "an edited field was re-seeded from props").toBe("69");
@@ -503,7 +503,7 @@ test.describe("the request is a whole representation", () => {
     expect(pushed.dirty).toEqual({ startedOn: false, milestone: true, bodyFat: false });
 
     // Only a sent save settles them — after which both track the server again.
-    const afterSend = reseedPreservingEdits(markSent(typing), storedGoal("2026-07-01", 67));
+    const afterSend = reseedPreservingEdits(markSent(typing), storedGoal("2026-07-01", 67), "en");
     expect(afterSend.milestone).toBe("67");
   });
 
@@ -1381,14 +1381,14 @@ test.describe("EV-274b — the pure rules", () => {
 
   test("touched survives a sent save and ends only at a re-seed from the server", () => {
     const goal = traineeA();
-    const typed = editField(seedFormState(goal), "bodyFat", "21");
+    const typed = editField(seedFormState(goal, "en"), "bodyFat", "21");
     expect(typed.bodyFatTouched).toBe(true);
     // Sent: dirty clears so the reply may re-seed — touched does NOT.
     const sent = markSent(typed);
     expect(sent.dirty.bodyFat).toBe(false);
     expect(sent.bodyFatTouched).toBe(true);
     // The server's answer re-seeds the field, and only then is the text the server's.
-    const reseeded = reseedPreservingEdits(sent, { ...goal, milestoneBodyFatPct: 21 });
+    const reseeded = reseedPreservingEdits(sent, { ...goal, milestoneBodyFatPct: 21 }, "en");
     expect(reseeded.bodyFat).toBe("21");
     expect(reseeded.bodyFatTouched).toBe(false);
   });

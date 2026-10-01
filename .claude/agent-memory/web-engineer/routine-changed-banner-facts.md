@@ -1,6 +1,6 @@
 ---
 name: routine-changed-banner-facts
-description: EV-283b "the trainee changed this plan" — the banner keys on lastChangedBy not the flag, one fixture record feeds both reads, en-GB ICU prints "Sept", and how to vendor when local api main is behind
+description: EV-283b "the trainee changed this plan" — the banner keys on lastChangedBy not the flag, one fixture record feeds both reads, en-GB ICU prints "Sept" (the portal pins "Sep" since BUG-210), and how to vendor when local api main is behind
 metadata:
   type: project
 ---
@@ -24,7 +24,9 @@ roster. Facts that are decisions, not details:
   the page cannot disagree — the api's own claim, held by construction.
   `publishRoutine` writes COACH/now/false, which is what makes "publishing clears it"
   testable end to end on both screens.
-- **en-GB ICU prints September as "Sept"**, so "24 Sep 2026" in a literal is red.
+- **en-GB ICU prints September as "Sept"**; since BUG-210 (`fix/portal-french-polish-2`)
+  `format.ts` rewrites the month part to "Sep", so a spec deriving a date from raw `Intl`
+  must apply `.replace(/\bSept\b/, "Sep")` itself.
   The specs derive the expected date with `Intl` directly (not the portal's
   `formatInstant`, which would agree by construction).
 - **Session edits are not recorded until EV-283c** (api). The banner reads the same

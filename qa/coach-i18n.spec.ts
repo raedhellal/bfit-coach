@@ -118,6 +118,18 @@ const SAME_IN_BOTH: Record<string, string> = {
   "challenges.metricLabel": "French 'Type'",
   "challenges.source.HEALTH_CONNECT": "Google's product name, never translated",
   "guardrails.equipment.KETTLEBELL": "French 'Kettlebell' (b-fit-mobile fr.json)",
+  // BUG-489 — catalogue words French spells the same.
+  "catalog.muscles.biceps": "French 'Biceps'",
+  "catalog.muscles.cardio": "French 'Cardio'",
+  "catalog.muscles.obliques": "French 'Obliques'",
+  "catalog.muscles.triceps": "French 'Triceps'",
+  "catalog.equipment.kettlebell": "French 'Kettlebell', as in guardrails",
+  "catalog.equipment.kettlebells": "French 'Kettlebells'",
+  "catalog.equipment.machine": "French 'Machine'",
+  "catalog.equipment.trx": "a brand name",
+  "catalog.equipment.vitruvian": "a brand name",
+  "catalog.equipment.yoga": "French 'Yoga'",
+  "catalog.equipment.cardio": "French 'Cardio'",
 };
 
 test("no French string or template output is left identical to English, outside the allowlist", () => {

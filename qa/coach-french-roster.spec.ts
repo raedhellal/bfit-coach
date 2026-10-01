@@ -10,8 +10,8 @@ import { FOOTER_FR, expectFooterOnScreen, expectNoEnglish, signInFrench } from "
  * fixture scenario serves an empty roster. The checks are `coach-french.spec.ts`'s.
  */
 
-/** A French short date: "28 sept. 2026" (fr-FR, `month: "short"`). */
-const FRENCH_DATE = /^\d{1,2} (janv\.|févr\.|mars|avr\.|mai|juin|juil\.|août|sept\.|oct\.|nov\.|déc\.) \d{4}$/;
+/** A French short date: "28 sept. 2026" (fr-FR, `month: "short"`), "1er oct. 2026" on a 1st (BUG-491). */
+const FRENCH_DATE = /^(?:1er|\d{1,2}) (janv\.|févr\.|mars|avr\.|mai|juin|juil\.|août|sept\.|oct\.|nov\.|déc\.) \d{4}$/;
 
 test.describe("a French browser (fr-FR) at 1280 × 800", () => {
   test.use({ locale: "fr-FR", viewport: { width: 1280, height: 800 } });
@@ -79,5 +79,27 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
       })
     ).toBeVisible();
     await expect(dialog.getByText(/de Inès/)).toHaveCount(0);
+  });
+});
+
+/**
+ * BUG-461 — the roster's PHONE card wrote "Dernière séance: 21 sept. 2026", the colon glued
+ * to the word (composed in JSX). French typography puts a no-break space (U+00A0) before it,
+ * which also keeps the colon from starting a line of its own on a narrow card.
+ */
+test.describe("a French browser (fr-FR) at 390 × 844", () => {
+  test.use({ locale: "fr-FR", viewport: { width: 390, height: 844 } });
+
+  test("BUG-461 — every card's last-session line reads « Dernière séance : … » with U+00A0", async ({ page }) => {
+    const NBSP = String.fromCharCode(0xa0);
+    await signInFrench(page);
+    const cards = page.locator(".only-narrow");
+    await expect(cards).toBeVisible();
+    const lines = (await cards.locator("div").allTextContents()).filter((t) => t.startsWith("Dernière séance"));
+    expect(lines.length, "the cards' last-session lines").toBeGreaterThan(0);
+    for (const line of lines) expect(line.startsWith(`Dernière séance${NBSP}: `), JSON.stringify(line)).toBe(true);
+    // Lina's carries a real French date.
+    const lina = lines.filter((l) => FRENCH_DATE.test(l.slice(`Dernière séance${NBSP}: `.length)));
+    expect(lina.length, "a card with a dated last session").toBeGreaterThan(0);
   });
 });

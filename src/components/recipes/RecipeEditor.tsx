@@ -791,7 +791,7 @@ function IngredientSearch({
                   <button
                     type="button"
                     disabled={already || locked}
-                    aria-label={already ? `${option.label}: ${copy.recipes.alreadyAdded}` : copy.recipes.addIngredientNamed(option.label)}
+                    aria-label={already ? copy.common.labelled(option.label, copy.recipes.alreadyAdded) : copy.recipes.addIngredientNamed(option.label)}
                     onClick={() => {
                       onPick(option);
                       setQ("");
