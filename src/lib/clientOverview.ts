@@ -76,9 +76,10 @@ export const readClientProgress = cache(
 );
 
 /**
- * The coach's own name, for the header. Cached for the same reason and started — not
- * awaited — by the layout, so it is in flight while the overview is being fetched
- * instead of costing a second round trip after it.
+ * The coach's own name, for the header. Cached for the same reason: one read per
+ * request, however many components ask. Every page starts it in its own `Promise.all`.
+ * Next renders `[id]/layout.tsx` and the page concurrently, so the read is in flight
+ * alongside the overview without the layout starting it (see that file).
  *
  * A failure here must never take down the screen it decorates: it degrades to a header
  * without a name.

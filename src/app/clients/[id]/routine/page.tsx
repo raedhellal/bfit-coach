@@ -91,6 +91,21 @@ export default async function RoutinePage({ params }: { params: { id: string } }
        * produces — rather than the tab refusing to render.
        */
       if (routine.hasDraft) {
+        /**
+         * The library read for AC3's "Started from {name}" line (below) is STARTED here,
+         * next to the draft read, and only awaited if the draft names a template.
+         * Measured with an 80 ms delay on every fixture call: when it waited for the
+         * draft, a template-applied draft cost four round trips one after another
+         * (overview, routine, draft, library: 329 ms). Started together, it is three. The
+         * cost is one `GET /coach-portal/templates` that goes unused when the draft was
+         * not applied from a template. It is the coach's own library, so no trainee data
+         * is read. Only a page with a draft pays that call.
+         *
+         * The `.catch` is attached HERE, at creation, so a library failure is never an
+         * unhandled rejection when the draft has no template and nothing awaits it. A
+         * failure still loses the line and nothing else, exactly as before.
+         */
+        const libraryRead = coachApi.listTemplates().catch(() => null);
         const saved = await coachApi.getRoutineDraft(params.id);
         /**
          * BUG-195c — the draft is the WHOLE document plus the token it was read at. A
@@ -123,7 +138,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
          * disappears, which is AC2's delete rule arriving through the read.
          */
         if (saved?.sourceTemplateId) {
-          const library = await coachApi.listTemplates().catch(() => null);
+          const library = await libraryRead;
           sourceTemplateName =
             library?.templates.find((t) => t.id === saved.sourceTemplateId)?.name ?? null;
         }
