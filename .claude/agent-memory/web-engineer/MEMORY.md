@@ -13,6 +13,7 @@
 - [Islands re-seed from props, not from their own save](an-island-must-re-seed-from-props-not-from-its-own-save.md) — revalidatePath pushes props with the response; dropping router.refresh() fixes nothing, use per-field dirty flags
 - [A notice already on screen is not a sync point](a-notice-already-on-screen-is-not-a-sync-point.md) — waiting for "Saved." from the previous save made a race test green against its own defect
 - [The coach portal auto-deploys](coach-portal-auto-deploys-to-production.md) — main ships to bfit-coach-seven.vercel.app; merging IS releasing, whatever the README says
+- [Not-found page (EV-241)](not-found-page-facts.md) — unmatched paths are a real 404; /clients/<typo> is the 403 denied page; signed-out only under /i/
 - [A whole-representation PUT](a-whole-representation-put-needs-a-required-nullable-type.md) — an omitted field is a silent wipe; type it required-and-nullable, build it in one place
 - [done can exceed plannedSoFar](done-can-exceed-plannedsofar.md) — a Monday gives a literal 1/0; a bar drawn from it renders Infinity%, the current week draws none
 - [A source-grep guard matches its own javadoc](a-source-grep-guard-matches-its-own-explanation.md) — strip comments, anchor on the call not the declaration, count the assertions that forbid
@@ -54,4 +55,3 @@
 - [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale; roster picker reads every page (BUG-472); source = today only
 - [Recipe meal slots + count line (EV-320c/b)](recipe-meal-slots-portal-facts.md) — mealSlots sent only if changed; count = COACH_RECIPE && placedByYou; fixture fill cookie
 - [French copy: elision and numbers](french-copy-elision-and-numbers.md) — use de()/que() never `de ${x}`; h left alone; readNumber is the one whole-number reader ("1.000" refused, format vs > 0); display-name fixture switch; route announcer is role=alert
-- [Not-found page (EV-241)](not-found-page-facts.md) — unmatched paths are a real 404; /clients/<typo> is the 403 denied page; signed-out only under /i/

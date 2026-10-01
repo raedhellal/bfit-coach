@@ -1098,6 +1098,15 @@ export const fr = {
     retry: "Réessayer",
   },
 
+  /** EV-241 — the 404 page (`app/not-found.tsx`). See copy.ts. */
+  notFound: {
+    title: "Page introuvable",
+    body: "Aucune page ne correspond à cette adresse. Vérifiez le lien, ou revenez à vos clients.",
+    toRoster: "Retour à vos clients",
+    bodySignedOut: "Aucune page ne correspond à cette adresse. Vérifiez le lien, ou connectez-vous à Evoli Pro.",
+    toLogin: "Aller à la connexion",
+  },
+
   common: {
     loading: "Chargement…",
     unexpectedError: "Une erreur est survenue.",
@@ -1136,14 +1145,5 @@ export const fr = {
       ANKLE: "Chevilles",
       ELBOW: "Coudes",
     } as Record<string, string>,
-  },
-
-  /** EV-241 — the 404 page (`app/not-found.tsx`). See copy.ts. */
-  notFound: {
-    title: "Page introuvable",
-    body: "Aucune page ne correspond à cette adresse. Vérifiez le lien, ou revenez à vos clients.",
-    toRoster: "Retour à vos clients",
-    bodySignedOut: "Aucune page ne correspond à cette adresse. Vérifiez le lien, ou connectez-vous à Evoli Pro.",
-    toLogin: "Aller à la connexion",
   },
 } satisfies Copy;
