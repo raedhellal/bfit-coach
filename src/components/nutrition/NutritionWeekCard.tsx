@@ -20,6 +20,16 @@ import {
 import { settled } from "@/lib/settled";
 import { hasEngineMeal, recipeShare } from "@/lib/recipeShare";
 import type { MealWeekView, PlannedMealView, SwapCandidate } from "@/lib/coachApi";
+import type { Copy } from "@/lib/copy";
+
+/**
+ * The week's apply button label, "Apply to Inès Roux" — exported because a sentence
+ * elsewhere on the page sends the coach to this button by name (`TemplateUseOutcome`,
+ * PB-5), and must quote it exactly as it is labelled here.
+ */
+export function weekApplyLabel(copy: Copy, traineeDisplayName: string): string {
+  return copy.nutrition.apply(truncateName(traineeDisplayName));
+}
 
 /**
  * EV-256e AC5's n: this week's meals placed from a coach recipe that the trainee has
@@ -287,7 +297,7 @@ export function NutritionWeekCard({
         sub={copy.nutrition.weekOf(formatDate(week?.weekStart ?? currentWeekStart, copy.locale))}
         action={
           <Button icon="refresh" onClick={() => setConfirming(true)} disabled={pending}>
-            {pending ? copy.nutrition.applying : copy.nutrition.apply(trainee)}
+            {pending ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
           </Button>
         }
       />

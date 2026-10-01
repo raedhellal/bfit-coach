@@ -1,4 +1,5 @@
 import type { Copy } from "./copy";
+import { ungroupInteger } from "./numberInput";
 import type {
   CoachRecipe,
   CoachRecipeSaveRequest,
@@ -259,10 +260,15 @@ export type ParsedWhole =
 export function parseWhole(raw: string): ParsedWhole {
   // No comma rewrite here: "1,000" kcal is an English thousands separator, and reading it
   // as 1.000 sent kcal 1 (BUG-460). A comma is refused as invalid instead.
+  // A SPACE grouping thousands is read (PB-2): "1 800", with a plain, no-break or narrow
+  // no-break space, is 1800 — the way the French portal itself prints it.
   const text = raw.trim();
   if (text === "") return { kind: "empty" };
-  if (!/^\d+(\.\d+)?$/.test(text)) return { kind: "invalid" };
-  const value = Number(text);
+  const dot = text.indexOf(".");
+  const digits = ungroupInteger(dot === -1 ? text : text.slice(0, dot));
+  const fraction = dot === -1 ? "" : text.slice(dot);
+  if (digits === null || !/^(\.\d+)?$/.test(fraction)) return { kind: "invalid" };
+  const value = Number(digits + fraction);
   if (!Number.isFinite(value)) return { kind: "invalid" };
   return Number.isInteger(value) ? { kind: "whole", value } : { kind: "fraction", value };
 }

@@ -35,6 +35,30 @@ const s = (n: number) => (n < 2 ? "" : "s");
 /** A number inside a French sentence, grouped the French way. */
 const n = (value: number) => formatKcal(value, "fr");
 
+/**
+ * Whether "de" / "que" elide before `word` — a person's name, or a template or recipe
+ * title the sentence is built around ("Les repas d'Inès", "qu'Omar", "à partir d'Upper").
+ *
+ * The rule is the spelling of the FIRST letter, read without its accent and its case:
+ *   · a vowel — A E I O U, accented or not, capital or not (É, Î, Ô…), and Æ / Œ;
+ *   · Y before a consonant (Yves, Yvonne: the vowel [i]), but NOT Y before a vowel
+ *     (Yasmine, Yusuf: the consonant [j]) — "d'Yves", "de Yusuf".
+ * H is left alone, deliberately: a mute h (Hugo, Hélène → "d'Hugo") and an aspirated
+ * one (Hamid, Hans → "de Hamid") are spelt the same, and no letter rule tells them
+ * apart. "de Hugo" is the known imperfection, chosen over "d'Hamid".
+ * Anything else (a consonant, a digit, a quote mark, an empty string) keeps the full word.
+ */
+export function elides(word: string): boolean {
+  const plain = word.trimStart().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  const first = plain.charAt(0);
+  if (first !== "" && "aeiouæœ".includes(first)) return true;
+  return /^y[bcdfghjklmnpqrstvwxz]/.test(plain);
+}
+/** "de Léa" / "d'Inès" — straight apostrophe, the house style. */
+export const de = (word: string) => (elides(word) ? `d'${word}` : `de ${word}`);
+/** "que Léa" / "qu'Inès". */
+export const que = (word: string) => (elides(word) ? `qu'${word}` : `que ${word}`);
+
 export const fr = {
   locale: "fr",
   brand: "Evoli Pro",
@@ -458,6 +482,8 @@ export const fr = {
     saveTargets: "Enregistrer les objectifs",
     saving: "Enregistrement…",
     invalidNumber: "Saisissez un nombre supérieur à 0.",
+    /** PB-2: "1800,5" is a decimal to a French coach, and "1,000" reads the same way. */
+    wholeNumber: "Saisissez un nombre entier, sans décimales.",
     floorApplied: (kcal: number) => `Calories relevées au minimum sûr de ${n(kcal)} kcal.`,
     floorStanding:
       "Evoli vérifie les calories par rapport à un minimum sûr. Il ne vérifie pas encore les protéines ni les lipides.",
@@ -476,7 +502,7 @@ export const fr = {
     applying: "Application…",
     applyTitle: "Appliquer cette semaine de repas ?",
     applyBody: (trainee: string, weekStart: string) =>
-      `Cela remplace la semaine de repas de ${trainee} qui commence le ${weekStart}.`,
+      `Cela remplace la semaine de repas ${de(trainee)} qui commence le ${weekStart}.`,
     seesStraightAway: (trainee: string) => `${trainee} le verra immédiatement.`,
     applyConfirm: "Appliquer",
     cancel: "Annuler",
@@ -487,9 +513,9 @@ export const fr = {
     lockedMealsKept: "Les repas que le client a verrouillés sont conservés.",
     regenerate: "Régénérer le jour",
     regenerateSharesLimit: (trainee: string) =>
-      `Les régénérations de jour partagent la limite quotidienne de ${endSentence(trainee)}`,
+      `Les régénérations de jour partagent la limite quotidienne ${de(endSentence(trainee))}`,
     swapIsFree: (trainee: string) =>
-      `Remplacer un repas n'utilise pas les régénérations quotidiennes de ${endSentence(trainee)}`,
+      `Remplacer un repas n'utilise pas les régénérations quotidiennes ${de(endSentence(trainee))}`,
     regenerating: "Régénération…",
     regenerateFailed: "Le jour n'a pas pu être régénéré.",
     /** The demo script's word ("Remplacer"); the app says "Échanger" for the trainee's own swap. */
@@ -566,7 +592,7 @@ export const fr = {
     allergiesUncheckable: (first: string) =>
       `Les recettes ne peuvent pas encore être utilisées pour ${first} : Evoli ne sait pas contrôler une recette écrite à la main au regard de ses préférences alimentaires. Ses repas générés ne sont pas concernés.`,
     belowFloor: (first: string, weekday: string, dayKcalAfter: number, floorKcal: number) =>
-      `Cela ramènerait le ${weekday.toLowerCase()} de ${first} à ${n(dayKcalAfter)} kcal, sous son minimum de ${n(floorKcal)} kcal. Choisissez une recette plus calorique.`,
+      `Cela ramènerait le ${weekday.toLowerCase()} ${de(first)} à ${n(dayKcalAfter)} kcal, sous son minimum de ${n(floorKcal)} kcal. Choisissez une recette plus calorique.`,
     mealEaten: (first: string) => `${first} a déjà mangé ce repas, il ne peut donc pas être remplacé.`,
     mealLocked: (first: string) => `${first} a verrouillé ce repas, il ne peut donc pas être remplacé.`,
     retiredIngredient: (recipe: string) =>
@@ -578,7 +604,7 @@ export const fr = {
     placementOff: "Les recettes ne peuvent pas être placées sur les repas pour le moment.",
     failed: "La recette n'a pas pu être utilisée. Réessayez.",
     applyWarning: (count: number, first: string) =>
-      `Cela remplace jusqu'à ${count} ${count < 2 ? "repas placé" : "repas placés"} à partir de recettes de coach. Les repas que ${first} a mangés sont conservés.`,
+      `Cela remplace jusqu'à ${count} ${count < 2 ? "repas placé" : "repas placés"} à partir de recettes de coach. Les repas ${que(first)} a mangés sont conservés.`,
   },
 
   /** Deliberately no word saying suggestions come from a model ("IA"), as in English (R4). */
@@ -683,7 +709,7 @@ export const fr = {
     useTitle: "Utiliser pour un client",
     pickTrainee: "Client",
     guardrailsAtPublish: (trainee: string) =>
-      `Les blessures et le matériel de ${trainee} sont pris en compte à la publication.`,
+      `Les blessures et le matériel ${de(trainee)} sont pris en compte à la publication.`,
     useConfirm: (template: string, trainee: string) => `Appliquer ${q(template)} à ${trainee} ?`,
     replacesDraft: (trainee: string) =>
       `Cela remplace votre brouillon non publié pour ${endSentence(trainee)} Ce brouillon ne pourra pas être récupéré.`,
@@ -701,7 +727,7 @@ export const fr = {
       "Cela remplit votre brouillon pour ce client. Rien ne change pour lui tant que vous n'avez pas publié.",
     applied: (trainee: string) =>
       `Brouillon prêt pour ${endSentence(trainee)} Rien n'a encore changé pour ce client — publiez quand vous êtes prêt.`,
-    startedFrom: (name: string) => `Créé à partir de ${name}`,
+    startedFrom: (name: string) => `Créé à partir ${de(name)}`,
     unbindable: (n: number) =>
       n === 1
         ? "1 exercice n'est peut-être pas dans le catalogue d'exercices. Vérifiez-le avant de publier."
@@ -831,8 +857,10 @@ export const fr = {
    *     library's nav label, and a coach must tell the two pages apart.
    *   · The trainee's gender is unknown to this surface, so no sentence agrees a
    *     participle with them ("verrouillés par ce client", not "qu'il a verrouillés").
-   *   · "Appliquer à {prénom}" in `weekFailed` is `nutrition.apply`'s own words, the
-   *     button the coach is sent to.
+   *   · `weekFailed` quotes the week card's button by its OWN label (`nutrition.apply` of
+   *     the truncated full name, passed in): « Appliquer à Inès Roux », never a first-name
+   *     version of it that is on no button (PB-5).
+   *   · "de" / "que" before a first name or a title go through `de` / `que` (PB-4).
    */
   nutritionTemplates: {
     nav: "Modèles nutrition",
@@ -881,6 +909,7 @@ export const fr = {
     editTitle: "Modifier le modèle nutrition",
     targetsLabel: "Objectifs quotidiens",
     invalidNumber: "Saisissez un nombre supérieur à 0.",
+    wholeNumber: "Saisissez un nombre entier, sans décimales.",
     outOfBounds: `Utilisez des nombres entiers : calories de ${n(800)} à ${n(8000)} kcal, protéines jusqu'à ${n(500)} g, glucides jusqu'à ${n(1200)} g et lipides jusqu'à ${n(400)} g.`,
     floorStanding:
       "Evoli vérifie les calories par rapport à un minimum sûr quand vous utilisez ce modèle. Il ne vérifie pas encore les protéines ni les lipides.",
@@ -899,25 +928,25 @@ export const fr = {
     amount: (value: number, unit: string) => `${n(value)} ${unit}`,
     notSet: "Non défini",
     confirmBody: (first: string, weekStart: string) =>
-      `Les repas de ${first} pour cette semaine (à partir du ${weekStart}) sont reconstruits immédiatement selon ces objectifs, avec son propre nombre de repas par jour. Ses allergies et ses règles alimentaires s'appliquent toujours. Les repas verrouillés ou déjà mangés par ce client sont conservés.`,
+      `Les repas ${de(first)} pour cette semaine (à partir du ${weekStart}) sont reconstruits immédiatement selon ces objectifs, avec son propre nombre de repas par jour. Ses allergies et ses règles alimentaires s'appliquent toujours. Les repas verrouillés ou déjà mangés par ce client sont conservés.`,
     floorWarning: (first: string) =>
-      `Si c'est en dessous du minimum sûr de ${first}, Evoli le relève à ce minimum et vous le signale.`,
-    reading: (first: string) => `Lecture des objectifs actuels de ${first}…`,
+      `Si c'est en dessous du minimum sûr ${de(first)}, Evoli le relève à ce minimum et vous le signale.`,
+    reading: (first: string) => `Lecture des objectifs actuels ${de(first)}…`,
     readFailed: (first: string) =>
-      `Les objectifs actuels de ${first} n'ont pas pu être lus, donc rien n'a été envoyé. Fermez cette fenêtre et réessayez.`,
+      `Les objectifs actuels ${de(first)} n'ont pas pu être lus, donc rien n'a été envoyé. Fermez cette fenêtre et réessayez.`,
     confirm: "Confirmer",
     applying: "Application…",
 
-    applied: (template: string, first: string) => `${q(template)} est désormais le plan de ${first}.`,
+    applied: (template: string, first: string) => `${q(template)} est désormais le plan ${de(first)}.`,
     weekRateLimited: (first: string) =>
-      `Les objectifs de ${first} sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain.`,
-    weekFailed: (first: string) =>
-      `Les objectifs de ${first} sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${q(`Appliquer à ${first}`)} pour réessayer.`,
+      `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain.`,
+    weekFailed: (first: string, applyLabel: string) =>
+      `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${q(applyLabel)} pour réessayer.`,
     weekUnknown: (first: string) =>
-      `Les objectifs de ${first} sont mis à jour. Nous n'avons pas pu confirmer si ses repas ont été reconstruits. Vérifiez sa page nutrition avant de réessayer.`,
+      `Les objectifs ${de(first)} sont mis à jour. Nous n'avons pas pu confirmer si ses repas ont été reconstruits. Vérifiez sa page nutrition avant de réessayer.`,
     targetsFailed: (first: string) => `Rien n'a été modifié pour ${first}. Réessayez.`,
     targetsUnknown: (first: string) =>
-      `Nous n'avons pas pu confirmer si les objectifs de ${first} ont changé. Vérifiez sa page nutrition avant de réessayer.`,
+      `Nous n'avons pas pu confirmer si les objectifs ${de(first)} ont changé. Vérifiez sa page nutrition avant de réessayer.`,
   },
 
   /** EV-321b — les défis de pas. Les nombres arrivent déjà formatés (`formatSteps`). */

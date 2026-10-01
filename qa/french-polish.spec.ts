@@ -1,0 +1,292 @@
+import { expect, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
+import { signInFrench } from "./french";
+import { de, elides, fr, que } from "../src/lib/copy.fr";
+import { parseTarget } from "../src/lib/numberInput";
+import { parseQuantity, parseWhole } from "../src/lib/recipeDocument";
+
+/**
+ * The French polish pass before the 2026-10-03 demo (EV-273b gate, PB-2 / PB-4 / PB-5;
+ * BUG-463 is PB-4's routine-template instance).
+ *
+ *   PB-4 — "de {prénom}" / "que {prénom}" before a vowel: "Les repas d'Inès", not
+ *          "Les repas de Inès". One helper (`de` / `que` in `copy.fr.ts`), and a sweep
+ *          over EVERY French sentence so the next one written with a bare "de ${…}" is
+ *          caught here, not by a coach.
+ *   PB-2 — French-typed numbers. "1 800" (any space grouping thousands) is 1800; a decimal
+ *          part in a whole-number field gets "Saisissez un nombre entier…", never "supérieur
+ *          à 0", which was false for it. "1,000" is NEVER a number here (BUG-460).
+ *   PB-5 — lives in `coach-nutrition-templates-apply.spec.ts` (roster config: the picker
+ *          needs the populated roster).
+ *
+ * Sentences on screen are LITERALS; the dictionary is imported only for the sweep.
+ */
+
+const OMAR = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0005";
+const NBSP = "\u00a0";
+const NNBSP = "\u202f";
+
+/* ── PB-4: the helper ───────────────────────────────────────────────────────── */
+
+test.describe("PB-4 — de / que elide before a vowel sound", () => {
+  test("a plain vowel elides", () => {
+    expect(de("Inès")).toBe("d'Inès");
+    expect(de("Omar T.")).toBe("d'Omar T.");
+    expect(de("Upper/Lower")).toBe("d'Upper/Lower");
+    expect(que("Inès")).toBe("qu'Inès");
+    expect(que("olivier")).toBe("qu'olivier");
+  });
+
+  test("an accented capital and a ligature elide", () => {
+    expect(de("Émilie")).toBe("d'Émilie");
+    expect(de("Îlona")).toBe("d'Îlona");
+    expect(de("Ôscar")).toBe("d'Ôscar");
+    expect(de("Œdipe")).toBe("d'Œdipe");
+    expect(de("Ælia")).toBe("d'Ælia");
+    expect(que("Élodie")).toBe("qu'Élodie");
+    // Decomposed (NFD) input reads the same as composed.
+    expect(de("E\u0301milie")).toBe("d'E\u0301milie");
+  });
+
+  test("a consonant keeps the full word", () => {
+    expect(de("Léa")).toBe("de Léa");
+    expect(de("Petra L.")).toBe("de Petra L.");
+    expect(que("Tobias")).toBe("que Tobias");
+    expect(de("Ce client")).toBe("de Ce client");
+  });
+
+  test("h is left alone (mute and aspirated h are spelt alike); y elides only before a consonant", () => {
+    expect(elides("Hugo")).toBe(false);
+    expect(de("Hugo")).toBe("de Hugo");
+    expect(de("Hélène")).toBe("de Hélène");
+    expect(que("Hamid")).toBe("que Hamid");
+    expect(de("Yves")).toBe("d'Yves");
+    expect(de("Yusuf A.")).toBe("de Yusuf A.");
+    expect(de("Yasmine")).toBe("de Yasmine");
+  });
+
+  test("a digit, a quote mark or nothing keeps the full word", () => {
+    expect(de("5x5")).toBe("de 5x5");
+    expect(de("« Sèche »")).toBe("de « Sèche »");
+    expect(de("")).toBe("de ");
+  });
+});
+
+/* ── PB-4: every French sentence ────────────────────────────────────────────── */
+
+/**
+ * Every function in the French dictionary is called once per argument POSITION, with a
+ * vowel-initial word there and a consonant-initial one everywhere else, and its output is
+ * searched for an unelided "de / que / le / la" before that word.
+ *
+ * Positions that ARE hit are dates, numbers and weekdays, which never elide ("le 8 oct.",
+ * "de 0 à 5000", "le lundi": every French weekday starts with a consonant). The sweep
+ * cannot tell such an argument from a name, so they are listed here — and the list must
+ * be EXACT, so an entry that stops being hit is deleted rather than left to excuse a
+ * future name in that position.
+ */
+const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
+  "activate.expired#0",
+  "activate.expiredOnSubmit#0",
+  "activate.finishBy#0",
+  "client.coachedSince#0",
+  "client.lastWeighIn#0",
+  "nutrition.applyBody#1",
+  "nutrition.sourceCoach#0",
+  "nutrition.sourceCoachOther#0",
+  "nutritionTemplates.updatedAt#0",
+  "placement.belowFloor#1", // weekday
+  "placement.confirm#2", // weekday
+  "progressGoal.milestoneSetBy#1",
+  "recipes.numberRange#1",
+  "routine.repsOnDuration#0", // weekday
+  "routine.traineeChanged#1",
+  "templates.updatedAt#0",
+];
+
+test("PB-4 — no French sentence puts an unelided de / que / le / la before a vowel-initial name or title", () => {
+  const hits: string[] = [];
+  let calls = 0;
+  const walk = (value: unknown, path: string) => {
+    if (typeof value === "function") {
+      const fn = value as (...args: unknown[]) => unknown;
+      for (let at = 0; at < fn.length; at++) {
+        const args = Array.from({ length: fn.length }, (_, i) => (i === at ? "Inès" : "Léa"));
+        const out = String(fn(...args));
+        calls++;
+        if (/\b(de|que|le|la) Inès/i.test(out)) hits.push(`${path}#${at}`);
+      }
+    } else if (value !== null && typeof value === "object") {
+      for (const [key, child] of Object.entries(value)) walk(child, path ? `${path}.${key}` : key);
+    }
+  };
+  walk(fr, "");
+  // A sweep that called nothing proves nothing.
+  expect(calls).toBeGreaterThan(150);
+  expect(hits.sort()).toEqual(DATE_NUMBER_OR_WEEKDAY_POSITIONS);
+});
+
+test("PB-4 — the nutrition-template sentences QA read, word for word", () => {
+  const t = fr.nutritionTemplates;
+  expect(t.confirmBody("Inès", "28 sept. 2026")).toMatch(/^Les repas d'Inès pour cette semaine/);
+  expect(t.floorWarning("Inès")).toBe(
+    "Si c'est en dessous du minimum sûr d'Inès, Evoli le relève à ce minimum et vous le signale."
+  );
+  expect(t.reading("Inès")).toBe("Lecture des objectifs actuels d'Inès…");
+  expect(t.applied("Cut 1800", "Inès")).toBe(`«${NBSP}Cut 1800${NBSP}» est désormais le plan d'Inès.`);
+  expect(fr.templates.guardrailsAtPublish("Inès Moreau")).toBe(
+    "Les blessures et le matériel d'Inès Moreau sont pris en compte à la publication."
+  );
+  expect(fr.placement.applyWarning(2, "Omar")).toMatch(/Les repas qu'Omar a mangés sont conservés\.$/);
+  // And a consonant is unchanged.
+  expect(t.reading("Petra")).toBe("Lecture des objectifs actuels de Petra…");
+});
+
+/* ── PB-2: reading the number ───────────────────────────────────────────────── */
+
+test.describe("PB-2 — whole numbers as a French coach types them", () => {
+  test("a target: grouped thousands are read, a decimal part is 'not whole', a comma is never a separator", () => {
+    expect(parseTarget("1800")).toEqual({ kind: "whole", value: 1800 });
+    expect(parseTarget("1 800")).toEqual({ kind: "whole", value: 1800 });
+    expect(parseTarget(`1${NBSP}800`)).toEqual({ kind: "whole", value: 1800 });
+    expect(parseTarget(`1${NNBSP}800`)).toEqual({ kind: "whole", value: 1800 });
+    expect(parseTarget(" 12 500 ")).toEqual({ kind: "whole", value: 12500 });
+
+    expect(parseTarget("1800,5")).toEqual({ kind: "notWhole" });
+    expect(parseTarget("1800.5")).toEqual({ kind: "notWhole" });
+    expect(parseTarget("1 800,5")).toEqual({ kind: "notWhole" });
+    // BUG-460: "1,000" is neither 1 nor 1000. It is refused, as a number with a decimal part.
+    expect(parseTarget("1,000")).toEqual({ kind: "notWhole" });
+    expect(parseTarget("1.000")).toEqual({ kind: "notWhole" });
+
+    expect(parseTarget("0")).toEqual({ kind: "invalid" });
+    expect(parseTarget("-5")).toEqual({ kind: "invalid" });
+    expect(parseTarget("")).toEqual({ kind: "invalid" });
+    expect(parseTarget("abc")).toEqual({ kind: "invalid" });
+    // A space that does not group thousands is not a grouping anyone meant.
+    expect(parseTarget("18 00")).toEqual({ kind: "invalid" });
+    expect(parseTarget("1  800")).toEqual({ kind: "invalid" });
+  });
+
+  test("a recipe macro (parseWhole): grouped thousands read, the comma still refused; quantities unchanged", () => {
+    expect(parseWhole("1 800")).toEqual({ kind: "whole", value: 1800 });
+    expect(parseWhole(`1${NNBSP}800`)).toEqual({ kind: "whole", value: 1800 });
+    expect(parseWhole("1 800.0")).toEqual({ kind: "whole", value: 1800 });
+    expect(parseWhole("50.7")).toEqual({ kind: "fraction", value: 50.7 });
+    expect(parseWhole("1,000")).toEqual({ kind: "invalid" });
+    expect(parseWhole("18 00")).toEqual({ kind: "invalid" });
+    // A quantity keeps its decimal comma (EV-256b): "150,5" g is 150.5.
+    expect(parseQuantity("150,5")).toBe(150.5);
+  });
+});
+
+/* ── rendered, in a French browser ──────────────────────────────────────────── */
+
+/** Every POST the page sends from here on (a server action is a POST to the page). */
+function posts(page: Page): string[] {
+  const seen: string[] = [];
+  page.on("request", (req) => {
+    if (req.method() === "POST") seen.push(req.url());
+  });
+  return seen;
+}
+
+test.describe("a French browser (fr-FR)", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("PB-2 — the targets card: '1 800' is saved as 1800; '1800,5' and '1,000' are told 'entier', '0' is told '> 0'; nothing sent", async ({
+    page,
+  }) => {
+    await signInFrench(page);
+    await page.goto(`/clients/${OMAR}/nutrition`);
+    const calories = page.getByLabel("Calories", { exact: true });
+    const save = page.getByRole("button", { name: "Enregistrer les objectifs", exact: true });
+    // `p`: Next's route announcer is an empty role=alert of its own.
+    const alert = page.locator('p[role="alert"]');
+    const sent = posts(page);
+
+    for (const [typed, sentence] of [
+      ["1800,5", "Saisissez un nombre entier, sans décimales."],
+      ["1,000", "Saisissez un nombre entier, sans décimales."],
+      ["0", "Saisissez un nombre supérieur à 0."],
+    ] as const) {
+      await calories.fill(typed);
+      await save.click();
+      await expect(alert, typed).toHaveText(sentence);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+    expect(sent, "no request may leave the browser for a refused target").toEqual([]);
+
+    // The three spaces a French coach groups with. The first two only reach the confirm.
+    for (const typed of ["1 800", `1${NBSP}800`]) {
+      await calories.fill(typed);
+      await save.click();
+      await expect(alert).toHaveCount(0);
+      const dialog = page.getByRole("dialog", { name: "Enregistrer les objectifs ?" });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Annuler" }).click();
+      await expect(dialog).toHaveCount(0);
+    }
+    expect(sent).toEqual([]);
+
+    await calories.fill(`1${NNBSP}800`);
+    await save.click();
+    const dialog = page.getByRole("dialog", { name: "Enregistrer les objectifs ?" });
+    await dialog.getByRole("button", { name: "Enregistrer les objectifs" }).click();
+    await expect(page.getByText("Objectifs enregistrés.", { exact: true })).toBeVisible();
+    // What was STORED, as the card re-reads it: 1800, not 1 and not 18.
+    await expect(calories).toHaveValue("1800");
+  });
+
+  test("PB-4 — the week card's confirm names Omar with elision", async ({ page }) => {
+    await signInFrench(page);
+    await page.goto(`/clients/${OMAR}/nutrition`);
+    await page.getByRole("button", { name: "Appliquer à Omar T.", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Appliquer cette semaine de repas ?" });
+    await expect(dialog.getByText(/^Cela remplace la semaine de repas d'Omar T\. qui commence le /)).toBeVisible();
+    await expect(dialog.getByText(/de Omar/)).toHaveCount(0);
+  });
+
+  test("PB-2 — the nutrition template editor: '1 800' is saved, '1800,5' is told 'entier' and nothing is sent", async ({
+    page,
+  }) => {
+    await signInFrench(page);
+    await page.goto("/nutrition-templates/new");
+    await page.getByLabel("Nom du modèle").fill("Sèche 1800");
+    await page.getByLabel("Protéines", { exact: true }).fill("150");
+    await page.getByLabel("Glucides", { exact: true }).fill("170");
+    await page.getByLabel("Lipides", { exact: true }).fill("60");
+    const calories = page.getByLabel("Calories", { exact: true });
+    const save = page.getByRole("button", { name: "Enregistrer le modèle" });
+    const sent = posts(page);
+
+    await calories.fill("1800,5");
+    await save.click();
+    await expect(page.locator('p[role="alert"]')).toHaveText("Saisissez un nombre entier, sans décimales.");
+    await calories.fill("0");
+    await save.click();
+    await expect(page.locator('p[role="alert"]')).toHaveText("Saisissez un nombre supérieur à 0.");
+    expect(sent, "a refused template sends nothing").toEqual([]);
+
+    await calories.fill("1 800");
+    await save.click();
+    await page.waitForURL("/nutrition-templates");
+    const row = page.getByRole("group", { name: "Sèche 1800", exact: true });
+    await expect(row.getByText(`1${NNBSP}800 kcal · P 150 g · G 170 g · L 60 g`, { exact: true })).toBeVisible();
+  });
+});
+
+test("PB-2 — in English, '1,000' kcal is refused with the whole-number sentence, never sent as 1", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("coach@evoli.fit");
+  await page.getByLabel("Password").fill("Password123!");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("/");
+  await page.goto(`/clients/${OMAR}/nutrition`);
+  const sent = posts(page);
+  await page.getByLabel("Calories", { exact: true }).fill("1,000");
+  await page.getByRole("button", { name: "Save targets" }).click();
+  await expect(page.locator('p[role="alert"]')).toHaveText("Enter a whole number, without a decimal point or comma.");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(sent).toEqual([]);
+});

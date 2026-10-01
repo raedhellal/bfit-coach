@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { weekApplyLabel } from "@/components/nutrition/NutritionWeekCard";
+import { firstName } from "@/lib/format";
 import { useCopy } from "@/lib/i18n/client";
 import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
 
@@ -20,12 +22,13 @@ import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
  */
 export function TemplateUseOutcome({
   clientId,
-  firstName,
+  traineeDisplayName,
 }: {
   clientId: string;
-  firstName: string;
+  traineeDisplayName: string;
 }) {
   const copy = useCopy();
+  const first = firstName(traineeDisplayName, copy.locale);
   const [outcome, setOutcome] = useState<UseOutcome | null>(null);
 
   useEffect(() => {
@@ -40,12 +43,13 @@ export function TemplateUseOutcome({
 
   const t = copy.nutritionTemplates;
   const sentence = {
-    APPLIED: t.applied(outcome.template, firstName),
-    WEEK_RATE_LIMITED: t.weekRateLimited(firstName),
-    WEEK_FAILED: t.weekFailed(firstName),
-    WEEK_UNKNOWN: t.weekUnknown(firstName),
-    TARGETS_FAILED: t.targetsFailed(firstName),
-    TARGETS_UNKNOWN: t.targetsUnknown(firstName),
+    APPLIED: t.applied(outcome.template, first),
+    WEEK_RATE_LIMITED: t.weekRateLimited(first),
+    // PB-5: the week card's button by its own label (the full name), never "Apply to {first}".
+    WEEK_FAILED: t.weekFailed(first, weekApplyLabel(copy, traineeDisplayName)),
+    WEEK_UNKNOWN: t.weekUnknown(first),
+    TARGETS_FAILED: t.targetsFailed(first),
+    TARGETS_UNKNOWN: t.targetsUnknown(first),
   }[outcome.kind];
   const ok = outcome.kind === "APPLIED";
 
