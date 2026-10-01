@@ -1,9 +1,17 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInFrench } from "./french";
+import { en } from "../src/lib/copy";
 import { de, elides, fr, que } from "../src/lib/copy.fr";
 import { parseTarget, targetRefusal } from "../src/lib/numberInput";
-import { localProblems, parseQuantity, parseWhole, type RecipeDraft } from "../src/lib/recipeDocument";
+import {
+  forSave,
+  localProblems,
+  parseQuantity,
+  parseWhole,
+  readQuantity,
+  type RecipeDraft,
+} from "../src/lib/recipeDocument";
 
 /**
  * The French polish pass before the 2026-10-03 demo (EV-273b gate, PB-2 / PB-4 / PB-5;
@@ -192,7 +200,8 @@ test.describe("PB-2 — whole numbers as a French coach types them", () => {
     expect(parseWhole("1 800.0")).toEqual({ kind: "whole", value: 1800 });
     expect(parseWhole("50.7")).toEqual({ kind: "fraction", value: 50.7 });
     expect(parseWhole("1,000")).toEqual({ kind: "ambiguous" });
-    expect(parseWhole("18 00")).toEqual({ kind: "invalid" });
+    // Staff F1: digits that cannot be read are a FORMAT problem, as they are for a target.
+    expect(parseWhole("18 00")).toEqual({ kind: "malformed" });
     // A quantity keeps its decimal comma (EV-256b): "150,5" g is 150.5.
     expect(parseQuantity("150,5")).toBe(150.5);
   });
@@ -259,6 +268,89 @@ test.describe("number-input follow-ups", () => {
         { at: "kcal", message: "Nombres entiers uniquement. Utilisez 1200 ou 1201." },
       ]);
     }
+  });
+});
+
+/* ── the number-input tail (QA's BUG-556, staff F1 / F2 on the follow-ups) ───── */
+
+/** A one-line recipe whose only ingredient is `quantity`. */
+const withQuantity = (quantity: string) =>
+  recipe({ ingredients: [{ key: "chicken_breast", label: "chicken breast", quantity, unit: "g" }] });
+
+test.describe("number-input tail", () => {
+  test("BUG-556 — a quantity reads grouping spaces; the comma stays a decimal; 2 decimals and ≤ 5000 still hold", () => {
+    for (const space of [" ", NBSP, NNBSP, THIN, FIGURE]) {
+      const typed = `1${space}000`;
+      expect(readQuantity(typed), JSON.stringify(typed)).toEqual({ kind: "quantity", value: 1000 });
+      expect(localProblems(withQuantity(typed), fr), JSON.stringify(typed)).toEqual([]);
+    }
+    expect(parseQuantity("5 000")).toBe(5000);
+    expect(parseQuantity("1 000,5")).toBe(1000.5);
+    expect(parseQuantity("1 000,25")).toBe(1000.25);
+    expect(parseQuantity("1 000.25")).toBe(1000.25);
+    expect(parseQuantity("150,5")).toBe(150.5);
+    expect(parseQuantity("0,25")).toBe(0.25);
+    // What is SENT is the number, not the text.
+    expect(forSave(withQuantity("1 000"), { recipe: "new" }).ingredients[0].quantity).toBe(1000);
+
+    // Read, and refused by the api's rule — with the range sentence, which is true for them.
+    // "1.000" / "1,500" have three decimals as decimals, and are a guess as thousands: never sent.
+    for (const typed of ["1.000", "1,500", "150.000", "1 000,125", "5 000,01", "5 001", "0", "0,00", "-1", "abc"]) {
+      expect(readQuantity(typed), typed).toEqual({ kind: "outOfRange" });
+      expect(parseQuantity(typed), typed).toBeNull();
+    }
+    expect(localProblems(withQuantity("1.000"), fr)).toEqual([
+      { at: "ingredients.0", message: "Une quantité est supérieure à 0 et au plus égale à 5000, avec 2 décimales au plus." },
+    ]);
+    expect(localProblems(withQuantity(""), fr)).toEqual([
+      { at: "ingredients.0", message: "Saisissez une quantité.", missing: true },
+    ]);
+  });
+
+  test("BUG-556 — a quantity whose digits cannot be read is told the FORMAT, never the range", () => {
+    for (const typed of ["1 00", "10 00", "1  000", "1e3", "1,5,5", "12abc", ".5"]) {
+      expect(readQuantity(typed), typed).toEqual({ kind: "malformed" });
+      expect(localProblems(withQuantity(typed), fr), typed).toEqual([
+        { at: "ingredients.0", message: `Saisissez une quantité, par exemple 1${NNBSP}000 ou 12,5.` },
+      ]);
+    }
+    expect(localProblems(withQuantity("10 00"), en)).toEqual([
+      { at: "ingredients.0", message: "Enter a quantity, for example 1000 or 12.5." },
+    ]);
+    // The examples the sentences give are themselves accepted, as written.
+    for (const example of [`1${NNBSP}000`, "12,5", "1000", "12.5"]) {
+      expect(readQuantity(example).kind, example).toBe("quantity");
+    }
+  });
+
+  test("staff F1 — recipe kcal / macro digits that cannot be read are told the FORMAT, never the range", () => {
+    for (const typed of ["18 00", "1  800", "1 25", "12abc", "1.000.000"]) {
+      expect(parseWhole(typed), typed).toEqual({ kind: "malformed" });
+    }
+    // Range territory stays there: no digit, a negative.
+    for (const typed of ["abc", "-5", "-1 800"]) {
+      expect(parseWhole(typed), typed).toEqual({ kind: "invalid" });
+    }
+    expect(localProblems(recipe({ kcal: "18 00" }), fr)).toEqual([
+      { at: "kcal", message: `Saisissez un nombre entier, par exemple 1${NNBSP}800.` },
+    ]);
+    expect(localProblems(recipe({ proteinG: "1 25" }), fr)).toEqual([
+      { at: "proteinG", message: "Saisissez un nombre entier, par exemple 150." },
+    ]);
+    expect(localProblems(recipe({ kcal: "18 00" }), en)).toEqual([
+      { at: "kcal", message: "Enter a whole number, for example 1800." },
+    ]);
+    // The examples are inside their fields' ranges, as written.
+    expect(localProblems(recipe({ kcal: `1${NNBSP}800`, proteinG: "150" }), fr).map((p) => p.at)).not.toContain("kcal");
+    expect(localProblems(recipe({ proteinG: "150" }), fr).map((p) => p.at)).not.toContain("proteinG");
+  });
+
+  test("staff F2 — the edges, pinned", () => {
+    // A 4-digit integer is never "ambiguous thousands": "1234,500" is the decimal 1234.5.
+    expect(parseWhole("1234,500")).toEqual({ kind: "fraction", value: 1234.5 });
+    expect(parseTarget("1234,500")).toEqual({ kind: "notWhole" });
+    // Twenty digits is not "above 0"'s problem.
+    expect(parseTarget("99999999999999999999")).toEqual({ kind: "malformed" });
   });
 });
 
@@ -385,6 +477,57 @@ test.describe("a French browser (fr-FR)", () => {
     await kcal.fill("560");
     await expect(field.getByText(/Saisissez|Nombres entiers/)).toHaveCount(0);
     await expect(save).toBeEnabled();
+  });
+
+  test("BUG-556 / staff F1 — the recipe editor saves quantity « 1 000 » as 1000, and tells kcal « 18 00 » the format", async ({
+    page,
+  }) => {
+    await signInFrench(page);
+    await page.goto(`/recipes/${CHICKEN_RICE_BOWL}`);
+    const quantity = page.locator('[data-field="ingredients.0"] input').first();
+    const kcal = page.getByLabel("Calories (kcal)");
+    const kcalField = page.locator('[data-field="kcal"]');
+    const save = page.getByRole("button", { name: "Enregistrer la recette" });
+    // A server action's POST body is its argument list: `[id, body]` for an update.
+    const bodies: unknown[][] = [];
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.headers()["next-action"] !== undefined) {
+        bodies.push(JSON.parse(req.postData() ?? "[]") as unknown[]);
+      }
+    });
+    await expect(async () => {
+      await quantity.fill("1 000");
+      await expect(page.getByText("Modifications non enregistrées", { exact: true })).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(quantity).not.toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByText(/Une quantité est supérieure|Saisissez une quantité/)).toHaveCount(0);
+
+    // kcal « 18 00 »: the format sentence beside the field, never the range one; nothing sent.
+    await kcal.fill("18 00");
+    await expect(kcalField.getByText(`Saisissez un nombre entier, par exemple 1${NNBSP}800.`, { exact: true })).toBeVisible();
+    await expect(kcalField.getByText(/un nombre entier de 1 à 3000/)).toHaveCount(0);
+    await expect(kcal).toHaveAttribute("aria-invalid", "true");
+    await expect(save).toBeDisabled();
+    expect(bodies, "a refused kcal sends nothing").toEqual([]);
+
+    await kcal.fill("560");
+    await expect(save).toBeEnabled();
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    await save.click();
+    await answered;
+    expect(bodies).toHaveLength(1);
+    const [id, body] = bodies[0] as [string, { ingredients: { key: string; quantity: unknown }[] }];
+    expect(id).toBe(CHICKEN_RICE_BOWL);
+    expect(body.ingredients[0]).toMatchObject({ key: "chicken_breast", quantity: 1000 });
+
+    // And what was STORED reads back as 1000 — once the editor has settled (its guard
+    // releases the history sentinel after a save, so a reload before that is aborted).
+    await expect(page.getByText("Recette enregistrée.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Modifications non enregistrées", { exact: true })).toHaveCount(0);
+    await page.goto(`/recipes/${CHICKEN_RICE_BOWL}`);
+    await expect(page.locator('[data-field="ingredients.0"] input').first()).toHaveValue("1000");
   });
 
   test("PB-4 — the week card's confirm names Omar with elision", async ({ page }) => {

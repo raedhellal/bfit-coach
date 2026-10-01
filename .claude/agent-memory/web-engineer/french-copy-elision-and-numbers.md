@@ -28,7 +28,15 @@ Since `fix/portal-french-polish-1001` (2026-10-01, PB-2/PB-4/PB-5 of the EV-273b
   1 800", BUG-552); "supérieur à 0" ONLY for empty/zero/negative/no digit. The card
   shows one sentence for four fields via `targetRefusal` (invalid > malformed >
   notWhole). Recipes: a comma is a decimal like the point (BUG-553: "1200,5" → "Utilisez
-  1200 ou 1201", "50,0" → 50). Quantities have their own `parseQuantity`, untouched.
+  1200 ou 1201", "50,0" → 50); unreadable digits ("18 00") are `malformed` →
+  `recipes.numberFormat(example)` (1800 for kcal, 150 for grams — an example inside the
+  field's range), never `numberRange`.
+- **Quantities read through `readNumber` too** since `fix/portal-number-input-tail`
+  (BUG-556): `readQuantity` → empty / quantity / malformed / outOfRange; `parseQuantity`
+  is its number-or-null wrapper. "1 000" g is 1000; `thousands` and a 3rd decimal stay
+  `outOfRange` (the range sentence, which is true for them); unreadable digits get
+  `recipes.quantityFormat`. The ENGLISH example must never be "1,000" — the portal
+  refuses it; a spec asserts each example sentence's numbers parse.
 - `weekFailed(first, applyLabel)` quotes the week card's button via `weekApplyLabel`
   (exported from `NutritionWeekCard`). Never rebuild a button label in a sentence.
 - **Fixture switch `evoli_fixture_display_name=<clientId>:<encodeURIComponent(name)>`**

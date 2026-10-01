@@ -830,11 +830,13 @@ export const fr = {
     ingredientsRequired: "Ajoutez au moins un ingrédient.",
     quantityRequired: "Saisissez une quantité.",
     quantityRange: "Une quantité est supérieure à 0 et au plus égale à 5000, avec 2 décimales au plus.",
+    quantityFormat: `Saisissez une quantité, par exemple ${n(1000)} ou 12,5.`,
     wholeNumber: "Saisissez un nombre entier, sans décimales.",
     wholeNumbersOnly: (below: number, above: number) =>
       `Nombres entiers uniquement. Utilisez ${below} ou ${above}.`,
     numberRange: (label: string, min: number, max: number) =>
       `${label} : un nombre entier de ${min} à ${max}.`,
+    numberFormat: (example: number) => `Saisissez un nombre entier, par exemple ${n(example)}.`,
     stepEmpty: "Écrivez cette étape ou retirez-la.",
     stepTooLong: "Une étape ne dépasse pas 300 caractères.",
     stepInvalid: "Vérifiez cette étape : de 1 à 300 caractères, sur une seule ligne.",

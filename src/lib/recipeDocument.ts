@@ -257,13 +257,19 @@ export function hasControl(value: string): boolean {
  *     1200.5, told "Use 1200 or 1201" exactly as "1200.5" is, and "50,0" is 50;
  *   · "1.000" / "1,500" — a 1–3 digit integer and exactly three digits after the
  *     separator — is `ambiguous`, never 1 and never 1000. Reading "1.000" as 1.0 saved a
- *     recipe at 1 kcal (the dot twin of BUG-460, on main since EV-256b).
+ *     recipe at 1 kcal (the dot twin of BUG-460, on main since EV-256b);
+ *   · digits that cannot be read ("18 00", "1  800", "12abc") are `malformed`, shown the
+ *     format sentence — the range sentence ("a whole number from 1 to 3000") was false
+ *     for "18 00" (staff F1 on the number-input follow-ups; BUG-552 for targets);
+ *   · `invalid` is left to what IS range territory: no digit at all, a negative, or a
+ *     digit string too long to be a finite number.
  */
 export type ParsedWhole =
   | { kind: "empty" }
   | { kind: "whole"; value: number }
   | { kind: "fraction"; value: number }
   | { kind: "ambiguous" }
+  | { kind: "malformed" }
   | { kind: "invalid" };
 
 export function parseWhole(raw: string): ParsedWhole {
@@ -279,8 +285,9 @@ export function parseWhole(raw: string): ParsedWhole {
       if (!Number.isFinite(value)) return { kind: "invalid" };
       return Number.isInteger(value) ? { kind: "whole", value } : { kind: "fraction", value };
     }
-    case "negative":
     case "malformed":
+      return { kind: "malformed" };
+    case "negative":
     case "notNumber":
       return { kind: "invalid" };
   }
@@ -290,13 +297,54 @@ export function parseWhole(raw: string): ParsedWhole {
  * A quantity: > 0, ≤ 5000, at most two decimal places — `@Digits(integer = 4,
  * fraction = 2)`. A third decimal is refused rather than rounded, including `150.000`,
  * which the api's `@Digits` also refuses (it counts the written scale).
+ *
+ * Read by `readNumber`, like every other number the portal takes (BUG-556):
+ *   · grouping spaces are read — "1 000" g, with any of `readNumber`'s five spaces, is
+ *     1000. It was refused with "more than 0 and at most 5000", false for 1000;
+ *   · a decimal COMMA is a decimal, like the point: "150,5" is 150.5 (EV-256b);
+ *   · "1.000" / "1,500" stay REFUSED. Read as decimals they have three places, which the
+ *     api refuses; read as thousands nobody can be sure of them. Neither reading is sent;
+ *   · digits that cannot be read ("1 00", "1e3", "1,5,5") are `malformed`, shown the
+ *     format sentence rather than the range one.
+ *
+ *   empty     — nothing typed.
+ *   quantity  — a sendable value.
+ *   malformed — a digit was typed and no reading fits.
+ *   outOfRange — read, and refused by the api's rule: 0, a negative, above 5000, more
+ *               than two decimals, ambiguous thousands, or no digit at all.
  */
+export type ParsedQuantity =
+  | { kind: "empty" }
+  | { kind: "quantity"; value: number }
+  | { kind: "malformed" }
+  | { kind: "outOfRange" };
+
+const QUANTITY_DECIMALS = 2;
+
+export function readQuantity(raw: string): ParsedQuantity {
+  const read = readNumber(raw);
+  switch (read.kind) {
+    case "empty":
+      return { kind: "empty" };
+    case "integer":
+    case "decimal": {
+      if (read.kind === "decimal" && read.fraction.length > QUANTITY_DECIMALS) return { kind: "outOfRange" };
+      const value = Number(read.kind === "integer" ? read.digits : `${read.digits}.${read.fraction}`);
+      return value > 0 && value <= MAX_QUANTITY ? { kind: "quantity", value } : { kind: "outOfRange" };
+    }
+    case "malformed":
+      return { kind: "malformed" };
+    case "thousands":
+    case "negative":
+    case "notNumber":
+      return { kind: "outOfRange" };
+  }
+}
+
+/** The sendable value, or null for anything `readQuantity` does not accept. */
 export function parseQuantity(raw: string): number | null {
-  // A French coach types a decimal comma ("150,5"); read it as a point, as progressGoal.ts does.
-  const text = raw.trim().replace(",", ".");
-  if (!/^\d{1,4}(\.\d{1,2})?$/.test(text)) return null;
-  const value = Number(text);
-  return value > 0 && value <= MAX_QUANTITY ? value : null;
+  const read = readQuantity(raw);
+  return read.kind === "quantity" ? read.value : null;
 }
 
 /* ── where a problem is shown ───────────────────────────────────────────────────── */
@@ -344,6 +392,10 @@ function macroProblem(field: MacroField, raw: string, copy: Copy): Problem | nul
     // "1.000" / "1,500": the targets' sentence, because it is the targets' rule.
     return { at: field, message: copy.recipes.wholeNumber };
   }
+  if (parsed.kind === "malformed") {
+    // "18 00": how to write one, with an example inside the field's own range.
+    return { at: field, message: copy.recipes.numberFormat(field === "kcal" ? 1800 : 150) };
+  }
   if (parsed.kind === "fraction") {
     // The rule the api review turned up: 50.7 is REFUSED, never truncated to 50. The
     // sentence names both whole numbers either side so the coach does not have to.
@@ -379,9 +431,12 @@ export function localProblems(draft: RecipeDraft, copy: Copy): Problem[] {
     problems.push({ at: "ingredients", message: copy.recipes.ingredientsFull });
   }
   draft.ingredients.forEach((line, index) => {
-    if (line.quantity.trim() === "") {
+    const quantity = readQuantity(line.quantity);
+    if (quantity.kind === "empty") {
       problems.push({ at: ingredientAddress(index), message: copy.recipes.quantityRequired, missing: true });
-    } else if (parseQuantity(line.quantity) === null) {
+    } else if (quantity.kind === "malformed") {
+      problems.push({ at: ingredientAddress(index), message: copy.recipes.quantityFormat });
+    } else if (quantity.kind === "outOfRange") {
       problems.push({ at: ingredientAddress(index), message: copy.recipes.quantityRange });
     }
   });

@@ -1585,6 +1585,12 @@ export const en = {
     quantityRequired: "Enter a quantity.",
     quantityRange: "A quantity is more than 0 and at most 5000, with up to 2 decimals.",
     /**
+     * BUG-556 — digits that cannot be read as a quantity ("1 00", "1e3"). The range
+     * sentence was false for them. The example is written the way the portal reads it:
+     * "1000", never "1,000", which is refused (it has three decimals).
+     */
+    quantityFormat: "Enter a quantity, for example 1000 or 12.5.",
+    /**
      * "1.000" / "1,500" kcal or grams: a thousand or one, nobody can tell, so neither is
      * sent. The targets' sentence (`nutrition.wholeNumber`), because it is their rule.
      */
@@ -1594,6 +1600,12 @@ export const en = {
       `Whole numbers only. Use ${below} or ${above}.`,
     numberRange: (label: string, min: number, max: number) =>
       `${label}: a whole number from ${min} to ${max}.`,
+    /**
+     * Staff F1 (number-input follow-ups) — kcal or grams whose digits cannot be read
+     * ("18 00"). The range sentence was false for them; `nutrition.numberFormat`'s rule,
+     * with an example inside the field's range (1800 kcal, 150 g).
+     */
+    numberFormat: (example: number) => `Enter a whole number, for example ${example}.`,
     stepEmpty: "Write this step or remove it.",
     stepTooLong: "A step is at most 300 characters.",
     stepInvalid: "Check this step: 1 to 300 characters, on one line.",
