@@ -20,6 +20,8 @@ test("no challenges: the empty state, and a dialog that says there is nobody to 
   const res = await page.goto("/challenges");
   expect(res?.status()).toBe(200);
   await expect(page.getByText("No challenges yet", { exact: true })).toBeVisible();
+  // The subtitle names no metric: the list holds WORKOUTS challenges as well as STEPS ones.
+  await expect(page.locator("h1 + p")).toHaveText("Challenges your clients join from the Evoli Fit app.");
   await page.getByRole("button", { name: "New challenge" }).click();
   const dialog = page.getByRole("dialog", { name: "New challenge" });
   await expect(dialog.getByText("You have no linked clients yet. Invite a client from the roster first.")).toBeVisible();
