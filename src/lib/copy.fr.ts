@@ -544,7 +544,7 @@ export const fr = {
       SNACK: "Collation",
     } as Record<string, string>,
     macros: (kcal: number, p: number, c: number, f: number) =>
-      `${n(kcal)} kcal · ${n(p)} g de protéines · ${n(c)} g de glucides · ${n(f)} g de lipides`,
+      `${n(kcal)}\u00a0kcal · ${n(p)}\u00a0g de protéines · ${n(c)}\u00a0g de glucides · ${n(f)}\u00a0g de lipides`,
     loadError: "La nutrition de ce client n'a pas pu être chargée.",
   },
 

@@ -1077,7 +1077,7 @@ export const en = {
       SNACK: "Snack",
     } as Record<string, string>,
     macros: (kcal: number, p: number, c: number, f: number) =>
-      `${kcal} kcal · ${p} g protein · ${c} g carbs · ${f} g fat`,
+      `${kcal}\u00a0kcal · ${p}\u00a0g protein · ${c}\u00a0g carbs · ${f}\u00a0g fat`,
     loadError: "This trainee's nutrition could not be loaded.",
   },
 

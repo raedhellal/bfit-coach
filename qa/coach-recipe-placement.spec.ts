@@ -262,7 +262,9 @@ test.describe("AC2 — the picker", () => {
     await signIn(page);
     await openNutrition(page, VERA);
     const row = meal(page, "Friday Dinner");
-    await expect(row.getByText(/^620 kcal · /)).toBeVisible();
+    // `\s`, not a space: BUG-601 joins the number to its unit with U+00A0, and a RegExp
+    // passed to getByText is matched against the raw text (a string would be normalised).
+    await expect(row.getByText(/^620\skcal · /)).toBeVisible();
     const dialog = await openPicker(page, row);
 
     const choices = dialog.getByRole("button", { name: /^Choose / });
