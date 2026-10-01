@@ -449,6 +449,10 @@ export function Skeleton({ w = "100%", h = 14, r = 7, style = {} }: { w?: number
     <div
       style={{
         width: w,
+        // BUG-597 — a fixed `w` is the DESKTOP shape, never a floor: a 320 px skeleton in a padded
+        // card scrolled a 320 px page 35 px sideways while a detail page loaded. Where the
+        // container is wider than `w` this binds nothing, so the desktop look is unchanged.
+        maxWidth: "100%",
         height: h,
         borderRadius: r,
         background: "linear-gradient(90deg,var(--surface-2) 25%,var(--surface-3) 50%,var(--surface-2) 75%)",

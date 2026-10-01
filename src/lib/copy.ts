@@ -1077,7 +1077,7 @@ export const en = {
       SNACK: "Snack",
     } as Record<string, string>,
     macros: (kcal: number, p: number, c: number, f: number) =>
-      `${kcal} kcal · ${p} g protein · ${c} g carbs · ${f} g fat`,
+      `${kcal}\u00a0kcal · ${p}\u00a0g protein · ${c}\u00a0g carbs · ${f}\u00a0g fat`,
     loadError: "This trainee's nutrition could not be loaded.",
   },
 
@@ -1869,7 +1869,15 @@ export const en = {
     autoRefresh: "Updates every 45 seconds while this page is open.",
     /** EV-321b — the coach's own clock (`LoadedAt`, rendered in the browser), so no zone suffix. */
     loadedAt: (time: string) => `Updated at ${time}`,
+    /**
+     * What accepting shares, by metric — the api's `POST /me/challenges/{id}/accept`: a
+     * STEPS challenge shares the daily step count, a WORKOUTS one the count of sessions
+     * completed in the window. `consent` is the STEPS sentence; a WORKOUTS challenge must
+     * never tell the coach a client shares steps.
+     */
     consent: "Accepting the invitation is how a client agrees to share their steps with you.",
+    consentWorkouts:
+      "By accepting the invitation, your client agrees to share with you how many sessions they complete during the challenge.",
     progressLabel: "Participants' progress",
     colRank: "Rank",
     colClient: "Client",

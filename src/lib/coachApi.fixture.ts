@@ -3037,6 +3037,18 @@ async function withServedWeekStatus(state: NutritionState): Promise<NutritionSta
   if (!state.week || (status !== "GENERATING" && status !== "REFUSED" && status !== "ARCHIVED")) return state;
   return { ...state, week: { ...state.week, status } };
 }
+/**
+ * BUG-597 (2026-10-01) — ⚠ fixture affordance: `evoli_fixture_read_delay=<ms>`
+ * holds the three library DETAIL reads (a workout template, a recipe, a nutrition
+ * template) for that long, capped at 5 s, in ONE browser context. A fixture read answers
+ * in microseconds, so a page's `loading.tsx` is otherwise on screen for a frame or two,
+ * which is long enough to scroll a 320 px page sideways and too short to measure. The
+ * delay is what makes the loading state a state a test can stand in.
+ */
+async function heldDetailRead(): Promise<void> {
+  const ms = Number(await fixtureSwitch("evoli_fixture_read_delay"));
+  if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 5_000)));
+}
 async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
 }
@@ -5306,6 +5318,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getTemplate(id: string): Promise<CoachTemplate> {
+    await heldDetailRead();
     return ownedTemplate(id);
   },
 
@@ -5537,6 +5550,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getRecipe(id: string): Promise<CoachRecipe> {
+    await heldDetailRead();
     return toRecipeResponse(await ownedRecipe(id));
   },
 
@@ -5603,6 +5617,7 @@ export const fixtureCoachApi: CoachApi = {
   async getNutritionTemplate(id: string): Promise<NutritionTemplate> {
     // Journalled so a rename can be seen to READ before it writes (staff follow-up).
     recordCall(`GET /coach-portal/nutrition-templates/${id}`);
+    await heldDetailRead();
     return structuredClone(await ownedNutritionTemplate(id));
   },
 

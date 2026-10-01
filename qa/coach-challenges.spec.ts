@@ -435,6 +435,84 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
   });
 });
 
+/* ── Workouts consent wording — the sentence under the table names what accepting shares ──
+ * The portal's dialog creates only STEPS, but the api accepts WORKOUTS (totalTarget 1-100)
+ * and the portal renders whatever it is served. The create server action's body is
+ * rewritten in flight to the WORKOUTS shape, so the fixture stores a real WORKOUTS
+ * challenge through the same path the api would. Per the api's accept endpoint, a
+ * WORKOUTS acceptance shares the count of sessions completed in the window — never steps. */
+const CONSENT = {
+  en: {
+    steps: "Accepting the invitation is how a client agrees to share their steps with you.",
+    workouts:
+      "By accepting the invitation, your client agrees to share with you how many sessions they complete during the challenge.",
+  },
+  fr: {
+    steps: "En acceptant l'invitation, le client accepte de partager ses pas avec vous.",
+    workouts:
+      "En acceptant l'invitation, le client accepte de partager avec vous le nombre de séances terminées pendant le défi.",
+  },
+} as const;
+
+/** Create a WORKOUTS challenge (totalTarget 6) for Lina through the dialog, and land on it. */
+async function createWorkoutsChallenge(page: Page, labels: { open: string; title: string; submit: string }) {
+  let rewritten = 0;
+  await page.route("**/challenges", async (route) => {
+    const request = route.request();
+    if (request.method() !== "POST" || !request.headers()["next-action"]) return route.fallback();
+    const args = JSON.parse(request.postData() ?? "[]") as Record<string, unknown>[];
+    const body: Record<string, unknown> = { ...args[0], metric: "WORKOUTS", totalTarget: 6 };
+    delete body.dailyTarget;
+    rewritten += 1;
+    return route.continue({ postData: JSON.stringify([body, ...args.slice(1)]) });
+  });
+  await page.goto("/challenges");
+  await page.getByRole("button", { name: labels.open }).click();
+  const dialog = page.getByRole("dialog", { name: labels.open });
+  await dialog.getByLabel(labels.title).fill("Six séances");
+  await dialog.getByRole("checkbox", { name: "Lina M." }).check();
+  await dialog.getByRole("button", { name: labels.submit }).click();
+  await page.waitForURL(/\/challenges\/[0-9a-f-]{36}\?created=1$/);
+  expect(rewritten, "the create body was never rewritten, so this is a STEPS challenge").toBe(1);
+  await page.unroute("**/challenges");
+}
+
+test.describe("workouts consent wording", () => {
+  test("English: a WORKOUTS challenge says it shares completed sessions; a STEPS one still says steps", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await createWorkoutsChallenge(page, { open: "New challenge", title: "Title", submit: "Create and invite" });
+    const main = page.locator("main");
+    await expect(main).toContainText(CONSENT.en.workouts);
+    await expect(main).not.toContainText(CONSENT.en.steps);
+
+    await page.goto(`/challenges/${ACTIVE}`);
+    await expect(main).toContainText(CONSENT.en.steps);
+    await expect(main).not.toContainText(CONSENT.en.workouts);
+  });
+
+  test.describe("fr-FR", () => {
+    test.use({ locale: "fr-FR" });
+
+    test("French: a WORKOUTS challenge says « séances terminées »; a STEPS one still says « ses pas »", async ({
+      page,
+    }) => {
+      await signInFrench(page);
+      await createWorkoutsChallenge(page, { open: "Nouveau défi", title: "Titre", submit: "Créer et inviter" });
+      const main = page.locator("main");
+      await expect(main).toContainText(CONSENT.fr.workouts);
+      await expect(main).not.toContainText(CONSENT.fr.steps);
+      await expect(main).not.toContainText(/partager ses pas/);
+      await expectNoEnglish(page, "a WORKOUTS challenge page");
+
+      await page.goto(`/challenges/${ACTIVE}`);
+      await expect(main).toContainText(CONSENT.fr.steps);
+      await expect(main).not.toContainText(CONSENT.fr.workouts);
+    });
+  });
+});
+
 test.describe("layout", () => {
   test("at 1280 the seven-day table fits its card: no sideways scroll, no clipped square", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 860 });

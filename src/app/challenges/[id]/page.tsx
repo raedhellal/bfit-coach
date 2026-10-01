@@ -57,6 +57,8 @@ export default async function ChallengePage({
   }
 
   const { challenge, participants } = loaded.detail;
+  const consentLine =
+    challenge.metric === "STEPS" ? c.consent : challenge.metric === "WORKOUTS" ? c.consentWorkouts : null;
   return (
     <CoachShell coachName={me?.displayName} section="challenges">
       <div style={{ marginBottom: 10 }}>{back}</div>
@@ -102,7 +104,11 @@ export default async function ChallengePage({
         <ProgressTable detail={loaded.detail} copy={copy} now={now} />
       )}
 
-      <p style={{ margin: "14px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>{c.consent}</p>
+      {/* What accepting shares depends on the metric (the api's accept endpoint). An
+          unknown metric says nothing rather than claim steps it may not be. */}
+      {consentLine && (
+        <p style={{ margin: "14px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>{consentLine}</p>
+      )}
     </CoachShell>
   );
 }

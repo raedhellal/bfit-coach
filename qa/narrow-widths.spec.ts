@@ -13,6 +13,15 @@ import { expectNoSidewaysScroll } from "./layout";
  *   BUG-300 — the Food log split "320" from "kcal" in its four-column macro grid.
  *   BUG-301 — `--ink-3` text read 3.11:1 on the white card, under WCAG 1.4.3's 4.5:1.
  *
+ * And two found by the BUG-252/300 gate under `next start` (2026-10-01):
+ *
+ *   BUG-597 — the three library detail pages' `loading.tsx` drew a fixed 320 px
+ *             skeleton inside a padded card, so a 320 px page scrolled 35 px sideways
+ *             for as long as the detail read took (`coach-nutrition-templates.spec.ts`'s
+ *             "the editor" step, red under `next start` only).
+ *   BUG-601 — `copy.nutrition.macros` split "14" from "g de lipides" on a meal row in
+ *             French at 400 px (ordinary spaces between each number and its unit).
+ *
  * "A number and its unit share one line box" is read with Range rects, not with text:
  * the probe takes the last digit before the unit and the unit's first letter and
  * compares the tops of their client rects. `toHaveText` normalises U+00A0 to a space,
@@ -178,6 +187,109 @@ test.describe("BUG-300 — the Food log never splits a number from its unit", ()
         }
         expect(failures, "a Food log number and its unit wrapped apart").toEqual([]);
       });
+    });
+  }
+});
+
+test.describe("BUG-601 — a meal row's macro line never splits a number from its unit", () => {
+  for (const locale of ["en-GB", "fr-FR"] as const) {
+    test.describe(locale, () => {
+      test.use({ locale });
+
+      test(`every meal row, Range-rect probe from 320 to 414 (${locale})`, async ({ page }) => {
+        await signIn(page);
+        await page.goto(`/clients/${LINA}/nutrition`);
+        const meals = page.locator("[data-meal-id]");
+        await expect(meals.first(), "the fixture's Lina must have a meal week, or this proves nothing").toBeVisible();
+        await expect(meals.first()).toContainText("kcal");
+
+        const failures: string[] = [];
+        for (const width of SWEEP) {
+          await page.setViewportSize({ width, height: 900 });
+          const split = await splitNumberUnits(meals);
+          if (split.length) failures.push(`${width}px: ${split.join(" | ")}`);
+        }
+        expect(failures, "a meal row's number and its unit wrapped apart").toEqual([]);
+      });
+    });
+  }
+});
+
+/**
+ * The library detail pages' LOADING state, stood in for 1.5 s.
+ *
+ * `evoli_fixture_read_delay` holds the detail read on the server, so the page streams its
+ * `loading.tsx` first and the real page 1.5 s later — the shape a slow api gives a coach
+ * on a phone. The skeleton is found by its animation (`shimmer`, the kit's Skeleton),
+ * and the overflow is read in the SAME evaluate as that check: a measurement taken after
+ * the real page arrived would be a measurement of the wrong screen.
+ */
+const SKELETON_SAMPLE = `(() => {
+  const shimmering = Array.from(document.querySelectorAll("main *")).filter(
+    (el) => getComputedStyle(el).animationName === "shimmer"
+  ).length;
+  const doc = document.documentElement;
+  return { shimmering, scrollWidth: doc.scrollWidth, clientWidth: doc.clientWidth };
+})()`;
+
+async function createNutritionTemplate(page: Page, name: string) {
+  await page.goto("/nutrition-templates/new");
+  await page.getByLabel("Template name").fill(name);
+  await page.getByLabel("Calories", { exact: true }).fill("1800");
+  await page.getByLabel("Protein", { exact: true }).fill("150");
+  await page.getByLabel("Carbs", { exact: true }).fill("170");
+  await page.getByLabel("Fat", { exact: true }).fill("60");
+  await page.getByRole("button", { name: "Save template" }).click();
+  await page.waitForURL("/nutrition-templates");
+}
+
+test.describe("BUG-597 — a detail page's loading state never scrolls a 320 px page sideways", () => {
+  const ROUTES = [
+    { list: "/templates", item: "Upper / Lower split", detail: /\/templates\/[0-9a-f-]{36}$/ },
+    { list: "/recipes", item: "Chicken rice bowl", detail: /\/recipes\/[0-9a-f-]{36}$/ },
+    { list: "/nutrition-templates", item: "Cut 1800", detail: /\/nutrition-templates\/[0-9a-f-]{36}$/ },
+  ] as const;
+
+  for (const route of ROUTES) {
+    test(`${route.list}/[id] while its read is held 1.5 s`, async ({ page, context, baseURL }) => {
+      await signIn(page);
+      // The `empty` scenario seeds no nutrition templates; the other two libraries are seeded.
+      if (route.list === "/nutrition-templates") await createNutritionTemplate(page, route.item);
+
+      await page.setViewportSize({ width: 320, height: 900 });
+      await page.goto(route.list);
+      const edit = page.getByRole("group", { name: route.item, exact: true }).getByRole("link", { name: "Edit" });
+      await expect(edit).toBeVisible();
+      await context.addCookies([{ name: "evoli_fixture_read_delay", value: "1500", url: baseURL! }]);
+      await edit.click();
+
+      await page.waitForFunction(
+        () =>
+          Array.from(document.querySelectorAll("main *")).some(
+            (el) => getComputedStyle(el).animationName === "shimmer"
+          ),
+        undefined,
+        { timeout: 1_400 }
+      );
+      const sample = (await page.evaluate(SKELETON_SAMPLE)) as {
+        shimmering: number;
+        scrollWidth: number;
+        clientWidth: number;
+      };
+      expect(sample.shimmering, "the measurement was not taken on the loading state").toBeGreaterThan(0);
+      expect(
+        sample.scrollWidth,
+        `${route.list}/[id] loading: the page scrolls sideways by ${sample.scrollWidth - sample.clientWidth}px at 320px`
+      ).toBeLessThanOrEqual(sample.clientWidth);
+
+      // The real page still arrives, and it fits too.
+      await page.waitForURL(route.detail);
+      await expect
+        .poll(async () => ((await page.evaluate(SKELETON_SAMPLE)) as { shimmering: number }).shimmering, {
+          timeout: 10_000,
+        })
+        .toBe(0);
+      await expectNoSidewaysScroll(page, `${route.list}/[id] loaded`);
     });
   }
 });
