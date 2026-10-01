@@ -60,5 +60,15 @@ would break silently. Raed's investor demo (Sat 2026-10-03) peaks on this page.
   drift, registered in `qa/contract-deviations.ts`. A sibling branch that re-vendors past
   `239c8ab` meets the same entry; keep the lines byte-identical.
 
+- **The roster is PAGED (100 max) and a picker must read every page** (BUG-472, 2026-10-01).
+  The api has no roster search. `/challenges` uses `readWholeRoster` (`src/lib/rosterAll.ts`);
+  `/templates` and `/nutrition-templates` "Use on a trainee" still read page 0 only — same
+  class, not fixed. Fixture cookie `evoli_fixture_roster_extra=<n>` adds n ACTIVE rows
+  ("Client 001"…) and the fixture roster now slices by page/size.
+- **The source label under "Dernière synchro" is TODAY's source or nothing** (BUG-473). An
+  earlier day's source beside today's "—" misattributed the number; Tobias (no row today,
+  MANUAL two days ago) is the seeded witness.
+- The French delete confirm (BUG-458 sentence) is asserted in the fr-FR describe (BUG-527).
+
 See [[coach-portal-i18n-facts]], [[coach-portal-fixture-mode]],
 [[a-picture-with-no-text-is-unassertable]].

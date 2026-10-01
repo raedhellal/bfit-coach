@@ -86,7 +86,12 @@ test.describe("the ranked progress table", () => {
     await expect(row(page, YUSUF).locator("[data-synced]")).toHaveText(/^\d+ minutes ago$/); // seeded 40 min before the process started
     await expect(row(page, YUSUF).locator("[data-source]")).toHaveText("Apple Health");
     await expect(row(page, LINA).locator("[data-source]")).toHaveText("Health Connect");
-    await expect(row(page, TOBIAS).locator("[data-source]")).toHaveText("Manual entry");
+    // BUG-473: Tobias has NO row today — his last row (two days ago) was typed by hand.
+    // The label names today's source or nothing; never an earlier day's beside today's "—".
+    await expect(row(page, TOBIAS).locator("[data-today]")).toHaveAttribute("data-today", "");
+    await expect(row(page, TOBIAS).locator("[data-source]")).toHaveCount(0);
+    await expect(row(page, TOBIAS)).not.toContainText("Manual entry");
+    await expect(row(page, TOBIAS)).not.toContainText("Pedometer");
     await expect(row(page, LINA)).toContainText("49,720 steps");
     // The bar is capped at the goal and states its numbers.
     await expect(row(page, YUSUF).getByRole("progressbar")).toHaveAttribute("data-pct", "100");
@@ -313,6 +318,25 @@ test.describe("create", () => {
     );
   });
 
+  // BUG-472: the roster is paged at 100 and the dialog read page 0 only, so client 101
+  // could not be invited. 6 seeded + 120 extra = 126 ACTIVE rows over two pages.
+  test("a roster past one page: every ACTIVE client is offered, the 101st through the 126th too", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(page);
+    await context.addCookies([{ name: "evoli_fixture_roster_extra", value: "120", url: baseURL! }]);
+    const dialog = await openDialog(page);
+    await expect(dialog.getByRole("checkbox")).toHaveCount(126);
+    for (const name of ["Lina M.", "Client 094", "Client 095", "Client 120"]) {
+      await expect(dialog.getByRole("checkbox", { name, exact: true })).toHaveCount(1);
+    }
+    // Past the first page, and invitable: the selection counts it.
+    await dialog.getByRole("checkbox", { name: "Client 120", exact: true }).check();
+    await expect(dialog.getByText("1 selected")).toBeVisible();
+  });
+
   // Staff nit (c): a failed roster read is not "no linked clients" — that sentence sends
   // a coach who HAS clients off to invite them again.
   test("a failed roster read says the clients could not be loaded, never that there are none", async ({
@@ -372,7 +396,9 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await expect(region.locator(`tr[data-participant="${YUSUF}"]`)).toContainText("10\u202f400 / 10\u202f000 pas");
     await expect(region.locator(`tr[data-participant="${YUSUF}"]`)).toContainText("Apple Santé");
     await expect(region.locator(`tr[data-participant="${TOBIAS}"]`)).toContainText("— / 10\u202f000 pas");
-    await expect(region.locator(`tr[data-participant="${TOBIAS}"]`)).toContainText("Saisie manuelle");
+    // BUG-473: no row today, so no source — not the hand-typed day before yesterday.
+    await expect(region.locator(`tr[data-participant="${TOBIAS}"] [data-source]`)).toHaveCount(0);
+    await expect(region.locator(`tr[data-participant="${TOBIAS}"]`)).not.toContainText("Saisie manuelle");
     await expect(region.locator(`tr[data-participant="${SARA}"]`)).toContainText("Invitation envoyée");
     await expect(region.locator(`tr[data-participant="${TOBIAS}"] [data-status="NO_DATA"]`).first()).toHaveAttribute(
       "aria-label",
@@ -387,6 +413,25 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await dialog.getByRole("button", { name: "Créer et inviter" }).click();
     await expect(dialog.getByText("Donnez un titre au défi.")).toBeVisible();
     await expectNoEnglish(page, "the create dialog");
+  });
+
+  // BUG-527 — EV-321 AC17 asks for AC16 (BUG-458's delete sentence) in both locales; only
+  // the English one was asserted, so reverting the French to « …sont conservés » stayed green.
+  test("the delete confirm says, in French, that the shared steps are deleted", async ({ page }) => {
+    await signInFrench(page);
+    await page.goto(`/challenges/${ENDED}`);
+    await page.getByRole("button", { name: "Supprimer le défi" }).click();
+    const confirm = page.getByRole("dialog", { name: "Supprimer ce défi ?" });
+    await expect(confirm).toContainText("«\u00a0Semaine de rentrée\u00a0» est supprimé");
+    await expect(confirm).toContainText(
+      "Les pas que vos clients ont partagés pour ce défi sont supprimés, sauf les jours couverts par un autre défi auquel ils participent."
+    );
+    await expect(confirm).not.toContainText("conservés");
+    await expectNoEnglish(page, "the delete confirm");
+
+    await confirm.getByRole("button", { name: "Supprimer", exact: true }).click();
+    await page.waitForURL("/challenges");
+    await expect(page.getByRole("list", { name: "Défis" }).getByRole("listitem")).toHaveCount(2);
   });
 });
 

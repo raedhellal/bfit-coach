@@ -536,6 +536,8 @@ function UseDialog({
   const [clientId, setClientId] = useState("");
   const [conflict, setConflict] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** BUG-196 — the last "Replace the draft" was refused because the draft moved again. */
+  const [refusedAgain, setRefusedAgain] = useState(false);
   const [pending, startTransition] = useTransition();
   const [seeded, setSeeded] = useState(false);
 
@@ -544,6 +546,7 @@ function UseDialog({
     setClientId(trainees[0]?.id ?? "");
     setConflict(null);
     setError(null);
+    setRefusedAgain(false);
   }
   if (!open && seeded) setSeeded(false);
 
@@ -556,6 +559,7 @@ function UseDialog({
         ok: false,
         code: "FAILED",
       } as const);
+      setRefusedAgain(false);
       if (!result.ok) {
         if (result.code === "DRAFT_EXISTS") {
           const existing = result.existingUpdatedAt;
@@ -571,8 +575,12 @@ function UseDialog({
           }
           // The SECOND time round this re-arms with the NEW timestamp, which is the
           // two-tab case: the coach is asked again, about the draft that is there now.
+          // BUG-196: and TOLD that the press was refused. Re-armed silently, the dialog
+          // was byte-identical before and after a destructive control did nothing.
+          // `replaces` set = this was a "Replace the draft" press, not the first "Use".
           setError(null);
           setConflict(existing);
+          setRefusedAgain(replaces !== undefined);
           return;
         }
         setConflict(null);
@@ -635,6 +643,7 @@ function UseDialog({
                 // assertion the coach was shown no longer describes anything.
                 setConflict(null);
                 setError(null);
+                setRefusedAgain(false);
               }}
               style={{
                 height: MIN_TOUCH_TARGET,
@@ -692,6 +701,15 @@ function UseDialog({
               }}
             >
               {copy.templates.replacesDraft(trainee.traineeDisplayName)}
+            </p>
+          )}
+          {conflict && trainee && refusedAgain && (
+            <p
+              role="alert"
+              data-testid="replace-refused-again"
+              style={{ margin: 0, fontSize: 13, color: "var(--err-ink)", lineHeight: 1.5 }}
+            >
+              {copy.templates.replaceRefusedAgain(trainee.traineeDisplayName)}
             </p>
           )}
           {error && (

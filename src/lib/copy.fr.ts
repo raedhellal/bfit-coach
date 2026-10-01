@@ -735,6 +735,9 @@ export const fr = {
         ? "1 exercice n'est peut-être pas dans le catalogue d'exercices. Vérifiez-le avant de publier."
         : `${n} exercices ne sont peut-être pas dans le catalogue d'exercices. Vérifiez-les avant de publier.`,
     notInCatalogue: "Introuvable dans le catalogue",
+    /** BUG-196 — a refused "Remplacer le brouillon": the draft changed again. See copy.ts. */
+    replaceRefusedAgain: (trainee: string) =>
+      `Rien n'a été remplacé. Le brouillon ${de(trainee)} a de nouveau été enregistré après votre confirmation. Appuyez encore sur ${q("Remplacer le brouillon")} pour le remplacer tel qu'il est maintenant.`,
   },
 
   /** Deliberately absent, as in English: any claim that a recipe is checked against a client. */
@@ -1093,6 +1096,15 @@ export const fr = {
     title: "Impossible de joindre Evoli pour le moment",
     body: "Rien n'a été modifié et votre session est toujours ouverte. Réessayez dans un instant.",
     retry: "Réessayer",
+  },
+
+  /** EV-241 — the 404 page (`app/not-found.tsx`). See copy.ts. */
+  notFound: {
+    title: "Page introuvable",
+    body: "Aucune page ne correspond à cette adresse. Vérifiez le lien, ou revenez à vos clients.",
+    toRoster: "Retour à vos clients",
+    bodySignedOut: "Aucune page ne correspond à cette adresse. Vérifiez le lien, ou connectez-vous à Evoli Pro.",
+    toLogin: "Aller à la connexion",
   },
 
   common: {

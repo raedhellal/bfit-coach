@@ -75,13 +75,19 @@ function InvitedRow({ p, copy, span }: { p: CoachChallengeParticipant; copy: Cop
   );
 }
 
-/** The source of the latest day with a value — "where the number came from". */
-function latestSource(p: CoachChallengeParticipant): ActivitySource | null {
+/**
+ * Where TODAY's number came from — the day the row shows — and nothing else.
+ *
+ * BUG-473: this used to fall back to the latest earlier day with a source when today had
+ * none, so a client who typed Tuesday by hand and sent nothing today read "Manual entry"
+ * beside today's "—" — the label named a day the row does not show. No row today means
+ * no source label at all (the strip's squares carry no source either: nothing on the row
+ * attributes an earlier day).
+ */
+function todaySource(p: CoachChallengeParticipant): ActivitySource | null {
   const progress = p.progress;
-  if (!progress) return null;
-  if (progress.todaySource) return progress.todaySource;
-  const withValue = (progress.days ?? []).filter((d) => d.value !== null && d.source !== null);
-  return withValue.length ? withValue[withValue.length - 1].source : null;
+  if (!progress || progress.todayValue === null) return null;
+  return progress.todaySource ?? null;
 }
 
 function AcceptedRow({
@@ -99,7 +105,7 @@ function AcceptedRow({
   const progress = p.progress!;
   const name = nameOf(p, copy);
   const n = (value: number) => formatSteps(value, copy.locale);
-  const source = latestSource(p);
+  const source = todaySource(p);
   const today = progress.todayValue;
   /**
    * The bar's width FLOORS and its colour follows the goal, not the width. With

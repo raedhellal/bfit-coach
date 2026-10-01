@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { expectNoEnglish, signInFrench } from "./french";
 
 /**
  * EV-188b AC3 and AC5 — putting a template on a trainee, and what the trainee's editor
@@ -182,6 +183,88 @@ test.describe("AC3 — Use on a trainee", () => {
     await dialog.getByRole("button", { name: "Replace the draft" }).click();
     await page.waitForURL(`/clients/${YUSUF}/routine`);
     await expect(page.getByText(`Started from ${SEEDED_B}`, { exact: true })).toBeVisible();
+  });
+
+  /**
+   * BUG-196 — tab 1 is asked "this replaces your draft"; tab 2 then replaces that draft
+   * itself; tab 1 presses "Replace the draft" with the timestamp it was handed and is
+   * (correctly) refused. The refusal must be ON SCREEN: before the fix the dialog re-armed
+   * byte-identical, so a destructive press visibly did nothing.
+   */
+  test("a refused 'Replace the draft' says nothing was replaced and why; the next press lands", async ({
+    page,
+    context,
+  }) => {
+    const REFUSED =
+      "Nothing was replaced. The draft for Yusuf A. was saved again after you were asked. Press “Replace the draft” again to replace it as it is now.";
+    await signIn(page);
+    await applyToYusuf(page, SEEDED_A);
+
+    // Tab 1: asked about the draft that is there now.
+    const dialog = await openUseDialog(page, SEEDED_B);
+    await dialog.locator("select").selectOption({ label: "Yusuf A." });
+    await dialog.getByRole("button", { name: "Use this template" }).click();
+    await expect(dialog.getByRole("button", { name: "Replace the draft" })).toBeVisible();
+    await expect(dialog.getByText(REFUSED, { exact: true })).toHaveCount(0); // asked, not refused
+
+    // Tab 2 (same session): replaces that draft, moving its timestamp.
+    const tab2 = await context.newPage();
+    const other = await openUseDialog(tab2, SEEDED_A);
+    await other.locator("select").selectOption({ label: "Yusuf A." });
+    await other.getByRole("button", { name: "Use this template" }).click();
+    await other.getByRole("button", { name: "Replace the draft" }).click();
+    await tab2.waitForURL(`/clients/${YUSUF}/routine`);
+    await expect(tab2.getByText(`Started from ${SEEDED_A}`, { exact: true })).toBeVisible();
+
+    // Tab 1 presses with the stale timestamp: refused, and it SAYS so.
+    await dialog.getByRole("button", { name: "Replace the draft" }).click();
+    await expect(dialog.getByText(REFUSED, { exact: true })).toBeVisible();
+    await expect(page).toHaveURL("/templates");
+    // Nothing was written: the draft is still tab 2's.
+    await tab2.reload();
+    await expect(tab2.getByText(`Started from ${SEEDED_A}`, { exact: true })).toBeVisible();
+
+    // The next press replaces the draft as it is now.
+    await dialog.getByRole("button", { name: "Replace the draft" }).click();
+    await page.waitForURL(`/clients/${YUSUF}/routine`);
+    await expect(page.getByText(`Started from ${SEEDED_B}`, { exact: true })).toBeVisible();
+  });
+});
+
+/** BUG-196 in French: the same refusal, in the portal's French (EV-324). */
+test.describe("BUG-196 — a fr-FR browser", () => {
+  test.use({ locale: "fr-FR" });
+
+  async function useFrench(page: Page, template: string) {
+    await page.goto("/templates");
+    await row(page, template).getByRole("button", { name: "Utiliser pour un client" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.locator("select").selectOption({ label: "Yusuf A." });
+    await dialog.getByRole("button", { name: "Utiliser ce modèle" }).click();
+    return dialog;
+  }
+
+  test("a refused « Remplacer le brouillon » is said in French", async ({ page, context }) => {
+    await signInFrench(page);
+    await useFrench(page, SEEDED_A); // no draft yet: applies and leaves
+    await page.waitForURL(`/clients/${YUSUF}/routine`);
+
+    const dialog = await useFrench(page, SEEDED_B);
+    await expect(dialog.getByRole("button", { name: "Remplacer le brouillon" })).toBeVisible();
+
+    const tab2 = await context.newPage();
+    const other = await useFrench(tab2, SEEDED_A);
+    await other.getByRole("button", { name: "Remplacer le brouillon" }).click();
+    await tab2.waitForURL(`/clients/${YUSUF}/routine`);
+
+    await dialog.getByRole("button", { name: "Remplacer le brouillon" }).click();
+    await expect(
+      dialog.getByText(
+        "Rien n'a été remplacé. Le brouillon de Yusuf A. a de nouveau été enregistré après votre confirmation. Appuyez encore sur «\u00a0Remplacer le brouillon\u00a0» pour le remplacer tel qu'il est maintenant.",
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expectNoEnglish(page, "the refused replace");
   });
 });
 
