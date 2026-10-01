@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { expectNoEnglish, signInFrench } from "./french";
@@ -101,4 +103,19 @@ test.describe("French (fr-FR)", () => {
     await expect(page.getByRole("link", { name: "Aller à la connexion" })).toHaveAttribute("href", "/login");
     await expectNoEnglish(page, "the signed-out not-found page");
   });
+});
+
+/**
+ * Next 14 renders the root not-found into EVERY page's RSC payload (witnessed: "Page not
+ * found" is in /challenges' HTML under `next start`), so anything this component awaits
+ * runs on every request. It must read no api — a `readCoachMe()` here was an extra
+ * `/coach-portal/me` on each roster load. Import lines only, so the file's own comment
+ * explaining the rule cannot trip it.
+ */
+test("the not-found page imports nothing that calls the api, and awaits nothing", () => {
+  const src = readFileSync(join(__dirname, "../src/app/not-found.tsx"), "utf8");
+  const imports = src.split("\n").filter((line) => /^import\b/.test(line));
+  expect(imports.length).toBeGreaterThan(3); // the scan reads real import lines
+  expect(imports.filter((line) => /coachApi|clientOverview|apiFetch|routeSession/.test(line))).toEqual([]);
+  expect(src).not.toMatch(/^export default async\b/m);
 });

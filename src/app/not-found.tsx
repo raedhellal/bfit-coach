@@ -2,7 +2,6 @@ import Link from "next/link";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { Logo } from "@/components/ui/icons";
 import { Card, MIN_TOUCH_TARGET } from "@/components/ui/kit";
-import { readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
 import { hasCoachRole } from "@/lib/jwt";
 import { readAccessToken } from "@/lib/session";
@@ -22,6 +21,13 @@ import { readAccessToken } from "@/lib/session";
  * The cookie is read for which screen to draw, exactly as middleware reads it; it is
  * never an authorization decision — the roster link still goes through the guard.
  *
+ * ⚠ COST: Next 14 renders the root not-found into EVERY page's RSC payload (it is the
+ * root segment's notFound boundary, built eagerly), so this component runs on every
+ * request. It therefore makes NO api call — the shell is drawn without the coach's name
+ * (a `readCoachMe()` here was a `/coach-portal/me` read on every roster load, which reads
+ * `getMe` uncached) — and reads one cookie. The embedded tree is ~4–5 kB of uncompressed
+ * HTML per document load (measured on /challenges under `next start`).
+ *
  * A typo'd TRAINEE id (`/clients/<anything>`) is not this page: it matches
  * `/clients/[id]`, the api answers 403 for an id that is not the coach's, and it is
  * served as /clients/denied with 403 (BUG-139) — "not in your list", which is the
@@ -29,7 +35,7 @@ import { readAccessToken } from "@/lib/session";
  */
 export const dynamic = "force-dynamic";
 
-export default async function NotFound() {
+export default function NotFound() {
   const copy = getCopy();
   const coach = hasCoachRole(readAccessToken());
   const card = (
@@ -65,10 +71,7 @@ export default async function NotFound() {
     </Card>
   );
 
-  if (coach) {
-    const me = await readCoachMe();
-    return <CoachShell coachName={me?.displayName}>{card}</CoachShell>;
-  }
+  if (coach) return <CoachShell>{card}</CoachShell>;
   return (
     <main className="page" style={{ maxWidth: 520, margin: "0 auto", paddingTop: 64 }}>
       <div style={{ marginBottom: 24 }}>
