@@ -21,8 +21,9 @@ api ranks, BUG-473 source rule all still hold).
   `.challenge-head [data-phase]`. `ProgressTable.tsx` kept its filename (no deletion), it
   renders the list now. Row ≥768 (two grid lines to 1279, one from 1280), card <768, CSS only.
 - **`todayValue: null` has TWO meanings** (coachApi.ts doc): nothing sent today, OR the trainee's
-  `progress.today` is outside the window. Only the first is « Aucune donnée aujourd'hui »; ended
-  and upcoming challenges render no today cell (`progress.today` vs `startsOn/endsOn`).
+  `progress.today` is outside the window. Only the first is « Aucune donnée aujourd'hui ». ⚠ The dates alone did NOT keep ended/upcoming
+  rows free of a today cell at zone edges (QA PB-1); since EV-337n the phase gates it too — see
+  [[challenges-followups-337n-facts]].
 - **Phase is UTC, a trainee's today is theirs — ONE predicate for both.** Staff blocker on
   55d2126: the stat cards gated on `phase === "ACTIVE"` alone while the rows checked the
   trainee's today, so at 22:30 UTC on `endsOn` Paris trainees who met every day read « 0 / 3 ·
