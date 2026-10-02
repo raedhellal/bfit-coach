@@ -194,10 +194,11 @@ test("PB-1: on an UPCOMING or ENDED challenge nobody has a today, whatever their
     rank: true,
     counts: true,
   });
-  // ACTIVE, but a trainee west of UTC still before the start: no today, nothing counted.
+  // ACTIVE, but a trainee west of UTC still before the start: no today, nothing counted —
+  // and, since ruling 13 (N6), no rank either (see the N6 test below).
   expect(view.participantRowView(progress("2026-09-28", null, false), challenge())).toMatchObject({
     today: false,
-    rank: true,
+    rank: false,
     counts: false,
   });
 });
@@ -291,4 +292,34 @@ test("N1: the met card's foot names who is outside its count, in the ruling's or
   expect(
     view.todayStats({ challenge: { ...challenge(), phase: "ENDED" }, participants: pastEnd })
   ).toMatchObject({ accepted: 0, pastEnd: 0, beforeStart: 0 });
+});
+
+/**
+ * Ruling 13 (EV-337n N6) — on an ACTIVE challenge's first morning, a trainee whose own day 1
+ * has not begun (west of UTC, or no stored zone before 12:00 UTC) shows no days met and no
+ * total: the api's zeros are not a result. The api still ranks him, last, in a tie over those
+ * same zeros, so the rank label goes too. The rank follows the counts, nothing else.
+ */
+test("N6: a row that shows no counts shows no rank; every counted row keeps its rank", () => {
+  const c = challenge();
+  const firstMorningWest = progress("2026-09-28", null, false);
+  expect(firstMorningWest.daysElapsed).toBe(0);
+  expect(view.participantRowView(firstMorningWest, c)).toEqual({ today: false, rank: false, counts: false, total: false });
+  // On his day 1 (counted, nothing synced yet): ranked, like every counted row.
+  expect(view.participantRowView(progress(START, null, false), c)).toMatchObject({ rank: true, counts: true });
+  expect(view.participantRowView(progress(START, 10_500, true), c)).toMatchObject({ rank: true, counts: true });
+  // ENDED keeps the final standings; UPCOMING shows no rank at all (as built).
+  expect(view.participantRowView(progress(END, 6_000, true), { ...c, phase: "ENDED" })).toMatchObject({ rank: true });
+  expect(view.participantRowView(progress(START, 5_000, true), { ...c, phase: "UPCOMING" })).toMatchObject({ rank: false });
+  // The rule is exactly "rank follows counts", over every shape above.
+  for (const [p, phase] of [
+    [firstMorningWest, "ACTIVE"],
+    [progress(START, null, false), "ACTIVE"],
+    [progress(END, 6_000, true), "ENDED"],
+    [progress(START, 5_000, true), "UPCOMING"],
+    [progress("2026-10-06", null, true), "ACTIVE"],
+  ] as const) {
+    const v = view.participantRowView(p, { ...c, phase });
+    expect(v.rank, `${phase} ${p.today}`).toBe(v.counts);
+  }
 });

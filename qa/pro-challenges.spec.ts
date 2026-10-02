@@ -509,6 +509,38 @@ for (const lang of ["fr", "en"] as const) {
       await expectNoSidewaysScroll(page, `${lang} 390px: the pager, page 2`);
       if (lang === "fr") await expectNoEnglish(page, "the challenges list, page 2");
     });
+
+    /**
+     * Ruling 13 (EV-337n N6): « Premier matin » starts today (UTC). Tobias is west of UTC and
+     * still the day before the start: no days met, no total — and no rank, which the api
+     * computes from the same zeros (it ranks him 3rd). His row stays where the api puts it.
+     */
+    test("N6: on the first morning, a trainee whose day 1 has not begun shows no rank; the api's order stands", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await context.addCookies([{ name: "evoli_fixture_challenge_edges", value: "1", url: baseURL! }]);
+      await signIn(page, lang);
+      await page.goto(`/challenges/${EDGE_FIRST_MORNING}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Premier matin");
+      await expect(page.locator(".challenge-head [data-phase]")).toHaveText(LANG[lang].phase.ACTIVE);
+      // The api's order: Lina (1 met), Yusuf (0 met, 4 000), Tobias (nothing yet).
+      await expect(page.locator('li[data-participant][data-status="ACCEPTED"]')).toHaveCount(3);
+      const order = await page.locator("li[data-participant]").evaluateAll((els) => els.map((el) => el.getAttribute("data-participant")));
+      expect(order).toEqual([LINA, YUSUF, TOBIAS]);
+
+      const tobias = participant(page, TOBIAS);
+      await expect(tobias).toHaveAttribute("data-status", "ACCEPTED");
+      await expect(tobias.locator("[data-rank-label]")).toHaveCount(0);
+      await expect(tobias).toHaveAttribute("data-rank", "");
+      await expect(tobias.locator("[data-days-met], [data-total]")).toHaveCount(0);
+      expect(await tobias.innerText()).not.toMatch(lang === "fr" ? /\b3e\b/ : /#3/);
+
+      // Every counted row keeps its rank.
+      await expect(participant(page, LINA).locator("[data-rank-label]")).toHaveText(lang === "fr" ? "1er" : "#1");
+      await expect(participant(page, YUSUF).locator("[data-rank-label]")).toHaveText(lang === "fr" ? "2e" : "#2");
+    });
   });
 }
 

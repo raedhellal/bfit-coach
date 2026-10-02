@@ -90,13 +90,17 @@ export function todayInWindow(
 }
 
 /**
- * What an ACCEPTED participant's row may draw, decided once (QA PB-1 and PB-2 on 6269343).
+ * What an ACCEPTED participant's row may draw, decided once (QA PB-1 and PB-2 on 6269343;
+ * ruling 13 / N6 for the rank).
  *
  *   · `today` — the today cell: `todayInWindow`, the cards' own question.
- *   · `rank` — not on an UPCOMING challenge. The api ranks by what each trainee's own
- *     calendar has counted, so a trainee east of UTC already on day 1 ranked « 1er » under
- *     a head that says the challenge has not started; with nobody started, every rank is a
- *     tie over zeros. Either way the rank says nothing the head allows.
+ *   · `rank` — exactly when `counts`: the api ranks by days met, then total, so a rank is
+ *     a position over the very numbers `counts` decides the row may show. Under an UPCOMING
+ *     head a trainee east of UTC already on day 1 ranked « 1er » for a challenge the head says
+ *     has not started; on an ACTIVE first morning a trainee whose own day 1 has not begun
+ *     (west of UTC, or no stored zone before 12:00 UTC) ranked last in a tie over the zeros
+ *     the row hides (ruling 13). The row stays where the api's order puts it; only the label
+ *     goes. On UPCOMING that means every row, in the api's order, with no label (as built).
  *   · `counts` — days met and the total, and the sync line: from the first day the HEAD
  *     says has begun (not UPCOMING) and the trainee's own first day (`daysElapsed > 0`).
  *     Before that the api's numbers are zeros over no day (« 0 sur 0 · 0 pas »), or count a
@@ -124,7 +128,7 @@ export function participantRowView(
   const counts = c.phase !== "UPCOMING" && progress.daysElapsed > 0;
   return {
     today: todayInWindow(progress, c),
-    rank: c.phase !== "UPCOMING",
+    rank: counts,
     counts,
     total: counts && (c.metric !== "STEPS" || progress.syncedAt !== null),
   };
