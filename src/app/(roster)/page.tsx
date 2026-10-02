@@ -52,7 +52,7 @@ export default async function RosterPage() {
 
   if (failed || !me || !clients) {
     return (
-      <CoachShell>
+      <CoachShell section="roster">
         <PageHead title={copy.roster.title} sub={copy.roster.subtitle} />
         <Card>
           <div
@@ -84,7 +84,7 @@ export default async function RosterPage() {
   const fullReason = copy.roster.inviteFull(tierLabel(me.tier), me.capacity);
 
   return (
-    <CoachShell coachName={me.displayName}>
+    <CoachShell coachName={me.displayName} section="roster">
       <PageHead
         title={copy.roster.title}
         sub={copy.roster.subtitle}

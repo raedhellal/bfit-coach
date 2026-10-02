@@ -200,13 +200,20 @@ test("live: the access cookie is gone by the time the form is sent — the handl
   expect(await cookie(page, "evoli_pro_at")).toBeUndefined();
   expect(await cookie(page, "evoli_pro_rt")).toBeDefined();
 
-  const answered = page.waitForResponse((r) => r.url().endsWith("/api/auth/activate"));
+  // The answer is read IN the route, not from the page's response: the form leaves with a
+  // document load (ADR-0033 D33.7), and a response body cannot be read once its page is gone.
+  let answered: { status: number; body: unknown } | null = null;
+  await page.route("**/api/auth/activate", async (route) => {
+    const response = await route.fetch();
+    answered = { status: response.status(), body: await response.json() };
+    await route.fulfill({ response });
+  });
   await fillAndSubmit(page);
-  const res = await answered;
-  expect(res.status()).toBe(200);
-  // Nit 6: the form navigates to "/" itself; the handler names no destination.
-  expect(await res.json()).toEqual({ ok: true });
   await page.waitForURL(/\/$/);
+  expect(answered).not.toBeNull();
+  expect(answered!.status).toBe(200);
+  // Nit 6: the form navigates to "/" itself; the handler names no destination.
+  expect(answered!.body).toEqual({ ok: true });
   await expect(page.getByText("No trainees yet", { exact: true })).toBeVisible();
   expect(claims(await cookie(page, "evoli_pro_at")).roles).toEqual(["COACH"]);
 

@@ -48,7 +48,9 @@ export default async function warmRoutes(config: FullConfig): Promise<void> {
   if (!baseURL) return;
 
   const browser = await chromium.launch();
-  const page = await browser.newPage({ baseURL });
+  // An English browser, like the specs (playwright.config.ts `use.locale`): with no
+  // Accept-Language the portal is French and the labels below would not be found.
+  const page = await browser.newPage({ baseURL, locale: "en-US" });
   try {
     await page.goto("/login", { waitUntil: "domcontentloaded" });
 

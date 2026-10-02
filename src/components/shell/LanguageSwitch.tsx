@@ -1,0 +1,85 @@
+"use client";
+
+import { useId, useState, useTransition } from "react";
+import { setLocaleAction } from "@/lib/i18n/actions";
+import { useCopy } from "@/lib/i18n/client";
+import { LANGUAGE_NAMES, type Locale } from "@/lib/i18n/locale";
+import { settled } from "@/lib/settled";
+
+/**
+ * FR / EN (redesign branch 1; Raed 2026-10-02: "a FR/EN language switch in the account
+ * menu"). The choice is a cookie written by a server action, which re-renders the route —
+ * `<html lang>` included — in the same response (see `setLocaleAction`).
+ *
+ * Two NATIVE radios in a `radiogroup`: one option is always in force and they exclude each
+ * other; the native input brings the arrow keys and the checked state with no ARIA to keep
+ * in sync. A `radiogroup` and not a `<fieldset>`: a fieldset is a `group`, and specs that
+ * list a page's groups (template days, recipe rows) would find the chrome's among them.
+ * Each label is a 44 px target. The visible text is the short code; the accessible name starts with it
+ * and adds the language's own name, marked with its `lang` so a screen reader pronounces
+ * « Français » in French on an English page.
+ *
+ * `locale` is the server's decision for this request; the radio follows it, and the
+ * optimistic value only bridges the round trip.
+ */
+export function LanguageSwitch({ locale }: { locale: Locale }) {
+  const copy = useCopy();
+  const name = useId();
+  const labelId = `${name}-label`;
+  const [pending, startTransition] = useTransition();
+  const [chosen, setChosen] = useState<Locale | null>(null);
+  const [failed, setFailed] = useState(false);
+  const current = pending && chosen ? chosen : locale;
+
+  function choose(next: Locale) {
+    if (next === locale) return;
+    setChosen(next);
+    setFailed(false);
+    startTransition(async () => {
+      const result = await settled(setLocaleAction(next), { ok: false });
+      // The radio falls back to the server's language by itself; say why it did.
+      if (!result.ok) setFailed(true);
+    });
+  }
+
+  return (
+    <div
+      className="lang-switch"
+      role="radiogroup"
+      aria-labelledby={labelId}
+      aria-busy={pending || undefined}
+      data-testid="language-switch"
+    >
+      <span id={labelId} className="lang-switch-legend">
+        {copy.shell.language}
+      </span>
+      <div className="lang-switch-options">
+        {LOCALES_IN_ORDER.map((option) => (
+          <label key={option} className="lang-switch-option">
+            <input
+              type="radio"
+              name={name}
+              value={option}
+              checked={current === option}
+              onChange={() => choose(option)}
+            />
+            <span className="lang-switch-face">
+              {LANGUAGE_NAMES[option].short}
+              <span className="sr-only">
+                {" — "}
+                <span lang={option}>{LANGUAGE_NAMES[option].name}</span>
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {/* Always in the DOM, so a screen reader announces the sentence when it appears. */}
+      <p role="status" className="lang-switch-status">
+        {failed ? copy.shell.languageFailed : null}
+      </p>
+    </div>
+  );
+}
+
+/** French first, as drawn — it is the portal's default language. */
+const LOCALES_IN_ORDER: readonly Locale[] = ["fr", "en"];

@@ -261,7 +261,9 @@ test.describe("AC8 — 320 / 360 / 390 / 414", () => {
     await signIn(page);
     await page.goto("/nutrition-templates");
     const nav = page.getByRole("navigation", { name: "Portal" });
-    const signOut = page.getByRole("button", { name: "Sign out" });
+    // Redesign branch 1: below 1024 px sign-out lives in the account menu, so the top
+    // bar's control a nav link must not collide with is the account button.
+    const signOut = page.getByRole("button", { name: "Account" });
     await atEachWidth(page, async (width) => {
       for (const name of ["Roster", "Templates", "Recipes", "Nutrition templates", "Challenges"]) {
         const link = nav.getByRole("link", { name, exact: true });
@@ -463,7 +465,9 @@ test.describe("EV-324 — nutrition templates in a French browser (fr-FR)", () =
     await signInFrench(page);
     await page.goto("/nutrition-templates");
     const nav = page.getByRole("navigation", { name: "Portail" });
-    const signOut = page.getByRole("button", { name: "Se déconnecter" });
+    // Redesign branch 1: below 1024 px sign-out lives in the account menu, so the top
+    // bar's control a nav link must not collide with is the account button.
+    const signOut = page.getByRole("button", { name: "Mon compte" });
     await atEachWidth(page, async (width) => {
       for (const name of ["Clients", "Modèles", "Recettes", "Modèles nutrition", "Défis"]) {
         const link = nav.getByRole("link", { name, exact: true });

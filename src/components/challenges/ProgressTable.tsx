@@ -32,7 +32,14 @@ export function ProgressTable({ detail, copy, now }: { detail: CoachChallengeDet
   ];
   return (
     <section aria-label={c.progressLabel}>
-      <DataTable columns={columns} minWidth={steps ? 1040 : 860}>
+      {/*
+        Redesign branch 1: the shell's 240 px sidebar leaves 974 px inside this card at a
+        1280 px viewport (it was 1114), so the steps floor came down from 1040 to 940 and the
+        headers may wrap — in French "JOURS RÉUSSIS" and "DERNIÈRE SYNCHRO" set two columns'
+        widths on one line (min-content 1017 px). Measured: EN and FR both fit at 1280.
+        Branch 7 replaces this table with participant rows.
+      */}
+      <DataTable columns={columns} minWidth={steps ? 940 : 860} wrapHeaders>
         {detail.participants.map((p) =>
           p.progress === null ? (
             <InvitedRow key={p.clientId} p={p} copy={copy} metric={detail.challenge.metric} span={columns.length - 3} />

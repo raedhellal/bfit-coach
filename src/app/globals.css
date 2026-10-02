@@ -19,9 +19,18 @@
   --amber-500:#F59E0B; --amber-50:#FEF6E7;
   --red-500:#EF4444; --red-50:#FEECEC;
   --cyan-500:#22C7D6; --coral-500:#FF6A55;
+  /* Evoli Pro redesign (2026-10-02). --indigo-200 is the step bar's "day not met" fill:
+     1.49:1 on white, so a bar drawn with it must carry its value as text or a name. */
+  --indigo-200:#C7D2FE;
+  /* The black mark's tile (BrandMark). Evoli Pro only — the trainee brand stays gradient. */
+  --brand-tile:#0B0F17;
 
-  /* gradients — --grad-energy is the indigo→violet primary button */
+  /* gradients. --grad-energy is DECORATION only (rings, the login panel behind 36 px type):
+     white 14–15 px text reads 3.71:1 on its #4F7CFF end, under WCAG 1.4.3's 4.5:1.
+     --grad-energy-strong (blue-600 → purple-600, 5.39:1 and 5.91:1 with white) is the one
+     a button with text sits on — Raed's ruling 2026-10-02 (redesign plan Q4). */
   --grad-energy: linear-gradient(135deg,#4F7CFF 0%,#8B5CF6 100%);
+  --grad-energy-strong: linear-gradient(135deg,#3A5FE0 0%,#7440E0 100%);
   --grad-vital:  linear-gradient(135deg,#32D583 0%,#4F7CFF 100%);
   --grad-purple: linear-gradient(135deg,#9B73F7 0%,#7440E0 100%);
 
@@ -49,6 +58,8 @@
   --warn:#D97706; --warn-bg:#FBF0DD; --warn-ink:#9A5B05;
   --err:#DC2626; --err-bg:#FBE9E9; --err-ink:#B01C1C;
   --info:#2563EB; --info-bg:#E7EEFE; --info-ink:#1D4ED8;
+  /* A link and the current nav item: #2563EB, 5.17:1 on white and 4.65:1 on --blue-50. */
+  --link:var(--info);
 
   /* elevation */
   --e-1:0 1px 2px rgba(16,23,41,0.06), 0 1px 1px rgba(16,23,41,0.04);
@@ -57,8 +68,18 @@
   --e-card:0 1px 3px rgba(16,23,41,0.06), 0 1px 2px rgba(16,23,41,0.04);
   --ring:0 0 0 3px rgba(79,124,255,0.18);
 
-  /* radii — cards use --r-2xl (24px) */
-  --r-xs:6px; --r-sm:8px; --r-md:11px; --r-lg:14px; --r-xl:18px; --r-2xl:24px; --r-pill:999px;
+  /* radii — cards use --r-2xl (24px). --r-12 (inner tiles, nav items) and --r-16 (sub-cards)
+     are the two steps the redesign measured that the scale lacked; none was removed. */
+  --r-xs:6px; --r-sm:8px; --r-md:11px; --r-12:12px; --r-lg:14px; --r-16:16px; --r-xl:18px; --r-2xl:24px; --r-pill:999px;
+
+  /* type scale (redesign §2.2). Nothing under 11 px: the design's 10 px labels become 11. */
+  --fs-h1:24px; --fs-h1-auth:clamp(24px, 4vw, 32px); --fs-h2:16px; --fs-h2-lg:18px;
+  --fs-body:14px; --fs-meta:13px; --fs-label:12px; --fs-micro:11px;
+
+  /* the app shell (CoachShell): the sidebar from 1024 px, the bars below it */
+  --shell-sidebar-w:240px;
+  --shell-topbar-h:56px;
+  --shell-tabbar-h:60px;
 
   /* type — the --font-* vars are injected by next/font (src/app/fonts.ts) */
   --font-display:var(--font-space-grotesk),"Space Grotesk","SF Pro Display",system-ui,sans-serif;
@@ -66,6 +87,9 @@
 }
 
 html, body { margin:0; padding:0; min-height:100%; background:var(--bg); color:var(--ink); font-family:var(--font-body); }
+body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+/* Content only for a screen reader (the language names behind "FR" / "EN"). */
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 /* EV-324: the frame is shortened by the sticky legal footer's height (LegalFooter.tsx), so a
    page that fits the viewport is never covered by it. 0 below 768 px, where it is static. */
 :root { --legal-footer-h: 0px; }
@@ -95,8 +119,16 @@ input::placeholder { color:var(--ink-3); }
 .only-wide { display: block; }
 .only-narrow { display: none; }
 
-.page { padding: 28px 32px 56px; max-width: 1180px; margin: 0 auto; }
+/* Gutters per the redesign: 16 px below 768, 24 px to 1279, 32 px from 1280. */
+.page { padding: 24px 24px 56px; max-width: 1180px; margin: 0 auto; }
+@media (min-width: 1280px) { .page { padding: 28px 32px 56px; } }
 .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+/* Two-column screens (overview, programme, nutrition, editors — redesigned in later
+   branches): ONE column below a 1280 px VIEWPORT, two from 1280. A viewport query, not a
+   content-width one: beside the 240 px sidebar, 1280 leaves 1040 − 2 × 32 = 976 px of
+   content, which two 480 px columns fill as drawn at 1440. Gap 16 (12 below 768). */
+.layout-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (min-width: 1280px) { .layout-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 .login-split { min-height: calc(100vh - var(--legal-footer-h)); display: flex; }
 /* BUG-380: the brand panel's WHOLE layout is here, never inline. An inline `display`
    beats the ≤767 px `display: none` below (no media query can override an inline
@@ -117,59 +149,250 @@ input::placeholder { color:var(--ink-3); }
 @media (max-width: 767px) {
   .only-wide { display: none; }
   .only-narrow { display: block; }
-  .page { padding: 18px 14px 40px; }
+  .page { padding: 18px 16px 40px; }
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .layout-split { gap: 12px; }
   .login-brand { display: none; }
   .login-form { width: 100%; }
 }
 
-/* ── the portal header (CoachShell) ──────────────────────────────────────────
-   One bar on a wide screen; the navigation drops to its own line below 520 px.
+/* ── the app shell (CoachShell) — Evoli Pro redesign, branch 1 ─────────────────────
+   ≥ 1024 px: a 240 px sidebar (logo, the five sections, then the account block with the
+   language switch and sign-out). < 1024 px: a 56 px top bar (logo, account menu) and a
+   bottom tab bar with the same five sections. BOTH are server-rendered and these media
+   queries pick one — no viewport hook, so no hydration flash (the rule above).
 
-   This is a class rather than an inline style because a media query cannot override
-   one, and the narrow case is not cosmetic: measured at 320 px with the nav inline,
-   the nav box shrank to 88.75 px against ~155 px of intrinsic link width, so the
-   "Templates" link overflowed and was painted under the Sign out button. `toBeVisible()`
-   passes on that; `qa/layout.ts`'s box-intersection and hit test do not. */
-.shell-bar {
-  max-width: 1180px;
-  margin: 0 auto;
-  height: 62px;
-  padding: 0 16px;
+   Everything here is a class, never inline: a media query cannot override an inline
+   declaration (BUG-380), and the old header's 320 px overlap (EV-201 class) was exactly
+   that. The hidden layout is `display: none`, so its landmarks, links and buttons are out
+   of the accessibility tree and out of the tab order — one "Portal" navigation, one
+   banner, at any width. */
+.app-shell { min-height: calc(100vh - var(--legal-footer-h)); background: var(--bg); }
+.shell-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--legal-footer-h));
+}
+.shell-column > main { flex: 1 0 auto; width: 100%; }
+
+/* The sidebar. A <header> (the banner) rather than an <aside>: it is the site header, laid
+   out vertically — EV-183 AC1's "the app header reads Evoli Pro" is about this element. */
+.shell-sidebar { display: none; }
+
+.shell-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: var(--r-12);
+  color: var(--ink);
+  text-decoration: none;
+  flex: none;
+}
+.shell-side-nav { display: flex; flex-direction: column; gap: 4px; }
+.shell-side-link {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-radius: var(--r-12);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+.shell-side-link:hover { background: var(--hover); color: var(--ink); }
+/* aria-current is the statement; colour + fill + weight are the decoration. */
+.shell-side-link[aria-current="page"] { background: var(--blue-50); color: var(--link); font-weight: 700; }
+.shell-account { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.shell-account-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  min-width: 0;
+}
+.shell-account-name {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The top bar (< 1024). */
+.shell-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  min-height: var(--shell-topbar-h);
+  padding: 6px 12px 6px 8px;
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.shell-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
+.shell-topbar .shell-home { min-width: 0; }
+
+/* The bottom tab bar (< 1024). Sticky as the shell column's LAST child, so it rides the
+   viewport's bottom edge and settles above the legal footer at the end of the page —
+   one sticky element per edge. */
+.shell-tabbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.96);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  padding: 4px 2px calc(4px + env(safe-area-inset-bottom));
 }
-@media (max-width: 520px) {
-  .shell-bar {
-    height: auto;
-    flex-wrap: wrap;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    row-gap: 6px;
+.shell-tab {
+  position: relative;
+  min-width: 0;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 1px;
+  border-radius: var(--r-12);
+  font-size: var(--fs-micro);
+  line-height: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink-2);
+  text-decoration: none;
+  /* "Nutrition templates" / "Modèles nutrition" wrap onto two lines at a space. */
+  overflow-wrap: break-word;
+}
+.shell-tab[aria-current="page"] { color: var(--link); font-weight: 700; }
+/* Not colour alone (WCAG 1.4.1): the current tab also carries a bar on its top edge. */
+.shell-tab[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 24px;
+  margin-left: -12px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--link);
+}
+
+/* The account menu (< 1024): a disclosure, not an ARIA menu — it holds a radio group and
+   a button, which a role="menu" could not contain. */
+.account-menu { position: relative; flex: none; }
+.account-menu-trigger {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  cursor: pointer;
+}
+.account-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  width: min(280px, calc(100vw - 16px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-16);
+  box-shadow: var(--e-3);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The language switch: two native radios drawn as a segmented control. Native inputs give
+   the arrow-key behaviour of a radio group for free; the label is the 44 px target. */
+.lang-switch { min-width: 0; }
+.lang-switch-legend {
+  display: block;
+  padding: 0 4px 6px;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.lang-switch-options {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.lang-switch-option { flex: 1; position: relative; display: flex; }
+.lang-switch-option input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.lang-switch-option span.lang-switch-face {
+  flex: 1;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.lang-switch-option input:checked + span.lang-switch-face {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--e-card);
+}
+.lang-switch-option input:focus-visible + span.lang-switch-face {
+  outline: 2px solid var(--blue-500);
+  outline-offset: 2px;
+}
+.lang-switch[aria-busy="true"] .lang-switch-options { opacity: 0.6; }
+.lang-switch-status { margin: 0; padding: 0 4px; font-size: var(--fs-label); line-height: 16px; color: var(--err-ink); }
+/* Never display:none — an empty live region has no height, and it must already be in the
+   accessibility tree when its sentence arrives, or the sentence is not announced. */
+
+/* Keyboard focus that lands under a sticky bar is obscured focus (WCAG 2.4.11): keep it
+   out from under the top bar and the tab bar. */
+html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bottom: calc(var(--shell-tabbar-h) + 8px); }
+
+@media (min-width: 1024px) {
+  html { scroll-padding-top: 0; scroll-padding-bottom: calc(var(--legal-footer-h) + 8px); }
+  .app-shell { display: flex; align-items: stretch; }
+  .shell-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: var(--shell-sidebar-w);
+    flex: none;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    /* Ends where the sticky legal footer begins, so the footer never covers the account
+       block; scrolls on its own on a short window. */
+    height: calc(100vh - var(--legal-footer-h));
+    overflow-y: auto;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 16px;
   }
-  /* `flex-wrap` above is what actually prevents the overlap — MEASURED: removing this
-     rule alone leaves the sweep green, removing the whole media query turns it red with
-     a 43 px overlap at 320 px. These two lines are for PLACEMENT, so the nav lands on a
-     line of its own, below the coach's name and the sign-out control, rather than
-     wherever wrapping happens to put it. Belt to that brace, and said so rather than
-     claimed as the fix. */
-  .shell-nav {
-    order: 3;
-    flex-basis: 100%;
-    /* EV-321b / EV-273b: four and then five links do not fit one 288 px line, so the
-       links wrap onto further rows rather than overflow into each other. MEASURED
-       without it (EV-273b mutant M9): "Nutrition templates" ended at 381 px in a 320 px
-       viewport and the page scrolled sideways by 77 px. */
-    flex-wrap: wrap;
-    row-gap: 2px;
-  }
+  .shell-column { flex: 1; }
+  .shell-topbar, .shell-tabbar { display: none; }
+  /* The legal line sits in the content column, beside the sidebar. */
+  body:has(.app-shell) .legal-footer { padding-left: calc(var(--shell-sidebar-w) + 16px); }
 }
 
 /* ── EV-321b: a challenge participant's day strip ────────────────────────────────
@@ -277,4 +500,11 @@ input::placeholder { color:var(--ink-3); }
        more pixels while scrolling, and nothing at the end of a page. */
     min-height: var(--legal-footer-h);
   }
+}
+/* Redesign: between 768 and 1023 px the shell's bottom tab bar owns the bottom edge, so on
+   a shell page the legal line goes back to a plain footer after the content — one sticky
+   element per edge. AC5b's 1280 × 800 case is the sidebar layout and keeps it sticky. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  :root:has(.app-shell) { --legal-footer-h: 0px; }
+  body:has(.app-shell) .legal-footer { position: static; }
 }

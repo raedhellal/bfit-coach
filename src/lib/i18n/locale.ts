@@ -1,33 +1,76 @@
 /**
- * EV-324 — which language the portal speaks, decided by the browser.
+ * Which language the portal speaks.
  *
- * Ruling R1 (D-DEMO-6, option A): the FIRST `Accept-Language` entry decides. If it starts
- * with `fr` the portal is French; anything else, and no header at all, is English, which
- * is the portal as it was before this row.
+ * The rule (Evoli Pro redesign, 2026-10-02 — Raed: "a FR/EN switch, French by default";
+ * the coordinator's restatement, which REPLACES EV-324's ruling R1):
  *
- * "First" is literal, and the story's edge cases pin it both ways:
- *   · `fr-CA,en;q=0.8`   → fr (a prefix match on the first entry)
- *   · `de-DE,fr;q=0.9`   → en (French is listed, but not first)
+ *   1. the coach's own choice, from the language switch (the `evoli_pro_locale` cookie);
+ *   2. otherwise `Accept-Language`: of the entries that are French or English, the one
+ *      with the highest `q` (the earlier one on a tie; `q=0` means "not acceptable");
+ *   3. otherwise French — no header, `*`, or no French or English entry at all.
  *
- * The header is what a browser builds from `navigator.languages`, in the user's order,
- * so reading it on the server is reading `navigator.language` without a client round
- * trip — and without a first paint in the wrong language followed by a hydration swap.
+ * Pinned both ways in `qa/coach-i18n.spec.ts`:
+ *   · `fr-CA,en;q=0.8`  → fr      · `en-US`            → en
+ *   · `de-DE,fr;q=0.9`  → fr  (R1 said en: only the first entry decided)
+ *   · `de-DE`           → fr  (R1 said en)
+ *   · no header         → fr  (R1 said en)
  *
- * There is no switch in the UI and no stored preference (both out of scope, R1). Pure and
- * framework-free so it can be unit-tested without a server.
+ * Read on the server, so the first paint is already in the right language — no hydration
+ * swap. Pure and framework-free so it can be unit-tested without a server.
  */
 export type Locale = "en" | "fr";
 
 export const LOCALES: readonly Locale[] = ["en", "fr"];
 
-export const DEFAULT_LOCALE: Locale = "en";
+/** When neither the switch nor the browser names French or English. */
+export const DEFAULT_LOCALE: Locale = "fr";
+
+/** The language switch's cookie. A preference, not a credential. */
+export const LOCALE_COOKIE = "evoli_pro_locale";
+
+/**
+ * Each language's own name, the same in both dictionaries on purpose (a French coach looks
+ * for « English », an English one for « Français »), so it is a constant and not copy.
+ * The switch shows the short code and reads the name to a screen reader.
+ */
+export const LANGUAGE_NAMES: Record<Locale, { short: string; name: string }> = {
+  fr: { short: "FR", name: "Français" },
+  en: { short: "EN", name: "English" },
+};
+
+export function isLocale(value: unknown): value is Locale {
+  return value === "en" || value === "fr";
+}
+
+/** `fr`, `fr-FR`, `fr_BE` → fr; `en`, `en-US` → en; `frr`, `fy-NL`, `de` → null. */
+function supported(tag: string): Locale | null {
+  if (/^fr(?:$|[-_])/.test(tag)) return "fr";
+  if (/^en(?:$|[-_])/.test(tag)) return "en";
+  return null;
+}
 
 export function localeFromAcceptLanguage(header: string | null | undefined): Locale {
   if (typeof header !== "string") return DEFAULT_LOCALE;
-  // The first comma-separated entry, without its `;q=` weight.
-  const first = header.split(",")[0]?.split(";")[0]?.trim().toLowerCase() ?? "";
-  // `fr`, `fr-FR`, `fr-CA`, `fr_BE` — but never `fra…` or `frisian`-style tags.
-  return /^fr(?:$|[-_])/.test(first) ? "fr" : DEFAULT_LOCALE;
+  let best: { locale: Locale; q: number } | null = null;
+  for (const entry of header.split(",")) {
+    const [rawTag, ...params] = entry.split(";");
+    const locale = supported((rawTag ?? "").trim().toLowerCase());
+    if (!locale) continue;
+    let q = 1;
+    for (const param of params) {
+      const m = /^\s*q\s*=\s*([0-9]*\.?[0-9]+)\s*$/i.exec(param);
+      if (m) q = Number(m[1]);
+    }
+    if (!(q > 0)) continue;
+    // Strictly greater: on a tie the earlier entry keeps it (the browser's own order).
+    if (!best || q > best.q) best = { locale, q };
+  }
+  return best?.locale ?? DEFAULT_LOCALE;
+}
+
+/** The whole rule: the switch's cookie first, then the browser, then French. */
+export function resolveLocale(cookie: string | null | undefined, acceptLanguage: string | null | undefined): Locale {
+  return isLocale(cookie) ? cookie : localeFromAcceptLanguage(acceptLanguage);
 }
 
 /** The BCP 47 tag `Intl` formats with. French is France's French (fr-FR, AC3). */

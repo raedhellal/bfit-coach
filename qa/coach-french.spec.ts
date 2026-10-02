@@ -159,12 +159,17 @@ test.describe("an English browser (en-US)", () => {
   });
 });
 
+/**
+ * RE-PINNED 2026-10-02 (Evoli Pro redesign, branch 1). Under EV-324's R1 this browser was
+ * English ("only the first entry decides"). The rule that replaced R1 picks the
+ * highest-weighted French or English entry and defaults to French, so it is French now.
+ */
 test.describe("a German-first browser that also lists French (edge case 2)", () => {
   test.use({ locale: "de-DE", extraHTTPHeaders: { "Accept-Language": "de-DE,fr;q=0.9" } });
 
-  test("is English: only the first entry decides", async ({ page }) => {
+  test("is French: French is the only entry the portal speaks", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.locator("html")).toHaveAttribute("lang", "en");
-    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+    await expect(page.getByRole("heading", { name: "Connexion" })).toBeVisible();
   });
 });

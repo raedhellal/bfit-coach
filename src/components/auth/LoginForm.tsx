@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
+import { crossSessionBoundary } from "@/lib/clientSession";
 import { useCopy } from "@/lib/i18n/client";
 
 /**
@@ -12,12 +12,12 @@ import { useCopy } from "@/lib/i18n/client";
  * reach of this component. There is deliberately no token state here, no
  * `localStorage`, and no auth context.
  *
- * The server sets the cookie, so the redirect must go through `router.refresh()` —
- * otherwise the client router replays a cached RSC payload rendered without a session.
+ * The server sets the cookie, and the form then leaves with a DOCUMENT load
+ * (`crossSessionBoundary`, ADR-0033 D33.7) — a soft navigation could replay an RSC payload
+ * cached without a session.
  */
 export function LoginForm({ initialError }: { initialError?: string | null }) {
   const copy = useCopy();
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(initialError || null);
@@ -53,6 +53,9 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
     if (busy || !email || !password) return;
     setBusy(true);
     setError(null);
+    // Set once the document is leaving: the button stays disabled until the load, so a
+    // second press cannot post the credentials twice.
+    let leaving = false;
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -69,12 +72,13 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
       // an account still to be finished. A closed set; anything else is the roster, and
       // middleware re-decides either way.
       const body = (await res.json().catch(() => null)) as { next?: string } | null;
-      router.replace(body?.next === "/activate" ? "/activate" : "/");
-      router.refresh();
+      // ADR-0033 D33.7: a hard navigation — nothing rendered signed-out is replayed.
+      leaving = true;
+      crossSessionBoundary(body?.next === "/activate" ? "/activate" : "/");
     } catch {
       setError(copy.login.unavailable);
     } finally {
-      setBusy(false);
+      if (!leaving) setBusy(false);
     }
   }
 
