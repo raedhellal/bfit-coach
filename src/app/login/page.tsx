@@ -1,7 +1,7 @@
-import { UiIcon } from "@/components/ui/icons";
 import { Logo } from "@/components/ui/brand";
 import { LoginForm } from "@/components/auth/LoginForm";
-import { getCopy } from "@/lib/i18n/server";
+import { LanguageSwitch } from "@/components/shell/LanguageSwitch";
+import { getCopy, getLocale } from "@/lib/i18n/server";
 
 /**
  * /login — the only unguarded page (middleware.ts).
@@ -9,6 +9,14 @@ import { getCopy } from "@/lib/i18n/server";
  * Server component: it reads the redirect reason middleware attached and hands it to
  * the client form as its initial error, so a coach bounced out of /roster sees the
  * reason on the screen they land on rather than a bare form.
+ *
+ * EV-337k (plan §5.10, design screen 13): the black-mark brand panel beside the form from
+ * 768 px, a compact band above it below 768 (globals.css `.login-*`), and the FR/EN switch
+ * under the form — the shell's switch is not on this page, and a coach whose browser
+ * names neither language would otherwise have no way to English before signing in.
+ * Not built, deliberately: « Mot de passe oublié ? » (no coach reset flow exists, plan
+ * G21) and an « Activer mon compte » link (activation IS signing in with the temporary
+ * password, so it would point back here — `login.newCoach` says that instead).
  */
 export default function LoginPage({
   searchParams,
@@ -16,6 +24,7 @@ export default function LoginPage({
   searchParams?: { error?: string };
 }) {
   const copy = getCopy();
+  const locale = getLocale();
   const initialError =
     searchParams?.error === "not_coach"
       ? copy.login.notACoach
@@ -29,52 +38,28 @@ export default function LoginPage({
           style on it (BUG-380): an inline `display` beat the ≤767 px rule that hides it, so
           its whole layout lives on `.login-brand` in globals.css. */}
       <div className="login-brand">
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "linear-gradient(160deg,rgba(255,255,255,0.16),transparent 50%)",
-          }}
-        />
-        <div style={{ position: "relative" }}>
+        <div>
           <Logo size={36} tone="white" label={copy.brand} />
         </div>
-        <div style={{ position: "relative", maxWidth: 460 }}>
-          <p
-            className="dt"
-            style={{ fontSize: 36, lineHeight: 1.15, letterSpacing: -1, margin: 0, fontWeight: 700 }}
-          >
-            {copy.tagline}
-          </p>
-        </div>
-        <div style={{ position: "relative", display: "flex", gap: 22, opacity: 0.92 }}>
-          {[
-            ["users", copy.roster.title],
-            ["pulse", copy.client.adherence],
-          ].map(([ic, l]) => (
-            <div
-              key={l}
-              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 600 }}
-            >
-              <UiIcon name={ic} size={18} color="#fff" />
-              {l}
-            </div>
-          ))}
-        </div>
+        <p className="login-brand-title">{copy.login.panelTitle}</p>
+        <p className="login-brand-body">{copy.login.panelBody}</p>
       </div>
 
-      <div
-        className="login-form"
-        style={{
-          background: "var(--surface)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-        }}
-      >
-        <LoginForm initialError={initialError} />
+      {/* Below 768 px: the mark and the headline above the form, never beside it. */}
+      <div className="login-band">
+        <div>
+          <Logo size={30} tone="white" label={copy.brand} />
+        </div>
+        <p className="login-band-title">{copy.login.panelTitle}</p>
       </div>
+
+      <main className="login-form">
+        <div className="login-form-inner">
+          <LoginForm initialError={initialError} />
+          <p className="login-note">{copy.login.newCoach}</p>
+          <LanguageSwitch locale={locale} inline />
+        </div>
+      </main>
     </div>
   );
 }

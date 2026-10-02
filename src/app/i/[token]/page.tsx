@@ -67,15 +67,17 @@ export default function InvitePage({
     href: inviteDeepLink(app, params.token, coachName),
   }));
 
+  const initials = coachName ? initialsOf(coachName) : null;
+
   return (
     <main
       style={{
-        minHeight: "100vh",
+        minHeight: "calc(100vh - var(--legal-footer-h))",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        padding: "32px 18px calc(32px + env(safe-area-inset-bottom))",
+        padding: "32px 16px calc(32px + env(safe-area-inset-bottom))",
         background: "var(--bg)",
       }}
     >
@@ -83,40 +85,72 @@ export default function InvitePage({
         style={{
           width: "100%",
           maxWidth: 420,
+          minWidth: 0,
           background: "var(--surface)",
           border: "1px solid var(--border)",
           borderRadius: "var(--r-2xl)",
           boxShadow: "var(--e-card)",
-          padding: "28px 22px",
+          padding: "32px 24px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 18,
+          gap: 20,
           textAlign: "center",
         }}
       >
-        <Logo size={34} label={copy.invitePage.brand} />
+        {/* R1 (Raed, 2026-10-02): the trainee brand, never the Evoli Pro black mark — this
+            page is a trainee's, and edge case 4 holds even for a browser that signed in as a
+            coach a minute ago (the page reads no session at all). */}
+        <Logo size={36} label={copy.invitePage.brand} />
+
+        {/* The inviting coach's initials, from the same `?coach=` name the heading prints.
+            Decoration: the name itself is in the h1. No name, no circle. */}
+        {initials && (
+          <span
+            aria-hidden="true"
+            data-testid="invite-coach-initials"
+            className="dt"
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: "50%",
+              background: "var(--blue-50)",
+              color: "var(--link)",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 18,
+              fontWeight: 700,
+              flex: "none",
+            }}
+          >
+            {initials}
+          </span>
+        )}
 
         <h1
           className="dt"
           style={{
             margin: 0,
-            fontSize: 26,
+            fontSize: "clamp(24px, 6vw, 30px)",
             lineHeight: 1.2,
-            letterSpacing: -0.6,
+            letterSpacing: "-0.02em",
             fontWeight: 700,
             color: "var(--ink)",
+            textWrap: "pretty",
+            maxWidth: "100%",
           }}
         >
           {coachName ? copy.invitePage.titleFrom(coachName) : copy.invitePage.title}
         </h1>
 
-        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: "var(--ink-2)" }}>
+        <p style={{ margin: 0, fontSize: 15, lineHeight: "22px", color: "var(--ink-2)" }}>
           {copy.invitePage.body}
         </p>
 
         {/* Real links, not buttons with an onClick: the custom scheme needs the
-            browser's own navigation from a tap, and this page ships no JavaScript. */}
+            browser's own navigation from a tap, and this page ships no JavaScript of its
+            own. The primary fill is the darker gradient (R2): white 15.5 px text reads
+            5.39:1 on it, 3.71:1 on the old one. */}
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
           {links.map((link) => (
             <a
@@ -135,14 +169,14 @@ export default function InvitePage({
                 fontWeight: 700,
                 ...(link.primary
                   ? {
-                      background: "var(--grad-energy)",
+                      background: "var(--grad-energy-strong)",
                       color: "var(--ink-on)",
-                      boxShadow: "var(--e-2)",
+                      boxShadow: "0 4px 14px rgba(58,95,224,0.25)",
                     }
                   : {
                       background: "var(--surface)",
                       color: "var(--ink)",
-                      border: "1px solid var(--border)",
+                      border: "1px solid var(--border-2)",
                     }),
               }}
             >
@@ -161,15 +195,31 @@ export default function InvitePage({
             gap: 6,
           }}
         >
-          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: "var(--ink-2)" }}>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: "20px", color: "var(--ink-2)" }}>
             {copy.invitePage.fallback}
           </p>
-          {/* No store links yet (⛔ D8): say so, rather than ship a dead href. */}
-          <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--ink-3)" }}>
+          {/* No store links yet (⛔ D8): say so, rather than ship a dead href. The design's
+              « Invitation valable jusqu'au 7 oct. » is not drawn: this page cannot look a
+              token up (no pre-accept lookup, plan G22), so it cannot know an expiry. */}
+          <p style={{ margin: 0, fontSize: 13, lineHeight: "18px", color: "var(--ink-2)" }}>
             {copy.invitePage.storesComingSoon}
           </p>
         </div>
       </div>
     </main>
   );
+}
+
+/**
+ * "Alex Roussel" → "AR", "Léa" → "L", "jean-marc d." → "JD". Whole code points, so a name
+ * that starts with a character outside the BMP is not cut in half.
+ */
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => Array.from(word)[0] ?? "")
+    .join("")
+    .toLocaleUpperCase();
 }

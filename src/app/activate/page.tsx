@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ActivationForm } from "@/components/activation/ActivationForm";
+import { LanguageSwitch } from "@/components/shell/LanguageSwitch";
 import { SignOutButton } from "@/components/shell/SignOutButton";
 import { UiIcon } from "@/components/ui/icons";
 import { Logo } from "@/components/ui/brand";
@@ -11,7 +12,7 @@ import {
   type ActivationStatus,
   type LegalVersions,
 } from "@/lib/coachApi";
-import { getCopy } from "@/lib/i18n/server";
+import { getCopy, getLocale } from "@/lib/i18n/server";
 import { formatInstant, formatUtcTime } from "@/lib/format";
 
 /**
@@ -38,55 +39,38 @@ function formatExpiry(iso: string | null): string {
   return `${formatInstant(iso, copy.locale)}, ${formatUtcTime(iso)} UTC`;
 }
 
+/**
+ * EV-337k (plan §5.10, design screen 14): one card on the page background — the black mark
+ * (tile 26 + wordmark), the title, the state's content, then the way out (Sign out) and the
+ * language switch. Every state of this page goes through it, so none can lose the way out.
+ *
+ * Drawn in the design and NOT here, and why:
+ *   · « Bienvenue, Alex » and the e-mail field: `GET /me` is 403 to a PENDING token and
+ *     `ActivationStatus` carries neither the name nor the address (the `fullName`
+ *     deviation is java-engineer's);
+ *   · the strength bar « 12 caractères minimum · bon »: the api's rule is 8 to 128
+ *     characters (`src/lib/password.ts`); a strength verdict it does not make would be a
+ *     rule the portal invented;
+ *   · « Hébergé en Europe »: a hosting claim the PO must witness first (plan Q8);
+ *   · the design has no temporary-password field; `POST /me/activate` requires it, so the
+ *     field stays (EV-337k).
+ */
 function Frame({ title, children }: { title: string; children: ReactNode }) {
   const copy = getCopy();
   return (
-    <div className="login-split">
-      {/* No inline style on the panel (BUG-380): an inline `display` beat the ≤767 px rule
-          that hides it. Its whole layout lives on `.login-brand` in globals.css. */}
-      <div className="login-brand">
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "linear-gradient(160deg,rgba(255,255,255,0.16),transparent 50%)",
-          }}
-        />
-        <div style={{ position: "relative" }}>
-          <Logo size={36} tone="white" label={copy.brand} />
+    <main className="auth-page">
+      <div className="auth-card">
+        <div>
+          <Logo size={26} label={copy.brand} />
         </div>
-        <div style={{ position: "relative", maxWidth: 460 }}>
-          <p
-            className="dt"
-            style={{ fontSize: 36, lineHeight: 1.15, letterSpacing: -1, margin: 0, fontWeight: 700 }}
-          >
-            {copy.tagline}
-          </p>
+        <h1 className="auth-card-title">{title}</h1>
+        {children}
+        <div className="auth-card-foot">
+          <SignOutButton />
+          <LanguageSwitch locale={getLocale()} inline />
         </div>
-        <div />
       </div>
-
-      <main
-        className="login-form"
-        style={{
-          background: "var(--surface)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: 380 }}>
-          <h1
-            className="dt"
-            style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, margin: 0, color: "var(--ink)" }}
-          >
-            {title}
-          </h1>
-          {children}
-        </div>
-      </main>
-    </div>
+    </main>
   );
 }
 
@@ -103,19 +87,10 @@ function Notice({ tone, children }: { tone: "info" | "error"; children: ReactNod
         color: tone === "error" ? "var(--err-ink)" : "var(--ink-2)",
         fontSize: 13.5,
         lineHeight: 1.5,
-        marginTop: 16,
       }}
     >
-      <UiIcon name={tone === "error" ? "ban" : "clock"} size={16} color="currentColor" />
+      <UiIcon name={tone === "error" ? "ban" : "clock"} size={16} color="currentColor" style={{ marginTop: 2 }} />
       <span>{children}</span>
-    </div>
-  );
-}
-
-function WayOut() {
-  return (
-    <div style={{ marginTop: 20 }}>
-      <SignOutButton />
     </div>
   );
 }
@@ -143,14 +118,12 @@ export default async function ActivatePage() {
       return (
         <Frame title={copy.activate.title}>
           <Notice tone="error">{copy.activate.notInitialised}</Notice>
-          <WayOut />
         </Frame>
       );
     }
     return (
       <Frame title={copy.activate.loadFailedTitle}>
         <Notice tone="error">{copy.activate.loadFailed}</Notice>
-        <WayOut />
       </Frame>
     );
   }
@@ -163,7 +136,6 @@ export default async function ActivatePage() {
     return (
       <Frame title={copy.activate.alreadyActiveTitle}>
         <Notice tone="info">{copy.activate.alreadyActive}</Notice>
-        <WayOut />
       </Frame>
     );
   }
@@ -173,7 +145,6 @@ export default async function ActivatePage() {
     return (
       <Frame title={copy.activate.traineeTitle}>
         <Notice tone="info">{copy.activate.trainee}</Notice>
-        <WayOut />
       </Frame>
     );
   }
@@ -195,18 +166,17 @@ export default async function ActivatePage() {
     return (
       <Frame title={copy.activate.expiredTitle}>
         <Notice tone="error">{copy.activate.expired(when, initialiser)}</Notice>
-        <WayOut />
       </Frame>
     );
   }
 
   return (
     <Frame title={copy.activate.title}>
-      <p style={{ fontSize: 14, color: "var(--ink-2)", margin: "10px 0 0", lineHeight: 1.5 }}>
+      <p className="auth-body" style={{ maxWidth: "none", marginTop: -8 }}>
         {copy.activate.setUpBy(initialiser)}
       </p>
       <Notice tone="info">{copy.activate.finishBy(when)}</Notice>
-      <div style={{ marginTop: 22 }}>
+      <div>
         {legal.ok ? (
           <ActivationForm
             versions={legal.value}
@@ -218,7 +188,6 @@ export default async function ActivatePage() {
           <Notice tone="error">{copy.activate.legalUnavailable}</Notice>
         )}
       </div>
-      <WayOut />
     </Frame>
   );
 }

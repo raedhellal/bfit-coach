@@ -21,8 +21,12 @@ import { settled } from "@/lib/settled";
  *
  * `locale` is the server's decision for this request; the radio follows it, and the
  * optimistic value only bridges the round trip.
+ *
+ * `inline` (EV-337k) is the shell-less pages' form — /login and /activate, as drawn under the
+ * sign-in form: the two options centred, the legend visually hidden but still the group's
+ * accessible name. The behaviour is the same switch.
  */
-export function LanguageSwitch({ locale }: { locale: Locale }) {
+export function LanguageSwitch({ locale, inline = false }: { locale: Locale; inline?: boolean }) {
   const copy = useCopy();
   const name = useId();
   const labelId = `${name}-label`;
@@ -44,13 +48,13 @@ export function LanguageSwitch({ locale }: { locale: Locale }) {
 
   return (
     <div
-      className="lang-switch"
+      className={inline ? "lang-switch lang-switch--inline" : "lang-switch"}
       role="radiogroup"
       aria-labelledby={labelId}
       aria-busy={pending || undefined}
       data-testid="language-switch"
     >
-      <span id={labelId} className="lang-switch-legend">
+      <span id={labelId} className={inline ? "sr-only" : "lang-switch-legend"}>
         {copy.shell.language}
       </span>
       <div className="lang-switch-options">

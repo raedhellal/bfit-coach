@@ -188,7 +188,12 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
   }
 
   return (
-    <form onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <form
+      onSubmit={submit}
+      noValidate
+      aria-busy={busy || undefined}
+      style={{ display: "flex", flexDirection: "column", gap: 16 }}
+    >
       {error && (
         <div
           role="alert"
@@ -255,60 +260,28 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
         onChange={(e) => setRepeat(e.target.value)}
       />
 
-      <div
-        style={{
-          border: "1px solid var(--border-2)",
-          borderRadius: "var(--r-md)",
-          padding: "12px 13px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        <label
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            fontSize: 13.5,
-            lineHeight: 1.45,
-            color: "var(--ink)",
-            cursor: "pointer",
-            minHeight: 24,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-            style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: "var(--blue-500)" }}
-          />
+      {/* BUG-662: the label is the checkbox's target (≥ 44 px tall, the card's width), and
+          each document link is a 44 px target in its own row (globals.css `.consent*`). The
+          links stay OUTSIDE the label, so opening a document to read it never ticks the box. */}
+      <div className="consent">
+        <label className="consent-row">
+          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
           <span>{copy.activate.consent}</span>
         </label>
-        <div style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
-          <span>{copy.activate.readBefore} </span>
-          <span style={{ display: "inline-flex", flexWrap: "wrap", columnGap: 12, rowGap: 4 }}>
-            <a
-              href={LEGAL_URLS.terms}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "var(--blue-600)", fontWeight: 600 }}
-            >
+        <div className="consent-docs">
+          <span>{copy.activate.readBefore}</span>
+          <span className="consent-links">
+            <a className="consent-link" href={LEGAL_URLS.terms} target="_blank" rel="noopener noreferrer">
               {copy.activate.termsLink(versions.termsVersion)}
             </a>
-            <a
-              href={LEGAL_URLS.privacy}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "var(--blue-600)", fontWeight: 600 }}
-            >
+            <a className="consent-link" href={LEGAL_URLS.privacy} target="_blank" rel="noopener noreferrer">
               {copy.activate.privacyLink(versions.privacyPolicyVersion)}
             </a>
           </span>
         </div>
       </div>
 
-      <Button variant="gradient" size="lg" full type="submit" disabled={disabled}>
+      <Button variant="gradient" size="lg" full type="submit" disabled={disabled} style={{ height: 48, fontSize: 15 }}>
         {busy ? copy.activate.submitting : copy.activate.submit}
       </Button>
     </form>

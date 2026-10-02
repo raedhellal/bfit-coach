@@ -66,9 +66,14 @@ export const fr = {
 
   login: {
     title: "Connexion",
-    subtitle: "Accès coach à Evoli Pro.",
-    email: "E-mail",
-    emailPlaceholder: "vous@exemple.com",
+    subtitle: "Accès réservé aux coachs.",
+    panelTitle: "L'espace des coachs Evoli.",
+    panelBody:
+      "Programmes, nutrition et défis pour vos clients, sur un seul écran. Vos clients partagent ce qu'ils choisissent\u00a0; vous voyez exactement cela.",
+    newCoach:
+      "Nouveau coach\u00a0? Connectez-vous avec le mot de passe temporaire de votre invitation, puis choisissez le vôtre.",
+    email: "Adresse e-mail",
+    emailPlaceholder: "vous@exemple.fr",
     password: "Mot de passe",
     passwordPlaceholder: "••••••••",
     submit: "Se connecter",
@@ -1170,7 +1175,13 @@ export const fr = {
   unavailable: {
     title: "Impossible de joindre Evoli pour le moment",
     body: "Rien n'a été modifié et votre session est toujours ouverte. Réessayez dans un instant.",
-    retry: "Réessayer",
+    retry: "Réessayer maintenant",
+    autoRetry: (seconds: number) => `Nouvel essai automatique dans ${n(seconds)}\u00a0s.`,
+    autoRetryStopped: "Les essais automatiques sont arrêtés. Réessayez quand vous le souhaitez.",
+  },
+
+  denied: {
+    body: "Aucune donnée de ce client n'a été affichée.",
   },
 
   /** EV-241 — the 404 page (`app/not-found.tsx`). See copy.ts. */
