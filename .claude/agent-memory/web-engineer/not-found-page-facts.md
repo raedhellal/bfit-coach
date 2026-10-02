@@ -17,8 +17,11 @@ future edit that "fixes" that would merge the 404 with BUG-139's 403.
   `loading.tsx` would not be.
 - `/clients/<anything>` matches `/clients/[id]`: the api 403s an id that is not the coach's
   and the layout sends it to `/clients/denied` (403). `qa/coach-not-found.spec.ts` pins that.
-- A signed-out visitor only reaches the page under the public `/i/` prefix (`/i/x/y`):
-  middleware sends every other guarded path to /login first.
+- A signed-out visitor only reaches the page on a path middleware does not guard: an unknown
+  `/api/auth/…` (the matcher excludes that prefix). Every other guarded path goes to /login
+  first, and since EV-337k / BUG-678 every non-invitation `/i` path draws the TRAINEE 404
+  (`InviteNotFound.tsx`, no link) — on Vercel too. `coach-not-found.spec.ts` AC2 uses
+  `/api/auth/does-not-exist-route`.
 - **Next 14 renders the root not-found into EVERY page's RSC payload** (the root segment's
   notFound boundary is built eagerly): "Page not found" is in /challenges' HTML under
   `next start`. So `not-found.tsx` runs on every request — it must await nothing and call no

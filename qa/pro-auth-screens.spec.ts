@@ -253,12 +253,17 @@ test.describe("edge case 4 — /i/* never shows the Evoli Pro mark", () => {
     for (const p of PATHS) await expectNoProMark(page, p.path, p.status, p.title, `after sign-out, on ${p.what}`);
   });
 
-  test("the /i 404 keeps EV-241's signed-out sentences and its way to sign-in", async ({ page }) => {
+  // BUG-677 (EV-337 ruling 7): a trainee has no Pro account, so the /i 404 no longer sends
+  // them to the coach sign-in. Its own sentence, and no link at all (qa/invite-not-found.spec.ts).
+  test("the /i 404 speaks to a trainee and offers no way to the coach sign-in", async ({ page }) => {
     const res = await page.goto("/i/edge-case-4-token/extra");
     expect(res?.status()).toBe(404);
     await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
     await expect(page.locator("h1")).toHaveCount(1);
-    await expect(page.getByRole("link", { name: "Go to sign-in" })).toHaveAttribute("href", "/login");
+    await expect(
+      page.getByText("There is no invitation at this address. Check the link, or ask your coach to send it to you again.", { exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole("link")).toHaveCount(0);
     // The token is never printed, on the 404 either.
     expect(await page.locator("body").innerText()).not.toContain("edge-case-4-token");
   });
@@ -443,7 +448,7 @@ test.describe("EV-337k round 3", () => {
       const html = await raw.text();
       // The h1 and its sentence are in the server's HTML, not added by JavaScript later.
       expect(html).toMatch(/<h1[^>]*>Page not found<\/h1>/);
-      expect(html).toContain("There is no page at this address. Check the link, or sign in to Evoli Pro.");
+      expect(html).toContain("There is no invitation at this address. Check the link, or ask your coach to send it to you again.");
       expect(html).not.toContain('id="__next_error__"');
       // The legal footer is server-rendered too.
       expect(html).toContain('class="legal-footer"');
@@ -460,7 +465,8 @@ test.describe("EV-337k round 3", () => {
         const res = await noJs.goto(path);
         expect(res?.status()).toBe(404);
         await expect(noJs.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
-        await expect(noJs.getByRole("link", { name: "Go to sign-in" })).toHaveAttribute("href", "/login");
+        // BUG-677: no link at all, with or without JavaScript.
+        await expect(noJs.getByRole("link")).toHaveCount(0);
       } finally {
         await context.close();
       }

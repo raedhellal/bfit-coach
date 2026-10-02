@@ -65,6 +65,13 @@ const UNAVAILABLE = "/unavailable";
  */
 const INVITE_ROUTE = /^\/i\/[^/]+$/;
 
+/**
+ * BUG-678 — the concrete page (`src/app/i/no-invitation/page.tsx`) the deep non-invitation
+ * `/i` paths are rewritten to. It has the shape of an invitation URL, so it is named here and
+ * refused as one: a direct visit is a 404 like any other non-invitation.
+ */
+const INVITE_NOT_FOUND = "/i/no-invitation";
+
 const API_BASE_URL = (process.env.API_BASE_URL || "http://localhost:8080").replace(
   /\/+$/,
   ""
@@ -189,11 +196,25 @@ export async function middleware(req: NextRequest) {
     /**
      * EV-337k (QA PB-1) — `/i` and `/i/<token>/<anything>` are not invitations. Their pages
      * draw the trainee 404 themselves, and this is where the 404 STATUS comes from: a page
-     * cannot set one, and the `notFound()` that can sends an empty-bodied error shell. A
-     * rewrite onto the same URL, exactly as `DENIED_ROUTE` gets its 403. Still public, still
-     * no cookie read: only the status of a page that is not an invitation changes.
+     * cannot set one, and the `notFound()` that can sends an empty-bodied error shell. Still
+     * public, still no cookie read: only the status of a page that is not an invitation
+     * changes.
+     *
+     * BUG-678 — the rewrite must land on a CONCRETE route. `/i` is one, so it is rewritten
+     * onto itself, exactly as `DENIED_ROUTE` gets its 403. A deeper path is not: rewritten
+     * onto itself, it can only be served by the dynamic `/i/[token]/[...rest]`, which
+     * `next start` resolves and Vercel did not: production at 46eb8b7 answered `/i/tok/extra`
+     * and `/i/a/b/c` with `x-matched-path: /_not-found` (Evoli Pro title and icons) while `/i`
+     * matched `/i`. So they go to `INVITE_NOT_FOUND`, a static page under the /i layout; the
+     * address bar keeps the URL that was asked for.
      */
-    if (!INVITE_ROUTE.test(pathname)) return NextResponse.rewrite(req.nextUrl, { status: 404 });
+    if (pathname === "/i") return NextResponse.rewrite(req.nextUrl, { status: 404 });
+    if (!INVITE_ROUTE.test(pathname) || pathname === INVITE_NOT_FOUND) {
+      const url = req.nextUrl.clone();
+      url.pathname = INVITE_NOT_FOUND;
+      url.search = "";
+      return NextResponse.rewrite(url, { status: 404 });
+    }
     return NextResponse.next();
   }
   const access = req.cookies.get(ACCESS_COOKIE)?.value || null;

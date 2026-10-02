@@ -370,6 +370,13 @@ export const en = {
     fallback:
       "Don't have the app yet? Install Evoli Fit, then open this link again.",
     storesComingSoon: "App Store and Google Play links coming soon.",
+    /**
+     * BUG-677 (EV-337 ruling 7) — the /i "page not found" body, verbatim, under
+     * `notFound.title`. A trainee has no Evoli Pro account, so it names no sign-in and the
+     * page offers no link at all: the only way forward is a new link from the coach.
+     */
+    notFoundBody:
+      "There is no invitation at this address. Check the link, or ask your coach to send it to you again.",
   },
 
   client: {
