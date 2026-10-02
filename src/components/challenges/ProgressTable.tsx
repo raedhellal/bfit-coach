@@ -179,8 +179,11 @@ function AcceptedItem({
   return (
     <li className="participant" data-participant={p.clientId} data-status="ACCEPTED" data-rank={p.rank ?? ""}>
       <Identity p={p} copy={copy}>
-        {/* When the phone last sent a day. STEPS only: a WORKOUTS challenge syncs nothing. */}
-        {steps && (
+        {/* When the phone last sent a counted day. STEPS only: a WORKOUTS challenge syncs
+            nothing. Not before day 1: `syncedAt` is the latest write among the window's days
+            up to today, so before the start it is null for everyone, which says nothing
+            about the phone. */}
+        {steps && progress.daysElapsed > 0 && (
           <span className="participant-sync">
             {progress.syncedAt === null ? (
               <span data-synced="">{c.neverSynced}</span>

@@ -54,7 +54,6 @@ const LANG = {
     },
     dayOf: "Day 5 of 7",
     startsIn: "Starts in 3 days",
-    neverSynced: "Nothing synced yet",
   },
   fr: {
     locale: "fr-FR",
@@ -79,7 +78,6 @@ const LANG = {
     },
     dayOf: "Jour 5 sur 7",
     startsIn: "Commence dans 3\u00a0jours",
-    neverSynced: "Rien de synchronisé pour l'instant",
   },
 } as const;
 type Lang = keyof typeof LANG;
@@ -289,7 +287,11 @@ for (const lang of ["fr", "en"] as const) {
       await expect(page.locator(".challenge-stats .stat-card")).toHaveCount(2);
 
       await page.goto(`/challenges/${UPCOMING}`);
-      await expect(participant(page, YUSUF).locator("[data-synced]")).toHaveText(l.neverSynced);
+      // Staff nit 3: before day 1 `syncedAt` is null for everyone, so no sync line at all
+      // (it read « Rien de synchronisé pour l'instant », which a coach may take as a phone fault).
+      await expect(participant(page, YUSUF)).toHaveAttribute("data-status", "ACCEPTED");
+      await expect(participant(page, YUSUF).locator(".participant-sync, [data-synced]")).toHaveCount(0);
+      await expect(page.locator("main")).not.toContainText(lang === "fr" ? "Rien de synchronisé" : "Nothing synced");
       await expect(page.locator(".participant-today")).toHaveCount(0);
       // Nothing counted before the first day: no « 0 sur 0 », no « 0 pas » total.
       await expect(participant(page, YUSUF).locator("[data-total], [data-days-met]")).toHaveCount(0);

@@ -2050,7 +2050,11 @@ export const en = {
     },
     /** Today's number is null: the phone sent nothing and nothing was typed. Not 0. */
     noDataToday: "No data today",
-    /** An accepted STEPS participant with no stored day at all (`syncedAt: null`). */
+    /**
+     * An accepted STEPS participant with `syncedAt: null`: no stored row among the window's
+     * days up to their today. Shown from day 1 only — before the start it is null for
+     * everyone and says nothing about the phone.
+     */
     neverSynced: "Nothing synced yet",
     noDataNotZero: "“No data” means nothing was synced or entered for that day: it is not zero steps.",
 
