@@ -52,8 +52,25 @@ export function windowPosition(c: CoachChallengeSummary, nowMs: number): WindowP
 }
 
 /**
- * The detail page's "today" cards, counted over the ACCEPTED participants only (an
- * invited one has shared nothing).
+ * Whether a participant's OWN today falls inside the challenge's window.
+ *
+ * The api computes `phase` on the UTC date but each trainee's `today` in their own zone,
+ * and nulls `todayValue` when that today is outside the window. So on the last evening
+ * (22:30 UTC on `endsOn` is 00:30 the next day in Paris) the challenge is still ACTIVE
+ * while a Paris trainee's today is already past the end, and on the first morning a
+ * trainee west of UTC is still before the start. Such a null is not "no data today": there
+ * is no challenge day to report for that trainee. The row and the stat cards both ask this
+ * one question, so they cannot disagree (staff, EV-337h review of 55d2126).
+ */
+export function todayInWindow(progress: ChallengeProgress, c: Pick<CoachChallengeSummary, "startsOn" | "endsOn">): boolean {
+  return progress.today >= c.startsOn && progress.today <= c.endsOn;
+}
+
+/**
+ * The detail page's "today" cards, counted over the ACCEPTED participants whose own today
+ * is inside the window (`todayInWindow`): an invited one has shared nothing, and one whose
+ * today is outside the window has no challenge day to count — counting them read « 0 / 3 ·
+ * 3 sans donnée aujourd'hui » for trainees who met every day, every night a challenge ends.
  *
  *   · `metToday` — participants whose OWN today is a day the api marked MET. The api's
  *     verdict, not a re-comparison here: a WORKOUTS challenge has no days and counts none.
@@ -75,7 +92,7 @@ function metOnToday(p: ChallengeProgress): boolean {
 export function todayStats(detail: CoachChallengeDetail): TodayStats {
   const progress = detail.participants
     .map((p) => p.progress)
-    .filter((p): p is ChallengeProgress => p !== null);
+    .filter((p): p is ChallengeProgress => p !== null && todayInWindow(p, detail.challenge));
   const values = progress.map((p) => p.todayValue).filter((v): v is number => v !== null);
   return {
     accepted: progress.length,

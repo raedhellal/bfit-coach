@@ -5,7 +5,7 @@ import { UiIcon } from "@/components/ui/icons";
 import type { ActivitySource, ChallengeMetric, CoachChallengeDetail, CoachChallengeParticipant } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 import { formatSince, formatSteps } from "@/lib/format";
-import { initialsOf } from "@/lib/challengeView";
+import { initialsOf, todayInWindow } from "@/lib/challengeView";
 import { DayLegend, DayStrip } from "./DayStrip";
 
 /**
@@ -170,11 +170,11 @@ function AcceptedItem({
   const pct = today === null || progress.target <= 0 ? 0 : Math.min(100, Math.floor((today / progress.target) * 100));
   /**
    * The api nulls `todayValue` both for "nothing sent today" and for a today OUTSIDE the
-   * window (before the start, after the end). Only the first is « Aucune donnée
-   * aujourd'hui »: on an ended or upcoming challenge there is no "today" to report, so
-   * the cell is left out rather than saying a day of the challenge went unrecorded.
+   * window (before the start, after the end, or a trainee whose own zone is already past
+   * the last day). Only the first is « Aucune donnée aujourd'hui »; otherwise there is no
+   * "today" to report and the cell is left out. The stat cards ask the same question.
    */
-  const todayInWindow = progress.today >= range.startsOn && progress.today <= range.endsOn;
+  const showToday = todayInWindow(progress, range);
 
   return (
     <li className="participant" data-participant={p.clientId} data-status="ACCEPTED" data-rank={p.rank ?? ""}>
@@ -194,7 +194,7 @@ function AcceptedItem({
         )}
       </Identity>
 
-      {todayInWindow && (
+      {showToday && (
         <div className="participant-today">
           <span className="participant-label">{c.colToday}</span>
           {steps ? (

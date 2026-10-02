@@ -17,9 +17,10 @@ import { todayStats, windowPosition } from "@/lib/challengeView";
  *     how many that is. Nobody with a number → « Aucune donnée aujourd'hui », not 0.
  *   · Day — the window position, from the dates (`windowPosition`).
  *
- * The two "today" cards exist only while the challenge is ACTIVE and its metric is STEPS:
- * before the start and after the end no trainee has a "today" inside the window, and a
- * WORKOUTS challenge has no daily goal to meet.
+ * The two "today" cards exist only while the challenge is ACTIVE, its metric is STEPS, and
+ * at least one participant's OWN today is inside the window (`todayInWindow`): the phase
+ * is the api's UTC verdict, a trainee's today is in their zone, and on the last evening or
+ * the first morning the two disagree. A WORKOUTS challenge has no daily goal to meet.
  */
 export function ChallengeStats({ detail, copy, now }: { detail: CoachChallengeDetail; copy: Copy; now: number }) {
   const c = copy.challenges;
@@ -27,6 +28,7 @@ export function ChallengeStats({ detail, copy, now }: { detail: CoachChallengeDe
   const pending = Math.max(0, challenge.participantCount - challenge.acceptedCount);
   const stats = todayStats(detail);
   const at = windowPosition(challenge, now);
+  // `stats.accepted` counts only participants whose own today is inside the window.
   const today = challenge.phase === "ACTIVE" && challenge.metric === "STEPS" && stats.accepted > 0;
   const short = (iso: string) => formatShortDate(iso, copy.locale);
 
