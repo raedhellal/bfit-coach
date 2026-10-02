@@ -1,4 +1,5 @@
-import { expect, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { expect, webkit, type Browser, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 
 /**
@@ -418,4 +419,242 @@ test("the server-rendered bar is hidden before any script runs", async ({ browse
   } finally {
     await context.close();
   }
+});
+
+/* ── A second click while a navigation is pending (BUG-670, EV-337 L3) ──────────────────
+ * QA (qa2c NB-1, api +600 ms): Nutrition, then Programme once the bar showed. The second
+ * click HID the bar for ~400 ms (Chromium off at 854 ms, back at 1254 ms, content at
+ * 2806 ms), because each click restarted the 400 ms wait from zero. L3: once shown, the bar
+ * stays until the content of the LAST navigation arrives; a second click before it shows
+ * does not push it later than 400 ms after the FIRST click; and a second navigation that
+ * commits fast (a router-cache revisit) still never shows it. */
+
+const ROUTINE = { href: `/clients/${LINA}/routine`, selector: "#plan-name" };
+const NUTRITION = { href: `/clients/${LINA}/nutrition`, selector: 'input[inputmode="numeric"]' };
+
+/**
+ * Click `firstHref`, then `second.href` either `secondAfterMs` after the first click or,
+ * with "bar", 150 ms after the bar appeared. Times are ms after the FIRST click.
+ * `gapAt`: the bar went hidden while the second page's content was not there yet.
+ */
+async function twoClicks(
+  page: Page,
+  firstHref: string,
+  second: { href: string; selector: string },
+  secondAfterMs: number | "bar"
+) {
+  return page.evaluate(
+    async ({ firstHref, second, secondAfterMs, node }) => {
+      const seen = {
+        barAt: null as number | null,
+        gapAt: null as number | null,
+        barGoneAt: null as number | null,
+        secondAt: null as number | null,
+        contentAt: null as number | null,
+        finalPath: "",
+      };
+      const t0 = performance.now();
+      const target = new URL(second.href, location.href).pathname;
+      const click = (href: string) => document.querySelector<HTMLAnchorElement>(`a[href="${href}"]`)!.click();
+      const clickSecond = () => {
+        seen.secondAt = performance.now() - t0;
+        click(second.href);
+      };
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`no ${second.selector} on ${target}`)), 20_000);
+        const observer = new MutationObserver(() => {
+          const now = performance.now() - t0;
+          const shown = document.querySelector<HTMLElement>(node)?.checkVisibility() ?? false;
+          if (seen.contentAt === null && location.pathname === target && document.querySelector(second.selector)) {
+            seen.contentAt = now;
+          }
+          if (shown && seen.barAt === null) {
+            seen.barAt = now;
+            if (secondAfterMs === "bar") setTimeout(clickSecond, 150);
+          }
+          if (!shown && seen.barAt !== null && seen.contentAt === null && seen.gapAt === null) seen.gapAt = now;
+          if (!shown && seen.barAt !== null && seen.barGoneAt === null) seen.barGoneAt = now;
+          if (seen.contentAt !== null && !shown) {
+            observer.disconnect();
+            clearTimeout(timer);
+            // Let a navigation that was NOT superseded show itself by committing late.
+            setTimeout(() => {
+              seen.finalPath = location.pathname;
+              resolve();
+            }, 300);
+          }
+        });
+        observer.observe(document, { subtree: true, childList: true, attributes: true });
+        click(firstHref);
+        if (typeof secondAfterMs === "number") setTimeout(clickSecond, secondAfterMs);
+      });
+      return seen;
+    },
+    { firstHref, second, secondAfterMs, node: NODE }
+  );
+}
+
+/**
+ * The bar's click listener is attached in an effect after hydration. Measured in WebKit on
+ * `next dev`: a click right after `goto` reached the Link (a soft navigation) before the
+ * listener existed, so no bar ever started. React tags a hydrated node with its fiber; the
+ * effect runs in a scheduler task right after that commit, so one more task is enough.
+ */
+async function hydrated(page: Page) {
+  await page.waitForFunction(
+    (node) => {
+      const el = document.querySelector(node);
+      return el !== null && Object.keys(el).some((k) => k.startsWith("__reactFiber"));
+    },
+    NODE
+  );
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 50)));
+}
+
+/** On the overview, hydrated, with every fixture read held `ms`. */
+async function slowOverview(page: Page, baseURL: string, ms = 1000) {
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await hydrated(page);
+  await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: String(ms), url: baseURL }]);
+}
+
+/** The bar showed at 400 ms after the first click and stayed, without a gap, until the content. */
+function expectHeldThrough(t: Awaited<ReturnType<typeof twoClicks>>, path: string) {
+  expect(t.barAt, "the bar appeared").not.toBeNull();
+  expect(t.barAt!, "not before 400 ms after the first click").toBeGreaterThanOrEqual(390);
+  expect(t.contentAt!, "the content really was held past the second click").toBeGreaterThan(t.secondAt! + 400);
+  expect(t.gapAt, `the bar hid at ${t.gapAt} ms, before the content at ${t.contentAt} ms`).toBeNull();
+  expect(t.barGoneAt!, "the bar left with the content, not before it").toBeGreaterThanOrEqual(t.contentAt!);
+  expect(t.finalPath, "the last click is the page that stayed").toBe(path);
+}
+
+test("BUG-670: a second click to another tab while the bar shows keeps it up until that tab arrives", async ({
+  page,
+  baseURL,
+}) => {
+  await signIn(page);
+  await slowOverview(page, baseURL!);
+  const t = await twoClicks(page, NUTRITION.href, ROUTINE, "bar");
+  expect(t.secondAt!, "the second click came while the bar was up").toBeGreaterThan(t.barAt!);
+  expectHeldThrough(t, ROUTINE.href);
+  await expectIdle(page);
+});
+
+test("BUG-670: a re-click of the same tab while the bar shows keeps it up until the tab arrives", async ({
+  page,
+  baseURL,
+}) => {
+  await signIn(page);
+  await slowOverview(page, baseURL!);
+  const t = await twoClicks(page, NUTRITION.href, NUTRITION, "bar");
+  expectHeldThrough(t, NUTRITION.href);
+  await expectIdle(page);
+});
+
+for (const [name, second] of [
+  ["another tab", ROUTINE],
+  ["the same tab", NUTRITION],
+] as const) {
+  test(`BUG-670: a second click to ${name} before the bar shows does not push it past 400 ms after the first`, async ({
+    page,
+    baseURL,
+  }) => {
+    await signIn(page);
+    await slowOverview(page, baseURL!);
+    const t = await twoClicks(page, NUTRITION.href, second, 250);
+    expect(t.secondAt!, "the second click came before the bar").toBeLessThan(t.barAt!);
+    // Restarting the wait at the second click would put the bar at ~650 ms.
+    expect(t.barAt!, "the bar keeps the FIRST click's 400 ms").toBeLessThan(550);
+    expectHeldThrough(t, second.href);
+    await expectIdle(page);
+  });
+}
+
+test("BUG-670: a slow click then a fast second one (a router-cache revisit) never shows the bar", async ({
+  page,
+  baseURL,
+}) => {
+  await signIn(page);
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await hydrated(page);
+  // Visit the nutrition tab and come back by link, so it is in the router cache.
+  await page.locator(`a[href="${NUTRITION.href}"]`).first().click();
+  await expect(page.locator(NUTRITION.selector).first()).toBeVisible();
+  await page.locator(`a[href="/clients/${LINA}"]`).first().click();
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await expectIdle(page);
+  await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1500", url: baseURL! }]);
+
+  // Programme (held 1.5 s per read), then 150 ms later the cached nutrition tab.
+  const t = await twoClicks(page, ROUTINE.href, NUTRITION, 150);
+  expect(t.contentAt!, "the revisit was fast").toBeLessThan(390);
+  expect(t.barAt, `the bar flashed at ${t.barAt} ms`).toBeNull();
+  expect(t.finalPath, "the slow first click did not land later").toBe(NUTRITION.href);
+  expect(await everShown(page, 1_000), "nor after").toBe(false);
+});
+
+test("BUG-670: the 20 s give-up counts from the LATEST click, and the bar never drops in between", async ({ page }) => {
+  await page.clock.install();
+  await signIn(page);
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await cancelledLink(page, {});
+  await page.locator("#probe-link").click();
+  await page.clock.fastForward(1_000);
+  await expect(page.locator(BAR)).toBeVisible();
+  await page.clock.fastForward(14_000);
+  await page.locator("#probe-link").click();
+  // Read once, right after the click: a retrying expect would wait out a 400 ms gap.
+  expect(await page.locator(NODE).evaluate((el) => el.checkVisibility()), "a second click keeps the bar up").toBe(true);
+  await page.clock.fastForward(10_000);
+  await expect(page.locator(BAR), "25 s after the first click, 10 s after the second").toBeVisible();
+  await page.clock.fastForward(10_100);
+  await expect(page.locator(NODE), "gone 20 s after the second click").toBeHidden();
+});
+
+/* WebKit too (QA measured 834/1235/2741 ms there), and in French: the configs' project is
+ * Chromium, so this launches WebKit itself, like focus-clear-of-bars.spec.ts. */
+test.describe("BUG-670 in WebKit, French", () => {
+  let browser: Browser;
+  test.beforeAll(async () => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    browser = await webkit.launch();
+  });
+  test.afterAll(async () => {
+    await browser?.close();
+  });
+
+  async function frenchWebKit(baseURL: string): Promise<Page> {
+    const context = await browser.newContext({ baseURL, locale: "fr-FR" });
+    // The language switch's choice, which outranks Accept-Language: inside the test runner
+    // this context still rendered English (the config's `locale: "en-US"` reached it).
+    await context.addCookies([{ name: "evoli_pro_locale", value: "fr", url: baseURL }]);
+    const page = await context.newPage();
+    const login = await context.request.post("/api/auth/login", {
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+      maxRedirects: 0,
+    });
+    expect(login.status()).toBe(200);
+    await slowOverview(page, baseURL);
+    return page;
+  }
+
+  test("a second click while the bar shows, and one before it shows", async ({ baseURL }) => {
+    const page = await frenchWebKit(baseURL!);
+    try {
+      const up = await twoClicks(page, NUTRITION.href, ROUTINE, "bar");
+      expectHeldThrough(up, ROUTINE.href);
+      await expect(page.locator(NODE), "the French portal").toHaveAttribute("aria-label", "Chargement de la page");
+      await slowOverview(page, baseURL!);
+      const early = await twoClicks(page, NUTRITION.href, ROUTINE, 250);
+      expect(early.secondAt!).toBeLessThan(early.barAt!);
+      expect(early.barAt!).toBeLessThan(550);
+      expectHeldThrough(early, ROUTINE.href);
+      await expectIdle(page);
+    } finally {
+      await page.context().close();
+    }
+  });
 });

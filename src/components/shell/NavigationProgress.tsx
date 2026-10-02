@@ -97,7 +97,11 @@ export function NavigationProgress() {
   const pathname = usePathname();
   const search = useSearchParams()?.toString() ?? "";
   const bar = useRef<HTMLDivElement | null>(null);
-  const timers = useRef<number[]>([]);
+  /** Armed from the FIRST click of a pending run until it shows or the run ends; null otherwise. */
+  const showTimer = useRef<number | null>(null);
+  const giveUpTimer = useRef<number | null>(null);
+  /** A navigation started and nothing has committed (or given up) since. */
+  const pending = useRef(false);
 
   /**
    * Shown and hidden on the DOM directly, never through React state. Measured: a
@@ -121,18 +125,36 @@ export function NavigationProgress() {
   }, []);
 
   const stop = useCallback(() => {
-    timers.current.forEach((t) => window.clearTimeout(t));
-    timers.current = [];
+    if (showTimer.current !== null) window.clearTimeout(showTimer.current);
+    if (giveUpTimer.current !== null) window.clearTimeout(giveUpTimer.current);
+    showTimer.current = giveUpTimer.current = null;
+    pending.current = false;
     show(false);
   }, [show]);
 
   useEffect(() => {
+    /**
+     * BUG-670: a navigation started while another is pending (a second click, or a
+     * re-click of the same link) continues the same wait, whichever of the two Next
+     * ends up committing (a second tab click superseded the first, measured). Restarting
+     * from zero hid a visible bar for 400 ms while the page was still loading, and moved
+     * an unshown bar to 400 ms after the second click. So:
+     *   · the bar already shows: it stays, until the latest navigation commits;
+     *   · the 400 ms is armed: it keeps the FIRST click's deadline. A second navigation
+     *     that commits before that deadline (a router-cache revisit) ends the run through
+     *     the URL change, so it still never flashes the bar;
+     *   · the give-up restarts: it belongs to the latest navigation, the one waited for.
+     */
     const begin = () => {
-      stop();
-      timers.current = [
-        window.setTimeout(() => show(true), NAV_PROGRESS_DELAY_MS),
-        window.setTimeout(stop, NAV_PROGRESS_GIVE_UP_MS),
-      ];
+      if (!pending.current) {
+        pending.current = true;
+        showTimer.current = window.setTimeout(() => {
+          showTimer.current = null;
+          show(true);
+        }, NAV_PROGRESS_DELAY_MS);
+      }
+      if (giveUpTimer.current !== null) window.clearTimeout(giveUpTimer.current);
+      giveUpTimer.current = window.setTimeout(stop, NAV_PROGRESS_GIVE_UP_MS);
     };
     const onClick = (event: MouseEvent) => {
       if (navigationTarget(event)) begin();
