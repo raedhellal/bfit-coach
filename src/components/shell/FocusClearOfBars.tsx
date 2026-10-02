@@ -12,8 +12,9 @@ import { useEffect } from "react";
  * 390 × 700 were left only 56–81 % visible, partly under the tab bar; 30 at 1023 × 700; 8 at
  * 1440 × 850, under the legal footer. WebKit does NOT ignore scroll-padding outright: on the
  * template editor, where `html:has(.action-bar)` pads 180 px, the padding alone kept every
- * stop clear (and the island alone did too; with both removed, 57 of 57 stops at 390 sat
- * under the action bar — EV-337i, staff's probe of 8b175b2). Why WebKit's own focus scroll
+ * stop clear (and the island alone did too). With both removed, 57 of 57 obscured stops at
+ * 390 sat fully under the action bar in qa/focus-clear-of-bars.spec.ts; staff's independent
+ * probe of 8b175b2 found 47 of 58 fully under (EV-337i). Why WebKit's own focus scroll
  * stops short of the 68 px padding on the routine editor was not established; this island
  * does not depend on the answer.
  *
