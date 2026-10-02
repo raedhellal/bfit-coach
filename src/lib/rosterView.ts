@@ -74,15 +74,31 @@ function holds(scopes: CoachAccessScope[] | null | undefined, scope: CoachAccess
   return Array.isArray(scopes) && scopes.includes(scope);
 }
 
-/** `YYYY-MM-DD` of `now` on the wall clock of `zone`. */
+/**
+ * `YYYY-MM-DD` of `now` on the wall clock of `zone`.
+ *
+ * Built from `formatToParts`, not from a locale's formatted string: "en-CA prints
+ * YYYY-MM-DD" is an ICU data fact that has changed before, and a different shape would make
+ * `daysBetween` answer null for every row — so every PROGRESS row would silently claim "No
+ * workouts yet" (staff S4). A result that is not a day THROWS: the roster's error card is
+ * the honest answer, a wrong group is not.
+ */
 export function dayIn(now: Date, zone: string = ROSTER_TODAY_ZONE): string {
-  // en-CA formats as YYYY-MM-DD.
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: zone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now);
+  }).formatToParts(now);
+  return dayFromParts(parts, zone);
+}
+
+/** The `YYYY-MM-DD` the parts spell, or a throw. Exported so the refusal itself is tested. */
+export function dayFromParts(parts: Intl.DateTimeFormatPart[], zone: string): string {
+  const part = (type: "year" | "month" | "day") => parts.find((p) => p.type === type)?.value ?? "";
+  const day = `${part("year")}-${part("month")}-${part("day")}`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`dayIn: not a day: "${day}" (${zone})`);
+  return day;
 }
 
 /** Whole calendar days from `from` to `to` (both `YYYY-MM-DD`); null for a malformed date. */

@@ -36,7 +36,7 @@ type Section = "roster" | "templates" | "recipes" | "nutrition-templates" | "cha
 export function CoachShell({
   coachName,
   section,
-  rosterCount,
+  toReviewCount,
   children,
 }: {
   coachName?: string | null;
@@ -46,20 +46,20 @@ export function CoachShell({
    */
   section?: Section;
   /**
-   * EV-337 D3 — the « Clients » count: the number of rows the roster page listed, passed
-   * by that page from its own read. Absent everywhere else (no page reads the roster just
-   * to feed a badge: plan §5.1 without ADR-0033 2b), and never drawn as 0 — a page that
-   * did not load the roster passes nothing, and an empty roster says so in its own words.
+   * EV-337 D3 (restated 2026-10-02) — the « Clients » count: how many clients are to review
+   * (`redFlagCount` > 0), passed by the roster page from its own read. Absent everywhere
+   * else (no page reads the roster just to feed a badge: plan §5.1), and never drawn as 0 —
+   * a page that did not load the roster passes nothing, and "nobody to review" is no badge.
    */
-  rosterCount?: number;
+  toReviewCount?: number;
   children: React.ReactNode;
 }) {
   const copy = getCopy();
   const locale = getLocale();
   const items = navItems(copy);
-  const count = typeof rosterCount === "number" && rosterCount > 0 ? rosterCount : null;
+  const count = typeof toReviewCount === "number" && toReviewCount > 0 ? toReviewCount : null;
   /**
-   * The number is drawn `aria-hidden` and the sentence ("6 clients") is the link's
+   * The number is drawn `aria-hidden` and the sentence ("3 clients to review") is the link's
    * DESCRIPTION, from a `hidden` span (`aria-describedby` reads hidden text). So the link's
    * NAME stays « Clients » / "Roster" — what every locator and every screen-reader user
    * already knows it by. Two ids, one per navigation; only one navigation is displayed.

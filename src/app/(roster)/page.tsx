@@ -28,6 +28,13 @@ export default async function RosterPage() {
   const copy = getCopy();
   let me: CoachMe | null = null;
   let clients: RosterClient[] | null = null;
+  /**
+   * EV-337d. "Today" is read ONCE, on the server, in Europe/Paris (D1), and every row is
+   * classified against it — so a render cannot put two rows on two different days, and the
+   * browser's clock never decides who is inactive. Inside the try: if the zone data cannot
+   * produce a day, the roster's error card is the answer, not a roster of wrong groups.
+   */
+  let today: string | null = null;
   let failed = false;
   /**
    * EV-187 AC2. The session cookie, or "Needs attention" on a fresh session — read on
@@ -48,11 +55,12 @@ export default async function RosterPage() {
     // Rendered in the order the api returned. Re-sorting here is the defect, not the
     // safety net: see the block where `sortNeedsAttentionFirst` used to live.
     clients = roster.items;
+    today = dayIn(new Date());
   } catch {
     failed = true;
   }
 
-  if (failed || !me || !clients) {
+  if (failed || !me || !clients || !today) {
     return (
       <CoachShell section="roster">
         <PageHead title={copy.roster.title} sub={copy.roster.subtitle} />
@@ -85,14 +93,9 @@ export default async function RosterPage() {
   // contradict the meter beside it.
   const fullReason = copy.roster.inviteFull(tierLabel(me.tier), me.capacity);
 
-  /**
-   * EV-337d. "Today" is read ONCE, on the server, in Europe/Paris (D1), and every row is
-   * classified against it — so a render cannot put two rows on two different days, and the
-   * browser's clock never decides who is inactive.
-   */
-  const today = dayIn(new Date());
+  const day = today;
   const entries: RosterEntry[] = clients.map((c, i) => {
-    const view = classifyRosterRow(c, today);
+    const view = classifyRosterRow(c, day);
     return {
       id: c.id,
       group: view.group,
@@ -105,10 +108,12 @@ export default async function RosterPage() {
   const toReview = entries.filter((e) => e.group === "attention").length;
 
   return (
-    // D3: the navigation's count is the number of rows listed here, from THIS page's own
-    // read — never a 0 standing in for "not loaded" (the failure branch above passes none,
-    // and no other page reads the roster to feed a badge: plan §5.1, without ADR-0033 2b).
-    <CoachShell coachName={me.displayName} section="roster" rosterCount={clients.length}>
+    // D3 (restated 2026-10-02, PO ruling 1): the navigation's count is the number of FLAGGED
+    // rows — the « À traiter » chip and the subtitle's « n à traiter » — from THIS page's own
+    // read. Never a 0 standing in for "not loaded": the failure branch above passes none, the
+    // shell draws nothing for 0, and no other page reads the roster to feed a badge (plan
+    // §5.1, ADR-0033 2b withdrawn). Search and filters live in the island and cannot reach it.
+    <CoachShell coachName={me.displayName} section="roster" toReviewCount={toReview}>
       <PageHead
         title={copy.roster.title}
         sub={clients.length > 0 ? copy.roster.subtitleCounts(clients.length, toReview) : copy.roster.subtitle}

@@ -209,7 +209,7 @@ export const fr = {
     noMatch: "Aucun client ne correspond.",
     clearFilters: "Afficher tous les clients",
     shown: (n: number) => `${n} client${s(n)} affiché${s(n)}`,
-    navCount: (n: number) => `${n} client${s(n)}`,
+    navCount: (n: number) => `${n} client${s(n)} à traiter`,
     inactiveFor: (days: number) => `Inactif depuis ${days}\u00a0j`,
     upToDate: "À jour",
     activityNotShared: "Activité non partagée",

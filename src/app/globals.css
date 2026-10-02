@@ -514,7 +514,8 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
    a CARD below it (EV-337 D4). Every rule is a class: a media query cannot override an
    inline declaration (BUG-380). */
 
-/* The « Clients » count in the navigation (D3) — the roster page only. */
+/* The « Clients » count in the navigation (D3, restated): clients to review, the roster page
+   only. The alert pair (--err-bg/--err-ink, 5.92:1), like the « À traiter » chip. */
 .shell-nav-label { min-width: 0; }
 .shell-nav-count {
   margin-left: auto;
@@ -522,15 +523,14 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
   height: 20px;
   padding: 0 7px;
   border-radius: var(--r-pill);
-  background: var(--surface-2);
-  color: var(--ink-2);
+  background: var(--err-bg);
+  color: var(--err-ink);
   font-size: var(--fs-label);
   line-height: 20px;
   font-weight: 700;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.shell-side-link[aria-current="page"] .shell-nav-count { background: var(--surface); color: var(--link); }
 .shell-tab .shell-nav-count {
   position: absolute;
   top: -6px;
@@ -541,7 +541,8 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
   padding: 0 5px;
   font-size: var(--fs-micro);
   line-height: 16px;
-  background: var(--link);
+  /* White on --err-ink #B01C1C: 6.6:1. */
+  background: var(--err-ink);
   color: var(--ink-on);
 }
 

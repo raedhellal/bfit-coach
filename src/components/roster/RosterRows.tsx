@@ -47,7 +47,11 @@ function StreakValue({ days, shared, copy }: { days: number | null; shared: bool
   );
 }
 
-/** "Today" / "Yesterday" / "4 days ago", with the api's UTC day as the tooltip and `dateTime`. */
+/**
+ * "Today" / "Yesterday" / "4 days ago", with the api's date as the tooltip and `dateTime`:
+ * the calendar day the trainee's session was filed under (`WorkoutSession::getDate`), not a
+ * UTC instant, so it is printed as a plain date.
+ */
 function LastWorkout({ client, days, copy }: { client: RosterClient; days: number | null; copy: Copy }) {
   const date = client.lastCompletedWorkoutDate;
   if (date && days !== null) {

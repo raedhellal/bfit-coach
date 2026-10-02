@@ -66,10 +66,12 @@ for (const lang of ["fr", "en"] as const) {
           .toBe(true);
         const facts = await page.evaluate(() => ({
           h1: document.querySelectorAll("h1").length,
+          // D3: no count while the roster read is loading.
+          count: document.querySelectorAll(".shell-nav-count").length,
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           shimmer: Array.from(document.querySelectorAll("*")).some((e) => getComputedStyle(e).animationName === "shimmer"),
         }));
-        expect(facts, `${lang} loading at ${width}`).toMatchObject({ h1: 1, shimmer: true });
+        expect(facts, `${lang} loading at ${width}`).toMatchObject({ h1: 1, shimmer: true, count: 0 });
         expect(facts.overflow, `${lang} loading at ${width}`).toBeLessThanOrEqual(1);
         await expect(page.getByText(l.empty, { exact: true })).toBeVisible({ timeout: 15_000 });
         await context.clearCookies({ name: "evoli_fixture_api_latency" });

@@ -286,8 +286,8 @@ export const en = {
     clearFilters: "Show all clients",
     /** The live region after a search or a filter. */
     shown: (n: number) => `${n} client${n === 1 ? "" : "s"} shown`,
-    /** The navigation's count beside "Roster", for a screen reader (D3). */
-    navCount: (n: number) => `${n} client${n === 1 ? "" : "s"}`,
+    /** The navigation's count beside "Roster" — flagged clients — for a screen reader (D3, restated). */
+    navCount: (n: number) => `${n} client${n === 1 ? "" : "s"} to review`,
     /** R6: more than 7 days without a completed session, with PROGRESS shared. */
     inactiveFor: (days: number) => `Inactive for ${days}\u00a0days`,
     upToDate: "Up to date",

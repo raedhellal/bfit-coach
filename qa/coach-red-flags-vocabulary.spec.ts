@@ -44,20 +44,40 @@ const FORBIDDEN_COPY =
  * drew « Douleur genou signalée » and « Douleur 6/10 »; AC4 forbids both in either language.
  *
  * Built from strings so the classes are Unicode-aware (`u`): `\w` and `\b` are ASCII-only,
- * and French words end in « é ». It binds on « douleur » NEAR a reporting word, in either
- * order (« douleur genou signalée », « signalement de douleur », « douleurs déclarées »),
- * and on a pain SCORE in either language (« Douleur 6/10 », "Pain: 7 / 10"). « douleur »
- * alone is not banned: a trainee's own injury note can say it, and that text is theirs.
+ * and French words end in « é ». « douleur » alone is not banned: a trainee's own injury note
+ * can say it, and that text is theirs. Two patterns:
+ *
+ *   · FORBIDDEN_COPY_FR — « douleur » within a few words of a REPORTED form, either order
+ *     (« douleur genou signalée », « signalement de douleur », « douleurs déclarées », « une
+ *     douleur a été rapportée »). The reported forms are participles, nouns and the third
+ *     person, never the stem: the stem flagged ordinary French (« par rapport à la douleur »,
+ *     « qui remonte à 2019 », « Signalez toute douleur à votre médecin »; staff S3).
+ *   · PAIN_SCORE — a pain score in either language, with the score as a number, a template
+ *     slot (`${n}`) or a JSX expression (`{x}`), « /10 » or « sur 10 », and React's SSR text
+ *     seam `<!-- -->` or `&nbsp;` between the parts: a JSX `Douleur {x}/10` is rendered as
+ *     `Douleur <!-- -->6<!-- -->/10`, which a digits-only pattern never saw (staff B1).
+ *
+ * KNOWN MISSES, stated so nobody reads this as complete: a pain claim without the word
+ * « douleur » (« Mal au genou signalé », « Gêne signalée »), with a verb outside the list
+ * (« Douleur ressentie »), or a score without its scale (« Niveau de douleur : 7 »).
  */
 const W = "[\\p{L}\\p{N}_]";
-const NW = "[^\\p{L}\\p{N}_]";
-const REPORTING = "(?:signal|d\u00e9clar|declar|rapport|remont|indiqu)";
+/** A separator: a non-word character, an `&nbsp;` entity (React's `<!-- -->` is all non-word). */
+const SEP = "(?:[^\\p{L}\\p{N}_]|&nbsp;)";
+const REPORTED =
+  "(?:signal(?:ements?|ée?s?|e|ent)|d[ée]clar(?:ations?|ée?s?|e|ent)|rapport(?:ée?s?|e|ent)|indiqu(?:ée?s?))(?![\\p{L}\\p{N}_])";
 const FORBIDDEN_COPY_FR = new RegExp(
-  `(?<!${W})douleur${W}*(?:${NW}+${W}+){0,3}?${NW}+${REPORTING}` +
-    `|(?<!${W})${REPORTING}${W}*(?:${NW}+${W}+){0,4}?${NW}+douleur`,
+  `(?<!${W})douleur${W}*(?:${SEP}+${W}+){0,3}?${SEP}+${REPORTED}` +
+    `|(?<!${W})${REPORTED}(?:${SEP}+${W}+){0,4}?${SEP}+douleur`,
   "iu"
 );
-const PAIN_SCORE = new RegExp(`(?<!${W})(?:douleur|pain)${NW}+\\d{1,2}\\s*/\\s*10(?!${W})`, "iu");
+const SLOT = "(?:\\d{1,2}|\\$\\{[^}]*\\}|\\{[^}]*\\})";
+const SCALE = `${SEP}*(?:/|sur|out${SEP}+of)${SEP}*10(?!\\d)`;
+const PAIN_SCORE = new RegExp(
+  `(?<!${W})(?:douleur|pain)${W}*(?:${SEP}+${W}+){0,3}?${SEP}+${SLOT}${SCALE}` +
+    `|(?<!${W})${SLOT}${SCALE}(?:${SEP}+${W}+){0,1}?${SEP}+(?:douleur|pain)`,
+  "iu"
+);
 
 function firstForbidden(text: string): string | undefined {
   return (FORBIDDEN_COPY.exec(text) ?? FORBIDDEN_COPY_FR.exec(text) ?? PAIN_SCORE.exec(text))?.[0];
@@ -199,6 +219,17 @@ test("the guard binds on the concept, and not on one spelling", () => {
     "Douleur 6/10",
     "Douleur : 6 / 10",
     "Pain 7/10",
+    "Douleur 6 sur 10",
+    "Douleur&nbsp;6/10",
+    "6/10 de douleur",
+    "Signalé : douleur au genou",
+    "Douleur (genou) — signalée",
+    "le client rapporte une douleur",
+    // Staff B1's three, and what SSR makes of a JSX score.
+    "painScore: (n) => `Douleur ${n}/10`",
+    "<span>Douleur {x}/10</span>",
+    "`Niveau de douleur : ${n} sur 10`",
+    "Douleur <!-- -->6<!-- -->/10",
   ];
   for (const spelling of plantedFr) {
     expect(firstForbidden(spelling), `"${spelling}" would reach a coach unnoticed`).toBeDefined();
@@ -214,6 +245,11 @@ test("the guard binds on the concept, and not on one spelling", () => {
     "Complétez les champs signalés ci-dessus pour enregistrer.",
     "Aucune pesée depuis 14 jours",
     "6/10 séances",
+    // Ordinary French the stems used to flag (staff S3).
+    "Douleur au genou qui remonte à 2019",
+    "Par rapport à la douleur, adaptez la charge",
+    "Signalez toute douleur à votre médecin",
+    "Indiquez si la séance était trop dure. Douleur ou gêne : consultez.",
   ];
   for (const fine of allowed) {
     expect(

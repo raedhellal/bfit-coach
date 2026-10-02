@@ -106,3 +106,57 @@ test("WebKit 390: a field on /recipes/new is clear of the tab bar when reached b
   expect(result.out).toEqual([]);
   await page.context().close();
 });
+
+/**
+ * Staff B2 (review of d9515206): a MOUSE click on a text field peeking above the tab bar
+ * scrolled the page 40 px, in WebKit and in Chromium, because `:focus-visible` also matches
+ * a click-focused input. The island now acts on keyboard focus only. Witness: a field whose
+ * top 12 px show above the tab bar is clicked there; the page must not move, and the field
+ * must have focus (so the click really landed on it).
+ */
+async function clickPeekingField(page: Page) {
+  const before = await page.evaluate(async () => {
+    const bar = document.querySelector(".shell-tabbar")!.getBoundingClientRect();
+    const fields = Array.from(document.querySelectorAll<HTMLInputElement>("main input[type=text], main input:not([type])")).filter(
+      (e) => e.getBoundingClientRect().height > 20
+    );
+    const el = fields[Math.floor(fields.length / 2)];
+    if (!el) return null;
+    window.scrollBy(0, el.getBoundingClientRect().top - (bar.top - 12));
+    await new Promise((r) => setTimeout(r, 250));
+    el.setAttribute("data-peek", "");
+    const r = el.getBoundingClientRect();
+    return { top: r.top, left: r.left, scrollY: window.scrollY, barTop: document.querySelector(".shell-tabbar")!.getBoundingClientRect().top };
+  });
+  expect(before, "found a text field on the routine editor").not.toBeNull();
+  expect(before!.top, "the field peeks above the tab bar").toBeLessThan(before!.barTop);
+  await page.mouse.click(before!.left + 10, before!.top + 5);
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => ({
+    scrollY: window.scrollY,
+    focused: document.activeElement?.hasAttribute("data-peek") ?? false,
+  }));
+  expect(after.focused, "the click focused the field").toBe(true);
+  expect(Math.abs(after.scrollY - before!.scrollY), "a pointer focus does not scroll the page").toBeLessThanOrEqual(1);
+}
+
+test("WebKit 390: a mouse click into a field above the tab bar does not scroll the page (B2)", async ({ baseURL }) => {
+  const page = await signedIn(baseURL!);
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto(`/clients/${LINA}/routine`);
+  await page.waitForLoadState("networkidle");
+  await clickPeekingField(page);
+  await page.context().close();
+});
+
+test("Chromium 390: a mouse click into a field above the tab bar does not scroll the page (B2)", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("coach@evoli.fit");
+  await page.getByLabel("Password").fill("Password123!");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("/");
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto(`/clients/${LINA}/routine`);
+  await page.waitForLoadState("networkidle");
+  await clickPeekingField(page);
+});

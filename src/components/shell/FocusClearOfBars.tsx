@@ -11,11 +11,17 @@ import { useEffect } from "react";
  * below 1024 px landed partly under the tab bar (33 of 68 stops on the routine editor at
  * 390 × 700), and a few under the legal footer at 1440.
  *
- * After each KEYBOARD focus (`:focus-visible`) — once the browser has done its own scroll —
- * this measures the sticky bars actually on screen and scrolls the window by exactly the
- * overlap plus a margin. Where the browser already honoured scroll-padding (Chromium) the
- * overlap is zero and nothing moves. A pointer focus is left alone: the coach is looking at
- * what they clicked.
+ * After each KEYBOARD focus — once the browser has done its own scroll — this measures the
+ * sticky bars actually on screen and scrolls the window by exactly the overlap plus a
+ * margin. Where the browser already honoured scroll-padding (Chromium) the overlap is zero
+ * and nothing moves.
+ *
+ * A POINTER focus is left alone: the coach is looking at what they clicked. "Keyboard" is
+ * this island's own record of the last input — a `keydown` vs a `pointerdown`, both caught
+ * on the document in the capture phase — and NOT `:focus-visible`, which every engine also
+ * matches on a text input focused by a click (staff B2: a click on a field peeking above the
+ * tab bar scrolled the page 40 px). A focus with no input before it (autofocus, a script)
+ * is treated as a pointer focus.
  *
  * Not handled here, on purpose: focus inside a modal (the dialog is a fixed overlay above
  * every bar), and focus on the bars themselves.
@@ -28,18 +34,30 @@ const MARGIN = 8;
 export function FocusClearOfBars() {
   useEffect(() => {
     let frame = 0;
+    let keyboard = false;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // A modifier alone (Shift before Shift+Tab) is still the keyboard.
+      if (!event.metaKey && !event.ctrlKey) keyboard = true;
+    };
+    const onPointerDown = () => {
+      keyboard = false;
+    };
     function onFocusIn(event: FocusEvent) {
       const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
+      if (!keyboard || !(target instanceof HTMLElement)) return;
       cancelAnimationFrame(frame);
       // Two frames: WebKit's own scroll-into-view lands after the focus event.
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => clear(target));
       });
     }
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("focusin", onFocusIn);
     return () => {
       cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("focusin", onFocusIn);
     };
   }, []);
@@ -48,7 +66,6 @@ export function FocusClearOfBars() {
 
 function clear(el: HTMLElement) {
   if (document.activeElement !== el) return;
-  if (!safeMatches(el, ":focus-visible")) return;
   if (el.closest(`${BARS}, [aria-modal="true"], [role="dialog"]`)) return;
 
   const box = el.getBoundingClientRect();
@@ -72,12 +89,4 @@ function clear(el: HTMLElement) {
   // than the clear band is aligned by its top.
   if (box.top - delta < top + MARGIN) delta = box.top - (top + MARGIN);
   if (Math.abs(delta) >= 1) window.scrollBy({ top: delta, behavior: "instant" as ScrollBehavior });
-}
-
-function safeMatches(el: Element, selector: string): boolean {
-  try {
-    return el.matches(selector);
-  } catch {
-    return true; // an engine without :focus-visible: treat every focus as keyboard focus
-  }
 }

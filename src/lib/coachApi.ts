@@ -220,7 +220,8 @@ export interface RosterClient {
    */
   currentPlanName: string | null;
   /**
-   * `YYYY-MM-DD` (UTC) of the last completed workout. Null when there has never been
+   * `YYYY-MM-DD` of the last completed workout: the calendar day the trainee's session was
+   * filed under (`WorkoutSession::getDate`), not a UTC instant. Null when there has never been
    * one **or** when the link lacks PROGRESS — this is progress data and S1 filters it
    * per item. `scopes` above is what tells the two apart, and they are two different
    * sentences and two different sort positions (see `sortNeedsAttentionFirst`).

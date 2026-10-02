@@ -234,7 +234,12 @@ for (const lang of ["fr", "en"] as const) {
       await expect.poll(async () => (await groups(page)).attention).toEqual(["Lina M.", "Tobias R.", "Sara P."]);
     });
 
-    test("D3: the « Clients » count equals the rows listed, and is on the roster only", async ({ page, context, baseURL }) => {
+    /**
+     * D3, restated 2026-10-02 (PO ruling 1): the count is the FLAGGED rows — the same number
+     * as the « À traiter » chip and the subtitle's « n à traiter » — never the rows listed.
+     * The boundary cookie makes the two differ (9 rows, 3 flagged), so a count of rows is red.
+     */
+    test("D3: the « Clients » count is the clients to review, and is on the roster only", async ({ page, context, baseURL }) => {
       await boundaryRows(context, baseURL);
       await signIn(page, lang);
       const l = LANG[lang];
@@ -244,13 +249,21 @@ for (const lang of ["fr", "en"] as const) {
         const nav = page.getByRole("navigation", { name: lang === "fr" ? "Portail" : "Portal" });
         const link = nav.getByRole("link", { name: l.nav, exact: true });
         await expect(link, `${width}: the count does not change the link's name`).toHaveAttribute("aria-current", "page");
-        const rows = await page.locator(".roster-row").count();
-        expect(rows).toBe(9);
-        await expect(link.locator(".shell-nav-count")).toHaveText(String(rows));
-        await expect(link).toHaveAccessibleDescription(lang === "fr" ? "9 clients" : "9 clients");
-        // Filtering does not change it: it counts the roster, not the view.
+        await expect(page.locator(".roster-row")).toHaveCount(9);
+        const flagged = await page.locator('[data-roster-group="attention"] .roster-row').count();
+        expect(flagged).toBe(3);
+        await expect(link.locator(".shell-nav-count")).toHaveText(String(flagged));
+        // The same number as the group's chip and the subtitle.
+        await expect(page.locator('[data-roster-group="attention"] .roster-group-count [aria-hidden="true"]')).toHaveText("3");
+        await expect(page.getByText(lang === "fr" ? "9 clients · 3 à traiter" : "9 clients · 3 to review", { exact: true })).toBeVisible();
+        await expect(link).toHaveAccessibleDescription(lang === "fr" ? "3 clients à traiter" : "3 clients to review");
+        // Search and filters do not change it: it counts the roster, not the view.
         await page.getByRole("searchbox", { name: l.search }).fill("lina");
-        await expect(link.locator(".shell-nav-count")).toHaveText("9");
+        await expect(page.locator(".roster-row")).toHaveCount(1);
+        await expect(link.locator(".shell-nav-count")).toHaveText("3");
+        await page.getByRole("searchbox", { name: l.search }).fill("");
+        await page.getByRole("button", { name: `${l.inactive} · 2` }).click();
+        await expect(link.locator(".shell-nav-count")).toHaveText("3");
       }
       // Any other page: no roster read, so no count — never a 0.
       for (const path of ["/templates", `/clients/${LINA}`]) {
@@ -271,12 +284,12 @@ for (const lang of ["fr", "en"] as const) {
       await expect(page.locator(".roster-row")).toHaveCount(0);
     });
 
-    test("many clients: 46 rows render, are counted and are searchable", async ({ page, context, baseURL }) => {
+    test("many clients: 46 rows render and are searchable; the count stays the 3 to review", async ({ page, context, baseURL }) => {
       await context.addCookies([{ name: "evoli_fixture_roster_extra", value: "40", url: baseURL! }]);
       await signIn(page, lang);
       const l = LANG[lang];
       await expect(page.locator(".roster-row")).toHaveCount(46);
-      await expect(page.locator(".shell-nav-count").first()).toHaveText("46");
+      await expect(page.locator(".shell-nav-count").first()).toHaveText("3");
       expect((await groups(page)).other).toHaveLength(43);
       await page.getByRole("searchbox", { name: l.search }).fill("client 037");
       await expect(page.locator(".roster-row .roster-name")).toHaveText(["Client 037"]);

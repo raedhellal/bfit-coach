@@ -1,8 +1,10 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
 import type { RosterClient } from "../src/lib/coachApi";
+import { fr } from "../src/lib/copy.fr";
 import {
   classifyRosterRow,
+  dayFromParts,
   dayIn,
   dayMinus,
   daysBetween,
@@ -99,6 +101,19 @@ test("today is Paris's day, not UTC's: the hour after Paris midnight", () => {
   expect(daysBetween("2026-09-25", dayIn(new Date("2026-10-02T21:59:00Z")))).toBe(7);
 });
 
+test("dayIn is built from parts and refuses a zone it cannot read (staff S4)", () => {
+  expect(dayIn(new Date("2026-03-05T12:00:00Z"))).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(dayIn(new Date("2026-03-05T12:00:00Z"), "UTC")).toBe("2026-03-05");
+  expect(() => dayIn(new Date("2026-03-05T12:00:00Z"), "Not/AZone")).toThrow();
+  expect(() => dayIn(new Date(Number.NaN))).toThrow();
+  // The refusal itself: parts that do not spell a day (a formatter that drops the year, or
+  // writes the month as a word) throw rather than reach `daysBetween` as garbage.
+  const p = (type: Intl.DateTimeFormatPartTypes, value: string) => ({ type, value });
+  expect(dayFromParts([p("year", "2026"), p("month", "03"), p("day", "05")], "Europe/Paris")).toBe("2026-03-05");
+  expect(() => dayFromParts([p("month", "03"), p("day", "05")], "Europe/Paris")).toThrow(/not a day/);
+  expect(() => dayFromParts([p("year", "2026"), p("month", "Mar"), p("day", "05")], "Europe/Paris")).toThrow(/not a day/);
+});
+
 test("daysBetween / dayMinus agree across a month and a DST change", () => {
   expect(dayMinus("2026-10-02", 8)).toBe("2026-09-24");
   expect(daysBetween("2026-10-20", "2026-10-28")).toBe(8); // CEST → CET on 25 Oct
@@ -118,4 +133,35 @@ test("filters read the row's facts; search is case- and accent-insensitive", () 
   expect(matchesSearch(hay, "pull legs")).toBe(true);
   expect(matchesSearch(hay, "lina")).toBe(false);
   expect(matchesSearch(hay, "")).toBe(true);
+});
+
+/**
+ * D6 (PO ruling 3, 2026-10-02): a red flag is « alerte » in French. No UI string in
+ * `copy.fr.ts` says « signalement » — it reads as something the client reported, which these
+ * flags are not. Code comments do not count, so the DICTIONARY is read, not the file: every
+ * string, and every template's output (called with a number and with a word, so both kinds
+ * of argument are exercised).
+ */
+test("D6: no French UI string contains « signalement »", () => {
+  const seen: string[] = [];
+  const walk = (value: unknown, path: string) => {
+    if (typeof value === "string") seen.push(`${path}=${value}`);
+    else if (typeof value === "function") {
+      const fn = value as (...a: unknown[]) => unknown;
+      for (const arg of [2, "Qz"]) {
+        try {
+          const out = fn(...Array.from({ length: Math.max(1, fn.length) }, () => arg));
+          if (typeof out === "string") seen.push(`${path}(${arg})=${out}`);
+        } catch {
+          // a template that needs a richer argument; its words are covered by the other call
+        }
+      }
+    } else if (value !== null && typeof value === "object") {
+      for (const [k, v] of Object.entries(value)) walk(v, path ? `${path}.${k}` : k);
+    }
+  };
+  walk(fr, "");
+  expect(seen.length, "the walk read the French dictionary").toBeGreaterThan(500);
+  expect(seen.some((s) => s.startsWith("roster.flags(2)=2 alertes")), "and reached the roster's flag word").toBe(true);
+  expect(seen.filter((s) => /signalement/i.test(s.slice(s.indexOf("=") + 1)))).toEqual([]);
 });
