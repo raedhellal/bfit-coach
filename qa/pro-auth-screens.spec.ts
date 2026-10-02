@@ -3,6 +3,7 @@ import { test } from "./fixture-test";
 import { expectNoEnglish } from "./french";
 import { expectNoSidewaysScroll } from "./layout";
 import { MARK_PATH } from "../src/components/ui/brand";
+import { sanitiseCoachName } from "../src/lib/inviteName";
 
 /**
  * EV-337k — the sign-in, activation, invitation, denial and unavailable screens in the Evoli
@@ -411,3 +412,90 @@ function headOf(html: string) {
     .filter((link) => /(^|\s)(icon|apple-touch-icon|shortcut icon)(\s|$)/.test(link.rel));
   return { titles, icons };
 }
+
+/**
+ * EV-337k round 3 (staff APPROVE WITH NITS + QA PASS on 8b5ca26, coordinator 2026-10-02):
+ * the PO's panel sentence, the /i 404s' description and server-rendered body (QA PB-1), an
+ * unbreakable coach name (PB-2) and a name cut inside an emoji (PB-3).
+ */
+test.describe("EV-337k round 3", () => {
+  const INVITE_BODY_EN =
+    "Open the invite in the Evoli Fit app to see who is inviting you. Nothing is shared until you accept.";
+
+  for (const [locale, panel] of [
+    ["en-US", "Routines, nutrition and challenges for your clients, in one place. You see only what each client agreed to share with you."],
+    ["fr-FR", "Programmes, nutrition et défis pour vos clients, sur un seul écran. Vous ne voyez que ce que chaque client a accepté de partager avec vous."],
+  ] as const) {
+    test.describe(locale, () => {
+      test.use({ locale });
+      test("PO ruling: the login panel says the coach sees only what each client agreed to share", async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto("/login");
+        await expect(page.locator(".login-brand-body")).toHaveText(panel);
+      });
+    });
+  }
+
+  for (const path of ["/i", "/i/round-3-token/extra"]) {
+    test(`PB-1: ${path} is a 404 whose FIRST HTML already holds the page, under the /i head`, async ({ page, browser, baseURL }) => {
+      const raw = await page.request.get(path);
+      expect(raw.status()).toBe(404);
+      const html = await raw.text();
+      // The h1 and its sentence are in the server's HTML, not added by JavaScript later.
+      expect(html).toMatch(/<h1[^>]*>Page not found<\/h1>/);
+      expect(html).toContain("There is no page at this address. Check the link, or sign in to Evoli Pro.");
+      expect(html).not.toContain('id="__next_error__"');
+      // The legal footer is server-rendered too.
+      expect(html).toContain('class="legal-footer"');
+      // Staff nit: the description is the invitation's, not the coach-facing tagline.
+      const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
+      expect(description).toBe(INVITE_BODY_EN);
+      const head = headOf(html);
+      expect(head.titles).toEqual(["Evoli Fit"]);
+      for (const icon of head.icons) expect(icon.href).toMatch(/^\/i\//);
+      // And with JavaScript off, the page is still there.
+      const context = await browser.newContext({ baseURL, javaScriptEnabled: false, locale: "en-US" });
+      try {
+        const noJs = await context.newPage();
+        const res = await noJs.goto(path);
+        expect(res?.status()).toBe(404);
+        await expect(noJs.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+        await expect(noJs.getByRole("link", { name: "Go to sign-in" })).toHaveAttribute("href", "/login");
+      } finally {
+        await context.close();
+      }
+    });
+  }
+
+  test("PB-1: the invitation itself is still a 200 with its own title, and its icons answer", async ({ page }) => {
+    const raw = await page.request.get(INVITE);
+    expect(raw.status()).toBe(200);
+    expect(headOf(await raw.text()).titles).toEqual(["Alex Roussel invited you to Evoli Fit"]);
+    for (const icon of ["/i/icon.svg", "/i/apple-icon.png"]) expect((await page.request.get(icon)).status()).toBe(200);
+  });
+
+  test("PB-2: a 60-character name with no break opportunity never scrolls the invitation sideways", async ({ page }) => {
+    const name = "W".repeat(60);
+    for (const width of [320, 390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/i/round-3-token?coach=${name}`);
+      await expect(page.getByRole("heading", { level: 1 })).toContainText(name.slice(0, 20));
+      await expectNoSidewaysScroll(page, `/i with a 60-character name at ${width}px`);
+      const h1 = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+      expect(h1.x + h1.width, `the heading ends inside the viewport at ${width}px`).toBeLessThanOrEqual(width);
+    }
+  });
+
+  test("PB-3: a name whose 60th character is an emoji answers 200 and keeps the whole emoji", async ({ page }) => {
+    const emoji = "\u{1F600}";
+    const name = `${"a".repeat(59)}${emoji}bcd`;
+    // The cap counts characters (code points), so the 60th is the emoji, whole.
+    expect(sanitiseCoachName(name)).toBe(`${"a".repeat(59)}${emoji}`);
+    expect(sanitiseCoachName(`${"a".repeat(58)}${emoji}${emoji}`)).toBe(`${"a".repeat(58)}${emoji}${emoji}`);
+    const res = await page.goto(`/i/round-3-token?coach=${encodeURIComponent(name)}`);
+    expect(res?.status()).toBe(200);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(`a${emoji}`);
+    const href = await page.getByRole("link", { name: "Open in Evoli Fit", exact: true }).getAttribute("href");
+    expect(new URL(href!).searchParams.get("coach")).toBe(`${"a".repeat(59)}${emoji}`);
+  });
+});
