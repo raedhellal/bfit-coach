@@ -28,6 +28,20 @@ import { refuseParallelFixtureRun } from "./fixture-single-worker";
  */
 export const test = base.extend<{ fixtureAtSeed: void }, { oneWorkerPerFixtureServer: void }>({
   /**
+   * The context's language on EVERY request, not only the browser's.
+   *
+   * `locale` makes Chromium send `Accept-Language`, but `page.request` (and the `request`
+   * fixture) send none — and since the Evoli Pro redesign (2026-10-02) a request that names
+   * no language is served in FRENCH. Unfixed, `coach-overview.spec.ts`'s "a monitor sees the
+   * 403" read French, and the specs that scan fetched HTML for English words they must NOT
+   * find (`coach-red-flags-vocabulary.spec.ts`, the 403 leak check) would have passed
+   * vacuously. So the locale is stated as a header too; a spec's own `extraHTTPHeaders`
+   * (the de-DE edge case) still wins.
+   */
+  extraHTTPHeaders: async ({ extraHTTPHeaders, locale }, use) => {
+    await use(locale ? { "Accept-Language": locale, ...extraHTTPHeaders } : extraHTTPHeaders);
+  },
+  /**
    * BUG-249 — the reset below wipes the WHOLE server's store, so it is only sound with one
    * worker per fixture server. Both fixture configs already refuse a parallel run in their
    * first `globalSetup` (`qa/fixture-single-worker.ts`); this worker-scoped auto fixture is

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
+import { crossSessionBoundary } from "@/lib/clientSession";
 import { useCopy } from "@/lib/i18n/client";
 import { LEGAL_URLS } from "@/lib/legal";
 import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, isApiBlank } from "@/lib/password";
@@ -36,7 +36,6 @@ export interface ActivationFormProps {
 
 export function ActivationForm({ versions: initialVersions, expiredMessage }: ActivationFormProps) {
   const copy = useCopy();
-  const router = useRouter();
   const [temporary, setTemporary] = useState("");
   const [fresh, setFresh] = useState("");
   const [repeat, setRepeat] = useState("");
@@ -86,6 +85,8 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
     if (disabled) return;
     setBusy(true);
     setError(null);
+    // Set once the document is leaving, so the button stays disabled until the load.
+    let leaving = false;
     try {
       const res = await fetch("/api/auth/activate", {
         method: "POST",
@@ -99,11 +100,11 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
         }),
       });
       if (res.ok) {
-        // The handler has swapped the session to the fresh COACH tokens. refresh() as well
-        // as replace(): the client router would otherwise replay an RSC payload rendered
+        // The handler has swapped the session to the fresh COACH tokens. A hard navigation
+        // (ADR-0033 D33.7): the client router would otherwise replay an RSC payload rendered
         // for the PENDING session.
-        router.replace("/");
-        router.refresh();
+        leaving = true;
+        crossSessionBoundary("/");
         return;
       }
       const body = (await res.json().catch(() => null)) as {
@@ -169,8 +170,8 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
           setError(copy.activate.signedInAgain);
           break;
         case "SESSION_EXPIRED":
-          router.replace("/login?error=expired");
-          router.refresh();
+          leaving = true;
+          crossSessionBoundary("/login?error=expired");
           return;
         case "API_UNAVAILABLE":
           setError(copy.activate.unavailable);
@@ -182,7 +183,7 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
       clearPasswords();
       setError(copy.activate.unavailable);
     } finally {
-      setBusy(false);
+      if (!leaving) setBusy(false);
     }
   }
 

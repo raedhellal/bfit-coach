@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { ActivationForm } from "@/components/activation/ActivationForm";
 import { SignOutButton } from "@/components/shell/SignOutButton";
-import { Logo, UiIcon } from "@/components/ui/icons";
+import { UiIcon } from "@/components/ui/icons";
+import { Logo } from "@/components/ui/brand";
 import {
   ApiError,
   activationExpired,
@@ -52,7 +53,7 @@ function Frame({ title, children }: { title: string; children: ReactNode }) {
           }}
         />
         <div style={{ position: "relative" }}>
-          <Logo size={34} on="dark" label={copy.brand} />
+          <Logo size={36} tone="white" label={copy.brand} />
         </div>
         <div style={{ position: "relative", maxWidth: 460 }}>
           <p

@@ -170,6 +170,18 @@ export const en = {
     roster: "Roster",
     signOut: "Sign out",
     backToRoster: "Back to roster",
+    /**
+     * The logo link's name (redesign, branch 1). It starts with the visible wordmark
+     * (WCAG 2.5.3, label in name) and still says where it goes; "Back to roster" stays a
+     * substring, so a locator by that name keeps finding it.
+     */
+    home: "Evoli Pro, back to roster",
+    /** The account block (sidebar) and the account menu's button (top bar, < 1024 px). */
+    account: "Account",
+    /** The language switch's group label. The options are the languages' own names. */
+    language: "Language",
+    /** The switch's one-line failure: the cookie was not written, nothing changed. */
+    languageFailed: "The language could not be changed. Try again.",
   },
 
   roster: {

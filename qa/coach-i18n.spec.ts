@@ -2,7 +2,7 @@ import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
 import { en } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
-import { localeFromAcceptLanguage } from "../src/lib/i18n/locale";
+import { localeFromAcceptLanguage, resolveLocale } from "../src/lib/i18n/locale";
 import {
   formatDate,
   formatGrams,
@@ -17,8 +17,13 @@ import {
 /**
  * EV-324 — the French portal's rules, driven WITHOUT a browser.
  *
- *   1. Locale detection (R1): the FIRST `Accept-Language` entry decides; `fr*` is French,
- *      everything else — and no header — is English. Both of the story's edge cases.
+ *   1. Locale detection. RE-PINNED 2026-10-02 (Evoli Pro redesign, branch 1): EV-324's
+ *      ruling R1 ("the FIRST entry decides; anything else, and no header, is English") is
+ *      REPLACED by Raed's "a FR/EN switch, French by default", restated by the coordinator:
+ *      of the entries that are French or English, the highest `q` wins (the earlier on a
+ *      tie); if there is none — no header, `*`, `de-DE` — French. Each case below that R1
+ *      answered differently says so. The switch's cookie outranks all of this
+ *      (`resolveLocale`, last block).
  *   2. Parity (AC4): every key English has, French has, with the same kind of value and the
  *      same argument count; and the reverse. `satisfies Copy` already makes a missing key a
  *      `tsc` error, but the enum-label maps are `Record<string, string>` and escape it, so
@@ -30,29 +35,43 @@ import {
  * The expected sentences are literals, never read back from the dictionaries they test.
  */
 
-test.describe("locale detection (EV-324 R1)", () => {
-  const cases: [string | null | undefined, "en" | "fr"][] = [
+test.describe("locale detection (redesign 2026-10-02; replaces EV-324 R1)", () => {
+  const cases: [string | null | undefined, "en" | "fr", string?][] = [
     ["fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7", "fr"], // Chrome with Français (France) first
     ["fr", "fr"],
-    ["fr-CA,en;q=0.8", "fr"], // edge case 1: a prefix match on the first entry
+    ["fr-CA,en;q=0.8", "fr"], // a prefix match, and the higher q
     ["FR-be", "fr"],
     ["fr_CH", "fr"],
-    ["de-DE,fr;q=0.9", "en"], // edge case 2: French listed, but not first
+    ["de-DE,fr;q=0.9", "fr", "R1: en — French listed but not first; now the only supported entry"],
+    ["de-DE", "fr", "R1: en — no French or English entry is no preference: French"],
     ["en-US,en;q=0.9,fr;q=0.8", "en"],
+    ["en-US", "en"],
     ["en-GB", "en"],
-    ["es-ES,es;q=0.9", "en"],
-    ["fy-NL", "en"], // Frisian is not French
-    ["frr", "en"], // nor is North Frisian (ISO 639-3 `frr`) — "starts with fr" means the tag `fr`
-    ["*", "en"],
-    ["", "en"],
-    [null, "en"],
-    [undefined, "en"],
+    ["fr;q=0.5,en;q=0.9", "en"], // the highest q wins, not the first entry
+    ["en;q=0.5,fr;q=0.5", "en"], // a tie keeps the browser's order
+    ["en;q=0,fr;q=0.1", "fr"], // q=0 is "not acceptable"
+    ["es-ES,es;q=0.9", "fr", "R1: en"],
+    ["fy-NL", "fr", "R1: en — Frisian is not French, and not English either"],
+    ["frr", "fr", "R1: en — nor is North Frisian (`frr`): \"fr\" means the tag `fr`"],
+    ["eng", "fr", "the same rule for English: `eng` is not the tag `en`"],
+    ["*", "fr", "R1: en"],
+    ["", "fr", "R1: en"],
+    [null, "fr", "R1: en"],
+    [undefined, "fr", "R1: en"],
   ];
-  for (const [header, expected] of cases) {
-    test(`${JSON.stringify(header)} → ${expected}`, () => {
+  for (const [header, expected, was] of cases) {
+    test(`${JSON.stringify(header)} → ${expected}${was ? ` (${was})` : ""}`, () => {
       expect(localeFromAcceptLanguage(header)).toBe(expected);
     });
   }
+
+  test("the switch's cookie outranks the browser; an unknown cookie value is ignored", () => {
+    expect(resolveLocale("en", "fr-FR")).toBe("en");
+    expect(resolveLocale("fr", "en-US")).toBe("fr");
+    expect(resolveLocale("de", "en-US")).toBe("en");
+    expect(resolveLocale("", null)).toBe("fr");
+    expect(resolveLocale(undefined, "en-GB,en;q=0.9")).toBe("en");
+  });
 });
 
 /** Every leaf of a dictionary: `path → "string" | "fn/<arity>" | typeof`. */

@@ -1,4 +1,5 @@
-import { UiIcon, Logo } from "@/components/ui/icons";
+import { UiIcon } from "@/components/ui/icons";
+import { Logo } from "@/components/ui/brand";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { getCopy } from "@/lib/i18n/server";
 
@@ -36,7 +37,7 @@ export default function LoginPage({
           }}
         />
         <div style={{ position: "relative" }}>
-          <Logo size={34} on="dark" label={copy.brand} />
+          <Logo size={36} tone="white" label={copy.brand} />
         </div>
         <div style={{ position: "relative", maxWidth: 460 }}>
           <p

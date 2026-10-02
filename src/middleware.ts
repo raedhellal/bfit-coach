@@ -272,6 +272,14 @@ export const config = {
    * `/i/*` is deliberately NOT excluded here — it is handled at the top of `middleware`,
    * where being public is an explicit statement with an explicit method check instead of
    * an absence from a regex.
+   *
+   * `icon.svg` and `apple-icon.png` (redesign branch 1) are the favicon and the home-screen
+   * icon, emitted by Next's file convention from `src/app/`. They are excluded like
+   * `favicon.ico` is: a browser asks for them before anybody signs in, and behind the
+   * guard a signed-out request is a 307 to /login — no icon on the login page. Each name
+   * is anchored to the END of the path, so the exclusion is those two files and nothing
+   * that merely starts with their names. (The invite segment's own `/i/icon.svg` needs no
+   * entry: `/i/*` is already public above.)
    */
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt|icon\\.svg$|apple-icon\\.png$).*)"],
 };

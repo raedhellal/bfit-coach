@@ -287,9 +287,12 @@ Every user-visible string is in **`src/lib/copy.ts`** (English, `en`) and
 acceptance-criteria text and QA verifies them character by character — a "tidy-up" of one
 of those sentences is a story change. No invented benefits, no tier price (⛔ D8 is open).
 
-**Language (EV-324).** The browser decides: the first `Accept-Language` entry starting
-with `fr` gets French, anything else English (`src/lib/i18n/locale.ts`). There is no
-switch in the UI. A server component calls `getCopy()` (`src/lib/i18n/server.ts`), a
+**Language (EV-324, re-ruled 2026-10-02).** The coach's own choice wins: the FR/EN switch
+in the account block (sidebar) or account menu (top bar) writes the `evoli_pro_locale`
+cookie through a server action. Without it, the highest-weighted French or English
+`Accept-Language` entry decides, and a browser that names neither gets **French**
+(`resolveLocale` in `src/lib/i18n/locale.ts`). Playwright's Chromium sends no
+`Accept-Language` unless a locale is set, so every config states `locale: "en-US"`. A server component calls `getCopy()` (`src/lib/i18n/server.ts`), a
 client component `useCopy()` (`src/lib/i18n/client.tsx`); nothing imports a dictionary
 directly. `fr` is typed `satisfies Copy`, so **a new string must be added in both files**
 or `tsc` fails; `qa/coach-i18n.spec.ts` also checks the enum-label maps `tsc` cannot.
@@ -301,13 +304,20 @@ to a French browser.
 
 Tokens are copied verbatim from `b-fit-admin/src/app/globals.css` (itself the
 `design_handoff_evoli/web-tokens.css` port), minus the dark block: off-white `--bg`,
-white cards at `--r-2xl` (24 px) with a hairline border, the `--grad-energy`
-indigo→violet primary button, pill chips. The UI kit under `src/components/ui/` is
+white cards at `--r-2xl` (24 px) with a hairline border, pill chips. The Evoli Pro
+redesign (2026-10-02, `docs/product/design/evoli-pro-redesign-2026-10-02.md` in the hub)
+adds tokens without removing any: the primary button is `--grad-energy-strong`
+(#3A5FE0 → #7440E0, ≥ 5.39:1 with white; `--grad-energy` is decoration only), the black
+logo tile `--brand-tile`, `--link`, `--r-12`/`--r-16`, the `--fs-*` scale and
+`.layout-split` (two columns from a 1280 px viewport). The black mark
+(`src/components/ui/brand.tsx`, `src/app/icon.svg`, `apple-icon.png`) is Evoli Pro's only;
+the trainee invite page keeps the trainee logo. The UI kit under `src/components/ui/` is
 **copied, not extracted** (ADR-0012 D5 — with two consumers a shared package is
 premature; revisit at MVE-7). Do not fork the palette; re-copy from the admin.
 
-Responsive to 390 px, with no viewport JavaScript: the wide and narrow layouts are both
-server-rendered and CSS chooses (`.only-wide` / `.only-narrow` in `globals.css`).
+Responsive to 320 px, with no viewport JavaScript: the wide and narrow layouts are both
+server-rendered and CSS chooses (`.only-wide` / `.only-narrow` in `globals.css`). The shell
+(`CoachShell`) is a 240 px sidebar from 1024 px and a top bar + bottom tab bar below it.
 
 ## Tests
 

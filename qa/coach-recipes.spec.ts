@@ -135,7 +135,9 @@ test.describe("AC1 — Recipes is in the nav, and the library lists the coach's 
     await signIn(page);
     await page.goto("/recipes");
     const nav = page.getByRole("navigation", { name: "Portal" });
-    const signOut = page.getByRole("button", { name: "Sign out" });
+    // Redesign branch 1: below 1024 px sign-out lives in the account menu, so the top
+    // bar's control a nav link must not collide with is the account button.
+    const signOut = page.getByRole("button", { name: "Account" });
     await atEachWidth(page, async () => {
       for (const name of ["Templates", "Recipes"]) {
         await expectUnoccluded(page, nav.getByRole("link", { name, exact: true }), { over: signOut, label: `${name} nav link` });

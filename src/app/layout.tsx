@@ -29,9 +29,10 @@ export const viewport: Viewport = {
 };
 
 /**
- * EV-324: `lang` is the language the page is written in (AC3), decided once per request
- * from `Accept-Language` (`getLocale`). Client components get the same decision through
- * `CopyProvider`, as a string, so the server render and the hydration cannot disagree.
+ * EV-324: `lang` is the language the page is written in (AC3), decided once per request by
+ * `getLocale` (the switch's cookie, then `Accept-Language`, then French). Client components
+ * get the same decision through `CopyProvider`, as a string, so the server render and the
+ * hydration cannot disagree.
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = getLocale();

@@ -680,11 +680,34 @@ test.describe("layout", () => {
     expect(overflow, "the progress table scrolls sideways inside its card at 1280").toBeLessThanOrEqual(0);
   });
 
+  /**
+   * Redesign branch 1: beside the 240 px sidebar the card is 974 px wide at 1280, and in
+   * French the one-line headers alone needed 1017 px (« JOURS RÉUSSIS », « DERNIÈRE
+   * SYNCHRO »). The headers now wrap; this is the French half of the check above.
+   */
+  test.describe("in French", () => {
+    test.use({ locale: "fr-FR" });
+
+    test("at 1280 the seven-day table fits its card in French too", async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 860 });
+      await signInFrench(page);
+      await page.goto(`/challenges/${ACTIVE}`);
+      await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+      const overflow = await page
+        .getByRole("region", { name: "Progression des participants" })
+        .locator("table")
+        .evaluate((t) => (t.parentElement as HTMLElement).scrollWidth - (t.parentElement as HTMLElement).clientWidth);
+      expect(overflow, "the French progress table scrolls sideways inside its card at 1280").toBeLessThanOrEqual(0);
+    });
+  });
+
   test("the fourth nav link and the list fit 320 / 360 / 390 / 414", async ({ page }) => {
     await signIn(page);
     await page.goto("/challenges");
     const nav = page.getByRole("navigation", { name: "Portal" });
-    const signOut = page.getByRole("button", { name: "Sign out" });
+    // Redesign branch 1: below 1024 px sign-out lives in the account menu, so the top
+    // bar's control a nav link must not collide with is the account button.
+    const signOut = page.getByRole("button", { name: "Account" });
     await atEachWidth(page, async () => {
       // `exact`: EV-273b's "Nutrition templates" contains "Templates", and a substring
       // match resolves to two links (strict mode).

@@ -1,5 +1,5 @@
 import { ReloadButton } from "@/components/shell/ReloadButton";
-import { Logo } from "@/components/ui/icons";
+import { Logo } from "@/components/ui/brand";
 import { Card } from "@/components/ui/kit";
 import { getCopy } from "@/lib/i18n/server";
 
@@ -21,7 +21,7 @@ export default function UnavailablePage() {
   return (
     <main className="page" style={{ maxWidth: 520, margin: "0 auto", paddingTop: 64 }}>
       <div style={{ marginBottom: 24 }}>
-        <Logo size={30} label={copy.brand} />
+        <Logo size={26} label={copy.brand} />
       </div>
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "8px 4px" }}>
