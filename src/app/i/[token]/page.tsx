@@ -138,6 +138,9 @@ export default function InvitePage({
             color: "var(--ink)",
             textWrap: "pretty",
             maxWidth: "100%",
+            // QA PB-2: a coach name with no break opportunity (60 characters, no space) must
+            // wrap inside the card rather than scroll the page sideways.
+            overflowWrap: "anywhere",
           }}
         >
           {coachName ? copy.invitePage.titleFrom(coachName) : copy.invitePage.title}
