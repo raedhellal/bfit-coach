@@ -29,6 +29,8 @@ api ranks, BUG-473 source rule all still hold).
 - **Window position is UTC** (`src/lib/challengeView.ts`, pure, type-only coachApi import): the
   api computes `phase` on its UTC date, so « Jour n sur N » counts the same calendar and clamps.
   Fixture seeds relative to the server's start day: a run crossing UTC midnight reads day+1.
+- **Before day 1 the api's numbers are zeros** (`daysElapsed 0`, `daysMet 0`, `total 0`): the row
+  hides days-met and total until `daysElapsed > 0` — « 0 sur 0 · 0 pas » read as a claim.
 - **Stats only from api numbers:** joined/invited from the summary; met today = the api's MET
   on each trainee's own today; average over participants WITH a number (none → named). The two
   "today" cards only on ACTIVE + STEPS with ≥1 accepted. No decline count anywhere (no DECLINED).
