@@ -69,7 +69,7 @@ export const fr = {
     subtitle: "Accès réservé aux coachs.",
     panelTitle: "L'espace des coachs Evoli.",
     panelBody:
-      "Programmes, nutrition et défis pour vos clients, sur un seul écran. Vos clients partagent ce qu'ils choisissent\u00a0; vous voyez exactement cela.",
+      "Programmes, nutrition et défis pour vos clients, sur un seul écran. Vous ne voyez que ce que chaque client a accepté de partager avec vous.",
     newCoach:
       "Nouveau coach\u00a0? Connectez-vous avec le mot de passe temporaire de votre invitation, puis choisissez le vôtre.",
     email: "Adresse e-mail",

@@ -40,8 +40,13 @@ export const en = {
     subtitle: "For coaches only.",
     /** EV-337k — the brand panel (≥ 768 px) and the compact band above the form. */
     panelTitle: "The workspace for Evoli coaches.",
+    /**
+     * PO ruling 2026-10-02 (hub 4e52609a): the first draft said trainees CHOOSE what they
+     * share, but every link is granted all four scopes (b-fit-api `CoachLinkService`). What
+     * holds is that the coach sees only what each client agreed to share.
+     */
     panelBody:
-      "Workouts, nutrition and challenges for your clients, in one place. Your clients share what they choose; you see exactly that.",
+      "Routines, nutrition and challenges for your clients, in one place. You see only what each client agreed to share with you.",
     /**
      * EV-337k (plan §5.10): the design's « Activer mon compte » link would point back at this
      * page — activation IS signing in with the temporary password (the sign-in handler sends a
