@@ -279,7 +279,7 @@ for (const lang of ["fr", "en"] as const) {
       if (lang === "fr") await expectNoEnglish(page, "the challenge list");
     });
 
-    test("an ended or upcoming challenge has no « today » to report; nobody's day is called missing", async ({ page }) => {
+    test("an ended or upcoming challenge has no « today » to report; nobody's day is called missing, nothing is counted before day 1", async ({ page }) => {
       const l = LANG[lang];
       await signIn(page, lang);
       await page.goto(`/challenges/${ENDED}`);
@@ -291,6 +291,9 @@ for (const lang of ["fr", "en"] as const) {
       await page.goto(`/challenges/${UPCOMING}`);
       await expect(participant(page, YUSUF).locator("[data-synced]")).toHaveText(l.neverSynced);
       await expect(page.locator(".participant-today")).toHaveCount(0);
+      // Nothing counted before the first day: no « 0 sur 0 », no « 0 pas » total.
+      await expect(participant(page, YUSUF).locator("[data-total], [data-days-met]")).toHaveCount(0);
+      expect(await participant(page, YUSUF).innerText()).not.toMatch(/\b0 (steps|pas)\b|\b0 (\/|sur) 0\b/);
     });
   });
 }

@@ -234,27 +234,30 @@ function AcceptedItem({
 
       <div className="participant-days">
         {steps && progress.days && <DayStrip days={progress.days} name={name} copy={copy} />}
-        <div className="participant-totals">
-          {progress.daysMet !== null && (
+        {/* Before the first day nothing has been counted: no "0 / 0", no "0 steps" total. */}
+        {progress.daysElapsed > 0 && (
+          <div className="participant-totals">
+            {progress.daysMet !== null && (
+              <span>
+                <span className="participant-label">{c.colDaysMet}</span>{" "}
+                <span
+                  className="tnum"
+                  data-days-met=""
+                  aria-label={c.daysMetLabel(progress.daysMet, progress.daysElapsed)}
+                  title={c.daysMetLabel(progress.daysMet, progress.daysElapsed)}
+                >
+                  {c.daysMet(progress.daysMet, progress.daysElapsed)}
+                </span>
+              </span>
+            )}
             <span>
-              <span className="participant-label">{c.colDaysMet}</span>{" "}
-              <span
-                className="tnum"
-                data-days-met=""
-                aria-label={c.daysMetLabel(progress.daysMet, progress.daysElapsed)}
-                title={c.daysMetLabel(progress.daysMet, progress.daysElapsed)}
-              >
-                {c.daysMet(progress.daysMet, progress.daysElapsed)}
+              <span className="participant-label">{c.colTotal}</span>{" "}
+              <span className="tnum" data-total="">
+                {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
               </span>
             </span>
-          )}
-          <span>
-            <span className="participant-label">{c.colTotal}</span>{" "}
-            <span className="tnum" data-total="">
-              {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
-            </span>
-          </span>
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="participant-status">
