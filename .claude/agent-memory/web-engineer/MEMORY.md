@@ -55,6 +55,7 @@
 - [French portal, EV-324](coach-portal-i18n-facts.md) — Record maps escape `satisfies Copy`; api text stays English; fixture signs in anyone; AC2 beats AC3 on EN dates
 - [Routine draft write path (BUG-195c)](routine-draft-write-path-facts.md) — one editor, forDraftSave, token echoed as a string, 409 dialog, 4-e partition, live traps
 - [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale; roster picker reads every page (BUG-472); source = today only
+- [Challenges redesign (EV-337h)](challenges-redesign-portal-facts.md) — li[data-participant] rows/cards, whole-card list link; todayValue null = no data OR outside window; h1 name only
 - [Recipe meal slots + count line (EV-320c/b)](recipe-meal-slots-portal-facts.md) — mealSlots sent only if changed; count = COACH_RECIPE && placedByYou; fixture fill cookie
 - [Security headers + framing tests (EV-229)](security-headers-and-framing-tests.md) — headers() reaches middleware 307/405; framer must be a real loopback server; --ink-3 forked
 - [French copy: elision and numbers](french-copy-elision-and-numbers.md) — use de()/que() never `de ${x}`; common.labelled() never "{x}: "; formatNumberInput for pre-fills; 1er/Sep in datePrinted; h left alone; readNumber is the one whole-number reader ("1.000" refused, format vs > 0); display-name fixture switch; route announcer is role=alert
