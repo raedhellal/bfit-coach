@@ -150,7 +150,7 @@ test.describe("reduced motion", () => {
     await expect(heading).toBeVisible();
     const before = await heading.boundingBox();
     await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1500", url: baseURL! }]);
-    await page.locator(`a[href="/clients/${LINA}/nutrition"]`).click();
+    await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
     const bar = page.locator(BAR);
     await expect(bar).toBeVisible();
     const style = await bar.evaluate((el) => {
