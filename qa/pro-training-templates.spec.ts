@@ -178,12 +178,20 @@ test.describe("the editor (§5.7)", () => {
     const aside = page.getByRole("complementary", { name: "Avant d'enregistrer" });
     await expect(aside.getByRole("heading", { level: 2, name: "Avant d'enregistrer" })).toBeVisible();
     const items = aside.getByRole("listitem");
+    // Staff a11y nit (8b175b2): the icons are aria-hidden and « Entre 2 et 6 jours… » reads
+    // almost the same met or unmet, so every line STARTS with its state in words, visually
+    // hidden: « Fait » / « À faire ».
     await expect(items).toHaveText([
-      "Donnez un nom au modèle.",
-      "Entre 2 et 6 jours d'entraînement",
-      "Le jour 1 n'a aucun exercice",
-      "Le jour 2 n'a aucun exercice",
+      "À faire\u00a0: Donnez un nom au modèle.",
+      "Fait\u00a0: Entre 2 et 6 jours d'entraînement",
+      "À faire\u00a0: Le jour 1 n'a aucun exercice",
+      "À faire\u00a0: Le jour 2 n'a aucun exercice",
     ]);
+    const state = items.first().locator(".sr-only");
+    await expect(state).toHaveText("À faire\u00a0:");
+    expect(await state.evaluate((el) => el.getBoundingClientRect().width), "the state word is visually hidden").toBeLessThanOrEqual(1);
+    // The list's name says what is left — true while something is.
+    await expect(aside.getByRole("list", { name: "Ce qu'il reste à faire avant d'enregistrer le modèle" })).toHaveCount(1);
     const states = await items.evaluateAll((els) =>
       els.map((el) => ({ ok: el.hasAttribute("data-ok"), icon: el.querySelector("svg path")?.getAttribute("d") ?? "" }))
     );
@@ -198,7 +206,7 @@ test.describe("the editor (§5.7)", () => {
     // Naming it meets the first line, in its met words.
     await expect(async () => {
       await page.getByLabel("Nom du modèle", { exact: true }).fill("Full body A");
-      await expect(items.first()).toHaveText("Nom renseigné", { timeout: 1_000 });
+      await expect(items.first()).toHaveText("Fait\u00a0: Nom renseigné", { timeout: 1_000 });
     }).toPass();
     await expect(items.first()).toHaveAttribute("data-ok", "");
     await expectNoEnglish(page, "the new template editor");
@@ -208,6 +216,10 @@ test.describe("the editor (§5.7)", () => {
     await signInFrench(page);
     await page.goto(`/templates/${UPPER_LOWER}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upper / Lower split");
+    // A saved template meets every line: « Fait » on each, and the list's name says so.
+    const aside = page.getByRole("complementary", { name: "Avant d'enregistrer" });
+    await expect(aside.locator("li .sr-only")).toHaveText(["Fait\u00a0:", "Fait\u00a0:", "Fait\u00a0:"]);
+    await expect(aside.getByRole("list", { name: "Tout est prêt\u00a0: le modèle peut être enregistré" })).toHaveCount(1);
     await expect(
       page.getByText(
         "Les clients qui utilisent déjà ce modèle gardent leur version : modifier un modèle ne change aucun programme publié.",
@@ -332,22 +344,30 @@ test.describe("English (en-US)", () => {
     await page.goto("/templates/new");
     const aside = page.getByRole("complementary", { name: "Before you save" });
     await expect(aside.getByRole("listitem")).toHaveText([
-      "Give the template a name.",
-      "Between 2 and 6 training days",
-      "Day 1 has no exercises",
-      "Day 2 has no exercises",
+      "To do: Give the template a name.",
+      "Done: Between 2 and 6 training days",
+      "To do: Day 1 has no exercises",
+      "To do: Day 2 has no exercises",
     ]);
+    await expect(aside.getByRole("list", { name: "What the template still needs before it can be saved" })).toHaveCount(1);
     await page.getByLabel("Template name").fill("Full body A");
     await addExercises(page, 0, 1);
-    await expect(aside.getByRole("listitem")).toHaveText(["Name filled in", "Between 2 and 6 training days", "Day 2 has no exercises"]);
+    await expect(aside.getByRole("listitem")).toHaveText([
+      "Done: Name filled in",
+      "Done: Between 2 and 6 training days",
+      "To do: Day 2 has no exercises",
+    ]);
     await expect(page.getByRole("button", { name: "Save template" })).toBeDisabled();
     await addExercises(page, 1, 1);
     await expect(aside.getByRole("listitem")).toHaveText([
-      "Name filled in",
-      "Between 2 and 6 training days",
-      "Every day has at least one exercise",
+      "Done: Name filled in",
+      "Done: Between 2 and 6 training days",
+      "Done: Every day has at least one exercise",
     ]);
     await expect(page.getByRole("button", { name: "Save template" })).toBeEnabled();
+    // Everything met: the list's name no longer claims something is left to do.
+    await expect(aside.getByRole("list", { name: "Everything is ready: the template can be saved" })).toHaveCount(1);
+    await expect(aside.getByRole("list", { name: "What the template still needs before it can be saved" })).toHaveCount(0);
   });
 
 });

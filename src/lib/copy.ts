@@ -1710,8 +1710,17 @@ export const en = {
       daysRange: "Between 2 and 6 training days",
       daysFilled: "Every day has at least one exercise",
       dayEmpty: (n: number) => `Day ${n} has no exercises`,
-      /** The list's name for a screen reader, which hears the items without their icons. */
+      /**
+       * Each line's state in words, read before it and visually hidden (staff a11y nit on
+       * 8b175b2): the icons are aria-hidden, and the days line reads almost the same met
+       * ("Between 2 and 6 training days") and unmet ("A template has between 2 and 6…").
+       */
+      done: "Done:",
+      todo: "To do:",
+      /** The list's name while something is unmet… */
       listLabel: "What the template still needs before it can be saved",
+      /** …and once every line is met, so the name never claims work that is not there. */
+      listLabelReady: "Everything is ready: the template can be saved",
     },
     /**
      * True by ADR-0016's copy-on-apply: "Use on a trainee" COPIES the template into the

@@ -206,11 +206,20 @@ export function TemplateEditor({
             <h2 id="tpl-checklist-title" className="tpl-checklist-title">
               {copy.templateEditor.checklist.title}
             </h2>
-            <ul className="tpl-checklist" aria-label={copy.templateEditor.checklist.listLabel}>
+            <ul
+              className="tpl-checklist"
+              aria-label={
+                saveable ? copy.templateEditor.checklist.listLabelReady : copy.templateEditor.checklist.listLabel
+              }
+            >
               {checklist.map((item) => (
                 <li key={item.key} className="tpl-check" data-ok={item.ok ? "" : undefined}>
                   <span className="tpl-check-icon" aria-hidden="true">
                     <UiIcon name={item.ok ? "checkCircle" : "alert"} size={16} />
+                  </span>
+                  {/* The state in words for a screen reader: the icon beside it is aria-hidden. */}
+                  <span className="sr-only">
+                    {item.ok ? copy.templateEditor.checklist.done : copy.templateEditor.checklist.todo}{" "}
                   </span>
                   <span>{item.label}</span>
                 </li>
