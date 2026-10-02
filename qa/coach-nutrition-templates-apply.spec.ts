@@ -784,6 +784,114 @@ test.describe("PB-4 / PB-5 — Inès Roux, in a French browser (fr-FR)", () => {
   });
 });
 
+/**
+ * ADR-0030 — b-fit-api (branch `fix/week-generation-in-progress-409`) answers the week step
+ * 409 `WEEK_GENERATION_IN_PROGRESS` while the TRAINEE's own generation of that week is still
+ * running. Step 1 was received, so the targets stand; the outcome then says the week card's
+ * own in-progress sentence (retry in a few minutes), not "couldn't be rebuilt". Forced with
+ * `evoli_fixture_week=generating` (the api's code and fixed message); a plain 500
+ * (`evoli_fixture_week=fail`) is the control and still reads the week-failed sentence.
+ */
+const IN_PROGRESS_API_MESSAGE = "A meal plan is already being generated for this week.";
+/** `--warn-ink` from globals.css, as the browser computes it. */
+const WARN_INK = "rgb(154, 91, 5)";
+
+test.describe("ADR-0030 — use on a trainee while their week is still generating", () => {
+  test("409: the targets stand, and the outcome says to retry in a few minutes, as a warning", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(page);
+    await page.goto(`/clients/${PETRA}/nutrition`);
+    const before = await page.locator("[data-meal-id]").evaluateAll((els) => els.map((e) => e.getAttribute("data-meal-id")));
+    expect(before.length).toBeGreaterThan(0);
+
+    const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "generating");
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      "Petra's targets are updated. Petra's meal week is still being prepared. Try again in a few minutes."
+    );
+    await expect(outcome(page).locator("p").first()).toHaveCSS("color", WARN_INK);
+    await expect(outcome(page)).toHaveAttribute("role", "alert");
+    await expect(page.locator("body")).not.toContainText("couldn't be rebuilt");
+    await expect(page.locator("body")).not.toContainText(IN_PROGRESS_API_MESSAGE);
+    await expect(page.getByLabel("Calories", { exact: true })).toHaveValue("1800");
+    const after = await page.locator("[data-meal-id]").evaluateAll((els) => els.map((e) => e.getAttribute("data-meal-id")));
+    expect(after, "the week is unchanged").toEqual(before);
+    expect(traineeWrites(await calls(page))).toEqual([
+      `PUT /coach-portal/clients/${PETRA}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
+      `POST /coach-portal/clients/${PETRA}/nutrition/week/apply {weekStart}`,
+    ]);
+  });
+
+  test("control — a plain 500 on the week still reads couldn't be rebuilt, use Apply", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(page);
+    const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "fail");
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(weekFailed("Petra", "Apply to Petra L."));
+    await expect(page.locator("body")).not.toContainText("still being prepared");
+  });
+});
+
+test.describe("ADR-0030 — use on a client while the week is still generating, in French (fr-FR)", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("409: « d'Inès » elides, in both sentences", async ({ page, context, baseURL }) => {
+    await setSwitch(
+      context,
+      baseURL as string,
+      "evoli_fixture_display_name",
+      `${PETRA}:${encodeURIComponent("Inès Roux")}`
+    );
+    await signInFrench(page);
+    const dialog = await openConfirmFrench(page, CUT, "Inès Roux", "Inès");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "generating");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      "Les objectifs d'Inès sont mis à jour. La semaine de repas d'Inès est encore en préparation. Réessayez dans quelques minutes."
+    );
+    await expect(outcome(page).locator("p").first()).toHaveCSS("color", WARN_INK);
+    await expectNoEnglish(page, "the French in-progress outcome");
+  });
+
+  test("409: « de Petra » does not elide", async ({ page, context, baseURL }) => {
+    await signInFrench(page);
+    const dialog = await openConfirmFrench(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "generating");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      "Les objectifs de Petra sont mis à jour. La semaine de repas de Petra est encore en préparation. Réessayez dans quelques minutes."
+    );
+  });
+
+  test("control — a plain 500 on the week still reads the French week-failed sentence", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signInFrench(page);
+    const dialog = await openConfirmFrench(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "fail");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      `Les objectifs de Petra sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${g("Appliquer à Petra L.")} pour réessayer.`
+    );
+    await expect(page.locator("body")).not.toContainText("encore en préparation");
+  });
+});
+
 /** The outcome waiting for a trainee page, if any (`src/lib/nutritionTemplateUse.ts`). */
 async function pendingHandOff(page: Page): Promise<string | null> {
   return page.evaluate(() => window.sessionStorage.getItem("evoli.coach.nutritionTemplateOutcome"));

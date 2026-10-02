@@ -9,6 +9,7 @@ import {
   isNutritionTemplateNameTaken,
   isValidationError,
   isWeekApplyRateLimited,
+  isWeekGenerationInProgress,
   type CoachTargetsResult,
   type NutritionTemplate,
   type NutritionTemplateTargetsRequest,
@@ -221,7 +222,7 @@ export async function applyTemplateTargetsAction(
 
 export type ApplyWeekResult =
   | { ok: true }
-  | { ok: false; code: UseFailure | "RATE_LIMITED" };
+  | { ok: false; code: UseFailure | "RATE_LIMITED" | "WEEK_GENERATING" };
 
 /** Step 2 — the body's keys are exactly `weekStart` (AC5, N6). */
 export async function applyTemplateWeekAction(clientId: string, weekStart: string): Promise<ApplyWeekResult> {
@@ -231,6 +232,9 @@ export async function applyTemplateWeekAction(clientId: string, weekStart: strin
     return { ok: true };
   } catch (err) {
     if (isWeekApplyRateLimited(err)) return { ok: false, code: "RATE_LIMITED" };
+    // ADR-0030 — the trainee's own generation of this week is still running. Read by
+    // CODE only, like the week card's `classify()`: retry later, not "couldn't be rebuilt".
+    if (isWeekGenerationInProgress(err)) return { ok: false, code: "WEEK_GENERATING" };
     return { ok: false, code: classifyUse(err) };
   }
 }

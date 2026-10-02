@@ -176,6 +176,13 @@ export function NutritionWeekCard({
    * no reset instant to re-enable them at. A reload re-asks the api.
    */
   const [regenCapped, setRegenCapped] = useState(false);
+  /**
+   * 409 `WEEK_GENERATION_IN_PROGRESS` on the last apply (ADR-0030): the trainee's own
+   * generation of this week is still running. A warning, not the error line: nothing was
+   * changed and the api released today's apply, so the sentence says to retry later.
+   * Replaced by the next apply's answer, and cleared by any write that succeeds.
+   */
+  const [weekGenerating, setWeekGenerating] = useState(false);
   const [pending, startTransition] = useTransition();
   // Below the refusal state on purpose: it clears them, so it must run after they exist.
   if (initialWeek !== seenInitial) {
@@ -185,6 +192,7 @@ export function NutritionWeekCard({
     // is NOT cleared here — a swap refreshes the week and leaves the trainee's counter.
     setWeekRefused(false);
     setDayRefused(null);
+    setWeekGenerating(false);
   }
 
   const trainee = truncateName(traineeDisplayName);
@@ -212,6 +220,7 @@ export function NutritionWeekCard({
   function clearRefusals() {
     setWeekRefused(false);
     setDayRefused(null);
+    setWeekGenerating(false);
   }
 
   function applyWeek() {
@@ -224,8 +233,17 @@ export function NutritionWeekCard({
         code: "FAILED",
       } as const);
       setConfirming(false);
+      // Each apply's answer replaces the last one's: only the branch below sets it again.
+      setWeekGenerating(false);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
+        if (result.code === "WEEK_GENERATING") {
+          // Nothing was written, so the week on screen stays exactly as it is.
+          setError(null);
+          setWeekRefused(false);
+          setWeekGenerating(true);
+          return;
+        }
         if (result.code === "NO_SAFE_MEAL_PLAN") {
           // Nothing was written (openapi: "a coach's refusal is a non-event for that
           // week"), so the week on screen is left exactly as it is, under the block.
@@ -435,6 +453,16 @@ export function NutritionWeekCard({
       {error && (
         <p role="alert" style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)" }}>
           {error}
+        </p>
+      )}
+
+      {weekGenerating && (
+        <p
+          role="alert"
+          data-testid="week-generating"
+          style={{ margin: "0 0 12px", fontSize: 13, color: "var(--warn-ink)", lineHeight: 1.5 }}
+        >
+          {copy.nutrition.weekGenerating(first)}
         </p>
       )}
 

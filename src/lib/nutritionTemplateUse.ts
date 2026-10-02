@@ -25,6 +25,8 @@ export const FLOOR_WARNING_BELOW = 1500;
 export type UseOutcomeKind =
   | "APPLIED"
   | "WEEK_RATE_LIMITED"
+  /** 409 `WEEK_GENERATION_IN_PROGRESS` on the week step (ADR-0030): retry in a few minutes. */
+  | "WEEK_GENERATING"
   | "WEEK_FAILED"
   | "WEEK_UNKNOWN"
   | "TARGETS_FAILED"
@@ -84,14 +86,21 @@ export function discardOutcome(): void {
   }
 }
 
-const KINDS: readonly UseOutcomeKind[] = [
-  "APPLIED",
-  "WEEK_RATE_LIMITED",
-  "WEEK_FAILED",
-  "WEEK_UNKNOWN",
-  "TARGETS_FAILED",
-  "TARGETS_UNKNOWN",
-];
+/**
+ * The allow-list `takeOutcome` checks a stored kind against. Derived from an EXHAUSTIVE
+ * record, so a kind added to `UseOutcomeKind` and forgotten here fails `tsc` instead of
+ * being silently dropped on the trainee's page (`satisfies` rejects a missing key and an
+ * unknown one alike).
+ */
+const KINDS = Object.keys({
+  APPLIED: 0,
+  WEEK_RATE_LIMITED: 0,
+  WEEK_GENERATING: 0,
+  WEEK_FAILED: 0,
+  WEEK_UNKNOWN: 0,
+  TARGETS_FAILED: 0,
+  TARGETS_UNKNOWN: 0,
+} satisfies Record<UseOutcomeKind, 0>) as readonly UseOutcomeKind[];
 
 /**
  * Read-and-remove, for THIS trainee only. An expired or malformed hand-off is removed and

@@ -45,6 +45,9 @@ export function TemplateUseOutcome({
   const sentence = {
     APPLIED: t.applied(outcome.template, first),
     WEEK_RATE_LIMITED: t.weekRateLimited(first),
+    // ADR-0030 — the week card's own in-progress sentence, after the fact this flow adds:
+    // step 1 was RECEIVED as a 200, so the targets did change (as every WEEK_* lead says).
+    WEEK_GENERATING: `${t.targetsUpdated(first)} ${copy.nutrition.weekGenerating(first)}`,
     // PB-5: the week card's button by its own label (the full name), never "Apply to {first}".
     WEEK_FAILED: t.weekFailed(first, weekApplyLabel(copy, traineeDisplayName)),
     WEEK_UNKNOWN: t.weekUnknown(first),

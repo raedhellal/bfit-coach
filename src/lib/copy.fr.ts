@@ -512,6 +512,8 @@ export const fr = {
     weekOutOfRange: "Seule la semaine en cours peut être appliquée.",
     weekRateLimited:
       "Une semaine de repas peut être appliquée une fois par jour pour chaque client. Réessayez demain.",
+    weekGenerating: (first: string) =>
+      `La semaine de repas ${de(first)} est encore en préparation. Réessayez dans quelques minutes.`,
     weekRefusedTitle: (first: string) =>
       `Nous n'avons pas pu construire de semaine de repas pour ${first}.`,
     weekRefusedBody:
@@ -976,6 +978,7 @@ export const fr = {
     applied: (template: string, first: string) => `${q(template)} est désormais le plan ${de(first)}.`,
     weekRateLimited: (first: string) =>
       `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain.`,
+    targetsUpdated: (first: string) => `Les objectifs ${de(first)} sont mis à jour.`,
     weekFailed: (first: string, applyLabel: string) =>
       `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${q(applyLabel)} pour réessayer.`,
     weekUnknown: (first: string) =>
