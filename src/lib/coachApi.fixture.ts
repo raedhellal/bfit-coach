@@ -3983,7 +3983,7 @@ function seedChallenges(): Map<string, StoredChallenge> {
  * cap and the delete never see them. Each trainee's today is the UTC date moved by
  * `zoneOffsetDays`, as the api's zone rule moves it.
  *
- *   · `upcomingEast` « Commence demain » — starts tomorrow (UTC), so UPCOMING. Yusuf is in
+ *   · `upcomingEast` « Départ demain » — starts tomorrow (UTC), so UPCOMING. Yusuf is in
  *     Tokyo and already on day 1 with 5 000 of 10 000 steps: the api serves him today 5 000,
  *     1 day elapsed, 0 met, rank 1. Lina is on UTC and has nothing (QA PB-1, 6269343).
  *   · `endedWest` « Fini hier » — ended yesterday (UTC), so ENDED. Lina is in Los Angeles,
@@ -4047,7 +4047,7 @@ function edgeChallenges(): StoredChallenge[] {
   return [
     {
       id: FIXTURE_EDGE_CHALLENGE_IDS.upcomingEast,
-      ...steps("Commence demain", 10_000, 1, 7),
+      ...steps("Départ demain", 10_000, 1, 7),
       participants: [
         accepted(YUSUF_ID, 1, edgeRows([[1, 5_000]], "HEALTHKIT")),
         accepted(LINA_ID, 0, {}),
