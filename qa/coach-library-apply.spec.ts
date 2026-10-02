@@ -254,7 +254,10 @@ test.describe("BUG-196 — a fr-FR browser", () => {
     await row(page, template).getByRole("button", { name: "Appliquer à un client" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.locator("select").selectOption({ label: "Yusuf A." });
-    await dialog.getByRole("button", { name: "Utiliser ce modèle" }).click();
+    // Ruling 11 (I1): the button repeats the question's verb, « Appliquer ».
+    await expect(dialog.getByText(`Appliquer « ${template} » à Yusuf A.\u00a0?`, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Utiliser ce modèle" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Appliquer", exact: true }).click();
     return dialog;
   }
 

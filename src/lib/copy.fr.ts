@@ -829,7 +829,8 @@ export const fr = {
     useConfirm: (template: string, trainee: string) => `Appliquer ${q(template)} à ${trainee} ?`,
     replacesDraft: (trainee: string) =>
       `Cela remplace votre brouillon non publié pour ${endSentence(trainee)} Ce brouillon ne pourra pas être récupéré.`,
-    useIt: "Utiliser ce modèle",
+    /** PO Ruling 11 (I1): the button repeats the question's verb (`useConfirm`, « Appliquer … ? »). */
+    useIt: "Appliquer",
     replaceAndUse: "Remplacer le brouillon",
     cancel: "Annuler",
     noTrainees: "Aucun de vos clients n'a partagé ses séances avec vous.",
