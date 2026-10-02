@@ -568,6 +568,31 @@ test.describe("EV-337k — /unavailable tries again by itself, with a GET, and s
     await expect(page.getByRole("button", { name: "Finish my account" })).toBeVisible();
   });
 
+  test("a run of retries is forgotten 5 minutes after its last one, not before (staff nit, 1f16b4c)", async ({ page }) => {
+    await page.clock.install();
+    await landOnUnavailable(page);
+    const KEY = "evoli_pro_unavailable_retries";
+    const seed = (ageMs: number) =>
+      page.evaluate(([key, age]) => sessionStorage.setItem(key as string, JSON.stringify({ count: 10, at: Date.now() - (age as number) })), [KEY, ageMs]);
+    const line = page.getByTestId("unavailable-auto-retry");
+
+    // 4 min 59 s after the tenth retry: still stopped.
+    await seed(5 * 60_000 - 1_000);
+    await page.getByRole("button", { name: "Try again now" }).click();
+    await expect(line).toHaveText("Automatic retries have stopped. Try again when you're ready.");
+
+    // 5 min 1 s after it: the run is forgotten, a retry is scheduled again and fires.
+    await seed(5 * 60_000 + 1_000);
+    await page.getByRole("button", { name: "Try again now" }).click();
+    await expect(line).toHaveText("We'll try again automatically in 30 seconds.");
+    const retried = page.waitForRequest((r) => r.isNavigationRequest());
+    await page.clock.runFor(31_000);
+    expect((await retried).method()).toBe("GET");
+    await expect(line).toBeVisible();
+    const run = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key) ?? "null"), KEY);
+    expect(run?.count, "the new run starts again at 1").toBe(1);
+  });
+
   test("one h1, no sideways scroll and 44 px controls, at every X1 width, in French too", async ({ page, browser, baseURL }) => {
     await landOnUnavailable(page);
     for (const width of [320, 390, 767, 768, 1023, 1024, 1279, 1280, 1440]) {

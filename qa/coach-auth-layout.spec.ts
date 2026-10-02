@@ -25,7 +25,7 @@ import { expectNoSidewaysScroll } from "./layout";
 
 const NARROW = [320, 375, 767] as const;
 const WIDE = [768, 1280, 1440] as const;
-/** `.login-form { flex: 1 1 0; min-width: 480px }` beside the brand panel from 768 px. */
+/** `.login-form { flex: 1 1 50%; min-width: 480px }` beside the brand panel from 768 px. */
 const FORM_COLUMN_MIN = 480;
 /** The form column's own horizontal padding, `.login-form` below 768. */
 const COLUMN_PADDING = 24;

@@ -211,15 +211,20 @@ export default function InvitePage({
 }
 
 /**
- * "Alex Roussel" → "AR", "Léa" → "L", "jean-marc d." → "JD". Whole code points, so a name
- * that starts with a character outside the BMP is not cut in half.
+ * "Alex Roussel" → "AR", "Léa" → "L", "jean-marc d." → "JD".
+ *
+ * Only words that START with a letter give an initial (staff nit on 1f16b4c): "(Alex) Roussel"
+ * → "R", never "(" — and a word led by a bidi isolate (U+2066–U+2069, which
+ * `sanitiseCoachName` keeps), a combining mark or a digit gives none. The letter keeps its
+ * combining marks, so a decomposed "É" (E + U+0301) stays one initial. No letter-led word,
+ * no circle: the caller draws nothing for "".
  */
 function initialsOf(name: string): string {
   return name
     .split(/\s+/)
+    .map((word) => /^\p{L}\p{M}*/u.exec(word)?.[0] ?? "")
     .filter(Boolean)
     .slice(0, 2)
-    .map((word) => Array.from(word)[0] ?? "")
     .join("")
     .toLocaleUpperCase();
 }
