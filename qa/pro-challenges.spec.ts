@@ -436,6 +436,47 @@ for (const lang of ["fr", "en"] as const) {
       await expect(stats.nth(1).locator(".stat-card-foot")).toHaveText(l.stats.withoutData);
       if (lang === "fr") await expectNoEnglish(page, "the challenge page");
     });
+
+    /**
+     * EV-337n N2 (X3, staff nit on EV-337h): the list's pager only renders past one page of 50
+     * (`CHALLENGE_PAGE_SIZE`), which the seeds never reach, so its links had never been
+     * measured. `evoli_fixture_challenge_extra=60` makes 63 challenges: two pages.
+     */
+    test("N2: at 390 px the challenges pager's links measure at least 44 × 44", async ({ page, context, baseURL }) => {
+      const l = LANG[lang];
+      const words = lang === "fr" ? { previous: "Précédent", next: "Suivant" } : { previous: "Previous", next: "Next" };
+      const pageOf = (n: number) => (lang === "fr" ? `Page ${n} sur 2` : `Page ${n} of 2`);
+      await context.addCookies([{ name: "evoli_fixture_challenge_extra", value: "60", url: baseURL! }]);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await signIn(page, lang);
+
+      const measure = async (name: string, at: string) => {
+        const link = page.getByRole("link", { name, exact: true });
+        await expect(link, `${at}: « ${name} »`).toHaveCount(1);
+        await expectUnoccluded(page, link, { label: `${at}: « ${name} »` });
+        const box = (await link.boundingBox())!;
+        expect(box.width, `${at}: « ${name} » width`).toBeGreaterThanOrEqual(44);
+        expect(box.height, `${at}: « ${name} » height`).toBeGreaterThanOrEqual(44);
+      };
+
+      await page.goto("/challenges");
+      const list = page.getByRole("list", { name: l.listH1 }).getByRole("listitem");
+      await expect(list).toHaveCount(50);
+      const pager = page.getByRole("navigation", { name: pageOf(1) });
+      await expect(pager).toContainText(pageOf(1));
+      await expect(pager.getByRole("link", { name: words.previous, exact: true })).toHaveCount(0);
+      await measure(words.next, `${lang} page 1`);
+      await expectNoSidewaysScroll(page, `${lang} 390px: the pager, page 1`);
+
+      await page.getByRole("link", { name: words.next, exact: true }).click();
+      await page.waitForURL(/\/challenges\?page=1$/);
+      await expect(list).toHaveCount(13);
+      await expect(page.getByRole("navigation", { name: pageOf(2) })).toContainText(pageOf(2));
+      await expect(page.getByRole("link", { name: words.next, exact: true })).toHaveCount(0);
+      await measure(words.previous, `${lang} page 2`);
+      await expectNoSidewaysScroll(page, `${lang} 390px: the pager, page 2`);
+      if (lang === "fr") await expectNoEnglish(page, "the challenges list, page 2");
+    });
   });
 }
 

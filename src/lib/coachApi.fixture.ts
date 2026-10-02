@@ -3792,6 +3792,11 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *                                              ids in `FIXTURE_EDGE_CHALLENGE_IDS`): trainees
  *                                              whose own today is a day off the UTC date,
  *                                              which the seeds (everyone on UTC) never reach.
+ *   `evoli_fixture_challenge_extra=<n>`      → EV-337n N2: n more challenges (ENDED, no
+ *                                              participants, « Défi 001 »…) after the seeded
+ *                                              ones, so the list passes one 50-item page and
+ *                                              its pager renders (X3 measures it). Capped at
+ *                                              200; a malformed value is ignored.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 const CHALLENGE_UNENDED_MAX = 20; // CoachChallengeUseCase.MAX_UNENDED_CHALLENGES
@@ -4088,11 +4093,37 @@ function edgeChallenges(): StoredChallenge[] {
   ];
 }
 
-/** Every challenge this request serves: the stored ones, plus the switch-gated edges. */
+/**
+ * EV-337n N2 — `evoli_fixture_challenge_extra=<n>`: n ENDED challenges with nobody in them,
+ * each ending a day earlier than the last (from 30 days ago), so the api's `endsOn`-desc
+ * order puts them after the seeds. Built per read like the edges, never stored.
+ */
+async function extraChallenges(): Promise<StoredChallenge[]> {
+  const raw = await fixtureSwitch("evoli_fixture_challenge_extra");
+  const n = raw !== null && /^\d+$/.test(raw) ? Math.min(Number(raw), 200) : 0;
+  const out: StoredChallenge[] = [];
+  for (let i = 1; i <= n; i++) {
+    out.push({
+      id: `c4a11e00-0000-4000-9000-${String(i).padStart(12, "0")}`,
+      title: `Défi ${String(i).padStart(3, "0")}`,
+      metric: "STEPS",
+      dailyTarget: 8_000,
+      totalTarget: null,
+      startsOn: utcDay(-36 - i),
+      endsOn: utcDay(-30 - i),
+      createdAt: minutesAgo((40 + i) * 24 * 60),
+      participants: [],
+    });
+  }
+  return out;
+}
+
+/** Every challenge this request serves: the stored ones, plus the switch-gated edges and extras. */
 async function servedChallenges(): Promise<StoredChallenge[]> {
-  const stored = [...state().challenges.values()];
-  if (SCENARIO === "empty" || (await fixtureSwitch("evoli_fixture_challenge_edges")) !== "1") return stored;
-  return [...stored, ...edgeChallenges()];
+  const out = [...state().challenges.values()];
+  if (SCENARIO !== "empty" && (await fixtureSwitch("evoli_fixture_challenge_edges")) === "1") out.push(...edgeChallenges());
+  out.push(...(await extraChallenges()));
+  return out;
 }
 
 /** The ACTIVE links, by id — the api's `VISIBLE_LINK` fragment, for a STEPS challenge. */
