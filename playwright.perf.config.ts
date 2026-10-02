@@ -33,6 +33,8 @@ export default defineConfig({
   timeout: 180_000,
   retries: 0,
   reporter: [["list"]],
-  use: { baseURL: BASE_URL },
+  // An English browser, stated: the harness's Save draft step reads English labels, and
+  // since the Pro redesign's locale rule a request that names no language is French.
+  use: { baseURL: BASE_URL, locale: "en-US" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });
