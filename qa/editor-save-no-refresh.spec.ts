@@ -131,13 +131,15 @@ test("recipe editor: a save re-renders the page title through its action, histor
 });
 
 /**
- * 2a's inventory, pinned: 35 `router.refresh()` calls at 294e5fe, 22 removed, 13 kept —
- * each kept one follows a write that does NOT revalidate (a 403, MEAL_CHANGED,
- * PLACEMENT_OFF), a poll or a Refresh button, or no action at all (sign-in, activation,
- * sign-out). A new call is a decision: if its action revalidates, it renders the page a
+ * 2a's inventory, pinned: 35 `router.refresh()` calls at 294e5fe, 22 removed, 13 kept.
+ * Branch 1 (EV-337a, cd54fa6) then made sign-in, activation (x2) and sign-out hard
+ * navigations (ADR-0033 D33.7), taking 4 more: 9 remain, and each follows a write that
+ * does NOT revalidate (a 403, MEAL_CHANGED, PLACEMENT_OFF) or is the challenge poll or
+ * Refresh button. (The release that merged both, b82c018, still pinned 13 and was red
+ * here.) A new call is a decision: if its action revalidates, it renders the page a
  * second time for nothing. Comment lines are not counted.
  */
-test("src holds exactly 13 router.refresh() calls (ADR-0033 branch 2a's inventory)", () => {
+test("src holds exactly 9 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four)", () => {
   const src = join(__dirname, "..", "src");
   const calls: string[] = [];
   for (const file of readdirSync(src, { recursive: true, encoding: "utf8" })) {
@@ -150,5 +152,5 @@ test("src holds exactly 13 router.refresh() calls (ADR-0033 branch 2a's inventor
         if (code.includes("router.refresh()")) calls.push(`${file}:${i + 1}`);
       });
   }
-  expect(calls.length, calls.sort().join("\n")).toBe(13);
+  expect(calls.length, calls.sort().join("\n")).toBe(9);
 });
