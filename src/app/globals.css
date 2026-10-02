@@ -1095,14 +1095,27 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
 .alert-evidence { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
 .alert-evidence li { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 
-/* Five stat cards: 2 up below 768 (the fifth spans both), 3 up to 1279, 5 from 1280. */
+/* Five stat cards, never an empty grid cell (EV-337 ruling 2 on N-1, EV-337m M1). The order
+   never changes: adherence, sessions, streak, last session, weight.
+   · < 768: two, two, then the fifth (« Poids ») across the whole row.
+   · 768–1279: three, then two that SHARE the whole second row. A six-track grid: each of the
+     first three spans two tracks, the fourth and fifth three each, so both rows end on the
+     grid's right edge (3 × (2c + g) + 2g = 2 × (3c + 2g) + g = 6c + 5g). Not five-up: at 1024
+     the content is 784 px and « Séances · 4 dernières semaines » would wrap to three lines.
+   · ≥ 1280: one row of five.
+   Keyed on `nth-child`, so the rule holds only for the five cards this page always draws. */
 .stat-grid.overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.overview-stats > .stat-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.overview-stats > .stat-card:nth-child(5) { grid-column: 1 / -1; }
 @media (min-width: 768px) {
-  .stat-grid.overview-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-  .overview-stats > .stat-card:last-child:nth-child(odd) { grid-column: auto; }
+  .stat-grid.overview-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+  .overview-stats > .stat-card { grid-column: span 2; }
+  .overview-stats > .stat-card:nth-child(n + 4) { grid-column: span 3; }
 }
-@media (min-width: 1280px) { .stat-grid.overview-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+@media (min-width: 1280px) {
+  .stat-grid.overview-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .overview-stats > .stat-card,
+  .overview-stats > .stat-card:nth-child(n + 4) { grid-column: auto; }
+}
 .stat-card {
   min-width: 0;
   display: grid;

@@ -248,7 +248,7 @@ test.describe("ADR-0015 D5 — the overview blanks per block, from `scopes`", ()
     ).toBeVisible();
     await expect(
       page.getByText(
-        "Red flags need this trainee's progress and weigh-ins, which they have not shared."
+        "Red flags need this trainee's sessions or weigh-ins, which they have not shared."
       )
     ).toBeVisible();
   });
@@ -272,13 +272,20 @@ test.describe("ADR-0015 D5 — the overview blanks per block, from `scopes`", ()
     );
   });
 
-  test("WORKOUTS only: the same blanks, and the Routine tab works", async ({ page }) => {
+  test("WORKOUTS only: the PROGRESS blanks, and the Routine tab works", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${YUSUF}`);
 
+    // EV-337m M3 (BUG-674): this week's adherence is a WORKOUTS block on the api, so a
+    // WORKOUTS-only link shows its numbers. This test used to assert the dash, which was the
+    // defect: the api sent `0 / 2` and the portal hid it behind "Not shared". The streak is
+    // PROGRESS, and stays a dash.
     const adherence = page.getByText("Adherence this week", { exact: true }).locator("..");
-    await expect(adherence).toContainText("—");
-    await expect(adherence).toContainText("Not shared");
+    await expect(adherence).toContainText("0 / 2");
+    await expect(adherence).not.toContainText("Not shared");
+    const streak = page.getByText("Current streak", { exact: true }).locator("..");
+    await expect(streak).toContainText("—");
+    await expect(streak).toContainText("Not shared");
 
     await page.getByRole("link", { name: "Routine" }).click();
     await page.waitForURL(`/clients/${YUSUF}/routine`);

@@ -137,7 +137,7 @@ test.describe("« À traiter » — alert cards for the flags the api returned, 
     await page.goto(`/clients/${MARA}`);
     const review = region(page, "To review");
     await expect(review).toContainText(
-      "Red flags need this trainee's progress and weigh-ins, which they have not shared."
+      "Red flags need this trainee's sessions or weigh-ins, which they have not shared."
     );
     await expect(review).not.toContainText("No red flags");
     await expect(review.locator(".alert-card")).toHaveCount(0);

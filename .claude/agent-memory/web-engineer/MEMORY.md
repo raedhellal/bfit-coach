@@ -61,3 +61,4 @@
 - [French copy: elision and numbers](french-copy-elision-and-numbers.md) — use de()/que() never `de ${x}`; common.labelled() never "{x}: "; formatNumberInput for pre-fills; 1er/Sep in datePrinted; h left alone; readNumber is the one whole-number reader ("1.000" refused, format vs > 0); display-name fixture switch; route announcer is role=alert
 - [Client overview redesign (EV-337e)](client-overview-redesign-facts.md) — no tab strip on the overview; strict getByText collisions; free-text injuries say "pain"; depth 2
 - [Nav progress second click (BUG-670)](nav-progress-second-click-facts.md) — one run per wait; current-tab click ends it; data-nav-progress-ready; WebKit hydration race; retrying expect hides a gap
+- [Overview follow-ups (EV-337m)](overview-followups-337m-facts.md) — gate each block on the api's own scope, one witness per gate; 4 overview-only trainees; WebKit context inherits en-US; addCookies path trap

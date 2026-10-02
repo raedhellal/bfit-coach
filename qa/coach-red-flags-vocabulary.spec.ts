@@ -114,6 +114,9 @@ const TRAINEES = [
   "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006", // Petra — flags not shared
   "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009", // Tobias — BOTH live rules fired
   "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0010", // Kaia — no data at all
+  // EV-337m M4: an overview whose wire says `["PAIN_REPORTED"]` (no api sends it today) —
+  // the page must not name a pain signal even then.
+  "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0021", // Pablo
 ];
 
 test("the source carries no copy advertising a pain rule, in any spelling", () => {

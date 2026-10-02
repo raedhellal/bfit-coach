@@ -196,6 +196,18 @@ export async function readNutritionForUseAction(clientId: string): Promise<ReadF
   }
 }
 
+/**
+ * "Use on a trainee" writes the targets and the week the trainee's nutrition tab AND the
+ * overview's nutrition card draw, so both are revalidated (EV-337m, staff nit 3; the same
+ * reason as `revalidateNutrition` in `nutritionActions.ts`). Next 14.2 happens to purge the
+ * whole client router cache on ANY revalidate, so the overview is fresh today without the
+ * second line; that is one Next version's implementation detail, not a contract.
+ */
+function revalidateTraineeNutrition(clientId: string): void {
+  revalidatePath(`/clients/${clientId}/nutrition`);
+  revalidatePath(`/clients/${clientId}`);
+}
+
 export type ApplyTargetsResult =
   | { ok: true; result: CoachTargetsResult }
   | { ok: false; code: UseFailure | "INVALID" };
@@ -213,7 +225,7 @@ export async function applyTemplateTargetsAction(
   }
   try {
     const result = await coachApi.saveNutritionTargets(clientId, body);
-    revalidatePath(`/clients/${clientId}/nutrition`);
+    revalidateTraineeNutrition(clientId);
     return { ok: true, result };
   } catch (err) {
     return { ok: false, code: classifyUse(err) };
@@ -228,7 +240,7 @@ export type ApplyWeekResult =
 export async function applyTemplateWeekAction(clientId: string, weekStart: string): Promise<ApplyWeekResult> {
   try {
     await coachApi.applyMealWeek(clientId, { weekStart });
-    revalidatePath(`/clients/${clientId}/nutrition`);
+    revalidateTraineeNutrition(clientId);
     return { ok: true };
   } catch (err) {
     if (isWeekApplyRateLimited(err)) return { ok: false, code: "RATE_LIMITED" };
