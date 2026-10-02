@@ -536,7 +536,13 @@ const ROUTES: Route[] = [
     open: async (page) => {
       await signIn(page);
       await page.goto("/templates");
-      await settled(page, page.getByRole("button", { name: "Rename" }).first());
+      // EV-337i: Rename sits behind the row's « ⋯ » disclosure.
+      const more = page.getByRole("button", { name: "More actions" }).first();
+      await settled(page, more);
+      await expect(async () => {
+        if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+        await expect(more).toHaveAttribute("aria-expanded", "true", { timeout: 1_000 });
+      }).toPass();
       return openDialog(page, page.getByRole("button", { name: "Rename" }).first(), "Rename template");
     },
     expectNames: [],

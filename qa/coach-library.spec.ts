@@ -63,6 +63,24 @@ function row(page: Page, name: string) {
   return page.getByRole("group", { name, exact: true });
 }
 
+/**
+ * EV-337i: Duplicate, Rename and Delete sit behind the row's « ⋯ » disclosure ("More
+ * actions"). Opens it if it is closed, then presses `action` on THAT row.
+ */
+async function openMore(page: Page, name: string) {
+  const more = row(page, name).getByRole("button", { name: "More actions" });
+  // Retried until the island answers: a press before hydration opens nothing.
+  await expect(async () => {
+    if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+    await expect(more).toHaveAttribute("aria-expanded", "true", { timeout: 1_000 });
+  }).toPass();
+}
+
+async function rowAction(page: Page, name: string, action: "Duplicate" | "Rename" | "Delete") {
+  await openMore(page, name);
+  await row(page, name).getByRole("button", { name: action, exact: true }).click();
+}
+
 /** One day card in the template editor. Days are named "Day 1", "Day 2", … */
 function dayCard(page: Page, dayIndex: number) {
   return page.getByRole("group", { name: `Day ${dayIndex + 1}`, exact: true });
@@ -133,10 +151,13 @@ test.describe("AC2 — the library list", () => {
     await expect(page.getByText("2 days · 6 exercises").first()).toBeVisible();
     await expect(page.getByText("2 days · 5 exercises").first()).toBeVisible();
 
-    // AC2 — exactly these five controls, on the row for SEEDED_A.
+    // AC2 — exactly these five controls, on the row for SEEDED_A. EV-337i: Duplicate,
+    // Rename and Delete are one press away, behind the row's « ⋯ » disclosure.
     const card = row(page, SEEDED_A);
     await expect(card.getByRole("link", { name: "Edit" })).toBeVisible();
-    for (const control of ["Duplicate", "Rename", "Delete", "Use on a trainee"]) {
+    await expect(card.getByRole("button", { name: "Use on a trainee" })).toBeVisible();
+    await openMore(page, SEEDED_A);
+    for (const control of ["Duplicate", "Rename", "Delete"]) {
       await expect(card.getByRole("button", { name: control })).toBeVisible();
     }
   });
@@ -161,7 +182,7 @@ test.describe("AC2 — the library list", () => {
   }) => {
     await signIn(page);
     await page.goto("/templates");
-    await row(page, SEEDED_B).getByRole("button", { name: "Rename" }).click();
+    await rowAction(page, SEEDED_B, "Rename");
 
     const field = page.getByLabel("Template name");
     await field.fill(SEEDED_A);
@@ -181,7 +202,7 @@ test.describe("AC2 — the library list", () => {
   test("an empty name and an over-80-character name are refused client-side", async ({ page }) => {
     await signIn(page);
     await page.goto("/templates");
-    await row(page, SEEDED_B).getByRole("button", { name: "Rename" }).click();
+    await rowAction(page, SEEDED_B, "Rename");
 
     const dialog = page.getByRole("dialog");
     const confirm = dialog.getByRole("button", { name: "Rename" });
@@ -204,11 +225,11 @@ test.describe("AC2 — the library list", () => {
   }) => {
     await signIn(page);
     await page.goto("/templates");
-    await row(page, SEEDED_A).getByRole("button", { name: "Duplicate" }).click();
+    await rowAction(page, SEEDED_A, "Duplicate");
     await expect(page.getByText(`${SEEDED_A} (copy)`, { exact: true })).toBeVisible();
 
     // Edge case 7: the second duplicate does not collide with the first.
-    await row(page, SEEDED_A).getByRole("button", { name: "Duplicate" }).click();
+    await rowAction(page, SEEDED_A, "Duplicate");
     await expect(page.getByText(`${SEEDED_A} (copy 2)`, { exact: true })).toBeVisible();
 
     /**
@@ -236,7 +257,7 @@ test.describe("AC2 — the library list", () => {
     // EV-223: this test used to delete the "(copy 2)" the Duplicate test above had left
     // behind, and was red on its own. It deletes a SEEDED template now, so it depends on
     // nothing but the fixture's seed (and not on Duplicate working).
-    await row(page, SEEDED_B).getByRole("button", { name: "Delete" }).click();
+    await rowAction(page, SEEDED_B, "Delete");
 
     await expect(
       page.getByText(
@@ -267,10 +288,11 @@ test.describe("AC1 — the coach builds a template from nothing", () => {
     await page.goto("/templates/new");
 
     await expect(page.getByRole("button", { name: "Save template" })).toBeDisabled();
-    await expect(page.getByText("This template is not ready to save yet:")).toBeVisible();
+    // EV-337i — the reasons are the « Avant d'enregistrer » card now.
+    await expect(page.getByRole("heading", { name: "Before you save" })).toBeVisible();
     await expect(page.getByText("Give the template a name.")).toBeVisible();
-    await expect(page.getByText("Day 1 has no exercises.")).toBeVisible();
-    await expect(page.getByText("Day 2 has no exercises.")).toBeVisible();
+    await expect(page.getByText("Day 1 has no exercises", { exact: true })).toBeVisible();
+    await expect(page.getByText("Day 2 has no exercises", { exact: true })).toBeVisible();
     await expect(
       page.getByText("Nothing here is saved until you press Save template.")
     ).toBeVisible();
@@ -418,7 +440,7 @@ test.describe("BUG-243 — a long template name", () => {
   }) => {
     await signIn(page);
     await page.goto("/templates");
-    await row(page, SEEDED_B).getByRole("button", { name: "Rename" }).click();
+    await rowAction(page, SEEDED_B, "Rename");
     await page.getByLabel("Template name").fill(LONG_NAME);
     await page.getByRole("dialog").getByRole("button", { name: "Rename" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -473,7 +495,7 @@ test.describe("AC1 — the empty library", () => {
       .getByRole("group")
       .evaluateAll((groups) => groups.map((g) => g.getAttribute("aria-label") ?? ""));
     for (const name of names) {
-      await row(page, name).getByRole("button", { name: "Delete" }).click();
+      await rowAction(page, name, "Delete");
       await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
       await page.reload();
@@ -482,7 +504,9 @@ test.describe("AC1 — the empty library", () => {
 
     // AC1, verbatim — never a blank page.
     await expect(page.getByText(EMPTY_TITLE, { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: NEW_TEMPLATE })).toHaveCount(2);
+    // EV-337i — ONE control, a link (it navigates); the page head draws none when empty.
+    await expect(page.getByRole("link", { name: NEW_TEMPLATE })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: NEW_TEMPLATE })).toHaveCount(0);
   });
 });
 

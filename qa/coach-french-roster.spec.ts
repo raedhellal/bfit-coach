@@ -45,7 +45,7 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
   test("the template's 'use on a client' dialog is French", async ({ page }) => {
     await signInFrench(page);
     await page.goto("/templates");
-    await page.getByRole("button", { name: "Utiliser pour un client" }).first().click();
+    await page.getByRole("button", { name: "Appliquer à un client" }).first().click();
     const dialog = page.getByRole("dialog");
     await expect(
       dialog.getByText(
@@ -75,7 +75,7 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     ]);
     await signInFrench(page);
     await page.goto("/templates");
-    await page.getByRole("button", { name: "Utiliser pour un client" }).first().click();
+    await page.getByRole("button", { name: "Appliquer à un client" }).first().click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("combobox").selectOption({ label: "Inès Moreau" });
     await expect(
