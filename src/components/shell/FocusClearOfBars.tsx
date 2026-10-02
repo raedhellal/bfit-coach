@@ -6,14 +6,20 @@ import { useEffect } from "react";
  * WCAG 2.4.11 (focus not obscured) — QA NB-1, branch 1 (2026-10-02).
  *
  * `html { scroll-padding-* }` (globals.css) keeps keyboard focus clear of the sticky top bar,
- * the bottom tab bar and the sticky legal footer in Chromium. **WebKit ignores scroll-padding
- * when it scrolls a newly focused element into view**, so in Safari a field reached with Tab
- * below 1024 px landed partly under the tab bar (33 of 68 stops on the routine editor at
- * 390 × 700), and a few under the legal footer at 1440.
+ * the bottom tab bar and the sticky legal footer in Chromium. **In WebKit the padding alone is
+ * not enough** — witnessed in Playwright WebKit (qa/focus-clear-of-bars.spec.ts, 2026-10-02,
+ * with this island disabled and the padding in place): on the routine editor 33 stops at
+ * 390 × 700 were left only 56–81 % visible, partly under the tab bar; 30 at 1023 × 700; 8 at
+ * 1440 × 850, under the legal footer. WebKit does NOT ignore scroll-padding outright: on the
+ * template editor, where `html:has(.action-bar)` pads 180 px, the padding alone kept every
+ * stop clear (and the island alone did too; with both removed, 57 of 57 stops at 390 sat
+ * under the action bar — EV-337i, staff's probe of 8b175b2). Why WebKit's own focus scroll
+ * stops short of the 68 px padding on the routine editor was not established; this island
+ * does not depend on the answer.
  *
  * After each KEYBOARD focus — once the browser has done its own scroll — this measures the
  * sticky bars actually on screen and scrolls the window by exactly the overlap plus a
- * margin. Where the browser already honoured scroll-padding (Chromium) the overlap is zero
+ * margin. Where the browser's own scroll already left the element clear, the overlap is zero
  * and nothing moves.
  *
  * A POINTER focus is left alone: the coach is looking at what they clicked. "Keyboard" is

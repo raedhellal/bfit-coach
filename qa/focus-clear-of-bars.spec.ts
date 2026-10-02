@@ -4,11 +4,12 @@ import { test } from "./fixture-test";
 
 /**
  * QA NB-1 (branch 1, 2026-10-02) — WCAG 2.4.11 in WebKIT: keyboard focus must not land
- * partly under the sticky tab bar, top bar or legal footer.
+ * partly under the sticky tab bar, top bar, legal footer or an editor's action bar (EV-337i).
  *
  * Chromium honours `html { scroll-padding-* }` when it scrolls a focused element into view;
- * WebKit does not, and at 390 × 700 33 of the routine editor's 68 focus stops were partly
- * hidden under the tab bar. `FocusClearOfBars` (mounted by the shell) is the fix. This spec
+ * in WebKit the padding alone is not enough: at 390 × 700, with the island disabled, 33 of
+ * the routine editor's focus stops were left partly hidden under the tab bar (re-witnessed
+ * 2026-10-02; see FocusClearOfBars' header for what WebKit does honour). `FocusClearOfBars` (mounted by the shell) is the fix. This spec
  * drives REAL WebKit, because the defect does not exist in Chromium — a Chromium-only test
  * of it passes with the fix deleted.
  *
@@ -22,6 +23,8 @@ import { test } from "./fixture-test";
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
+/** The fixture's « Upper / Lower split » template: its editor carries EV-337i's sticky `.action-bar`. */
+const UPPER_LOWER = "7c2d0a11-0000-4000-8000-0000000000b1";
 const TAB = process.platform === "darwin" ? "Alt+Tab" : "Tab";
 
 let browser: Browser;
@@ -54,16 +57,22 @@ async function obscuredStops(page: Page, stops: number) {
     const r = await page.evaluate(() => {
       const e = document.activeElement as HTMLElement | null;
       if (!e || e === document.body) return null;
-      if (e.closest(".shell-tabbar, .shell-topbar, .shell-sidebar, .legal-footer")) return { inShell: true } as const;
+      if (e.closest(".shell-tabbar, .shell-topbar, .shell-sidebar, .legal-footer, .action-bar")) return { inShell: true } as const;
       const b = e.getBoundingClientRect();
-      const bars = Array.from(document.querySelectorAll(".shell-tabbar, .shell-topbar, .legal-footer"))
+      // EV-337i: `.action-bar` is stuck ABOVE the tab bar or the footer, at its own `bottom`
+      // offset — so a bar counts as riding the bottom edge when it sits at THAT offset. One
+      // that has settled into the page's flow higher up is content, not a bar.
+      const bars = Array.from(document.querySelectorAll(".shell-tabbar, .shell-topbar, .legal-footer, .action-bar"))
         .filter((x) => getComputedStyle(x).display !== "none" && ["sticky", "fixed"].includes(getComputedStyle(x).position))
-        .map((x) => x.getBoundingClientRect());
+        .map((x) => {
+          const offset = parseFloat(getComputedStyle(x).bottom);
+          return { r: x.getBoundingClientRect(), stuckAt: innerHeight - (Number.isFinite(offset) ? offset : 0) };
+        });
       let top = Math.max(b.top, 0);
       let bottom = Math.min(b.bottom, innerHeight);
-      for (const bar of bars) {
+      for (const { r: bar, stuckAt } of bars) {
         if (bar.top <= 1 && bar.bottom > top) top = Math.max(top, bar.bottom);
-        if (bar.bottom >= innerHeight - 1 && bar.top < bottom) bottom = Math.min(bottom, bar.top);
+        else if (bar.bottom >= stuckAt - 1 && bar.top < bottom) bottom = Math.min(bottom, bar.top);
       }
       const what = `${e.tagName.toLowerCase()} ${(e.getAttribute("aria-label") || e.innerText || (e as HTMLInputElement).value || "").slice(0, 30)}`;
       return { inShell: false, what, visible: b.height ? Math.max(0, bottom - top) / b.height : 0 } as const;
@@ -86,6 +95,32 @@ for (const [width, height] of [
     await page.setViewportSize({ width, height });
     await page.goto(`/clients/${LINA}/routine`);
     await expect(page.locator("h1")).toHaveCount(1);
+    await page.waitForLoadState("networkidle");
+    await page.mouse.click(2, 2);
+    const result = await obscuredStops(page, 70);
+    expect(result.measured, "measured the editor's stops").toBeGreaterThan(30);
+    expect(result.out, `${width}px: focus stops partly under a sticky bar`).toEqual([]);
+    await page.context().close();
+  });
+}
+
+/**
+ * EV-337i (staff review of 8b175b2) — the template editor's sticky `.action-bar` is a THIRD
+ * bottom bar, stacked on the tab bar (< 1024). Two protections keep focus out from under it:
+ * `html:has(.action-bar)`'s scroll-padding (globals.css) and `FocusClearOfBars`, which counts
+ * it. Staff's probe: either alone suffices in this WebKit; with BOTH removed, 47 of 58 stops
+ * at 390 landed fully under the bar. This pins the pair.
+ */
+for (const [width, height] of [
+  [390, 700],
+  [1023, 700],
+] as const) {
+  test(`WebKit ${width}×${height}: no keyboard focus stop on the template editor is under a bar`, async ({ baseURL }) => {
+    const page = await signedIn(baseURL!);
+    await page.setViewportSize({ width, height });
+    await page.goto(`/templates/${UPPER_LOWER}`);
+    await expect(page.locator("h1")).toHaveCount(1);
+    await expect(page.locator(".action-bar")).toHaveCount(1);
     await page.waitForLoadState("networkidle");
     await page.mouse.click(2, 2);
     const result = await obscuredStops(page, 70);
