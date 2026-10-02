@@ -81,15 +81,18 @@ const CSS = `
 @media (prefers-reduced-motion: reduce){.nav-progress-fill{width:100%;animation:none;opacity:.6}}
 `;
 
-/** The path and query a click on this anchor would navigate to, or null if it would not. */
-function navigationTarget(event: MouseEvent): string | null {
+/**
+ * What a click on this anchor does: "elsewhere" (a same-document navigation to another
+ * path or query), "here" (a plain click on a link to the page already on screen, #hash
+ * or not), or null (not a same-document navigation at all).
+ */
+function clickKind(event: MouseEvent): "elsewhere" | "here" | null {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
   const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
   if (!anchor || (anchor.target && anchor.target !== "_self") || anchor.hasAttribute("download")) return null;
   const url = new URL(anchor.href, window.location.href);
   if (url.origin !== window.location.origin) return null;
-  // The same page (or only its #hash) is not a navigation Next waits for.
-  return isHere(url.href) ? null : `${url.pathname}${url.search}`;
+  return isHere(url.href) ? "here" : "elsewhere";
 }
 
 export function NavigationProgress() {
@@ -97,7 +100,11 @@ export function NavigationProgress() {
   const pathname = usePathname();
   const search = useSearchParams()?.toString() ?? "";
   const bar = useRef<HTMLDivElement | null>(null);
-  const timers = useRef<number[]>([]);
+  /** Armed from the FIRST click of a pending run until it shows or the run ends; null otherwise. */
+  const showTimer = useRef<number | null>(null);
+  const giveUpTimer = useRef<number | null>(null);
+  /** A navigation started and nothing has committed (or given up) since. */
+  const pending = useRef(false);
 
   /**
    * Shown and hidden on the DOM directly, never through React state. Measured: a
@@ -121,21 +128,49 @@ export function NavigationProgress() {
   }, []);
 
   const stop = useCallback(() => {
-    timers.current.forEach((t) => window.clearTimeout(t));
-    timers.current = [];
+    if (showTimer.current !== null) window.clearTimeout(showTimer.current);
+    if (giveUpTimer.current !== null) window.clearTimeout(giveUpTimer.current);
+    showTimer.current = giveUpTimer.current = null;
+    pending.current = false;
     show(false);
   }, [show]);
 
   useEffect(() => {
+    /**
+     * BUG-670: a navigation started while another is pending (a second click, or a
+     * re-click of the same link) continues the same wait, whichever of the two Next
+     * ends up committing (a second tab click superseded the first, measured). Restarting
+     * from zero hid a visible bar for 400 ms while the page was still loading, and moved
+     * an unshown bar to 400 ms after the second click. So:
+     *   · the bar already shows: it stays, until the latest navigation commits;
+     *   · the 400 ms is armed: it keeps the FIRST click's deadline. A second navigation
+     *     that commits before that deadline (a router-cache revisit) ends the run through
+     *     the URL change, so it still never flashes the bar;
+     *   · the give-up restarts: it belongs to the latest navigation, the one waited for.
+     */
     const begin = () => {
-      stop();
-      timers.current = [
-        window.setTimeout(() => show(true), NAV_PROGRESS_DELAY_MS),
-        window.setTimeout(stop, NAV_PROGRESS_GIVE_UP_MS),
-      ];
+      if (!pending.current) {
+        pending.current = true;
+        showTimer.current = window.setTimeout(() => {
+          showTimer.current = null;
+          show(true);
+        }, NAV_PROGRESS_DELAY_MS);
+      }
+      if (giveUpTimer.current !== null) window.clearTimeout(giveUpTimer.current);
+      giveUpTimer.current = window.setTimeout(stop, NAV_PROGRESS_GIVE_UP_MS);
     };
     const onClick = (event: MouseEvent) => {
-      if (navigationTarget(event)) begin();
+      const kind = clickKind(event);
+      if (kind === "elsewhere") begin();
+      // A link to the page already on screen, while another navigation is pending: the
+      // Link dispatches a new navigation, which supersedes the pending one (Next's
+      // `dispatchAction` marks a pending navigation discarded; measured at 0.4 s and at
+      // 1.8 s into a 1.5 s-per-read load, the abandoned page never landed), and it
+      // re-renders the page already on screen with no URL change. Nothing would end the run until the 20 s give-up (measured: still up at
+      // 19.2 s), the same shape as the same-URL Back below. The page the coach asked for
+      // is the one showing, so the wait is over. A plain <a> to here reloads the document
+      // instead, and the unsaved-changes guard stops its clicks before they bubble here.
+      else if (kind === "here" && pending.current) stop();
     };
     document.addEventListener("click", onClick);
     // The event names its target, and the same-URL rule is applied HERE, where a test
@@ -146,7 +181,11 @@ export function NavigationProgress() {
     };
     window.addEventListener(START_EVENT, onStart);
     window.addEventListener("popstate", stop);
+    // Readiness for tests: a click before this point is a navigation the bar cannot see.
+    const el = bar.current;
+    el?.setAttribute("data-nav-progress-ready", "");
     return () => {
+      el?.removeAttribute("data-nav-progress-ready");
       document.removeEventListener("click", onClick);
       window.removeEventListener(START_EVENT, onStart);
       window.removeEventListener("popstate", stop);
