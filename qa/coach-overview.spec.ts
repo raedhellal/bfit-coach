@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInFrench } from "./french";
 
 /**
  * The trainee overview: the status a denied read is served with (BUG-139) and block
@@ -88,6 +89,33 @@ test.describe("AC5 — a trainee the coach is not linked to", () => {
     for (const leak of ["Adherence this week", "Current streak", "Red flags"]) {
       expect(body, `the denial page must not render "${leak}"`).not.toContain(leak);
     }
+  });
+
+  /**
+   * The denial page had no heading at all — no h1–h3, no heading role — so a screen
+   * reader's heading list was empty and "jump to main heading" went nowhere. Its one
+   * sentence IS the page's title, so that sentence is the h1: no new copy, and the card
+   * looks exactly as it did.
+   */
+  test("the denial page has exactly one h1, and it is AC5's sentence", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${UNLINKED}`);
+    const h1 = page.getByRole("heading", { level: 1 });
+    await expect(h1).toHaveCount(1);
+    await expect(h1).toHaveText("This trainee is not on your roster. They may have revoked access.");
+  });
+
+  test.describe("in French (fr-FR)", () => {
+    test.use({ locale: "fr-FR" });
+
+    test("the denial page's one h1 is the French sentence", async ({ page }) => {
+      await signInFrench(page);
+      await page.goto(`/clients/${UNLINKED}`);
+      await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+      const h1 = page.getByRole("heading", { level: 1 });
+      await expect(h1).toHaveCount(1);
+      await expect(h1).toHaveText("Ce client ne fait pas partie de votre liste. Il a peut-être révoqué l'accès.");
+    });
   });
 
   test("a linked trainee is still served 200", async ({ page }) => {
