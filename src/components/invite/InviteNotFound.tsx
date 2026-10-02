@@ -15,7 +15,9 @@ import { getCopy } from "@/lib/i18n/server";
  * `[token]/[...rest]` backstop), NOT through `notFound()` (QA PB-1 on 8b5ca26): a `notFound()`
  * thrown from a page reaches the browser as Next's `<html id="__next_error__">` shell with an
  * EMPTY body, filled in by JavaScript — blank with JavaScript off. The 404 STATUS comes from
- * `middleware.ts`'s rewrite (BUG-678: onto a concrete route, so Vercel serves it too).
+ * `middleware.ts`'s rewrite (BUG-678: onto a concrete route, which Vercel's router resolves
+ * in its filesystem phase, before a status-carrying miss falls to `/_not-found`). Expected on
+ * Vercel, not yet witnessed there: `node qa/probes/invite-404-deployment.mjs <deployment url>`.
  */
 export function InviteNotFoundView() {
   const copy = getCopy();

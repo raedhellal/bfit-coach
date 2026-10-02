@@ -7,9 +7,9 @@ import { INVITE_APPS, inviteDeepLink } from "@/lib/traineeApps";
 /**
  * /i/<token> — the invite landing page (ADR-0012 D5, EV-183 edge case 3).
  *
- * PUBLIC. The middleware matcher excludes `/i/*`: whoever scans this QR is a trainee
- * with no Evoli Pro account, so guarding it would send every invited person to a coach
- * login screen they can never pass.
+ * PUBLIC. Middleware sees `/i/*` but its public `/i` branch never guards it (no cookie is
+ * read there): whoever scans this QR is a trainee with no Evoli Pro account, so guarding it
+ * would send every invited person to a coach login screen they can never pass.
  *
  * It makes **no API call**. The token is opaque to this surface — only b-fit-api can
  * say whether it is valid, unexpired and unused, and it decides that at *accept* time

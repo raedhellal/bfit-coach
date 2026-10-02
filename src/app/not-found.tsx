@@ -19,7 +19,9 @@ import { readAccessToken } from "@/lib/session";
  *     page runs, so they only reach this on a path it does not guard (an unknown
  *     `/api/auth/…`): no frame (it would offer a nav and a sign-out to nobody) and a link
  *     to /login. Not `/i/…`: since EV-337k / BUG-678 every non-invitation `/i` path draws
- *     the trainee 404 (`src/components/invite/InviteNotFound.tsx`), on Vercel too.
+ *     the trainee 404 (`src/components/invite/InviteNotFound.tsx`) under `next start`; on
+ *     Vercel this is expected but not yet witnessed — the witness is
+ *     `node qa/probes/invite-404-deployment.mjs <deployment url>` printing ALL CHECKS HELD.
  * The cookie is read for which screen to draw, exactly as middleware reads it; it is
  * never an authorization decision — the roster link still goes through the guard.
  *
