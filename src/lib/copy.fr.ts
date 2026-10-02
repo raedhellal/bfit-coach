@@ -873,7 +873,6 @@ export const fr = {
       named: "Nom renseigné",
       daysRange: "Entre 2 et 6 jours d'entraînement",
       daysFilled: "Chaque jour a au moins un exercice",
-      dayEmpty: (day: number) => `Le jour ${day} n'a aucun exercice`,
       done: "Fait\u00a0:",
       todo: "À faire\u00a0:",
       listLabel: "Ce qu'il reste à faire avant d'enregistrer le modèle",

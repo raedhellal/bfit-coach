@@ -291,8 +291,8 @@ test.describe("AC1 — the coach builds a template from nothing", () => {
     // EV-337i — the reasons are the « Avant d'enregistrer » card now.
     await expect(page.getByRole("heading", { name: "Before you save" })).toBeVisible();
     await expect(page.getByText("Give the template a name.")).toBeVisible();
-    await expect(page.getByText("Day 1 has no exercises", { exact: true })).toBeVisible();
-    await expect(page.getByText("Day 2 has no exercises", { exact: true })).toBeVisible();
+    await expect(page.getByText("Day 1 has no exercises.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Day 2 has no exercises.", { exact: true })).toBeVisible();
     await expect(
       page.getByText("Nothing here is saved until you press Save template.")
     ).toBeVisible();

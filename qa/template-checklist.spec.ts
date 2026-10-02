@@ -70,12 +70,11 @@ for (const [lang, copy] of COPIES) {
         expect(items.every((i) => i.ok), `${label}: ${JSON.stringify({ reasons, items })}`).toBe(reasons.length === 0);
 
         const unmet = items.filter((i) => !i.ok).map((i) => i.label);
-        const c = copy.templateEditor.checklist;
-        for (const reason of reasons) {
-          const day = draft.document.trainingDays.findIndex((_, i) => copy.templates.dayEmpty(i + 1) === reason);
-          const expected = day >= 0 ? c.dayEmpty(day + 1) : reason;
-          expect(unmet, `${label}: the reason « ${reason} » is on the card`).toContain(expected);
-        }
+        // Ruling 12: an unmet line IS the validation's own sentence, word for word…
+        for (const reason of reasons) expect(unmet, `${label}: the reason « ${reason} » is on the card`).toContain(reason);
+        // …and (I2) a sentence ends with a full stop; a met line is a label and does not.
+        for (const line of unmet) expect(line, `${label}: unmet line`).toMatch(/\.$/);
+        for (const line of items.filter((i) => i.ok).map((i) => i.label)) expect(line, `${label}: met line`).not.toMatch(/\.$/);
         // And nothing unmet that the validation did not say.
         expect(unmet.length, `${label}: one unmet line per reason`).toBe(reasons.length);
         // The three lines the design draws are always there, first.
@@ -84,6 +83,17 @@ for (const [lang, copy] of COPIES) {
     }
   });
 }
+
+test("Ruling 12 (I2): an empty day's unmet line, exactly, in both languages", () => {
+  const draft = (copy: Copy): TemplateDraft => {
+    const ok = filled(copy);
+    const d = ok.document;
+    return { ...ok, document: { ...d, trainingDays: [d.trainingDays[0], { ...d.trainingDays[1], exercises: [] }] } };
+  };
+  const unmet = (copy: Copy) => templateChecklist(draft(copy), copy).filter((i) => !i.ok).map((i) => i.label);
+  expect(unmet(en as unknown as Copy)).toEqual(["Day 2 has no exercises."]);
+  expect(unmet(fr as unknown as Copy)).toEqual(["Le jour 2 n'a aucun exercice."]);
+});
 
 test("the design's three lines, met, in both languages", () => {
   expect(templateChecklist(filled(en as unknown as Copy), en as unknown as Copy).map((i) => [i.ok, i.label])).toEqual([

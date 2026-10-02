@@ -1701,15 +1701,16 @@ export const en = {
      * function returns is on this card, and Save is enabled exactly when none is left
      * (`templateChecklist`, src/lib/templateDocument.ts). The three rows the design draws
      * are fixed; any other reason the validation finds is listed under them in its own
-     * words. An item that is met and one that is not differ in their words AND their
-     * icon, never in colour alone.
+     * words. A MET row is one of the labels below (no full stop); an UNMET row is the
+     * validation's own sentence, full stop included (PO Ruling 12 / I2) — so there is no
+     * `dayEmpty` here: `templates.dayEmpty` is that sentence. An item that is met and one
+     * that is not differ in their words AND their icon, never in colour alone.
      */
     checklist: {
       title: "Before you save",
       named: "Name filled in",
       daysRange: "Between 2 and 6 training days",
       daysFilled: "Every day has at least one exercise",
-      dayEmpty: (n: number) => `Day ${n} has no exercises`,
       /**
        * Each line's state in words, read before it and visually hidden (staff a11y nit on
        * 8b175b2): the icons are aria-hidden, and the days line reads almost the same met

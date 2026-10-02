@@ -201,8 +201,10 @@ export interface ChecklistItem {
  * EV-337i (plan §5.7) — the « Avant d'enregistrer » checklist: `publishabilityReasons`,
  * restated as a card. **It adds no rule and drops none.**
  *
- *   · the three lines the design draws come first, each in its met or unmet words —
- *     named, 2–6 days, and every day holding an exercise (one line per empty day);
+ *   · the three lines the design draws come first — named, 2–6 days, and every day holding
+ *     an exercise (one line per empty day). Met, each is a LABEL from
+ *     `templateEditor.checklist.*`, with no full stop; unmet, it is the validation's own
+ *     SENTENCE, full stop included (PO Ruling 12 / I2, 2026-10-02);
  *   · every OTHER reason the validation returns (a day with no focus, two days on one
  *     weekday, sets out of bounds, a text too long…) follows, unmet, in its own sentence.
  *
@@ -234,7 +236,8 @@ export function templateChecklist(draft: TemplateDraft, copy: Copy): ChecklistIt
     }
   });
   if (empty.length === 0) items.push({ key: "filled", ok: true, label: c.daysFilled });
-  for (const n of empty) items.push({ key: `day-${n}`, ok: false, label: c.dayEmpty(n) });
+  // PO Ruling 12 (I2): an unmet line is the validation's own sentence, full stop included.
+  for (const n of empty) items.push({ key: `day-${n}`, ok: false, label: copy.templates.dayEmpty(n) });
 
   reasons
     .filter((reason) => !covered.has(reason))

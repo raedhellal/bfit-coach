@@ -184,8 +184,9 @@ test.describe("the editor (§5.7)", () => {
     await expect(items).toHaveText([
       "À faire\u00a0: Donnez un nom au modèle.",
       "Fait\u00a0: Entre 2 et 6 jours d'entraînement",
-      "À faire\u00a0: Le jour 1 n'a aucun exercice",
-      "À faire\u00a0: Le jour 2 n'a aucun exercice",
+      // Ruling 12 (I2): an unmet line is a sentence and ends with a full stop.
+      "À faire\u00a0: Le jour 1 n'a aucun exercice.",
+      "À faire\u00a0: Le jour 2 n'a aucun exercice.",
     ]);
     const state = items.first().locator(".sr-only");
     await expect(state).toHaveText("À faire\u00a0:");
@@ -346,8 +347,8 @@ test.describe("English (en-US)", () => {
     await expect(aside.getByRole("listitem")).toHaveText([
       "To do: Give the template a name.",
       "Done: Between 2 and 6 training days",
-      "To do: Day 1 has no exercises",
-      "To do: Day 2 has no exercises",
+      "To do: Day 1 has no exercises.",
+      "To do: Day 2 has no exercises.",
     ]);
     await expect(aside.getByRole("list", { name: "What the template still needs before it can be saved" })).toHaveCount(1);
     await page.getByLabel("Template name").fill("Full body A");
@@ -355,7 +356,7 @@ test.describe("English (en-US)", () => {
     await expect(aside.getByRole("listitem")).toHaveText([
       "Done: Name filled in",
       "Done: Between 2 and 6 training days",
-      "To do: Day 2 has no exercises",
+      "To do: Day 2 has no exercises.",
     ]);
     await expect(page.getByRole("button", { name: "Save template" })).toBeDisabled();
     await addExercises(page, 1, 1);
