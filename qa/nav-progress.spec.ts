@@ -28,6 +28,18 @@ import { test } from "./fixture-test";
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const BAR = '[data-nav-progress="visible"]';
+/**
+ * The element itself. Every NEGATIVE check reads its real visibility (staff review r2):
+ * the bar is toggled by `hidden` and an attribute on one always-rendered element, so a
+ * check on the attribute alone let "hidden never set" and "visible until hydration" pass.
+ */
+const NODE = ".nav-progress";
+
+/** Idle: the bar is not visible and #app-root is not busy. */
+async function expectIdle(page: Page) {
+  await expect(page.locator(NODE)).toBeHidden();
+  await expect(page.locator("#app-root")).not.toHaveAttribute("aria-busy", /.*/);
+}
 
 async function signIn(page: Page) {
   await page.goto("/login");
@@ -35,12 +47,13 @@ async function signIn(page: Page) {
   await page.getByLabel("Password").fill("Password123!");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("/");
+  await expectIdle(page);
 }
 
 /** Click a link and report when the bar appeared/left and when `selector` showed up (ms after the click). */
 async function timedClick(page: Page, href: string, selector: string) {
   return page.evaluate(
-    async ({ href, selector, bar }) => {
+    async ({ href, selector, node }) => {
       const seen: { barAt: number | null; barGoneAt: number | null; busyAt: number | null; contentAt: number | null } = {
         barAt: null,
         barGoneAt: null,
@@ -53,7 +66,8 @@ async function timedClick(page: Page, href: string, selector: string) {
         const timer = setTimeout(() => reject(new Error(`no ${selector} on ${target}`)), 15_000);
         const observer = new MutationObserver(() => {
           const now = performance.now() - t0;
-          const shown = document.querySelector(bar) !== null;
+          const el = document.querySelector<HTMLElement>(node);
+          const shown = el !== null && el.checkVisibility();
           if (shown && seen.barAt === null) seen.barAt = now;
           if (!shown && seen.barAt !== null && seen.barGoneAt === null) seen.barGoneAt = now;
           if (document.getElementById("app-root")?.getAttribute("aria-busy") === "true" && seen.busyAt === null) seen.busyAt = now;
@@ -69,7 +83,7 @@ async function timedClick(page: Page, href: string, selector: string) {
       });
       return seen;
     },
-    { href, selector, bar: BAR }
+    { href, selector, node: NODE }
   );
 }
 
@@ -97,7 +111,7 @@ test("a held response: the bar appears after 400 ms, says what it is, and leaves
   expect(t.barAt!, "well before the held content").toBeLessThan(t.contentAt!);
   expect(t.busyAt!).toBeLessThan(t.contentAt!);
   expect(t.contentAt!, "the content really was held").toBeGreaterThan(1_000);
-  await expect(page.locator(BAR)).toHaveCount(0);
+  await expectIdle(page);
   await expect(page.locator("#app-root")).not.toHaveAttribute("aria-busy", /.*/);
 });
 
@@ -118,10 +132,11 @@ test("a click the unsaved-changes guard stops is not a navigation: no bar", asyn
   await page.getByLabel("Sets").first().fill("7");
   // Hold every read, so a bar that wrongly started would have time to show.
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
+  const watch = everShown(page, 1_200);
   await page.locator(`a[href="/clients/${LINA}/nutrition"]`).click();
   await expect(page.getByText("Leave with unsaved changes?")).toBeVisible();
-  await page.waitForTimeout(800);
-  await expect(page.locator(BAR)).toHaveCount(0);
+  expect(await watch, "never visible while the guard holds the click").toBe(false);
+  await expectIdle(page);
   await page.getByRole("button", { name: "Stay on this page" }).click();
 });
 
@@ -189,14 +204,15 @@ const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 /** Click the button with this exact text and time the bar and the destination's content. */
 async function timedButton(page: Page, text: string, target: string, selector: string) {
   return page.evaluate(
-    async ({ text, target, selector, bar }) => {
+    async ({ text, target, selector, node }) => {
       const seen = { barAt: null as number | null, barPath: null as string | null, contentAt: null as number | null };
       const t0 = performance.now();
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error(`no ${selector} on ${target}`)), 20_000);
         const observer = new MutationObserver(() => {
           const now = performance.now() - t0;
-          const shown = document.querySelector(bar) !== null;
+          const el = document.querySelector<HTMLElement>(node);
+          const shown = el !== null && el.checkVisibility();
           if (shown && seen.barAt === null) {
             seen.barAt = now;
             seen.barPath = location.pathname;
@@ -215,7 +231,7 @@ async function timedButton(page: Page, text: string, target: string, selector: s
       });
       return seen;
     },
-    { text, target, selector, bar: BAR }
+    { text, target, selector, node: NODE }
   );
 }
 
@@ -234,7 +250,7 @@ test("« Leave without saving » to a slow tab: the bar after 400 ms, gone when 
   expect(t.barAt!, "not before the threshold").toBeGreaterThanOrEqual(390);
   expect(t.barPath, "while the routine was still on screen").toBe(`/clients/${LINA}/routine`);
   expect(t.barAt!).toBeLessThan(t.contentAt!);
-  await expect(page.locator(BAR)).toHaveCount(0);
+  await expectIdle(page);
 });
 
 test("« Use this template » closes its dialog and the bar covers the wait for the trainee's routine", async ({
@@ -252,7 +268,7 @@ test("« Use this template » closes its dialog and the bar covers the wait for 
   // The library is still on screen (the dialog is closed) while the routine is read.
   expect(t.barPath).toBe("/templates");
   expect(t.barAt!).toBeLessThan(t.contentAt!);
-  await expect(page.locator(BAR)).toHaveCount(0);
+  await expectIdle(page);
 });
 
 /* ── What is NOT a navigation, and how a pending one ends (staff review S2) ─────────── */
@@ -260,17 +276,19 @@ test("« Use this template » closes its dialog and the bar covers the wait for 
 /** Whether the bar showed at any moment in the next `ms`. */
 async function everShown(page: Page, ms: number) {
   return page.evaluate(
-    async ({ bar, ms }) => {
-      let seen = false;
+    async ({ node, ms }) => {
+      const visible = () => document.querySelector<HTMLElement>(node)?.checkVisibility() ?? false;
+      let seen = visible();
+      // `attributes`: the bar is shown by attribute changes, not by inserting a node.
       const o = new MutationObserver(() => {
-        if (document.querySelector(bar)) seen = true;
+        if (visible()) seen = true;
       });
-      o.observe(document, { subtree: true, childList: true });
+      o.observe(document, { subtree: true, childList: true, attributes: true });
       await new Promise((r) => setTimeout(r, ms));
       o.disconnect();
-      return seen || document.querySelector(bar) !== null;
+      return seen || visible();
     },
-    { bar: BAR, ms }
+    { node: NODE, ms }
   );
 }
 
@@ -334,7 +352,7 @@ test("a navigation that never commits gives up after 20 s", async ({ page }) => 
   await page.clock.fastForward(15_000);
   await expect(page.locator(BAR), "still waiting at 16 s").toBeVisible();
   await page.clock.fastForward(5_000);
-  await expect(page.locator(BAR), "gone after the 20 s give-up").toHaveCount(0);
+  await expect(page.locator(NODE), "gone after the 20 s give-up").toBeHidden();
 });
 
 test("Back while a slow click is pending clears the bar", async ({ page, baseURL }) => {
@@ -346,7 +364,7 @@ test("Back while a slow click is pending clears the bar", async ({ page, baseURL
   await expect(page.locator(BAR)).toBeVisible();
   await page.goBack();
   await page.waitForTimeout(600);
-  await expect(page.locator(BAR)).toHaveCount(0);
+  await expectIdle(page);
 });
 
 test("Back to an entry with the same URL abandons a slow navigation, and the bar goes with it", async ({
@@ -362,7 +380,7 @@ test("Back to an entry with the same URL abandons a slow navigation, and the bar
   await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
   await expect(page.locator(BAR)).toBeVisible();
   await page.goBack();
-  await expect(page.locator(BAR)).toHaveCount(0);
+  await expectIdle(page);
   // Measured: Next drops the pending navigation, so nothing commits that would end the bar.
   expect(await everShown(page, 4_000), "the bar does not come back").toBe(false);
   expect(new URL(page.url()).pathname).toBe(`/clients/${LINA}`);
@@ -380,4 +398,24 @@ test("startNavigationProgress for the URL you are on never shows the bar; anothe
   // Control: the same event for another URL (nothing navigates, so it stays until give-up).
   await start(`/clients/${LINA}/nutrition`);
   await expect(page.locator(BAR)).toBeVisible();
+});
+
+test("the server-rendered bar is hidden before any script runs", async ({ browser, baseURL }) => {
+  // No JavaScript: what a coach sees between the HTML arriving and hydration. A bar
+  // that relied on an effect to hide itself would be on screen here.
+  const context = await browser.newContext({ baseURL, javaScriptEnabled: false });
+  try {
+    const login = await context.request.post("/api/auth/login", {
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+      maxRedirects: 0,
+    });
+    expect(login.status()).toBe(200);
+    const page = await context.newPage();
+    await page.goto(`/clients/${LINA}`);
+    await expect(page.locator("section[aria-label]").first()).toBeVisible();
+    await expect(page.locator(NODE)).toHaveCount(1);
+    await expect(page.locator(NODE)).toBeHidden();
+  } finally {
+    await context.close();
+  }
 });
