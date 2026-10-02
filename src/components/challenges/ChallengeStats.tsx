@@ -51,7 +51,14 @@ export function ChallengeStats({ detail, copy, now }: { detail: CoachChallengeDe
       {today && (
         <StatTile
           label={c.stats.groupAverage}
-          value={stats.average === null ? c.noDataToday : c.totalSteps(formatSteps(stats.average, copy.locale))}
+          value={
+            stats.average === null ? (
+              // Words, not a number: set smaller so a 2-up card at 320 px never breaks a word.
+              <span data-value-words="">{c.noDataToday}</span>
+            ) : (
+              c.totalSteps(formatSteps(stats.average, copy.locale))
+            )
+          }
           foot={stats.withData > 0 ? c.stats.withData(stats.withData) : undefined}
         />
       )}

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { expectNoEnglish } from "./french";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
@@ -128,6 +128,34 @@ async function undersized(page: Page) {
     }
     return { out, measured };
   });
+}
+
+/**
+ * Every word inside `scope` that the browser laid out on more than one line — a word broken
+ * mid-word. Measured with a Range per word, so it sees what was painted, not the CSS.
+ */
+async function brokenWords(scope: Locator): Promise<string[]> {
+  const out: string[] = [];
+  for (const el of await scope.all()) {
+    out.push(
+      ...(await el.evaluate((root) => {
+        const broken: string[] = [];
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const text = node.textContent ?? "";
+          for (const m of Array.from(text.matchAll(/[^\s\u00a0\u202f]+/g))) {
+            const range = document.createRange();
+            range.setStart(node, m.index ?? 0);
+            range.setEnd(node, (m.index ?? 0) + m[0].length);
+            const tops = new Set(Array.from(range.getClientRects()).filter((r) => r.width > 0).map((r) => Math.round(r.top)));
+            if (tops.size > 1) broken.push(m[0]);
+          }
+        }
+        return broken;
+      }))
+    );
+  }
+  return out;
 }
 
 /** Where a participant's "today" block sits against its name, and whether it has its own frame. */
@@ -416,6 +444,10 @@ for (const lang of ["fr", "en"] as const) {
         .locator(".stat-card-foot")
         .evaluate((el) => el.scrollWidth > el.clientWidth + 0.5 || el.getBoundingClientRect().right > window.innerWidth);
       expect(clipped, `${lang} 320px: the foot is clipped`).toBe(false);
+      // Edge case 3 (French is longer): no word on the cards is broken across two lines. The
+      // group average reads « Aucune donnée aujourd'hui » here, and at 20 px it broke as
+      // « aujourd'h / ui » (EV-337n N4).
+      expect(await brokenWords(stats), `${lang} 320px: words broken mid-word on the stat cards`).toEqual([]);
       await page.setViewportSize({ width: 1280, height: 900 });
 
       // Nobody is still in the window: no today card at all (unchanged).
