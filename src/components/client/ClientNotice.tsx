@@ -12,7 +12,8 @@ import { getCopy } from "@/lib/i18n/server";
  * they are served under, and nothing else.
  *
  * `asHeading` renders the sentence as the page's `<h1>`, for a route where the notice IS
- * the whole page and nothing else could title it (/clients/denied had no heading at all).
+ * the whole page and nothing else could title it: /clients/denied, and the load-error
+ * branch of /clients/[id]. Neither had any heading before.
  * Off by default: elsewhere the notice sits under a page or tab that already has its
  * heading, and a second h1 there would be wrong. `margin` and `fontWeight` pin the two h1
  * defaults the sentence's style did not already set, so the card renders as it did
