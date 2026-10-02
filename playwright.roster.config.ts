@@ -26,8 +26,10 @@ export default defineConfig({
    * scenario serves no rows — so "Use on a trainee" there can only reach its
    * no-trainees branch. The populated scenario is the only place the apply, its 409
    * retry and AC5's marks are reachable at all.
+   * nav-progress.spec.ts (the progress bar) is here for the same reason: its « Use this
+   * template » row needs a trainee on the roster.
    */
-  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget)\.spec\.ts/,
+  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|nav-progress)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249) — see
   // playwright.config.ts's `workers` note.

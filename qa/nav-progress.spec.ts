@@ -18,6 +18,12 @@ import { test } from "./fixture-test";
  *     so it shifts no layout.
  *
  * "Never appeared" is recorded by a MutationObserver from before the click, not sampled.
+ *
+ * Staff's review (B1, S2) added the navigations started from code (« Leave without
+ * saving », « Use this template ») and every skip/stop branch; each of ten mutants of
+ * the component and its call sites turns at least one test here red. Runs in the ROSTER
+ * config (`playwright.roster.config.ts`): « Use this template » needs trainees, which
+ * only the populated scenario serves.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
@@ -172,3 +178,206 @@ for (const width of [1440, 390]) {
     await page.screenshot({ path: info.outputPath(`nav-progress-${width}.png`) });
   });
 }
+
+/* ── Navigations started from code (staff review B1) ─────────────────────────────────
+ * The click listener cannot see a `router.push` that follows a dialog. Each such call
+ * site calls `startNavigationProgress` first; these two are the measured cases (2.4 s
+ * and 4.8 s with no feedback before the fix). */
+
+const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+
+/** Click the button with this exact text and time the bar and the destination's content. */
+async function timedButton(page: Page, text: string, target: string, selector: string) {
+  return page.evaluate(
+    async ({ text, target, selector, bar }) => {
+      const seen = { barAt: null as number | null, barPath: null as string | null, contentAt: null as number | null };
+      const t0 = performance.now();
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`no ${selector} on ${target}`)), 20_000);
+        const observer = new MutationObserver(() => {
+          const now = performance.now() - t0;
+          const shown = document.querySelector(bar) !== null;
+          if (shown && seen.barAt === null) {
+            seen.barAt = now;
+            seen.barPath = location.pathname;
+          }
+          if (seen.contentAt === null && location.pathname === target && document.querySelector(selector)) seen.contentAt = now;
+          if (seen.contentAt !== null && !shown) {
+            observer.disconnect();
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+        observer.observe(document, { subtree: true, childList: true, attributes: true });
+        const button = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
+        if (!button) throw new Error(`no button "${text}"`);
+        button.click();
+      });
+      return seen;
+    },
+    { text, target, selector, bar: BAR }
+  );
+}
+
+test("« Leave without saving » to a slow tab: the bar after 400 ms, gone when the page arrives", async ({
+  page,
+  baseURL,
+}) => {
+  await signIn(page);
+  await page.goto(`/clients/${LINA}/routine`);
+  await page.getByLabel("Sets").first().fill("7");
+  await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
+  await expect(page.getByText("Leave with unsaved changes?")).toBeVisible();
+  await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
+  const t = await timedButton(page, "Leave without saving", `/clients/${LINA}/nutrition`, 'input[inputmode="numeric"]');
+  expect(t.barAt, "the bar appeared").not.toBeNull();
+  expect(t.barAt!, "not before the threshold").toBeGreaterThanOrEqual(390);
+  expect(t.barPath, "while the routine was still on screen").toBe(`/clients/${LINA}/routine`);
+  expect(t.barAt!).toBeLessThan(t.contentAt!);
+  await expect(page.locator(BAR)).toHaveCount(0);
+});
+
+test("« Use this template » closes its dialog and the bar covers the wait for the trainee's routine", async ({
+  page,
+  baseURL,
+}) => {
+  await signIn(page);
+  await page.goto("/templates");
+  await page.getByRole("button", { name: "Use on a trainee" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.locator("select").selectOption({ label: "Yusuf A." });
+  await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
+  const t = await timedButton(page, "Use this template", `/clients/${YUSUF}/routine`, "#plan-name");
+  expect(t.barAt, "the bar appeared").not.toBeNull();
+  // The library is still on screen (the dialog is closed) while the routine is read.
+  expect(t.barPath).toBe("/templates");
+  expect(t.barAt!).toBeLessThan(t.contentAt!);
+  await expect(page.locator(BAR)).toHaveCount(0);
+});
+
+/* ── What is NOT a navigation, and how a pending one ends (staff review S2) ─────────── */
+
+/** Whether the bar showed at any moment in the next `ms`. */
+async function everShown(page: Page, ms: number) {
+  return page.evaluate(
+    async ({ bar, ms }) => {
+      let seen = false;
+      const o = new MutationObserver(() => {
+        if (document.querySelector(bar)) seen = true;
+      });
+      o.observe(document, { subtree: true, childList: true });
+      await new Promise((r) => setTimeout(r, ms));
+      o.disconnect();
+      return seen || document.querySelector(bar) !== null;
+    },
+    { bar: BAR, ms }
+  );
+}
+
+test("a click on the tab you are already on never shows the bar", async ({ page, baseURL }) => {
+  await signIn(page);
+  await page.goto(`/clients/${LINA}/nutrition`);
+  await expect(page.locator('input[inputmode="numeric"]').first()).toBeVisible();
+  await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
+  const watch = everShown(page, 1_500);
+  await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
+  expect(await watch).toBe(false);
+});
+
+test("a Cmd-click (a new tab) never shows the bar", async ({ page, baseURL, context }) => {
+  await signIn(page);
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
+  const watch = everShown(page, 1_500);
+  const opened = context.waitForEvent("page", { timeout: 1_500 }).catch(() => null);
+  await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click({ modifiers: ["Meta"] });
+  expect(await watch).toBe(false);
+  await (await opened)?.close();
+});
+
+/** A same-origin link, appended to the page, whose click is cancelled (nothing navigates). */
+async function cancelledLink(page: Page, attrs: Record<string, string>) {
+  await page.evaluate(
+    ({ href, attrs }) => {
+      const a = document.createElement("a");
+      a.href = href;
+      a.id = "probe-link";
+      a.textContent = "probe";
+      for (const [k, v] of Object.entries(attrs)) a.setAttribute(k, v);
+      a.addEventListener("click", (e) => e.preventDefault());
+      document.body.appendChild(a);
+    },
+    { href: `/clients/${LINA}/nutrition`, attrs }
+  );
+}
+
+test("a link to another tab (target=_blank) never shows the bar", async ({ page }) => {
+  await signIn(page);
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await cancelledLink(page, { target: "_blank" });
+  const watch = everShown(page, 1_000);
+  await page.locator("#probe-link").click();
+  expect(await watch).toBe(false);
+});
+
+test("a navigation that never commits gives up after 20 s", async ({ page }) => {
+  await page.clock.install();
+  await signIn(page);
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await cancelledLink(page, {});
+  await page.locator("#probe-link").click();
+  await page.clock.fastForward(1_000);
+  await expect(page.locator(BAR), "a pending click shows the bar").toBeVisible();
+  await page.clock.fastForward(15_000);
+  await expect(page.locator(BAR), "still waiting at 16 s").toBeVisible();
+  await page.clock.fastForward(5_000);
+  await expect(page.locator(BAR), "gone after the 20 s give-up").toHaveCount(0);
+});
+
+test("Back while a slow click is pending clears the bar", async ({ page, baseURL }) => {
+  await signIn(page);
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "4000", url: baseURL! }]);
+  await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
+  await expect(page.locator(BAR)).toBeVisible();
+  await page.goBack();
+  await page.waitForTimeout(600);
+  await expect(page.locator(BAR)).toHaveCount(0);
+});
+
+test("Back to an entry with the same URL abandons a slow navigation, and the bar goes with it", async ({
+  page,
+  baseURL,
+}) => {
+  await signIn(page);
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  // A second entry for the same URL: the shape of the unsaved-changes guard's sentinel.
+  await page.evaluate(() => window.history.pushState(window.history.state, "", location.href));
+  await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "3000", url: baseURL! }]);
+  await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
+  await expect(page.locator(BAR)).toBeVisible();
+  await page.goBack();
+  await expect(page.locator(BAR)).toHaveCount(0);
+  // Measured: Next drops the pending navigation, so nothing commits that would end the bar.
+  expect(await everShown(page, 4_000), "the bar does not come back").toBe(false);
+  expect(new URL(page.url()).pathname).toBe(`/clients/${LINA}`);
+});
+
+test("startNavigationProgress for the URL you are on never shows the bar; another URL does", async ({ page }) => {
+  await signIn(page);
+  await page.goto(`/clients/${LINA}`);
+  await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  const start = (href: string) =>
+    page.evaluate((href) => window.dispatchEvent(new CustomEvent("evoli:navigation-start", { detail: href })), href);
+  const here = everShown(page, 1_000);
+  await start(`/clients/${LINA}`);
+  expect(await here, "nothing will commit, so it would hang until the give-up").toBe(false);
+  // Control: the same event for another URL (nothing navigates, so it stays until give-up).
+  await start(`/clients/${LINA}/nutrition`);
+  await expect(page.locator(BAR)).toBeVisible();
+});
