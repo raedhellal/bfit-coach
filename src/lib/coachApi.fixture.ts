@@ -80,6 +80,7 @@ import type {
 import { en as copy } from "./copy";
 // The pure series builder (EV-249). Only the function lives there; every tuple is here.
 import { adherenceSeries } from "./fixtureAdherence";
+import { dayIn, dayMinus } from "./rosterView";
 // EV-256b — the fixture's own copy of the recipe bounds (see that module for why).
 import { FIXTURE_RECIPE_BOUNDS as B } from "./fixtureRecipeBounds";
 // EV-278c — the fixture's POST /me/activate hands back fresh tokens, minted like the login's.
@@ -1183,6 +1184,31 @@ const PROGRESS: Record<string, () => TraineeProgress> = {
     scopes: ALL_SCOPES,
   }),
 };
+
+/**
+ * EV-337d — ⚠ fixture affordance: `evoli_fixture_roster_boundary=1` (one browser context)
+ * adds three roster rows that share everything, fired no flag, and last trained exactly 6,
+ * 7 and 8 days before TODAY IN PARIS — R6's boundary (« Inactif » after 7 days; exactly 7
+ * is not inactive, 8 is). The day is Paris's because that is the day the roster classifies
+ * against (`src/lib/rosterView.ts`), so the rows sit on the boundary at any hour, including
+ * the hour after midnight where Paris and UTC disagree. They are roster rows only: no other
+ * read knows their ids.
+ */
+function inactivityBoundaryRows(): RosterClient[] {
+  const today = dayIn(new Date());
+  return ([[6, "Noé B."], [7, "Odile C."], [8, "Paul D."]] as const).map(([days, name]) => ({
+    id: `b0b0b0b0-0000-4000-8000-${String(days).padStart(12, "0")}`,
+    traineeDisplayName: name,
+    scopes: ALL_SCOPES,
+    currentPlanName: "Full Body Strength",
+    lastCompletedWorkoutDate: dayMinus(today, days),
+    currentStreakDays: 0,
+    redFlagCount: 0,
+    status: "ACTIVE" as const,
+    since: isoInstant(40),
+    routineChangedSinceYourPublish: false,
+  }));
+}
 
 /**
  * EV-187 AC2's order, as the api computes it — `CoachPortalQueryService`'s two
@@ -3755,6 +3781,8 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *                                              create dialog's roster-failure sentence);
  *   `evoli_fixture_roster_extra=<n>`         → n more ACTIVE roster rows after the six
  *                                              (BUG-472: a roster past one 100-row page);
+ *   `evoli_fixture_roster_boundary=1`        → three more rows, last trained 6, 7 and 8
+ *                                              Paris days ago (EV-337d's « Inactif » edge);
  *   `evoli_fixture_challenge_metric=<name>`  → `GET /coach-portal/challenges/{id}` serves
  *                                              `metric: <name>`, a metric this portal does
  *                                              not know (a newer api): its page must claim
@@ -4955,12 +4983,13 @@ export const fixtureCoachApi: CoachApi = {
      * fixture disagree with its own overview. The seeding count is QA's to satisfy
      * against the api; what the fixture owes is every rendering, and it has them.
      */
+    const boundary = (await fixtureSwitch("evoli_fixture_roster_boundary")) === "1" ? inactivityBoundaryRows() : [];
     const items =
       SCENARIO === "empty" || state().revoked
         ? []
         : sortRoster(
             await Promise.all(
-              [lina(), petra(), yusuf(), sara(), tobias(), mara()].map(async (row) =>
+              [lina(), petra(), yusuf(), sara(), tobias(), mara(), ...boundary].map(async (row) =>
                 withPlanFlag({ ...row, traineeDisplayName: await servedDisplayName(row.id, row.traineeDisplayName) })
               )
             ),

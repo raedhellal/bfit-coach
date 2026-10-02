@@ -1,12 +1,14 @@
 import { CoachShell } from "@/components/shell/CoachShell";
 import { CapacityMeter } from "@/components/roster/CapacityMeter";
 import { InviteButton } from "@/components/roster/InviteButton";
-import { RosterRows } from "@/components/roster/RosterRows";
+import { RosterBrowser, type RosterEntry } from "@/components/roster/RosterBrowser";
+import { RosterRow } from "@/components/roster/RosterRows";
 import { RosterSortToggle } from "@/components/roster/RosterSortToggle";
 import { Button, Card, EmptyState, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { coachApi, type CoachMe, type RosterClient } from "@/lib/coachApi";
 import { readRosterSort } from "@/lib/rosterSort";
+import { classifyRosterRow, dayIn, searchKey } from "@/lib/rosterView";
 import { getCopy } from "@/lib/i18n/server";
 import { tierLabel } from "@/lib/format";
 
@@ -26,6 +28,13 @@ export default async function RosterPage() {
   const copy = getCopy();
   let me: CoachMe | null = null;
   let clients: RosterClient[] | null = null;
+  /**
+   * EV-337d. "Today" is read ONCE, on the server, in Europe/Paris (D1), and every row is
+   * classified against it — so a render cannot put two rows on two different days, and the
+   * browser's clock never decides who is inactive. Inside the try: if the zone data cannot
+   * produce a day, the roster's error card is the answer, not a roster of wrong groups.
+   */
+  let today: string | null = null;
   let failed = false;
   /**
    * EV-187 AC2. The session cookie, or "Needs attention" on a fresh session — read on
@@ -46,11 +55,12 @@ export default async function RosterPage() {
     // Rendered in the order the api returned. Re-sorting here is the defect, not the
     // safety net: see the block where `sortNeedsAttentionFirst` used to live.
     clients = roster.items;
+    today = dayIn(new Date());
   } catch {
     failed = true;
   }
 
-  if (failed || !me || !clients) {
+  if (failed || !me || !clients || !today) {
     return (
       <CoachShell section="roster">
         <PageHead title={copy.roster.title} sub={copy.roster.subtitle} />
@@ -83,11 +93,30 @@ export default async function RosterPage() {
   // contradict the meter beside it.
   const fullReason = copy.roster.inviteFull(tierLabel(me.tier), me.capacity);
 
+  const day = today;
+  const entries: RosterEntry[] = clients.map((c, i) => {
+    const view = classifyRosterRow(c, day);
+    return {
+      id: c.id,
+      group: view.group,
+      flagged: view.flagged,
+      inactive: view.inactive,
+      search: searchKey(`${c.traineeDisplayName} ${c.currentPlanName ?? ""}`),
+      node: <RosterRow client={c} view={view} idx={i} />,
+    };
+  });
+  const toReview = entries.filter((e) => e.group === "attention").length;
+
   return (
-    <CoachShell coachName={me.displayName} section="roster">
+    // D3 (restated 2026-10-02, PO ruling 1): the navigation's count is the number of FLAGGED
+    // rows — the « À traiter » chip and the subtitle's « n à traiter » — from THIS page's own
+    // read. Never a 0 standing in for "not loaded": the failure branch above passes none, the
+    // shell draws nothing for 0, and no other page reads the roster to feed a badge (plan
+    // §5.1, ADR-0033 2b withdrawn). Search and filters live in the island and cannot reach it.
+    <CoachShell coachName={me.displayName} section="roster" toReviewCount={toReview}>
       <PageHead
         title={copy.roster.title}
-        sub={copy.roster.subtitle}
+        sub={clients.length > 0 ? copy.roster.subtitleCounts(clients.length, toReview) : copy.roster.subtitle}
         actions={
           clients.length > 0 ? (
             <InviteButton disabled={full} disabledReason={fullReason} />
@@ -95,27 +124,16 @@ export default async function RosterPage() {
         }
       />
 
-      <Card style={{ marginBottom: 18 }} pad={18}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            flexWrap: "wrap",
-            justifyContent: "space-between",
-          }}
-        >
-          <CapacityMeter active={me.active} capacity={me.capacity} tier={me.tier} />
-          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            {full && (
-              <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{fullReason}</span>
-            )}
-            {/* AC2's one control. Absent on the empty roster: an order for zero rows is
-                a control that can only mislead. */}
-            {clients.length > 0 && <RosterSortToggle sort={sort} />}
-          </div>
+      {/* The capacity meter moves to a compact line (plan §5.1), beside AC2's sort toggle. */}
+      <div className="roster-meta">
+        <CapacityMeter active={me.active} capacity={me.capacity} tier={me.tier} />
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", minWidth: 0 }}>
+          {full && <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{fullReason}</span>}
+          {/* AC2's one control (R7: kept, although the design does not draw it). Absent on
+              the empty roster: an order for zero rows is a control that can only mislead. */}
+          {clients.length > 0 && <RosterSortToggle sort={sort} />}
         </div>
-      </Card>
+      </div>
 
       {clients.length === 0 ? (
         <Card pad={0}>
@@ -127,7 +145,7 @@ export default async function RosterPage() {
           />
         </Card>
       ) : (
-        <RosterRows clients={clients} />
+        <RosterBrowser entries={entries} />
       )}
     </CoachShell>
   );

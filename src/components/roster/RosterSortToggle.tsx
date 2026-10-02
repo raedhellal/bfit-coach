@@ -33,23 +33,14 @@ export function RosterSortToggle({ sort }: { sort: RosterSort }) {
     { value: "recent_activity", label: copy.roster.sortRecentActivity },
   ];
 
+  // EV-337d (R7): kept, restyled as the shell's segmented control (the language switch):
+  // the same 44 px faces on a --surface-2 track. Classes in globals.css, "the roster".
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 12.5, color: "var(--ink-3)" }} id="roster-sort-label">
+    <div className="roster-sort">
+      <span className="roster-sort-label" id="roster-sort-label">
         {copy.roster.sortLabel}
       </span>
-      <div
-        role="radiogroup"
-        aria-labelledby="roster-sort-label"
-        style={{
-          display: "inline-flex",
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--r-lg)",
-          padding: 3,
-          gap: 3,
-        }}
-      >
+      <div role="radiogroup" aria-labelledby="roster-sort-label" className="roster-sort-options">
         {options.map((option) => {
           const on = option.value === sort;
           return (
@@ -59,27 +50,15 @@ export function RosterSortToggle({ sort }: { sort: RosterSort }) {
               role="radio"
               aria-checked={on}
               disabled={pending}
+              className="roster-sort-option"
               onClick={() => {
                 if (on) return;
                 startTransition(async () => {
                   await settled(setRosterSortAction(option.value), { ok: false });
                 });
               }}
-              style={{
-                // The 44 px thumb-target floor (BUG-146) — this control is used at the
-                // 390 px viewport the roster is demoed at.
-                minHeight: MIN_TOUCH_TARGET,
-                padding: "0 14px",
-                border: "none",
-                borderRadius: "calc(var(--r-lg) - 3px)",
-                cursor: pending ? "progress" : on ? "default" : "pointer",
-                fontSize: 13.5,
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-                background: on ? "var(--surface)" : "transparent",
-                boxShadow: on ? "var(--e-card)" : "none",
-                color: on ? "var(--ink)" : "var(--ink-3)",
-              }}
+              // The 44 px thumb-target floor (BUG-146), kept inline beside the constant.
+              style={{ minHeight: MIN_TOUCH_TARGET, cursor: pending ? "progress" : on ? "default" : "pointer" }}
             >
               {option.label}
             </button>

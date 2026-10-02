@@ -32,16 +32,23 @@ async function signIn(page: Page) {
   await page.waitForURL("/");
 }
 
-/** The wide table's rows, in render order. */
+/**
+ * The roster's rows, in render order. EV-337d groups them (To review · On track · Inactive ·
+ * Other clients) and keeps the api's order inside each group; on this seed the groups fall
+ * in the api's own order, so the render order below IS the api's order. A guard: a reader
+ * that returned "" for every name would make the order checks vacuous.
+ */
 async function rowNames(page: Page): Promise<string[]> {
-  await expect(page.locator(".only-wide tbody tr")).toHaveCount(6);
-  return page
-    .locator(".only-wide tbody tr")
-    .evaluateAll((rows) => rows.map((r) => r.querySelector("td")?.textContent?.trim() ?? ""));
+  await expect(page.locator(".roster-row")).toHaveCount(6);
+  const names = await page
+    .locator(".roster-row")
+    .evaluateAll((rows) => rows.map((r) => r.querySelector(".roster-name")?.textContent?.trim() ?? ""));
+  expect(names.filter((n) => /^[A-Z][a-z]+ [A-Z]\.$/.test(n)), "every row's name was read").toHaveLength(6);
+  return names;
 }
 
 function row(page: Page, name: string) {
-  return page.locator(".only-wide tbody tr", { hasText: name });
+  return page.locator(".roster-row", { hasText: name });
 }
 
 test.describe.configure({ mode: "serial" });
@@ -94,7 +101,8 @@ test("the badge reads the exact count, in both spellings, and never zero", async
 test("the badge count equals the flags on that trainee's own page", async ({ page }) => {
   await signIn(page);
   await rowNames(page);
-  await row(page, "Tobias R.").getByRole("link").first().click();
+  // The whole row is the link (EV-337d).
+  await row(page, "Tobias R.").click();
   await page.waitForURL(/\/clients\//);
 
   // AC2's last clause: QA compares the badge count to the flags listed on the page. One

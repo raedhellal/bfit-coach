@@ -30,7 +30,7 @@ export default async function ClientDeniedPage() {
   const copy = getCopy();
   const me = await readCoachMe();
   return (
-    <CoachShell coachName={me?.displayName}>
+    <CoachShell coachName={me?.displayName} section="roster">
       <ClientNotice message={copy.client.notFound} asHeading />
       {/* EV-273b: access-lost drops any pending "Use on a trainee" outcome, unread. */}
       <DiscardTemplateOutcome />

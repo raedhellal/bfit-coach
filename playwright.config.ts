@@ -33,7 +33,7 @@ export default defineConfig({
   // the same reason as coach-library-apply.spec.ts.
   // page-read-budget.spec.ts counts the roster's row prefetches and a challenge's
   // participants, so it needs the populated scenario as well.
-  testIgnore: /(coach-live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|coach-french-roster|coach-challenges|page-read-budget)\.spec\.ts/,
+  testIgnore: /(coach-live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

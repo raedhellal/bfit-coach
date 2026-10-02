@@ -1,106 +1,100 @@
 import Link from "next/link";
-import { Avatar, Badge, DataTable, Td } from "@/components/ui/kit";
+import { Avatar, Badge } from "@/components/ui/kit";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { UiIcon } from "@/components/ui/icons";
 import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import { hasScope, type RosterClient } from "@/lib/coachApi";
 import { rosterPlanChanged } from "@/lib/routineChange";
+import type { RosterRowView } from "@/lib/rosterView";
+import type { Copy } from "@/lib/copy";
 
 /**
- * The populated roster, rendered twice: a table above 768 px and a stacked card list
- * below it, with CSS choosing (see globals.css). Both are server-rendered, so the
- * narrow layout is correct on first paint — AC1 is demoed at 390 px and a table that
- * needs sideways scrolling to read a trainee's name is not "readable and tappable".
+ * One roster client (EV-337d, plan §5.1). ONE markup, two layouts: a five-cell row from
+ * 768 px, a card below it — CSS decides (`globals.css`, "the roster"), so the narrow layout
+ * is right on first paint and there is one copy of each client in the DOM (the old roster
+ * rendered a table AND a card list and hid one).
  *
- * **There IS a red-flag badge here, as of EV-187b.** There was not, and the reason was
- * good: `GET /coach-portal/clients` carried no flag count, so a chip would have cost
- * one extra request per row on every roster render. EV-187a put `redFlagCount` on the
- * row — computed from the SAME evaluation the trainee's own page runs, so the badge and
- * the flags on that page cannot disagree — and the endpoint now sorts, so the
- * needs-attention signal is the ordering AND the badge instead of the ordering alone.
+ * **The whole row is one link** — one tab stop per client. Its accessible NAME is the
+ * client's name (`aria-labelledby`), and the cells are its description, so "Lina M." is
+ * still how a screen reader, and a test, finds the row. The « Traiter » / « Ouvrir » at the
+ * end is the row's label drawn as a button, not a second control to the same page.
  *
- * Three of these five columns can be absent because the link did not share them — and
- * since the list response carries `scopes` per row (contract item 4 / D5 S1), the row
- * can now say WHICH. "No plan", "No workouts yet" and "No streak" are statements about
- * the trainee and are rendered only when the relevant scope is held; without it the
- * cell says "Not shared" and nothing else. An absence is never a number and never a
- * claim about behaviour.
+ * What the row does NOT draw, from the design: the weekly adherence ring (plan §7 G1 — the
+ * row carries no adherence, and reading it per row is the N+1 the api refused), the flag
+ * reason line (G3 — the row carries a count, not the codes), and any pain signal (G4 —
+ * EV-187 AC4, it cannot fire). The streak sits where the ring was: it is on the row.
  *
- * `hasScope` fails closed, so an api that sends no `scopes` on the row lands every
- * one of these on "Not shared" rather than throwing or guessing.
+ * The three nulls keep their two readings, decided by `scopes` (ADR-0015 D5/S1): "No plan"
+ * and "No workouts yet" are said only when the scope is held; otherwise "Not shared".
  */
 
 /**
- * `days` is nullable since ADR-0015 F1: the roster is filtered per item on the link's
- * scopes, so a trainee who has not shared PROGRESS has no streak to report. The chip
- * renders a dash for that — NOT "No streak", which is a claim about the trainee, and
- * not a 0, which is why the api stopped sending a primitive.
- *
- * `shared` comes first and the null second, for the same reason the overview reads the
- * scope flag first: an api that has not been told to null the field will send a
- * primitive `0`, and "No streak" about a trainee whose sessions this coach has never
- * been allowed to see is a claim made out of nothing.
+ * `days` is nullable since ADR-0015 F1. `shared` first: an api not told to null the field
+ * sends `0`, and "No streak" about a trainee whose sessions this coach may not see is a
+ * claim made out of nothing.
  */
-function StreakChip({ days, shared }: { days: number | null; shared: boolean }) {
-  const copy = getCopy();
-  if (!shared || days === null)
-    return <span style={{ color: "var(--ink-3)" }}>{copy.common.dash}</span>;
+function StreakValue({ days, shared, copy }: { days: number | null; shared: boolean; copy: Copy }) {
+  if (!shared || days === null) return <span style={{ color: "var(--ink-3)" }}>{copy.client.notShared}</span>;
   if (days <= 0) return <span style={{ color: "var(--ink-3)" }}>{copy.roster.noStreak}</span>;
   return (
-    <Badge tone="amber">
-      <UiIcon name="flame" size={12} />
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span aria-hidden="true" style={{ display: "inline-flex", color: "var(--warn-ink)" }}>
+        <UiIcon name="flame" size={13} />
+      </span>
       {copy.roster.streak(days)}
-    </Badge>
+    </span>
   );
 }
 
 /**
- * EV-187 AC2's flag column. Three values, three renderings, and collapsing any two of
- * them is the defect:
- *
- *   · `n > 0` → the badge, "1 flag" / "2 flags" (both spellings are verified).
- *   · `0`     → **nothing**. Not "0 flags", not a grey chip — a row with no flags is a
- *               row the coach can skip, and a badge reading zero is noise on the one
- *               screen whose job is to be scanned.
- *   · `null`  → "Not shared". The link carries neither WORKOUTS nor WEIGH_INS, so no
- *               rule could be evaluated at all. It is never rendered as "no flags":
- *               a coach must not read a consent boundary as good news. The api sorts
- *               these rows LAST for the same reason.
+ * "Today" / "Yesterday" / "4 days ago", with the api's date as the tooltip and `dateTime`:
+ * the calendar day the trainee's session was filed under (`WorkoutSession::getDate`), not a
+ * UTC instant, so it is printed as a plain date.
  */
-function FlagBadge({ count }: { count: number | null }) {
-  const copy = getCopy();
-  /**
-   * `typeof`, not `=== null`, and it FAILS CLOSED for the same reason `hasScope` does:
-   * the type describes the api we are building, not every api this build can be pointed
-   * at. An api that predates EV-187a sends no `redFlagCount` at all, so at runtime the
-   * value is `undefined` — and `undefined <= 0` is false, which would have rendered
-   * "undefined flags" in a coach's roster. Silence about a flag count is "not shared",
-   * which under-claims; the other direction invents news.
-   */
-  if (typeof count !== "number")
-    return <span style={{ color: "var(--ink-3)" }}>{copy.roster.flagsNotShared}</span>;
-  if (count <= 0) return null;
+function LastWorkout({ client, days, copy }: { client: RosterClient; days: number | null; copy: Copy }) {
+  const date = client.lastCompletedWorkoutDate;
+  if (date && days !== null) {
+    const label = days === 0 ? copy.roster.today : days === 1 ? copy.roster.yesterday : copy.roster.daysAgo(days);
+    return (
+      <time dateTime={date} title={formatDate(date, copy.locale)}>
+        {label}
+      </time>
+    );
+  }
+  // PROGRESS held: a fact about the trainee. Withheld: the date is unknown.
   return (
-    <Badge tone="red">
-      <UiIcon name="flag" size={12} />
-      {copy.roster.flags(count)}
-    </Badge>
+    <span style={{ color: "var(--ink-3)" }}>
+      {hasScope(client.scopes, "PROGRESS") ? copy.roster.noWorkout : copy.client.notShared}
+    </span>
   );
 }
 
+function Status({ view, copy, id }: { view: RosterRowView; copy: Copy; id: string }) {
+  const s = view.status;
+  switch (s.kind) {
+    // Never "0 flags": a zero is not a status (EV-187 AC2), and the classifier only
+    // returns `flags` for a count above zero.
+    case "flags":
+      return <StatusPill id={id} tone="red" icon="flag" label={copy.roster.flags(s.count)} />;
+    case "inactive":
+      return <StatusPill id={id} tone="neutral" icon="clock" label={copy.roster.inactiveFor(s.days)} />;
+    case "upToDate":
+      return <StatusPill id={id} tone="green" icon="check" label={copy.roster.upToDate} />;
+    case "activityNotShared":
+      return <StatusPill id={id} tone="neutral" label={copy.roster.activityNotShared} />;
+    case "noWorkout":
+      return <StatusPill id={id} tone="neutral" label={copy.roster.noWorkout} />;
+    case "flagsNotShared":
+      return <StatusPill id={id} tone="neutral" label={copy.roster.flagsUnavailable} />;
+  }
+}
+
 /**
- * EV-283b — the small "Plan changed" marker: the trainee's own plan became live after
- * this coach's latest publish, so a publish now would replace their change. Rendered for
- * a literal `true` only (`rosterPlanChanged`): null means the link does not share
- * WORKOUTS and false means the coach's plan is live, and neither is a marker. The api
- * computes it by the same rule as the routine page's `changedSinceYourPublish`, and a
- * publish clears it.
- *
- * `data-plan-changed` is the test hook: the word "changed" can appear in a plan name,
- * and a marker located by its text alone would find one.
+ * EV-283b's "Plan changed" marker, for a literal `true` only (`rosterPlanChanged`).
+ * `data-plan-changed` is the test hook: "changed" can appear in a plan name.
  */
-function PlanChangedMarker({ client }: { client: RosterClient }) {
-  const copy = getCopy();
+function PlanChangedMarker({ client, copy }: { client: RosterClient; copy: Copy }) {
   if (!rosterPlanChanged(client)) return null;
   return (
     <span data-plan-changed="" style={{ display: "inline-flex" }}>
@@ -112,177 +106,74 @@ function PlanChangedMarker({ client }: { client: RosterClient }) {
   );
 }
 
-export function RosterRows({ clients }: { clients: RosterClient[] }) {
+export function RosterRow({ client: c, view, idx }: { client: RosterClient; view: RosterRowView; idx: number }) {
   const copy = getCopy();
-  return (
-    <>
-      <div className="only-wide">
-        <DataTable
-          minWidth={760}
-          columns={[
-            { label: copy.roster.colTrainee },
-            { label: copy.roster.colPlan },
-            { label: copy.roster.colLastWorkout },
-            { label: copy.roster.colStreak },
-            { label: copy.roster.colFlags },
-            { label: copy.roster.colStatus },
-            { label: "", w: 44 },
-          ]}
-        >
-          {clients.map((c, i) => (
-            <tr key={c.id} className="row-hover">
-              <Td>
-                <Link
-                  href={`/clients/${c.id}`}
-                  style={{ display: "flex", alignItems: "center", gap: 10 }}
-                >
-                  <Avatar name={c.traineeDisplayName} size={32} idx={i} />
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color: "var(--ink)",
-                      maxWidth: 220,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={c.traineeDisplayName}
-                  >
-                    {c.traineeDisplayName}
-                  </span>
-                </Link>
-              </Td>
-              <Td title={c.currentPlanName || undefined} style={{ maxWidth: 240 }}>
-                {/* The ellipsis lives on the name's own line so the EV-283b marker below
-                    it is never the part that gets clipped. */}
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {/* "No plan" is a statement about the trainee's app; "Not shared" is
-                      a statement about the link. `scopes` is what makes them two cells
-                      instead of one hedge. */}
-                  {c.currentPlanName || (
-                    <span style={{ color: "var(--ink-3)" }}>
-                      {hasScope(c.scopes, "WORKOUTS") ? copy.roster.noPlan : copy.client.notShared}
-                    </span>
-                  )}
-                </div>
-                {rosterPlanChanged(c) && (
-                  <div style={{ marginTop: 4 }}>
-                    <PlanChangedMarker client={c} />
-                  </div>
-                )}
-              </Td>
-              <Td>
-                {c.lastCompletedWorkoutDate ? (
-                  formatDate(c.lastCompletedWorkoutDate, copy.locale)
-                ) : (
-                  // Two readings of one null, and `scopes` picks: PROGRESS held means
-                  // the trainee has genuinely never completed a workout ("No workouts
-                  // yet", and `sortNeedsAttentionFirst` puts the row FIRST); PROGRESS
-                  // withheld means the date is unknown ("Not shared", sorted last).
-                  <span style={{ color: "var(--ink-3)" }}>
-                    {hasScope(c.scopes, "PROGRESS")
-                      ? copy.roster.noWorkout
-                      : copy.client.notShared}
-                  </span>
-                )}
-              </Td>
-              <Td>
-                <StreakChip
-                  days={c.currentStreakDays}
-                  shared={hasScope(c.scopes, "PROGRESS")}
-                />
-              </Td>
-              <Td>
-                <FlagBadge count={c.redFlagCount} />
-              </Td>
-              <Td>
-                <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status === "ACTIVE" ? copy.roster.statusActive : c.status}</Badge>
-              </Td>
-              <Td align="right">
-                <Link href={`/clients/${c.id}`} aria-label={c.traineeDisplayName}>
-                  <UiIcon name="chevR" size={16} color="var(--ink-3)" />
-                </Link>
-              </Td>
-            </tr>
-          ))}
-        </DataTable>
-      </div>
+  const base = `roster-${c.id}`;
+  const notes: string[] = [];
+  // A flagged client who is also inactive is listed under "To review" (one row, one
+  // place); R6's fact still shows, on the row.
+  if (view.flagged && view.inactive && view.daysSinceLastWorkout !== null) {
+    notes.push(copy.roster.inactiveFor(view.daysSinceLastWorkout));
+  }
+  // An unevaluable flag count is said, never left blank (blank would read as "no flags").
+  if (typeof c.redFlagCount !== "number" && view.status.kind !== "flagsNotShared") {
+    notes.push(copy.roster.flagsUnavailable);
+  }
 
-      <div className="only-narrow">
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {clients.map((c, i) => (
-            <Link key={c.id} href={`/clients/${c.id}`}>
-              <div
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--r-2xl)",
-                  boxShadow: "var(--e-card)",
-                  padding: 16,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Avatar name={c.traineeDisplayName} size={36} idx={i} />
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: 15,
-                        color: "var(--ink)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {c.traineeDisplayName}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12.5,
-                        color: "var(--ink-3)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {c.currentPlanName ||
-                        (hasScope(c.scopes, "WORKOUTS")
-                          ? copy.roster.noPlan
-                          : copy.client.notShared)}
-                    </div>
-                  </div>
-                  <UiIcon name="chevR" size={16} color="var(--ink-3)" />
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <StreakChip
-                    days={c.currentStreakDays}
-                    shared={hasScope(c.scopes, "PROGRESS")}
-                  />
-                  {/* The narrow card carries the badge too — AC2 is demoed at 390 px,
-                      and a triage signal that only exists on a desktop table is not a
-                      triage signal. */}
-                  <FlagBadge count={c.redFlagCount} />
-                  <PlanChangedMarker client={c} />
-                  <Badge tone={c.status === "ACTIVE" ? "green" : "neutral"}>{c.status === "ACTIVE" ? copy.roster.statusActive : c.status}</Badge>
-                </div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-                  {copy.common.labelled(
-                    copy.roster.colLastWorkout,
-                    c.lastCompletedWorkoutDate
-                      ? formatDate(c.lastCompletedWorkoutDate, copy.locale)
-                      : hasScope(c.scopes, "PROGRESS")
-                        ? copy.roster.noWorkout
-                        : copy.client.notShared
-                  )}
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </>
+  return (
+    <Link
+      href={`/clients/${c.id}`}
+      className="roster-row"
+      data-group={view.group}
+      aria-labelledby={`${base}-name`}
+      aria-describedby={`${base}-plan ${base}-streak ${base}-last ${base}-status`}
+    >
+      <span className="roster-id">
+        <Avatar name={c.traineeDisplayName} size={40} idx={idx} />
+        <span style={{ minWidth: 0, display: "block" }}>
+          <span id={`${base}-name`} className="roster-name" title={c.traineeDisplayName}>
+            {c.traineeDisplayName}
+          </span>
+          <span id={`${base}-plan`} className="roster-plan" title={c.currentPlanName || undefined}>
+            {c.currentPlanName || (
+              <span style={{ color: "var(--ink-3)" }}>
+                {hasScope(c.scopes, "WORKOUTS") ? copy.roster.noPlan : copy.client.notShared}
+              </span>
+            )}
+          </span>
+        </span>
+      </span>
+
+      <span className="roster-cell roster-streak" id={`${base}-streak`}>
+        <span className="roster-cell-label">{copy.roster.colStreak}</span>
+        <span className="roster-cell-value">
+          <StreakValue days={c.currentStreakDays} shared={hasScope(c.scopes, "PROGRESS")} copy={copy} />
+        </span>
+      </span>
+
+      <span className="roster-cell roster-last" id={`${base}-last`}>
+        <span className="roster-cell-label">{copy.roster.colLastWorkout}</span>
+        <span className="roster-cell-value">
+          <LastWorkout client={c} days={view.daysSinceLastWorkout} copy={copy} />
+        </span>
+      </span>
+
+      <span className="roster-status" id={`${base}-status`}>
+        <Status view={view} copy={copy} id={`${base}-pill`} />
+        {(notes.length > 0 || rosterPlanChanged(c)) && (
+          <span className="roster-notes">
+            {notes.map((n) => (
+              <span key={n}>{n}</span>
+            ))}
+            <PlanChangedMarker client={c} copy={copy} />
+          </span>
+        )}
+      </span>
+
+      <span className="roster-action" data-primary={view.group === "attention" ? "" : undefined} aria-hidden="true">
+        {view.group === "attention" ? copy.roster.actionReview : copy.roster.actionOpen}
+        <UiIcon name="chevR" size={15} />
+      </span>
+    </Link>
   );
 }

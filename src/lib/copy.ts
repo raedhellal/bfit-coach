@@ -247,6 +247,60 @@ export const en = {
      * column where an absence could be misread as good news.
      */
     flagsNotShared: "Not shared",
+
+    // ── EV-337d: the redesigned roster (plan §5.1) ──────────────────────────────
+    /**
+     * The populated roster's subtitle: how many clients, how many need attention. Both
+     * numbers are counts of rows the api returned; the empty and failed rosters keep
+     * `subtitle`, which claims no number.
+     */
+    subtitleCounts: (total: number, toReview: number) =>
+      `${total} client${total === 1 ? "" : "s"} · ${toReview} to review`,
+    /**
+     * The four groups (`src/lib/rosterView.ts`). "To review" and not "Needs attention":
+     * that is the sort toggle's option, and one screen must not use one phrase for two
+     * controls. There is no "Pending invites" group: the api has no read of pending
+     * invites (plan §7 G2).
+     */
+    groups: {
+      attention: "To review",
+      onTrack: "On track",
+      inactive: "Inactive",
+      other: "Other clients",
+    },
+    /** A group heading's count chip, read as a sentence by a screen reader. */
+    groupCount: (n: number) => `${n} client${n === 1 ? "" : "s"}`,
+    searchLabel: "Search clients",
+    searchPlaceholder: "Search clients",
+    filtersLabel: "Filter clients",
+    /**
+     * Only the filters with data behind them (EV-337 D5). The design's "Adherence < 50 %"
+     * (G1) and "Invitations" (G2) have no api field and are not drawn.
+     */
+    filters: {
+      all: (n: number) => `All · ${n}`,
+      flagged: (n: number) => `Flagged · ${n}`,
+      inactive: (n: number) => `Inactive · ${n}`,
+    },
+    noMatch: "No client matches.",
+    clearFilters: "Show all clients",
+    /** The live region after a search or a filter. */
+    shown: (n: number) => `${n} client${n === 1 ? "" : "s"} shown`,
+    /** The navigation's count beside "Roster" — flagged clients — for a screen reader (D3, restated). */
+    navCount: (n: number) => `${n} client${n === 1 ? "" : "s"} to review`,
+    /** R6: more than 7 days without a completed session, with PROGRESS shared. */
+    inactiveFor: (days: number) => `Inactive for ${days}\u00a0days`,
+    upToDate: "Up to date",
+    /** No PROGRESS on the link: the portal cannot say whether the client trains. */
+    activityNotShared: "Activity not shared",
+    /** PROGRESS shared, but neither WORKOUTS nor WEIGH_INS: no flag rule could run. */
+    flagsUnavailable: "Flags not shared",
+    today: "Today",
+    yesterday: "Yesterday",
+    daysAgo: (days: number) => `${days}\u00a0days ago`,
+    /** The row's visual action. The whole row is the link; these are its label. */
+    actionReview: "Review",
+    actionOpen: "Open",
   },
 
   invite: {

@@ -528,3 +528,238 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
   :root:has(.app-shell) { --legal-footer-h: 0px; }
   body:has(.app-shell) .legal-footer { position: static; }
 }
+
+/* ── EV-337d: the roster (plan §5.1) ─────────────────────────────────────────────────
+   One markup per client (RosterRow) and CSS picks the layout: a five-cell ROW from 768 px,
+   a CARD below it (EV-337 D4). Every rule is a class: a media query cannot override an
+   inline declaration (BUG-380). */
+
+/* The « Clients » count in the navigation (D3, restated): clients to review, the roster page
+   only. The alert pair (--err-bg/--err-ink, 5.92:1), like the « À traiter » chip. */
+.shell-nav-label { min-width: 0; }
+.shell-nav-count {
+  margin-left: auto;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--r-pill);
+  background: var(--err-bg);
+  color: var(--err-ink);
+  font-size: var(--fs-label);
+  line-height: 20px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.shell-tab .shell-nav-count {
+  position: absolute;
+  top: -6px;
+  left: 12px;
+  margin: 0;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  font-size: var(--fs-micro);
+  line-height: 16px;
+  /* White on --err-ink #B01C1C: 6.6:1. */
+  background: var(--err-ink);
+  color: var(--ink-on);
+}
+
+.roster-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin: -6px 0 20px;
+}
+
+.roster-browser { display: flex; flex-direction: column; gap: 24px; }
+.roster-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.roster-search {
+  flex: 1 1 260px;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.roster-search:focus-within { border-color: var(--blue-500); box-shadow: var(--ring); }
+.roster-search input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 42px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: 400 var(--fs-body) var(--font-body);
+  color: var(--ink);
+}
+/* The field's own 2 px focus outline is on the label (focus-within); the ring is extra. */
+.roster-search:has(input:focus-visible) { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+.roster-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.roster-chip {
+  min-height: 44px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: 600 var(--fs-meta) var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.roster-chip:hover { background: var(--hover); color: var(--ink); }
+.roster-chip[aria-pressed="true"] { border-color: var(--blue-500); background: var(--blue-50); color: var(--link); }
+.roster-nomatch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+}
+
+.roster-group { display: flex; flex-direction: column; gap: 12px; }
+.roster-group-head { display: flex; align-items: center; gap: 10px; }
+.roster-group-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.roster-group-count {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: 600 var(--fs-label)/16px var(--font-body);
+}
+.roster-group-count[data-tone="red"] { background: var(--err-bg); color: var(--err-ink); }
+
+.roster-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--e-card);
+  overflow: hidden;
+}
+.roster-item + .roster-item { border-top: 1px solid var(--hairline); }
+
+/* The row (≥ 768): identity · streak · last session · status · action. */
+.roster-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(92px, 0.55fr) minmax(108px, 0.65fr) minmax(0, 1.3fr) auto;
+  align-items: center;
+  gap: 12px 20px;
+  min-height: 72px;
+  padding: 14px 24px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.roster-row:hover { background: var(--hover); }
+/* Inset: the list's rounded frame clips anything drawn outside the row. */
+.roster-row:focus-visible { outline: 2px solid var(--blue-500); outline-offset: -3px; border-radius: var(--r-2xl); }
+.roster-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.roster-name, .roster-plan {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.roster-name { font-weight: 600; font-size: 15px; line-height: 20px; }
+.roster-plan { font-size: var(--fs-meta); line-height: 18px; color: var(--ink-2); }
+.roster-cell { display: block; min-width: 0; }
+.roster-cell-label { display: block; font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
+.roster-cell-value { display: block; font-size: var(--fs-body); line-height: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.roster-status { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.roster-notes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
+.roster-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  font: 600 var(--fs-body) var(--font-body);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.roster-action[data-primary] { background: var(--blue-50); color: var(--link); padding: 0 16px; }
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  font: 600 var(--fs-meta)/18px var(--font-body);
+}
+.status-pill-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* 768–1023: the sidebar is gone and the content column is ~720 px: tighter cells, still a
+   row. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .roster-row { grid-template-columns: minmax(0, 1.4fr) minmax(84px, 0.5fr) minmax(96px, 0.6fr) minmax(0, 1.2fr) auto; gap: 12px 14px; padding: 12px 16px; }
+}
+
+/* < 768: a CARD per client (D4) — the list frame goes, each client gets its own. */
+@media (max-width: 767px) {
+  .roster-browser { gap: 20px; }
+  .roster-list { background: transparent; border: 0; box-shadow: none; border-radius: 0; overflow: visible; display: flex; flex-direction: column; gap: 10px; }
+  .roster-item + .roster-item { border-top: 0; }
+  .roster-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-areas: "id id id" "streak last last" "status status action";
+    align-items: center;
+    gap: 12px;
+    min-height: 0;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-2xl);
+    box-shadow: var(--e-card);
+  }
+  .roster-row:focus-visible { outline-offset: 2px; }
+  .roster-id { grid-area: id; }
+  .roster-streak { grid-area: streak; align-self: start; }
+  .roster-last { grid-area: last; align-self: start; }
+  .roster-status { grid-area: status; }
+  .roster-action { grid-area: action; }
+}
+
+/* The roster's sort toggle (EV-187 AC2, kept by R7): the language switch's segmented look. */
+.roster-sort { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.roster-sort-label { font-size: var(--fs-label); font-weight: 600; color: var(--ink-2); }
+.roster-sort-options { display: inline-flex; gap: 3px; padding: 3px; border-radius: 10px; background: var(--surface-2); max-width: 100%; }
+.roster-sort-option {
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font: 600 var(--fs-meta) var(--font-body);
+  white-space: nowrap;
+}
+.roster-sort-option[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--e-card); }
+.roster-sort-option:not([aria-checked="true"]):hover { color: var(--ink); }

@@ -109,6 +109,7 @@ const SAME_IN_BOTH: Record<string, string> = {
   "login.passwordPlaceholder": "bullets",
   "invitePage.brand": "product name",
   "roster.colPlan": "French 'plan'",
+  "roster.groupCount": "French 'clients' (EV-337d: « 6 clients »)",
   "client.adherenceValue": "numbers only",
   "progressGoal.withDate": "punctuation only",
   "tabs.nutrition": "French 'Nutrition'",

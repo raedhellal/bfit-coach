@@ -21,17 +21,22 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await expect(page.locator("html")).toHaveAttribute("lang", "fr");
     await expect(page.getByRole("heading", { name: "Clients", exact: true })).toBeVisible();
 
-    const table = page.locator(".only-wide");
-    for (const column of ["Client", "Dernière séance", "Série", "Alertes", "Statut"]) {
-      await expect(table.getByRole("columnheader", { name: column, exact: true })).toBeVisible();
+    // EV-337d: the table became grouped rows; each cell carries its own label.
+    const lina = page.locator(".roster-row", { hasText: "Lina M." });
+    for (const label of ["Série", "Dernière séance"]) {
+      await expect(lina.getByText(label, { exact: true })).toBeVisible();
     }
+    await expect(page.getByRole("heading", { level: 2, name: "À traiter" })).toBeVisible();
     await expect(page.getByRole("radio", { name: "À surveiller" })).toBeVisible();
-    await expect(table.getByText("ACTIF", { exact: true }).first()).toBeVisible();
+    await expect(lina.getByText("1 alerte", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Alertes · \d+$/ })).toBeVisible();
 
-    // AC3 on the roster's last-session date: Lina's row carries a real one.
-    const lina = table.locator("tbody tr", { hasText: "Lina M." });
-    const dates = await lina.locator("td").allInnerTexts();
-    expect(dates.map((t) => t.trim()).filter((t) => FRENCH_DATE.test(t)), "Lina's last-session date, fr-FR").toHaveLength(1);
+    // AC3 on the roster's last-session date: Lina trained yesterday — « Hier », with the
+    // api's day as a French date in the tooltip and as the machine-readable `dateTime`.
+    const when = lina.locator("time");
+    await expect(when).toHaveText("Hier");
+    expect(await when.getAttribute("title"), "Lina's last-session date, fr-FR").toMatch(FRENCH_DATE);
+    expect(await when.getAttribute("datetime")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
     await expectFooterOnScreen(page, FOOTER_FR);
     await expectNoEnglish(page, "the populated roster");
@@ -84,22 +89,32 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
 
 /**
  * BUG-461 — the roster's PHONE card wrote "Dernière séance: 21 sept. 2026", the colon glued
- * to the word (composed in JSX). French typography puts a no-break space (U+00A0) before it,
- * which also keeps the colon from starting a line of its own on a narrow card.
+ * to the word (composed in JSX). EV-337d draws the label on its own line above the value, so
+ * no colon is composed at all: the label is exactly « Dernière séance » and the value sits
+ * BELOW it, on every card.
  */
 test.describe("a French browser (fr-FR) at 390 × 844", () => {
   test.use({ locale: "fr-FR", viewport: { width: 390, height: 844 } });
 
-  test("BUG-461 — every card's last-session line reads « Dernière séance : … » with U+00A0", async ({ page }) => {
-    const NBSP = String.fromCharCode(0xa0);
+  test("BUG-461 — every card's last-session label is its own line, with no glued colon", async ({ page }) => {
     await signInFrench(page);
-    const cards = page.locator(".only-narrow");
-    await expect(cards).toBeVisible();
-    const lines = (await cards.locator("div").allTextContents()).filter((t) => t.startsWith("Dernière séance"));
-    expect(lines.length, "the cards' last-session lines").toBeGreaterThan(0);
-    for (const line of lines) expect(line.startsWith(`Dernière séance${NBSP}: `), JSON.stringify(line)).toBe(true);
-    // Lina's carries a real French date.
-    const lina = lines.filter((l) => FRENCH_DATE.test(l.slice(`Dernière séance${NBSP}: `.length)));
-    expect(lina.length, "a card with a dated last session").toBeGreaterThan(0);
+    const cells = page.locator(".roster-row .roster-last");
+    await expect(cells).toHaveCount(6);
+    const read = await cells.evaluateAll((els) =>
+      els.map((el) => {
+        const label = el.querySelector(".roster-cell-label")!;
+        const value = el.querySelector(".roster-cell-value")!;
+        return {
+          label: label.textContent,
+          below: value.getBoundingClientRect().top >= label.getBoundingClientRect().bottom - 0.5,
+          text: el.textContent ?? "",
+        };
+      })
+    );
+    for (const cell of read) {
+      expect(cell.label).toBe("Dernière séance");
+      expect(cell.below, JSON.stringify(cell)).toBe(true);
+      expect(cell.text).not.toContain("séance:");
+    }
   });
 });
