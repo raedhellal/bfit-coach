@@ -23,6 +23,15 @@ api ranks, BUG-473 source rule all still hold).
 - **`todayValue: null` has TWO meanings** (coachApi.ts doc): nothing sent today, OR the trainee's
   `progress.today` is outside the window. Only the first is « Aucune donnée aujourd'hui »; ended
   and upcoming challenges render no today cell (`progress.today` vs `startsOn/endsOn`).
+- **Phase is UTC, a trainee's today is theirs — ONE predicate for both.** Staff blocker on
+  55d2126: the stat cards gated on `phase === "ACTIVE"` alone while the rows checked the
+  trainee's today, so at 22:30 UTC on `endsOn` Paris trainees who met every day read « 0 / 3 ·
+  3 sans donnée ». `todayInWindow(progress, challenge)` in `challengeView.ts` is now asked by the
+  row AND `todayStats`. Any new "today" aggregate must filter through it. The fixture seeds
+  mid-window, so the boundary lives in `qa/challenge-view.spec.ts` (constructed api shapes),
+  imported as `view.*` so a missing export fails one test, not the file.
+- **Before day 1, hide what reads like a fault:** no totals, no sync line (`syncedAt` is null for
+  everyone before the start).
 - **The h1 must hold the name only.** `PageHead` puts its whole `title` node in the h1, so a badge
   passed there joins the accessible name (« 10 000 pas par jour En cours »). The detail page
   draws its own `.challenge-head`; reuse that shape for any title + status pill.
