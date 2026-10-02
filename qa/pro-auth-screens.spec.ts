@@ -172,20 +172,35 @@ for (const lang of ["en", "fr"] as const) {
  */
 test.describe("edge case 4 — /i/* never shows the Evoli Pro mark", () => {
   /**
-   * What a visitor SEES: the painted DOM, the favicon and the home-screen icon. Not the raw
-   * HTML: Next 14 serialises the ROOT not-found into every page's flight data (EV-241), and
-   * that tree carries the Pro mark although it is never painted on an /i page.
+   * What a visitor SEES: the painted DOM, the tab title, the favicon and the home-screen
+   * icon — in the FIRST HTML (what a no-JS reader, a link preview or "Add to Home Screen"
+   * before hydration gets) AND in the document after load. Not the raw HTML's script
+   * payload: Next 14 serialises the ROOT not-found into every page's flight data (EV-241),
+   * and that tree carries the Pro mark although it is never painted on an /i page; only real
+   * `<title>` and `<link>` tags are read from the first HTML.
    *
-   * ⚠ Known gap, not asserted here: the FIRST HTML of the 404s (`/i`, `/i/<token>/x`)
-   * declares the ROOT favicon (`/icon.svg`, the Pro mark) — witnessed under `next dev` and
-   * `next start`. The icons read below are
-   * the DOM's after load, which are the `/i` ones. A no-JS reader of those two 404s still
-   * gets the Pro favicon; the fix would be a middleware 404 rewrite (as /clients/denied's
-   * 403), left to review. The invitation itself declares `/i/icon.svg` from its first byte.
+   * Staff on 1f16b4c: the /i 404s served `<title>Evoli Pro</title>` and the root
+   * `/icon.svg` + `/apple-icon.png` from the first byte (the title even after load);
+   * `src/app/i/layout.tsx` states the /i head explicitly.
    */
-  async function expectNoProMark(page: Page, path: string, status: number, where: string) {
+  async function expectNoProMark(page: Page, path: string, status: number, title: string, where: string) {
+    // The first HTML, with this browser's cookies (page.request shares the context's jar).
+    const raw = await page.request.get(path);
+    expect(raw.status(), `${where}: first HTML status`).toBe(status);
+    const html = await raw.text();
+    const head = headOf(html);
+    expect(head.titles, `${where}: first HTML <title>`).toEqual([title]);
+    expect(head.icons.length, `${where}: first HTML declares icons`).toBeGreaterThanOrEqual(2);
+    for (const icon of head.icons) {
+      expect(icon.href, `${where}: first HTML <link rel="${icon.rel}">`).toMatch(/^\/i\//);
+    }
+    expect(head.icons.map((i) => i.rel), `${where}: a favicon and a home-screen icon`).toEqual(
+      expect.arrayContaining(["icon", "apple-touch-icon"])
+    );
+
     const res = await page.goto(path);
     expect(res?.status(), where).toBe(status);
+    expect(await page.title(), `${where}: document.title after load`).toBe(title);
     await expect(page.locator('[data-brand-mark="ink"]'), `${where}: the black tile`).toHaveCount(0);
     await expect(page.locator(`svg path[d="${MARK_PATH}"]`), `${where}: the Pro mark's path, drawn`).toHaveCount(0);
     await expect(page.getByText("Evoli Pro", { exact: true }), `${where}: the Pro wordmark`).toHaveCount(0);
@@ -197,27 +212,36 @@ test.describe("edge case 4 — /i/* never shows the Evoli Pro mark", () => {
     await expect(favicon, `${where}: one favicon`).toHaveCount(1);
     await expect(favicon).toHaveAttribute("href", /^\/i\/icon\.svg/);
     const touch = page.locator('head link[rel="apple-touch-icon"]');
+    await expect(touch).toHaveCount(1);
     await expect(touch).toHaveAttribute("href", /^\/i\/apple-icon\.png/);
-    const svg = await page.request.get((await favicon.getAttribute("href"))!);
-    expect(await svg.text(), `${where}: the favicon is not drawn from the Pro mark`).not.toContain(MARK_PATH);
+    for (const href of [await favicon.getAttribute("href"), await touch.getAttribute("href")]) {
+      const icon = await page.request.get(href!);
+      expect(icon.status(), `${where}: ${href} answers`).toBe(200);
+      expect((await icon.body()).toString("latin1"), `${where}: ${href} is not drawn from the Pro mark`).not.toContain(MARK_PATH);
+    }
   }
 
-  /** The invitation, and the two /i URLs that are not one (404 from the /i segment). */
+  /**
+   * The invitation (its own title, `invitePage.titleFrom`), and the two /i URLs that are not
+   * one (404 from the /i segment, titled with the trainee brand). English: the default
+   * config's browser.
+   */
   const PATHS = [
-    { path: INVITE, status: 200, what: "the invitation" },
-    { path: "/i/edge-case-4-token/extra/segments", status: 404, what: "a mangled invite link" },
-    { path: "/i", status: 404, what: "/i alone" },
+    { path: INVITE, status: 200, title: "Alex Roussel invited you to Evoli Fit", what: "the invitation" },
+    { path: "/i/edge-case-4-token", status: 200, title: "Your coach invited you to Evoli", what: "an invitation with no name" },
+    { path: "/i/edge-case-4-token/extra/segments", status: 404, title: "Evoli Fit", what: "a mangled invite link" },
+    { path: "/i", status: 404, title: "Evoli Fit", what: "/i alone" },
   ] as const;
 
   test("signed out, never signed in", async ({ page }) => {
-    for (const p of PATHS) await expectNoProMark(page, p.path, p.status, `a stranger on ${p.what}`);
+    for (const p of PATHS) await expectNoProMark(page, p.path, p.status, p.title, `a stranger on ${p.what}`);
   });
 
   test("signed in as a coach in the same browser", async ({ page }) => {
     await signIn(page, "en", COACH, "/");
     // The witness that the browser IS a signed-in coach's: the roster shows the Pro mark.
     await expect(page.locator('[data-brand-mark="ink"]').first()).toBeVisible();
-    for (const p of PATHS) await expectNoProMark(page, p.path, p.status, `a signed-in coach's browser on ${p.what}`);
+    for (const p of PATHS) await expectNoProMark(page, p.path, p.status, p.title, `a signed-in coach's browser on ${p.what}`);
   });
 
   test("signed in as a coach, then signed out", async ({ page }) => {
@@ -225,7 +249,7 @@ test.describe("edge case 4 — /i/* never shows the Evoli Pro mark", () => {
     await signIn(page, "en", COACH, "/");
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.waitForURL(/\/login$/);
-    for (const p of PATHS) await expectNoProMark(page, p.path, p.status, `after sign-out, on ${p.what}`);
+    for (const p of PATHS) await expectNoProMark(page, p.path, p.status, p.title, `after sign-out, on ${p.what}`);
   });
 
   test("the /i 404 keeps EV-241's signed-out sentences and its way to sign-in", async ({ page }) => {
@@ -243,6 +267,27 @@ test.describe("edge case 4 — /i/* never shows the Evoli Pro mark", () => {
     await expect(page.getByTestId("invite-coach-initials")).toHaveText("AR");
     await page.goto("/i/edge-case-4-token");
     await expect(page.getByTestId("invite-coach-initials")).toHaveCount(0);
+  });
+
+  test("an initial comes only from a word that starts with a letter (staff nit, 1f16b4c)", async ({ page }) => {
+    const initials = page.getByTestId("invite-coach-initials");
+    const cases: Array<[string, string | null]> = [
+      ["(Alex) Roussel", "R"],
+      ["(Alex)", null],
+      ["\u2066Alex\u2069 Roussel", "R"], // a bidi isolate leads the first word
+      ["\u0301Alex Roussel", "R"], // a stray combining mark leads it
+      ["2Pac Shakur", "S"],
+      ["E\u0301milie Roux", "\u00c9R"], // decomposed É stays one initial
+    ];
+    for (const [name, expected] of cases) {
+      await page.goto(`/i/edge-case-4-token?coach=${encodeURIComponent(name)}`);
+      if (expected === null) {
+        await expect(initials, JSON.stringify(name)).toHaveCount(0);
+      } else {
+        const text = (await initials.textContent()) ?? "";
+        expect(text.normalize("NFC"), JSON.stringify(name)).toBe(expected);
+      }
+    }
   });
 });
 
@@ -356,4 +401,13 @@ async function langOf(browser: Browser, baseURL: string, path: string, acceptLan
   } finally {
     await context.close();
   }
+}
+
+/** The real `<title>` and icon `<link>` tags of a document's HTML (not its script payload). */
+function headOf(html: string) {
+  const titles = Array.from(html.matchAll(/<title>([^<]*)<\/title>/g), (m) => m[1]);
+  const icons = Array.from(html.matchAll(/<link\b[^>]*>/g), (m) => m[0])
+    .map((tag) => ({ rel: /\brel="([^"]*)"/.exec(tag)?.[1] ?? "", href: /\bhref="([^"]*)"/.exec(tag)?.[1] ?? "" }))
+    .filter((link) => /(^|\s)(icon|apple-touch-icon|shortcut icon)(\s|$)/.test(link.rel));
+  return { titles, icons };
 }
