@@ -116,6 +116,9 @@ const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
   "activate.finishBy#0",
   "client.coachedSince#0",
   "client.lastWeighIn#0",
+  "client.programmeCard.changedByTrainee#0", // EV-337e: « le {date} »
+  "client.programmeCard.draftSaved#0", // EV-337e: « le {date} »
+  "client.programmeCard.published#0", // EV-337e: « Publié le {date} »
   "nutrition.applyBody#1",
   "nutrition.dayRefusedKept#0", // weekday
   "nutrition.dayRefusedTitle#0", // weekday
