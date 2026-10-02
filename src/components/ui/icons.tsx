@@ -59,8 +59,12 @@ export const AP: Record<string, string> = {
     "M12 22c4 0 6.5-2.6 6.5-6.2 0-3.6-2.8-5.4-3.7-8.8-.3 2-1.4 3-2.6 3.9C10.6 12.3 9 13.4 9 9.5c-1.6 1.3-3.5 3.6-3.5 6.3C5.5 19.4 8 22 12 22Z",
   heart:
     "M12 20.5C5.5 16 3 12.3 3 8.8 3 6 5 4 7.6 4c1.7 0 3.2.9 4.4 2.5C13.2 4.9 14.7 4 16.4 4 19 4 21 6 21 8.8c0 3.5-2.5 7.2-9 11.7Z",
-  trophy:
-    "M7 4h10v4a5 5 0 0 1-10 0V4ZM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3M9 17h6M8.5 21h7M12 13v4",
+  // The redesign's sprite (2026-10-02): trophy redrawn as designed, layers / leaf / book are
+  // the shell's Templates, Nutrition templates and Recipes.
+  trophy: "M8 4h8v5a4 4 0 0 1-8 0ZM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8M10 17h4",
+  layers: "M12 4 20 8.5 12 13 4 8.5ZM4 12.5 12 17l8-4.5M4 16.5 12 21l8-4.5",
+  leaf: "M5 19C5 10 11 5 20 5c0 9-5 15-14 15M5 19l7-7",
+  book: "M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2ZM4 5v16M8 7h7",
   bolt: "M13 2 4 14h6l-1 8 9-12h-6Z",
   pulse: "M2 12h4l2.5-7 4 14 2.5-7H22",
   chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",

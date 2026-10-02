@@ -54,7 +54,15 @@ export async function expectUnoccluded(
   expect(a.width, `${options.label}: zero width at ${page.viewportSize()?.width}px`).toBeGreaterThan(1);
 
   if (options.over) {
-    await options.over.scrollIntoViewIfNeeded();
+    /**
+     * Measured WITHOUT scrolling. `boundingBox()` is viewport-relative, so the two boxes are
+     * only comparable — and the subject's centre below is only still the subject's — if the
+     * page has not moved between the readings. This used to scroll `over` into view first:
+     * harmless while the nav and Sign out shared one sticky header, wrong once the redesign
+     * put the nav in a sticky BOTTOM bar and the account button in a sticky TOP bar —
+     * scrolling to the button moved the page 350 px, and the hit test probed the stale point
+     * (it found the template list there). An off-screen `over` still has a box.
+     */
     const other = await options.over.boundingBox();
     expect(other, `${options.label}: the element it must not overlap has no box`).not.toBeNull();
     expect(

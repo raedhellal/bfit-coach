@@ -148,6 +148,10 @@ export const fr = {
     roster: "Clients",
     signOut: "Se déconnecter",
     backToRoster: "Retour aux clients",
+    home: "Evoli Pro, retour aux clients",
+    account: "Mon compte",
+    language: "Langue",
+    languageFailed: "La langue n'a pas pu être changée. Réessayez.",
   },
 
   roster: {

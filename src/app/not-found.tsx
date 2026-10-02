@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { CoachShell } from "@/components/shell/CoachShell";
-import { Logo } from "@/components/ui/icons";
+import { Logo } from "@/components/ui/brand";
 import { Card, MIN_TOUCH_TARGET } from "@/components/ui/kit";
 import { getCopy } from "@/lib/i18n/server";
 import { hasCoachRole } from "@/lib/jwt";

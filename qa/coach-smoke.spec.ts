@@ -93,9 +93,15 @@ test("every control on the roster is a 44 px touch target at 390 px", async ({ p
 
   // The floor lives in the kit's Button, not in this one call site, so assert it for
   // every button on the screen — a second control regressing is the same bug.
+  // Rendered buttons only: since the redesign's shell both layouts are in the document and
+  // the hidden one is `display: none`, which leaves an element with NO layout box
+  // (`getClientRects()` empty). That test is about being rendered, not about size — a
+  // rendered button squashed to 0 px tall is still measured, and still fails.
   const heights = await page
     .locator("button")
-    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+    .evaluateAll((els) =>
+      els.filter((el) => el.getClientRects().length > 0).map((el) => el.getBoundingClientRect().height)
+    );
   expect(heights.length).toBeGreaterThan(0);
   for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
 });

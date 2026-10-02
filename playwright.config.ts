@@ -78,7 +78,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
-  use: { baseURL: BASE_URL, trace: "on-first-retry" },
+  /**
+   * An ENGLISH browser, stated. Playwright's Chromium sends NO Accept-Language unless a
+   * locale is set (witnessed 2026-10-02), and since the redesign's locale rule a request
+   * that names no language is French. Every spec written for the English portal therefore
+   * says so here; a spec about French sets `test.use({ locale: "fr-FR" })` as before.
+   */
+  use: { baseURL: BASE_URL, trace: "on-first-retry", locale: "en-US" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: `npx next dev -p ${PORT}`,

@@ -96,7 +96,9 @@ test.describe("AC1 — Templates is in the portal's main navigation", () => {
       name: "Templates",
       exact: true,
     });
-    const signOut = page.getByRole("button", { name: "Sign out" });
+    // Redesign branch 1: below 1024 px sign-out lives in the account menu, so the top
+    // bar's control a nav link must not collide with is the account button.
+    const signOut = page.getByRole("button", { name: "Account" });
 
     await atEachWidth(page, async () => {
       await expectUnoccluded(page, templates, { over: signOut, label: "Templates nav link" });

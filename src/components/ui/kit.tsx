@@ -72,8 +72,12 @@ export function Button({
     lg: { h: MIN_TOUCH_TARGET, px: 20, fs: 14.5 },
   }[size];
   const V: Record<BtnVariant, Sx> = {
-    primary: { background: "var(--blue-500)", color: "#fff", border: "1px solid transparent", boxShadow: "var(--e-1)" },
-    gradient: { background: "var(--grad-energy)", color: "#fff", border: "1px solid transparent", boxShadow: "0 4px 14px rgba(79,124,255,0.3)" },
+    // Redesign (Raed 2026-10-02, plan Q4): the primary button is the indigo→violet gradient
+    // at its 600 shades. White 13–15 px text reads 5.39:1 / 5.91:1 on its two ends; the old
+    // flat --blue-500 read 3.71:1, under WCAG 1.4.3. `gradient` is the same fill now — kept
+    // as a name so no call site changes in this branch.
+    primary: { background: "var(--grad-energy-strong)", color: "#fff", border: "1px solid transparent", boxShadow: "0 4px 14px rgba(58,95,224,0.25)" },
+    gradient: { background: "var(--grad-energy-strong)", color: "#fff", border: "1px solid transparent", boxShadow: "0 4px 14px rgba(58,95,224,0.25)" },
     secondary: { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--border-2)", boxShadow: "var(--e-1)" },
     ghost: { background: "transparent", color: "var(--ink-2)", border: "1px solid transparent" },
     soft: { background: "var(--blue-50)", color: "var(--blue-600)", border: "1px solid transparent" },
@@ -569,6 +573,7 @@ export function DataTable({
   sort,
   onSort,
   minWidth = 640,
+  wrapHeaders = false,
   style = {},
 }: {
   columns: Column[];
@@ -576,6 +581,8 @@ export function DataTable({
   sort?: SortState;
   onSort?: (key: string) => void;
   minWidth?: number;
+  /** Let a header label break onto two lines instead of setting its column's floor. */
+  wrapHeaders?: boolean;
   style?: Sx;
 }) {
   return (
@@ -601,7 +608,8 @@ export function DataTable({
                     letterSpacing: 0.3,
                     textTransform: "uppercase",
                     color: active ? "var(--ink-2)" : "var(--ink-3)",
-                    whiteSpace: "nowrap",
+                    whiteSpace: wrapHeaders ? "normal" : "nowrap",
+                    verticalAlign: wrapHeaders ? "bottom" : undefined,
                     width: c.w,
                     cursor: sortable ? "pointer" : undefined,
                     userSelect: sortable ? "none" : undefined,

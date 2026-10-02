@@ -1,25 +1,36 @@
 import Link from "next/link";
-import { Logo } from "@/components/ui/icons";
-import { Avatar } from "@/components/ui/kit";
-import { getCopy } from "@/lib/i18n/server";
-import { SignOutButton } from "./SignOutButton";
+import { Logo } from "@/components/ui/brand";
+import { UiIcon } from "@/components/ui/icons";
+import type { Copy } from "@/lib/copy";
+import { getCopy, getLocale } from "@/lib/i18n/server";
+import { AccountMenu } from "./AccountMenu";
+import { LanguageSwitch } from "./LanguageSwitch";
+import { ShellAvatar } from "./ShellAvatar";
+import { BackForwardCacheGuard, SignOutButton } from "./SignOutButton";
+
+type Section = "roster" | "templates" | "recipes" | "nutrition-templates" | "challenges";
 
 /**
- * Header + page frame. A top bar rather than the admin's sidebar: a 248 px navigation
- * rail is chrome that costs a quarter of a 390 px viewport (AC1 is demoed at that
- * width), and the portal has two destinations.
+ * The app shell (Evoli Pro redesign, branch 1 — `evoli-pro-redesign-2026-10-02.md` §3).
  *
- * EV-188 AC1 asks for Templates to be reachable "from the portal's main navigation",
- * so the header grew one — `nav` landmarked, every link always visible. EV-256b AC1
- * added Recipes next to Templates, making it three. The
- * current section is marked with `aria-current` rather than only with a colour.
+ * - **≥ 1024 px:** a 240 px sidebar — the black logo, the five sections, and at its foot
+ *   the account block: language switch, the coach's name, sign-out.
+ * - **< 1024 px:** a 56 px top bar (logo, account menu) and a bottom tab bar with the same
+ *   five sections. The old reasoning still holds — a navigation rail costs a quarter of a
+ *   390 px viewport — so the rail only exists where there is room for it.
  *
- * ⚠ The links sit BEFORE the `flex: 1` spacer and each is `whiteSpace: nowrap`, so
- * they never wrap into the coach's name at 320 px; the name is what gives (it already
- * ellipsises at 140 px) and `SignOutButton` holds the right edge. Swept at 320 / 360 /
- * 390 / 414 in `qa/coach-library.spec.ts`.
+ * Both layouts are server-rendered and CSS (`globals.css`, "the app shell") picks one: no
+ * viewport hook, no hydration flash. The hidden one is `display: none`, so at any width
+ * there is exactly one banner and one navigation named "Portal" in the accessibility tree.
  *
- * Server component — the only client island is the sign-out button.
+ * The section ORDER is the stories', not the design's: EV-256b AC1 puts Recipes right after
+ * Templates and EV-273b AC1 puts Nutrition templates after Recipes (pinned by
+ * `coach-recipes.spec.ts` / `coach-nutrition-templates.spec.ts`). The design draws
+ * Clients · Défis · Modèles · Nutrition · Recettes; reordering is a story change.
+ *
+ * One `h1` per page stays the page's job: the shell draws no heading.
+ *
+ * Server component. The islands are the language switch, the account menu and sign-out.
  */
 export function CoachShell({
   coachName,
@@ -28,123 +39,86 @@ export function CoachShell({
 }: {
   coachName?: string | null;
   /** Which nav entry is the page under this shell. Undefined on a trainee screen. */
-  section?: "roster" | "templates" | "recipes" | "nutrition-templates" | "challenges";
+  section?: Section;
   children: React.ReactNode;
 }) {
   const copy = getCopy();
+  const locale = getLocale();
+  const items = navItems(copy);
   return (
-    <div style={{ minHeight: "calc(100vh - var(--legal-footer-h))", background: "var(--bg)" }}>
-      <header
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 20,
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        {/*
-          `shell-bar` / `shell-nav` are CLASSES and not inline styles, and that is
-          load-bearing: the nav has to drop to its own line below 520 px and an inline
-          `height` cannot be overridden by a media query.
-
-          Measured 2026-09-21 with the EV-188b sweep, which is why the class exists at
-          all: inline at 320 px the nav box shrank to 88.75 px while its two links need
-          ~155, so "Templates" overflowed its own nav and was painted UNDER the Sign out
-          button — a 43 px overlap that `toBeVisible()` reports as visible. It is the
-          same defect class as EV-201 item 4 (a flex item shrinking below its children's
-          intrinsic width), on new markup, caught before it shipped this time.
-        */}
-        <div className="shell-bar">
-          {/* AC1: the app header reads exactly "Evoli Pro". */}
-          <Link href="/" aria-label={copy.shell.backToRoster}>
-            <Logo size={30} label={copy.brand} />
-          </Link>
-          <nav aria-label={copy.shell.nav} className="shell-nav">
-            <ShellLink href="/" current={section === "roster"}>
-              {copy.shell.roster}
-            </ShellLink>
-            <ShellLink href="/templates" current={section === "templates"}>
-              {copy.templates.nav}
-            </ShellLink>
-            {/* EV-256b AC1 — Recipes sits next to Templates. */}
-            <ShellLink href="/recipes" current={section === "recipes"}>
-              {copy.recipes.nav}
-            </ShellLink>
-            {/*
-              EV-273b AC1 — "Nutrition templates" next to Templates and Recipes. AFTER
-              Recipes, so EV-256b's "Recipes sits immediately after Templates" still holds.
-              Five links do not fit one 288 px line, so below 520 px the nav WRAPS
-              (`.shell-nav` in globals.css) rather than scrolling or clipping.
-            */}
-            <ShellLink href="/nutrition-templates" current={section === "nutrition-templates"}>
-              {copy.nutritionTemplates.nav}
-            </ShellLink>
-            {/* EV-321b — step challenges. */}
-            <ShellLink href="/challenges" current={section === "challenges"}>
-              {copy.challenges.nav}
-            </ShellLink>
-          </nav>
-          <div style={{ flex: 1 }} />
-          {coachName && (
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <Avatar name={coachName} size={30} />
-              <span
-                style={{
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  color: "var(--ink-2)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  maxWidth: 140,
-                }}
-              >
-                {coachName}
+    <div className="app-shell">
+      <BackForwardCacheGuard />
+      <header className="shell-sidebar">
+        {/* EV-183 AC1: the app header reads exactly "Evoli Pro" (the wordmark). */}
+        <Link href="/" className="shell-home" aria-label={copy.shell.home}>
+          <Logo size={34} label={copy.brand} />
+        </Link>
+        <nav aria-label={copy.shell.nav} className="shell-side-nav">
+          {items.map((item) => (
+            <Link
+              key={item.key}
+              href={item.href}
+              className="shell-side-link"
+              aria-current={section === item.key ? "page" : undefined}
+            >
+              <span aria-hidden="true" style={{ display: "inline-flex" }}>
+                <UiIcon name={item.icon} size={18} />
               </span>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="shell-account">
+          <div style={{ padding: "0 8px" }}>
+            <LanguageSwitch locale={locale} />
+          </div>
+          {coachName && (
+            <div className="shell-account-who">
+              <ShellAvatar name={coachName} />
+              <span className="shell-account-name">{coachName}</span>
             </div>
           )}
-          <SignOutButton />
+          <SignOutButton block />
         </div>
       </header>
-      <main className="page">{children}</main>
+
+      <div className="shell-column">
+        <header className="shell-topbar">
+          <Link href="/" className="shell-home" aria-label={copy.shell.home}>
+            <Logo size={30} label={copy.brand} />
+          </Link>
+          <span style={{ flex: 1 }} />
+          <AccountMenu coachName={coachName} locale={locale} />
+        </header>
+
+        <main className="page">{children}</main>
+
+        <nav aria-label={copy.shell.nav} className="shell-tabbar">
+          {items.map((item) => (
+            <Link
+              key={item.key}
+              href={item.href}
+              className="shell-tab"
+              aria-current={section === item.key ? "page" : undefined}
+            >
+              <span aria-hidden="true" style={{ display: "inline-flex" }}>
+                <UiIcon name={item.icon} size={20} />
+              </span>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
     </div>
   );
 }
 
-/**
- * One navigation entry. `aria-current="page"` is the statement; the weight and the
- * background are the decoration, because a coach who cannot distinguish the two greys
- * still needs to know where they are.
- */
-function ShellLink({
-  href,
-  current,
-  children,
-}: {
-  href: string;
-  current: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={current ? "page" : undefined}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        height: 34,
-        padding: "0 10px",
-        borderRadius: "var(--r-md)",
-        fontSize: 13.5,
-        fontWeight: current ? 700 : 600,
-        color: current ? "var(--ink)" : "var(--ink-2)",
-        background: current ? "var(--surface-2)" : "transparent",
-        textDecoration: "none",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </Link>
-  );
+function navItems(copy: Copy): { key: Section; href: string; label: string; icon: string }[] {
+  return [
+    { key: "roster", href: "/", label: copy.shell.roster, icon: "users" },
+    { key: "templates", href: "/templates", label: copy.templates.nav, icon: "layers" },
+    { key: "recipes", href: "/recipes", label: copy.recipes.nav, icon: "book" },
+    { key: "nutrition-templates", href: "/nutrition-templates", label: copy.nutritionTemplates.nav, icon: "leaf" },
+    { key: "challenges", href: "/challenges", label: copy.challenges.nav, icon: "trophy" },
+  ];
 }
