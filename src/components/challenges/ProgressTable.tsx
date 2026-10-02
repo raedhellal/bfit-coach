@@ -258,12 +258,17 @@ function AcceptedItem({
                 </span>
               </span>
             )}
-            <span>
-              <span className="participant-label">{c.colTotal}</span>{" "}
-              <span className="tnum" data-total="">
-                {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
+            {/* Not while nothing is synced (`view.total`): the api's 0 is then a sum over no
+                row, and the sync line already says so — « Total 0 pas » beside it was a fake
+                zero (QA PB-2). */}
+            {view.total && (
+              <span>
+                <span className="participant-label">{c.colTotal}</span>{" "}
+                <span className="tnum" data-total="">
+                  {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
+                </span>
               </span>
-            </span>
+            )}
           </div>
         )}
       </div>

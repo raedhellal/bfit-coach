@@ -24,6 +24,8 @@ const UPCOMING = "c4a11e00-0000-4000-8000-000000000003";
 /** `FIXTURE_EDGE_CHALLENGE_IDS`, served with `evoli_fixture_challenge_edges=1` (EV-337n). */
 const EDGE_UPCOMING = "c4a11e00-0000-4000-8000-0000000000e1";
 const EDGE_ENDED = "c4a11e00-0000-4000-8000-0000000000e2";
+const EDGE_NEVER_SYNCED = "c4a11e00-0000-4000-8000-0000000000e3";
+const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 const TOBIAS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
@@ -343,6 +345,26 @@ for (const lang of ["fr", "en"] as const) {
       await expect(participant(page, LINA).locator("[data-rank-label]")).toHaveText(lang === "fr" ? "1er" : "#1");
       await expect(page.locator(".challenge-stats .stat-card")).toHaveCount(2);
       if (lang === "fr") await expectNoEnglish(page, "an ended challenge");
+    });
+
+    /**
+     * QA PB-2 on 6269343: Petra joined and never synced; on day 4 her row read « Total 0 pas »
+     * beside « Rien de synchronisé pour l'instant ». The api's total is then a sum over no row
+     * (`syncedAt` null), so no total is shown. Lina's manual 0 on day 1 is a real zero, shown.
+     */
+    test("PB-2: a participant who never synced shows no total; a synced zero still does", async ({ page, context, baseURL }) => {
+      await context.addCookies([{ name: "evoli_fixture_challenge_edges", value: "1", url: baseURL! }]);
+      await signIn(page, lang);
+      await page.goto(`/challenges/${EDGE_NEVER_SYNCED}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Pas encore synchronisé");
+      const petra = participant(page, PETRA);
+      await expect(petra).toHaveAttribute("data-status", "ACCEPTED");
+      await expect(petra.locator("[data-synced]")).toHaveText(lang === "fr" ? "Rien de synchronisé pour l'instant" : "Nothing synced yet");
+      // The days are still counted (none met is a true count), but no total is invented.
+      await expect(petra.locator("[data-days-met]")).toHaveText(lang === "fr" ? "0 sur 4" : "0 / 4");
+      await expect(petra.locator("[data-total]")).toHaveCount(0);
+      expect(await petra.innerText()).not.toMatch(/\b0 (pas|steps)\b/);
+      await expect(participant(page, LINA).locator("[data-total]")).toHaveText(lang === "fr" ? "0 pas" : "0 steps");
     });
   });
 }

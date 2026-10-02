@@ -89,7 +89,7 @@ export function todayInWindow(
 }
 
 /**
- * What an ACCEPTED participant's row may draw, decided once (QA PB-1 on 6269343).
+ * What an ACCEPTED participant's row may draw, decided once (QA PB-1 and PB-2 on 6269343).
  *
  *   · `today` — the today cell: `todayInWindow`, the cards' own question.
  *   · `rank` — not on an UPCOMING challenge. The api ranks by what each trainee's own
@@ -100,22 +100,32 @@ export function todayInWindow(
  *     says has begun (not UPCOMING) and the trainee's own first day (`daysElapsed > 0`).
  *     Before that the api's numbers are zeros over no day (« 0 sur 0 · 0 pas »), or count a
  *     day the head says is still to come (« Jours réussis 0 sur 1 » under « Commence demain »).
+ *   · `total` — STEPS: only once something was synced. The api's `total` is a `long`, never
+ *     null: it is the sum of the stored rows in the window up to the trainee's today, so with
+ *     no row it is 0 by absence. `syncedAt` is the latest of those same rows, null exactly
+ *     when there are none (`ChallengeProgressCalculator.steps`). So `syncedAt: null` means
+ *     the 0 is "nothing synced", which the row already says (« Rien de synchronisé pour
+ *     l'instant »), and « Total 0 pas » beside it was a fake zero (X7). A synced row of 0
+ *     steps is a real zero and is shown. WORKOUTS: `syncedAt` is always null and a total of
+ *     0 is the fact that no session was completed, so it is always shown.
  */
 export interface ParticipantRowView {
   today: boolean;
   rank: boolean;
   counts: boolean;
+  total: boolean;
 }
 
 export function participantRowView(
   progress: ChallengeProgress,
-  c: Pick<CoachChallengeSummary, "phase" | "startsOn" | "endsOn">
+  c: Pick<CoachChallengeSummary, "phase" | "startsOn" | "endsOn" | "metric">
 ): ParticipantRowView {
   const counts = c.phase !== "UPCOMING" && progress.daysElapsed > 0;
   return {
     today: todayInWindow(progress, c),
     rank: c.phase !== "UPCOMING",
     counts,
+    total: counts && (c.metric !== "STEPS" || progress.syncedAt !== null),
   };
 }
 

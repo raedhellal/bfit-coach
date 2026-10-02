@@ -171,23 +171,23 @@ test("PB-1: on an UPCOMING or ENDED challenge nobody has a today, whatever their
   const tokyo = progress(START, 5_000, true);
   expect(tokyo.daysElapsed).toBe(1);
   expect(view.todayInWindow(tokyo, upcoming)).toBe(false);
-  expect(view.participantRowView(tokyo, upcoming)).toEqual({ today: false, rank: false, counts: false });
+  expect(view.participantRowView(tokyo, upcoming)).toMatchObject({ today: false, rank: false, counts: false });
   // Los Angeles, still on the last day of a challenge the head says has ended: no today,
   // but the final standings stand (days met, total, rank).
   const la = progress(END, 6_000, true);
   expect(view.todayInWindow(la, ended)).toBe(false);
-  expect(view.participantRowView(la, ended)).toEqual({ today: false, rank: true, counts: true });
+  expect(view.participantRowView(la, ended)).toMatchObject({ today: false, rank: true, counts: true });
   // No stored zone (UTC−12), still on the last day with nothing for it: not « no data today ».
   const noZone = progress(END, null, false);
   expect(view.participantRowView(noZone, ended)).toMatchObject({ today: false });
   // ACTIVE and in the window: everything, as before.
-  expect(view.participantRowView(progress("2026-10-02", 9_000, true), challenge())).toEqual({
+  expect(view.participantRowView(progress("2026-10-02", 9_000, true), challenge())).toMatchObject({
     today: true,
     rank: true,
     counts: true,
   });
   // ACTIVE, but a trainee west of UTC still before the start: no today, nothing counted.
-  expect(view.participantRowView(progress("2026-09-28", null, false), challenge())).toEqual({
+  expect(view.participantRowView(progress("2026-09-28", null, false), challenge())).toMatchObject({
     today: false,
     rank: true,
     counts: false,
@@ -209,4 +209,31 @@ test("ownDay places a trainee's own today against the window's dates", () => {
   expect(view.ownDay(progress(START, null, false), c)).toBe("IN_WINDOW");
   expect(view.ownDay(progress(END, null, false), c)).toBe("IN_WINDOW");
   expect(view.ownDay(progress("2026-10-06", null, true), c)).toBe("PAST_END");
+});
+
+/**
+ * QA PB-2 on 6269343 — an accepted participant who never synced read « Total 0 pas » on day
+ * 4, beside « Rien de synchronisé pour l'instant ». The api's `total` is a `long` (never
+ * null): the sum of the stored rows up to the trainee's today, 0 when there are none, and
+ * `syncedAt` is null exactly then (`ChallengeProgressCalculator.steps`). So that 0 is "nothing
+ * synced", not zero steps, and the row shows no total. A synced 0 is a real zero.
+ */
+test("PB-2: no total while nothing is synced; a synced zero and a WORKOUTS zero are real", () => {
+  expect(typeof view.participantRowView).toBe("function");
+  const neverSynced = progress("2026-10-02", null, false);
+  expect(neverSynced).toMatchObject({ daysElapsed: 4, total: 0, syncedAt: null });
+  expect(view.participantRowView(neverSynced, challenge())).toEqual({ today: true, rank: true, counts: true, total: false });
+  // Same on an ENDED challenge: final standings, but still no invented total.
+  expect(view.participantRowView(neverSynced, { ...challenge(), phase: "ENDED" })).toMatchObject({
+    counts: true,
+    total: false,
+  });
+  // A day synced at 0 steps (a manual entry of 0): the 0 is the trainee's, so it is shown.
+  const syncedZero = { ...neverSynced, syncedAt: "2026-09-29T20:30:00Z" };
+  expect(view.participantRowView(syncedZero, challenge())).toMatchObject({ total: true });
+  // Before the first day nothing is counted, synced or not.
+  expect(view.participantRowView(progress("2026-09-28", null, false), challenge())).toMatchObject({ total: false });
+  // WORKOUTS: `syncedAt` is always null and 0 sessions is a fact, so the total stays.
+  const workouts = { ...neverSynced, daysMet: null, days: null, target: 12 };
+  expect(view.participantRowView(workouts, { ...challenge(), metric: "WORKOUTS" })).toMatchObject({ total: true });
 });

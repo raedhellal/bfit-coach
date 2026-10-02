@@ -3984,10 +3984,14 @@ function seedChallenges(): Map<string, StoredChallenge> {
  *   · `endedWest` « Fini hier » — ended yesterday (UTC), so ENDED. Lina is in Los Angeles,
  *     still on the last day, 6 000 of 5 000; Tobias has no stored zone (UTC−12), also still on
  *     the last day, with nothing for it (QA PB-1).
+ *   · `neverSynced` « Pas encore synchronisé » — ACTIVE, day 4 of 7, everyone on UTC. Petra
+ *     joined and never synced (`syncedAt` null, the api's `total` 0 by absence); Lina synced
+ *     one manual 0 on day 1, a real zero (QA PB-2).
  */
 export const FIXTURE_EDGE_CHALLENGE_IDS = {
   upcomingEast: "c4a11e00-0000-4000-8000-0000000000e1",
   endedWest: "c4a11e00-0000-4000-8000-0000000000e2",
+  neverSynced: "c4a11e00-0000-4000-8000-0000000000e3",
 } as const;
 
 /** Rows by offset from the UTC date; a day already begun synced 30 min ago, earlier ones at their evening. */
@@ -4035,6 +4039,11 @@ function edgeChallenges(): StoredChallenge[] {
         accepted(LINA_ID, -1, edgeRows([[-7, 5_200], [-6, 4_100], [-5, 7_000], [-4, 5_000], [-3, 6_400], [-2, 3_900], [-1, 6_000]], "HEALTH_CONNECT")),
         accepted(TOBIAS_ID, -1, edgeRows([[-7, 5_600], [-6, 2_000], [-4, 5_100]], "PEDOMETER")),
       ],
+    },
+    {
+      id: FIXTURE_EDGE_CHALLENGE_IDS.neverSynced,
+      ...steps("Pas encore synchronisé", 8_000, -3, 3),
+      participants: [accepted(LINA_ID, 0, edgeRows([[-3, 0]], "MANUAL")), accepted(PETRA_ID, 0, {})],
     },
   ];
 }
