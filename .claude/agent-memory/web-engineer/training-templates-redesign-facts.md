@@ -16,7 +16,14 @@ Branch `feat/pro-training-templates` off `origin/release/coach-held-merges` 1c0f
   so only padding can be covered. Measure with boundingBox, never trust the token.
 - `FocusClearOfBars` now counts `.action-bar` and reads each bar's own computed `bottom` offset
   (a bar stuck ABOVE another bar is not at the viewport edge). `html:has(.action-bar)` raises
-  scroll-padding-bottom as a first estimate.
+  scroll-padding-bottom. `qa/focus-clear-of-bars.spec.ts` pins it on `/templates/{id}` (WebKit
+  390/1023): red only with BOTH removed (57/57 stops under the bar) — either alone suffices.
+- **"WebKit ignores scroll-padding" was wrong** (staff, 2026-10-02). Witnessed with the island
+  disabled: 180 px of padding kept every template-editor stop clear; the routine editor's 68 px left
+  33 stops at 390 partly hidden (56–81 % visible). Cause not established. A probe that removes one
+  protection at a time proves nothing when two overlap — remove both for the red.
+- Checklist lines carry a visually hidden « Fait : » / « À faire : » (`.sr-only`), so a
+  `toHaveText` on the `li` includes it; target the label span (or `getByText(exact)`) for words.
 - **The editor's h1 must stay a SERVER value** (the stored template name, not the design's
   « Modifier le modèle »): `qa/editor-save-no-refresh.spec.ts` guards the update action's
   `revalidatePath` through the h1. The editor island now draws PageHead from a `title` prop;
