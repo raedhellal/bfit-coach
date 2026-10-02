@@ -96,8 +96,17 @@ function classify(err: unknown): NutritionFailure {
   return "FAILED";
 }
 
+/**
+ * The nutrition tab AND the overview: since EV-337e the overview draws a nutrition card
+ * (targets, the week) from the same read, so a write here makes it stale too (EV-337m M8).
+ * `routineActions.ts` revalidates both of its pages the same way, and for its reason: Next
+ * 14.2 happens to purge the whole client router cache on ANY revalidate, so the overview is
+ * fresh today without this line; that is one Next version's implementation detail, not a
+ * contract, so the overview is named here explicitly.
+ */
 function revalidateNutrition(clientId: string): void {
   revalidatePath(`/clients/${clientId}/nutrition`);
+  revalidatePath(`/clients/${clientId}`);
 }
 
 export type SaveTargetsResult =

@@ -270,12 +270,13 @@ export const fr = {
     notSharedProgress: "Ce client n'a pas partagé sa progression avec vous.",
     notSharedWeighIns: "Ce client n'a pas partagé ses pesées avec vous.",
     notSharedRedFlags:
-      "Les signaux d'alerte ont besoin de la progression et des pesées de ce client, qu'il n'a pas partagées.",
+      "Les signaux d'alerte ont besoin des séances ou des pesées de ce client, qu'il n'a pas partagées.",
     /** 🔴 The same two rules as English, and no third (EV-187 AC4, see copy.ts). */
     redFlagLabels: {
       MISSED_TWO_OR_MORE_SESSIONS: "2 séances prévues ou plus manquées cette semaine",
       NO_WEIGH_IN_14_DAYS: "Aucune pesée depuis 14 jours",
     } as Record<string, string>,
+    noRedFlagsShown: "Aucune alerte à afficher.",
 
     adherenceSeries: "Assiduité, 8 dernières semaines",
     adherenceSeriesHeadline: (done: number, planned: number) =>
@@ -318,8 +319,10 @@ export const fr = {
     toReview: "À traiter",
     alertCount: (count: number) => `${count} alerte${s(count)}`,
     alertWord: "Alerte",
-    adjustPlan: "Adapter le programme",
-    sessionsWindow: (weeks: number) => `Séances · ${weeks} dernières semaines`,
+    // « plan » is the document, « Programme » the section (EV-337 ruling 5, BUG-675).
+    adjustPlan: "Adapter le plan",
+    sessionsWindow: (weeks: number) =>
+      weeks === 1 ? "Séances · dernière semaine" : `Séances · ${weeks} dernières semaines`,
     sessionsLabel: "Séances",
     sessionsOfPlanned: (planned: number) => `sur ${planned} prévue${s(planned)}`,
     sessionsNoPlan: "Aucun plan sur cette période",
@@ -348,10 +351,10 @@ export const fr = {
       changedByTrainee: (date: string) => `Modifié par le client le ${date}`,
       draft: "Brouillon en cours",
       draftSaved: (date: string) => `Un brouillon enregistré le ${date} n'est pas encore publié.`,
-      noPlan: "Aucun programme actif.",
-      open: "Ouvrir le programme",
+      noPlan: "Aucun plan actif.",
+      open: "Ouvrir le plan",
       resume: "Reprendre le brouillon",
-      create: "Créer un programme",
+      create: "Créer un plan",
     },
     nutritionCard: {
       targets: (kcal: string, protein: string) => `${kcal}\u00a0kcal · ${protein}\u00a0g de protéines`,

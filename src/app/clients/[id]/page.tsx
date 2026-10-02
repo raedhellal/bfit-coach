@@ -156,8 +156,14 @@ export default async function ClientPage({ params }: { params: { id: string } })
    * trainee whose sessions and weigh-ins this coach may never have been allowed to
    * read. Requiring at least one of the two scopes says the same thing the null does
    * and keeps saying it when the null is not there.
+   *
+   * The two scopes are the ones the api EVALUATES the rules on: WORKOUTS (missed
+   * sessions) and WEIGH_INS (no weigh-in). `TraineeRedFlagRules.evaluate` returns `null`
+   * only when neither is held (b-fit-api c82e55b). This line used to ask for PROGRESS
+   * instead of WORKOUTS, which hid a WORKOUTS-only link's missed-sessions flag behind
+   * "not shared" while the roster counted it (BUG-674, EV-337m M3).
    */
-  const redFlagsShared = (progressShared || weighInsShared) && redFlags !== null;
+  const redFlagsShared = (workoutsShared || weighInsShared) && redFlags !== null;
   /** `0` is a real streak of zero days — but only if PROGRESS was actually shared. */
   const streak = progressShared ? overview.currentStreakDays : null;
 
@@ -175,17 +181,24 @@ export default async function ClientPage({ params }: { params: { id: string } })
 
   /**
    * The alert cards (« À traiter »). The evidence read (`progress.redFlags`) is preferred;
-   * a link that carries WEIGH_INS but NOT PROGRESS gets the weigh-in flag from the overview
-   * (it is evaluated on WEIGH_INS alone) without the evidence the PROGRESS-guarded read
-   * holds — a flag WITHOUT an evidence block, never one with an EMPTY block. A degraded
-   * api answer lands there too.
+   * a link that carries WORKOUTS or WEIGH_INS but NOT PROGRESS gets its flags from the
+   * overview (each rule is evaluated on its own scope) without the evidence the
+   * PROGRESS-guarded read holds — a flag WITHOUT an evidence block, never one with an EMPTY
+   * block. A degraded api answer lands there too.
    */
-  const fired: FiredRedFlag[] =
+  const returned: FiredRedFlag[] =
     redFlagsShared && redFlags && redFlags.length > 0
       ? progress?.redFlags && progress.redFlags.length > 0
         ? progress.redFlags
         : redFlags.map((flag) => ({ flag, missedSessions: null, weighIn: null }))
       : [];
+  /**
+   * EV-337m M4 — only a flag this portal has a SENTENCE for becomes a card. `RedFlagCode`
+   * keeps `PAIN_REPORTED` because it is the api's published enum (a type is a statement about
+   * the wire); this filter is where "no pain signal renders" holds by construction (EV-187
+   * AC4), and an unknown code from a newer api is not printed raw either.
+   */
+  const fired = returned.filter((f) => Object.hasOwn(copy.client.redFlagLabels, f.flag));
   const routineHref = workoutsShared ? `/clients/${overview.clientId}/routine` : null;
 
   /** The header's chips: the CODED injuries the trainee recorded (G5), from the routine read only. */
@@ -237,6 +250,9 @@ export default async function ClientPage({ params }: { params: { id: string } })
               scope check stands in front of the null rather than behind it. */}
           {!redFlagsShared || redFlags === null ? (
             <OverviewNote>{copy.client.notSharedRedFlags}</OverviewNote>
+          ) : returned.length > 0 && fired.length === 0 ? (
+            // The api returned flags and none is one this page labels: never "No red flags".
+            <OverviewNote>{copy.client.noRedFlagsShown}</OverviewNote>
           ) : fired.length === 0 ? (
             <OverviewNote>{copy.client.noRedFlags}</OverviewNote>
           ) : (
@@ -248,14 +264,23 @@ export default async function ClientPage({ params }: { params: { id: string } })
       <div className="stat-grid overview-stats ov-section">
         <StatTile
           label={copy.client.adherence}
+          // WORKOUTS, the scope the api computes this week's adherence under (`if (workouts)`
+          // in CoachPortalQueryService at c82e55b; BUG-674). Held and still absent is an api
+          // that did not answer, never "not shared".
           value={
-            progressShared && adherence
+            workoutsShared && adherence
               ? copy.client.adherenceValue(adherence.done, adherence.planned)
               : copy.common.dash
           }
-          foot={progressShared && adherence ? copy.client.adherenceFoot : copy.client.notShared}
+          foot={
+            !workoutsShared
+              ? copy.client.notShared
+              : adherence
+                ? copy.client.adherenceFoot
+                : copy.client.unavailable
+          }
           visual={
-            progressShared && adherence && adherence.planned > 0 ? (
+            workoutsShared && adherence && adherence.planned > 0 ? (
               <ProgressRing
                 done={adherence.done}
                 planned={adherence.planned}

@@ -26,6 +26,11 @@ import type { FiredRedFlag } from "@/lib/coachApi";
  * is deliberate, it is release-blocking (AC4), and `qa/coach-red-flags-vocabulary.spec.ts`
  * holds it. The design's first card (screen 02) is exactly that rule, and is not built.
  *
+ * **A code with no sentence draws no card** (EV-337m M4, staff's nit ruled by senior-po):
+ * the caller filters to labelled codes so its count matches the cards, and this component
+ * skips any it is handed anyway. It used to print the raw code, which would have put
+ * `PAIN_REPORTED` on screen the day an api sent it.
+ *
  * Each card: the word « Alerte » with its icon (a status is never colour alone), the
  * flag's sentence as an `h3` under the section's `h2`, the evidence, and — for missed
  * sessions, when the coach may open the plan — a link to the routine tab. The cards are
@@ -43,6 +48,8 @@ export function RedFlagEvidence({
   return (
     <ul className="alert-list">
       {flags.map((fired) => {
+        const label = Object.hasOwn(copy.client.redFlagLabels, fired.flag) ? copy.client.redFlagLabels[fired.flag] : null;
+        if (!label) return null;
         const titleId = `alert-${fired.flag}`;
         return (
           <li key={fired.flag} className="alert-card" data-flag={fired.flag}>
@@ -54,13 +61,7 @@ export function RedFlagEvidence({
                 {copy.client.alertWord}
               </span>
               <h3 id={titleId} className="alert-card-title">
-                {/*
-                  A code with no sentence renders as the code. It cannot happen against this
-                  api — the two rules that can fire both have one — and the alternative
-                  (rendering nothing) would hide a flag from the coach on the strength of a
-                  missing translation.
-                */}
-                {copy.client.redFlagLabels[fired.flag] || fired.flag}
+                {label}
               </h3>
 
               {fired.missedSessions && fired.missedSessions.length > 0 && (

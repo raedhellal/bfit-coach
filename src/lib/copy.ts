@@ -392,8 +392,14 @@ export const en = {
     notShared: "Not shared",
     notSharedProgress: "This trainee has not shared their progress with you.",
     notSharedWeighIns: "This trainee has not shared their weigh-ins with you.",
+    /**
+     * EV-337m M3 (BUG-674): the api evaluates the two rules on WORKOUTS (missed sessions)
+     * and WEIGH_INS (no weigh-in), and returns `null` only when NEITHER is held
+     * (`TraineeRedFlagRules.evaluate` at b-fit-api c82e55b). So the sentence names those
+     * two, and says "or": either one is enough for a rule to run.
+     */
     notSharedRedFlags:
-      "Red flags need this trainee's progress and weigh-ins, which they have not shared.",
+      "Red flags need this trainee's sessions or weigh-ins, which they have not shared.",
     /**
      * 🔴 **THE TWO RULES THAT CAN FIRE. THERE IS NO THIRD ENTRY HERE, AND ITS ABSENCE
      * IS THE POINT — DO NOT ADD ONE.**
@@ -423,6 +429,13 @@ export const en = {
       MISSED_TWO_OR_MORE_SESSIONS: "Missed 2 or more planned sessions this week",
       NO_WEIGH_IN_14_DAYS: "No weigh-in for 14 days",
     } as Record<string, string>,
+    /**
+     * EV-337m M4 — « À traiter » when the api returned flags and NONE of them has a sentence
+     * above (a code this portal does not label: an api newer than it, or the published
+     * `PAIN_REPORTED`, which has no sentence on purpose). Not "No red flags": the api did not
+     * say nothing fired, and the page may not say it for the api (X7). It names no rule.
+     */
+    noRedFlagsShown: "No alert to show.",
 
     /* ── EV-187b: monitoring (AC3 · AC4 · AC5) ─────────────────────────────── */
 
@@ -537,7 +550,7 @@ export const en = {
     /** The missed-sessions card's action: a link to the routine tab. */
     adjustPlan: "Adjust the plan",
     /** The sessions tile, named after the api's own window (plan §5.2: never "30 days"). */
-    sessionsWindow: (weeks: number) => `Sessions · last ${weeks} weeks`,
+    sessionsWindow: (weeks: number) => (weeks === 1 ? "Sessions · last week" : `Sessions · last ${weeks} weeks`),
     sessionsLabel: "Sessions",
     sessionsOfPlanned: (planned: number) => `of ${planned} planned`,
     /** No week of the window had a plan: no count to give, and never a 0 (BUG-205). */
@@ -578,7 +591,8 @@ export const en = {
       noPlan: "No active plan.",
       open: "Open the plan",
       resume: "Resume the draft",
-      create: "Write a plan",
+      /** The routine tab's own words for the same action (`routine.build`, EV-184 AC1; BUG-675). */
+      create: "Build a plan",
     },
     /** The nutrition summary (one more read, `GET …/nutrition`, after `scopes` show NUTRITION). */
     nutritionCard: {
