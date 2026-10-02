@@ -163,3 +163,18 @@ test("outside fixture mode the fixture reset route is a 404 to a signed-in coach
   const calls = await page.request.fetch("/api/fixture/calls", { method: "GET", maxRedirects: 0 });
   expect(calls.status(), "GET /api/fixture/calls in live mode").toBe(404);
 });
+
+/**
+ * `evoli_fixture_overview=fail` is a fixture switch, and the deployment runs live. A
+ * coach's browser could carry that cookie (a tester who used a fixture build on the same
+ * host), so live mode must ignore it: the live client never reads the cookie, and the
+ * overview still renders.
+ */
+test("outside fixture mode the overview-failure cookie is inert", async ({ page }) => {
+  await signIn(page);
+  await page.context().addCookies([{ name: "evoli_fixture_overview", value: "fail", url: page.url() }]);
+  const response = await page.goto(`/clients/${LEGACY_CLIENT}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Lina M." })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("This trainee could not be loaded.");
+});

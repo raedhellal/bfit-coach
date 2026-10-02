@@ -5000,6 +5000,18 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getClient(id: string): Promise<ClientOverview> {
+    /**
+     * `evoli_fixture_overview=fail` (this browser context only) makes the overview read a
+     * 500. That is the one failure the layout does NOT redirect: it is not a 403, so
+     * `/clients/[id]` renders its load-error branch, the notice as the page's only
+     * content. Nothing in the seed reaches that branch, because every id is either known
+     * or refused. Like every switch in this file it is read only in fixture mode:
+     * `coachApi.ts` picks the live client otherwise, and that client never reads the
+     * cookie (`coach-legacy-api.spec.ts` sets it in live mode and the page still renders).
+     */
+    if ((await fixtureSwitch("evoli_fixture_overview")) === "fail") {
+      await fail(500, "INTERNAL_ERROR", "Internal error");
+    }
     const known = OVERVIEWS[id];
     if (!known || state().revoked || (await linkEnded())) {
       const { ApiError } = await import("./apiFetch");
