@@ -374,3 +374,56 @@ test.describe("EV-187 AC4: the French roster names no pain signal", () => {
     expect(html).not.toMatch(/\bpain\b/i);
   });
 });
+
+/**
+ * QA PB-1 on EV-337d (P3): a row's status pill cut its reason with an ellipsis and no
+ * tooltip — « Aucune séance pour l'instant », « Alertes non partagées », « Activité non
+ * partagée », "Inactive for 8 days" at 320, 768 and 1024. The label was `nowrap` +
+ * `text-overflow: ellipsis` inside the narrow status column (globals.css). The reason is
+ * the whole point of the pill in « Autres clients » (PO ruling 3), so it must always be
+ * read in full: the label wraps instead.
+ *
+ * Witness: every pill label's text fits its own box (scrollWidth ≤ clientWidth) and the
+ * pill sits inside its row, at the story's widths, in both languages, with the boundary
+ * rows (6/7/8 days) present. Red on 08f6e90 (the clipped labels named above), green here.
+ */
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`PB-1: a status pill is read in full (${lang.toUpperCase()})`, () => {
+    test.use({ locale: LANG[lang].locale });
+
+    test("no pill label is clipped at any width", async ({ page, context, baseURL }) => {
+      await boundaryRows(context, baseURL);
+      await signIn(page, lang);
+      const pills = page.locator(".roster-row .status-pill");
+      await expect(pills.first()).toBeVisible();
+      for (const width of [320, 360, 390, 767, 768, 1023, 1024, 1279, 1280, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        const read = await pills.evaluateAll((els) =>
+          els.map((pill) => {
+            const label = pill.querySelector(".status-pill-label") as HTMLElement | null;
+            const row = pill.closest(".roster-row") as HTMLElement;
+            const p = pill.getBoundingClientRect();
+            const r = row.getBoundingClientRect();
+            return {
+              text: label?.textContent ?? "",
+              clipped: label ? label.scrollWidth - label.clientWidth : -1,
+              outside: Math.max(0, p.right - r.right, r.left - p.left),
+            };
+          })
+        );
+        // A reader that found nothing would make the next two checks vacuous.
+        expect(read.length, `pills found at ${width}px`).toBeGreaterThanOrEqual(6);
+        expect(read.filter((x) => x.text === ""), `a pill with no label at ${width}px`).toEqual([]);
+        expect(
+          read.filter((x) => x.clipped > 1).map((x) => x.text),
+          `pill labels cut short at ${width}px`
+        ).toEqual([]);
+        expect(
+          read.filter((x) => x.outside > 0.5).map((x) => x.text),
+          `pills running outside their row at ${width}px`
+        ).toEqual([]);
+        await expectNoSidewaysScroll(page, `the roster at ${width}px`);
+      }
+    });
+  });
+}

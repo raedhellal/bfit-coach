@@ -1,79 +1,35 @@
 import type { ReactNode } from "react";
-import { UiIcon } from "@/components/ui/icons";
 
-/** One of the four overview tiles. Value + a foot line; no delta arrow unless given. */
+/**
+ * One overview stat card (redesign §4 `StatCard`, plan §5.2): a label, the value, a foot line,
+ * and optionally a picture beside them (the adherence ring).
+ *
+ * ⚠ The label, the value and the foot are SIBLINGS, direct children of the card. The suite
+ * finds a tile by its exact label and reads the card from the label's parent
+ * (`getByText("Current streak").locator("..")`, `ancestor::div[1]` for "Last session"), so
+ * wrapping the label in another element would make those reads see the label alone. The
+ * layout is a class (`.stat-card`, globals.css): a two-column grid when a picture is given.
+ *
+ * Server-safe: no hooks.
+ */
 export function StatTile({
-  icon,
-  tone = "blue",
   label,
   value,
   foot,
+  visual,
 }: {
-  icon: string;
-  tone?: "blue" | "green" | "purple" | "amber";
   label: string;
   value: ReactNode;
   foot?: ReactNode;
+  /** A picture that repeats the value (it must carry its own text alternative). */
+  visual?: ReactNode;
 }) {
-  const tones: Record<string, [string, string]> = {
-    blue: ["var(--blue-50)", "var(--blue-600)"],
-    green: ["var(--ok-bg)", "var(--ok-ink)"],
-    purple: ["var(--purple-50)", "var(--purple-600)"],
-    amber: ["var(--warn-bg)", "var(--warn-ink)"],
-  };
   return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--r-2xl)",
-        boxShadow: "var(--e-card)",
-        padding: 16,
-        minWidth: 0,
-      }}
-    >
-      <div
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: "var(--r-md)",
-          background: tones[tone][0],
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <UiIcon name={icon} size={18} color={tones[tone][1]} />
-      </div>
-      <div
-        className="dt tnum"
-        style={{
-          fontWeight: 700,
-          fontSize: 24,
-          color: "var(--ink)",
-          marginTop: 12,
-          letterSpacing: -0.5,
-          lineHeight: 1.15,
-          overflowWrap: "anywhere",
-        }}
-      >
-        {value}
-      </div>
-      <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 3 }}>{label}</div>
-      {foot && (
-        <div
-          style={{
-            marginTop: 10,
-            paddingTop: 10,
-            borderTop: "1px solid var(--hairline)",
-            fontSize: 12,
-            color: "var(--ink-3)",
-            lineHeight: 1.45,
-          }}
-        >
-          {foot}
-        </div>
-      )}
+    <div className="stat-card" data-visual={visual ? "" : undefined}>
+      {visual && <div className="stat-card-visual">{visual}</div>}
+      <div className="stat-card-label">{label}</div>
+      <div className="stat-card-value dt tnum">{value}</div>
+      {foot && <div className="stat-card-foot">{foot}</div>}
     </div>
   );
 }

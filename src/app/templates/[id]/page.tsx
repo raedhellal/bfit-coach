@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/ui/BackLink";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { TemplateEditor } from "@/components/templates/TemplateEditor";
@@ -43,9 +43,7 @@ export default async function TemplatePage({ params }: { params: { id: string } 
         title={loaded.template ? loaded.template.name : copy.templates.editTitle}
         sub={copy.templates.private}
         actions={
-          <Link href="/templates" style={{ fontSize: 13, color: "var(--ink-2)" }}>
-            {copy.templates.backToLibrary}
-          </Link>
+          <BackLink href="/templates" label={copy.templates.backToLibrary} />
         }
       />
       {loaded.template ? (

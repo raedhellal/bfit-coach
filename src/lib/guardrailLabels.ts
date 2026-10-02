@@ -82,3 +82,21 @@ export function injuryLabels(injuries: string[] | null | undefined, copy: Copy):
   }
   return out;
 }
+
+/**
+ * EV-337e (plan §5.2, G5) — the overview header's injury chips: the CODED injuries only
+ * (the onboarding chips, `LOWER_BACK`, `SHOULDER`…), as words. The free text a trainee typed
+ * into "Anything else?" is left out here: it is their own sentence, it has no length bound,
+ * and a chip reading « Limitation : » before it would restate it as a finding. The routine
+ * tab shows it whole, in its profile panel, as before.
+ */
+export function codedInjuryLabels(injuries: string[] | null | undefined, copy: Copy): string[] {
+  if (!Array.isArray(injuries)) return [];
+  const out: string[] = [];
+  for (const raw of injuries) {
+    if (typeof raw !== "string") continue;
+    const label = copy.guardrails.injuries[normalise(raw)];
+    if (label && !out.includes(label)) out.push(label);
+  }
+  return out;
+}

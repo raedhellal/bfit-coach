@@ -122,10 +122,13 @@ const ROUTES: { route: string; reads: string[]; depth: number; why?: string }[] 
   { route: "/challenges", reads: ["getMe", "listChallenges", "listClients"], depth: 1 },
   { route: `/challenges/${ACTIVE_CHALLENGE}`, reads: ["getChallenge", "getMe"], depth: 1 },
   {
+    // EV-337e (plan §5.2, G11/G12): the programme and nutrition summary cards cost one read
+    // each, made only after the overview's `scopes` show WORKOUTS / NUTRITION (ADR-0015 D5),
+    // in parallel: one more round trip, the « 2 where a consent check must come first » shape.
     route: `/clients/${LINA}`,
-    reads: ["getClient", "getClientProgress", "getMe"],
-    depth: 1,
-    why: "the layout's overview and the page's reads run concurrently",
+    reads: ["getClient", "getClientProgress", "getMe", "getNutrition", "getRoutine"],
+    depth: 2,
+    why: "the summary reads wait for the overview's `scopes`; the monitoring read and the name do not",
   },
   {
     route: `/clients/${LINA}/routine`,

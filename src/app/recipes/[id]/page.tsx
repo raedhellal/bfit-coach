@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/ui/BackLink";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { RecipeEditor } from "@/components/recipes/RecipeEditor";
@@ -52,9 +52,7 @@ export default async function RecipePage({ params }: { params: { id: string } })
         title={loaded.recipe ? loaded.recipe.name : copy.recipes.editTitle}
         sub={copy.recipes.private}
         actions={
-          <Link href="/recipes" style={{ fontSize: 13, color: "var(--ink-2)" }}>
-            {copy.recipes.backToLibrary}
-          </Link>
+          <BackLink href="/recipes" label={copy.recipes.backToLibrary} />
         }
       />
       {loaded.recipe ? (

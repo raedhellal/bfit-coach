@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/ui/BackLink";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { NutritionTemplateEditor } from "@/components/nutritionTemplates/NutritionTemplateEditor";
@@ -39,9 +39,7 @@ export default async function NutritionTemplatePage({ params }: { params: { id: 
         title={loaded.template ? loaded.template.name : copy.nutritionTemplates.editTitle}
         sub={copy.nutritionTemplates.private}
         actions={
-          <Link href="/nutrition-templates" style={{ fontSize: 13, color: "var(--ink-2)" }}>
-            {copy.nutritionTemplates.backToLibrary}
-          </Link>
+          <BackLink href="/nutrition-templates" label={copy.nutritionTemplates.backToLibrary} />
         }
       />
       {loaded.template ? (

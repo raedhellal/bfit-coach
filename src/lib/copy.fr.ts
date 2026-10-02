@@ -312,6 +312,56 @@ export const fr = {
     loadError: "Ce client n'a pas pu être chargé.",
     monitoringLoadError: "Ces blocs n'ont pas pu être chargés. Rechargez la page pour réessayer.",
     notFound: "Ce client ne fait pas partie de votre liste. Il a peut-être révoqué l'accès.",
+
+    /* EV-337e (plan §5.2). « alerte », never « signalement » (PO ruling 3 on EV-337d). */
+    injuryChip: (label: string) => `Limitation\u00a0: ${label}`,
+    toReview: "À traiter",
+    alertCount: (count: number) => `${count} alerte${s(count)}`,
+    alertWord: "Alerte",
+    adjustPlan: "Adapter le programme",
+    sessionsWindow: (weeks: number) => `Séances · ${weeks} dernières semaines`,
+    sessionsLabel: "Séances",
+    sessionsOfPlanned: (planned: number) => `sur ${planned} prévue${s(planned)}`,
+    sessionsNoPlan: "Aucun plan sur cette période",
+    adherenceRing: (done: number, planned: number) =>
+      `${done} sur ${planned} séance${s(planned)} prévue${s(planned)} cette semaine`,
+    unavailable: "Indisponible",
+    noData: {
+      title: "Aucune donnée partagée",
+      body: (name: string) =>
+        `${name} n'a partagé ni ses séances, ni sa progression, ni ses pesées, ni sa nutrition avec vous. Ce n'est pas un zéro\u00a0: c'est son choix de partage.`,
+    },
+    activity: {
+      title: "Activité récente",
+      weighIn: (kg: string) => `Pesée · ${kg}`,
+      none: "Aucune activité enregistrée pour l'instant.",
+      noSessions: "Aucune séance enregistrée pour l'instant.",
+      noWeighIns: "Aucune pesée enregistrée récemment.",
+      notShared: "Ce client n'a partagé ni ses séances ni ses pesées avec vous.",
+      sessionsNotShared: "Les séances ne sont pas partagées.",
+      weighInsNotShared: "Les pesées ne sont pas partagées.",
+      sessionsUnavailable: "Les séances n'ont pas pu être chargées.",
+    },
+    programmeCard: {
+      days: (count: number) => `${count} jour${s(count)} par semaine`,
+      published: (date: string) => `Publié le ${date}`,
+      changedByTrainee: (date: string) => `Modifié par le client le ${date}`,
+      draft: "Brouillon en cours",
+      draftSaved: (date: string) => `Un brouillon enregistré le ${date} n'est pas encore publié.`,
+      noPlan: "Aucun programme actif.",
+      open: "Ouvrir le programme",
+      resume: "Reprendre le brouillon",
+      create: "Créer un programme",
+    },
+    nutritionCard: {
+      targets: (kcal: string, protein: string) => `${kcal}\u00a0kcal · ${protein}\u00a0g de protéines`,
+      noTargets: "Aucun objectif défini.",
+      weekOf: (date: string) => `Semaine du ${date}`,
+      weekPlanned: "Semaine planifiée",
+      weekPreparing: "En préparation",
+      noWeek: "Aucune semaine de repas pour l'instant.",
+      open: "Voir la semaine",
+    },
   },
 
   progressGoal: {
