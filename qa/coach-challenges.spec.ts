@@ -250,6 +250,17 @@ test.describe("the refresh time is the coach's own clock (Paris, fr-FR)", () => 
 });
 
 test.describe("create", () => {
+  /**
+   * BUG-624 (EV-337n N10): the dialog defaults the start to the BROWSER's local today
+   * (`localToday`, deliberate since EV-321b), while the api — and the fixture — compute the
+   * phase on the UTC date. Playwright's browser takes the HOST's zone, so on a Paris host from
+   * 00:00 to 02:00, or a Kiritimati host (UTC+14) from 10:00 to 23:59 UTC, the new challenge
+   * starts "tomorrow" in UTC and reads « Upcoming », and this describe failed at "Active".
+   * Pinned to UTC here, where the asserted phase is the one the api gives. The two describes
+   * above that are ABOUT the coach's own clock set their own zone and keep it.
+   */
+  test.use({ timezoneId: "UTC" });
+
   test("create → list → detail: the new challenge exists, invited, with the api's numbers", async ({ page }) => {
     await signIn(page);
     const dialog = await openDialog(page);
