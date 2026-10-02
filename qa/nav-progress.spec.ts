@@ -497,18 +497,11 @@ async function twoClicks(
 /**
  * The bar's click listener is attached in an effect after hydration. Measured in WebKit on
  * `next dev`: a click right after `goto` reached the Link (a soft navigation) before the
- * listener existed, so no bar ever started. React tags a hydrated node with its fiber; the
- * effect runs in a scheduler task right after that commit, so one more task is enough.
+ * listener existed, so no bar ever started. The effect marks the bar
+ * `data-nav-progress-ready` once its listeners are attached; wait for that.
  */
 async function hydrated(page: Page) {
-  await page.waitForFunction(
-    (node) => {
-      const el = document.querySelector(node);
-      return el !== null && Object.keys(el).some((k) => k.startsWith("__reactFiber"));
-    },
-    NODE
-  );
-  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  await page.locator(`${NODE}[data-nav-progress-ready]`).waitFor({ state: "attached" });
 }
 
 /** On the overview, hydrated, with every fixture read held `ms`. */
@@ -591,8 +584,11 @@ test("BUG-670: a slow click then a fast second one (a router-cache revisit) neve
   const t = await twoClicks(page, ROUTINE.href, NUTRITION, 150);
   expect(t.contentAt!, "the revisit was fast").toBeLessThan(390);
   expect(t.barAt, `the bar flashed at ${t.barAt} ms`).toBeNull();
-  expect(t.finalPath, "the slow first click did not land later").toBe(NUTRITION.href);
-  expect(await everShown(page, 1_000), "nor after").toBe(false);
+  expect(t.finalPath).toBe(NUTRITION.href);
+  // The programme's reads are held 1.5 s EACH (overview, routine, draft), so `finalPath`,
+  // read ~0.5 s after the first click, cannot see it land late. Watch past that, then re-read.
+  expect(await everShown(page, 5_000), "nor after").toBe(false);
+  expect(new URL(page.url()).pathname, "the slow first click did not land later").toBe(NUTRITION.href);
 });
 
 test("BUG-670: the 20 s give-up counts from the LATEST click, and the bar never drops in between", async ({ page }) => {
@@ -612,6 +608,24 @@ test("BUG-670: the 20 s give-up counts from the LATEST click, and the bar never 
   await expect(page.locator(BAR), "25 s after the first click, 10 s after the second").toBeVisible();
   await page.clock.fastForward(10_100);
   await expect(page.locator(NODE), "gone 20 s after the second click").toBeHidden();
+});
+
+test("a second slow navigation in the same document shows the bar again (staff review of BUG-670)", async ({
+  page,
+  baseURL,
+}) => {
+  // Every other test starts its one slow navigation from a fresh document, so a run that
+  // never reset (the bar working once per page load) passed them all.
+  await signIn(page);
+  await slowOverview(page, baseURL!, 1200);
+  const first = await timedClick(page, NUTRITION.href, NUTRITION.selector);
+  expect(first.barAt, "the first slow navigation showed the bar").not.toBeNull();
+  await expectIdle(page);
+  const second = await timedClick(page, ROUTINE.href, ROUTINE.selector);
+  expect(second.barAt, "the second one, in the same document, shows it again").not.toBeNull();
+  expect(second.barAt!, "after its own 400 ms").toBeGreaterThanOrEqual(390);
+  expect(second.barAt!).toBeLessThan(second.contentAt!);
+  await expectIdle(page);
 });
 
 /* WebKit too (QA measured 834/1235/2741 ms there), and in French: the configs' project is

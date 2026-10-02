@@ -168,7 +168,11 @@ export function NavigationProgress() {
     };
     window.addEventListener(START_EVENT, onStart);
     window.addEventListener("popstate", stop);
+    // Readiness for tests: a click before this point is a navigation the bar cannot see.
+    const el = bar.current;
+    el?.setAttribute("data-nav-progress-ready", "");
     return () => {
+      el?.removeAttribute("data-nav-progress-ready");
       document.removeEventListener("click", onClick);
       window.removeEventListener(START_EVENT, onStart);
       window.removeEventListener("popstate", stop);
