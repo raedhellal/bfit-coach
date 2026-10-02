@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
+import { readClientOverview } from "@/lib/clientOverview";
 
 /**
  * The overview's status boundary (EV-183 AC5, BUG-139).
@@ -29,10 +29,22 @@ export default async function ClientLayout({
   children: React.ReactNode;
   params: { id: string };
 }) {
-  // Started, not awaited: the header's name is fetched alongside the overview instead
-  // of after it. The page awaits the same cached promise.
-  void readCoachMe();
-
+  /**
+   * ⛔ No `readCoachMe()` here (perf/coach-parallel-page-reads, 2026-10-01).
+   *
+   * There used to be a `void readCoachMe()`, so that the header's name was fetched
+   * alongside the overview instead of after it. Next renders this layout and the page
+   * below it CONCURRENTLY, and every page under `[id]` starts `readCoachMe()` itself, so
+   * the page's own call already starts at the same moment as the overview. Measured with
+   * an 80 ms delay on every fixture call: the overview's whole api path is 82 ms with
+   * three reads, which is one round trip.
+   *
+   * What the extra call did cost was in prefetches. A `<Link>` to `/clients/{id}` (one
+   * per roster row, one per challenge participant) is prefetched on a production build,
+   * and that prefetch renders THIS layout but stops at `[id]/loading.tsx` above the
+   * page. The name was read and then never used: 6 of the roster's 12 background calls
+   * with six rows. `qa/page-read-budget.spec.ts` counts a prefetch of this route.
+   */
   const { forbidden } = await readClientOverview(params.id);
   if (forbidden) redirect("/clients/denied");
 
