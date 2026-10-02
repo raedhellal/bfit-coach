@@ -715,7 +715,11 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
   border-radius: var(--r-pill);
   font: 600 var(--fs-meta)/18px var(--font-body);
 }
-.status-pill-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* QA PB-1 (EV-337d): the label WRAPS. It was nowrap + ellipsis, which cut the reason a client
+   is in « Autres clients » (« Activité non partagée », "Inactive for 8 days") in the narrow
+   status column at 1024 px, with no tooltip — and the reason is the pill's whole content. A
+   word longer than the column may still break (break-word), never be hidden. */
+.status-pill-label { white-space: normal; overflow-wrap: break-word; min-width: 0; }
 
 /* 768–1023: the sidebar is gone and the content column is ~720 px: tighter cells, still a
    row. */
