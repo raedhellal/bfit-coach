@@ -521,6 +521,75 @@ export const en = {
     monitoringLoadError: "These blocks could not be loaded. Reload the page to try again.",
     notFound:
       "This trainee is not on your roster. They may have revoked access.",
+
+    /* ── EV-337e: the overview redesign (plan §5.2) ────────────────────────────
+     * Every block below renders only what the api returned. A block whose scope is not
+     * held says so in words, a block whose read failed says "Unavailable", and neither is
+     * ever drawn as a zero. The flag word is "alert" (PO ruling 3 on EV-337d).
+     */
+    /** A header chip per injury the trainee recorded (the routine read's guardrails, WORKOUTS only). */
+    injuryChip: (label: string) => `Limitation: ${label}`,
+    /** The section that holds the fired flags as alert cards, and its count. */
+    toReview: "To review",
+    alertCount: (count: number) => `${count} alert${count === 1 ? "" : "s"}`,
+    /** The word on each alert card, beside its icon: a status is never colour alone. */
+    alertWord: "Alert",
+    /** The missed-sessions card's action: a link to the routine tab. */
+    adjustPlan: "Adjust the plan",
+    /** The sessions tile, named after the api's own window (plan §5.2: never "30 days"). */
+    sessionsWindow: (weeks: number) => `Sessions · last ${weeks} weeks`,
+    sessionsLabel: "Sessions",
+    sessionsOfPlanned: (planned: number) => `of ${planned} planned`,
+    /** No week of the window had a plan: no count to give, and never a 0 (BUG-205). */
+    sessionsNoPlan: "No plan in this period",
+    /** The adherence ring's text alternative. */
+    adherenceRing: (done: number, planned: number) => `${done} of ${planned} planned sessions this week`,
+    /** A tile whose scope is held but whose read did not answer. Not "not shared". */
+    unavailable: "Unavailable",
+    /** The link shares no data scope at all (design state « Vide »). */
+    noData: {
+      title: "No data shared",
+      body: (name: string) =>
+        `${name} has not shared their sessions, progress, weigh-ins or nutrition with you. This is not a zero: it is what they chose to share.`,
+    },
+    activity: {
+      title: "Recent activity",
+      weighIn: (kg: string) => `Weigh-in · ${kg}`,
+      none: "No activity recorded yet.",
+      /** Only one source is readable, and it is empty: the sentence names that source alone. */
+      noSessions: "No sessions recorded yet.",
+      noWeighIns: "No weigh-ins recorded recently.",
+      notShared: "This trainee has not shared their sessions or weigh-ins with you.",
+      sessionsNotShared: "Sessions are not shared.",
+      weighInsNotShared: "Weigh-ins are not shared.",
+      sessionsUnavailable: "Sessions could not be loaded.",
+    },
+    /**
+     * The routine summary (one more read, `GET …/routine`, after `scopes` show WORKOUTS).
+     * The link names avoid the word "routine": the header's "Routine" link is found by
+     * that name in the suite.
+     */
+    programmeCard: {
+      days: (count: number) => `${count} day${count === 1 ? "" : "s"} a week`,
+      published: (date: string) => `Published ${date}`,
+      changedByTrainee: (date: string) => `Changed by the trainee on ${date}`,
+      draft: "Draft in progress",
+      draftSaved: (date: string) => `A draft saved on ${date} is not published yet.`,
+      noPlan: "No active plan.",
+      open: "Open the plan",
+      resume: "Resume the draft",
+      create: "Write a plan",
+    },
+    /** The nutrition summary (one more read, `GET …/nutrition`, after `scopes` show NUTRITION). */
+    nutritionCard: {
+      targets: (kcal: string, protein: string) => `${kcal}\u00a0kcal · ${protein}\u00a0g protein`,
+      noTargets: "No targets set.",
+      weekOf: (date: string) => `Week of ${date}`,
+      weekPlanned: "Week planned",
+      weekPreparing: "Being prepared",
+      noWeek: "No meal week yet.",
+      open: "See the week",
+    },
   },
 
   /* ══════════════════════════════════════════════════════════════════════════

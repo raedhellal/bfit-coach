@@ -790,3 +790,155 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
 .back-link-icon { display: inline-flex; flex: none; }
 /* Above a title: the arrow lines up with the content edge, the box keeps its 44 px. */
 .back-link[data-flush] { margin-left: -10px; }
+
+/* ── A link drawn as a button (redesign §4: « Programme », « Voir la semaine »…) ────────
+   A real <a>, never a <button> inside one. 44 px floor on both axes (BUG-146). */
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  font: 600 13.5px/18px var(--font-body);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  max-width: 100%;
+}
+.link-button[data-variant="secondary"] { background: var(--surface); color: var(--ink); border-color: var(--border-2); box-shadow: var(--e-1); }
+.link-button[data-variant="secondary"]:hover { background: var(--hover); }
+/* #2563EB on --blue-50: 4.65:1. */
+.link-button[data-variant="soft"] { background: var(--blue-50); color: var(--link); }
+.link-button[data-variant="soft"]:hover { background: var(--blue-100); }
+/* On a tinted alert card: a white button keeps the card's ink (#9A5B05 on white, 5.6:1). */
+.link-button[data-variant="on-tint"] { background: var(--surface); color: var(--warn-ink); border-color: rgba(154, 91, 5, 0.25); }
+.link-button:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+
+/* ── EV-337e: the client overview (plan §5.2) ─────────────────────────────────────────
+   Header, « À traiter », five stat cards, then « Activité récente » beside the programme
+   and nutrition summaries (two columns from a 1280 px viewport, `.layout-split`). Every
+   rule is a class so the breakpoints can reach it (BUG-380). */
+.client-head-wrap { margin-bottom: 20px; }
+.client-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px 16px; flex-wrap: wrap; }
+.client-head-id { display: flex; align-items: flex-start; gap: 14px; flex: 1 1 280px; min-width: 0; }
+.client-head-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.client-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.ov-section { margin-bottom: 16px; }
+.ov-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ov-card {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--e-card);
+  padding: 22px 24px;
+}
+.ov-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.ov-card-head:has(> .count-chip) { justify-content: flex-start; }
+.ov-card-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.ov-note { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.ov-note + .ov-note, .activity-list + .ov-note { margin-top: 6px; }
+.ov-card-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.count-chip {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: 700 var(--fs-label)/16px var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+.count-chip[data-tone="red"] { background: var(--err-bg); color: var(--err-ink); }
+
+/* The alert cards: one per fired flag. The word « Alerte » and its icon carry the status;
+   the amber fill is decoration (--warn-ink on --warn-bg, 4.81:1). */
+.alert-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 768px) { .alert-list { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); } }
+.alert-card { min-width: 0; border-radius: var(--r-16); background: var(--warn-bg); color: var(--warn-ink); padding: 16px; }
+.alert-card-body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; font-size: 13.5px; line-height: 1.45; }
+.alert-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  font: 700 var(--fs-label)/16px var(--font-body);
+}
+.alert-card-title { margin: 0; font-size: 14.5px; line-height: 1.4; font-weight: 700; overflow-wrap: break-word; }
+.alert-card-meta { font-size: var(--fs-label); margin-bottom: 4px; }
+.alert-evidence { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+.alert-evidence li { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+
+/* Five stat cards: 2 up below 768 (the fifth spans both), 3 up to 1279, 5 from 1280. */
+.stat-grid.overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.overview-stats > .stat-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+@media (min-width: 768px) {
+  .stat-grid.overview-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .overview-stats > .stat-card:last-child:nth-child(odd) { grid-column: auto; }
+}
+@media (min-width: 1280px) { .stat-grid.overview-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.stat-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  row-gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--e-card);
+  padding: 16px 18px;
+}
+.stat-card[data-visual] { grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; }
+.stat-card[data-visual] > .stat-card-visual { grid-row: 1 / span 3; align-self: center; }
+.stat-card-label { font-size: var(--fs-meta); line-height: 18px; color: var(--ink-2); }
+.stat-card-value { font-weight: 700; font-size: 24px; line-height: 1.15; letter-spacing: -0.02em; color: var(--ink); overflow-wrap: anywhere; }
+.stat-card-foot { font-size: var(--fs-label); line-height: 1.45; color: var(--ink-2); }
+
+/* « Activité récente »: date · what · how it felt (or the weigh-in's delta). */
+.activity-list { margin: 0; padding: 0; list-style: none; }
+.activity-row {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 10px 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.activity-row + .activity-row { border-top: 1px solid var(--hairline); }
+.activity-date { color: var(--ink-2); white-space: nowrap; }
+/* Wraps, never an ellipsis: a session name is the trainee's plan and is read whole (PB-1). */
+.activity-title { color: var(--ink); font-weight: 600; min-width: 0; overflow-wrap: break-word; }
+.activity-meta { color: var(--ink-2); white-space: nowrap; text-align: right; }
+
+@media (max-width: 767px) {
+  .ov-section { margin-bottom: 12px; }
+  .ov-stack { gap: 12px; }
+  .ov-card { padding: 16px; }
+  .client-head-wrap { margin-bottom: 16px; }
+  /* A phone: the two buttons share the row under the name, the menu keeps its 44 px. */
+  .client-head-actions { width: 100%; }
+  .client-head-actions > .link-button { flex: 1 1 0; }
+  /* The date above the title, the feeling on the title's line: nothing truncates at 320. */
+  .activity-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .activity-date { grid-column: 1 / -1; font-size: var(--fs-label); }
+  /* Half a 320 px row is ~140 px: the ring goes above the label instead of beside it. */
+  .stat-card[data-visual] { grid-template-columns: minmax(0, 1fr); }
+  .stat-card[data-visual] > .stat-card-visual { grid-row: auto; align-self: start; margin-bottom: 4px; }
+}

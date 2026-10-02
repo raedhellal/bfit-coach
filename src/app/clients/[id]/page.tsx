@@ -1,65 +1,100 @@
+import { redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ClientHeader } from "@/components/client/ClientHeader";
 import { RevokeMenu } from "@/components/client/RevokeMenu";
 import { StatTile } from "@/components/client/StatTile";
+import { ProgressRing } from "@/components/client/ProgressRing";
 import { AdherenceSeries } from "@/components/client/AdherenceSeries";
 import { BlockNote, MonitoringBlock } from "@/components/client/MonitoringBlock";
 import { SessionHistory } from "@/components/client/SessionHistory";
 import { ProgressGoalBlock } from "@/components/client/ProgressGoalBlock";
 import { RedFlagEvidence } from "@/components/client/RedFlagEvidence";
+import { RecentActivity } from "@/components/client/RecentActivity";
+import { OverviewCard, OverviewNote } from "@/components/client/OverviewCard";
+import {
+  NutritionSummary,
+  ProgrammeSummary,
+  type SummaryRead,
+} from "@/components/client/OverviewSummaries";
 import { TrendChart } from "@/components/ui/charts";
 import { Card, CardHead } from "@/components/ui/kit";
-import { UiIcon } from "@/components/ui/icons";
-import { hasScope } from "@/lib/coachApi";
+import {
+  coachApi,
+  hasScope,
+  isForbidden,
+  type CoachNutritionResponse,
+  type CoachRoutineResponse,
+  type FiredRedFlag,
+} from "@/lib/coachApi";
 import { readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
 import { firstName, formatDate, formatKg, formatShortDate } from "@/lib/format";
+import { codedInjuryLabels } from "@/lib/guardrailLabels";
 import { weightCaption } from "@/lib/weight";
 
 /**
- * /clients/[id] — the trainee overview (AC5, EV-083's slice).
+ * /clients/[id] — the trainee overview (AC5, EV-083's slice; redesigned by EV-337e, plan
+ * §5.2: the header with its two buttons, « À traiter » alert cards, the stat cards,
+ * « Activité récente » and the programme and nutrition summaries, then the detailed
+ * monitoring blocks the earlier stories pinned).
  *
  * ⚠️ **It is no longer read-only, and this paragraph used to say it was.** EV-202b puts
  * ONE form on this page: the two values a coach writes about a trainee's body — a
  * coaching start date and a milestone weight — inside the progress block below. Every
- * other control here is still a link, the back control or the revoke menu, and no
- * block on this page has an input for a number the trainee recorded: the four derived
- * readings have no write path and `CoachProgressGoalRequest` has no field for one
- * (EV-202 Ruling 1). Messaging and AI drafting remain absent and the footer says so.
+ * other control here is a link, the back control or the revoke menu, and no block on
+ * this page has an input for a number the trainee recorded: the four derived readings
+ * have no write path and `CoachProgressGoalRequest` has no field for one (EV-202 Ruling
+ * 1). Messaging and AI drafting remain absent and the footer says so.
  *
  * `force-dynamic` for the same reason as the roster: a revoked link must 403 on the
  * next request, so nothing about this page may be cached.
  */
 export const dynamic = "force-dynamic";
 
+type Settled<T> = { ok: true; value: T } | { ok: false; forbidden: boolean };
+
+function settle<T>(read: Promise<T>): Promise<Settled<T>> {
+  return read.then(
+    (value): Settled<T> => ({ ok: true, value }),
+    (err: unknown): Settled<T> => ({ ok: false, forbidden: isForbidden(err) })
+  );
+}
+
+function summary<T>(shared: boolean, read: Settled<T> | null): SummaryRead<T> {
+  if (!shared || !read) return { state: "notShared" };
+  return read.ok ? { state: "ok", data: read.value } : { state: "unavailable" };
+}
+
 export default async function ClientPage({ params }: { params: { id: string } }) {
   const copy = getCopy();
   /**
-   * Both reads are the layout's, memoised for this request (src/lib/clientOverview.ts)
-   * — this component does not call the api a second time.
+   * The reads, and the order they are allowed to run in (page-read-budget: depth 2).
    *
-   * The 403 case never reaches here: `layout.tsx` has already redirected to
-   * /clients/denied, which middleware serves with the status AC5 asks for. What is left
-   * for this branch is the api being unreachable or answering 5xx, and that must not
-   * tell the coach they are not linked to a trainee they may well be linked to.
+   * Step 1, together: the overview (the layout's read, memoised for this request by
+   * src/lib/clientOverview.ts — this component does not call the api a second time), the
+   * monitoring read and the coach's name. The monitoring read is a second endpoint and not
+   * a widening of the overview: it is the only one that requires PROGRESS, it is the
+   * expensive one, and a link without PROGRESS is answered 403 there while the rest of
+   * this page is a legitimate 200 — so it is asked for without waiting, and its failure is
+   * a value (`null`), never the denial page.
+   *
+   * Step 2, after the overview: the two summary reads (EV-337e, plan G11/G12), each ONLY if
+   * `scopes` holds its scope. Asking for a scope before `scopes` is known is exactly what
+   * ADR-0015 D5 / C4 forbids (`routine/page.tsx` waits the same way), so these cost one
+   * more round trip and never a request for withheld data.
+   *
+   * The 403 case for the overview never reaches here: `layout.tsx` has already redirected
+   * to /clients/denied, which middleware serves with the status AC5 asks for.
    */
-  /**
-   * Three reads, in parallel. The monitoring read (EV-187b) is a second endpoint and
-   * not a widening of the overview: it is the only one that requires the PROGRESS
-   * scope, it is the expensive one (the 8-week range, the schedule and up to ten
-   * session titles), and a link without PROGRESS is answered 403 for it while the rest
-   * of this page is a legitimate 200.
-   */
-  const [{ overview }, progress, me] = await Promise.all([
-    readClientOverview(params.id),
-    readClientProgress(params.id),
-    readCoachMe(),
-  ]);
+  const progressRead = readClientProgress(params.id);
+  const meRead = readCoachMe();
+  const { overview } = await readClientOverview(params.id);
 
   if (!overview) {
     // The notice is this page's only content, so its sentence is the h1. Without
     // `asHeading` the load error had no heading at all, the same gap /clients/denied had.
+    const me = await meRead;
     return (
       <CoachShell coachName={me?.displayName} section="roster">
         <ClientNotice message={copy.client.loadError} asHeading />
@@ -79,14 +114,10 @@ export default async function ClientPage({ params }: { params: { id: string } })
    *     of those is a statement about the trainee, and the trainee has not let this
    *     coach make it.
    *
-   * The nulls in the types are the api refusing to assert; the sentences here are the
-   * portal explaining why. They are two different things and both are needed.
-   *
    * **The scope flag comes FIRST in every block, and the null only after it.** That
-   * ordering is what makes the page safe against an api that predates ADR-0015 B1 —
-   * b-fit-api main, which is what the Vercel deployment talks to. There `scopes` is
-   * absent, so `hasScope` fails closed to false, while `currentStreakDays` is a
-   * primitive `int` and `redFlags` a non-null list: a block that asked the null first
+   * ordering is what makes the page safe against an api that predates ADR-0015 B1, where
+   * `scopes` is absent, so `hasScope` fails closed to false, while `currentStreakDays` is
+   * a primitive `int` and `redFlags` a non-null list: a block that asked the null first
    * would render "4 days" and "No red flags" for a trainee whose consent this portal
    * cannot establish. Reading the flag first turns the whole page into "Not shared",
    * which under-claims and is the only safe direction to be wrong in.
@@ -94,6 +125,29 @@ export default async function ClientPage({ params }: { params: { id: string } })
   const { adherenceThisWeek: adherence, lastSession, weightSeries, redFlags } = overview;
   const progressShared = hasScope(overview.scopes, "PROGRESS");
   const weighInsShared = hasScope(overview.scopes, "WEIGH_INS");
+  const workoutsShared = hasScope(overview.scopes, "WORKOUTS");
+  const nutritionShared = hasScope(overview.scopes, "NUTRITION");
+  const nothingShared = !progressShared && !weighInsShared && !workoutsShared && !nutritionShared;
+
+  const [progress, me, routineRead, nutritionRead] = await Promise.all([
+    progressRead,
+    meRead,
+    workoutsShared ? settle<CoachRoutineResponse>(coachApi.getRoutine(params.id)) : null,
+    nutritionShared ? settle<CoachNutritionResponse>(coachApi.getNutrition(params.id)) : null,
+  ]);
+  /**
+   * A 403 on a summary read, with its scope held, means the link ended between the
+   * layout's overview and this read: the same answer as every other denial. (This page
+   * has a loading.tsx above it, so on a cold load the redirect degrades to a meta-refresh
+   * with a 200 — the coach still lands on the denial page; the status AC5 pins is the
+   * layout's.)
+   */
+  if ((routineRead && !routineRead.ok && routineRead.forbidden) || (nutritionRead && !nutritionRead.ok && nutritionRead.forbidden)) {
+    redirect("/clients/denied");
+  }
+  const programme = summary(workoutsShared, routineRead);
+  const nutrition = summary(nutritionShared, nutritionRead);
+
   const series = weighInsShared ? (weightSeries ?? []) : [];
   const latest = weighInsShared && series.length > 0 ? series[series.length - 1] : null;
   /**
@@ -110,29 +164,37 @@ export default async function ClientPage({ params }: { params: { id: string } })
   /**
    * EV-187b's two workout blocks (AC3's series, AC5's history) need TWO scopes, and
    * both checks are the portal reading `scopes` rather than reading a status code:
-   *
-   *   · PROGRESS, because the api names it at the monitoring endpoint's guard — a link
-   *     without it is answered 403 there, and that 403 is undifferentiated (ADR-0012
-   *     D4), so it is not evidence of anything and is never rendered as a consent
-   *     statement.
-   *   · WORKOUTS, because session names and weekly adherence are workout CONTENT and
-   *     the api blanks them on that scope inside the response, exactly as the shipped
-   *     overview blanks `adherenceThisWeek` and `lastSession`.
-   *
-   * AC1's trainee Q holds WORKOUTS and NUTRITION but not PROGRESS; trainee R holds
-   * PROGRESS but not WEIGH_INS. Requiring both is what makes Q read the progress
-   * sentence and R read the weigh-in one.
+   * PROGRESS, because the api names it at the monitoring endpoint's guard; WORKOUTS,
+   * because session names and weekly adherence are workout CONTENT and the api blanks
+   * them on that scope inside the response. `readClientProgress` answers
+   * `TraineeProgress | null` and nothing about the status it failed with: a block says
+   * "not shared" from `scopes`; when the scope IS held and the data still did not arrive,
+   * it says the api did not answer.
    */
-  const workoutsShared = hasScope(overview.scopes, "WORKOUTS");
   const monitoringShared = progressShared && workoutsShared;
+
   /**
-   * ⚠️ `readClientProgress` answers `TraineeProgress | null` and NOTHING about the
-   * status it failed with. That is deliberate: the api's 403 is undifferentiated across
-   * "no such id", "another coach's client", "revoked" and "scope missing" (ADR-0012 D4),
-   * so branching on it would be the portal inferring consent from a status code — the
-   * one thing ADR-0015 R2-2 forbids. A block says "not shared" from `scopes`; when the
-   * scope IS held and the data still did not arrive, it says the api did not answer.
+   * The alert cards (« À traiter »). The evidence read (`progress.redFlags`) is preferred;
+   * a link that carries WEIGH_INS but NOT PROGRESS gets the weigh-in flag from the overview
+   * (it is evaluated on WEIGH_INS alone) without the evidence the PROGRESS-guarded read
+   * holds — a flag WITHOUT an evidence block, never one with an EMPTY block. A degraded
+   * api answer lands there too.
    */
+  const fired: FiredRedFlag[] =
+    redFlagsShared && redFlags && redFlags.length > 0
+      ? progress?.redFlags && progress.redFlags.length > 0
+        ? progress.redFlags
+        : redFlags.map((flag) => ({ flag, missedSessions: null, weighIn: null }))
+      : [];
+  const routineHref = workoutsShared ? `/clients/${overview.clientId}/routine` : null;
+
+  /** The header's chips: the CODED injuries the trainee recorded (G5), from the routine read only. */
+  const injuries =
+    programme.state === "ok" ? codedInjuryLabels(programme.data.guardrails?.injuries, copy).map(copy.client.injuryChip) : [];
+
+  /** « Séances · N semaines »: the monitoring read's own sums over its own window. */
+  const span = monitoringShared ? progress?.adherence ?? null : null;
+  const spanHasPlan = span ? span.weeks.some((w) => w.hasPlan) : false;
 
   return (
     <CoachShell coachName={me?.displayName} section="roster">
@@ -141,28 +203,83 @@ export default async function ClientPage({ params }: { params: { id: string } })
         traineeDisplayName={overview.traineeDisplayName}
         since={overview.since}
         active="overview"
-        action={
-          <RevokeMenu clientId={overview.clientId} displayName={overview.traineeDisplayName} />
-        }
+        chips={injuries}
+        action={<RevokeMenu clientId={overview.clientId} displayName={overview.traineeDisplayName} />}
       />
 
-      <div className="stat-grid" style={{ marginBottom: 18 }}>
+      {nothingShared && (
+        // The design's « Vide » state: the link shares no data scope at all. Said once, up
+        // front, in words — every block below still says "not shared" in its own place.
+        <div className="ov-section">
+          <OverviewCard id="ov-nodata" title={copy.client.noData.title}>
+            <OverviewNote>{copy.client.noData.body(overview.traineeDisplayName)}</OverviewNote>
+          </OverviewCard>
+        </div>
+      )}
+
+      {/* ── « À traiter »: the flags the api returned, and only those ───────────── */}
+      <div className="ov-section">
+        <OverviewCard
+          id="ov-review"
+          title={copy.client.toReview}
+          aside={
+            fired.length > 0 ? (
+              <span className="count-chip" data-tone="red">
+                <span aria-hidden="true">{fired.length}</span>
+                <span className="sr-only">{copy.client.alertCount(fired.length)}</span>
+              </span>
+            ) : undefined
+          }
+        >
+          {/* null = neither PROGRESS nor WEIGH_INS; [] = at least one held and nothing
+              fired. Collapsing the two would tell a coach "No red flags" about a trainee
+              whose sessions and weigh-ins they have never been allowed to read — so the
+              scope check stands in front of the null rather than behind it. */}
+          {!redFlagsShared || redFlags === null ? (
+            <OverviewNote>{copy.client.notSharedRedFlags}</OverviewNote>
+          ) : fired.length === 0 ? (
+            <OverviewNote>{copy.client.noRedFlags}</OverviewNote>
+          ) : (
+            <RedFlagEvidence flags={fired} routineHref={routineHref} />
+          )}
+        </OverviewCard>
+      </div>
+
+      <div className="stat-grid overview-stats ov-section">
         <StatTile
-          icon="check"
-          tone="blue"
           label={copy.client.adherence}
           value={
             progressShared && adherence
               ? copy.client.adherenceValue(adherence.done, adherence.planned)
               : copy.common.dash
           }
-          foot={
-            progressShared && adherence ? copy.client.adherenceFoot : copy.client.notShared
+          foot={progressShared && adherence ? copy.client.adherenceFoot : copy.client.notShared}
+          visual={
+            progressShared && adherence && adherence.planned > 0 ? (
+              <ProgressRing
+                done={adherence.done}
+                planned={adherence.planned}
+                label={copy.client.adherenceRing(adherence.done, adherence.planned)}
+              />
+            ) : undefined
           }
         />
         <StatTile
-          icon="flame"
-          tone="amber"
+          // The window is the api's own (`weeks`); with no monitoring read there is no
+          // window to name, so the label does not guess one.
+          label={progress ? copy.client.sessionsWindow(progress.weeks) : copy.client.sessionsLabel}
+          value={span && spanHasPlan ? String(span.done) : copy.common.dash}
+          foot={
+            !monitoringShared
+              ? copy.client.notShared
+              : !span
+                ? copy.client.unavailable
+                : spanHasPlan
+                  ? copy.client.sessionsOfPlanned(span.planned)
+                  : copy.client.sessionsNoPlan
+          }
+        />
+        <StatTile
           label={copy.client.streak}
           // `0` is a real streak of zero days and reads as one; a link without PROGRESS
           // gets the dash instead (F1 change 1 is what makes the two distinguishable —
@@ -172,8 +289,6 @@ export default async function ClientPage({ params }: { params: { id: string } })
           foot={streak === null ? copy.client.notShared : undefined}
         />
         <StatTile
-          icon="calendar"
-          tone="purple"
           label={copy.client.lastSession}
           value={
             progressShared && lastSession
@@ -198,8 +313,6 @@ export default async function ClientPage({ params }: { params: { id: string } })
           }
         />
         <StatTile
-          icon="trend"
-          tone="green"
           label={copy.client.weight}
           value={latest ? formatKg(latest.weightKg, copy.locale) : copy.common.dash}
           // One caption, derived from the same series as the value and the sparkline
@@ -207,6 +320,21 @@ export default async function ClientPage({ params }: { params: { id: string } })
           // to derive from and must not borrow block 4's empty-state sentence.
           foot={weighInsShared ? weightCaption(series, copy) : copy.client.notShared}
         />
+      </div>
+
+      {/* Two columns from a 1280 px viewport (plan §3), one below: the activity, then the
+          programme and nutrition summaries. */}
+      <div className="layout-split ov-section">
+        <RecentActivity
+          sessions={monitoringShared ? progress?.sessions?.items ?? null : null}
+          weights={weighInsShared ? series : null}
+          sessionsState={!monitoringShared ? "notShared" : progress?.sessions ? "shared" : "unavailable"}
+          weighInsShared={weighInsShared}
+        />
+        <div className="ov-stack">
+          <ProgrammeSummary clientId={overview.clientId} read={programme} />
+          <NutritionSummary clientId={overview.clientId} read={nutrition} />
+        </div>
       </div>
 
       <Card style={{ marginBottom: 18 }}>
@@ -289,63 +417,6 @@ export default async function ClientPage({ params }: { params: { id: string } })
       ) : (
         <SessionHistory history={progress.sessions} />
       )}
-
-      <Card style={{ marginBottom: 18 }}>
-        <CardHead title={copy.client.redFlags} icon="flag" />
-        {/* null = neither PROGRESS nor WEIGH_INS; [] = at least one held and nothing
-            fired. Collapsing the two would tell a coach "No red flags" about a trainee
-            whose sessions and weigh-ins they have never been allowed to read — so the
-            scope check stands in front of the null rather than behind it. */}
-        {!redFlagsShared || redFlags === null ? (
-          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
-            {copy.client.notSharedRedFlags}
-          </p>
-        ) : redFlags.length === 0 ? (
-          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
-            {copy.client.noRedFlags}
-          </p>
-        ) : progress?.redFlags && progress.redFlags.length > 0 ? (
-          /**
-           * EV-187 AC4 — the SAME flags, now carrying the evidence they fired on. It is
-           * one evaluation projected twice (the overview's codes and this list), so the
-           * badge on the roster, the codes here and the evidence cannot disagree.
-           */
-          <RedFlagEvidence flags={progress.redFlags} />
-        ) : (
-          /**
-           * The shipped EV-183 rendering, and the one case that still reaches it: a link
-           * that carries WEIGH_INS but NOT PROGRESS. The overview evaluates the weigh-in
-           * rule on `WEIGH_INS` alone, while the evidence endpoint names PROGRESS at its
-           * guard — so the flag is real and this coach may see it, and the evidence
-           * behind it is not theirs to read. A degraded api answer lands here too.
-           *
-           * It is a flag WITHOUT an evidence block, never a flag with an EMPTY one:
-           * AC4's clause is about the latter, and `RedFlagEvidence` cannot produce it.
-           */
-          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 10 }}>
-            {redFlags.map((code) => (
-              <li
-                key={code}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "11px 13px",
-                  borderRadius: "var(--r-lg)",
-                  background: "var(--err-bg)",
-                  color: "var(--err-ink)",
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  lineHeight: 1.4,
-                }}
-              >
-                <UiIcon name="flag" size={16} color="var(--err-ink)" />
-                {copy.client.redFlagLabels[code] || code}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
 
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
         {copy.client.footNote}
