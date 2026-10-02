@@ -108,6 +108,26 @@ input::placeholder { color:var(--ink-3); }
 /* Visible keyboard focus everywhere — the kit's inputs draw their own ring. */
 :focus-visible { outline:2px solid var(--blue-500); outline-offset:2px; border-radius:var(--r-sm); }
 
+/* BUG-663 (WCAG 2.4.7) — the kit Input's keyboard ring, the token above, drawn on its BOX
+   (`.kit-field`, which holds the icon and any trailing control) while the field inside
+   matches :focus-visible; the field's own outline is then dropped so there is one ring,
+   not two. Behind @supports: a browser without :has() keeps the global rule on the
+   <input> itself, never no ring at all. #4F7CFF reads 3.71:1 on --surface, 3.46 on
+   --bg, 3.32 on --surface-2 (qa/field-focus-ring.spec.ts measures the painted pixels).
+   The caller's `focusRing` halo (LoginForm) gives way to the ring: under it, the gap
+   inside the ring reads #DFE7FF, 3.01:1 against the ring, on the floor rather than over it.
+   `[type=date]:focus` is there for WebKit: a date field reached with Tab never matches
+   :focus-visible in it (measured, Playwright WebKit 2026-10-02), so the ring would never
+   show on the challenge and progress-goal dates. Chromium already matches :focus-visible
+   on a clicked date field, so this adds nothing a click there did not already show. */
+.kit-field[data-focus-ring] { box-shadow:var(--ring); }
+@supports selector(:has(*)) {
+  .kit-field:has(> .kit-field-input:focus-visible),
+  .kit-field:has(> .kit-field-input[type="date"]:focus) { outline:2px solid var(--blue-500); outline-offset:2px; box-shadow:none; }
+  .kit-field > .kit-field-input:focus-visible,
+  .kit-field > .kit-field-input[type="date"]:focus { outline:none; }
+}
+
 @keyframes shimmer { 0%{background-position:-200px 0} 100%{background-position:200px 0} }
 
 /* ─── responsive helpers ───────────────────────────────────────────────
