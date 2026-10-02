@@ -20,11 +20,15 @@ shell-less/system screens per plan §5.10. Facts that cost time and are not in t
   out, the whole coach shell in a coach's browser, Pro favicon — an R1/edge-case-4 breach no
   spec saw. Fixed inside the segment: `src/app/i/page.tsx` and `src/app/i/[token]/[...rest]/page.tsx`
   call `notFound()`, caught by `src/app/i/not-found.tsx` (trainee mark, EV-241's signed-out
-  sentences, no session read). No middleware change. RESIDUAL: under `next dev` AND `next start` the FIRST HTML of
-  those 404s declares the root `/icon.svg` (Pro); the DOM after hydration declares
-  `/i/icon.svg` (both witnessed; that Next's not-found error shell resolves root metadata is
-  my reading of `app-render.js`, not proven). Closing it needs
-  a middleware rewrite with `status: 404` (the /clients/denied pattern); not done in EV-337k.
+  sentences, no session read). No middleware change. **The segment's icon FILES are not enough for a
+  404**: the first HTML of `/i` and `/i/<token>/x` still carried `<title>Evoli Pro</title>`
+  and the ROOT `/icon.svg` + `/apple-icon.png` (dev and start); the icons switched only after
+  hydration, the title never. Staff caught it (my spec read the DOM after load). Fix:
+  `src/app/i/layout.tsx` with explicit `generateMetadata` — `title: invitePage.brand`,
+  `icons: { icon: [{ url: "/i/icon.svg", type }], apple: "/i/apple-icon.png" }`. Verified on
+  `next start`: right from the first byte, signed out and in a coach's browser; the invite
+  page keeps its own title. (The explicit icons drop the file convention's `?hash` query.)
+  Assert heads from `page.request.get` raw HTML (real `<title>`/`<link>` tags only), not the DOM.
 - **`/unavailable` is reachable only through a failed rotation.** Stub config: sign in,
   `clearCookies({ name: "evoli_pro_at" })`, `/__refresh-fails?status=503`, reload. For
   screenshots in fixture mode: start `next dev` with `API_BASE_URL` on a DEAD 39xx port and do

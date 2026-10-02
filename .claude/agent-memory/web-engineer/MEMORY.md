@@ -52,7 +52,7 @@
 - [Trainee app identity constant (EV-289)](trainee-app-identity-constant.md) — src/lib/traineeApps.ts holds both apps; lite = D-LITE-1 default; role names need exact:true
 - [Food log (EV-284b)](food-log-portal-facts.md) — QUICK dashes by source; no range sent; <summary> is phrasing-only; own reads journal; cross-branch drift register
 - [Activation (EV-278c)](activation-portal-facts.md) — PENDING reaches 3 api routes, `GET /me` 403; login checks /me/activation pre-cookie; api "blank" is Java trim (BUG-381); live stub config
-- [Auth + system screens (EV-337k)](auth-system-screens-portal-facts.md) — root not-found is in every page's payload (assert painted DOM); /i 404s fell to the Pro 404; reaching /unavailable; clock traps
+- [Auth + system screens (EV-337k)](auth-system-screens-portal-facts.md) — root not-found is in every page's payload (assert painted DOM); /i 404s fell to the Pro 404 (head needs i/layout metadata); reaching /unavailable; clock traps
 - [French portal, EV-324](coach-portal-i18n-facts.md) — Record maps escape `satisfies Copy`; api text stays English; fixture signs in anyone; AC2 beats AC3 on EN dates
 - [Routine draft write path (BUG-195c)](routine-draft-write-path-facts.md) — one editor, forDraftSave, token echoed as a string, 409 dialog, 4-e partition, live traps
 - [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale; roster picker reads every page (BUG-472); source = today only
