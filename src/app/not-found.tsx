@@ -16,8 +16,10 @@ import { readAccessToken } from "@/lib/session";
  *     cookie carries COACH, so the page is drawn in the portal's frame with a way back
  *     to the roster;
  *   · anybody else (AC2) — middleware sends a signed-out visitor to /login before any
- *     page runs, so they only reach this on a public path (`/i/…/…`): no frame (it
- *     would offer a nav and a sign-out to nobody) and a link to /login.
+ *     page runs, so they only reach this on a path it does not guard (an unknown
+ *     `/api/auth/…`): no frame (it would offer a nav and a sign-out to nobody) and a link
+ *     to /login. Not `/i/…`: since EV-337k / BUG-678 every non-invitation `/i` path draws
+ *     the trainee 404 (`src/components/invite/InviteNotFound.tsx`), on Vercel too.
  * The cookie is read for which screen to draw, exactly as middleware reads it; it is
  * never an authorization decision — the roster link still goes through the guard.
  *
