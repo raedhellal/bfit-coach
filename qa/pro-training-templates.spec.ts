@@ -145,6 +145,9 @@ test.describe("the list (§5.7)", () => {
     await expect(page.getByText("Aucun modèle ne correspond à cette recherche.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Effacer la recherche" }).click();
     await expect(page.getByRole("group")).toHaveCount(3);
+    // Staff nit (8b175b2): the button unmounts itself; focus goes back to the field, not <body>.
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue("");
   });
 
   test("an empty library: one h1 and ONE « Nouveau modèle », in the empty state", async ({ page }) => {

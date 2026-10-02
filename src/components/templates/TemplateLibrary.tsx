@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
@@ -87,6 +87,7 @@ export function TemplateLibrary({
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const searchId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   function close() {
     setDialog(null);
@@ -128,6 +129,7 @@ export function TemplateLibrary({
             </span>
             <span className="sr-only">{copy.templateLibrary.searchLabel}</span>
             <input
+              ref={searchRef}
               id={searchId}
               type="search"
               value={query}
@@ -189,7 +191,14 @@ export function TemplateLibrary({
             <p style={{ margin: 0, fontSize: "var(--fs-body)", color: "var(--ink-2)" }}>
               {copy.templateLibrary.noMatch}
             </p>
-            <Button variant="secondary" onClick={() => setQuery("")}>
+            {/* This button unmounts itself; focus goes back to the field, not to <body>. */}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setQuery("");
+                searchRef.current?.focus();
+              }}
+            >
               {copy.templateLibrary.clearSearch}
             </Button>
           </div>
