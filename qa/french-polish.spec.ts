@@ -114,6 +114,8 @@ const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
   "activate.expired#0",
   "activate.expiredOnSubmit#0",
   "activate.finishBy#0",
+  "challenges.endedOn#0", // EV-337h: « Terminé le {date} »
+  "challenges.endsOn#0", // EV-337h: « se termine le {date} »
   "client.coachedSince#0",
   "client.lastWeighIn#0",
   "client.programmeCard.changedByTrainee#0", // EV-337e: « le {date} »

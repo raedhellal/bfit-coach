@@ -1099,7 +1099,7 @@ export const fr = {
     backToList: "Retour aux défis",
     phase: {
       UPCOMING: "À venir",
-      ACTIVE: "En cours",
+      ACTIVE: "Actif",
       ENDED: "Terminé",
     },
     window: (start: string, end: string) => `Du ${start} au ${end}`,
@@ -1111,6 +1111,33 @@ export const fr = {
     previous: "Précédent",
     next: "Suivant",
     pageOf: (page: number, pages: number) => `Page ${page} sur ${pages}`,
+
+    viewDetail: "Voir le détail",
+    dayOf: (day: number, days: number) => `Jour ${day} sur ${days}`,
+    endsOn: (date: string) => `se termine le ${date}`,
+    startsIn: (days: number) => (days === 1 ? "Commence demain" : `Commence dans ${days}\u00a0jours`),
+    endedOn: (date: string) => `Terminé le ${date}`,
+    participantsTitle: "Participants",
+    ratio: (part: number, whole: number) => `${part} / ${whole}`,
+    stats: {
+      participantsValue: (accepted: number, invited: number) =>
+        `${accepted} sur ${invited} ${accepted < 2 ? "a rejoint" : "ont rejoint"}`,
+      pending: (count: number) =>
+        count === 0
+          ? "Toutes les invitations sont acceptées"
+          : `${count} invitation${s(count)} pas encore acceptée${s(count)}`,
+      metToday: "Objectif atteint aujourd'hui",
+      withoutData: (count: number) => `${count} sans donnée aujourd'hui`,
+      groupAverage: "Moyenne du groupe · aujourd'hui",
+      withData: (count: number) => `sur ${count} client${s(count)} avec données`,
+      day: "Jour",
+      start: "Début",
+      end: "Fin",
+    },
+    noDataToday: "Aucune donnée aujourd'hui",
+    neverSynced: "Rien de synchronisé pour l'instant",
+    noDataNotZero:
+      "«\u00a0Aucune donnée\u00a0» signifie que rien n'a été synchronisé ni saisi ce jour-là\u00a0: ce n'est pas zéro pas.",
 
     dialogTitle: "Nouveau défi",
     dialogSub: "Vos clients reçoivent une invitation dans l'app Evoli Fit.",
@@ -1180,7 +1207,7 @@ export const fr = {
     colDays: "Jour par jour",
     status: {
       INVITED: "Invitation envoyée",
-      ACCEPTED: "Participe",
+      ACCEPTED: "A rejoint",
     },
     unnamed: "Client sans nom",
     invitedNote: "Ses pas apparaîtront ici après acceptation.",

@@ -5,6 +5,9 @@ metadata:
   type: project
 ---
 
+> 2026-10-02: EV-337h replaced the table with participant rows/cards (`tr` → `li[data-participant]`,
+> the « — » today → « Aucune donnée aujourd'hui »); see [[challenges-redesign-portal-facts]].
+
 EV-321b (`feat/ev321b-portal-challenges`, 2026-09-30, off the EV-324 French branch) added
 `/challenges`, `/challenges/[id]`, `src/lib/challengeDocument.ts` (pure: builder, checks,
 error mapping), `src/lib/challengeActions.ts`, `src/components/challenges/*`. Typed against
