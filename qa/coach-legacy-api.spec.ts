@@ -67,7 +67,7 @@ test("every scope-gated block fails closed to “Not shared”", async ({ page }
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Red flags need this trainee's progress and weigh-ins, which they have not shared."
+      "Red flags need this trainee's sessions or weigh-ins, which they have not shared."
     )
   ).toBeVisible();
 

@@ -57,6 +57,7 @@ import type {
   PlannedDayView,
   PlannedMealView,
   PublishPreview,
+  RedFlagCode,
   PublishRepair,
   PublishResult,
   RosterClient,
@@ -267,6 +268,29 @@ const PIA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0018";
  * links are not per coach; see `COACH_LIBRARIES`).
  */
 const TESS_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0019";
+/**
+ * EV-337m — four overview-only trainees for the overview's follow-ups. None is on a
+ * scenario's roster (Yann joins it only under `evoli_fixture_roster_workouts_flag=1`), so no
+ * roster-count, triage-order or picker spec has to absorb them.
+ *
+ *   …0020 Yann B.    — WORKOUTS only, and the missed-sessions rule FIRED (BUG-674, M3). The
+ *                      api evaluates that rule and this week's adherence on WORKOUTS
+ *                      (`TraineeRedFlagRules.evaluate`, `CoachPortalQueryService` at b-fit-api
+ *                      c82e55b), so his overview carries both while PROGRESS is withheld.
+ *   …0021 Pablo N.   — ⚠ `redFlags: ["PAIN_REPORTED"]`, a wire the api CANNOT send today (the
+ *                      rule has no branch, ADR-0012 D6). Served so the overview's "labelled
+ *                      codes only" filter (M4) is under test: no pain signal may render even
+ *                      the day an api sends one. Not a product state.
+ *   …0022 Quentin H. — `["MISSED_TWO_OR_MORE_SESSIONS", "SOMETHING_NEW"]`: a code from an api
+ *                      newer than this portal (M4). One card, and the code is never printed.
+ *   …0023 Wanda E.   — every scope, and a progress read whose window is ONE week (M5's
+ *                      singular label). The api's window is a constant 8 today; the portal
+ *                      names whatever `weeks` says, so the one-week wording needs a witness.
+ */
+const YANN_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0020";
+const PABLO_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0021";
+const QUENTIN_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0022";
+const WANDA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0023";
 
 /** Everything a fully-consented link shares — the shape every EV-183 fixture had. */
 const ALL_SCOPES: CoachAccessScope[] = ["WORKOUTS", "PROGRESS", "NUTRITION", "WEIGH_INS"];
@@ -386,6 +410,26 @@ function yusuf(): RosterClient {
   };
 }
 
+/**
+ * EV-337m M3 — Yann's roster row, served ONLY under `evoli_fixture_roster_workouts_flag=1`
+ * (one browser context), so the overview's alert count can be compared with the roster's
+ * without a seventh row in every roster spec. WORKOUTS only: plan, flags; no progress fields.
+ */
+function yann(): RosterClient {
+  return {
+    id: YANN_ID,
+    traineeDisplayName: "Yann B.",
+    scopes: ["WORKOUTS"],
+    currentPlanName: "Full Body Twice",
+    lastCompletedWorkoutDate: null,
+    currentStreakDays: null,
+    // By construction, the length of his overview's `redFlags` (EV-187 AC2's rule).
+    redFlagCount: OVERVIEWS[YANN_ID]().redFlags?.length ?? null,
+    status: "ACTIVE",
+    since: isoInstant(19),
+  };
+}
+
 function sara(): RosterClient {
   return {
     id: SARA_ID,
@@ -450,7 +494,10 @@ const BASE_OVERVIEWS: Record<string, () => ClientOverview> = {
     // Sara shares her progress and her weigh-ins, and NEITHER her workouts nor her
     // nutrition: both tabs read the scope sentence while the overview stays full.
     scopes: ["PROGRESS", "WEIGH_INS"],
-    adherenceThisWeek: { done: 0, planned: 3 },
+    // No WORKOUTS, so the api sends no adherence block (`if (workouts)` at c82e55b). This
+    // row used to send `0 / 3`, which no api does for her link, and the portal's old
+    // PROGRESS gate displayed it (EV-337m, BUG-674: the gate is WORKOUTS now).
+    adherenceThisWeek: null,
     currentStreakDays: 0,
     lastSession: null,
     weightSeries: [],
@@ -501,17 +548,81 @@ const BASE_OVERVIEWS: Record<string, () => ClientOverview> = {
     weightSeries: null,
     redFlags: null,
   }),
-  /** WORKOUTS only: the Routine tab works, the Nutrition tab reads the sentence. */
+  /**
+   * WORKOUTS only: the Routine tab works, the Nutrition tab reads the sentence.
+   *
+   * EV-337m (BUG-674): `adherenceThisWeek` and `redFlags` are WORKOUTS blocks on the api
+   * (`CoachPortalQueryService` computes adherence inside `if (workouts)`, and
+   * `TraineeRedFlagRules.evaluate` runs the missed-sessions rule on WORKOUTS), so they are
+   * served here; this row used to send `null` for both, which no api at c82e55b does for a
+   * WORKOUTS link. `[]` matches his roster row's real `0`. `0 / 2` with no flag: his plan
+   * trains Tuesday and Thursday, so at most one planned day has passed unfulfilled when the
+   * suite reads it — stated, not derived, like every other week in this file.
+   */
   [YUSUF_ID]: () => ({
     clientId: YUSUF_ID,
     traineeDisplayName: "Yusuf A.",
     since: isoInstant(21),
     scopes: ["WORKOUTS"],
-    adherenceThisWeek: null,
+    adherenceThisWeek: { done: 0, planned: 2 },
     currentStreakDays: null,
     lastSession: null,
     weightSeries: null,
-    redFlags: null,
+    redFlags: [],
+  }),
+  /** EV-337m M3 (BUG-674) — WORKOUTS only, and the missed-sessions rule fired. See `YANN_ID`. */
+  [YANN_ID]: () => ({
+    clientId: YANN_ID,
+    traineeDisplayName: "Yann B.",
+    since: isoInstant(19),
+    scopes: ["WORKOUTS"],
+    // His plan's two days (Tuesday, Thursday) both passed without a session: stated, not
+    // derived from today, so the flag holds on any weekday the suite runs.
+    adherenceThisWeek: { done: 0, planned: 2 },
+    // PROGRESS is withheld: the api sends null for the streak.
+    currentStreakDays: null,
+    // WORKOUTS-gated on the api (`workouts ? lastSession(...) : null`, c82e55b).
+    lastSession: { date: isoDate(6), name: "Full Body A", difficulty: "OK" },
+    weightSeries: null,
+    redFlags: ["MISSED_TWO_OR_MORE_SESSIONS"],
+  }),
+  /** EV-337m M4 — a code with no sentence. See `PABLO_ID`: not a state the api can reach. */
+  [PABLO_ID]: () => ({
+    clientId: PABLO_ID,
+    traineeDisplayName: "Pablo N.",
+    since: isoInstant(16),
+    scopes: ["WORKOUTS", "WEIGH_INS"],
+    adherenceThisWeek: { done: 2, planned: 3 },
+    currentStreakDays: null,
+    lastSession: { date: isoDate(1), name: "Full Body B", difficulty: "OK" },
+    weightSeries: [{ date: isoDate(2), weightKg: 80.1 }],
+    redFlags: ["PAIN_REPORTED"],
+  }),
+  /** EV-337m M4 — one labelled code and one this portal does not know. See `QUENTIN_ID`. */
+  [QUENTIN_ID]: () => ({
+    clientId: QUENTIN_ID,
+    traineeDisplayName: "Quentin H.",
+    since: isoInstant(27),
+    scopes: ["WORKOUTS", "WEIGH_INS"],
+    adherenceThisWeek: { done: 0, planned: 3 },
+    currentStreakDays: null,
+    lastSession: { date: isoDate(8), name: "Push", difficulty: "HARD" },
+    weightSeries: [{ date: isoDate(3), weightKg: 76.4 }],
+    // An api newer than the portal: the cast is the point, the union does not know it.
+    redFlags: ["MISSED_TWO_OR_MORE_SESSIONS", "SOMETHING_NEW" as RedFlagCode],
+  }),
+  /** EV-337m M5 — every scope; her progress read's window is one week. See `WANDA_ID`. */
+  [WANDA_ID]: () => ({
+    clientId: WANDA_ID,
+    traineeDisplayName: "Wanda E.",
+    since: isoInstant(5),
+    scopes: ALL_SCOPES,
+    // Equal to the one week of her series, as every fixture row here is.
+    adherenceThisWeek: { done: 2, planned: 3 },
+    currentStreakDays: 2,
+    lastSession: { date: isoDate(1), name: "Full Body A", difficulty: "EASY" },
+    weightSeries: [{ date: isoDate(1), weightKg: 62.3 }],
+    redFlags: [],
   }),
   /**
    * An ACTIVE link that shares NOTHING. It is reachable — `requireManagedLink` needs
@@ -1167,6 +1278,22 @@ const PROGRESS: Record<string, () => TraineeProgress> = {
       [6, "Push", "OK"],
       [8, "Pull", "OK"],
       [10, "Push", "HARD"],
+    ]),
+    redFlags: [],
+    scopes: ALL_SCOPES,
+  }),
+  /**
+   * EV-337m M5 — a ONE-week window. `TraineeProgressResponse.weeks` is a server constant
+   * (8) today; the portal labels the sessions card from whatever the read says, so the
+   * singular is reachable only here. Her series and her overview agree (2 / 3).
+   */
+  [WANDA_ID]: () => ({
+    clientId: WANDA_ID,
+    weeks: 1,
+    adherence: adherenceSeries([[2, 3]]),
+    sessions: sessionHistory([
+      [1, "Full Body A", "EASY"],
+      [3, "Full Body B", "OK"],
     ]),
     redFlags: [],
     scopes: ALL_SCOPES,
@@ -3107,6 +3234,23 @@ async function servedDisplayName(id: string, name: string): Promise<string> {
 async function lockedSince(mealId: string): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_lock")) === mealId;
 }
+/**
+ * EV-337m M7 — ⚠ fixture affordance: `evoli_fixture_summary_read=<read>:<status>:<clientId>`
+ * (one browser context) makes ONE client's routine read (`routine`) or nutrition read
+ * (`nutrition`) answer `status` — 500 (`INTERNAL_ERROR`) or 403 (the guard's
+ * `COACH_ACCESS_DENIED`). It is the only way to reach the overview's summary cards'
+ * unavailable state (500) and the late-denial redirect (403) without a patch: every seeded
+ * id is either readable or refused before the page asks. It fails the read wherever it is
+ * made (the routine and nutrition tabs too), which is what the api would do. Read here
+ * only, so only in fixture mode; `live` never imports this file.
+ */
+async function summaryReadFailure(read: "routine" | "nutrition", id: string): Promise<void> {
+  const raw = await fixtureSwitch("evoli_fixture_summary_read");
+  const [which, status, client] = raw?.split(":") ?? [];
+  if (which !== read || client !== id) return;
+  if (status === "403") await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  if (status === "500") await fail(500, "INTERNAL_ERROR", "Internal error");
+}
 
 type SeededNutrition = Omit<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords"> &
   Partial<Pick<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords">>;
@@ -3783,6 +3927,14 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *                                              (BUG-472: a roster past one 100-row page);
  *   `evoli_fixture_roster_boundary=1`        → three more rows, last trained 6, 7 and 8
  *                                              Paris days ago (EV-337d's « Inactif » edge);
+ *   `evoli_fixture_roster_workouts_flag=1`   → Yann's row (WORKOUTS only, one flag): the
+ *                                              roster half of EV-337m M3 (BUG-674);
+ *   `evoli_fixture_summary_read=<routine|nutrition>:<status>:<clientId>` → the routine or
+ *                                              the nutrition read of THAT client answers
+ *                                              <status> (500 or 403), everywhere it is
+ *                                              made: EV-337m M7, the overview summary
+ *                                              cards' unavailable state. See
+ *                                              `summaryReadFailure`.
  *   `evoli_fixture_challenge_metric=<name>`  → `GET /coach-portal/challenges/{id}` serves
  *                                              `metric: <name>`, a metric this portal does
  *                                              not know (a newer api): its page must claim
@@ -4234,6 +4386,8 @@ function freshState(): FixtureState {
       [DANA_ID, seededPlan(DANA_ID, danaPlan())],
       [OMAR_ID, seededPlan(OMAR_ID, omarPlan())],
       [YUSUF_ID, seededPlan(YUSUF_ID, yusufPlan())],
+      // EV-337m: a missed session needs a plan that scheduled it ("only a plan can schedule").
+      [YANN_ID, seededPlan(YANN_ID, { ...yusufPlan(), planId: "plan-yann-0020", name: "Full Body Twice" })],
       // Petra and Mara have no WORKOUTS scope, so no routine read reaches a plan.
       [PETRA_ID, null],
       [MARA_ID, null],
@@ -4984,12 +5138,13 @@ export const fixtureCoachApi: CoachApi = {
      * against the api; what the fixture owes is every rendering, and it has them.
      */
     const boundary = (await fixtureSwitch("evoli_fixture_roster_boundary")) === "1" ? inactivityBoundaryRows() : [];
+    const workoutsFlag = (await fixtureSwitch("evoli_fixture_roster_workouts_flag")) === "1" ? [yann()] : [];
     const items =
       SCENARIO === "empty" || state().revoked
         ? []
         : sortRoster(
             await Promise.all(
-              [lina(), petra(), yusuf(), sara(), tobias(), mara(), ...boundary].map(async (row) =>
+              [lina(), petra(), yusuf(), sara(), tobias(), mara(), ...boundary, ...workoutsFlag].map(async (row) =>
                 withPlanFlag({ ...row, traineeDisplayName: await servedDisplayName(row.id, row.traineeDisplayName) })
               )
             ),
@@ -5157,6 +5312,7 @@ export const fixtureCoachApi: CoachApi = {
    */
   async getRoutine(id: string): Promise<CoachRoutineResponse> {
     await assertScope(id, "WORKOUTS");
+    await summaryReadFailure("routine", id);
     state().lastRoutineClient = id;
     const plan = state().plans.get(id) ?? null;
     const draft = state().drafts.get(id) ?? null;
@@ -5752,6 +5908,7 @@ export const fixtureCoachApi: CoachApi = {
     // EV-273b AC4: the dialog-open read is witnessed here, where the api would see it.
     recordCall(`GET /coach-portal/clients/${id}/nutrition`);
     await assertScope(id, "NUTRITION");
+    await summaryReadFailure("nutrition", id);
     const state = await withServedWeekStatus(nutritionState(id));
     return {
       clientId: id,
