@@ -1,5 +1,6 @@
 import { expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { expectNoEnglish } from "./french";
 import { expectNoSidewaysScroll } from "./layout";
 import { MARK_PATH } from "../src/components/ui/brand";
 
@@ -174,6 +175,13 @@ test.describe("edge case 4 — /i/* never shows the Evoli Pro mark", () => {
    * What a visitor SEES: the painted DOM, the favicon and the home-screen icon. Not the raw
    * HTML: Next 14 serialises the ROOT not-found into every page's flight data (EV-241), and
    * that tree carries the Pro mark although it is never painted on an /i page.
+   *
+   * ⚠ Known gap, not asserted here: the FIRST HTML of the 404s (`/i`, `/i/<token>/x`)
+   * declares the ROOT favicon (`/icon.svg`, the Pro mark) — witnessed under `next dev` and
+   * `next start`. The icons read below are
+   * the DOM's after load, which are the `/i` ones. A no-JS reader of those two 404s still
+   * gets the Pro favicon; the fix would be a middleware 404 rewrite (as /clients/denied's
+   * 403), left to review. The invitation itself declares `/i/icon.svg` from its first byte.
    */
   async function expectNoProMark(page: Page, path: string, status: number, where: string) {
     const res = await page.goto(path);
@@ -256,6 +264,8 @@ for (const lang of ["en", "fr"] as const) {
       }
       await page.setViewportSize({ width: 390, height: 900 });
       expect(await undersized(page.locator("body")), `${label} at 390px: controls under 44 px`).toEqual([]);
+      // X6: a French page carries no English UI string (the dictionary-driven scan).
+      if (lang === "fr") await expectNoEnglish(page, label);
     }
 
     test("/login", async ({ page }) => {
