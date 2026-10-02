@@ -732,6 +732,9 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
   .stat-grid.challenge-stats[data-stat-count="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 .challenge-stats .stat-card-value { font-size: 20px; }
+/* A value that is a sentence, not a number (« Aucune donnée aujourd'hui »): at 20 px bold a
+   2-up card at 320 px broke it mid-word (« aujourd'h / ui », EV-337n), so it is set smaller. */
+.challenge-stats .stat-card-value [data-value-words] { font-size: 16px; line-height: 1.3; letter-spacing: 0; }
 
 /* The participants. ONE markup: a row from 768 (two lines to 1279, one from 1280), a card
    per participant below 768 — the list frame goes, each participant gets its own. */

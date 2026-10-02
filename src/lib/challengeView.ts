@@ -1,4 +1,5 @@
 import type { ChallengeProgress, CoachChallengeDetail, CoachChallengeSummary } from "@/lib/coachApi";
+import type { Copy } from "@/lib/copy";
 
 /**
  * EV-337h — what the redesigned challenge screens derive from the api's numbers, in one
@@ -51,31 +52,98 @@ export function windowPosition(c: CoachChallengeSummary, nowMs: number): WindowP
   }
 }
 
+/** Where a participant's OWN today falls against the window's dates. */
+export type OwnDay = "BEFORE_START" | "IN_WINDOW" | "PAST_END";
+
 /**
- * Whether a participant's OWN today falls inside the challenge's window.
+ * Where a participant's OWN today falls against the window, on the dates alone.
  *
  * The api computes `phase` on the UTC date but each trainee's `today` in their own zone,
  * and nulls `todayValue` when that today is outside the window. So on the last evening
  * (22:30 UTC on `endsOn` is 00:30 the next day in Paris) the challenge is still ACTIVE
  * while a Paris trainee's today is already past the end, and on the first morning a
- * trainee west of UTC is still before the start. Such a null is not "no data today": there
- * is no challenge day to report for that trainee. The row and the stat cards both ask this
- * one question, so they cannot disagree (staff, EV-337h review of 55d2126).
+ * trainee west of UTC is still before the start.
  */
-export function todayInWindow(progress: ChallengeProgress, c: Pick<CoachChallengeSummary, "startsOn" | "endsOn">): boolean {
-  return progress.today >= c.startsOn && progress.today <= c.endsOn;
+export function ownDay(progress: ChallengeProgress, c: Pick<CoachChallengeSummary, "startsOn" | "endsOn">): OwnDay {
+  if (progress.today < c.startsOn) return "BEFORE_START";
+  return progress.today > c.endsOn ? "PAST_END" : "IN_WINDOW";
 }
 
 /**
- * The detail page's "today" cards, counted over the ACCEPTED participants whose own today
- * is inside the window (`todayInWindow`): an invited one has shared nothing, and one whose
+ * Whether a participant has a challenge "today" to report: the page head says the
+ * challenge is running (the api's UTC `phase` is ACTIVE) AND the trainee's own today is
+ * inside the window. The row's today cell and the today stat cards both ask this one
+ * question, so they cannot disagree with each other or with the head (staff, EV-337h
+ * review of 55d2126; QA PB-1 on 6269343).
+ *
+ * Both terms are needed. Without the phase, a Tokyo trainee already on day 1 of a
+ * challenge the head calls « Commence demain » read « Aujourd'hui 5 000 / 10 000 pas »,
+ * and a Los Angeles trainee still on the last day of one the head calls « Terminé » read
+ * « 6 000 / 5 000 pas ». Without the dates, the last evening's Paris trainees read « Aucune
+ * donnée aujourd'hui » about a day they no longer have.
+ */
+export function todayInWindow(
+  progress: ChallengeProgress,
+  c: Pick<CoachChallengeSummary, "phase" | "startsOn" | "endsOn">
+): boolean {
+  return c.phase === "ACTIVE" && ownDay(progress, c) === "IN_WINDOW";
+}
+
+/**
+ * What an ACCEPTED participant's row may draw, decided once (QA PB-1 and PB-2 on 6269343).
+ *
+ *   · `today` — the today cell: `todayInWindow`, the cards' own question.
+ *   · `rank` — not on an UPCOMING challenge. The api ranks by what each trainee's own
+ *     calendar has counted, so a trainee east of UTC already on day 1 ranked « 1er » under
+ *     a head that says the challenge has not started; with nobody started, every rank is a
+ *     tie over zeros. Either way the rank says nothing the head allows.
+ *   · `counts` — days met and the total, and the sync line: from the first day the HEAD
+ *     says has begun (not UPCOMING) and the trainee's own first day (`daysElapsed > 0`).
+ *     Before that the api's numbers are zeros over no day (« 0 sur 0 · 0 pas »), or count a
+ *     day the head says is still to come (« Jours réussis 0 sur 1 » under « Commence demain »).
+ *   · `total` — STEPS: only once something was synced. The api's `total` is a `long`, never
+ *     null: it is the sum of the stored rows in the window up to the trainee's today, so with
+ *     no row it is 0 by absence. `syncedAt` is the latest of those same rows, null exactly
+ *     when there are none (`ChallengeProgressCalculator.steps`). So `syncedAt: null` means
+ *     the 0 is "nothing synced", which the row already says (« Rien de synchronisé pour
+ *     l'instant »), and « Total 0 pas » beside it was a fake zero (X7). A synced row of 0
+ *     steps is a real zero and is shown. WORKOUTS: `syncedAt` is always null and a total of
+ *     0 is the fact that no session was completed, so it is always shown.
+ */
+export interface ParticipantRowView {
+  today: boolean;
+  rank: boolean;
+  counts: boolean;
+  total: boolean;
+}
+
+export function participantRowView(
+  progress: ChallengeProgress,
+  c: Pick<CoachChallengeSummary, "phase" | "startsOn" | "endsOn" | "metric">
+): ParticipantRowView {
+  const counts = c.phase !== "UPCOMING" && progress.daysElapsed > 0;
+  return {
+    today: todayInWindow(progress, c),
+    rank: c.phase !== "UPCOMING",
+    counts,
+    total: counts && (c.metric !== "STEPS" || progress.syncedAt !== null),
+  };
+}
+
+/**
+ * The detail page's "today" cards, counted over the ACCEPTED participants who have a
+ * challenge today (`todayInWindow`): an invited one has shared nothing, and one whose
  * today is outside the window has no challenge day to count — counting them read « 0 / 3 ·
  * 3 sans donnée aujourd'hui » for trainees who met every day, every night a challenge ends.
  *
+ *   · `accepted` — that in-window count: the met card's denominator.
  *   · `metToday` — participants whose OWN today is a day the api marked MET. The api's
  *     verdict, not a re-comparison here: a WORKOUTS challenge has no days and counts none.
  *   · `withData` / `average` — over the participants who sent a number for today. `average`
  *     is `null` when nobody did: an average of nothing is not 0 steps.
+ *   · `pastEnd` / `beforeStart` — accepted participants left out of `accepted` because their
+ *     own today is after `endsOn` / before `startsOn` while the challenge is ACTIVE (ruling 8:
+ *     the met card's foot names them). On any other phase nobody has a today and both are 0.
  */
 export interface TodayStats {
   accepted: number;
@@ -83,6 +151,8 @@ export interface TodayStats {
   withData: number;
   withoutData: number;
   average: number | null;
+  pastEnd: number;
+  beforeStart: number;
 }
 
 function metOnToday(p: ChallengeProgress): boolean {
@@ -90,9 +160,11 @@ function metOnToday(p: ChallengeProgress): boolean {
 }
 
 export function todayStats(detail: CoachChallengeDetail): TodayStats {
-  const progress = detail.participants
-    .map((p) => p.progress)
-    .filter((p): p is ChallengeProgress => p !== null && todayInWindow(p, detail.challenge));
+  const { challenge } = detail;
+  const joined = detail.participants.map((p) => p.progress).filter((p): p is ChallengeProgress => p !== null);
+  const progress = joined.filter((p) => todayInWindow(p, challenge));
+  const outside = (where: OwnDay) =>
+    challenge.phase === "ACTIVE" ? joined.filter((p) => ownDay(p, challenge) === where).length : 0;
   const values = progress.map((p) => p.todayValue).filter((v): v is number => v !== null);
   return {
     accepted: progress.length,
@@ -100,7 +172,26 @@ export function todayStats(detail: CoachChallengeDetail): TodayStats {
     withData: values.length,
     withoutData: progress.length - values.length,
     average: values.length === 0 ? null : Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+    pastEnd: outside("PAST_END"),
+    beforeStart: outside("BEFORE_START"),
   };
+}
+
+/**
+ * The met card's foot (ruling 8): who is outside its count, in this order — no number
+ * today, past the end, before the start — joined by « · », a part whose count is 0 left
+ * out. `undefined` when every part is 0 (the card then has no foot, as built).
+ */
+export function metCardFoot(
+  stats: Pick<TodayStats, "withoutData" | "pastEnd" | "beforeStart">,
+  words: Pick<Copy["challenges"]["stats"], "withoutData" | "pastEnd" | "beforeStart">
+): string | undefined {
+  const parts = [
+    stats.withoutData > 0 ? words.withoutData(stats.withoutData) : null,
+    stats.pastEnd > 0 ? words.pastEnd(stats.pastEnd) : null,
+    stats.beforeStart > 0 ? words.beforeStart(stats.beforeStart) : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length === 0 ? undefined : parts.join(" · ");
 }
 
 /**

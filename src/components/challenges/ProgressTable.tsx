@@ -5,7 +5,7 @@ import { UiIcon } from "@/components/ui/icons";
 import type { ActivitySource, ChallengeMetric, CoachChallengeDetail, CoachChallengeParticipant } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 import { formatSince, formatSteps } from "@/lib/format";
-import { initialsOf, todayInWindow } from "@/lib/challengeView";
+import { initialsOf, participantRowView } from "@/lib/challengeView";
 import { DayLegend, DayStrip } from "./DayStrip";
 
 /**
@@ -52,7 +52,7 @@ export function ProgressTable({ detail, copy, now }: { detail: CoachChallengeDet
               copy={copy}
               now={now}
               steps={steps}
-              range={{ startsOn: detail.challenge.startsOn, endsOn: detail.challenge.endsOn }}
+              challenge={detail.challenge}
             />
           )
         )}
@@ -84,16 +84,19 @@ function ParticipantAvatar({ p }: { p: CoachChallengeParticipant }) {
 function Identity({
   p,
   copy,
+  showRank = true,
   children,
 }: {
   p: CoachChallengeParticipant;
   copy: Copy;
+  /** False on an UPCOMING challenge (`participantRowView`): the api's rank counts no day the head allows. */
+  showRank?: boolean;
   children?: ReactNode;
 }) {
   return (
     <div className="participant-id">
-      {/* An empty slot keeps invited rows' avatars in line with the ranked ones. */}
-      {p.rank !== null ? (
+      {/* An empty slot keeps invited and not-yet-ranked rows' avatars in line with the ranked ones. */}
+      {showRank && p.rank !== null ? (
         <span className="participant-rank tnum" data-rank-label="">
           {copy.challenges.rank(p.rank)}
         </span>
@@ -145,13 +148,13 @@ function AcceptedItem({
   copy,
   now,
   steps,
-  range,
+  challenge,
 }: {
   p: CoachChallengeParticipant;
   copy: Copy;
   now: number;
   steps: boolean;
-  range: { startsOn: string; endsOn: string };
+  challenge: CoachChallengeDetail["challenge"];
 }) {
   const c = copy.challenges;
   const progress = p.progress!;
@@ -169,21 +172,23 @@ function AcceptedItem({
   const met = today !== null && progress.target > 0 && today >= progress.target;
   const pct = today === null || progress.target <= 0 ? 0 : Math.min(100, Math.floor((today / progress.target) * 100));
   /**
-   * The api nulls `todayValue` both for "nothing sent today" and for a today OUTSIDE the
-   * window (before the start, after the end, or a trainee whose own zone is already past
-   * the last day). Only the first is « Aucune donnée aujourd'hui »; otherwise there is no
-   * "today" to report and the cell is left out. The stat cards ask the same question.
+   * What this row may draw, decided in `challengeView` (`participantRowView`) so the row,
+   * the stat cards and the page head answer one question. The api nulls `todayValue` both
+   * for "nothing sent today" and for a today OUTSIDE the window; only the first is « Aucune
+   * donnée aujourd'hui ». And the head follows the api's UTC phase: on an UPCOMING or ENDED
+   * challenge no row has a today cell, whatever the trainee's own calendar says, and on an
+   * UPCOMING one nothing is counted or ranked yet (QA PB-1 on 6269343).
    */
-  const showToday = todayInWindow(progress, range);
+  const view = participantRowView(progress, challenge);
 
   return (
-    <li className="participant" data-participant={p.clientId} data-status="ACCEPTED" data-rank={p.rank ?? ""}>
-      <Identity p={p} copy={copy}>
+    <li className="participant" data-participant={p.clientId} data-status="ACCEPTED" data-rank={view.rank ? (p.rank ?? "") : ""}>
+      <Identity p={p} copy={copy} showRank={view.rank}>
         {/* When the phone last sent a counted day. STEPS only: a WORKOUTS challenge syncs
-            nothing. Not before day 1: `syncedAt` is the latest write among the window's days
-            up to today, so before the start it is null for everyone, which says nothing
-            about the phone. */}
-        {steps && progress.daysElapsed > 0 && (
+            nothing. Not before day 1 (`view.counts`): `syncedAt` is the latest write among the
+            window's days up to today, so before the start it is null for everyone, which says
+            nothing about the phone. */}
+        {steps && view.counts && (
           <span className="participant-sync">
             {progress.syncedAt === null ? (
               <span data-synced="">{c.neverSynced}</span>
@@ -197,7 +202,7 @@ function AcceptedItem({
         )}
       </Identity>
 
-      {showToday && (
+      {view.today && (
         <div className="participant-today">
           <span className="participant-label">{c.colToday}</span>
           {steps ? (
@@ -238,7 +243,7 @@ function AcceptedItem({
       <div className="participant-days">
         {steps && progress.days && <DayStrip days={progress.days} name={name} copy={copy} />}
         {/* Before the first day nothing has been counted: no "0 / 0", no "0 steps" total. */}
-        {progress.daysElapsed > 0 && (
+        {view.counts && (
           <div className="participant-totals">
             {progress.daysMet !== null && (
               <span>
@@ -253,12 +258,17 @@ function AcceptedItem({
                 </span>
               </span>
             )}
-            <span>
-              <span className="participant-label">{c.colTotal}</span>{" "}
-              <span className="tnum" data-total="">
-                {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
+            {/* Not while nothing is synced (`view.total`): the api's 0 is then a sum over no
+                row, and the sync line already says so — « Total 0 pas » beside it was a fake
+                zero (QA PB-2). */}
+            {view.total && (
+              <span>
+                <span className="participant-label">{c.colTotal}</span>{" "}
+                <span className="tnum" data-total="">
+                  {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
+                </span>
               </span>
-            </span>
+            )}
           </div>
         )}
       </div>

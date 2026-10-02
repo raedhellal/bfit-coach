@@ -1130,6 +1130,8 @@ export const fr = {
           : `${count} invitation${s(count)} pas encore acceptée${s(count)}`,
       metToday: "Objectif atteint aujourd'hui",
       withoutData: (count: number) => `${count} sans donnée aujourd'hui`,
+      pastEnd: (count: number) => `${count} déjà après le dernier jour`,
+      beforeStart: (count: number) => `${count} pas encore au premier jour`,
       groupAverage: "Moyenne du groupe · aujourd'hui",
       withData: (count: number) => `sur ${count} client${s(count)} avec données`,
       day: "Jour",
