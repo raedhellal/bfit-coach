@@ -69,7 +69,9 @@ test.describe("AC5 — a trainee the coach is not linked to", () => {
     await expect(
       page.getByText("This trainee is not on your roster. They may have revoked access.")
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Back to roster" })).toBeVisible();
+    // EV-337k: the way back is a link drawn as a button (it was a link wrapped round a
+    // <button>, two nested interactive elements); its name and target are unchanged.
+    await expect(page.getByRole("main").getByRole("link", { name: "Back to roster" })).toHaveAttribute("href", "/");
   });
 
   test("a monitor that never runs JavaScript sees the 403 too", async ({ page }) => {
