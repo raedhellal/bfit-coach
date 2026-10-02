@@ -1,0 +1,108 @@
+import { existsSync } from "node:fs";
+import { expect, webkit, type Browser, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
+
+/**
+ * QA NB-1 (branch 1, 2026-10-02) — WCAG 2.4.11 in WebKIT: keyboard focus must not land
+ * partly under the sticky tab bar, top bar or legal footer.
+ *
+ * Chromium honours `html { scroll-padding-* }` when it scrolls a focused element into view;
+ * WebKit does not, and at 390 × 700 33 of the routine editor's 68 focus stops were partly
+ * hidden under the tab bar. `FocusClearOfBars` (mounted by the shell) is the fix. This spec
+ * drives REAL WebKit, because the defect does not exist in Chromium — a Chromium-only test
+ * of it passes with the fix deleted.
+ *
+ * It launches WebKit itself (the configs' project is Chromium). The browser must be
+ * installed (`npx playwright install webkit`); a missing browser FAILS here rather than
+ * skipping, so the gate cannot turn green by not running.
+ *
+ * The measure is the QA harness's (`qapro1-evidence/harness/focusobscured.cjs`): after each
+ * Tab (Alt+Tab: WebKit on macOS skips links on a plain Tab) and a settle, the share of the
+ * focused element's box that is clear of every sticky/fixed bar on screen.
+ */
+
+const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
+const TAB = process.platform === "darwin" ? "Alt+Tab" : "Tab";
+
+let browser: Browser;
+test.beforeAll(async () => {
+  expect(existsSync(webkit.executablePath()), `WebKit is not installed: npx playwright install webkit`).toBe(true);
+  browser = await webkit.launch();
+});
+test.afterAll(async () => {
+  await browser?.close();
+});
+
+async function signedIn(baseURL: string): Promise<Page> {
+  const context = await browser.newContext({ baseURL, locale: "en-US" });
+  const page = await context.newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("coach@evoli.fit");
+  await page.getByLabel("Password").fill("Password123!");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL(`${baseURL}/`);
+  return page;
+}
+
+/** Tab through `stops` focus stops in the page's content; report the ones not fully clear. */
+async function obscuredStops(page: Page, stops: number) {
+  const out: { what: string; visible: number }[] = [];
+  let measured = 0;
+  for (let i = 0; i < stops; i++) {
+    await page.keyboard.press(TAB);
+    await page.waitForTimeout(250);
+    const r = await page.evaluate(() => {
+      const e = document.activeElement as HTMLElement | null;
+      if (!e || e === document.body) return null;
+      if (e.closest(".shell-tabbar, .shell-topbar, .shell-sidebar, .legal-footer")) return { inShell: true } as const;
+      const b = e.getBoundingClientRect();
+      const bars = Array.from(document.querySelectorAll(".shell-tabbar, .shell-topbar, .legal-footer"))
+        .filter((x) => getComputedStyle(x).display !== "none" && ["sticky", "fixed"].includes(getComputedStyle(x).position))
+        .map((x) => x.getBoundingClientRect());
+      let top = Math.max(b.top, 0);
+      let bottom = Math.min(b.bottom, innerHeight);
+      for (const bar of bars) {
+        if (bar.top <= 1 && bar.bottom > top) top = Math.max(top, bar.bottom);
+        if (bar.bottom >= innerHeight - 1 && bar.top < bottom) bottom = Math.min(bottom, bar.top);
+      }
+      const what = `${e.tagName.toLowerCase()} ${(e.getAttribute("aria-label") || e.innerText || (e as HTMLInputElement).value || "").slice(0, 30)}`;
+      return { inShell: false, what, visible: b.height ? Math.max(0, bottom - top) / b.height : 0 } as const;
+    });
+    if (!r) break;
+    if (r.inShell) continue;
+    measured += 1;
+    if (r.visible < 0.99) out.push({ what: r.what, visible: Math.round(r.visible * 100) / 100 });
+  }
+  return { measured, out };
+}
+
+for (const [width, height] of [
+  [390, 700],
+  [1023, 700],
+  [1440, 850],
+] as const) {
+  test(`WebKit ${width}×${height}: no keyboard focus stop on the routine editor is under a bar`, async ({ baseURL }) => {
+    const page = await signedIn(baseURL!);
+    await page.setViewportSize({ width, height });
+    await page.goto(`/clients/${LINA}/routine`);
+    await expect(page.locator("h1")).toHaveCount(1);
+    await page.waitForLoadState("networkidle");
+    await page.mouse.click(2, 2);
+    const result = await obscuredStops(page, 70);
+    expect(result.measured, "measured the editor's stops").toBeGreaterThan(30);
+    expect(result.out, `${width}px: focus stops partly under a sticky bar`).toEqual([]);
+    await page.context().close();
+  });
+}
+
+test("WebKit 390: a field on /recipes/new is clear of the tab bar when reached by keyboard", async ({ baseURL }) => {
+  const page = await signedIn(baseURL!);
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto("/recipes/new");
+  await page.waitForLoadState("networkidle");
+  await page.mouse.click(2, 2);
+  const result = await obscuredStops(page, 20);
+  expect(result.measured).toBeGreaterThan(5);
+  expect(result.out).toEqual([]);
+  await page.context().close();
+});

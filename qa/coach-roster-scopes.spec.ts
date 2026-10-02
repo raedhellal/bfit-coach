@@ -32,17 +32,17 @@ async function signIn(page: Page) {
   await page.waitForURL("/");
 }
 
-/** The wide table's rows, in render order. */
+/** The roster's rows, in render order (EV-337d: one `.roster-row` per client). */
 function rowNames(page: Page) {
   return page
-    .locator(".only-wide tbody tr")
-    .evaluateAll((rows) => rows.map((r) => r.querySelector("td")?.textContent?.trim() ?? ""));
+    .locator(".roster-row")
+    .evaluateAll((rows) => rows.map((r) => r.querySelector(".roster-name")?.textContent?.trim() ?? ""));
 }
 
 test("a scope-filtered row shows absences, not zeros", async ({ page }) => {
   await signIn(page);
 
-  const petra = page.locator(".only-wide tbody tr", { hasText: "Petra L." });
+  const petra = page.locator(".roster-row", { hasText: "Petra L." });
   // NUTRITION only: WORKOUTS and PROGRESS are both withheld, so all three cells are
   // absences. "No plan" would be a claim about her app made from a field the api
   // filtered out — which is what `scopes` on the row now prevents.
@@ -54,7 +54,7 @@ test("a scope-filtered row shows absences, not zeros", async ({ page }) => {
   await expect(petra).not.toContainText("0 days");
   await expect(petra).not.toContainText("No streak");
 
-  const yusuf = page.locator(".only-wide tbody tr", { hasText: "Yusuf A." });
+  const yusuf = page.locator(".roster-row", { hasText: "Yusuf A." });
   // WORKOUTS only: the plan is shared, the progress fields are not — which is what
   // proves the three nulls are filtered independently and not row-wide.
   await expect(yusuf).toContainText("Two Day Full Body");
@@ -68,7 +68,7 @@ test("a held scope with no data says so, and is not confused with an absence", a
 }) => {
   await signIn(page);
 
-  const sara = page.locator(".only-wide tbody tr", { hasText: "Sara P." });
+  const sara = page.locator(".roster-row", { hasText: "Sara P." });
   // PROGRESS is held and she has never completed a workout: that is a fact about Sara,
   // and the row is allowed to state it. "Not shared" here would be a lie in the other
   // direction — the trainee DID share, there is simply nothing yet.
@@ -95,7 +95,7 @@ test("an unknown last-workout date sorts LAST, not first", async ({ page }) => {
    * held and never trained sorts EARLY, PROGRESS withheld is unknown and sorts LAST. The
    * flag ordering itself belongs to `coach-roster-triage.spec.ts`.
    */
-  await expect(page.locator(".only-wide tbody tr")).toHaveCount(6);
+  await expect(page.locator(".roster-row")).toHaveCount(6);
   const names = await rowNames(page);
   // Sara shares PROGRESS, has never trained, and carries one flag: still above Lina,
   // who has the same flag count and trained yesterday.

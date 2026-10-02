@@ -83,7 +83,7 @@ export default async function NutritionPage({ params }: { params: { id: string }
   const nothingSetUp = !!nutrition && nutrition.targets === null && nutrition.week === null;
 
   return (
-    <CoachShell coachName={me?.displayName}>
+    <CoachShell coachName={me?.displayName} section="roster">
       <ClientHeader
         clientId={params.id}
         traineeDisplayName={displayName}

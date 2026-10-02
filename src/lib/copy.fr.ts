@@ -185,6 +185,40 @@ export const fr = {
     sortNeedsAttention: "À surveiller",
     sortRecentActivity: "Actifs récemment",
     flagsNotShared: "Non partagé",
+    // EV-337d. The design's words where it has them (« à traiter », « Sur la bonne voie »,
+    // « Inactif depuis 31 j », « Rechercher un client », « Aucun client ne correspond »);
+    // « alerte » stays the portal's word for a red flag (the design's « signalement » would
+    // give the roster and the client page two words for one thing).
+    subtitleCounts: (total: number, toReview: number) =>
+      `${total} client${s(total)} · ${toReview} à traiter`,
+    groups: {
+      attention: "À traiter",
+      onTrack: "Sur la bonne voie",
+      inactive: "Inactifs",
+      other: "Autres clients",
+    },
+    groupCount: (n: number) => `${n} client${s(n)}`,
+    searchLabel: "Rechercher un client",
+    searchPlaceholder: "Rechercher un client",
+    filtersLabel: "Filtrer les clients",
+    filters: {
+      all: (n: number) => `Tous · ${n}`,
+      flagged: (n: number) => `Alertes · ${n}`,
+      inactive: (n: number) => `Inactifs · ${n}`,
+    },
+    noMatch: "Aucun client ne correspond.",
+    clearFilters: "Afficher tous les clients",
+    shown: (n: number) => `${n} client${s(n)} affiché${s(n)}`,
+    navCount: (n: number) => `${n} client${s(n)}`,
+    inactiveFor: (days: number) => `Inactif depuis ${days}\u00a0j`,
+    upToDate: "À jour",
+    activityNotShared: "Activité non partagée",
+    flagsUnavailable: "Alertes non partagées",
+    today: "Aujourd'hui",
+    yesterday: "Hier",
+    daysAgo: (days: number) => `Il y a ${days}\u00a0j`,
+    actionReview: "Traiter",
+    actionOpen: "Ouvrir",
   },
 
   invite: {

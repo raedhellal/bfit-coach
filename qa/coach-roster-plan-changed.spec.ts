@@ -31,9 +31,13 @@ async function signIn(page: Page) {
   await page.waitForURL("/");
 }
 
-/** The names of the rows that carry the marker, in one layout. */
-async function markedRows(page: Page, layout: ".only-wide tbody tr" | ".only-narrow a") {
-  return page.locator(layout).evaluateAll(
+/**
+ * The names of the rows that carry the marker. EV-337d: one `.roster-row` per client, a
+ * row from 768 px and a card below it (CSS decides), so "both layouts" is one locator read
+ * at two widths.
+ */
+async function markedRows(page: Page) {
+  return page.locator(".roster-row").evaluateAll(
     (rows, marker) =>
       rows
         .filter((r) =>
@@ -41,7 +45,7 @@ async function markedRows(page: Page, layout: ".only-wide tbody tr" | ".only-nar
             (el) => el.textContent?.trim() === marker
           )
         )
-        .map((r) => (r.textContent ?? "").match(/[A-Z][a-z]+ [A-Z]\./)?.[0] ?? "?"),
+        .map((r) => r.querySelector(".roster-name")?.textContent?.trim() ?? "?"),
     MARKER
   );
 }
@@ -50,26 +54,26 @@ test("the marker is on the flagged row and on no other, in both layouts", async 
   await signIn(page);
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await expect(page.locator(".only-wide tbody tr")).toHaveCount(6);
-  expect(await markedRows(page, ".only-wide tbody tr")).toEqual(["Yusuf A."]);
+  await expect(page.locator(".roster-row")).toHaveCount(6);
+  expect(await markedRows(page)).toEqual(["Yusuf A."]);
   await expect(
-    page.locator(".only-wide tbody tr", { hasText: "Yusuf A." }).getByText(MARKER, { exact: true })
+    page.locator(".roster-row", { hasText: "Yusuf A." }).getByText(MARKER, { exact: true })
   ).toBeVisible();
 
   // AC2 of EV-187 is demoed at 390 px; a signal that exists only on the desktop table
   // is not a roster signal.
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".only-narrow a")).toHaveCount(6);
-  expect(await markedRows(page, ".only-narrow a")).toEqual(["Yusuf A."]);
+  await expect(page.locator(".roster-row")).toHaveCount(6);
+  expect(await markedRows(page)).toEqual(["Yusuf A."]);
   await expect(
-    page.locator(".only-narrow a", { hasText: "Yusuf A." }).getByText(MARKER, { exact: true })
+    page.locator(".roster-row", { hasText: "Yusuf A." }).getByText(MARKER, { exact: true })
   ).toBeVisible();
 });
 
 test("publishing to the trainee clears the marker, reached by clicking", async ({ page }) => {
   await signIn(page);
   await page.setViewportSize({ width: 1280, height: 900 });
-  const yusufRow = page.locator(".only-wide tbody tr", { hasText: "Yusuf A." });
+  const yusufRow = page.locator(".roster-row", { hasText: "Yusuf A." });
   await expect(yusufRow.getByText(MARKER, { exact: true })).toBeVisible();
 
   // Every step below is a click, never a page.goto: the defect this guards is the
@@ -86,7 +90,8 @@ test("publishing to the trainee clears the marker, reached by clicking", async (
     (window as unknown as { __ev283bSpa?: boolean }).__ev283bSpa = true;
   });
 
-  await yusufRow.getByRole("link").first().click();
+  // The whole row is the link (EV-337d).
+  await yusufRow.click();
   await page.waitForURL(`/clients/${YUSUF}`);
   await page
     .getByRole("navigation", { name: "Trainee sections" })
@@ -112,8 +117,8 @@ test("publishing to the trainee clears the marker, reached by clicking", async (
     await page.evaluate(() => (window as unknown as { __ev283bSpa?: boolean }).__ev283bSpa)
   ).toBe(true);
 
-  await expect(page.locator(".only-wide tbody tr")).toHaveCount(6);
+  await expect(page.locator(".roster-row")).toHaveCount(6);
   await expect(yusufRow.getByText(MARKER, { exact: true })).toHaveCount(0);
-  expect(await markedRows(page, ".only-wide tbody tr")).toEqual([]);
+  expect(await markedRows(page)).toEqual([]);
   await expect(page.getByText(MARKER, { exact: true })).toHaveCount(0);
 });

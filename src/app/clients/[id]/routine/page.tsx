@@ -173,7 +173,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   const changedByTrainee = traineeChangeNotice(routine, displayName, copy);
 
   return (
-    <CoachShell coachName={me?.displayName}>
+    <CoachShell coachName={me?.displayName} section="roster">
       <ClientHeader
         clientId={params.id}
         traineeDisplayName={displayName}

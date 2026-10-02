@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInFrench } from "./french";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -36,6 +37,31 @@ import { test } from "./fixture-test";
 
 const FORBIDDEN_COPY =
   /\bpain\w*\W+(?:\w+\W+){0,3}?report\w*|\breport\w*\W+(?:\w+\W+){0,3}?pain\w*/i;
+
+/**
+ * 🔴 THE SAME CONCEPT IN FRENCH (EV-337, staff 2026-10-02: the scan above was English-only,
+ * and the portal has spoken French by default since the Evoli Pro redesign). The design
+ * drew « Douleur genou signalée » and « Douleur 6/10 »; AC4 forbids both in either language.
+ *
+ * Built from strings so the classes are Unicode-aware (`u`): `\w` and `\b` are ASCII-only,
+ * and French words end in « é ». It binds on « douleur » NEAR a reporting word, in either
+ * order (« douleur genou signalée », « signalement de douleur », « douleurs déclarées »),
+ * and on a pain SCORE in either language (« Douleur 6/10 », "Pain: 7 / 10"). « douleur »
+ * alone is not banned: a trainee's own injury note can say it, and that text is theirs.
+ */
+const W = "[\\p{L}\\p{N}_]";
+const NW = "[^\\p{L}\\p{N}_]";
+const REPORTING = "(?:signal|d\u00e9clar|declar|rapport|remont|indiqu)";
+const FORBIDDEN_COPY_FR = new RegExp(
+  `(?<!${W})douleur${W}*(?:${NW}+${W}+){0,3}?${NW}+${REPORTING}` +
+    `|(?<!${W})${REPORTING}${W}*(?:${NW}+${W}+){0,4}?${NW}+douleur`,
+  "iu"
+);
+const PAIN_SCORE = new RegExp(`(?<!${W})(?:douleur|pain)${NW}+\\d{1,2}\\s*/\\s*10(?!${W})`, "iu");
+
+function firstForbidden(text: string): string | undefined {
+  return (FORBIDDEN_COPY.exec(text) ?? FORBIDDEN_COPY_FR.exec(text) ?? PAIN_SCORE.exec(text))?.[0];
+}
 
 const ROOT = join(__dirname, "..");
 const SRC = join(ROOT, "src");
@@ -72,9 +98,9 @@ const TRAINEES = [
 
 test("the source carries no copy advertising a pain rule, in any spelling", () => {
   const offenders = sourceFiles(SRC)
-    .map((path) => ({ path, match: FORBIDDEN_COPY.exec(readFileSync(path, "utf8")) }))
-    .filter((hit) => hit.match !== null)
-    .map((hit) => `${hit.path.slice(ROOT.length + 1)} — "${hit.match?.[0]}"`);
+    .map((path) => ({ path, match: firstForbidden(readFileSync(path, "utf8")) }))
+    .filter((hit) => hit.match !== undefined)
+    .map((hit) => `${hit.path.slice(ROOT.length + 1)} — "${hit.match}"`);
 
   expect(
     offenders,
@@ -96,15 +122,41 @@ for (const id of TRAINEES) {
     const response = await page.request.get(`/clients/${id}`);
     expect(response.status()).toBe(200);
     const html = await response.text();
-    const match = FORBIDDEN_COPY.exec(html);
-    expect(match?.[0], `the rendered DOM for ${id} advertises a rule that cannot fire`).toBeUndefined();
+    expect(firstForbidden(html), `the rendered DOM for ${id} advertises a rule that cannot fire`).toBeUndefined();
   });
 }
+
+/**
+ * The same pages in FRENCH — the portal's default language. `page.request` carries the
+ * context's locale as `Accept-Language` (qa/fixture-test.ts), and the check that the page
+ * really IS French keeps the scan from passing on an English document.
+ */
+test.describe("in French", () => {
+  test.use({ locale: "fr-FR" });
+  for (const id of TRAINEES) {
+    test(`the French pages for ${id.slice(-4)} never name a pain signal`, async ({ page }) => {
+      await signInFrench(page);
+      for (const path of [`/clients/${id}`, `/clients/${id}/routine`]) {
+        const response = await page.request.get(path);
+        expect(response.status()).toBe(200);
+        const html = await response.text();
+        expect(html, `${path} is served in French`).toContain('lang="fr"');
+        expect(firstForbidden(html), `the French DOM of ${path} advertises a rule that cannot fire`).toBeUndefined();
+      }
+    });
+  }
+  test("the French roster never names one either", async ({ page }) => {
+    await signInFrench(page);
+    const html = await (await page.request.get("/")).text();
+    expect(html).toContain('lang="fr"');
+    expect(firstForbidden(html)).toBeUndefined();
+  });
+});
 
 test("the roster never names a pain rule either", async ({ page }) => {
   await signIn(page);
   const html = await (await page.request.get("/")).text();
-  expect(FORBIDDEN_COPY.exec(html)?.[0]).toBeUndefined();
+  expect(firstForbidden(html)).toBeUndefined();
 });
 
 /**
@@ -135,15 +187,37 @@ test("the guard binds on the concept, and not on one spelling", () => {
     ).toBe(true);
   }
 
+  // French and score forms — the design's own strings first (EV-337, G4).
+  const plantedFr = [
+    "Douleur genou signalée",
+    "Séances manquées · Douleur genou signalée",
+    "douleur signalée",
+    "DOULEUR SIGNALÉE",
+    "Signalement de douleur",
+    "douleurs déclarées",
+    "une douleur a été rapportée",
+    "Douleur 6/10",
+    "Douleur : 6 / 10",
+    "Pain 7/10",
+  ];
+  for (const spelling of plantedFr) {
+    expect(firstForbidden(spelling), `"${spelling}" would reach a coach unnoticed`).toBeDefined();
+  }
+
   const allowed = [
     'PAIN_REPORTED',
     '"PAIN_REPORTED" | "NO_WEIGH_IN_14_DAYS"',
     "This routine was adjusted for their injuries.",
     "No weigh-in for 14 days",
+    // A trainee's own injury note, and the editor's French sentence about flagged FIELDS.
+    "Douleur à l'épaule gauche",
+    "Complétez les champs signalés ci-dessus pour enregistrer.",
+    "Aucune pesée depuis 14 jours",
+    "6/10 séances",
   ];
   for (const fine of allowed) {
     expect(
-      FORBIDDEN_COPY.test(fine),
+      firstForbidden(fine) !== undefined,
       `"${fine}" is not the forbidden claim, and a guard that bans true lines gets deleted`
     ).toBe(false);
   }
