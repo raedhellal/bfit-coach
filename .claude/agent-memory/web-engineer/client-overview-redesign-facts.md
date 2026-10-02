@@ -28,8 +28,9 @@ Branch `feat/pro-client-overview` off `origin/release/coach-held-merges` 08f6e90
 - **Overview reads are depth 2 now**: getClient ‖ getClientProgress ‖ getMe, then getRoutine ‖
   getNutrition only for held scopes (page-read-budget re-pinned). The overview's getRoutine also
   sets the fixture's `lastRoutineClient` (the catalog-down switch keys on it).
-- **No fixture switch fails getRoutine/getNutrition**, so the summary cards' "unavailable" state is
-  code-read only. Add a cookie switch before claiming it is tested.
+- ~~No fixture switch fails getRoutine/getNutrition~~ — since EV-337m,
+  `evoli_fixture_summary_read=<routine|nutrition>:<500|403>:<clientId>` does (see
+  [[overview-followups-337m-facts]]).
 - `expectNoEnglish` false-positives on api workout names that equal an English dictionary word
   (Tobias's "Legs"): run the guard on Lina.
 - `field-focus-ring` "swap sheet recipe search" fails on the FIRST cold run of a fresh `next dev`,
