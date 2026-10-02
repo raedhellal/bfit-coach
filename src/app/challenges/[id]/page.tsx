@@ -2,16 +2,20 @@ import { BackLink } from "@/components/ui/BackLink";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ChallengeControls } from "@/components/challenges/ChallengeControls";
-import { PHASE_TONE, goalLine, windowLine } from "@/components/challenges/ChallengeList";
+import { PhasePill, goalLine, windowLine } from "@/components/challenges/ChallengeList";
+import { ChallengeStats } from "@/components/challenges/ChallengeStats";
 import { LoadedAt } from "@/components/challenges/LoadedAt";
 import { ProgressTable } from "@/components/challenges/ProgressTable";
-import { Badge, Card, PageHead } from "@/components/ui/kit";
+import { Card, PageHead } from "@/components/ui/kit";
 import { coachApi, isForbidden, type CoachChallengeDetail } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
 
 /**
  * /challenges/[id] — EV-321b, one challenge and its participants' progress, ranked.
+ * EV-337h redrew it (plan §5.6): a head whose h1 is the name alone, the stat cards, and
+ * participant rows that become cards below 768 px. Still server-rendered (ADR-0033), still
+ * no `loading.tsx` (EV-337l), and `ChallengeControls` still runs the 45 s visible-only poll.
  *
  * Two failure states, and they are not the same sentence (the templates page's rule):
  *   · 403 → `notYours`. The api answers ONE body for another coach's challenge, an id
@@ -60,18 +64,22 @@ export default async function ChallengePage({
       <div style={{ marginBottom: 6 }}>
         <BackLink href="/challenges" label={c.backToList} flush />
       </div>
-      <PageHead
-        title={
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={{ overflowWrap: "anywhere" }}>{challenge.title}</span>
-            <Badge tone={PHASE_TONE[challenge.phase]} dot>
-              {c.phase[challenge.phase]}
-            </Badge>
-          </span>
-        }
-        sub={`${goalLine(challenge, copy)} · ${windowLine(challenge, copy)}`}
-        actions={<ChallengeControls id={challenge.id} title={challenge.title} metric={challenge.metric} />}
-      />
+      {/*
+        The h1 is the challenge's NAME and nothing else. Its phase sits beside it, outside the
+        heading: with the badge inside, the heading's accessible name read « 10 000 pas par
+        jourEn cours » (QA, 2026-10-02). `PageHead` takes the title as the h1's whole content,
+        so this head is drawn here (EV-337h, plan §5.6).
+      */}
+      <div className="challenge-head">
+        <div className="challenge-head-text">
+          <div className="challenge-head-title">
+            <h1 className="dt">{challenge.title}</h1>
+            <PhasePill phase={challenge.phase} copy={copy} />
+          </div>
+          <p className="challenge-head-sub">{`${goalLine(challenge, copy)} · ${windowLine(challenge, copy)}`}</p>
+        </div>
+        <ChallengeControls id={challenge.id} title={challenge.title} metric={challenge.metric} />
+      </div>
 
       {searchParams.created === "1" && (
         <p role="status" style={{ margin: "0 0 12px", fontSize: 13, color: "var(--ok-ink)" }}>
@@ -93,6 +101,8 @@ export default async function ChallengePage({
         <span>{c.counts(challenge.participantCount, challenge.acceptedCount)}</span>
         <LoadedAt iso={new Date(now).toISOString()} />
       </div>
+
+      <ChallengeStats detail={loaded.detail} copy={copy} now={now} />
 
       {participants.length === 0 ? (
         <Card>

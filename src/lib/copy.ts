@@ -2021,6 +2021,39 @@ export const en = {
     next: "Next",
     pageOf: (page: number, pages: number) => `Page ${page} of ${pages}`,
 
+    /* ── EV-337h: the redesigned list cards and the detail's stat cards ──────────────
+       Every figure is the api's or counted from what it returned (src/lib/challengeView.ts).
+       Not drawn, because the api has no such fact (plan §7 G20): declines, re-invites, a
+       per-participant target, an edit of an upcoming challenge, a results report. */
+    viewDetail: "View details",
+    /** The window position, on the UTC calendar the api's `phase` uses. */
+    dayOf: (day: number, days: number) => `Day ${day} of ${days}`,
+    /** Joined after "Day 5 of 7 · ", so lower-case. */
+    endsOn: (date: string) => `ends on ${date}`,
+    startsIn: (days: number) => (days === 1 ? "Starts tomorrow" : `Starts in ${days} days`),
+    endedOn: (date: string) => `Ended on ${date}`,
+    participantsTitle: "Participants",
+    /** Numbers only: the same in both languages (coach-i18n allowlist). */
+    ratio: (part: number, whole: number) => `${part} / ${whole}`,
+    stats: {
+      participantsValue: (accepted: number, invited: number) => `${accepted} of ${invited} joined`,
+      pending: (count: number) =>
+        count === 0 ? "Every invitation accepted" : `${count} invitation${count === 1 ? "" : "s"} not accepted yet`,
+      metToday: "Goal met today",
+      /** Accepted participants whose today has no number: said, never folded into a zero. */
+      withoutData: (count: number) => `${count} with no data today`,
+      groupAverage: "Group average · today",
+      withData: (count: number) => `over ${count} client${count === 1 ? "" : "s"} with data`,
+      day: "Day",
+      start: "Starts",
+      end: "Ended",
+    },
+    /** Today's number is null: the phone sent nothing and nothing was typed. Not 0. */
+    noDataToday: "No data today",
+    /** An accepted STEPS participant with no stored day at all (`syncedAt: null`). */
+    neverSynced: "Nothing synced yet",
+    noDataNotZero: "“No data” means nothing was synced or entered for that day: it is not zero steps.",
+
     /* ── the create dialog ─────────────────────────────────────────────────── */
     dialogTitle: "New challenge",
     dialogSub: "Your clients get an invitation in the Evoli Fit app.",

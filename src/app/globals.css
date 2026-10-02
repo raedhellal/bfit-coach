@@ -441,6 +441,180 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
 .challenge-day[data-status="NO_DATA"] { background: transparent; border: 1px dashed var(--ink-3); }
 .challenge-day[data-status="FUTURE"] { background: var(--surface-2); border-color: var(--border); }
 
+/* ── EV-337h: the challenge list's cards (plan §5.5) ────────────────────────────────────
+   One column below 768, two to 1279, three from 1280. The whole card is the link
+   (BUG-661): its box is the target, the « Voir le détail » chip is a label drawn as a
+   button. Every rule is a class so the breakpoints can reach it (BUG-380). */
+.challenge-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 768px) { .challenge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; } }
+@media (min-width: 1280px) { .challenge-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.challenge-grid-item { min-width: 0; display: flex; }
+.challenge-card {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--e-card);
+  color: var(--ink);
+  text-decoration: none;
+}
+.challenge-card:hover { border-color: var(--border-2); box-shadow: var(--e-2); }
+.challenge-card:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+.challenge-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.challenge-card-title {
+  flex: 1 1 160px;
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.challenge-card-lines { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-meta); line-height: 18px; color: var(--ink-2); }
+.challenge-card-line:first-child { font-size: var(--fs-body); line-height: 20px; color: var(--ink); }
+.challenge-window-bar { display: block; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.challenge-window-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--grad-energy-strong); }
+.challenge-card-action {
+  margin-top: auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  background: var(--blue-50);
+  color: var(--link);
+  font: 600 var(--fs-body) var(--font-body);
+  white-space: nowrap;
+}
+
+/* ── EV-337h: a challenge's page (plan §5.6) ────────────────────────────────────────────
+   The h1 holds the NAME only; the phase pill sits beside it, outside the heading. */
+.challenge-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.challenge-head-text { flex: 1 1 320px; min-width: 0; }
+.challenge-head-title { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.challenge-head-title > h1 {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-h1);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.challenge-head-sub { margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: var(--ink-3); }
+
+/* The stat cards: 2-up, 4-up from 900 px when there are four (plan §3). */
+.stat-grid.challenge-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-grid.challenge-stats[data-stat-count="1"] { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) {
+  .stat-grid.challenge-stats { gap: 16px; }
+  .stat-grid.challenge-stats[data-stat-count="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.challenge-stats .stat-card-value { font-size: 20px; }
+
+/* The participants. ONE markup: a row from 768 (two lines to 1279, one from 1280), a card
+   per participant below 768 — the list frame goes, each participant gets its own. */
+.participants-title { margin: 0 0 10px; font-size: var(--fs-h2); line-height: 24px; font-weight: 600; color: var(--ink); }
+.participant-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--e-card);
+  overflow: hidden;
+}
+.participant {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  grid-template-areas: "id today status" "id days status";
+  align-items: center;
+  gap: 10px 20px;
+  padding: 14px 24px;
+}
+.participant + .participant { border-top: 1px solid var(--hairline); }
+.participant[data-status="INVITED"] { grid-template-areas: "id note status" "id note status"; }
+@media (min-width: 1280px) {
+  .participant { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(140px, 200px) auto; grid-template-areas: "id today days status"; }
+  .participant[data-status="INVITED"] { grid-template-areas: "id note note status"; }
+}
+.participant-id { grid-area: id; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.participant-rank { flex: none; min-width: 30px; font-weight: 700; font-size: var(--fs-body); color: var(--ink); }
+.participant-avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--blue-50);
+  color: var(--link);
+  display: grid;
+  place-items: center;
+  font: 700 12px var(--font-display);
+}
+.participant-who { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+/* BUG-661: the name was a 16 px line in a table cell. A standalone control: 44 × 44. */
+.participant-name {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  max-width: calc(100% + 8px);
+  margin-left: -8px;
+  padding: 0 8px;
+  border-radius: var(--r-md);
+  font: 600 15px/20px var(--font-body);
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.participant-name:hover { background: var(--hover); text-decoration: underline; }
+.participant-name:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 0; }
+.participant-sync { font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
+.participant-today { grid-area: today; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.participant-label { font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
+.participant-value { font-weight: 600; font-size: var(--fs-body); line-height: 20px; color: var(--ink); }
+.participant-bar { margin-top: 6px; height: 6px; max-width: 160px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.participant-bar > div { height: 100%; border-radius: 3px; }
+.participant-source { margin-top: 6px; display: flex; align-items: center; gap: 5px; font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
+.participant-days { grid-area: days; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.participant-totals { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: var(--fs-label); line-height: 16px; color: var(--ink); }
+.participant-status { grid-area: status; justify-self: end; min-width: 0; }
+.participant-invited-note { grid-area: note; margin: 0; font-size: var(--fs-meta); line-height: 18px; color: var(--ink-2); }
+.participants-foot { margin-top: 12px; }
+.participants-note { margin: 8px 0 0; font-size: var(--fs-label); line-height: 1.5; color: var(--ink-2); }
+
+@media (max-width: 767px) {
+  .challenge-card { padding: 16px; }
+  .challenge-head { margin-bottom: 16px; }
+  .participant-list { background: transparent; border: 0; box-shadow: none; border-radius: 0; overflow: visible; display: flex; flex-direction: column; gap: 10px; }
+  .participant,
+  .participant[data-status="INVITED"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "id" "today" "days" "status";
+    gap: 10px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-2xl);
+    box-shadow: var(--e-card);
+  }
+  .participant + .participant { border-top: 1px solid var(--border); }
+  .participant[data-status="INVITED"] { grid-template-areas: "id" "note" "status"; }
+  .participant-status { justify-self: start; }
+  .participant-bar { max-width: none; }
+}
+
 /* EV-256b — the recipe editor's four macro inputs: two columns on a phone, four from
    720 px. A class, not inline, because the column count changes with the width. */
 .recipe-macros {

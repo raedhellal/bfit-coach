@@ -1,54 +1,68 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { Badge, DataTable, Td } from "@/components/ui/kit";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { UiIcon } from "@/components/ui/icons";
 import type { ActivitySource, ChallengeMetric, CoachChallengeDetail, CoachChallengeParticipant } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 import { formatSince, formatSteps } from "@/lib/format";
+import { initialsOf } from "@/lib/challengeView";
 import { DayLegend, DayStrip } from "./DayStrip";
 
 /**
- * EV-321b — the ranked progress table.
+ * EV-337h (plan §5.6, §4 `ParticipantRow` / `ParticipantCard`) — the challenge's
+ * participants, ranked. It replaced EV-321b's table.
+ *
+ * ONE markup, two layouts, CSS decides (`globals.css`, "challenge participants"): a row per
+ * participant from 768 px, a card per participant below it. One copy of each participant
+ * in the DOM, right on first paint, no viewport hook.
  *
  * Rows are rendered in the order the api SERVES them: it ranks (daysMet, then total, with
  * shared ranks) and puts INVITED after ACCEPTED. A client-side sort here would be a
- * second, disagreeing implementation of the one rule the demo is about.
+ * second, disagreeing implementation of the one rule the page is about.
  *
- * 🔴 `null` is never `0` on this table. `todayValue: null` renders "—" with no bar (an
- * empty bar is a picture of zero), a day with no data is an outlined square named "no
- * data", and an INVITED participant — who has not consented to share anything — gets no
- * number at all, just the status and one sentence saying why.
+ * 🔴 `null` is never `0` here. `todayValue: null` reads « Aucune donnée aujourd'hui » with
+ * no bar (an empty bar is a picture of zero), a day with no data is an outlined square
+ * named "no data", and an INVITED participant — who has not consented to share anything —
+ * gets no number at all, just the status and one sentence saying why.
+ *
+ * The name is a link to the client's page with a 44 × 44 px box (BUG-661: it was a 16 px
+ * line of text in a table cell). The rest of the row is not a link: it holds the day
+ * strip's named squares and the progress bar, which a link's name would swallow.
+ *
+ * Not drawn, from the design (plan §5.6, §7 G20): « Relancer » and « Inviter des clients »
+ * (no endpoint), « A décliné » (a decline deletes the participation), a per-participant
+ * goal (one goal per challenge), and an injury line — challenge participation is not a
+ * WORKOUTS-scope read, so health data has no place on this row.
  */
 export function ProgressTable({ detail, copy, now }: { detail: CoachChallengeDetail; copy: Copy; now: number }) {
   const c = copy.challenges;
-  const steps = detail.challenge.metric === "STEPS";
-  const columns = [
-    { label: c.colRank, w: 56 },
-    { label: c.colClient },
-    { label: c.colStatus },
-    { label: c.colToday },
-    { label: c.colDaysMet, align: "right" as const },
-    { label: c.colTotal, align: "right" as const },
-    { label: c.colSynced },
-    ...(steps ? [{ label: c.colDays }] : []),
-  ];
+  const metric = detail.challenge.metric;
+  const steps = metric === "STEPS";
   return (
-    <section aria-label={c.progressLabel}>
-      {/*
-        Redesign branch 1: the shell's 240 px sidebar leaves 974 px inside this card at a
-        1280 px viewport (it was 1114), so the steps floor came down from 1040 to 940 and the
-        headers may wrap — in French "JOURS RÉUSSIS" and "DERNIÈRE SYNCHRO" set two columns'
-        widths on one line (min-content 1017 px). Measured: EN and FR both fit at 1280.
-        Branch 7 replaces this table with participant rows.
-      */}
-      <DataTable columns={columns} minWidth={steps ? 940 : 860} wrapHeaders>
+    <section aria-label={c.progressLabel} className="participants">
+      <h2 className="participants-title dt">{c.participantsTitle}</h2>
+      <ul className="participant-list">
         {detail.participants.map((p) =>
           p.progress === null ? (
-            <InvitedRow key={p.clientId} p={p} copy={copy} metric={detail.challenge.metric} span={columns.length - 3} />
+            <InvitedItem key={p.clientId} p={p} copy={copy} metric={metric} />
           ) : (
-            <AcceptedRow key={p.clientId} p={p} copy={copy} now={now} steps={steps} />
+            <AcceptedItem
+              key={p.clientId}
+              p={p}
+              copy={copy}
+              now={now}
+              steps={steps}
+              range={{ startsOn: detail.challenge.startsOn, endsOn: detail.challenge.endsOn }}
+            />
           )
         )}
-      </DataTable>
-      {steps && <DayLegend copy={copy} />}
+      </ul>
+      {steps && (
+        <div className="participants-foot">
+          <DayLegend copy={copy} />
+          <p className="participants-note">{c.noDataNotZero}</p>
+        </div>
+      )}
     </section>
   );
 }
@@ -57,41 +71,58 @@ function nameOf(p: CoachChallengeParticipant, copy: Copy): string {
   return p.displayName?.trim() ? p.displayName : copy.challenges.unnamed;
 }
 
-function NameCell({ p, copy }: { p: CoachChallengeParticipant; copy: Copy }) {
+/** Initials from the api's name; an unnamed client gets a person glyph, never invented letters. */
+function ParticipantAvatar({ p }: { p: CoachChallengeParticipant }) {
+  const initials = initialsOf(p.displayName);
   return (
-    <Td style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap" }}>
-      <Link href={`/clients/${encodeURIComponent(p.clientId)}`} style={{ color: "inherit" }}>
-        {nameOf(p, copy)}
-      </Link>
-    </Td>
+    <span className="participant-avatar" aria-hidden="true">
+      {initials || <UiIcon name="user" size={16} />}
+    </span>
   );
 }
 
-function InvitedRow({
+function Identity({
   p,
   copy,
-  metric,
-  span,
+  children,
 }: {
   p: CoachChallengeParticipant;
   copy: Copy;
-  metric: ChallengeMetric;
-  span: number;
+  children?: ReactNode;
 }) {
+  return (
+    <div className="participant-id">
+      {/* An empty slot keeps invited rows' avatars in line with the ranked ones. */}
+      {p.rank !== null ? (
+        <span className="participant-rank tnum" data-rank-label="">
+          {copy.challenges.rank(p.rank)}
+        </span>
+      ) : (
+        <span className="participant-rank" aria-hidden="true" />
+      )}
+      <ParticipantAvatar p={p} />
+      <div className="participant-who">
+        <Link href={`/clients/${encodeURIComponent(p.clientId)}`} className="participant-name" data-participant-link="">
+          {nameOf(p, copy)}
+        </Link>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function InvitedItem({ p, copy, metric }: { p: CoachChallengeParticipant; copy: Copy; metric: ChallengeMetric }) {
   const c = copy.challenges;
   // By metric, like the consent line: an unknown metric says nothing rather than claim steps.
   const note = metric === "STEPS" ? c.invitedNote : metric === "WORKOUTS" ? c.invitedNoteWorkouts : null;
   return (
-    <tr data-participant={p.clientId} data-status="INVITED">
-      <Td>{copy.common.dash}</Td>
-      <NameCell p={p} copy={copy} />
-      <Td>
-        <Badge tone="amber">{copy.challenges.status.INVITED}</Badge>
-      </Td>
-      <td colSpan={span} style={{ padding: "13px 16px", fontSize: 12.5, color: "var(--ink-3)", borderTop: "1px solid var(--hairline)" }}>
-        {note}
-      </td>
-    </tr>
+    <li className="participant" data-participant={p.clientId} data-status="INVITED">
+      <Identity p={p} copy={copy} />
+      <p className="participant-invited-note">{note}</p>
+      <div className="participant-status">
+        <StatusPill tone="blue" icon="mail" label={c.status.INVITED} />
+      </div>
+    </li>
   );
 }
 
@@ -100,9 +131,8 @@ function InvitedRow({
  *
  * BUG-473: this used to fall back to the latest earlier day with a source when today had
  * none, so a client who typed Tuesday by hand and sent nothing today read "Manual entry"
- * beside today's "—" — the label named a day the row does not show. No row today means
- * no source label at all (the strip's squares carry no source either: nothing on the row
- * attributes an earlier day).
+ * beside today's dash — the label named a day the row does not show. No row today means
+ * no source label at all (the strip's squares carry no source either).
  */
 function todaySource(p: CoachChallengeParticipant): ActivitySource | null {
   const progress = p.progress;
@@ -110,16 +140,18 @@ function todaySource(p: CoachChallengeParticipant): ActivitySource | null {
   return progress.todaySource ?? null;
 }
 
-function AcceptedRow({
+function AcceptedItem({
   p,
   copy,
   now,
   steps,
+  range,
 }: {
   p: CoachChallengeParticipant;
   copy: Copy;
   now: number;
   steps: boolean;
+  range: { startsOn: string; endsOn: string };
 }) {
   const c = copy.challenges;
   const progress = p.progress!;
@@ -136,69 +168,98 @@ function AcceptedRow({
    */
   const met = today !== null && progress.target > 0 && today >= progress.target;
   const pct = today === null || progress.target <= 0 ? 0 : Math.min(100, Math.floor((today / progress.target) * 100));
+  /**
+   * The api nulls `todayValue` both for "nothing sent today" and for a today OUTSIDE the
+   * window (before the start, after the end). Only the first is « Aucune donnée
+   * aujourd'hui »: on an ended or upcoming challenge there is no "today" to report, so
+   * the cell is left out rather than saying a day of the challenge went unrecorded.
+   */
+  const todayInWindow = progress.today >= range.startsOn && progress.today <= range.endsOn;
 
   return (
-    <tr data-participant={p.clientId} data-status="ACCEPTED" data-rank={p.rank ?? ""}>
-      <Td style={{ fontWeight: 700, color: "var(--ink)" }}>{p.rank === null ? copy.common.dash : c.rank(p.rank)}</Td>
-      <NameCell p={p} copy={copy} />
-      <Td>
-        <Badge tone="green">{c.status.ACCEPTED}</Badge>
-      </Td>
-      <Td>
-        {steps ? (
-          <div data-today={today === null ? "" : String(today)}>
-            <div style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "nowrap" }}>
-              {c.todaySteps(today === null ? copy.common.dash : n(today), n(progress.target))}
-            </div>
-            {today !== null && (
-              <div
-                role="progressbar"
-                aria-label={c.todayBar(name)}
-                aria-valuemin={0}
-                aria-valuemax={progress.target}
-                aria-valuenow={today}
-                aria-valuetext={c.todaySteps(n(today), n(progress.target))}
-                data-pct={pct}
-                data-met={met ? "true" : "false"}
-                style={{ marginTop: 6, height: 6, borderRadius: 3, background: "var(--surface-2)", overflow: "hidden", maxWidth: 160 }}
-              >
-                <div
-                  style={{
-                    width: `${pct}%`,
-                    height: "100%",
-                    borderRadius: 3,
-                    background: met ? "var(--ok)" : "var(--blue-500)",
-                  }}
-                />
-              </div>
+    <li className="participant" data-participant={p.clientId} data-status="ACCEPTED" data-rank={p.rank ?? ""}>
+      <Identity p={p} copy={copy}>
+        {/* When the phone last sent a day. STEPS only: a WORKOUTS challenge syncs nothing. */}
+        {steps && (
+          <span className="participant-sync">
+            {progress.syncedAt === null ? (
+              <span data-synced="">{c.neverSynced}</span>
+            ) : (
+              <>
+                {c.colSynced}{" "}
+                <span data-synced={progress.syncedAt}>{formatSince(progress.syncedAt, now, copy.locale)}</span>
+              </>
             )}
-          </div>
-        ) : (
-          c.todayWorkouts(today === null ? copy.common.dash : n(today))
-        )}
-      </Td>
-      <Td align="right">
-        {progress.daysMet === null ? (
-          copy.common.dash
-        ) : (
-          <span aria-label={c.daysMetLabel(progress.daysMet, progress.daysElapsed)} title={c.daysMetLabel(progress.daysMet, progress.daysElapsed)}>
-            {c.daysMet(progress.daysMet, progress.daysElapsed)}
           </span>
         )}
-      </Td>
-      <Td align="right" style={{ whiteSpace: "nowrap" }}>
-        {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
-      </Td>
-      {/* When, then where from — the source is the label of the number, not a column of its own. */}
-      <Td style={{ whiteSpace: "nowrap" }}>
-        <div data-synced>{formatSince(progress.syncedAt, now, copy.locale)}</div>
-        {source && (
-          <div data-source={source} style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
-            {c.source[source]}
-          </div>
-        )}
-      </Td>
-      {steps && <Td style={{ minWidth: 170 }}>{progress.days ? <DayStrip days={progress.days} name={name} copy={copy} /> : copy.common.dash}</Td>}
-    </tr>
+      </Identity>
+
+      {todayInWindow && (
+        <div className="participant-today">
+          <span className="participant-label">{c.colToday}</span>
+          {steps ? (
+            <div data-today={today === null ? "" : String(today)}>
+              <div className="participant-value tnum">
+                {today === null ? c.noDataToday : c.todaySteps(n(today), n(progress.target))}
+              </div>
+              {today !== null && (
+                <div
+                  role="progressbar"
+                  aria-label={c.todayBar(name)}
+                  aria-valuemin={0}
+                  aria-valuemax={progress.target}
+                  aria-valuenow={today}
+                  aria-valuetext={c.todaySteps(n(today), n(progress.target))}
+                  data-pct={pct}
+                  data-met={met ? "true" : "false"}
+                  className="participant-bar"
+                >
+                  <div style={{ width: `${pct}%`, background: met ? "var(--ok)" : "var(--blue-500)" }} />
+                </div>
+              )}
+              {source && (
+                <div className="participant-source" data-source={source}>
+                  <span aria-hidden="true" style={{ display: "inline-flex" }}>
+                    <UiIcon name={source === "MANUAL" ? "edit" : "pulse"} size={13} />
+                  </span>
+                  {c.source[source]}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="participant-value tnum">{c.todayWorkouts(today === null ? copy.common.dash : n(today))}</div>
+          )}
+        </div>
+      )}
+
+      <div className="participant-days">
+        {steps && progress.days && <DayStrip days={progress.days} name={name} copy={copy} />}
+        <div className="participant-totals">
+          {progress.daysMet !== null && (
+            <span>
+              <span className="participant-label">{c.colDaysMet}</span>{" "}
+              <span
+                className="tnum"
+                data-days-met=""
+                aria-label={c.daysMetLabel(progress.daysMet, progress.daysElapsed)}
+                title={c.daysMetLabel(progress.daysMet, progress.daysElapsed)}
+              >
+                {c.daysMet(progress.daysMet, progress.daysElapsed)}
+              </span>
+            </span>
+          )}
+          <span>
+            <span className="participant-label">{c.colTotal}</span>{" "}
+            <span className="tnum" data-total="">
+              {steps ? c.totalSteps(n(progress.total)) : c.totalWorkouts(n(progress.total), n(progress.target))}
+            </span>
+          </span>
+        </div>
+      </div>
+
+      <div className="participant-status">
+        <StatusPill tone="green" icon="check" label={c.status.ACCEPTED} />
+      </div>
+    </li>
   );
 }

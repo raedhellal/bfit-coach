@@ -22,7 +22,8 @@ import { getCopy } from "@/lib/i18n/server";
  *     A roster failure leaves the list up and the dialog saying the clients could not be
  *     loaded — never that there are none, which would be a different fact.
  *
- * Three states, all explicit: load error · no challenges · the list.
+ * Three states, all explicit: load error · no challenges · the list (EV-337h: cards,
+ * three columns from 1280 px, two from 768, one below; plan §5.5).
  */
 export const dynamic = "force-dynamic";
 
@@ -59,15 +60,24 @@ export default async function ChallengesPage({ searchParams }: { searchParams: {
         </Card>
       ) : (
         <>
-          <ChallengeList items={list.items} copy={copy} />
+          <ChallengeList items={list.items} copy={copy} now={Date.now()} />
+          {/* The pager's links are controls, not words in a sentence: 44 px (X3). */}
           {list.totalPages > 1 && (
             <nav
               aria-label={copy.challenges.pageOf(page + 1, list.totalPages)}
-              style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16, fontSize: 13 }}
+              style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, fontSize: 13, flexWrap: "wrap" }}
             >
-              {page > 0 && <Link href={`/challenges?page=${page - 1}`}>{copy.challenges.previous}</Link>}
+              {page > 0 && (
+                <Link href={`/challenges?page=${page - 1}`} className="link-button" data-variant="secondary">
+                  {copy.challenges.previous}
+                </Link>
+              )}
               <span style={{ color: "var(--ink-3)" }}>{copy.challenges.pageOf(page + 1, list.totalPages)}</span>
-              {page + 1 < list.totalPages && <Link href={`/challenges?page=${page + 1}`}>{copy.challenges.next}</Link>}
+              {page + 1 < list.totalPages && (
+                <Link href={`/challenges?page=${page + 1}`} className="link-button" data-variant="secondary">
+                  {copy.challenges.next}
+                </Link>
+              )}
             </nav>
           )}
         </>
