@@ -35,6 +35,9 @@ Branch `feat/pro-training-templates` off `origin/release/coach-held-merges` 1c0f
   nutrition-template row still says « Utiliser pour un client » (its own copy key) until EV-337j.
 - h1 is « Modèles d'entraînement » / "Training templates"; the nav keeps « Modèles » / "Templates".
 - `page.locator("#" + id)` fails on a React `useId` (":r1:"); use `[id="…"]`.
+- A full default run under load (≈ 10) once failed all 23 WebKit tests at sign-in (`waitForURL` landing
+  timeout, even `/activate`) in 37 min; the same tests passed 25/25 alone and the next full run was
+  964/964 in 15 min. Re-run the WebKit subset alone before blaming a branch.
 
 **Left out (no api data, plan §7 G19):** minutes per session and « utilisé par N clients » on the
 row; the day ACCORDION (« Déplier ») and per-day "aucun exercice" header — `RoutineDocumentEditor`
