@@ -64,7 +64,6 @@ export function ChallengeStats({ detail, copy, now }: { detail: CoachChallengeDe
   );
 }
 
-
 /** "ends on 4 Oct" is written to follow « Jour 5 sur 7 · »; alone on a card it starts a line. */
 function sentenceCase(text: string): string {
   return text.charAt(0).toLocaleUpperCase() + text.slice(1);
