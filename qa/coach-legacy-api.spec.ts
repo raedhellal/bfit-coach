@@ -91,6 +91,13 @@ test("every scope-gated block fails closed to “Not shared”", async ({ page }
   });
   await expect(adherence.locator(".stat-card-value")).toHaveText("—");
   await expect(body).not.toContainText("3 / 4");
+
+  // Same witness for the last-session value: the stub sends a 2026-09-14 session with no
+  // `scopes`, so without the WORKOUTS gate on the value the tile would show that date.
+  const lastSession = page.locator(".overview-stats > .stat-card").filter({
+    has: page.locator(".stat-card-label", { hasText: /^Last session$/ }),
+  });
+  await expect(lastSession.locator(".stat-card-value")).toHaveText("—");
 });
 
 test("the routine tab states the absence instead of throwing", async ({ page }) => {
