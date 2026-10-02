@@ -3987,11 +3987,23 @@ function seedChallenges(): Map<string, StoredChallenge> {
  *   · `neverSynced` « Pas encore synchronisé » — ACTIVE, day 4 of 7, everyone on UTC. Petra
  *     joined and never synced (`syncedAt` null, the api's `total` 0 by absence); Lina synced
  *     one manual 0 on day 1, a real zero (QA PB-2).
+ *   · Ruling 8's met-card foot (N1), three accepted trainees each, ACTIVE because the UTC
+ *     date is still inside the window:
+ *       `lastEvening` « Dernier soir » — ends today (UTC). Lina on UTC met today (10 600 of
+ *       10 000); Yusuf and Tobias are east of UTC, already the day after the end.
+ *       `lastEveningNoData` « Dernier soir sans donnée » — the same, but Lina has nothing today.
+ *       `lastEveningAll` « Dernier soir pour tous » — all three already past the end.
+ *       `firstMorning` « Premier matin » — starts today (UTC). Lina met today (10 500), Yusuf
+ *       is short (4 000); Tobias is west of UTC, still the day before the start.
  */
 export const FIXTURE_EDGE_CHALLENGE_IDS = {
   upcomingEast: "c4a11e00-0000-4000-8000-0000000000e1",
   endedWest: "c4a11e00-0000-4000-8000-0000000000e2",
   neverSynced: "c4a11e00-0000-4000-8000-0000000000e3",
+  lastEvening: "c4a11e00-0000-4000-8000-0000000000e4",
+  lastEveningNoData: "c4a11e00-0000-4000-8000-0000000000e5",
+  lastEveningAll: "c4a11e00-0000-4000-8000-0000000000e6",
+  firstMorning: "c4a11e00-0000-4000-8000-0000000000e7",
 } as const;
 
 /** Rows by offset from the UTC date; a day already begun synced 30 min ago, earlier ones at their evening. */
@@ -4023,6 +4035,10 @@ function edgeChallenges(): StoredChallenge[] {
     zoneOffsetDays,
     steps: rows,
   });
+  // East of UTC, already the day after a window that ends today (UTC): every day met.
+  const pastTheEnd = [YUSUF_ID, TOBIAS_ID].map((id) =>
+    accepted(id, 1, edgeRows([[-6, 10_100], [-5, 10_200], [-4, 10_300], [-3, 10_400], [-2, 10_500], [-1, 10_600], [0, 10_700]], "HEALTHKIT"))
+  );
   return [
     {
       id: FIXTURE_EDGE_CHALLENGE_IDS.upcomingEast,
@@ -4044,6 +4060,30 @@ function edgeChallenges(): StoredChallenge[] {
       id: FIXTURE_EDGE_CHALLENGE_IDS.neverSynced,
       ...steps("Pas encore synchronisé", 8_000, -3, 3),
       participants: [accepted(LINA_ID, 0, edgeRows([[-3, 0]], "MANUAL")), accepted(PETRA_ID, 0, {})],
+    },
+    {
+      id: FIXTURE_EDGE_CHALLENGE_IDS.lastEvening,
+      ...steps("Dernier soir", 10_000, -6, 0),
+      participants: [accepted(LINA_ID, 0, edgeRows([[-1, 11_200], [0, 10_600]], "HEALTH_CONNECT")), ...pastTheEnd],
+    },
+    {
+      id: FIXTURE_EDGE_CHALLENGE_IDS.lastEveningNoData,
+      ...steps("Dernier soir sans donnée", 10_000, -6, 0),
+      participants: [accepted(LINA_ID, 0, edgeRows([[-1, 11_200]], "HEALTH_CONNECT")), ...pastTheEnd],
+    },
+    {
+      id: FIXTURE_EDGE_CHALLENGE_IDS.lastEveningAll,
+      ...steps("Dernier soir pour tous", 10_000, -6, 0),
+      participants: [accepted(LINA_ID, 1, edgeRows([[-1, 11_200], [0, 10_600]], "HEALTH_CONNECT")), ...pastTheEnd],
+    },
+    {
+      id: FIXTURE_EDGE_CHALLENGE_IDS.firstMorning,
+      ...steps("Premier matin", 10_000, 0, 6),
+      participants: [
+        accepted(LINA_ID, 0, edgeRows([[0, 10_500]], "HEALTH_CONNECT")),
+        accepted(YUSUF_ID, 0, edgeRows([[0, 4_000]], "HEALTHKIT")),
+        accepted(TOBIAS_ID, -1, {}),
+      ],
     },
   ];
 }

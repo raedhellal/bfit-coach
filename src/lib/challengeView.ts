@@ -1,4 +1,5 @@
 import type { ChallengeProgress, CoachChallengeDetail, CoachChallengeSummary } from "@/lib/coachApi";
+import type { Copy } from "@/lib/copy";
 
 /**
  * EV-337h — what the redesigned challenge screens derive from the api's numbers, in one
@@ -135,10 +136,14 @@ export function participantRowView(
  * today is outside the window has no challenge day to count — counting them read « 0 / 3 ·
  * 3 sans donnée aujourd'hui » for trainees who met every day, every night a challenge ends.
  *
+ *   · `accepted` — that in-window count: the met card's denominator.
  *   · `metToday` — participants whose OWN today is a day the api marked MET. The api's
  *     verdict, not a re-comparison here: a WORKOUTS challenge has no days and counts none.
  *   · `withData` / `average` — over the participants who sent a number for today. `average`
  *     is `null` when nobody did: an average of nothing is not 0 steps.
+ *   · `pastEnd` / `beforeStart` — accepted participants left out of `accepted` because their
+ *     own today is after `endsOn` / before `startsOn` while the challenge is ACTIVE (ruling 8:
+ *     the met card's foot names them). On any other phase nobody has a today and both are 0.
  */
 export interface TodayStats {
   accepted: number;
@@ -146,6 +151,8 @@ export interface TodayStats {
   withData: number;
   withoutData: number;
   average: number | null;
+  pastEnd: number;
+  beforeStart: number;
 }
 
 function metOnToday(p: ChallengeProgress): boolean {
@@ -156,6 +163,8 @@ export function todayStats(detail: CoachChallengeDetail): TodayStats {
   const { challenge } = detail;
   const joined = detail.participants.map((p) => p.progress).filter((p): p is ChallengeProgress => p !== null);
   const progress = joined.filter((p) => todayInWindow(p, challenge));
+  const outside = (where: OwnDay) =>
+    challenge.phase === "ACTIVE" ? joined.filter((p) => ownDay(p, challenge) === where).length : 0;
   const values = progress.map((p) => p.todayValue).filter((v): v is number => v !== null);
   return {
     accepted: progress.length,
@@ -163,7 +172,26 @@ export function todayStats(detail: CoachChallengeDetail): TodayStats {
     withData: values.length,
     withoutData: progress.length - values.length,
     average: values.length === 0 ? null : Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+    pastEnd: outside("PAST_END"),
+    beforeStart: outside("BEFORE_START"),
   };
+}
+
+/**
+ * The met card's foot (ruling 8): who is outside its count, in this order — no number
+ * today, past the end, before the start — joined by « · », a part whose count is 0 left
+ * out. `undefined` when every part is 0 (the card then has no foot, as built).
+ */
+export function metCardFoot(
+  stats: Pick<TodayStats, "withoutData" | "pastEnd" | "beforeStart">,
+  words: Pick<Copy["challenges"]["stats"], "withoutData" | "pastEnd" | "beforeStart">
+): string | undefined {
+  const parts = [
+    stats.withoutData > 0 ? words.withoutData(stats.withoutData) : null,
+    stats.pastEnd > 0 ? words.pastEnd(stats.pastEnd) : null,
+    stats.beforeStart > 0 ? words.beforeStart(stats.beforeStart) : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length === 0 ? undefined : parts.join(" · ");
 }
 
 /**

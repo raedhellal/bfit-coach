@@ -26,6 +26,10 @@ const EDGE_UPCOMING = "c4a11e00-0000-4000-8000-0000000000e1";
 const EDGE_ENDED = "c4a11e00-0000-4000-8000-0000000000e2";
 const EDGE_NEVER_SYNCED = "c4a11e00-0000-4000-8000-0000000000e3";
 const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
+const EDGE_LAST_EVENING = "c4a11e00-0000-4000-8000-0000000000e4";
+const EDGE_LAST_EVENING_NO_DATA = "c4a11e00-0000-4000-8000-0000000000e5";
+const EDGE_LAST_EVENING_ALL = "c4a11e00-0000-4000-8000-0000000000e6";
+const EDGE_FIRST_MORNING = "c4a11e00-0000-4000-8000-0000000000e7";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 const TOBIAS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
@@ -56,6 +60,10 @@ const LANG = {
       average: "8,275 steps",
       withData: "over 2 clients with data",
       day: "5 / 7",
+      allJoined: "3 of 3 joined",
+      pastEnd2: "2 already past the last day",
+      noDataAndPastEnd: "1 with no data today · 2 already past the last day",
+      beforeStart1: "1 not yet at the first day",
     },
     dayOf: "Day 5 of 7",
     startsIn: "Starts in 3 days",
@@ -80,6 +88,10 @@ const LANG = {
       average: `8${NNBSP}275 pas`,
       withData: "sur 2 clients avec données",
       day: "5 / 7",
+      allJoined: "3 sur 3 ont rejoint",
+      pastEnd2: "2 déjà après le dernier jour",
+      noDataAndPastEnd: "1 sans donnée aujourd'hui · 2 déjà après le dernier jour",
+      beforeStart1: "1 pas encore au premier jour",
     },
     dayOf: "Jour 5 sur 7",
     startsIn: "Commence dans 3\u00a0jours",
@@ -365,6 +377,64 @@ for (const lang of ["fr", "en"] as const) {
       await expect(petra.locator("[data-total]")).toHaveCount(0);
       expect(await petra.innerText()).not.toMatch(/\b0 (pas|steps)\b/);
       await expect(participant(page, LINA).locator("[data-total]")).toHaveText(lang === "fr" ? "0 pas" : "0 steps");
+    });
+
+    /**
+     * Ruling 8 (EV-337n N1): on the last evening the met card counts only the trainees whose
+     * own today is still the last day, and its foot names the rest. The fixture's edges
+     * (`evoli_fixture_challenge_edges=1`) put Yusuf and Tobias east of UTC, already the day
+     * after a window that ends today (UTC), and Lina on UTC; and on the first morning Tobias
+     * west of UTC, the day before a window that starts today.
+     */
+    test("N1: the met card's foot says who is past the last day or not yet at the first", async ({ page, context, baseURL }) => {
+      const l = LANG[lang];
+      await context.addCookies([{ name: "evoli_fixture_challenge_edges", value: "1", url: baseURL! }]);
+      await signIn(page, lang);
+      const stats = page.locator(".challenge-stats .stat-card");
+
+      // Lina met her last day; the other two are past it.
+      await page.goto(`/challenges/${EDGE_LAST_EVENING}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Dernier soir");
+      await expect(stats).toHaveCount(4);
+      await expect(stats.nth(0).locator(".stat-card-value")).toHaveText(l.stats.allJoined);
+      await expect(stats.nth(1).locator(".stat-card-value")).toHaveText("1 / 1");
+      await expect(stats.nth(1).locator(".stat-card-foot")).toHaveText(l.stats.pastEnd2);
+      // The rows agree: only Lina has a today cell.
+      await expect(page.locator(".participant-today")).toHaveCount(1);
+      await expect(participant(page, LINA).locator(".participant-today")).toHaveCount(1);
+
+      // Lina has nothing today: the existing part first, then the new one.
+      await page.goto(`/challenges/${EDGE_LAST_EVENING_NO_DATA}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Dernier soir sans donnée");
+      await expect(stats.nth(1).locator(".stat-card-value")).toHaveText("0 / 1");
+      await expect(stats.nth(1).locator(".stat-card-foot")).toHaveText(l.stats.noDataAndPastEnd);
+      // The longest foot, at the narrowest width (French is ~20 % longer): it wraps, never clips.
+      await page.setViewportSize({ width: 320, height: 844 });
+      await expectNoSidewaysScroll(page, `${lang} 320px: the met card's longest foot`);
+      const clipped = await stats
+        .nth(1)
+        .locator(".stat-card-foot")
+        .evaluate((el) => el.scrollWidth > el.clientWidth + 0.5 || el.getBoundingClientRect().right > window.innerWidth);
+      expect(clipped, `${lang} 320px: the foot is clipped`).toBe(false);
+      await page.setViewportSize({ width: 1280, height: 900 });
+
+      // Nobody is still in the window: no today card at all (unchanged).
+      await page.goto(`/challenges/${EDGE_LAST_EVENING_ALL}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Dernier soir pour tous");
+      await expect(stats).toHaveCount(2);
+      await expect(page.locator(".participant-today")).toHaveCount(0);
+
+      // The first morning's mirror.
+      await page.goto(`/challenges/${EDGE_FIRST_MORNING}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Premier matin");
+      await expect(stats).toHaveCount(4);
+      await expect(stats.nth(1).locator(".stat-card-value")).toHaveText("1 / 2");
+      await expect(stats.nth(1).locator(".stat-card-foot")).toHaveText(l.stats.beforeStart1);
+
+      // Everyone in the window (the seeded challenge): neither new part.
+      await page.goto(`/challenges/${ACTIVE}`);
+      await expect(stats.nth(1).locator(".stat-card-foot")).toHaveText(l.stats.withoutData);
+      if (lang === "fr") await expectNoEnglish(page, "the challenge page");
     });
   });
 }

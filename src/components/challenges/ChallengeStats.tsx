@@ -2,7 +2,7 @@ import { StatTile } from "@/components/client/StatTile";
 import type { CoachChallengeDetail } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 import { formatShortDate, formatSteps } from "@/lib/format";
-import { showTodayCards, todayStats, windowPosition } from "@/lib/challengeView";
+import { metCardFoot, showTodayCards, todayStats, windowPosition } from "@/lib/challengeView";
 
 /**
  * EV-337h (plan §5.6) — the stat cards above a challenge's participants. Four on an active
@@ -12,7 +12,9 @@ import { showTodayCards, todayStats, windowPosition } from "@/lib/challengeView"
  *   · Participants — the api's `acceptedCount` of `participantCount`; the foot counts the
  *     invitations not accepted yet. No « déclin » count: the api has no DECLINED state.
  *   · Goal met today — participants whose own today the api marked MET, over those who
- *     joined; the foot NAMES how many sent nothing today (never folded into a miss).
+ *     joined and whose own today is in the window; the foot NAMES who is outside that
+ *     count: how many sent nothing today (never folded into a miss), how many are already
+ *     past the last day, how many are not yet at the first (ruling 8, `metCardFoot`).
  *   · Group average · today — over the participants WITH a number today, and the foot says
  *     how many that is. Nobody with a number → « Aucune donnée aujourd'hui », not 0.
  *   · Day — the window position, from the dates (`windowPosition`).
@@ -43,7 +45,7 @@ export function ChallengeStats({ detail, copy, now }: { detail: CoachChallengeDe
         <StatTile
           label={c.stats.metToday}
           value={c.ratio(stats.metToday, stats.accepted)}
-          foot={stats.withoutData > 0 ? c.stats.withoutData(stats.withoutData) : undefined}
+          foot={metCardFoot(stats, c.stats)}
         />
       )}
       {today && (

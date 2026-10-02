@@ -8,6 +8,8 @@ import type {
   CoachChallengeSummary,
 } from "../src/lib/coachApi";
 import * as view from "../src/lib/challengeView";
+import { en } from "../src/lib/copy";
+import { fr } from "../src/lib/copy.fr";
 
 /**
  * EV-337h, staff blocker on 55d2126 — the "today" stat cards counted every accepted
@@ -97,6 +99,8 @@ test("the last evening: 22:30 UTC on endsOn, three Paris trainees already on the
     withData: 0,
     withoutData: 0,
     average: null,
+    pastEnd: 3,
+    beforeStart: 0,
   });
 });
 
@@ -109,6 +113,8 @@ test("the last evening, mixed zones: only the trainee still on the last day is c
     withData: 1,
     withoutData: 0,
     average: 10_400,
+    pastEnd: 2,
+    beforeStart: 0,
   });
 });
 
@@ -125,6 +131,8 @@ test("the first morning: a trainee west of UTC is still the day before the start
     withData: 0,
     withoutData: 1,
     average: null,
+    pastEnd: 0,
+    beforeStart: 1,
   });
   // Only New York: nothing to count, so the page draws no today card at all.
   expect(view.todayStats(detail([newYork])).accepted).toBe(0);
@@ -236,4 +244,51 @@ test("PB-2: no total while nothing is synced; a synced zero and a WORKOUTS zero 
   // WORKOUTS: `syncedAt` is always null and 0 sessions is a fact, so the total stays.
   const workouts = { ...neverSynced, daysMet: null, days: null, target: 12 };
   expect(view.participantRowView(workouts, { ...challenge(), metric: "WORKOUTS" })).toMatchObject({ total: true });
+});
+
+/**
+ * Ruling 8 (EV-337n N1) — the met card counts only the trainees whose own today is in the
+ * window, so its foot says who is outside that count: « N sans donnée aujourd'hui », then
+ * « N déjà après le dernier jour », then « N pas encore au premier jour », joined by « · »,
+ * a part whose N is 0 left out.
+ */
+test("N1: the met card's foot names who is outside its count, in the ruling's order and words", () => {
+  expect(typeof view.metCardFoot).toBe("function");
+  const words = { en: en.challenges.stats, fr: fr.challenges.stats };
+  const foot = (participants: CoachChallengeParticipant[], lang: "en" | "fr") =>
+    view.metCardFoot(view.todayStats(detail(participants)), words[lang]);
+  const pastEnd = ["a", "b"].map((id) => accepted(id, progress("2026-10-06", null, true)));
+
+  // The last evening: one trainee still on the last day (met), two already past it.
+  const met = [accepted("utc", progress(END, 10_400, true)), ...pastEnd];
+  expect(view.todayStats(detail(met))).toMatchObject({ accepted: 1, metToday: 1, pastEnd: 2, beforeStart: 0 });
+  expect(foot(met, "fr")).toBe("2 déjà après le dernier jour");
+  expect(foot(met, "en")).toBe("2 already past the last day");
+
+  // The same, but the one in the window has no number today: the existing part comes first.
+  const noData = [accepted("utc", progress(END, null, false)), ...pastEnd];
+  expect(foot(noData, "fr")).toBe("1 sans donnée aujourd'hui · 2 déjà après le dernier jour");
+  expect(foot(noData, "en")).toBe("1 with no data today · 2 already past the last day");
+
+  // The first morning's mirror: one trainee west of UTC is still the day before the start.
+  const morning = [
+    accepted("ny", progress("2026-09-28", null, false)),
+    ...["c", "d"].map((id) => accepted(id, progress(START, 10_500, true))),
+  ];
+  expect(view.todayStats(detail(morning))).toMatchObject({ accepted: 2, metToday: 2, beforeStart: 1, pastEnd: 0 });
+  expect(foot(morning, "fr")).toBe("1 pas encore au premier jour");
+  expect(foot(morning, "en")).toBe("1 not yet at the first day");
+
+  // All three parts, in order.
+  expect(
+    view.metCardFoot({ withoutData: 1, pastEnd: 2, beforeStart: 3 }, words.fr)
+  ).toBe("1 sans donnée aujourd'hui · 2 déjà après le dernier jour · 3 pas encore au premier jour");
+
+  // Everyone in the window and with a number: no foot at all.
+  const everyone = ["e", "f"].map((id) => accepted(id, progress("2026-10-02", 10_100, true)));
+  expect(foot(everyone, "fr")).toBeUndefined();
+  // Not ACTIVE: nobody has a today, so nobody is "outside" it either.
+  expect(
+    view.todayStats({ challenge: { ...challenge(), phase: "ENDED" }, participants: pastEnd })
+  ).toMatchObject({ accepted: 0, pastEnd: 0, beforeStart: 0 });
 });

@@ -2042,6 +2042,12 @@ export const en = {
       metToday: "Goal met today",
       /** Accepted participants whose today has no number: said, never folded into a zero. */
       withoutData: (count: number) => `${count} with no data today`,
+      /**
+       * Ruling 8 (EV-337n): accepted participants outside the met card's count because their
+       * own today is already after the last day, or not yet at the first (a zone off UTC).
+       */
+      pastEnd: (count: number) => `${count} already past the last day`,
+      beforeStart: (count: number) => `${count} not yet at the first day`,
       groupAverage: "Group average · today",
       withData: (count: number) => `over ${count} client${count === 1 ? "" : "s"} with data`,
       day: "Day",
