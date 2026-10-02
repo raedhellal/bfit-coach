@@ -269,6 +269,12 @@ test.describe("M3 — a WORKOUTS-only link shows what the api evaluated on WORKO
     // The streak is PROGRESS: still not shared, still a dash.
     await expect(tile(page, "Current streak")).toContainText("—");
     await expect(tile(page, "Current streak")).toContainText("Not shared");
+    // The last session is WORKOUTS on the api (`workouts ? lastSession(...) : null`, c82e55b):
+    // the api sent it, so it is shown (staff nit 1 on EV-337m).
+    const last = tile(page, "Last session");
+    await expect(last.locator(".stat-card-value")).toHaveText(/\d/);
+    await expect(last.locator(".stat-card-foot")).toHaveText("Full Body A · OK");
+    await expect(last).not.toContainText("Not shared");
   });
 
   test("WORKOUTS only and nothing fired: the api's empty statement, and the adherence numbers", async ({ page }) => {
@@ -302,6 +308,12 @@ test.describe("M3 — a WORKOUTS-only link shows what the api evaluated on WORKO
     const adherence = tile(page, "Adherence this week");
     await expect(adherence.locator(".stat-card-value")).toHaveText("—");
     await expect(adherence.locator(".stat-card-foot")).toHaveText("Not shared");
+    // No WORKOUTS, so the api sends no last session: never "No sessions yet", which is a
+    // claim about sessions this coach was never given (ADR-0015 F1; staff nit 1 on EV-337m).
+    const last = tile(page, "Last session");
+    await expect(last.locator(".stat-card-value")).toHaveText("—");
+    await expect(last.locator(".stat-card-foot")).toHaveText("Not shared");
+    await expect(page.getByRole("main")).not.toContainText("No sessions yet");
   });
 
   test.describe("French", () => {

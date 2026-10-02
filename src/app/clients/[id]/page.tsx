@@ -244,7 +244,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
             ) : undefined
           }
         >
-          {/* null = neither PROGRESS nor WEIGH_INS; [] = at least one held and nothing
+          {/* null = neither WORKOUTS nor WEIGH_INS; [] = at least one held and nothing
               fired. Collapsing the two would tell a coach "No red flags" about a trainee
               whose sessions and weigh-ins they have never been allowed to read — so the
               scope check stands in front of the null rather than behind it. */}
@@ -315,15 +315,19 @@ export default async function ClientPage({ params }: { params: { id: string } })
         />
         <StatTile
           label={copy.client.lastSession}
+          // WORKOUTS, the scope the api sends it under (`workouts ? lastSession(...) : null`
+          // at c82e55b). Gated on PROGRESS, a link without WORKOUTS read "No sessions yet"
+          // about sessions the coach was never given (ADR-0015 F1), and a WORKOUTS-only link
+          // hid the session the api sent (staff nit 1 on EV-337m).
           value={
-            progressShared && lastSession
+            workoutsShared && lastSession
               ? formatDate(lastSession.date, copy.locale)
-              : progressShared
+              : workoutsShared
                 ? copy.client.noSession
                 : copy.common.dash
           }
           foot={
-            !progressShared ? (
+            !workoutsShared ? (
               copy.client.notShared
             ) : lastSession ? (
               <span>
