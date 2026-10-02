@@ -58,4 +58,4 @@
 - [Recipe meal slots + count line (EV-320c/b)](recipe-meal-slots-portal-facts.md) — mealSlots sent only if changed; count = COACH_RECIPE && placedByYou; fixture fill cookie
 - [Security headers + framing tests (EV-229)](security-headers-and-framing-tests.md) — headers() reaches middleware 307/405; framer must be a real loopback server; --ink-3 forked
 - [French copy: elision and numbers](french-copy-elision-and-numbers.md) — use de()/que() never `de ${x}`; common.labelled() never "{x}: "; formatNumberInput for pre-fills; 1er/Sep in datePrinted; h left alone; readNumber is the one whole-number reader ("1.000" refused, format vs > 0); display-name fixture switch; route announcer is role=alert
-- [Nav progress second click (BUG-670)](nav-progress-second-click-facts.md) — one run per wait, first click's 400 ms deadline; WebKit hydration race; retrying expect hides a gap; two next dev clobber .next
+- [Nav progress second click (BUG-670)](nav-progress-second-click-facts.md) — one run per wait; current-tab click ends it; data-nav-progress-ready; WebKit hydration race; retrying expect hides a gap
