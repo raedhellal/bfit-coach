@@ -1,6 +1,6 @@
 ---
 name: overview-followups-337m-facts
-description: EV-337m (b-fit-coach feat/pro-overview-followups, 2026-10-02) — overview gating now follows the api's own scope per block; four overview-only fixture trainees and two cookie switches; WebKit contexts inherit the suite's Accept-Language; addCookies path trap; lastSession still mis-gated
+description: EV-337m (b-fit-coach feat/pro-overview-followups, 2026-10-02) — overview gating follows the api's own scope per block (adherence, flags, lastSession); four overview-only fixture trainees and two cookie switches; WebKit contexts inherit the suite's Accept-Language; addCookies path trap
 metadata:
   type: project
 ---
@@ -11,10 +11,11 @@ Branch `feat/pro-overview-followups` off `origin/release/coach-held-merges` 99dc
 on the scope the block "feels like".** At c82e55b (`CoachPortalQueryService.overview`):
 adherenceThisWeek = WORKOUTS, redFlags = WORKOUTS or WEIGH_INS (`TraineeRedFlagRules.evaluate`
 null only when neither), streak = PROGRESS, lastSession = **WORKOUTS**, weightSeries =
-WEIGH_INS. The portal had adherence + flags on PROGRESS (BUG-674, fixed here). **lastSession
-is still gated on PROGRESS in `page.tsx`** — out of M3's two conditions, reported to the
-caller, not fixed: a PROGRESS-only link would read "No completed sessions yet" (api sent
-null because WORKOUTS is withheld). Unreachable while every link holds all four scopes.
+WEIGH_INS. The portal had adherence + flags + lastSession on PROGRESS (BUG-674 and staff's
+nit 1, all fixed on this branch; lastSession in a4dad39). Each moved gate needs a witness of
+its own: after Sara's fixture adherence became null, deleting `workoutsShared &&` from the
+adherence value survived every spec until the legacy stub (3/4 with no `scopes`) asserted
+the dash (ae8654b). Template "use on a trainee" also revalidates `/clients/{id}` (b98f978).
 
 **Fixture additions (overview-only, not on any roster):** …0020 Yann (WORKOUTS only,
 MISSED fired, plan seeded), …0021 Pablo (`["PAIN_REPORTED"]`, a wire no api sends — exists
