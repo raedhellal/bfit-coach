@@ -35,6 +35,7 @@ export default defineConfig({
   reporter: [["list"]],
   // An English browser, stated: the harness's Save draft step reads English labels, and
   // since the Pro redesign's locale rule a request that names no language is French.
-  use: { baseURL: BASE_URL, locale: "en-US" },
+  // A hang must name its step: Playwright's goto/waitFor have no timeout by default.
+  use: { baseURL: BASE_URL, locale: "en-US", actionTimeout: 30_000, navigationTimeout: 30_000 },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });
