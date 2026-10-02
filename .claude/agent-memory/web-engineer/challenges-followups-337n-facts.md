@@ -57,3 +57,17 @@ spec needs.
 - **`coach-challenges` "create → list → detail" goes red 00:00–02:00 CEST** (reads « Upcoming »,
   expects « Active ») — the local-midnight artefact, unrelated to any change; re-run with
   `TZ=UTC` and it is green ([[coach-gate-red-after-local-midnight]]). Seen again 2026-10-03 00:07.
+- **The start is a DATE, never a count (ruling 14, N9, BUG-681).** `phaseLine` lives in
+  `challengeView.ts` now (pure, unit-testable); UPCOMING reads « Commence le 3 oct. » /
+  "Starts on 3 Oct" and the detail tile's foot « Se termine le {end} ». Copy key
+  `startsOnDate`; `startsIn` is gone and a pure test greps both dictionaries for « Commence
+  demain|dans », "Starts tomorrow|in". The edge challenge was renamed « Départ demain » because a
+  TITLE on the page counts too. A new date-taking French sentence must join
+  `DATE_NUMBER_OR_WEEKDAY_POSITIONS` in `qa/french-polish.spec.ts` (exact list).
+- **Browser zone ≠ api calendar (N10, BUG-624).** `CreateChallengeDialog` defaults to the
+  BROWSER's local today; Playwright's browser takes the HOST zone. Any spec asserting a phase
+  for a challenge the dialog just created must `test.use({ timezoneId: "UTC" })`. To reproduce the
+  Paris-midnight failure at any hour: host `TZ=Pacific/Kiritimati` between 10:00 and 23:59 UTC.
+  Server-rendered dates (`phaseLine`, tiles) do not depend on `timezoneId` — test them across
+  zones anyway, that is the AC.
+
