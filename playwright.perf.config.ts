@@ -11,12 +11,18 @@ import { defineConfig, devices } from "@playwright/test";
  *     npx playwright test --config playwright.perf.config.ts
  *
  * Live mode (`PERF_MODE=live`) needs a LOCAL b-fit-api on a throwaway database and
- * PERF_CLIENT / PERF_CHALLENGE ids from it. The base URL must be localhost: this file
- * refuses anything else, so it cannot be pointed at production by accident.
+ * PERF_CLIENT / PERF_CHALLENGE ids from it.
+ *
+ * A remote base URL (ADR-0033 D33.0's Vercel preview) is refused unless PERF_REMOTE_OK
+ * repeats it exactly: a deliberate second typing, so this cannot be pointed at
+ * production by accident. Use a TEST coach and trainee only (PERF_EMAIL/PERF_PASSWORD,
+ * PERF_CLIENT, PERF_CHALLENGE). On a remote run the Save draft step, the one write, is
+ * skipped unless PERF_SAVE=1.
  */
 const BASE_URL = process.env.PERF_BASE_URL ?? "http://localhost:3371";
-if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(BASE_URL)) {
-  throw new Error(`playwright.perf.config.ts measures a local server only, not ${BASE_URL}`);
+const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(BASE_URL);
+if (!LOCAL && process.env.PERF_REMOTE_OK !== BASE_URL) {
+  throw new Error(`playwright.perf.config.ts: ${BASE_URL} is not local; set PERF_REMOTE_OK to the same URL to confirm`);
 }
 
 export default defineConfig({

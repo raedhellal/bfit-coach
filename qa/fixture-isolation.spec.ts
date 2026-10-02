@@ -70,6 +70,7 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
   "coach-activation.stub.spec.ts": "activation config: COACH_API_MODE=live against qa/activation-stub-api.mjs; resets the stub per test",
   "contract-drift.spec.ts": "reads two files from disk; never calls the dev server",
   "api-merge-condition.spec.ts": "reads git and a file from disk; never calls the dev server",
+  "stale-times-config.spec.ts": "imports next.config.mjs (ADR-0033 2a); never calls the dev server",
 };
 
 test("every spec file on the fixture server uses the resetting test", () => {

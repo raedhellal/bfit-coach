@@ -52,6 +52,8 @@ const HOLD_MS = Number(process.env.PERF_HOLD_MS ?? 60);
  * the api requests a save costs when there is no fixture journal to count them.
  */
 const API_COUNTER = process.env.PERF_API_COUNTER;
+/** The Save draft writes a draft for the trainee: off on a remote run unless asked for. */
+const SAVE = process.env.PERF_SAVE === "1" || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(process.env.PERF_BASE_URL ?? "http://localhost:3371");
 
 async function apiCount(page: Page): Promise<number | null> {
   if (!API_COUNTER) return null;
@@ -325,10 +327,12 @@ for (let run = 1; run <= RUNS; run += 1) {
       await step(page, settle, "client → nutrition (no prefetch)", "push", `${M.nutrition.path}?nopf=${n}`, M.nutrition);
       await step(page, settle, "nutrition → client (no prefetch)", "push", `${M.overview.path}?nopf=${n}b`, M.overview);
 
-      await page.goto(M.routine.path);
-      await page.locator(M.routine.selector).waitFor();
-      await settle();
-      await saveDraft(page, t.log, settle);
+      if (SAVE) {
+        await page.goto(M.routine.path);
+        await page.locator(M.routine.selector).waitFor();
+        await settle();
+        await saveDraft(page, t.log, settle);
+      }
     } finally {
       await context.close();
     }

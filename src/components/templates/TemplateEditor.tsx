@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Badge, Button, Card, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { RoutineDocumentEditor } from "@/components/routine/RoutineDocumentEditor";
 import type { Copy } from "@/lib/copy";
@@ -85,7 +84,6 @@ export function TemplateEditor({
   initial: TemplateDraft;
 }) {
   const copy = useCopy();
-  const router = useRouter();
   /**
    * Null until the first save on a NEW template, and the id from then on.
    *
@@ -159,7 +157,8 @@ export function TemplateEditor({
         });
         return;
       }
-      leaving.release(() => router.refresh());
+      // No `router.refresh()` (ADR-0033 branch 2a): `updateTemplateAction` revalidates.
+      leaving.release();
     });
   }
 

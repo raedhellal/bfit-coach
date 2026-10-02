@@ -4,8 +4,9 @@ import { UiIcon } from "@/components/ui/icons";
  * EV-283b — "{first name} changed this plan on {date} (UTC). You're seeing their version."
  *
  * A server component with no state: the sentence comes from the page's routine read,
- * so a publish (which revalidates the route and `router.refresh()`es) re-renders the
- * page from an envelope whose `lastChangedBy` is COACH, and the banner goes. The editor
+ * so a publish (whose action revalidates the route, so its response carries the page
+ * rendered after the write) re-renders the page from an envelope whose `lastChangedBy`
+ * is COACH, and the banner goes. The editor
  * never learns about it and cannot keep a stale copy.
  *
  * `role="note"`: it is standing context for the content below, not a live change

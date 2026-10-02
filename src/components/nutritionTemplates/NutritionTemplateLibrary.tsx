@@ -83,7 +83,8 @@ export function NutritionTemplateLibrary({
       }
       setError(null);
       setNotice(T.duplicated(result.template.name));
-      router.refresh();
+      // No `router.refresh()` (ADR-0033 branch 2a): every library write revalidates, so
+      // the action's own response re-rendered this list. Same for rename and delete.
     });
   }
 
@@ -169,7 +170,6 @@ export function NutritionTemplateLibrary({
           setError(null);
           setNotice(T.renamed(name));
           close();
-          router.refresh();
         }}
       />
       <DeleteDialog
@@ -179,7 +179,6 @@ export function NutritionTemplateLibrary({
           setError(null);
           setNotice(null);
           close();
-          router.refresh();
         }}
       />
       <PickDialog

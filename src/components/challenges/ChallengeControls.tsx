@@ -63,8 +63,9 @@ export function ChallengeControls({ id, title, metric }: { id: string; title: st
         return;
       }
       setConfirm(false);
+      // No `router.refresh()` (ADR-0033 branch 2a): `deleteChallengeAction` revalidates,
+      // which purged the router cache, so this navigation renders the list fresh.
       router.replace("/challenges");
-      router.refresh();
     });
   }
 

@@ -52,9 +52,10 @@ export function RevokeMenu({ clientId, displayName }: { clientId: string; displa
       setBusy(false);
       return;
     }
-    // Back to the roster, which the action already revalidated.
+    // Back to the roster, which the action already revalidated: the revalidate purged
+    // the router cache, so this navigation renders it fresh. No `router.refresh()`
+    // (ADR-0033 branch 2a) — it rendered the roster a second time.
     router.replace("/");
-    router.refresh();
   }
 
   return (

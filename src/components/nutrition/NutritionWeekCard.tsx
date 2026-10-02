@@ -140,10 +140,11 @@ export function NutritionWeekCard({
   const router = useRouter();
   const [week, setWeek] = useState<MealWeekView | null>(initialWeek);
   /**
-   * The server's week wins when it changes. `router.refresh()` re-renders the page with
-   * a fresh `week` prop, and without this the card kept showing the week it was first
-   * given — which is what edge case 6 needs NOT to happen: after a 404 the portal
-   * "re-fetches the week", and a re-fetch the card ignores is no re-fetch.
+   * The server's week wins when it changes. A write's own render (its action calls
+   * `revalidatePath`) or a `router.refresh()` re-renders the page with a fresh `week`
+   * prop, and without this the card kept showing the week it was first given — which
+   * is what edge case 6 needs NOT to happen: after a 404 the portal "re-fetches the
+   * week", and a re-fetch the card ignores is no re-fetch.
    */
   const [seenInitial, setSeenInitial] = useState<MealWeekView | null>(initialWeek);
   const [confirming, setConfirming] = useState(false);
@@ -268,8 +269,10 @@ export function NutritionWeekCard({
       // (WeeklyMealPlanService's week save: regenDate null, regenCount 0), so the cap
       // line and the disabled Regenerate buttons would now be false.
       setRegenCapped(false);
+      // The action's week, painted now. No `router.refresh()` (ADR-0033 branch 2a):
+      // `applyWeekAction` revalidates, so its response already re-rendered the page and
+      // the new `week` prop runs the reset above — one render, where the refresh made two.
       setWeek(result.week);
-      router.refresh();
     });
   }
 
@@ -298,8 +301,8 @@ export function NutritionWeekCard({
       }
       setError(null);
       clearRefusals();
+      // No refresh: `regenerateDayAction` revalidates (see `applyWeek`).
       setWeek(result.week);
-      router.refresh();
     });
   }
 
@@ -391,8 +394,8 @@ export function NutritionWeekCard({
       }
       setError(null);
       clearRefusals();
+      // No refresh: `applySwapAction` revalidates (see `applyWeek`).
       setWeek(result.week);
-      router.refresh();
     });
   }
 
@@ -797,8 +800,9 @@ export function NutritionWeekCard({
             setRecipeSwap(null);
             setError(null);
             clearRefusals();
+            // No refresh: both writes behind `onWeek` (`placeRecipeAction`,
+            // `applySwapAction`) revalidate, so the page was re-rendered with the action.
             setWeek(next);
-            router.refresh();
           }}
           onMealChanged={() => {
             // EV-256e edge case 6: the meal is gone. Close, say so, re-read the week.
