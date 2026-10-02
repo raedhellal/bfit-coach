@@ -20,6 +20,12 @@ export function generateMetadata(): Metadata {
   const copy = getCopy();
   return {
     title: copy.invitePage.brand,
+    // Not the root's coach-facing tagline (« Le back-office des coachs… »), which the /i
+    // 404s inherited in link previews. The invitation sets the same sentence itself.
+    description: copy.invitePage.body,
+    // These URLs carry no content hash (the file convention's `?<hash>` is replaced by
+    // them): if the trainee icon is ever redrawn, bump them (`/i/icon.svg?v=2`) or caches
+    // keep the old one.
     icons: {
       icon: [{ url: "/i/icon.svg", type: "image/svg+xml" }],
       apple: "/i/apple-icon.png",
