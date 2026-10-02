@@ -162,7 +162,8 @@ export function RoutineEditor({
    * Re-seed the working copy when the SERVER's published plan changes identity — a
    * publish writes a new `plans` row, and the coach must see the REPAIRED plan the
    * trainee received (EV-184 AC3), not the draft they submitted. Keyed on `planId` so an
-   * ordinary save, which refreshes the route, does not blow away the cursor mid-edit.
+   * ordinary save, which re-renders through its action, does not blow away the cursor
+   * mid-edit.
    */
   const publishedPlanId = activePlan?.planId ?? null;
   const lastPublishedPlanId = useRef(publishedPlanId);
