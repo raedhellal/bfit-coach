@@ -81,15 +81,18 @@ const CSS = `
 @media (prefers-reduced-motion: reduce){.nav-progress-fill{width:100%;animation:none;opacity:.6}}
 `;
 
-/** The path and query a click on this anchor would navigate to, or null if it would not. */
-function navigationTarget(event: MouseEvent): string | null {
+/**
+ * What a click on this anchor does: "elsewhere" (a same-document navigation to another
+ * path or query), "here" (a plain click on a link to the page already on screen, #hash
+ * or not), or null (not a same-document navigation at all).
+ */
+function clickKind(event: MouseEvent): "elsewhere" | "here" | null {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
   const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
   if (!anchor || (anchor.target && anchor.target !== "_self") || anchor.hasAttribute("download")) return null;
   const url = new URL(anchor.href, window.location.href);
   if (url.origin !== window.location.origin) return null;
-  // The same page (or only its #hash) is not a navigation Next waits for.
-  return isHere(url.href) ? null : `${url.pathname}${url.search}`;
+  return isHere(url.href) ? "here" : "elsewhere";
 }
 
 export function NavigationProgress() {
@@ -157,7 +160,17 @@ export function NavigationProgress() {
       giveUpTimer.current = window.setTimeout(stop, NAV_PROGRESS_GIVE_UP_MS);
     };
     const onClick = (event: MouseEvent) => {
-      if (navigationTarget(event)) begin();
+      const kind = clickKind(event);
+      if (kind === "elsewhere") begin();
+      // A link to the page already on screen, while another navigation is pending: the
+      // Link dispatches a new navigation, which supersedes the pending one (Next's
+      // `dispatchAction` marks a pending navigation discarded; measured at 0.4 s and at
+      // 1.8 s into a 1.5 s-per-read load, the abandoned page never landed), and it
+      // re-renders the page already on screen with no URL change. Nothing would end the run until the 20 s give-up (measured: still up at
+      // 19.2 s), the same shape as the same-URL Back below. The page the coach asked for
+      // is the one showing, so the wait is over. A plain <a> to here reloads the document
+      // instead, and the unsaved-changes guard stops its clicks before they bubble here.
+      else if (kind === "here" && pending.current) stop();
     };
     document.addEventListener("click", onClick);
     // The event names its target, and the same-URL rule is applied HERE, where a test

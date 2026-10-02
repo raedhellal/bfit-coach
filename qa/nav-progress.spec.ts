@@ -628,6 +628,35 @@ test("a second slow navigation in the same document shows the bar again (staff r
   await expectIdle(page);
 });
 
+for (const [when, afterMs] of [
+  ["once the bar shows", 0],
+  ["1.8 s in, after the first held read", 1_800],
+] as const) {
+  test(`a click on the tab you are on ${when} ends the bar with the abandoned navigation (staff review of BUG-670)`, async ({
+    page,
+    baseURL,
+  }) => {
+    // Next abandons the pending navigation for the new one, to the page already on screen,
+    // and the URL never changes: before the fix nothing ended the run, and the bar stayed
+    // up for the whole 20 s give-up over a page that was not loading anything new.
+    test.setTimeout(90_000);
+    await signIn(page);
+    await slowOverview(page, baseURL!, 1500);
+    await page.locator(`a[href="${NUTRITION.href}"]`).first().click();
+    await expect(page.locator(BAR)).toBeVisible();
+    if (afterMs) await page.waitForTimeout(afterMs - 400);
+    await page.locator(`a[href="/clients/${LINA}"]`).first().click();
+    await expect(page.locator(NODE), "the bar goes with the click").toBeHidden({ timeout: 1_000 });
+    await expectIdle(page);
+    // The witness that nothing was still loading, so the bar hid no live navigation: the
+    // nutrition tab never arrives (with reads held 1 s it lands at ~2.1 s, see the BUG-670
+    // tests above, so ~3.2 s here), and the bar does not come back.
+    expect(await everShown(page, 6_000), "the bar does not come back").toBe(false);
+    expect(new URL(page.url()).pathname, "the abandoned tab never landed").toBe(`/clients/${LINA}`);
+    await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  });
+}
+
 /* WebKit too (QA measured 834/1235/2741 ms there), and in French: the configs' project is
  * Chromium, so this launches WebKit itself, like focus-clear-of-bars.spec.ts. */
 test.describe("BUG-670 in WebKit, French", () => {
