@@ -313,6 +313,12 @@ export function Input({
   full?: boolean;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  /**
+   * The caller's "this field is focused" look (blue border + soft halo), for any focus,
+   * mouse included. It is NOT the keyboard focus indicator: since BUG-663 every Input draws
+   * that itself, from `:focus-visible` (`.kit-field` in globals.css), whatever the caller
+   * passes here.
+   */
   focusRing?: boolean;
   /** EV-272 AC2 — the Swap sheet's search field holds focus when the sheet opens. */
   autoFocus?: boolean;
@@ -337,6 +343,16 @@ export function Input({
     <label style={{ display: "block", width: full ? "100%" : "auto", ...style }}>
       {label && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 7 }}>{label}</div>}
       <div
+        /**
+         * BUG-663 (WCAG 2.4.7) — `kit-field` is where the keyboard focus ring is drawn: the
+         * shell's 2 px `--blue-500` outline, 2 px out, when the field inside matches
+         * `:focus-visible` (globals.css). On the BOX, not the `<input>`, so the ring goes
+         * round the icon and the trailing control too and keeps the box's radius. It was
+         * an inline `outline: none` on the input plus a ring only a caller could switch on,
+         * which one caller (LoginForm) did: the other thirteen showed nothing on Tab.
+         */
+        className="kit-field"
+        data-focus-ring={focusRing ? "" : undefined}
         style={{
           /**
            * EV-190c / BUG-146: was 40 px, under the floor for a control a coach taps at
@@ -354,8 +370,11 @@ export function Input({
           alignItems: "center",
           gap: 9,
           padding: "0 12px",
-          boxShadow: focusRing ? "var(--ring)" : "none",
-          transition: "all .15s",
+          // The `focusRing` halo is `.kit-field[data-focus-ring]` in globals.css, not inline:
+          // it has to give way to the keyboard ring, whose inner edge it would otherwise
+          // sit on at 3.01:1, on the floor (BUG-663).
+          // Named, not `all`: a focus indicator must not fade in (BUG-663).
+          transition: "border-color .15s, box-shadow .15s",
         }}
       >
         {icon && <UiIcon name={icon} size={16} color="var(--ink-3)" />}
@@ -370,6 +389,7 @@ export function Input({
           aria-label={ariaLabel}
           aria-describedby={hintId && (hint || error) ? hintId : undefined}
           aria-invalid={error ? true : undefined}
+          className="kit-field-input"
           style={{
             flex: 1,
             // The FIELD is the target, not the box around it: the `<input>` itself has
@@ -379,7 +399,8 @@ export function Input({
             // neither can a coach with a thumb.)
             height: MIN_TOUCH_TARGET,
             border: "none",
-            outline: "none",
+            // No inline `outline` (BUG-663): an inline `none` beats every stylesheet rule,
+            // the global `:focus-visible` one included. globals.css moves the ring to the box.
             background: "transparent",
             fontFamily: "var(--font-body)",
             fontSize: 13.5,
