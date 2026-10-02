@@ -37,9 +37,11 @@ Branch `feat/pro-training-templates` off `origin/release/coach-held-merges` 1c0f
   draws none on an EMPTY library, so AC1's "one primary control" is the empty state's link.
 - The checklist (`templateChecklist`, templateDocument.ts) restates `publishabilityReasons`;
   `qa/template-checklist.spec.ts` pins "all met ⇔ no reasons" and "every reason is on the card".
-  Its `dayEmpty` has NO final period ("Day 1 has no exercises"); the routine editor's reason keeps it.
-- FR: the TRAINING row button and dialog title are « Appliquer à un client » (design); the
-  nutrition-template row still says « Utiliser pour un client » (its own copy key) until EV-337j.
+  PO Ruling 12 (2026-10-02): a MET line is a label (no full stop), an UNMET line is the validation's
+  own sentence WITH its full stop (« Le jour 2 n'a aucun exercice. » = `templates.dayEmpty`).
+- FR (PO Ruling 11): training row + dialog title « Appliquer à un client », dialog button « Appliquer »
+  (one verb per dialog, matching the question); EN unchanged. Nutrition templates move to the same
+  verbs in EV-337j. No `applyToClient` key — the plan's key name is superseded.
 - h1 is « Modèles d'entraînement » / "Training templates"; the nav keeps « Modèles » / "Templates".
 - `page.locator("#" + id)` fails on a React `useId` (":r1:"); use `[id="…"]`.
 - A full default run under load (≈ 10) once failed all 23 WebKit tests at sign-in (`waitForURL` landing
