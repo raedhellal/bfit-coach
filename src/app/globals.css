@@ -149,31 +149,242 @@ input::placeholder { color:var(--ink-3); }
    content, which two 480 px columns fill as drawn at 1440. Gap 16 (12 below 768). */
 .layout-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (min-width: 1280px) { .layout-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-.login-split { min-height: calc(100vh - var(--legal-footer-h)); display: flex; }
-/* BUG-380: the brand panel's WHOLE layout is here, never inline. An inline `display`
-   beats the ≤767 px `display: none` below (no media query can override an inline
-   declaration), which kept the panel on a phone and squeezed the form to 224 px at 320. */
-.login-brand {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 48px;
-  color: #fff;
-  background: var(--grad-energy);
-  position: relative;
-  overflow: hidden;
-}
-.login-form { width: 480px; max-width: 100%; }
-
 @media (max-width: 767px) {
   .only-wide { display: none; }
   .only-narrow { display: block; }
   .page { padding: 18px 16px 40px; }
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .layout-split { gap: 12px; }
+}
+
+/* ── EV-337k: the sign-in, activation, denial and unavailable screens (plan §5.10) ────
+   Every rule is a class, never inline, for the same reason as the shell: a media query
+   cannot override an inline declaration (BUG-380). */
+
+/* /login — a brand panel beside the form from 768 px, two halves as drawn at 1440, the
+   form column never under 480 px (so at 768 the panel takes what is left). Below 768 the
+   panel is gone (BUG-380) and a compact band carries the mark above the form. */
+.login-split { min-height: calc(100vh - var(--legal-footer-h)); display: flex; }
+/* BUG-380: the brand panel's WHOLE layout is here, never inline. An inline `display`
+   beats the ≤767 px `display: none` below (no media query can override an inline
+   declaration), which kept the panel on a phone and squeezed the form to 224 px at 320.
+   The darker gradient (R2): the panel carries 14 px white text, which needs 4.5:1, and
+   white reads 3.71:1 on --grad-energy's #4F7CFF end against 5.39:1 here. */
+.login-brand {
+  /* 50 %, not 0: with border-box a 50 % basis INCLUDES the padding, so the two halves
+     are equal; a 0 basis grows each from its own padding and they are not. */
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  padding: 48px;
+  color: #fff;
+  background: var(--grad-energy-strong);
+  position: relative;
+  overflow: hidden;
+}
+.login-brand::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), transparent 50%);
+  pointer-events: none;
+}
+.login-brand > * { position: relative; }
+.login-brand-title {
+  margin: 0;
+  max-width: 460px;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3vw, 36px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  text-wrap: pretty;
+}
+.login-brand-body { margin: 0; max-width: 420px; font-size: var(--fs-body); line-height: 20px; color: #fff; }
+/* The compact band (< 768): the mark and the headline only, so the form stays near the top
+   of a phone screen. */
+.login-band {
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 24px 22px;
+  color: #fff;
+  background: var(--grad-energy-strong);
+}
+.login-band-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.login-form {
+  flex: 1 1 50%;
+  min-width: 480px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+.login-form-inner { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 20px; }
+.auth-h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h1-auth);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.auth-lede { margin: 8px 0 0; font-size: var(--fs-body); line-height: 20px; color: var(--ink-2); }
+/* « Nouveau coach ? … » — a sentence, not a link: activation IS signing in with the
+   temporary password (plan §5.10), so a link would point back at this page. */
+.login-note { margin: 0; font-size: var(--fs-meta); line-height: 18px; color: var(--ink-2); text-align: center; }
+
+@media (max-width: 767px) {
+  .login-split { flex-direction: column; }
   .login-brand { display: none; }
-  .login-form { width: 100%; }
+  .login-band { display: flex; }
+  .login-form { flex: 1 0 auto; min-width: 0; width: 100%; align-items: flex-start; padding: 28px 24px 32px; }
+}
+
+/* The FR/EN switch on a shell-less page: no visible legend (it is still the group's name),
+   the two options side by side and centred, each 48 px wide and 44 px tall. */
+.lang-switch--inline { display: flex; flex-direction: column; align-items: center; }
+.lang-switch--inline .lang-switch-options { flex: none; }
+.lang-switch--inline .lang-switch-option { flex: none; width: 48px; }
+
+/* /activate, /unavailable and the denial card: one card on the page background. */
+.auth-page {
+  min-height: calc(100vh - var(--legal-footer-h));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px calc(32px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--e-card);
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.auth-card--center { align-items: center; text-align: center; gap: 14px; padding: 40px 24px; }
+/* Inside the shell (the denial page): centred in the content column, not the viewport. */
+.auth-stage { display: flex; justify-content: center; padding: 24px 0; }
+.auth-card-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(24px, 5vw, 28px);
+  line-height: 1.28;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.auth-card--center .auth-card-title { font-size: 22px; line-height: 30px; }
+.auth-body { margin: 0; max-width: 340px; font-size: var(--fs-body); line-height: 20px; color: var(--ink-2); }
+.auth-meta { margin: 0; font-size: var(--fs-meta); line-height: 18px; color: var(--ink-2); }
+/* The status tile above a centred card's title. The icon and the title carry the state;
+   the tile's colour is decoration (status never by colour alone). */
+.auth-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.auth-badge[data-tone="warn"] { background: var(--warn-bg); color: var(--warn-ink); }
+/* A link drawn as the kit's secondary button — a real <a>, not an <a> around a <button>
+   (two nested interactive elements, one tab stop announced twice). */
+.auth-action {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-2);
+  background: var(--surface);
+  box-shadow: var(--e-1);
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-decoration: none;
+}
+.auth-action:hover { background: var(--hover); }
+.auth-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+@media (max-width: 767px) {
+  .auth-card { padding: 24px; }
+  .auth-card--center { padding: 32px 20px; }
+}
+
+/* BUG-662 — the activation consent. The whole LABEL is the target (at least 44 px tall and
+   the card's width; a press anywhere on it toggles the box), and each legal link is a
+   44 px tall target of its own: they sit in their own row, not inside a sentence. The
+   keyboard ring is drawn round the row while its checkbox has keyboard focus. */
+.consent { display: flex; flex-direction: column; gap: 6px; }
+.consent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  font-size: var(--fs-meta);
+  line-height: 20px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.consent-row input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--blue-600);
+  cursor: pointer;
+}
+@supports selector(:has(*)) {
+  .consent-row:has(input:focus-visible) { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+  .consent-row input:focus-visible { outline: none; }
+}
+.consent-docs { font-size: var(--fs-label); line-height: 18px; color: var(--ink-2); padding: 4px 2px 0; }
+.consent-links { display: flex; flex-wrap: wrap; column-gap: 16px; }
+.consent-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--link);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* ── the app shell (CoachShell) — Evoli Pro redesign, branch 1 ─────────────────────

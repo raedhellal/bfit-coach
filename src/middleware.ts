@@ -58,6 +58,13 @@ const DENIED_ROUTE = /^\/clients\/denied\/?$/;
  */
 const UNAVAILABLE = "/unavailable";
 
+/**
+ * An invitation URL: `/i/<one segment>` (the token), which is also the shape of the `/i`
+ * segment's own icon files (`/i/icon.svg`, `/i/apple-icon.png`). Every other path under
+ * `/i` is served 404 — see the `/i` branch of `middleware`.
+ */
+const INVITE_ROUTE = /^\/i\/[^/]+$/;
+
 const API_BASE_URL = (process.env.API_BASE_URL || "http://localhost:8080").replace(
   /\/+$/,
   ""
@@ -179,6 +186,14 @@ export async function middleware(req: NextRequest) {
     if (req.method !== "GET" && req.method !== "HEAD") {
       return new NextResponse(null, { status: 405, headers: { Allow: "GET, HEAD" } });
     }
+    /**
+     * EV-337k (QA PB-1) — `/i` and `/i/<token>/<anything>` are not invitations. Their pages
+     * draw the trainee 404 themselves, and this is where the 404 STATUS comes from: a page
+     * cannot set one, and the `notFound()` that can sends an empty-bodied error shell. A
+     * rewrite onto the same URL, exactly as `DENIED_ROUTE` gets its 403. Still public, still
+     * no cookie read: only the status of a page that is not an invitation changes.
+     */
+    if (!INVITE_ROUTE.test(pathname)) return NextResponse.rewrite(req.nextUrl, { status: 404 });
     return NextResponse.next();
   }
   const access = req.cookies.get(ACCESS_COOKIE)?.value || null;

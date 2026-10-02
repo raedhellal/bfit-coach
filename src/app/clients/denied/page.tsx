@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { CoachShell } from "@/components/shell/CoachShell";
-import { ClientNotice } from "@/components/client/ClientNotice";
 import { DiscardTemplateOutcome } from "@/components/nutritionTemplates/DiscardTemplateOutcome";
+import { UiIcon } from "@/components/ui/icons";
 import { readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
 
@@ -23,6 +24,16 @@ import { getCopy } from "@/lib/i18n/server";
  * (ADR-0012 D4), so there is nothing to look up and nothing to disclose — which is
  * also why the route being reachable for any id at all costs nothing. `getMe` is for
  * the header only, exactly as on the overview itself.
+ *
+ * EV-337k (plan §5.10, design screen 16): the design's centred card — a neutral tile, the
+ * title, one line, the way back — drawn INSIDE the shell, which the design does not draw.
+ * Kept on purpose: the coach is signed in, the shell is how he leaves for any other
+ * section, and branch 3's QA follow-up NB-2 pins « Clients » as the current section here
+ * (`qa/pro-roster.spec.ts`). The h1 is still EV-183 AC5's sentence, verbatim, rather than
+ * the design's shorter « Ce client ne fait pas partie de votre liste »: AC5's text is the
+ * story's, and the design's « le lien appartient à un autre coach » claims a reason the api
+ * deliberately does not give. The way back is a real link drawn as a button, not a link
+ * wrapped round a <button> (two nested interactive elements, as `ClientNotice` still has).
  */
 export const dynamic = "force-dynamic";
 
@@ -31,7 +42,19 @@ export default async function ClientDeniedPage() {
   const me = await readCoachMe();
   return (
     <CoachShell coachName={me?.displayName} section="roster">
-      <ClientNotice message={copy.client.notFound} asHeading />
+      <div className="auth-stage">
+        <div className="auth-card auth-card--center">
+          <span className="auth-badge" aria-hidden="true">
+            <UiIcon name="ban" size={26} />
+          </span>
+          <h1 className="auth-card-title">{copy.client.notFound}</h1>
+          <p className="auth-body">{copy.denied.body}</p>
+          <Link href="/" className="auth-action" style={{ marginTop: 6 }}>
+            <UiIcon name="arrowL" size={17} />
+            {copy.shell.backToRoster}
+          </Link>
+        </div>
+      </div>
       {/* EV-273b: access-lost drops any pending "Use on a trainee" outcome, unread. */}
       <DiscardTemplateOutcome />
     </CoachShell>

@@ -12,7 +12,7 @@
  * back-office puts in the URL and the string the landing page prints follow one rule.
  */
 
-/** A name longer than this is a paste, not a name. Long enough for "Jean-Baptiste M." */
+/** In characters (code points). A name longer than this is a paste, not a name. Long enough for "Jean-Baptiste M." */
 export const COACH_NAME_MAX = 60;
 
 /**
@@ -39,5 +39,10 @@ export function sanitiseCoachName(raw: string | string[] | undefined | null): st
     .trim();
 
   if (!cleaned) return null;
-  return cleaned.length > COACH_NAME_MAX ? cleaned.slice(0, COACH_NAME_MAX).trim() : cleaned;
+  // The cap counts CODE POINTS (QA PB-3, EV-337k): a UTF-16 `slice(0, 60)` could cut an
+  // emoji in half, and the lone surrogate left at the end made `encodeURIComponent` throw a
+  // URIError — the invitation page answered 500. (A multi-code-point emoji, a flag or a
+  // family, can still lose its tail; what is left is valid text and encodes.)
+  const chars = Array.from(cleaned);
+  return chars.length > COACH_NAME_MAX ? chars.slice(0, COACH_NAME_MAX).join("").trim() : cleaned;
 }

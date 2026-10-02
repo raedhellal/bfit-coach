@@ -405,3 +405,42 @@ test.describe("BUG-301 — --ink-3 text reaches 4.5:1 where it is painted", () =
     expect(report, "--ink-3 text under 4.5:1").toEqual([]);
   });
 });
+
+/**
+ * EV-337 X1 for EV-337k's routes — the sign-in, activation, invitation and denial screens
+ * never scroll sideways at any phone width, in either language. (The nine X1 widths and
+ * /unavailable live in `pro-auth-screens.spec.ts` and `coach-activation.stub.spec.ts`.)
+ */
+test.describe("EV-337k — the shell-less screens never scroll sideways on a phone", () => {
+  for (const locale of ["en-US", "fr-FR"] as const) {
+    test.describe(locale, () => {
+      test.use({ locale });
+
+      test(`/login, /i/*, /activate and /clients/denied at ${PHONE_WIDTHS.join(" / ")} (${locale})`, async ({ page }) => {
+        const sweep = async (label: string) => {
+          for (const width of PHONE_WIDTHS) {
+            await page.setViewportSize({ width, height: 800 });
+            await expectNoSidewaysScroll(page, `${label} (${locale})`);
+          }
+        };
+        await page.goto("/login");
+        await sweep("/login");
+        await page.goto("/i/narrow-token?coach=Jean-Baptiste%20Delacroix-Montgolfier");
+        await sweep("/i/* with a long coach name");
+
+        // A pending account lands on /activate.
+        await page.goto("/login");
+        await page.getByLabel(/^(Email|E-mail|Adresse e-mail)$/).fill("new.coach@evoli.fit");
+        await page.getByLabel(/^(Password|Mot de passe)$/).fill("Temp-pass-2026");
+        await page.getByRole("button", { name: /^(Sign in|Se connecter)$/ }).click();
+        await page.waitForURL(/\/activate$/);
+        await sweep("/activate");
+
+        await page.context().clearCookies();
+        await signIn(page);
+        await page.goto("/clients/denied");
+        await sweep("/clients/denied");
+      });
+    });
+  }
+});

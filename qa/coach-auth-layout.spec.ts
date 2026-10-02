@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { expectNoSidewaysScroll } from "./layout";
 
@@ -13,15 +13,21 @@ import { expectNoSidewaysScroll } from "./layout";
  *
  * `toBeVisible()`/`toBeHidden()` alone would not be enough to pin this: the geometry is
  * the defect, so every narrow width also measures the form column against the viewport
- * and the text field against the column. The wide widths pin that moving the panel's
- * layout into the stylesheet kept the desktop split exactly as it was.
+ * and the text field against the column. The wide widths pin the desktop split.
+ *
+ * EV-337k (the redesign of these screens, plan §5.10) changed two things here, on purpose:
+ *   · /login's split is now two halves as drawn at 1440, the form column never under
+ *     480 px — so 480 at 768 (unchanged) and half the viewport from 960 (640 at 1280);
+ *   · /activate is no longer a split at all: the design draws one card on the page
+ *     background. Its BUG-380 question ("is the form squeezed at 320?") is asked of the
+ *     card instead, in the last describe below.
  */
 
 const NARROW = [320, 375, 767] as const;
-const WIDE = [768, 1280] as const;
-/** `.login-form { width: 480px }` at and above 768 px. */
-const FORM_COLUMN = 480;
-/** The form column's own padding, `login/page.tsx` and `activate/page.tsx`. */
+const WIDE = [768, 1280, 1440] as const;
+/** `.login-form { flex: 1 1 50%; min-width: 480px }` beside the brand panel from 768 px. */
+const FORM_COLUMN_MIN = 480;
+/** The form column's own horizontal padding, `.login-form` below 768. */
 const COLUMN_PADDING = 24;
 
 async function openLogin(page: Page) {
@@ -30,7 +36,7 @@ async function openLogin(page: Page) {
   return page.getByLabel("Email");
 }
 
-async function openActivate(page: Page) {
+async function openActivate(page: Page): Promise<Locator> {
   await page.goto("/login");
   await page.getByLabel("Email").fill("new.coach@evoli.fit");
   await page.getByLabel("Password").fill("Temp-pass-2026");
@@ -41,9 +47,8 @@ async function openActivate(page: Page) {
 }
 
 const SCREENS = [
-  // The form's own max width: `LoginForm`'s <form> (360) and the activation column (380).
+  // The form's own max width: `.login-form-inner` (360).
   { name: "/login", open: openLogin, formMax: 360 },
-  { name: "/activate", open: openActivate, formMax: 380 },
 ] as const;
 
 async function geometry(page: Page) {
@@ -105,8 +110,9 @@ for (const screen of SCREENS) {
         const g = await geometry(page);
 
         expect(g.brandDisplay).toBe("flex");
-        expect(g.columnWidth).toBeCloseTo(FORM_COLUMN, 0);
-        expect(g.brandWidth).toBeCloseTo(g.viewport - FORM_COLUMN, 0);
+        const column = Math.max(FORM_COLUMN_MIN, g.viewport / 2);
+        expect(g.columnWidth).toBeCloseTo(column, 0);
+        expect(g.brandWidth).toBeCloseTo(g.viewport - column, 0);
         // What the inline style used to carry, now from the stylesheet.
         expect(g.brandFlexDirection).toBe("column");
         expect(g.brandJustify).toBe("space-between");
@@ -121,3 +127,31 @@ for (const screen of SCREENS) {
     }
   });
 }
+
+/**
+ * EV-337k — /activate is one card (max 440 px) centred on the page, 16 px from each edge
+ * below 768 px, with 24 px of padding inside below 768 and 40 px from 768. The BUG-380
+ * question, asked of the card: at 320 the form is the card's whole inner width, never a
+ * column squeezed beside something.
+ */
+test.describe("EV-337k — /activate is a centred card at every width", () => {
+  const CARD_MAX = 440;
+  for (const width of [...NARROW, ...WIDE]) {
+    test(`${width}px: the card is centred, and the form fills it`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      const field = await openActivate(page);
+      await expect(page.locator(".login-brand")).toHaveCount(0);
+      const viewport = await page.evaluate(() => document.documentElement.clientWidth);
+      const card = (await page.locator(".auth-card").boundingBox())!;
+      const expectedCard = Math.min(CARD_MAX, viewport - 2 * 16);
+      expect(card.width, `card width at ${width}px`).toBeCloseTo(expectedCard, 0);
+      expect(Math.abs(card.x + card.width / 2 - viewport / 2), "the card is centred").toBeLessThanOrEqual(1);
+      const pad = width < 768 ? 24 : 40;
+      const form = (await page.locator("form").boundingBox())!;
+      expect(form.width, `form width at ${width}px`).toBeCloseTo(card.width - 2 - 2 * pad, 0);
+      const box = (await field.boundingBox())!;
+      expect(box.width, `field width at ${width}px`).toBeGreaterThan(form.width * 0.75);
+      await expectNoSidewaysScroll(page, `/activate at ${width}px`);
+    });
+  }
+});

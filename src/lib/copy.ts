@@ -37,7 +37,23 @@ export const en = {
 
   login: {
     title: "Sign in",
-    subtitle: "Coach access to Evoli Pro.",
+    subtitle: "For coaches only.",
+    /** EV-337k — the brand panel (≥ 768 px) and the compact band above the form. */
+    panelTitle: "The workspace for Evoli coaches.",
+    /**
+     * PO ruling 2026-10-02 (hub 4e52609a): the first draft said trainees CHOOSE what they
+     * share, but every link is granted all four scopes (b-fit-api `CoachLinkService`). What
+     * holds is that the coach sees only what each client agreed to share.
+     */
+    panelBody:
+      "Routines, nutrition and challenges for your clients, in one place. You see only what each client agreed to share with you.",
+    /**
+     * EV-337k (plan §5.10): the design's « Activer mon compte » link would point back at this
+     * page — activation IS signing in with the temporary password (the sign-in handler sends a
+     * pending account to /activate). One sentence says so instead. It names the invitation,
+     * not an email we sent: the api's mail adapter swallows failures (EV-278 edge case 1).
+     */
+    newCoach: "New coach? Sign in with the temporary password from your invitation, then choose your own.",
     email: "Email",
     emailPlaceholder: "you@example.com",
     password: "Password",
@@ -2162,7 +2178,24 @@ export const en = {
   unavailable: {
     title: "We can't reach Evoli right now",
     body: "Nothing was changed and you have not been signed out. Try again in a moment.",
-    retry: "Try again",
+    /** EV-337k: "now", beside the automatic retry below. */
+    retry: "Try again now",
+    /**
+     * EV-337k — the page reloads itself (a GET of the same URL: middleware only ever serves
+     * this page to a GET or HEAD). Said once, never counted down: a number changing every
+     * second is auto-updating content (WCAG 2.2.2).
+     */
+    autoRetry: (seconds: number) => `We'll try again automatically in ${seconds} seconds.`,
+    /** After the tab's last automatic retries (`AutoRetry.tsx`), so the api is not polled for ever. */
+    autoRetryStopped: "Automatic retries have stopped. Try again when you're ready.",
+  },
+
+  /**
+   * EV-337k — /clients/denied. Its h1 stays EV-183 AC5's sentence (`client.notFound`); this
+   * is the line under it. True by construction: the page makes no call for the client.
+   */
+  denied: {
+    body: "None of this trainee's data was shown.",
   },
 
   /**

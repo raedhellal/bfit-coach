@@ -83,15 +83,16 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
   }
 
   return (
-    <form onSubmit={submit} style={{ width: "100%", maxWidth: 360 }}>
-      <div style={{ marginBottom: 28 }}>
-        <h1
-          className="dt"
-          style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, margin: 0, color: "var(--ink)" }}
-        >
-          {copy.login.title}
-        </h1>
-        <p style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 8 }}>{copy.login.subtitle}</p>
+    // The form fills `.login-form-inner` (360 px at most, the column minus its padding
+    // below that); the page puts the new-coach line and the language switch after it.
+    <form
+      onSubmit={submit}
+      aria-busy={busy || undefined}
+      style={{ width: "100%", display: "flex", flexDirection: "column", gap: 20 }}
+    >
+      <div>
+        <h1 className="auth-h1">{copy.login.title}</h1>
+        <p className="auth-lede">{copy.login.subtitle}</p>
       </div>
 
       {error && (
@@ -99,57 +100,57 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
           role="alert"
           style={{
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             gap: 9,
             padding: "11px 13px",
             borderRadius: "var(--r-md)",
             background: "var(--err-bg)",
             color: "var(--err-ink)",
             fontSize: 13,
-            marginBottom: 18,
             lineHeight: 1.45,
           }}
         >
-          <UiIcon name="ban" size={16} color="var(--err-ink)" />
-          {error}
+          <UiIcon name="ban" size={16} color="var(--err-ink)" style={{ marginTop: 1 }} />
+          <span>{error}</span>
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <div onFocusCapture={() => setFocus("email")} onBlurCapture={() => setFocus(null)}>
-          <Input
-            label={copy.login.email}
-            icon="mail"
-            type="email"
-            value={email}
-            placeholder={copy.login.emailPlaceholder}
-            full
-            focusRing={focus === "email"}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-        <div onFocusCapture={() => setFocus("password")} onBlurCapture={() => setFocus(null)}>
-          <Input
-            label={copy.login.password}
-            icon="key"
-            type="password"
-            value={password}
-            placeholder={copy.login.passwordPlaceholder}
-            full
-            focusRing={focus === "password"}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        <Button
-          variant="gradient"
-          size="lg"
+      <div onFocusCapture={() => setFocus("email")} onBlurCapture={() => setFocus(null)}>
+        <Input
+          label={copy.login.email}
+          icon="mail"
+          type="email"
+          autoComplete="username"
+          value={email}
+          placeholder={copy.login.emailPlaceholder}
           full
-          type="submit"
-          disabled={busy || !email || !password}
-        >
-          {busy ? copy.login.submitting : copy.login.submit}
-        </Button>
+          focusRing={focus === "email"}
+          onChange={(e) => setEmail(e.target.value)}
+        />
       </div>
+      <div onFocusCapture={() => setFocus("password")} onBlurCapture={() => setFocus(null)}>
+        <Input
+          label={copy.login.password}
+          icon="key"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          placeholder={copy.login.passwordPlaceholder}
+          full
+          focusRing={focus === "password"}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </div>
+      <Button
+        variant="gradient"
+        size="lg"
+        full
+        type="submit"
+        disabled={busy || !email || !password}
+        style={{ height: 48, fontSize: 15 }}
+      >
+        {busy ? copy.login.submitting : copy.login.submit}
+      </Button>
     </form>
   );
 }
