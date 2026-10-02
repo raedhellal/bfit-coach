@@ -1,6 +1,13 @@
 import { Card, Skeleton } from "@/components/ui/kit";
 
-/** Explicit loading state for the challenge list's server reads. */
+/**
+ * Explicit loading state for the challenge list's server reads.
+ *
+ * In the `(list)` route group (perf/coach-fast-routes-no-skeleton) so that it wraps the
+ * LIST only. At `challenges/loading.tsx` it also wrapped `challenges/[id]`, and the
+ * detail page showed this skeleton, then held it for React's ~300 ms reveal throttle,
+ * although the detail answers in 40-70 ms. `(roster)` is the same move for `/`.
+ */
 export default function Loading() {
   return (
     <main className="page">
