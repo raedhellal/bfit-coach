@@ -128,6 +128,8 @@ test("the first morning: a trainee west of UTC is still the day before the start
   });
   // Only New York: nothing to count, so the page draws no today card at all.
   expect(view.todayStats(detail([newYork])).accepted).toBe(0);
+  expect(view.showTodayCards(detail([newYork]))).toBe(false);
+  expect(view.showTodayCards(detail([newYork, utcNoData]))).toBe(true);
 });
 
 test("todayInWindow is the one question the row and the stat cards both ask", () => {
@@ -137,4 +139,18 @@ test("todayInWindow is the one question the row and the stat cards both ask", ()
   expect(view.todayInWindow(progress(END, 1, true), c)).toBe(true);
   expect(view.todayInWindow(progress("2026-09-28", null, false), c)).toBe(false);
   expect(view.todayInWindow(progress("2026-10-06", null, true), c)).toBe(false);
+});
+
+test("the today cards are drawn only when someone's own today is in the window", () => {
+  expect(typeof view.showTodayCards).toBe("function");
+  const paris = ["a", "b", "c"].map((id) => accepted(id, progress("2026-10-06", null, true)));
+  // The last evening: every trainee is past the end — no « 0 / 0 » card.
+  expect(view.showTodayCards(detail(paris))).toBe(false);
+  // Mixed zones: one trainee is still on the last day.
+  expect(view.showTodayCards(detail([accepted("utc", progress(END, 10_400, true)), ...paris]))).toBe(true);
+  // Not ACTIVE, or not STEPS: never, whoever is in the window.
+  const mid = [accepted("utc", progress("2026-10-02", 9_000, true))];
+  expect(view.showTodayCards({ challenge: { ...challenge(), phase: "ENDED" }, participants: mid })).toBe(false);
+  expect(view.showTodayCards({ challenge: { ...challenge(), metric: "WORKOUTS" }, participants: mid })).toBe(false);
+  expect(view.showTodayCards(detail(mid))).toBe(true);
 });

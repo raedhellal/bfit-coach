@@ -103,6 +103,17 @@ export function todayStats(detail: CoachChallengeDetail): TodayStats {
   };
 }
 
+/**
+ * Whether the detail page draws its two "today" cards: an ACTIVE STEPS challenge with at
+ * least one accepted participant whose own today is inside the window. With nobody in the
+ * window (every trainee past the end on the last evening, or before the start on the first
+ * morning) the cards would read « 0 / 0 » about a day nobody has (staff re-check of e4e9a46).
+ */
+export function showTodayCards(detail: CoachChallengeDetail): boolean {
+  const { challenge } = detail;
+  return challenge.phase === "ACTIVE" && challenge.metric === "STEPS" && todayStats(detail).accepted > 0;
+}
+
 /** Up to two initials from a display name; empty when there is no name to take them from. */
 export function initialsOf(name: string | null | undefined): string {
   return (name ?? "")

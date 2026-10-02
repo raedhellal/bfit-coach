@@ -2,7 +2,7 @@ import { StatTile } from "@/components/client/StatTile";
 import type { CoachChallengeDetail } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 import { formatShortDate, formatSteps } from "@/lib/format";
-import { todayStats, windowPosition } from "@/lib/challengeView";
+import { showTodayCards, todayStats, windowPosition } from "@/lib/challengeView";
 
 /**
  * EV-337h (plan §5.6) — the stat cards above a challenge's participants. Four on an active
@@ -28,8 +28,8 @@ export function ChallengeStats({ detail, copy, now }: { detail: CoachChallengeDe
   const pending = Math.max(0, challenge.participantCount - challenge.acceptedCount);
   const stats = todayStats(detail);
   const at = windowPosition(challenge, now);
-  // `stats.accepted` counts only participants whose own today is inside the window.
-  const today = challenge.phase === "ACTIVE" && challenge.metric === "STEPS" && stats.accepted > 0;
+  // `showTodayCards` counts only participants whose own today is inside the window.
+  const today = showTodayCards(detail);
   const short = (iso: string) => formatShortDate(iso, copy.locale);
 
   return (
