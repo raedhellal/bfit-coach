@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Logo } from "@/components/ui/icons";
-import { MIN_TOUCH_TARGET } from "@/components/ui/kit";
 import { getCopy } from "@/lib/i18n/server";
 
 /**
@@ -59,7 +58,9 @@ export function InviteNotFoundView() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            minHeight: MIN_TOUCH_TARGET,
+            // 44 px: the kit's MIN_TOUCH_TARGET, written out — importing kit.tsx (a client module)
+            // added ~46 kB of JavaScript to these two 404s.
+            minHeight: 44,
             padding: "0 18px",
             borderRadius: "var(--r-md)",
             border: "1px solid var(--border-2)",
