@@ -142,3 +142,33 @@ test.describe("reduced motion", () => {
     expect(await heading.boundingBox()).toEqual(before);
   });
 });
+
+/**
+ * Inside branch 1's shell: a sidebar at >= 1024 px, a top bar and a bottom tab bar
+ * below. The bar is `pointer-events: none`, so a hit test cannot see it; instead it must
+ * span the top edge and out-stack every fixed or sticky element of the shell there.
+ */
+for (const width of [1440, 390]) {
+  test(`at ${width} px the bar spans the top edge above the shell`, async ({ page, baseURL }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await signIn(page);
+    await page.goto(`/clients/${LINA}`);
+    await expect(page.locator("section[aria-label]").first()).toBeVisible();
+    await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1500", url: baseURL! }]);
+    await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
+    const bar = page.locator(BAR);
+    await expect(bar).toBeVisible();
+    expect(await bar.boundingBox()).toEqual({ x: 0, y: 0, width, height: 3 });
+    const stacking = await bar.evaluate((el) => {
+      const own = Number(getComputedStyle(el).zIndex);
+      const others = [...document.querySelectorAll<HTMLElement>("body *")]
+        .filter((n) => !el.contains(n))
+        .filter((n) => ["fixed", "sticky"].includes(getComputedStyle(n).position))
+        .filter((n) => n.getBoundingClientRect().top <= 1 && n.getBoundingClientRect().bottom > 1)
+        .map((n) => Number(getComputedStyle(n).zIndex) || 0);
+      return { own, highestBelow: Math.max(0, ...others) };
+    });
+    expect(stacking.own).toBeGreaterThan(stacking.highestBelow);
+    await page.screenshot({ path: info.outputPath(`nav-progress-${width}.png`) });
+  });
+}
