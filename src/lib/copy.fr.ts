@@ -251,6 +251,8 @@ export const fr = {
     openIn: (appName: string) => `Ouvrir dans ${appName}`,
     fallback: "Vous n'avez pas encore l'app ? Installez Evoli Fit, puis rouvrez ce lien.",
     storesComingSoon: "Liens App Store et Google Play bientôt disponibles.",
+    notFoundBody:
+      "Aucune invitation ne correspond à cette adresse. Vérifiez le lien, ou demandez à votre coach de vous le renvoyer.",
   },
 
   client: {

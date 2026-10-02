@@ -161,3 +161,75 @@ test.describe("BUG-678 — /i paths deeper than one segment are the trainee 404"
     }
   });
 });
+
+/**
+ * EV-337n N3 / BUG-677 (EV-337 ruling 7) — the /i 404 speaks to a TRAINEE. h1 unchanged; the
+ * body is the ruling's sentence, exactly; there is no link or button at all (the old one went
+ * to /login, the coach sign-in a trainee has no account for); outside the legal footer nothing
+ * names Evoli Pro or a sign-in. The root 404 outside /i keeps its own sentences
+ * (`qa/coach-not-found.spec.ts`).
+ */
+const RULING_7 = {
+  "en-US": {
+    h1: "Page not found",
+    body: "There is no invitation at this address. Check the link, or ask your coach to send it to you again.",
+    banned: [/Evoli Pro/, /sign[ -]?in/i, /log[ -]?in/i],
+  },
+  "fr-FR": {
+    h1: "Page introuvable",
+    body: "Aucune invitation ne correspond à cette adresse. Vérifiez le lien, ou demandez à votre coach de vous le renvoyer.",
+    banned: [/Evoli Pro/, /connecte[zr]/i, /connexion/i],
+  },
+} as const;
+
+test.describe("BUG-677 — the /i 404's copy, with no link", () => {
+  for (const [locale, t] of Object.entries(RULING_7)) {
+    test.describe(locale, () => {
+      test.use({ locale });
+      for (const width of [1440, 390]) {
+        for (const path of ["/i", "/i/tok/extra", `/i/${TOKEN}/x`]) {
+          test(`${path} at ${width}px: the ruling's sentence, no link, no Pro wording`, async ({ page }) => {
+            await page.setViewportSize({ width, height: 900 });
+            const res = await page.goto(path);
+            expect(res?.status()).toBe(404);
+            await expect(page.getByRole("heading", { level: 1, name: t.h1 })).toBeVisible();
+            await expect(page.locator("h1")).toHaveCount(1);
+            const card = page.getByTestId("not-found");
+            await expect(card.locator("p")).toHaveText(t.body);
+            // No way out drawn by the page: no link, no button, anywhere in the document.
+            await expect(page.locator("a")).toHaveCount(0);
+            await expect(page.getByRole("link")).toHaveCount(0);
+            await expect(page.getByRole("button")).toHaveCount(0);
+            // The trainee mark, and nothing of the coach product outside the legal footer.
+            await expect(page.getByText("Evoli Fit", { exact: true }).first()).toBeVisible();
+            const text = await page.evaluate(() => {
+              const clone = document.body.cloneNode(true) as HTMLElement;
+              clone.querySelectorAll(".legal-footer, script, style").forEach((el) => el.remove());
+              return clone.innerText;
+            });
+            for (const word of t.banned) expect(text, `${path}: ${word}`).not.toMatch(word);
+          });
+        }
+      }
+    });
+  }
+
+  test("the first HTML already holds the sentence and no anchor (no JavaScript needed)", async ({ playwright, baseURL }) => {
+    for (const [locale, t] of Object.entries(RULING_7)) {
+      const ctx = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { "Accept-Language": locale } });
+      try {
+        for (const path of ["/i", "/i/tok/extra", "/i/a/b/c"]) {
+          const res = await ctx.get(path, { maxRedirects: 0 });
+          expect(res.status(), `${locale} ${path}`).toBe(404);
+          const html = await res.text();
+          const main = decode(/<main\b[\s\S]*?<\/main>/.exec(html)?.[0] ?? "");
+          expect(main, `${locale} ${path}: the sentence`).toContain(t.body);
+          expect(main, `${locale} ${path}: no anchor`).not.toMatch(/<a\b/);
+          expect(html, `${locale} ${path}: nothing links to /login`).not.toMatch(/<a\b[^>]*href="\/login"/);
+        }
+      } finally {
+        await ctx.dispose();
+      }
+    }
+  });
+});

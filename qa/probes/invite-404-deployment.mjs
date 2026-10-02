@@ -69,6 +69,8 @@ for (const lang of LANGS) {
       `icons /i/icon.svg + /i/apple-icon.png (got ${JSON.stringify(r.icons)})`
     );
     check(r.h1s.length === 1 && r.h1s[0] === lang.h1, `h1 ${lang.h1} (got ${JSON.stringify(r.h1s)})`);
+    check(decode(r.main).includes(lang.body), `body sentence (ruling 7)`);
+    check(!/<a\b/.test(r.main), "no link in the page");
     check(r.res.headers.get("x-frame-options") === "DENY", "X-Frame-Options DENY");
     check(r.res.headers.get("content-security-policy") === "frame-ancestors 'none'", "frame-ancestors 'none'");
     check((r.res.headers.get("cache-control") ?? "").includes("no-store"), "Cache-Control no-store");

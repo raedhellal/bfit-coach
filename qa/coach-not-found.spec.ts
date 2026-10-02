@@ -10,7 +10,9 @@ import { expectNoEnglish, signInFrench } from "./french";
  *   AC1 — a signed-in coach: the portal's frame, "not found", a link to the roster.
  *   AC2 — a signed-out visitor: the link goes to /login. Middleware sends a signed-out
  *         request for any guarded path to /login before a page runs, so the only unknown
- *         paths they can reach are under the public `/i/` prefix.
+ *         paths they can reach are ones it does not guard: an unknown `/api/auth/…` (the
+ *         matcher excludes that prefix). Not `/i/…` any more: those draw the TRAINEE 404,
+ *         which has no sign-in link (BUG-677, BUG-678; `qa/invite-not-found.spec.ts`).
  *   AC3 — the status is 404 (the failure clause: a 200 here is not done).
  *
  * Sentences are literals, never read from the dictionaries under test.
@@ -61,7 +63,7 @@ test.describe("AC1 + AC3 — a signed-in coach", () => {
 
 test.describe("AC2 + AC3 — a signed-out visitor", () => {
   test("an unknown public path is a 404 with a link to /login and no portal frame", async ({ page }) => {
-    const response = await page.goto("/i/not-a-token/does-not-exist-route");
+    const response = await page.goto("/api/auth/does-not-exist-route");
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("heading", { name: "Page not found", level: 1 })).toBeVisible();
     await expect(page.getByText("There is no page at this address. Check the link, or sign in to Evoli Pro.")).toBeVisible();
@@ -97,7 +99,7 @@ test.describe("French (fr-FR)", () => {
   });
 
   test("signed out: the link to sign in, in French", async ({ page }) => {
-    const response = await page.goto("/i/not-a-token/does-not-exist-route");
+    const response = await page.goto("/api/auth/does-not-exist-route");
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("heading", { name: "Page introuvable", level: 1 })).toBeVisible();
     await expect(page.getByRole("link", { name: "Aller à la connexion" })).toHaveAttribute("href", "/login");
