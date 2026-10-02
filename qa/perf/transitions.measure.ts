@@ -88,6 +88,15 @@ interface Sample {
   rscEndMs: number | null;
   rscRequests: number;
   reads: string[] | null;
+  /**
+   * When the URL committed. Before the content, it means a `loading.tsx` skeleton was
+   * painted (Next commits the new URL with the fallback); otherwise it equals `domMs`.
+   */
+  urlMs: number | null;
+  /** When the navigation progress indicator (`[data-nav-progress="visible"]`) appeared, or null. */
+  indicatorMs: number | null;
+  /** The first visible sign of the click: a skeleton, the indicator, or the content. */
+  feedbackMs: number;
 }
 
 interface SaveSample {
@@ -177,9 +186,14 @@ async function navigate(page: Page, how: "click" | "push", href: string, marker:
         );
       if (matches()) throw new Error(`marker for ${marker.path} already present before navigating`);
       const t0 = performance.now();
+      let urlAt: number | null = null;
+      let indicatorAt: number | null = null;
       const result = new Promise<{ dom: number; paint: number }>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error(`timeout waiting for ${marker.path}`)), 20_000);
         const observer = new MutationObserver(() => {
+          const now = performance.now();
+          if (urlAt === null && location.pathname === marker.path) urlAt = now;
+          if (indicatorAt === null && document.querySelector('[data-nav-progress="visible"]')) indicatorAt = now;
           if (!matches()) return;
           observer.disconnect();
           clearTimeout(timer);
@@ -202,7 +216,14 @@ async function navigate(page: Page, how: "click" | "push", href: string, marker:
         .filter((e) => e.startTime >= t0 - 1 && e.startTime <= dom && e.name.includes("_rsc="))
         .map((e) => e as PerformanceResourceTiming)
         .filter((e) => new URL(e.name).pathname === path);
+      const urlMs = urlAt === null ? null : urlAt - t0;
+      const indicatorMs = indicatorAt === null ? null : indicatorAt - t0;
+      // A URL that committed >5 ms before the content painted a skeleton first.
+      const skeletonMs = urlMs !== null && urlMs < dom - t0 - 5 ? urlMs : null;
       return {
+        urlMs,
+        indicatorMs,
+        feedbackMs: Math.min(paint - t0, skeletonMs ?? Infinity, indicatorMs ?? Infinity),
         domMs: dom - t0,
         paintMs: paint - t0,
         ttfbMs: rsc.length ? rsc[0].responseStart - rsc[0].startTime : null,
@@ -303,8 +324,26 @@ for (let run = 1; run <= RUNS; run += 1) {
       expect(title, "challenge title").toBeTruthy();
       const challenge: Marker = { ...M.challenge, text: title! };
 
+      // Each library's first item, and its detail page's <h1> (the item's name), read by
+      // document loads before anything is timed.
+      const libraries: { list: string; listMarker: Marker; detail: Marker }[] = [];
+      for (const list of ["/templates", "/recipes", "/nutrition-templates"]) {
+        await page.goto(list);
+        const item = page.locator(`main a[href^="${list}/"]:not([href="${list}/new"])`).first();
+        await item.waitFor({ timeout: 30_000 });
+        const detailPath = (await item.getAttribute("href"))!;
+        await page.goto(detailPath);
+        const name = (await page.locator("h1").first().textContent())?.trim();
+        expect(name, `${detailPath} has a title`).toBeTruthy();
+        libraries.push({
+          list,
+          listMarker: { path: list, selector: `a[href="${detailPath}"]` },
+          detail: { path: detailPath, selector: "h1", text: name! },
+        });
+      }
+
       await page.goto("/");
-      await page.locator(M.roster.selector).first().waitFor();
+      await page.locator(M.roster.selector).first().waitFor({ timeout: 30_000 });
       await settle();
 
       await step(page, settle, "roster → client (first)", "click", M.overview.path, M.overview);
@@ -320,6 +359,14 @@ for (let run = 1; run <= RUNS; run += 1) {
       await step(page, settle, "challenges → challenge (first)", "click", M.challenge.path, challenge);
       await step(page, settle, "challenge → challenges (revisit)", "click", M.challenges.path, M.challenges);
       await step(page, settle, "challenges → challenge (revisit)", "click", M.challenge.path, challenge);
+
+      // The three libraries, list then detail (every remaining loading.tsx has a number).
+      for (const lib of libraries) {
+        await step(page, settle, `→ ${lib.list} (first)`, "click", lib.list, lib.listMarker);
+        await step(page, settle, `${lib.list} → detail (first)`, "click", lib.detail.path, lib.detail);
+      }
+      await step(page, settle, "→ /templates (revisit)", "click", libraries[0].list, libraries[0].listMarker);
+      await step(page, settle, "/templates → detail (revisit)", "click", libraries[0].detail.path, libraries[0].detail);
 
       // The prefetch={false} set: a `?nopf=` URL is a cache key no <Link> has prefetched.
       const n = `${run}-${Date.now()}`;
@@ -357,6 +404,9 @@ test.afterAll(() => {
       paintMedian: Math.round(pct(paint, 0.5)),
       paintP90: Math.round(pct(paint, 0.9)),
       paintMax: Math.round(paint[paint.length - 1]),
+      feedbackMedian: Math.round(pct(mine.map((s) => s.feedbackMs).sort((a, b) => a - b), 0.5)),
+      indicatorShown: mine.filter((s) => s.indicatorMs !== null).length,
+      skeletonShown: mine.filter((s) => s.urlMs !== null && s.urlMs < s.domMs - 5).length,
       ttfbMedian: ttfb.length ? Math.round(pct(ttfb, 0.5)) : null,
       rscEndMedian: rscEnd.length ? Math.round(pct(rscEnd, 0.5)) : null,
       withRequest: ttfb.length,

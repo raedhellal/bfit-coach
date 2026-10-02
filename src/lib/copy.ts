@@ -2282,6 +2282,13 @@ export const en = {
       cardio: "Cardio",
     } as Record<string, string>,
   },
+  /**
+   * ADR-0033 follow-up (perf/coach-fast-routes-no-skeleton): the navigation progress
+   * bar's accessible name. It shows only when a page change takes longer than 400 ms.
+   */
+  navProgress: {
+    label: "Loading the page",
+  },
 } as const;
 
 /**

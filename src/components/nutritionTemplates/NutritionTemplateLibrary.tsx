@@ -26,6 +26,7 @@ import {
 } from "@/lib/nutritionTemplateUse";
 import { settled } from "@/lib/settled";
 import type { NutritionTemplate, NutritionTemplateList } from "@/lib/coachApi";
+import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 
 /**
  * EV-273b AC1-AC5 — the nutrition template library, its row controls, and "Use on a
@@ -569,6 +570,7 @@ function ConfirmDialog({
       } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") {
+          startNavigationProgress("/clients/denied");
           router.push("/clients/denied");
           return;
         }
@@ -581,6 +583,7 @@ function ConfirmDialog({
 
   function land(kind: UseOutcomeKind, floorCalories: number | null) {
     handOffOutcome({ clientId: trainee.id, template: template.name, kind, floorCalories });
+    startNavigationProgress(`/clients/${trainee.id}/nutrition`);
     router.push(`/clients/${trainee.id}/nutrition`);
   }
 
@@ -604,6 +607,7 @@ function ConfirmDialog({
       );
       if (!targets.ok) {
         if (targets.code === "ACCESS_DENIED") {
+          startNavigationProgress("/clients/denied");
           router.push("/clients/denied");
           return;
         }
@@ -625,6 +629,7 @@ function ConfirmDialog({
       }
       if (week.code === "ACCESS_DENIED") {
         // Edge case 4: the targets write stands (it was made while the link was active).
+        startNavigationProgress("/clients/denied");
         router.push("/clients/denied");
         return;
       }

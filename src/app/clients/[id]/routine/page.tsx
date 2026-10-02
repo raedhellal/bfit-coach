@@ -137,10 +137,11 @@ export default async function RoutinePage({ params }: { params: { id: string } }
       else message = copy.routine.loadError;
     }
   }
-  // `/clients/denied` is served 403 by middleware.ts. This page has a loading.tsx
-  // above it, so the redirect degrades to a meta-refresh with a 200 on a cold load —
-  // the coach still lands on the denial page, which is the statement that matters
-  // here; the status that AC5 pins is the overview's, decided in layout.tsx.
+  // `/clients/denied` is served 403 by middleware.ts. The status that AC5 pins is the
+  // overview's, decided in layout.tsx; here the statement that matters is that the
+  // coach lands on the denial page. (Until perf/coach-fast-routes-no-skeleton a
+  // loading.tsx above this page turned a cold-load redirect into a 200 meta-refresh;
+  // there is none now.)
   if (denied) redirect("/clients/denied");
 
   const displayName = overview?.traineeDisplayName ?? "";

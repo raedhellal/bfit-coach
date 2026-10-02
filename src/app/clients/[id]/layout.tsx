@@ -19,8 +19,12 @@ import { readClientOverview } from "@/lib/clientOverview";
  *
  * The api call is shared with the page through `readClientOverview` — one request, not
  * two. The cost of deciding the status before flushing is that a cold load of this URL
- * no longer streams the skeleton; an in-app navigation still shows `loading.tsx`, which
- * is where a coach actually sees it.
+ * no longer streams a skeleton.
+ *
+ * perf/coach-fast-routes-no-skeleton: no segment under `[id]` has a `loading.tsx` any
+ * more. A committed fallback held every tab change for React's ~300 ms reveal throttle
+ * although the pages answer in 50-150 ms, so the old page now stays until the new one is
+ * ready, and `NavigationProgress` (root layout) shows a bar if that takes over 400 ms.
  */
 export default async function ClientLayout({
   children,
@@ -41,9 +45,11 @@ export default async function ClientLayout({
    *
    * What the extra call did cost was in prefetches. A `<Link>` to `/clients/{id}` (one
    * per roster row, one per challenge participant) is prefetched on a production build,
-   * and that prefetch renders THIS layout but stops at `[id]/loading.tsx` above the
+   * and that prefetch rendered THIS layout and stopped at `[id]/loading.tsx` above the
    * page. The name was read and then never used: 6 of the roster's 12 background calls
-   * with six rows. `qa/page-read-budget.spec.ts` counts a prefetch of this route.
+   * with six rows. Since perf/coach-fast-routes-no-skeleton there is no loading boundary
+   * under `[id]`, so the prefetch renders nothing at all (Next sends the route tree
+   * only). `qa/page-read-budget.spec.ts` counts a prefetch of this route.
    */
   const { forbidden } = await readClientOverview(params.id);
   if (forbidden) redirect("/clients/denied");
