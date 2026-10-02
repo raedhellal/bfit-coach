@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/ui/BackLink";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { RecipeEditor } from "@/components/recipes/RecipeEditor";
 import { PageHead } from "@/components/ui/kit";
@@ -25,9 +25,7 @@ export default async function NewRecipePage() {
         title={copy.recipes.newTitle}
         sub={copy.recipes.private}
         actions={
-          <Link href="/recipes" style={{ fontSize: 13, color: "var(--ink-2)" }}>
-            {copy.recipes.backToLibrary}
-          </Link>
+          <BackLink href="/recipes" label={copy.recipes.backToLibrary} />
         }
       />
       <RecipeEditor recipeId={null} initial={blankRecipe()} />

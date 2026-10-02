@@ -763,3 +763,26 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
 }
 .roster-sort-option[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--e-card); }
 .roster-sort-option:not([aria-checked="true"]):hover { color: var(--ink); }
+
+/* ── BUG-660 / redesign §4: BackLink ─────────────────────────────────────────────────
+   The one "back to …" link of the ten detail routes. A standalone control, so the 44 px
+   floor (BUG-146) applies on both axes — it was a 16 px line of text. The ring is the
+   global :focus-visible one, restated here so a later rule on the link cannot drop it. */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px 0 10px;
+  border-radius: var(--r-md);
+  font: 600 var(--fs-meta)/18px var(--font-body);
+  color: var(--ink-2);
+  text-decoration: none;
+  max-width: 100%;
+}
+.back-link:hover { background: var(--hover); color: var(--ink); }
+.back-link:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+.back-link-icon { display: inline-flex; flex: none; }
+/* Above a title: the arrow lines up with the content edge, the box keeps its 44 px. */
+.back-link[data-flush] { margin-left: -10px; }

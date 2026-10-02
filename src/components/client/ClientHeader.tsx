@@ -1,7 +1,6 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar, Badge } from "@/components/ui/kit";
-import { UiIcon } from "@/components/ui/icons";
+import { BackLink } from "@/components/ui/BackLink";
 import { ClientTabs, type ClientTab } from "./ClientTabs";
 import { getCopy } from "@/lib/i18n/server";
 import { formatInstant, truncateName } from "@/lib/format";
@@ -33,20 +32,9 @@ export function ClientHeader({
   const copy = getCopy();
   return (
     <div style={{ marginBottom: 18 }}>
-      <Link
-        href="/"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: 13,
-          color: "var(--ink-3)",
-          marginBottom: 14,
-        }}
-      >
-        <UiIcon name="arrowL" size={14} color="var(--ink-3)" />
-        {copy.shell.backToRoster}
-      </Link>
+      <div style={{ marginBottom: 6 }}>
+        <BackLink href="/" label={copy.shell.backToRoster} flush />
+      </div>
 
       <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
         <Avatar name={traineeDisplayName} size={48} />

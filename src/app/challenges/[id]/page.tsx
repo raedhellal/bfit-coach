@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/ui/BackLink";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ChallengeControls } from "@/components/challenges/ChallengeControls";
@@ -38,11 +38,7 @@ export default async function ChallengePage({
       .catch((err: unknown) => ({ detail: null, forbidden: isForbidden(err) })),
   ]);
   const now = Date.now();
-  const back = (
-    <Link href="/challenges" style={{ fontSize: 13, color: "var(--ink-2)" }}>
-      {c.backToList}
-    </Link>
-  );
+  const back = <BackLink href="/challenges" label={c.backToList} />;
 
   if (!loaded.detail) {
     return (
@@ -61,7 +57,9 @@ export default async function ChallengePage({
     challenge.metric === "STEPS" ? c.consent : challenge.metric === "WORKOUTS" ? c.consentWorkouts : null;
   return (
     <CoachShell coachName={me?.displayName} section="challenges">
-      <div style={{ marginBottom: 10 }}>{back}</div>
+      <div style={{ marginBottom: 6 }}>
+        <BackLink href="/challenges" label={c.backToList} flush />
+      </div>
       <PageHead
         title={
           <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
