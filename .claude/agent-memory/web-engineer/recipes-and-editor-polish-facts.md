@@ -1,6 +1,6 @@
 ---
 name: recipes-and-editor-polish-facts
-description: fix/recipes-and-editor-polish (2026-10-01) — BUG-490 seconds kept in the ROW (structure counter in the key, staff S1); BUG-573/574 changed only refusal sentences (\p{Nd} → malformed, readQuantity `ambiguous`); prod-build gates need a wrapper config; zsh eats "$T:q"
+description: fix/recipes-and-editor-polish (2026-10-01) — BUG-490 seconds kept in the ROW (structure counter in the key, staff S1; parent re-keys on a document swap); BUG-573/574 changed only refusal sentences (\p{Nd} → malformed, readQuantity `ambiguous`); prod-build gates need a wrapper config; zsh eats "$T:q"
 metadata:
   type: project
 ---
@@ -25,6 +25,18 @@ BUG-490, BUG-573, BUG-574. Swap-sheet facts are in [[swap-sheet-portal-facts]].
   editor, bumped on Move, Remove, Remove day and Replace, and put in every row key. Those
   edits drop the stash instead of moving it. Before you add any `useState` to
   `ExerciseRow`, check that it survives this.
+- **The parent must re-key when IT replaces the document** (`fix/routine-editor-load-saved-remount`,
+  staff witness E). `structure` only sees edits made inside `RoutineDocumentEditor`. « Load the saved
+  version », Discard and the post-publish re-seed swap the whole document from `RoutineEditor`, and
+  the rows stayed mounted. Another tab removed day 2, so day 3's Plank took day 2's card and index
+  and got day 2's 45. `RoutineEditor` keeps a `loads` counter, bumped in all three, as the
+  `key` of `<RoutineDocumentEditor>`. `TemplateEditor` has no such path: `setDraft` is called only
+  from `edit`, and `initial` is never re-read. Any new "replace the document" path in a shell must
+  call `replaced()`. Specs: `qa/routine-editor-remount.spec.ts`, each red with its own bump removed.
+  **Sync on the remount, not on the notice** (staff, 3/33 flaky under load): the Publish re-seed runs in
+  an effect AFTER `router.refresh()` brings the new `planId`, later than « Published. ». Mark the row's
+  DOM node (`el.__old = 1`) and `expect.poll` until it is gone. Load and Discard swap in the same update
+  as their cue, so they need no wait.
 - **BUG-573/574 changed SENTENCES, not acceptance (Raed approved the reader's rules).**
   `readNumber`'s last line is `/\p{Nd}/u` → `malformed`. JS `\d` is ASCII-only even
   with the `u` flag, so « ١٨٠٠ » used to fall through to `notNumber` ("above 0"). No

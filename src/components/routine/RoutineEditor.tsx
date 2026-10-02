@@ -131,6 +131,22 @@ export function RoutineEditor({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const leaving = useUnsavedChanges(dirty);
+  /**
+   * Bumped whenever the document is REPLACED by one from the server rather than edited:
+   * « Load the saved version », Discard, and the re-seed after a publish. It is the `key`
+   * of `RoutineDocumentEditor`, so a replaced document remounts every row.
+   *
+   * Why (BUG-490, staff witness E): an `ExerciseRow` keeps the seconds it held when its
+   * exercise was switched to Weight & reps, and rows are keyed by name + position. A
+   * document from elsewhere can put ANOTHER exercise of the same name in that position —
+   * another tab removed day 2, so day 3's Plank takes day 2's card and index — and the row
+   * stayed mounted and offered day 2's seconds to day 3's Plank. Nothing in the editor can
+   * tell whether the exercise under a row is still the one it stashed for, so a replaced
+   * document drops every stash. It also drops the session's catalog badges and an open
+   * picker, which is what a reload does too.
+   */
+  const [loads, setLoads] = useState(0);
+  const replaced = () => setLoads((n) => n + 1);
 
   /**
    * U6 — the notice and the error render in the TOP card and are brought into view and
@@ -154,6 +170,7 @@ export function RoutineEditor({
     if (lastPublishedPlanId.current === publishedPlanId) return;
     lastPublishedPlanId.current = publishedPlanId;
     setDocument(initialDraft?.document ?? activePlan?.document ?? null);
+    replaced();
     token.current = initialDraft?.updatedAt ?? null;
     setIsDraft(initialDraft !== null);
     setResolved(true);
@@ -261,6 +278,7 @@ export function RoutineEditor({
       // AC2: "returns the page to the published plan exactly" — from the server's copy.
       setDiscarding(false);
       setDocument(activePlan?.document ?? null);
+      replaced();
       token.current = null;
       setIsDraft(false);
       setResolved(true);
@@ -322,6 +340,7 @@ export function RoutineEditor({
         return;
       }
       revision.current += 1;
+      replaced();
       if (result.draft) {
         setDocument(editableDocument(null, result.draft.document));
         token.current = result.draft.updatedAt;
@@ -518,6 +537,7 @@ export function RoutineEditor({
       </Card>
 
       <RoutineDocumentEditor
+        key={loads}
         document={document}
         onChange={edit}
         subject={{ kind: "trainee", resolved }}
