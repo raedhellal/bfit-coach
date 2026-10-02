@@ -51,24 +51,77 @@ export function windowPosition(c: CoachChallengeSummary, nowMs: number): WindowP
   }
 }
 
+/** Where a participant's OWN today falls against the window's dates. */
+export type OwnDay = "BEFORE_START" | "IN_WINDOW" | "PAST_END";
+
 /**
- * Whether a participant's OWN today falls inside the challenge's window.
+ * Where a participant's OWN today falls against the window, on the dates alone.
  *
  * The api computes `phase` on the UTC date but each trainee's `today` in their own zone,
  * and nulls `todayValue` when that today is outside the window. So on the last evening
  * (22:30 UTC on `endsOn` is 00:30 the next day in Paris) the challenge is still ACTIVE
  * while a Paris trainee's today is already past the end, and on the first morning a
- * trainee west of UTC is still before the start. Such a null is not "no data today": there
- * is no challenge day to report for that trainee. The row and the stat cards both ask this
- * one question, so they cannot disagree (staff, EV-337h review of 55d2126).
+ * trainee west of UTC is still before the start.
  */
-export function todayInWindow(progress: ChallengeProgress, c: Pick<CoachChallengeSummary, "startsOn" | "endsOn">): boolean {
-  return progress.today >= c.startsOn && progress.today <= c.endsOn;
+export function ownDay(progress: ChallengeProgress, c: Pick<CoachChallengeSummary, "startsOn" | "endsOn">): OwnDay {
+  if (progress.today < c.startsOn) return "BEFORE_START";
+  return progress.today > c.endsOn ? "PAST_END" : "IN_WINDOW";
 }
 
 /**
- * The detail page's "today" cards, counted over the ACCEPTED participants whose own today
- * is inside the window (`todayInWindow`): an invited one has shared nothing, and one whose
+ * Whether a participant has a challenge "today" to report: the page head says the
+ * challenge is running (the api's UTC `phase` is ACTIVE) AND the trainee's own today is
+ * inside the window. The row's today cell and the today stat cards both ask this one
+ * question, so they cannot disagree with each other or with the head (staff, EV-337h
+ * review of 55d2126; QA PB-1 on 6269343).
+ *
+ * Both terms are needed. Without the phase, a Tokyo trainee already on day 1 of a
+ * challenge the head calls « Commence demain » read « Aujourd'hui 5 000 / 10 000 pas »,
+ * and a Los Angeles trainee still on the last day of one the head calls « Terminé » read
+ * « 6 000 / 5 000 pas ». Without the dates, the last evening's Paris trainees read « Aucune
+ * donnée aujourd'hui » about a day they no longer have.
+ */
+export function todayInWindow(
+  progress: ChallengeProgress,
+  c: Pick<CoachChallengeSummary, "phase" | "startsOn" | "endsOn">
+): boolean {
+  return c.phase === "ACTIVE" && ownDay(progress, c) === "IN_WINDOW";
+}
+
+/**
+ * What an ACCEPTED participant's row may draw, decided once (QA PB-1 on 6269343).
+ *
+ *   · `today` — the today cell: `todayInWindow`, the cards' own question.
+ *   · `rank` — not on an UPCOMING challenge. The api ranks by what each trainee's own
+ *     calendar has counted, so a trainee east of UTC already on day 1 ranked « 1er » under
+ *     a head that says the challenge has not started; with nobody started, every rank is a
+ *     tie over zeros. Either way the rank says nothing the head allows.
+ *   · `counts` — days met and the total, and the sync line: from the first day the HEAD
+ *     says has begun (not UPCOMING) and the trainee's own first day (`daysElapsed > 0`).
+ *     Before that the api's numbers are zeros over no day (« 0 sur 0 · 0 pas »), or count a
+ *     day the head says is still to come (« Jours réussis 0 sur 1 » under « Commence demain »).
+ */
+export interface ParticipantRowView {
+  today: boolean;
+  rank: boolean;
+  counts: boolean;
+}
+
+export function participantRowView(
+  progress: ChallengeProgress,
+  c: Pick<CoachChallengeSummary, "phase" | "startsOn" | "endsOn">
+): ParticipantRowView {
+  const counts = c.phase !== "UPCOMING" && progress.daysElapsed > 0;
+  return {
+    today: todayInWindow(progress, c),
+    rank: c.phase !== "UPCOMING",
+    counts,
+  };
+}
+
+/**
+ * The detail page's "today" cards, counted over the ACCEPTED participants who have a
+ * challenge today (`todayInWindow`): an invited one has shared nothing, and one whose
  * today is outside the window has no challenge day to count — counting them read « 0 / 3 ·
  * 3 sans donnée aujourd'hui » for trainees who met every day, every night a challenge ends.
  *
@@ -90,9 +143,9 @@ function metOnToday(p: ChallengeProgress): boolean {
 }
 
 export function todayStats(detail: CoachChallengeDetail): TodayStats {
-  const progress = detail.participants
-    .map((p) => p.progress)
-    .filter((p): p is ChallengeProgress => p !== null && todayInWindow(p, detail.challenge));
+  const { challenge } = detail;
+  const joined = detail.participants.map((p) => p.progress).filter((p): p is ChallengeProgress => p !== null);
+  const progress = joined.filter((p) => todayInWindow(p, challenge));
   const values = progress.map((p) => p.todayValue).filter((v): v is number => v !== null);
   return {
     accepted: progress.length,

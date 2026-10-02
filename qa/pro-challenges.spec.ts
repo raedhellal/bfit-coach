@@ -21,6 +21,9 @@ const PASSWORD = "Password123!";
 const ACTIVE = "c4a11e00-0000-4000-8000-000000000001";
 const ENDED = "c4a11e00-0000-4000-8000-000000000002";
 const UPCOMING = "c4a11e00-0000-4000-8000-000000000003";
+/** `FIXTURE_EDGE_CHALLENGE_IDS`, served with `evoli_fixture_challenge_edges=1` (EV-337n). */
+const EDGE_UPCOMING = "c4a11e00-0000-4000-8000-0000000000e1";
+const EDGE_ENDED = "c4a11e00-0000-4000-8000-0000000000e2";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 const TOBIAS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
@@ -296,6 +299,50 @@ for (const lang of ["fr", "en"] as const) {
       // Nothing counted before the first day: no « 0 sur 0 », no « 0 pas » total.
       await expect(participant(page, YUSUF).locator("[data-total], [data-days-met]")).toHaveCount(0);
       expect(await participant(page, YUSUF).innerText()).not.toMatch(/\b0 (steps|pas)\b|\b0 (\/|sur) 0\b/);
+    });
+
+    /**
+     * QA PB-1 on 6269343: the row followed the trainee's own today, the head the api's UTC
+     * phase. `evoli_fixture_challenge_edges=1` serves the two edges QA built live: Yusuf in
+     * Tokyo already on day 1 (5 000 of 10 000) of a challenge that starts tomorrow (UTC), and
+     * Lina in Los Angeles (6 000 of 5 000) and Tobias with no zone, both still on the last day
+     * of one that ended yesterday (UTC).
+     */
+    test("PB-1: under an UPCOMING or ENDED head no row shows a today; nothing is counted or ranked before the start", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const l = LANG[lang];
+      await context.addCookies([{ name: "evoli_fixture_challenge_edges", value: "1", url: baseURL! }]);
+      await signIn(page, lang);
+
+      await page.goto(`/challenges/${EDGE_UPCOMING}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Commence demain");
+      await expect(page.locator(".challenge-head [data-phase]")).toHaveText(l.phase.UPCOMING);
+      const tokyo = participant(page, YUSUF);
+      await expect(tokyo).toHaveAttribute("data-status", "ACCEPTED");
+      // His day 1 is real and dated in the strip; nothing reads it as « today » or counts it.
+      await expect(tokyo.locator(`[data-status="IN_PROGRESS"][data-value="5000"]`)).toHaveCount(1);
+      await expect(page.locator(".participant-today, [data-today]")).toHaveCount(0);
+      await expect(page.locator("[data-days-met], [data-total]")).toHaveCount(0);
+      await expect(page.locator("[data-rank-label]")).toHaveCount(0);
+      await expect(page.locator(".participant-sync, [data-synced]")).toHaveCount(0);
+      expect(await tokyo.innerText()).not.toMatch(/5[\s\u202f,]000/);
+      await expect(page.locator(".challenge-stats .stat-card")).toHaveCount(2);
+
+      await page.goto(`/challenges/${EDGE_ENDED}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Fini hier");
+      await expect(page.locator(".challenge-head [data-phase]")).toHaveText(l.phase.ENDED);
+      await expect(participant(page, LINA)).toHaveAttribute("data-status", "ACCEPTED");
+      await expect(page.locator(".participant-today, [data-today]")).toHaveCount(0);
+      await expect(page.locator("main")).not.toContainText(l.noDataToday);
+      expect(await page.locator("main").innerText()).not.toMatch(/6[\s\u202f,]000 \/ 5[\s\u202f,]000/);
+      // An ended challenge keeps its final standings: days met over the whole window, ranked.
+      await expect(participant(page, LINA).locator("[data-days-met]")).toHaveText(lang === "fr" ? "5 sur 7" : "5 / 7");
+      await expect(participant(page, LINA).locator("[data-rank-label]")).toHaveText(lang === "fr" ? "1er" : "#1");
+      await expect(page.locator(".challenge-stats .stat-card")).toHaveCount(2);
+      if (lang === "fr") await expectNoEnglish(page, "an ended challenge");
     });
   });
 }

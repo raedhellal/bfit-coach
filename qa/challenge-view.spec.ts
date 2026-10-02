@@ -154,3 +154,59 @@ test("the today cards are drawn only when someone's own today is in the window",
   expect(view.showTodayCards({ challenge: { ...challenge(), metric: "WORKOUTS" }, participants: mid })).toBe(false);
   expect(view.showTodayCards(detail(mid))).toBe(true);
 });
+
+/**
+ * QA PB-1 on 6269343 — the row's today cell followed only the trainee's own today, while
+ * the page head follows the api's UTC phase. Witnessed live: under « Commence demain » a
+ * Tokyo trainee already on his day 1 read « Aujourd'hui 5 000 / 10 000 pas », « Jours réussis
+ * 0 sur 1 » and « 1er »; under « Terminé » a Los Angeles trainee still on the last day read
+ * « 6 000 / 5 000 pas » and a no-zone trainee « Aucune donnée aujourd'hui ». One predicate
+ * now decides for the row and the cards, and it asks the phase too.
+ */
+test("PB-1: on an UPCOMING or ENDED challenge nobody has a today, whatever their own calendar says", () => {
+  expect(typeof view.participantRowView).toBe("function");
+  const upcoming = { ...challenge(), phase: "UPCOMING" as const };
+  const ended = { ...challenge(), phase: "ENDED" as const };
+  // Tokyo, already on day 1 of a challenge the head says starts tomorrow.
+  const tokyo = progress(START, 5_000, true);
+  expect(tokyo.daysElapsed).toBe(1);
+  expect(view.todayInWindow(tokyo, upcoming)).toBe(false);
+  expect(view.participantRowView(tokyo, upcoming)).toEqual({ today: false, rank: false, counts: false });
+  // Los Angeles, still on the last day of a challenge the head says has ended: no today,
+  // but the final standings stand (days met, total, rank).
+  const la = progress(END, 6_000, true);
+  expect(view.todayInWindow(la, ended)).toBe(false);
+  expect(view.participantRowView(la, ended)).toEqual({ today: false, rank: true, counts: true });
+  // No stored zone (UTC−12), still on the last day with nothing for it: not « no data today ».
+  const noZone = progress(END, null, false);
+  expect(view.participantRowView(noZone, ended)).toMatchObject({ today: false });
+  // ACTIVE and in the window: everything, as before.
+  expect(view.participantRowView(progress("2026-10-02", 9_000, true), challenge())).toEqual({
+    today: true,
+    rank: true,
+    counts: true,
+  });
+  // ACTIVE, but a trainee west of UTC still before the start: no today, nothing counted.
+  expect(view.participantRowView(progress("2026-09-28", null, false), challenge())).toEqual({
+    today: false,
+    rank: true,
+    counts: false,
+  });
+});
+
+test("PB-1: the today cards count nobody on an UPCOMING or ENDED challenge either", () => {
+  const tokyo = accepted("tokyo", progress(START, 12_000, true));
+  const la = accepted("la", progress(END, 6_000, true));
+  expect(view.todayStats({ challenge: { ...challenge(), phase: "UPCOMING" }, participants: [tokyo] }).accepted).toBe(0);
+  expect(view.todayStats({ challenge: { ...challenge(), phase: "ENDED" }, participants: [la] }).accepted).toBe(0);
+  expect(view.todayStats(detail([tokyo, la])).accepted).toBe(2);
+});
+
+test("ownDay places a trainee's own today against the window's dates", () => {
+  expect(typeof view.ownDay).toBe("function");
+  const c = challenge();
+  expect(view.ownDay(progress("2026-09-28", null, false), c)).toBe("BEFORE_START");
+  expect(view.ownDay(progress(START, null, false), c)).toBe("IN_WINDOW");
+  expect(view.ownDay(progress(END, null, false), c)).toBe("IN_WINDOW");
+  expect(view.ownDay(progress("2026-10-06", null, true), c)).toBe("PAST_END");
+});

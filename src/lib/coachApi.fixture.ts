@@ -3787,6 +3787,11 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *                                              `metric: <name>`, a metric this portal does
  *                                              not know (a newer api): its page must claim
  *                                              neither steps nor sessions.
+ *   `evoli_fixture_challenge_edges=1`        → EV-337n: the list and the detail also serve
+ *                                              the zone-edge challenges (`edgeChallenges`,
+ *                                              ids in `FIXTURE_EDGE_CHALLENGE_IDS`): trainees
+ *                                              whose own today is a day off the UTC date,
+ *                                              which the seeds (everyone on UTC) never reach.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 const CHALLENGE_UNENDED_MAX = 20; // CoachChallengeUseCase.MAX_UNENDED_CHALLENGES
@@ -3806,6 +3811,12 @@ interface StoredParticipant {
   acceptedAt: string | null;
   /** Keyed by `YYYY-MM-DD`. No key = no row = NO_DATA. */
   steps: Record<string, StoredStepRow>;
+  /**
+   * EV-337n — the trainee's own date minus the UTC date, in days (−1, 0 or +1): what the
+   * api's `traineeToday(zone)` makes of a zone west or east of UTC at this hour. Absent = 0,
+   * the seeds' simplification. Only the zone-edge challenges set it.
+   */
+  zoneOffsetDays?: number;
 }
 
 interface StoredChallenge {
@@ -3960,6 +3971,81 @@ function seedChallenges(): Map<string, StoredChallenge> {
   return new Map([active, ended, upcoming].map((c) => [c.id, c]));
 }
 
+/**
+ * EV-337n — the zone-edge challenges, served only with `evoli_fixture_challenge_edges=1`
+ * (populated scenario). Built on every read from the current UTC date, never stored, so the
+ * phase and each trainee's offset always agree with the clock the page reads; the create's
+ * cap and the delete never see them. Each trainee's today is the UTC date moved by
+ * `zoneOffsetDays`, as the api's zone rule moves it.
+ *
+ *   · `upcomingEast` « Commence demain » — starts tomorrow (UTC), so UPCOMING. Yusuf is in
+ *     Tokyo and already on day 1 with 5 000 of 10 000 steps: the api serves him today 5 000,
+ *     1 day elapsed, 0 met, rank 1. Lina is on UTC and has nothing (QA PB-1, 6269343).
+ *   · `endedWest` « Fini hier » — ended yesterday (UTC), so ENDED. Lina is in Los Angeles,
+ *     still on the last day, 6 000 of 5 000; Tobias has no stored zone (UTC−12), also still on
+ *     the last day, with nothing for it (QA PB-1).
+ */
+export const FIXTURE_EDGE_CHALLENGE_IDS = {
+  upcomingEast: "c4a11e00-0000-4000-8000-0000000000e1",
+  endedWest: "c4a11e00-0000-4000-8000-0000000000e2",
+} as const;
+
+/** Rows by offset from the UTC date; a day already begun synced 30 min ago, earlier ones at their evening. */
+function edgeRows(rows: [offset: number, steps: number][], source: ActivitySource): Record<string, StoredStepRow> {
+  const out: Record<string, StoredStepRow> = {};
+  for (const [offset, steps] of rows) {
+    const day = utcDay(offset);
+    out[day] = { value: steps, source, syncedAt: offset >= 0 ? minutesAgo(30) : `${day}T20:30:00.000Z` };
+  }
+  return out;
+}
+
+function edgeChallenges(): StoredChallenge[] {
+  const invited = minutesAgo(9 * 24 * 60);
+  const joined = minutesAgo(9 * 24 * 60 - 60);
+  const steps = (title: string, dailyTarget: number, from: number, to: number) => ({
+    title,
+    metric: "STEPS" as const,
+    dailyTarget,
+    totalTarget: null,
+    startsOn: utcDay(from),
+    endsOn: utcDay(to),
+    createdAt: minutesAgo(10 * 24 * 60),
+  });
+  const accepted = (clientId: string, zoneOffsetDays: number, rows: Record<string, StoredStepRow>) => ({
+    clientId,
+    invitedAt: invited,
+    acceptedAt: joined,
+    zoneOffsetDays,
+    steps: rows,
+  });
+  return [
+    {
+      id: FIXTURE_EDGE_CHALLENGE_IDS.upcomingEast,
+      ...steps("Commence demain", 10_000, 1, 7),
+      participants: [
+        accepted(YUSUF_ID, 1, edgeRows([[1, 5_000]], "HEALTHKIT")),
+        accepted(LINA_ID, 0, {}),
+      ],
+    },
+    {
+      id: FIXTURE_EDGE_CHALLENGE_IDS.endedWest,
+      ...steps("Fini hier", 5_000, -7, -1),
+      participants: [
+        accepted(LINA_ID, -1, edgeRows([[-7, 5_200], [-6, 4_100], [-5, 7_000], [-4, 5_000], [-3, 6_400], [-2, 3_900], [-1, 6_000]], "HEALTH_CONNECT")),
+        accepted(TOBIAS_ID, -1, edgeRows([[-7, 5_600], [-6, 2_000], [-4, 5_100]], "PEDOMETER")),
+      ],
+    },
+  ];
+}
+
+/** Every challenge this request serves: the stored ones, plus the switch-gated edges. */
+async function servedChallenges(): Promise<StoredChallenge[]> {
+  const stored = [...state().challenges.values()];
+  if (SCENARIO === "empty" || (await fixtureSwitch("evoli_fixture_challenge_edges")) !== "1") return stored;
+  return [...stored, ...edgeChallenges()];
+}
+
 /** The ACTIVE links, by id — the api's `VISIBLE_LINK` fragment, for a STEPS challenge. */
 async function visibleLinks(): Promise<Map<string, RosterClient>> {
   if (SCENARIO === "empty" || state().revoked || (await linkEnded())) return new Map();
@@ -3973,7 +4059,7 @@ function challengePhase(c: StoredChallenge, today: string): ChallengePhase {
 
 /** `ChallengeProgressCalculator.steps`, ported. */
 function stepsProgress(c: StoredChallenge, p: StoredParticipant): ChallengeProgress {
-  let today = utcDay(0);
+  let today = dayPlus(utcDay(0), p.zoneOffsetDays ?? 0);
   for (const day of Object.keys(p.steps)) {
     if (day >= c.startsOn && day <= c.endsOn && day > today) today = day;
   }
@@ -4106,7 +4192,7 @@ async function challengeDetail(stored: StoredChallenge): Promise<CoachChallengeD
 }
 
 async function ownedChallenge(id: string): Promise<StoredChallenge> {
-  const found = state().challenges.get(id);
+  const found = state().challenges.get(id) ?? (await servedChallenges()).find((c) => c.id === id);
   if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
   return found as StoredChallenge;
 }
@@ -6094,7 +6180,7 @@ export const fixtureCoachApi: CoachApi = {
     if (page < 0 || size < 1 || size > 50) await fail(400, "VALIDATION_ERROR", "size must be between 1 and 50");
     const links = await visibleLinks();
     // `endsOn` desc, then `createdAt` desc, then id — the api's order.
-    const all = [...state().challenges.values()].sort(
+    const all = (await servedChallenges()).sort(
       (a, b) =>
         (a.endsOn < b.endsOn ? 1 : a.endsOn > b.endsOn ? -1 : 0) ||
         (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0) ||
