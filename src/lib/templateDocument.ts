@@ -188,3 +188,56 @@ export function publishabilityReasons(draft: TemplateDraft, copy: Copy): string[
     })
   );
 }
+
+/** One line of the « Avant d'enregistrer » card (EV-337i). */
+export interface ChecklistItem {
+  /** Stable per line: `named`, `days`, `filled`, `day-{n}`, or `other-{i}`. */
+  key: string;
+  ok: boolean;
+  label: string;
+}
+
+/**
+ * EV-337i (plan §5.7) — the « Avant d'enregistrer » checklist: `publishabilityReasons`,
+ * restated as a card. **It adds no rule and drops none.**
+ *
+ *   · the three lines the design draws come first, each in its met or unmet words —
+ *     named, 2–6 days, and every day holding an exercise (one line per empty day);
+ *   · every OTHER reason the validation returns (a day with no focus, two days on one
+ *     weekday, sets out of bounds, a text too long…) follows, unmet, in its own sentence.
+ *
+ * The invariant `qa/template-checklist.spec.ts` drives: every item is met **exactly when**
+ * `publishabilityReasons` is empty, so the card and the disabled Save can never disagree.
+ * The covered reasons are removed from the remainder by VALUE — the same `copy` builds
+ * both — so a reason this function does not know about still reaches the card.
+ */
+export function templateChecklist(draft: TemplateDraft, copy: Copy): ChecklistItem[] {
+  const c = copy.templateEditor.checklist;
+  const reasons = publishabilityReasons(draft, copy);
+  const covered = new Set<string>();
+  const items: ChecklistItem[] = [];
+
+  const nameReason = [copy.templates.nameRequired, copy.templates.nameTooLong].find((r) => reasons.includes(r));
+  items.push({ key: "named", ok: nameReason === undefined, label: nameReason ?? c.named });
+  if (nameReason) covered.add(nameReason);
+
+  const daysReason = reasons.includes(copy.templates.dayCountBound) ? copy.templates.dayCountBound : undefined;
+  items.push({ key: "days", ok: daysReason === undefined, label: daysReason ?? c.daysRange });
+  if (daysReason) covered.add(daysReason);
+
+  const empty: number[] = [];
+  draft.document.trainingDays.forEach((day, index) => {
+    const reason = copy.templates.dayEmpty(index + 1);
+    if (reasons.includes(reason)) {
+      empty.push(index + 1);
+      covered.add(reason);
+    }
+  });
+  if (empty.length === 0) items.push({ key: "filled", ok: true, label: c.daysFilled });
+  for (const n of empty) items.push({ key: `day-${n}`, ok: false, label: c.dayEmpty(n) });
+
+  reasons
+    .filter((reason) => !covered.has(reason))
+    .forEach((reason, i) => items.push({ key: `other-${i}`, ok: false, label: reason }));
+  return items;
+}

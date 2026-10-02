@@ -28,7 +28,11 @@ import { useEffect } from "react";
  *
  * Mounted once by the shell. Renders nothing.
  */
-const BARS = ".shell-topbar, .shell-tabbar, .legal-footer";
+/**
+ * `.action-bar` (EV-337i's `StickyActionBar`) rides ABOVE another bar — the tab bar or the
+ * legal footer — so it is stuck at its own `bottom` offset, not at the viewport's edge.
+ */
+const BARS = ".shell-topbar, .shell-tabbar, .legal-footer, .action-bar";
 const MARGIN = 8;
 
 export function FocusClearOfBars() {
@@ -78,9 +82,13 @@ function clear(el: HTMLElement) {
     if (style.display === "none" || (style.position !== "sticky" && style.position !== "fixed")) continue;
     const r = bar.getBoundingClientRect();
     if (r.height === 0) continue;
-    // A bar stuck to the top edge, or one riding the bottom edge.
+    // A bar stuck to the top edge, or one riding the bottom edge — at its own `bottom`
+    // offset (0 for the tab bar and the footer; the bar under it for `.action-bar`). One
+    // that has settled in the page's flow, above where it would stick, is content.
+    const offset = parseFloat(style.bottom);
+    const stuckAt = viewport - (Number.isFinite(offset) ? offset : 0);
     if (r.top <= 1 && r.bottom > top) top = Math.max(top, r.bottom);
-    else if (r.bottom >= viewport - 1 && r.top < bottom) bottom = Math.min(bottom, r.top);
+    else if (r.bottom >= stuckAt - 1 && r.top < bottom) bottom = Math.min(bottom, r.top);
   }
 
   let delta = 0;

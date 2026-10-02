@@ -1449,8 +1449,14 @@ export const en = {
    */
   templates: {
     nav: "Templates", // AC1 — the portal's main navigation
-    title: "Templates",
-    subtitle: "Routines you can put on any trainee.",
+    /**
+     * EV-337i (plan §5.7) — the h1 names the KIND of template, beside « Nutrition
+     * templates »; the navigation keeps `nav`. Specs that look for "Templates" by
+     * substring still find it.
+     */
+    title: "Training templates",
+    /** The design's subtitle; `private` (AC4, verbatim) follows it in the same line. */
+    subtitle: "Your reusable routines.",
     /** AC4, verbatim. Stated once, on the library page. */
     private: "Templates are yours. No trainee ever sees them.",
     emptyTitle: "No templates yet", // AC1, verbatim
@@ -1555,10 +1561,10 @@ export const en = {
      * The validation group was withdrawn: the server accepts only a document it would
      * accept as a published plan, so there is no autosave and a half-built template
      * cannot be parked on the server. A coach who does not know that loses a tab and
-     * blames the product. The editor therefore states the rule up front and lists what
-     * is outstanding, rather than letting Save fail with a 400.
+     * blames the product. The editor therefore states the rule up front (in its action
+     * bar) and lists what is outstanding (`templateEditor.checklist`, EV-337i), rather
+     * than letting Save fail with a 400.
      */
-    notSaveableYet: "This template is not ready to save yet:",
     localOnly: "Nothing here is saved until you press Save template.",
 
     /* ── bounds (AC2 / Ruling 5c) ─────────────────────────────────────────── */
@@ -1663,6 +1669,61 @@ export const en = {
      */
     replaceRefusedAgain: (trainee: string) =>
       `Nothing was replaced. The draft for ${trainee} was saved again after you were asked. Press “Replace the draft” again to replace it as it is now.`,
+  },
+
+  /* ══ EV-337i — the training-template library and editor, redesigned (plan §5.7) ═══
+   *
+   * A block of its own beside `templates`, so the redesign's NEW sentences merge cleanly;
+   * EV-188b's verbatim sentences stay where they are. French first in the design; these
+   * are the English twins.
+   */
+  templateLibrary: {
+    searchLabel: "Search templates",
+    searchPlaceholder: "Search a template",
+    /** « 6 modèles » — the number of rows the api listed; `templates.remaining` follows it. */
+    count: (count: number) => `${count} template${count === 1 ? "" : "s"}`,
+    /** What a search left, for a screen reader; nothing is announced on first paint. */
+    shown: (count: number) => `${count} template${count === 1 ? "" : "s"} shown`,
+    noMatch: "No template matches this search.",
+    clearSearch: "Clear the search",
+    /**
+     * The row's « ⋯ » disclosure: Duplicate, Rename and Delete behind one 44 px button.
+     * Its name is the same on every row; the row's group (named by the template) says
+     * which template it acts on.
+     */
+    more: "More actions",
+  },
+
+  templateEditor: {
+    /**
+     * EV-337 (§5.7 slice AC) — the « Avant d'enregistrer » card. It RESTATES the editor's
+     * existing validation (`publishabilityReasons`), it adds no rule: every reason that
+     * function returns is on this card, and Save is enabled exactly when none is left
+     * (`templateChecklist`, src/lib/templateDocument.ts). The three rows the design draws
+     * are fixed; any other reason the validation finds is listed under them in its own
+     * words. An item that is met and one that is not differ in their words AND their
+     * icon, never in colour alone.
+     */
+    checklist: {
+      title: "Before you save",
+      named: "Name filled in",
+      daysRange: "Between 2 and 6 training days",
+      daysFilled: "Every day has at least one exercise",
+      dayEmpty: (n: number) => `Day ${n} has no exercises`,
+      /** The list's name for a screen reader, which hears the items without their icons. */
+      listLabel: "What the template still needs before it can be saved",
+    },
+    /**
+     * True by ADR-0016's copy-on-apply: "Use on a trainee" COPIES the template into the
+     * coach's draft for that trainee, so no plan or draft holds a reference to it. Shown on
+     * an existing template only (a new one is used by nobody).
+     */
+    keepsVersions:
+      "Trainees already using this template keep their version: editing a template changes no published plan.",
+    /** The action bar's way out: a link to the library, which the unsaved-changes guard stops. */
+    cancel: "Cancel",
+    /** The action bar's name (a region a screen reader can jump to). */
+    actionsLabel: "Save the template",
   },
 
   /* ══ EV-256b — the coach's recipe library ══════════════════════════════════════

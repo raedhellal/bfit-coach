@@ -738,8 +738,8 @@ export const fr = {
   /** Nothing here implies that using a template changes anything the client sees (see copy.ts). */
   templates: {
     nav: "Modèles",
-    title: "Modèles",
-    subtitle: "Des programmes à appliquer à n'importe quel client.",
+    title: "Modèles d'entraînement",
+    subtitle: "Vos programmes réutilisables.",
     private: "Vos modèles vous appartiennent. Aucun client ne les voit.",
     emptyTitle: "Aucun modèle pour l'instant",
     emptyBody: "Créez un programme une fois et appliquez-le à n'importe quel client.",
@@ -755,10 +755,10 @@ export const fr = {
     duplicate: "Dupliquer",
     rename: "Renommer",
     remove: "Supprimer",
-    use: "Utiliser pour un client",
+    use: "Appliquer à un client",
     limitReached: (limit: number) =>
       `Vous pouvez conserver jusqu'à ${limit} modèles. Supprimez-en un pour faire de la place.`,
-    remaining: (left: number, limit: number) => `${left} sur ${limit} restant${s(left)}`,
+    remaining: (left: number, limit: number) => `${n(left)} restant${s(left)} sur ${n(limit)}`,
     renameTitle: "Renommer le modèle",
     renameLabel: "Nom du modèle",
     nameTaken: "Vous avez déjà un modèle portant ce nom.",
@@ -806,7 +806,6 @@ export const fr = {
     saved: "Modèle enregistré",
     saveFailed: "Le modèle n'a pas pu être enregistré.",
     unsavedBadge: "Modifications non enregistrées",
-    notSaveableYet: "Ce modèle n'est pas encore prêt à être enregistré :",
     localOnly: "Rien n'est enregistré tant que vous n'avez pas cliqué sur Enregistrer le modèle.",
     dayCountBound: "Un modèle compte entre 2 et 6 jours d'entraînement.",
     dayEmpty: (n: number) => `Le jour ${n} n'a aucun exercice.`,
@@ -823,7 +822,7 @@ export const fr = {
     sourceEmpty: "Ce client n'a pas encore de programme à copier.",
     saveAsTemplateDone: (name: string) => `${q(name)} est dans vos modèles.`,
     saveAsTemplateFailed: "Le modèle n'a pas pu être créé.",
-    useTitle: "Utiliser pour un client",
+    useTitle: "Appliquer à un client",
     pickTrainee: "Client",
     guardrailsAtPublish: (trainee: string) =>
       `Les blessures et le matériel ${de(trainee)} sont pris en compte à la publication.`,
@@ -856,6 +855,32 @@ export const fr = {
   },
 
   /** Deliberately absent, as in English: any claim that a recipe is checked against a client. */
+  /* EV-337i — the redesigned training-template library and editor (plan §5.7). */
+  templateLibrary: {
+    searchLabel: "Rechercher un modèle",
+    searchPlaceholder: "Rechercher un modèle",
+    count: (count: number) => `${n(count)} modèle${s(count)}`,
+    shown: (count: number) => `${n(count)} modèle${s(count)} affiché${s(count)}`,
+    noMatch: "Aucun modèle ne correspond à cette recherche.",
+    clearSearch: "Effacer la recherche",
+    more: "Plus d'actions",
+  },
+
+  templateEditor: {
+    checklist: {
+      title: "Avant d'enregistrer",
+      named: "Nom renseigné",
+      daysRange: "Entre 2 et 6 jours d'entraînement",
+      daysFilled: "Chaque jour a au moins un exercice",
+      dayEmpty: (day: number) => `Le jour ${day} n'a aucun exercice`,
+      listLabel: "Ce qu'il reste à faire avant d'enregistrer le modèle",
+    },
+    keepsVersions:
+      "Les clients qui utilisent déjà ce modèle gardent leur version\u00a0: modifier un modèle ne change aucun programme publié.",
+    cancel: "Annuler",
+    actionsLabel: "Enregistrer le modèle",
+  },
+
   recipes: {
     nav: "Recettes",
     title: "Recettes",

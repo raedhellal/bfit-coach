@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { Badge, Button, Card, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { useState, useTransition } from "react";
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { Button, Card, MIN_TOUCH_TARGET, Modal, PageHead } from "@/components/ui/kit";
+import { UiIcon } from "@/components/ui/icons";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { StickyActionBar } from "@/components/ui/StickyActionBar";
 import { RoutineDocumentEditor } from "@/components/routine/RoutineDocumentEditor";
 import type { Copy } from "@/lib/copy";
 import { useCopy } from "@/lib/i18n/client";
@@ -11,7 +16,7 @@ import {
   MAX_EXERCISES_PER_DAY,
   TEMPLATE_NAME_MAX,
   forSave,
-  publishabilityReasons,
+  templateChecklist,
   type TemplateDraft,
 } from "@/lib/templateDocument";
 import {
@@ -60,6 +65,17 @@ import type { Routine } from "@/lib/coachApi";
  * coach cannot act on. The unsaved-changes guard is the same one the routine editor
  * uses, for the same reason: losing a tab mid-edit is the failure mode this design
  * buys, so it is the one that is defended.
+ *
+ * ═══ THE REDESIGN (EV-337i, plan §5.7) ═══════════════════════════════════════════
+ *
+ * Layout only; the save path above is untouched (ADR-0033: the editor stays
+ * server-rendered, no client cache, no extra `router.refresh()`). The page head is drawn
+ * HERE so the « Modifications non enregistrées » pill can sit beside the title, but the
+ * title itself is the SERVER's prop: on an existing template it is the stored name, which
+ * only the update action's `revalidatePath` can change (qa/editor-save-no-refresh.spec.ts).
+ * The outstanding reasons became the « Avant d'enregistrer » card (`templateChecklist`,
+ * the same validation), and Save moved into a sticky action bar with the "nothing is
+ * saved until…" sentence and the save's own feedback beside it, where the coach looks.
  */
 
 const failureCopy = (copy: Copy): Record<TemplateFailure, string> => ({
@@ -78,10 +94,18 @@ const failureCopy = (copy: Copy): Record<TemplateFailure, string> => ({
 export function TemplateEditor({
   templateId: initialTemplateId,
   initial,
+  title,
+  sub,
+  back,
 }: {
   /** Null for "New template": the first successful save is a POST, then a navigation. */
   templateId: string | null;
   initial: TemplateDraft;
+  /** The page's h1, from the server render (the stored name, or « Nouveau modèle »). */
+  title: string;
+  sub?: ReactNode;
+  /** The page's `BackLink`, rendered by the server page. */
+  back: ReactNode;
 }) {
   const copy = useCopy();
   /**
@@ -97,13 +121,6 @@ export function TemplateEditor({
   const [pending, startTransition] = useTransition();
   const leaving = useUnsavedChanges(dirty);
 
-  // U6 — put the feedback where the coach is looking, and announce it.
-  const feedbackRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!notice && !error) return;
-    feedbackRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [notice, error]);
-
   function edit(next: TemplateDraft) {
     setDraft(next);
     setDirty(true);
@@ -114,8 +131,9 @@ export function TemplateEditor({
     edit({ ...draft, document });
   }
 
-  const reasons = publishabilityReasons(draft, copy);
-  const saveable = reasons.length === 0;
+  // The card IS the validation: Save is enabled exactly when every line is met.
+  const checklist = templateChecklist(draft, copy);
+  const saveable = checklist.every((item) => item.ok);
 
   function save() {
     if (!saveable) return;
@@ -163,108 +181,118 @@ export function TemplateEditor({
   }
 
   return (
-    <div>
-      <Card style={{ marginBottom: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <label style={{ display: "block", minWidth: 0, flex: "1 1 260px" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>
-              {copy.templates.nameLabel}
-            </div>
-            <input
-              value={draft.name}
-              title={draft.name}
-              maxLength={TEMPLATE_NAME_MAX}
-              onChange={(e) => edit({ ...draft, name: e.target.value })}
-              style={{
-                height: MIN_TOUCH_TARGET,
-                // See RoutineFields' DayFocusField: the label is the flex item that
-                // shrinks, so the input must be told to follow it.
-                width: "100%",
-                minWidth: 0,
-                maxWidth: 360,
-                borderRadius: "var(--r-md)",
-                border: "1px solid var(--border-2)",
-                background: "var(--surface)",
-                padding: "0 12px",
-                fontFamily: "var(--font-display)",
-                fontSize: 17,
-                fontWeight: 700,
-                color: "var(--ink)",
-              }}
-            />
-          </label>
-          {dirty && <Badge tone="red">{copy.templates.unsavedBadge}</Badge>}
-        </div>
+    <div className="tpl-editor">
+      {back}
+      <PageHead
+        title={title}
+        sub={sub}
+        actions={
+          // The slot is always there, so the first keystroke does not push the form down
+          // by the pill's height where the head wraps (< 768).
+          <span className="tpl-dirty-slot">
+            {dirty && <StatusPill tone="amber" icon="edit" label={copy.templates.unsavedBadge} />}
+          </span>
+        }
+      />
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+      <div className="layout-split tpl-editor-split">
+        {/*
+          The « Avant d'enregistrer » aside. FIRST in the document: above the form in one
+          column (< 1280, plan §3), beside it from 1280 by grid placement. Nothing in it is
+          interactive, so the keyboard order is the form's.
+        */}
+        <aside className="tpl-editor-aside" aria-labelledby="tpl-checklist-title">
+          <Card>
+            <h2 id="tpl-checklist-title" className="tpl-checklist-title">
+              {copy.templateEditor.checklist.title}
+            </h2>
+            <ul className="tpl-checklist" aria-label={copy.templateEditor.checklist.listLabel}>
+              {checklist.map((item) => (
+                <li key={item.key} className="tpl-check" data-ok={item.ok ? "" : undefined}>
+                  <span className="tpl-check-icon" aria-hidden="true">
+                    <UiIcon name={item.ok ? "checkCircle" : "alert"} size={16} />
+                  </span>
+                  <span>{item.label}</span>
+                </li>
+              ))}
+            </ul>
+            {templateId !== null && <p className="tpl-keeps">{copy.templateEditor.keepsVersions}</p>}
+          </Card>
+        </aside>
+
+        <div className="tpl-editor-main">
+          <Card style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>
+                {copy.templates.nameLabel}
+              </div>
+              <input
+                value={draft.name}
+                title={draft.name}
+                maxLength={TEMPLATE_NAME_MAX}
+                onChange={(e) => edit({ ...draft, name: e.target.value })}
+                style={{
+                  height: MIN_TOUCH_TARGET,
+                  // See RoutineFields' DayFocusField: the label is the flex item that
+                  // shrinks, so the input must be told to follow it.
+                  width: "100%",
+                  minWidth: 0,
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border-2)",
+                  background: "var(--surface)",
+                  padding: "0 12px",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 17,
+                  fontWeight: 700,
+                  color: "var(--ink)",
+                }}
+              />
+            </label>
+          </Card>
+
+          {/*
+            AC4's other half: every field the document CARRIES is on screen and editable —
+            now through the ONE routine editor both coach surfaces share. A template
+            describes nobody, so `goal` and `level` are the coach's own and are selects here.
+          */}
+          <RoutineDocumentEditor
+            document={draft.document}
+            onChange={editDocument}
+            subject={{ kind: "template" }}
+            dayCountBound={copy.templates.dayCountBound}
+            maxExercisesPerDay={MAX_EXERCISES_PER_DAY}
+            showDocumentName
+            showRowSummary
+          />
+        </div>
+      </div>
+
+      <StickyActionBar label={copy.templateEditor.actionsLabel}>
+        {/* A link out, so the unsaved-changes guard asks before it leaves (EV-190 AC2). */}
+        <Link href="/templates" className="link-button" data-variant="secondary">
+          {copy.templateEditor.cancel}
+        </Link>
+        {/*
+          🔴 ADR-0016 §Amendment V1b's cost, stated on the bar that saves: the server
+          accepts only a publishable template, so there is no autosave and nothing here
+          reaches it until Save is pressed. The live region is always present (an empty one
+          inserted later is not announced); the save's confirmation REPLACES the sentence
+          in it. A refusal is its own alert, beside it.
+        */}
+        <p className="action-bar-note" role="status" data-tone={notice ? "ok" : undefined}>
+          {notice ?? copy.templates.localOnly}
+        </p>
+        {error && (
+          <p className="action-bar-note" role="alert" data-tone="err">
+            {error}
+          </p>
+        )}
+        <div className="action-bar-end">
           <Button icon="check" onClick={save} disabled={pending || !saveable}>
             {pending ? copy.templates.saving : copy.templates.save}
           </Button>
         </div>
-
-        {/*
-          🔴 ADR-0016 §Amendment V1b's cost, stated on the screen that pays it.
-
-          The server accepts only a publishable template, so there is no autosave and
-          nothing here reaches it until Save is pressed. A coach who does not know that
-          loses a tab and blames the product; a Save that looks pressable and then 400s
-          is the failure AC2 forbids by name for the 13th exercise, applied to the
-          document as a whole.
-        */}
-        <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
-          {copy.templates.localOnly}
-        </p>
-        {!saveable && (
-          <div style={{ marginTop: 10 }}>
-            <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}>
-              {copy.templates.notSaveableYet}
-            </p>
-            <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-              {reasons.map((reason) => (
-                <li key={reason} style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.6 }}>
-                  {reason}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div ref={feedbackRef}>
-          {notice && (
-            <p role="status" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>
-              {notice}
-            </p>
-          )}
-          {error && (
-            <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
-              {error}
-            </p>
-          )}
-        </div>
-      </Card>
-
-      {/*
-        AC4's other half: every field the document CARRIES is on screen and editable —
-        now through the ONE routine editor both coach surfaces share. A template
-        describes nobody, so `goal` and `level` are the coach's own and are selects here.
-      */}
-      <RoutineDocumentEditor
-        document={draft.document}
-        onChange={editDocument}
-        subject={{ kind: "template" }}
-        dayCountBound={copy.templates.dayCountBound}
-        maxExercisesPerDay={MAX_EXERCISES_PER_DAY}
-        showDocumentName
-        showRowSummary
-      />
+      </StickyActionBar>
 
       <Modal
         open={leaving.prompted}

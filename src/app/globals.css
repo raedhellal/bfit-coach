@@ -818,6 +818,132 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
 .link-button[data-variant="on-tint"] { background: var(--surface); color: var(--warn-ink); border-color: rgba(154, 91, 5, 0.25); }
 .link-button:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
 
+/* ── EV-337i: training templates, the library and the editor (plan §5.7) ─────────────────
+   The list is ONE card of rows from 768 px and one card PER template below it (EV-337:
+   cards below 768 for any list). The editor is two columns from a 1280 px viewport
+   (`.layout-split`): the form, and the « Avant d'enregistrer » aside, which sits ABOVE the
+   form when there is one column (plan §3). Its action bar is sticky above the bottom tab
+   bar (< 1024) or above the sticky legal footer (≥ 1024): one sticky element per edge
+   each, stacked, never covering one another. Every rule is a class (BUG-380). */
+
+/* A link drawn as the primary button (« Nouveau modèle »): the kit Button's fill. */
+.link-button[data-variant="primary"] { background: var(--grad-energy-strong); color: #fff; box-shadow: 0 4px 14px rgba(58, 95, 224, 0.25); }
+.link-button[data-variant="primary"]:hover { filter: brightness(1.05); }
+
+.tpl-toolbar { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.tpl-toolbar .roster-search { flex: 1 1 320px; }
+.tpl-count { margin: 0; font-size: var(--fs-meta); color: var(--ink-3); }
+.tpl-count[data-full] { color: var(--err-ink); }
+.tpl-feedback { margin: 0 0 12px; font-size: var(--fs-meta); }
+
+.tpl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--e-card);
+}
+.tpl-item { min-width: 0; }
+.tpl-item + .tpl-item { border-top: 1px solid var(--border); }
+.tpl-row { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 14px 20px; min-width: 0; }
+.tpl-row-id { flex: 1 1 260px; min-width: 0; }
+.tpl-row-name {
+  font: 700 15.5px/22px var(--font-display);
+  color: var(--ink);
+  /* Edge case 8 / BUG-243: a long or RTL name ellipsises; `title` keeps the whole name. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tpl-row-meta { margin: 3px 0 0; font-size: var(--fs-meta); line-height: 18px; color: var(--ink-3); }
+.tpl-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none; max-width: 100%; }
+.tpl-more {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.tpl-more:hover, .tpl-more[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
+/* The disclosed row actions: in the row's flow, under it — never a popover that could
+   cover the next row or leave the viewport at 320 px. */
+.tpl-row-more { flex: 1 0 100%; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.tpl-nomatch { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 20px; }
+
+@media (max-width: 767px) {
+  /* One card per template. */
+  .tpl-list { background: none; border: 0; border-radius: 0; box-shadow: none; display: grid; gap: 12px; }
+  .tpl-item, .tpl-nomatch-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-2xl); box-shadow: var(--e-card); }
+  .tpl-item + .tpl-item { border-top: 1px solid var(--border); }
+  .tpl-row { padding: 16px; align-items: flex-start; }
+  .tpl-row-id { flex-basis: 100%; }
+  .tpl-row-more { justify-content: flex-start; }
+}
+
+/* ── the editor ── */
+.tpl-dirty-slot { display: inline-flex; align-items: center; min-height: 26px; }
+.tpl-editor-split > .tpl-editor-aside, .tpl-editor-split > .tpl-editor-main { min-width: 0; }
+@media (min-width: 1280px) {
+  .tpl-editor-split > .tpl-editor-main { grid-column: 1; grid-row: 1; }
+  .tpl-editor-split > .tpl-editor-aside { grid-column: 2; grid-row: 1; position: sticky; top: 24px; }
+}
+.tpl-checklist-title { margin: 0 0 12px; font: 600 var(--fs-h2)/22px var(--font-display); color: var(--ink); }
+.tpl-checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tpl-check { display: flex; align-items: flex-start; gap: 8px; font-size: var(--fs-body); line-height: 20px; }
+.tpl-check-icon { display: inline-flex; flex: none; margin-top: 2px; }
+.tpl-check[data-ok] { color: var(--ok-ink); }
+.tpl-check:not([data-ok]) { color: var(--err-ink); }
+.tpl-keeps { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--border); font-size: var(--fs-meta); line-height: 19px; color: var(--ink-2); }
+
+/* Sticky ABOVE the tab bar below 1024 px, above the sticky legal footer from 1024. The
+   negative inline margins take it to the page's padding edge; the page never scrolls
+   sideways for it (they equal `.page`'s own padding at each width). */
+.action-bar {
+  position: sticky;
+  bottom: calc(var(--shell-tabbar-h) + env(safe-area-inset-bottom));
+  z-index: 16;
+  margin: 20px -24px 0;
+  /* The tab bar is `--shell-tabbar-h` (60 px) tall with one-line labels and 66 px when
+     « Modèles nutrition » wraps (measured at 390). The bar sticks at the token and is
+     drawn UNDER the tab bar (z-index 16 < 20), so the extra 8 px of bottom padding is the
+     only part a taller tab bar can ever cover — never Cancel or Save. */
+  padding: 10px 24px 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.97);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+}
+.action-bar-note { flex: 1 1 240px; min-width: 0; margin: 0; font-size: var(--fs-meta); line-height: 18px; color: var(--ink-3); }
+.action-bar-note[data-tone="ok"] { color: var(--ok-ink); }
+.action-bar-note[data-tone="err"] { color: var(--err-ink); }
+.action-bar-end { margin-left: auto; display: flex; gap: 8px; }
+@media (min-width: 1024px) { .action-bar { bottom: var(--legal-footer-h); padding-bottom: 10px; } }
+/* Keyboard focus clear of the bar too (WCAG 2.4.11): a first estimate of its height for the
+   browser's own scroll; `FocusClearOfBars` measures the real one after each keyboard focus. */
+html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120px); }
+@media (min-width: 1024px) { html:has(.action-bar) { scroll-padding-bottom: calc(var(--legal-footer-h) + 80px); } }
+@media (min-width: 1280px) { .action-bar { margin: 20px -32px 0; padding-left: 32px; padding-right: 32px; } }
+@media (max-width: 767px) {
+  .action-bar { margin: 16px -16px 0; padding: 8px 16px 16px; }
+  /* The sentence on its own line, then Cancel and Save side by side. */
+  .action-bar-note { order: -1; flex-basis: 100%; font-size: var(--fs-label); line-height: 16px; }
+  /* Cancel and « Enregistrer le modèle » on ONE row down to 320 px (82 + 8 + 194 ≤ 288). */
+  .action-bar .link-button { padding: 0 14px; }
+  .action-bar-end { margin-left: auto; }
+}
+
 /* ── EV-337e: the client overview (plan §5.2) ─────────────────────────────────────────
    Header, « À traiter », five stat cards, then « Activité récente » beside the programme
    and nutrition summaries (two columns from a 1280 px viewport, `.layout-split`). Every

@@ -28,6 +28,9 @@ export const AP: Record<string, string> = {
   chevU: "M5 15l7-7 7 7",
   plus: "M12 5v14M5 12h14",
   check: "M5 12.5 10 17.5 19.5 6.5",
+  // EV-337i — not in the admin's table: the « Avant d'enregistrer » checklist's met / unmet marks.
+  checkCircle: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM8 12.3l2.8 2.8 5.2-5.6",
+  alert: "M12 3.8 2.6 20h18.8L12 3.8ZM12 10v4.6M12 17.4h.01",
   x: "M6 6l12 12M18 6 6 18",
   filter: "M3 5h18M6 12h12M10 19h4",
   more: "M5 12h.01M12 12h.01M19 12h.01",

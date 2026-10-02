@@ -1,7 +1,6 @@
 import { BackLink } from "@/components/ui/BackLink";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { TemplateEditor } from "@/components/templates/TemplateEditor";
-import { PageHead } from "@/components/ui/kit";
 import { readCoachMe } from "@/lib/clientOverview";
 import { blankTemplate } from "@/lib/templateDocument";
 import { getCopy } from "@/lib/i18n/server";
@@ -19,6 +18,9 @@ import { getCopy } from "@/lib/i18n/server";
  * page exists to be honest about that: until Save is pressed the document lives in the
  * browser, because ADR-0016 §Amendment V1b means the server will not hold a half-built
  * one.
+ *
+ * EV-337i: the head (back link, h1, the unsaved pill) is drawn by the editor island, from
+ * the props given here.
  */
 export const dynamic = "force-dynamic";
 
@@ -27,14 +29,13 @@ export default async function NewTemplatePage() {
   const me = await readCoachMe();
   return (
     <CoachShell coachName={me?.displayName} section="templates">
-      <PageHead
+      <TemplateEditor
+        templateId={null}
+        initial={blankTemplate(copy)}
         title={copy.templates.newTitle}
         sub={copy.templates.private}
-        actions={
-          <BackLink href="/templates" label={copy.templates.backToLibrary} />
-        }
+        back={<BackLink href="/templates" label={copy.templates.backToLibrary} flush />}
       />
-      <TemplateEditor templateId={null} initial={blankTemplate(copy)} />
     </CoachShell>
   );
 }
