@@ -35,7 +35,8 @@ async function signIn(page: Page) {
 }
 
 const table = (page: Page) => page.getByRole("region", { name: "Participants' progress" });
-const row = (page: Page, clientId: string) => page.locator(`tr[data-participant="${clientId}"]`);
+// EV-337h: the table became participant rows (cards below 768 px): one `li` per participant.
+const row = (page: Page, clientId: string) => page.locator(`li[data-participant="${clientId}"]`);
 
 async function openDialog(page: Page) {
   await page.goto("/challenges");
@@ -74,12 +75,12 @@ test.describe("the ranked progress table", () => {
     await signIn(page);
     await page.goto(`/challenges/${ACTIVE}`);
     const ids = await table(page)
-      .locator("tbody tr")
+      .locator("li[data-participant]")
       .evaluateAll((rows) => rows.map((r) => r.getAttribute("data-participant")));
     expect(ids).toEqual([YUSUF, LINA, TOBIAS, MARA, SARA]);
-    await expect(row(page, YUSUF).locator("td").first()).toHaveText("#1");
-    await expect(row(page, LINA).locator("td").first()).toHaveText("#2");
-    await expect(row(page, TOBIAS).locator("td").first()).toHaveText("#3");
+    await expect(row(page, YUSUF).locator("[data-rank-label]")).toHaveText("#1");
+    await expect(row(page, LINA).locator("[data-rank-label]")).toHaveText("#2");
+    await expect(row(page, TOBIAS).locator("[data-rank-label]")).toHaveText("#3");
     await expect(row(page, YUSUF)).toContainText("4 / 5");
     await expect(row(page, YUSUF)).toContainText("10,400 / 10,000 steps");
     // The sync time, and under it where the number came from — never "verified".
@@ -102,9 +103,10 @@ test.describe("the ranked progress table", () => {
     await signIn(page);
     await page.goto(`/challenges/${ACTIVE}`);
     const tobias = row(page, TOBIAS);
-    // Today: no row from any source → a dash, and NO bar (an empty bar is a picture of zero).
+    // Today: no row from any source → named, and NO bar (an empty bar is a picture of zero).
+    // EV-337h: the dash became the words "No data today" (missing data is named).
     await expect(tobias.locator("[data-today]")).toHaveAttribute("data-today", "");
-    await expect(tobias.locator("[data-today]")).toHaveText("— / 10,000 steps");
+    await expect(tobias.locator("[data-today]")).toHaveText("No data today");
     await expect(tobias.getByRole("progressbar")).toHaveCount(0);
 
     // The strip: yesterday and today have no row. Their squares are NO_DATA, carry no
@@ -263,10 +265,11 @@ test.describe("create", () => {
 
     await page.waitForURL(/\/challenges\/[0-9a-f-]{36}\?created=1$/);
     await expect(page.getByRole("status").filter({ hasText: "Challenge created." })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Semaine des 10 000 pas");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Active");
+    // EV-337h: the h1 is the name alone; the phase is the pill beside it, not in the heading.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Semaine des 10 000 pas");
+    await expect(page.locator(".challenge-head [data-phase]")).toHaveText("Active");
     await expect(page.getByText("2 invited · 0 joined")).toBeVisible();
-    await expect(table(page).locator("tbody tr")).toHaveCount(2);
+    await expect(table(page).locator("li[data-participant]")).toHaveCount(2);
     await expect(row(page, LINA)).toContainText("Invitation sent");
     await expect(row(page, SARA)).toContainText("Invitation sent");
 
@@ -382,7 +385,8 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await expect(page.getByRole("heading", { name: "Défis", level: 1 })).toBeVisible();
     const cards = page.getByRole("list", { name: "Défis" }).getByRole("listitem");
     await expect(cards.nth(1)).toContainText("10\u202f000 pas par jour");
-    await expect(cards.nth(1)).toContainText("En cours");
+    // EV-337h: « Actif / À venir / Terminé » (story §5.5); it was « En cours ».
+    await expect(cards.nth(1)).toContainText("Actif");
     await expect(cards.nth(1)).toContainText("5 invités · 3 ont rejoint");
     await expect(cards.nth(0)).toContainText("À venir");
     await expect(cards.nth(2)).toContainText("Terminé");
@@ -391,16 +395,16 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
 
     await page.goto(`/challenges/${ACTIVE}`);
     const region = page.getByRole("region", { name: "Progression des participants" });
-    await expect(region.locator(`tr[data-participant="${YUSUF}"] td`).first()).toHaveText("1er");
-    await expect(region.locator(`tr[data-participant="${LINA}"] td`).first()).toHaveText("2e");
-    await expect(region.locator(`tr[data-participant="${YUSUF}"]`)).toContainText("10\u202f400 / 10\u202f000 pas");
-    await expect(region.locator(`tr[data-participant="${YUSUF}"]`)).toContainText("Apple Santé");
-    await expect(region.locator(`tr[data-participant="${TOBIAS}"]`)).toContainText("— / 10\u202f000 pas");
+    await expect(region.locator(`li[data-participant="${YUSUF}"] [data-rank-label]`)).toHaveText("1er");
+    await expect(region.locator(`li[data-participant="${LINA}"] [data-rank-label]`)).toHaveText("2e");
+    await expect(region.locator(`li[data-participant="${YUSUF}"]`)).toContainText("10\u202f400 / 10\u202f000 pas");
+    await expect(region.locator(`li[data-participant="${YUSUF}"]`)).toContainText("Apple Santé");
+    await expect(region.locator(`li[data-participant="${TOBIAS}"] [data-today]`)).toHaveText("Aucune donnée aujourd'hui");
     // BUG-473: no row today, so no source — not the hand-typed day before yesterday.
-    await expect(region.locator(`tr[data-participant="${TOBIAS}"] [data-source]`)).toHaveCount(0);
-    await expect(region.locator(`tr[data-participant="${TOBIAS}"]`)).not.toContainText("Saisie manuelle");
-    await expect(region.locator(`tr[data-participant="${SARA}"]`)).toContainText("Invitation envoyée");
-    await expect(region.locator(`tr[data-participant="${TOBIAS}"] [data-status="NO_DATA"]`).first()).toHaveAttribute(
+    await expect(region.locator(`li[data-participant="${TOBIAS}"] [data-source]`)).toHaveCount(0);
+    await expect(region.locator(`li[data-participant="${TOBIAS}"]`)).not.toContainText("Saisie manuelle");
+    await expect(region.locator(`li[data-participant="${SARA}"]`)).toContainText("Invitation envoyée");
+    await expect(region.locator(`li[data-participant="${TOBIAS}"] [data-status="NO_DATA"]`).first()).toHaveAttribute(
       "aria-label",
       /: aucune donnée$/
     );
@@ -609,9 +613,10 @@ test.describe("workouts invited row and delete confirm", () => {
     await signIn(page);
     await page.goto(`/challenges/${ACTIVE}`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("10 000 pas par jour");
-    // Witness that the served metric is not STEPS: the STEPS-only day-by-day column is gone.
-    await expect(table(page).locator("th", { hasText: "Rank" })).toHaveCount(1);
-    await expect(table(page).locator("th", { hasText: "Day by day" })).toHaveCount(0);
+    // Witness that the served metric is not STEPS: the STEPS-only day strips are gone
+    // (EV-337h: they were the "Day by day" column), while the ranked rows are still there.
+    await expect(table(page).locator("[data-rank-label]")).toHaveCount(3);
+    await expect(table(page).getByRole("list", { name: /day by day$/ })).toHaveCount(0);
 
     const main = page.locator("main");
     await expect(main).not.toContainText(CONSENT.en.steps);
@@ -670,34 +675,47 @@ test.describe("workouts invited row and delete confirm", () => {
 });
 
 test.describe("layout", () => {
-  test("at 1280 the seven-day table fits its card: no sideways scroll, no clipped square", async ({ page }) => {
+  /**
+   * EV-337h: the table became participant rows; the check is now that no row overflows its
+   * own box and every day square sits inside its row, in both languages at 1280 (the width
+   * the table used to scroll sideways at, beside the 240 px sidebar).
+   */
+  async function rowsFit(page: Page, label: string) {
+    const items = page.locator("li[data-participant]");
+    await expect(items).toHaveCount(5);
+    const report = await items.evaluateAll((els) =>
+      els.flatMap((el) => {
+        const out: string[] = [];
+        const box = el.getBoundingClientRect();
+        if (el.scrollWidth > el.clientWidth) out.push(`${el.getAttribute("data-participant")} scrolls by ${el.scrollWidth - el.clientWidth}`);
+        for (const sq of Array.from(el.querySelectorAll(".challenge-day"))) {
+          const r = sq.getBoundingClientRect();
+          if (r.right > box.right + 0.5 || r.left < box.left - 0.5) out.push(`${sq.getAttribute("data-day")} outside its row`);
+        }
+        return out;
+      })
+    );
+    expect(report, label).toEqual([]);
+    expect(await page.locator("li[data-participant] .challenge-day").count(), `${label}: squares measured`).toBe(21);
+    await expectNoSidewaysScroll(page, label);
+  }
+
+  test("at 1280 every participant row fits: no sideways scroll, no clipped square", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 860 });
     await signIn(page);
     await page.goto(`/challenges/${ACTIVE}`);
-    const overflow = await table(page)
-      .locator("table")
-      .evaluate((t) => (t.parentElement as HTMLElement).scrollWidth - (t.parentElement as HTMLElement).clientWidth);
-    expect(overflow, "the progress table scrolls sideways inside its card at 1280").toBeLessThanOrEqual(0);
+    await rowsFit(page, "EN 1280");
   });
 
-  /**
-   * Redesign branch 1: beside the 240 px sidebar the card is 974 px wide at 1280, and in
-   * French the one-line headers alone needed 1017 px (« JOURS RÉUSSIS », « DERNIÈRE
-   * SYNCHRO »). The headers now wrap; this is the French half of the check above.
-   */
   test.describe("in French", () => {
     test.use({ locale: "fr-FR" });
 
-    test("at 1280 the seven-day table fits its card in French too", async ({ page }) => {
+    test("at 1280 every participant row fits in French too", async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 860 });
       await signInFrench(page);
       await page.goto(`/challenges/${ACTIVE}`);
       await expect(page.locator("html")).toHaveAttribute("lang", "fr");
-      const overflow = await page
-        .getByRole("region", { name: "Progression des participants" })
-        .locator("table")
-        .evaluate((t) => (t.parentElement as HTMLElement).scrollWidth - (t.parentElement as HTMLElement).clientWidth);
-      expect(overflow, "the French progress table scrolls sideways inside its card at 1280").toBeLessThanOrEqual(0);
+      await rowsFit(page, "FR 1280");
     });
   });
 
