@@ -82,6 +82,15 @@ test("every scope-gated block fails closed to “Not shared”", async ({ page }
 
   // The tiles carry the caption at least once — the dash-plus-"Not shared" pairing.
   await expect(page.getByText("Not shared").first()).toBeVisible();
+
+  // The stub sends `adherenceThisWeek: 3/4` with no `scopes`: WORKOUTS is not established,
+  // so the tile is a dash. This is the witness for the WORKOUTS gate on the adherence value
+  // (EV-337m staff nit 2): without the gate, "3 / 4" would render from an unknown consent.
+  const adherence = page.locator(".overview-stats > .stat-card").filter({
+    has: page.locator(".stat-card-label", { hasText: /^Adherence this week$/ }),
+  });
+  await expect(adherence.locator(".stat-card-value")).toHaveText("—");
+  await expect(body).not.toContainText("3 / 4");
 });
 
 test("the routine tab states the absence instead of throwing", async ({ page }) => {
