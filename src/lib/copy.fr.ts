@@ -1288,4 +1288,7 @@ export const fr = {
       cardio: "Cardio",
     } as Record<string, string>,
   },
+  navProgress: {
+    label: "Chargement de la page",
+  },
 } satisfies Copy;

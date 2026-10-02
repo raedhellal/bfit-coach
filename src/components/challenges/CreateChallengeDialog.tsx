@@ -21,6 +21,7 @@ import {
   type ChallengeField,
   type ChallengeForm,
 } from "@/lib/challengeDocument";
+import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 
 /** A trainee the coach may invite: an ACTIVE roster row. STEPS needs no data scope. */
 export interface InviteTarget {
@@ -94,6 +95,7 @@ export function CreateChallengeDialog({
         return;
       }
       setOpen(false);
+      startNavigationProgress(`/challenges/${encodeURIComponent(result.id)}?created=1`);
       router.push(`/challenges/${encodeURIComponent(result.id)}?created=1`);
     });
   }

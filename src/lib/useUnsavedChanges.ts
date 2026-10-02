@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { logPortalEvent } from "./portalEvents";
+import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 
 /**
  * EV-190 U2 / AC2 — a coach's unsaved editor work cannot leave the page silently.
@@ -200,7 +201,11 @@ export function useUnsavedChanges(dirty: boolean) {
     withCleanHistory(() => {
       // The sentinel is gone by now, so a link navigation leaves exactly one entry for
       // this page — no dead Back press — and "back" means one more step, not `go(-2)`.
-      if (pending.href) router.push(pending.href);
+      // After the sentinel's popstate (which ends any pending bar), so the bar starts here.
+      if (pending.href) {
+        startNavigationProgress(pending.href);
+        router.push(pending.href);
+      }
       else window.history.back();
     });
   }, [pending, router, withCleanHistory]);

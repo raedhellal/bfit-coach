@@ -17,6 +17,7 @@ import {
 } from "@/lib/templateActions";
 import { TEMPLATE_NAME_MAX } from "@/lib/templateDocument";
 import type { CoachTemplateList, CoachTemplateSummary } from "@/lib/coachApi";
+import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 
 /**
  * AC2's library list and its five row controls, plus AC3's "Use on a trainee".
@@ -593,6 +594,7 @@ function UseDialog({
        * the draft is the thing to check, and the editor is where it is.
        */
       onClose();
+      startNavigationProgress(`/clients/${trainee.id}/routine`);
       router.push(`/clients/${trainee.id}/routine`);
     });
   }

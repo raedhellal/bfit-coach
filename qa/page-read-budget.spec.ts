@@ -25,6 +25,8 @@ import { test } from "./fixture-test";
  * Measured on `next start` with an 80 ms hold, before → after this branch:
  *   · a prefetch of `/clients/{id}` (one per roster row and per challenge participant):
  *     2 reads → 1. The roster with six rows made 12 background reads; now it makes 6.
+ *     perf/coach-fast-routes-no-skeleton (no loading.tsx under `[id]`): 1 → 0, so the
+ *     roster's background reads went 6 → 0.
  *
  * The routine tab with a draft stays sequential BY RULING (staff, 2026-10-01): the draft
  * is read only after `hasDraft`, and the template library only after the draft names a
@@ -345,7 +347,15 @@ test.describe("prefetching a client page", () => {
     JSON.stringify(["", { children: ["(roster)", { children: ["__PAGE__", {}, null, null] }, null, null] }, null, null, true])
   );
 
-  test("a prefetch of /clients/{id} reads the overview and nothing else", async ({ page }) => {
+  /**
+   * perf/coach-fast-routes-no-skeleton: no segment under `[id]` has a `loading.tsx`, and
+   * Next 14.2 renders a prefetch only down to the first loading boundary — with none,
+   * it sends the route tree and renders nothing. Until then this read the overview
+   * (`getClient`, BUG-139's status read) once per prefetch; the click now renders the
+   * layout and the page together (the overview read was always repeated by the click
+   * anyway, so a navigation's reads are unchanged).
+   */
+  test("a prefetch of /clients/{id} reads nothing", async ({ page }) => {
     await signIn(page);
     const before = (await journal(page)).length;
     const res = await page.request.get(`/clients/${LINA}`, {
@@ -355,12 +365,10 @@ test.describe("prefetching a client page", () => {
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toContain("text/x-component");
     const entries = (await journal(page)).slice(before);
-    // The overview decides the status (BUG-139) and stays. The coach's name was read
-    // too and never used: a prefetch stops at `[id]/loading.tsx`, above the header.
-    expect(ops(entries)).toEqual(["getClient"]);
+    expect(ops(entries)).toEqual([]);
   });
 
-  test("the roster's row prefetches cost one read per row (production build)", async ({ page }) => {
+  test("the roster's row prefetches cost no read (production build)", async ({ page }) => {
     await signIn(page);
     const prefetched = new Set<string>();
     page.on("request", (req) => {
@@ -382,6 +390,8 @@ test.describe("prefetching a client page", () => {
     expect(
       { reads: background.length, ops: [...new Set(background.map((e) => e.op))] },
       `${prefetched.size} client links were prefetched`
-    ).toEqual({ reads: prefetched.size, ops: ["getClient"] });
+    ).toEqual({ reads: 0, ops: [] });
+    // The rows were prefetched (the route tree), so the count above is not vacuous.
+    expect(prefetched.size).toBeGreaterThan(0);
   });
 });
