@@ -13,7 +13,7 @@
 - [Islands re-seed from props, not from their own save](an-island-must-re-seed-from-props-not-from-its-own-save.md) — revalidatePath pushes props with the response; dropping router.refresh() fixes nothing, use per-field dirty flags
 - [A notice already on screen is not a sync point](a-notice-already-on-screen-is-not-a-sync-point.md) — waiting for "Saved." from the previous save made a race test green against its own defect
 - [The coach portal auto-deploys](coach-portal-auto-deploys-to-production.md) — main ships to bfit-coach-seven.vercel.app; merging IS releasing, whatever the README says
-- [Not-found page (EV-241)](not-found-page-facts.md) — unmatched paths are a real 404; /clients/<typo> is the 403 denied page; signed-out only under /i/
+- [Not-found page (EV-241)](not-found-page-facts.md) — unmatched paths are a real 404; /clients/<typo> is the 403 denied page; signed-out only via unknown /api/auth/…
 - [A whole-representation PUT](a-whole-representation-put-needs-a-required-nullable-type.md) — an omitted field is a silent wipe; type it required-and-nullable, build it in one place
 - [done can exceed plannedSoFar](done-can-exceed-plannedsofar.md) — a Monday gives a literal 1/0; a bar drawn from it renders Infinity%, the current week draws none
 - [A source-grep guard matches its own javadoc](a-source-grep-guard-matches-its-own-explanation.md) — strip comments, anchor on the call not the declaration, count the assertions that forbid
@@ -62,3 +62,5 @@
 - [Client overview redesign (EV-337e)](client-overview-redesign-facts.md) — no tab strip on the overview; strict getByText collisions; free-text injuries say "pain"; depth 2
 - [Nav progress second click (BUG-670)](nav-progress-second-click-facts.md) — one run per wait; current-tab click ends it; data-nav-progress-ready; WebKit hydration race; retrying expect hides a gap
 - [Overview follow-ups (EV-337m)](overview-followups-337m-facts.md) — gate each block on the api's own scope, one witness per gate; 4 overview-only trainees; WebKit context inherits en-US; addCookies path trap
+- [Vercel: a status rewrite needs a concrete route](vercel-status-rewrite-needs-a-concrete-route.md) — rewrite onto a dynamic-only path gave /_not-found on Vercel, fine under next start (BUG-678)
+- [Coach previews are behind Vercel Auth](coach-previews-are-behind-vercel-auth.md) — find the URL via the public GitHub API; every preview 302s to SSO; push with an explicit refspec

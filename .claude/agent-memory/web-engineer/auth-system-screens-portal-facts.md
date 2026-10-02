@@ -33,8 +33,11 @@ shell-less/system screens per plan §5.10. Facts that cost time and are not in t
   with an EMPTY body** (dev and start), filled by JS — blank without it; QA PB-1. The root
   404 for an unmatched URL is a real route and IS server-rendered. So a nested 404 that must
   render server-side is a normal page plus a middleware `NextResponse.rewrite(req.nextUrl,
-  { status: 404 })` (the /clients/denied 403 pattern) — what `/i` and `/i/<t>/<x>` do now
-  (`INVITE_ROUTE` in middleware). Check raw HTML for the h1, and with `javaScriptEnabled: false`.
+  { status: 404 })` (the /clients/denied 403 pattern) — what `/i` does. Check raw HTML for the
+  h1, and with `javaScriptEnabled: false`. **Deep paths (`/i/<t>/<x>`) must NOT be rewritten
+  onto themselves**: on Vercel that fell to the global Pro `/_not-found` (BUG-678); they go to
+  the concrete `/i/no-invitation` — [[vercel-status-rewrite-needs-a-concrete-route]]. Copy is
+  `invitePage.notFoundBody`, no link at all (BUG-677, EV-337 ruling 7).
 - **Importing `kit.tsx` (a "use client" module) into a server view ships the whole kit**:
   the /i 404 went 87 → 133 kB for one constant. Write `44` out.
 - Invite coach name: cap by code points (`Array.from`), or an emoji at the cap leaves a lone
