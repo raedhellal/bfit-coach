@@ -632,9 +632,11 @@ function ConfirmDialog({
       land(
         week.code === "RATE_LIMITED"
           ? "WEEK_RATE_LIMITED"
-          : week.code === "NO_ANSWER"
-            ? "WEEK_UNKNOWN"
-            : "WEEK_FAILED",
+          : week.code === "WEEK_GENERATING"
+            ? "WEEK_GENERATING"
+            : week.code === "NO_ANSWER"
+              ? "WEEK_UNKNOWN"
+              : "WEEK_FAILED",
         floor
       );
     });

@@ -359,3 +359,132 @@ test.describe("French — both refusals and the cap, with the elisions", () => {
     );
   });
 });
+
+/*
+ * ADR-0030 — b-fit-api (branch `fix/week-generation-in-progress-409`) answers the coach's
+ * week apply 409 `WEEK_GENERATION_IN_PROGRESS` while the TRAINEE's own generation of that
+ * week is still running. Nothing is written and the api releases the day's apply, so the
+ * card says to try again later, in the warning tone, instead of "could not be applied".
+ * Forced with `evoli_fixture_week=generating`, which carries the api's own body (code and
+ * fixed message); the message must never reach the screen. A plain 500
+ * (`evoli_fixture_week=fail`) still reads the generic sentence.
+ */
+const IN_PROGRESS_API_MESSAGE = "A meal plan is already being generated for this week.";
+/** `--warn-ink` / `--err-ink` from globals.css, as the browser computes them. */
+const WARN_INK = "rgb(154, 91, 5)";
+const ERR_INK = "rgb(176, 28, 28)";
+
+test.describe("ADR-0030 — an apply over a week still generating says to retry later", () => {
+  test("the 409 reads the in-progress sentence as a warning, the week is untouched, and a retry clears it", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await fixtureCookie(page, "evoli_fixture_week", "generating");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(7);
+    const before = await weekText(page);
+
+    await apply(page, "Apply to Lina M.", "Apply");
+
+    const line = page.getByTestId("week-generating");
+    await expect(line).toHaveText("Lina's meal week is still being prepared. Try again in a few minutes.");
+    await expect(line).toHaveCSS("color", WARN_INK);
+    await expect(page.getByText(APPLY_FAILED)).toHaveCount(0);
+    await expect(page.getByTestId("week-refusal")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText(IN_PROGRESS_API_MESSAGE);
+    // The api releases the apply on this refusal: no sentence may say it was used.
+    await expectNoQuotaLine(page);
+    expect(await weekText(page)).toEqual(before);
+
+    // Once the trainee's week is ready the retry succeeds, and the warning no longer holds.
+    await fixtureCookie(page, "evoli_fixture_week", "off");
+    await apply(page, "Apply to Lina M.", "Apply");
+    await expect.poll(() => weekText(page)).not.toEqual(before);
+    await expect(page.getByTestId("week-generating")).toHaveCount(0);
+    await expect(page.getByText(APPLY_FAILED)).toHaveCount(0);
+  });
+
+  test("a 409 then a plain 500: the in-progress line goes, and « could not be applied » replaces it", async ({
+    page,
+  }) => {
+    // Pins the reset at the top of the apply's answer: the 500 is a different answer, so
+    // the earlier "try again in a few minutes" no longer describes anything.
+    await signIn(page);
+    await fixtureCookie(page, "evoli_fixture_week", "generating");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(7);
+
+    await apply(page, "Apply to Lina M.", "Apply");
+    await expect(page.getByTestId("week-generating")).toBeVisible();
+
+    await fixtureCookie(page, "evoli_fixture_week", "fail");
+    await apply(page, "Apply to Lina M.", "Apply");
+    await expect(page.getByText(APPLY_FAILED, { exact: true })).toBeVisible();
+    await expect(page.getByTestId("week-generating")).toHaveCount(0);
+  });
+
+  test("the code alone decides: the same 409 code with another message reads the same sentence", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await fixtureCookie(page, "evoli_fixture_week", "generating_foreign");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(7);
+
+    await apply(page, "Apply to Lina M.", "Apply");
+    await expect(page.getByTestId("week-generating")).toHaveText(
+      "Lina's meal week is still being prepared. Try again in a few minutes."
+    );
+    await expect(page.getByText(APPLY_FAILED)).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("reworded developer message");
+  });
+
+  test("a plain 500 still reads « could not be applied », in the error tone", async ({ page }) => {
+    await signIn(page);
+    await fixtureCookie(page, "evoli_fixture_week", "fail");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(7);
+
+    await apply(page, "Apply to Lina M.", "Apply");
+
+    const failed = page.getByText(APPLY_FAILED, { exact: true });
+    await expect(failed).toBeVisible();
+    await expect(failed).toHaveCSS("color", ERR_INK);
+    await expect(page.getByTestId("week-generating")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("still being prepared");
+  });
+});
+
+test.describe("ADR-0030 — the in-progress sentence in French, with the elision", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("a vowel-initial name elides: « d'Inès »", async ({ page }) => {
+    await signInFrench(page);
+    await fixtureCookie(page, "evoli_fixture_display_name", `${LINA}:${encodeURIComponent("Inès Roux")}`);
+    await fixtureCookie(page, "evoli_fixture_week", "generating");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(page.getByRole("button", { name: /^Régénérer le jour/ })).toHaveCount(7);
+
+    await apply(page, "Appliquer à Inès Roux", "Appliquer");
+
+    await expect(page.getByTestId("week-generating")).toHaveText(
+      "La semaine de repas d'Inès est encore en préparation. Réessayez dans quelques minutes."
+    );
+    await expect(page.getByText("La semaine de repas n'a pas pu être appliquée.")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText(IN_PROGRESS_API_MESSAGE);
+  });
+
+  test("a consonant-initial name does not elide: « de Lina »", async ({ page }) => {
+    await signInFrench(page);
+    await fixtureCookie(page, "evoli_fixture_week", "generating");
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await expect(page.getByRole("button", { name: /^Régénérer le jour/ })).toHaveCount(7);
+
+    await apply(page, "Appliquer à Lina M.", "Appliquer");
+
+    await expect(page.getByTestId("week-generating")).toHaveText(
+      "La semaine de repas de Lina est encore en préparation. Réessayez dans quelques minutes."
+    );
+    await expect(page.getByText("La semaine de repas n'a pas pu être appliquée.")).toHaveCount(0);
+  });
+});

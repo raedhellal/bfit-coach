@@ -2277,6 +2277,21 @@ export function isWeekApplyRateLimited(err: unknown): boolean {
 }
 
 /**
+ * 409 — ADR-0030: the TRAINEE's own generation of this week is still running (the stored
+ * week is `GENERATING` and started under 10 minutes ago). Nothing was generated or
+ * written, and the api releases the day's apply on this refusal, so the apply can be
+ * retried once the week finishes. Matched on the code only: the `message` is the api's
+ * fixed developer sentence ("A meal plan is already being generated…") and is never copy.
+ *
+ * Sent by b-fit-api branch `fix/week-generation-in-progress-409`, NOT on api main at the
+ * time of writing: until it merges, an apply over a generating week does not answer this
+ * code and this branch is dormant against live.
+ */
+export function isWeekGenerationInProgress(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "WEEK_GENERATION_IN_PROGRESS";
+}
+
+/**
  * 422 — EV-071 state (C): the trainee's recorded allergies and food rules rule out every
  * recipe the server can check. Answered by the week apply (nothing written, the trainee's
  * week untouched) and by a day regenerate (that day left as it was). A REFUSAL, not a

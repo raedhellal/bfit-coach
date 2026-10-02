@@ -18,6 +18,7 @@ import {
   isRouteNotFound,
   isSwapOptionsStale,
   isWeekApplyRateLimited,
+  isWeekGenerationInProgress,
   isWeekOutOfRange,
   type CoachRecipeSummary,
   type CoachTargetsRequest,
@@ -51,6 +52,13 @@ export type NutritionFailure =
   | "WEEK_OUT_OF_RANGE"
   | "WEEK_RATE_LIMITED"
   /**
+   * 409 `WEEK_GENERATION_IN_PROGRESS` on the week apply (ADR-0030): the trainee's own
+   * generation of this week is still running. Nothing was written and the api released the
+   * day's apply, so — unlike FAILED, which says nothing about when — the card says to try
+   * again in a few minutes. Read by CODE only.
+   */
+  | "WEEK_GENERATING"
+  /**
    * EV-256e AC7 — BUG-245's two 409s on the coach's Swap. Read by CODE, so they work
    * the day `fix/bug245-coach-swap-keeps-eaten` merges; until then `6a76d92` never
    * sends them on the swap route and these branches are dormant against live.
@@ -83,6 +91,7 @@ function classify(err: unknown): NutritionFailure {
   // ADR-0015 D6.6. Collapsed into FAILED, this read as "try again" — and the retry it
   // invited could not succeed until the next day.
   if (isWeekApplyRateLimited(err)) return "WEEK_RATE_LIMITED";
+  if (isWeekGenerationInProgress(err)) return "WEEK_GENERATING";
   if (isForbidden(err)) return "ACCESS_DENIED";
   return "FAILED";
 }
