@@ -153,10 +153,8 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
       <DeleteDialog
         recipe={deleting}
         onClose={() => setDeleting(null)}
-        onDone={() => {
-          setDeleting(null);
-          router.refresh();
-        }}
+        // No `router.refresh()` (ADR-0033 branch 2a): `deleteRecipeAction` revalidates.
+        onDone={() => setDeleting(null)}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type Request } from "@playwright/test";
 import { test } from "./fixture-test";
 
 /**
@@ -30,8 +30,13 @@ import { test } from "./fixture-test";
  * is read only after `hasDraft`, and the template library only after the draft names a
  * template. Reading the library alongside the draft saved one short cdg1 round trip, and
  * it cost two unused `GET /coach-portal/templates` per Save draft on every non-template
- * draft, because a save re-renders the page twice (revalidatePath + router.refresh).
+ * draft, because a save re-rendered the page twice (revalidatePath + router.refresh).
  * Both draft rows are pinned below, so that ordering is a decision a test holds.
+ *
+ * ADR-0033 branch 2a removed that second render: a write whose action revalidates is
+ * re-rendered ONCE, inside the action's own response, and the island no longer calls
+ * `router.refresh()` after it. "What one write costs" below pins it: a Save draft and a
+ * publish each make exactly one render's reads, and no RSC GET follows the action POST.
  * Every other main route was already one round trip, or two where a consent check must
  * come first, and had no read made twice in one render. Those rows are pinned here so a
  * later change cannot add a waterfall or a duplicate without a red test.
@@ -42,6 +47,10 @@ import { test } from "./fixture-test";
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+/** No meal week in the seed: the first Apply writes one. */
+const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
+/** A shoulder injury: publishing her plan repairs two exercises. */
+const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 const ACTIVE_CHALLENGE = "c4a11e00-0000-4000-8000-000000000001";
 const HOLD_MS = 120;
 
@@ -192,6 +201,137 @@ test.describe("the routine tab with a draft", () => {
     expect(ops(entries)).toEqual(["getClient", "getMe", "getRoutine", "getRoutineDraft"]);
     // overview → routine → draft.
     expect(depth(entries)).toBe(3);
+  });
+});
+
+test.describe("what one write costs (ADR-0033 branch 2a)", () => {
+  /**
+   * A write is a server action that calls `revalidatePath`. On Next 14.2 that makes the
+   * action's own response carry the page rendered after the write, and the router
+   * applies it. Until branch 2a the island then called `router.refresh()`, which
+   * rendered the whole page AGAIN: every read twice, and an RSC GET after the POST.
+   * Each row below was red on 294e5fec with exactly that: 2 renders, 1 RSC GET.
+   *
+   * `rscGets` counts navigation/refresh RSC requests, not prefetches (`next dev` sends
+   * none anyway). "Settled" is the journal quiet for 500 ms, never `networkidle`
+   * (ADR-0033 D33.11).
+   *
+   * The page's OWN prefetches are settled first. On a `next start` build the client
+   * tabs prefetch the overview in full after hydration, and a write clicked straight
+   * after the load counted that render as the write's (measured: 2 renders, the second
+   * `getClient + getClientProgress + getMe`).
+   */
+  async function journalQuiet(page: Page) {
+    let seen = -1;
+    await expect
+      .poll(
+        async () => {
+          const n = (await journal(page)).length;
+          const quiet = n === seen;
+          seen = n;
+          return quiet;
+        },
+        { intervals: [500], timeout: 15_000, message: "the api journal settles" }
+      )
+      .toBe(true);
+  }
+
+  async function writeCost(page: Page, write: () => Promise<void>, writeOps: string[]) {
+    await page.waitForLoadState("networkidle");
+    await journalQuiet(page);
+    const before = (await journal(page)).length;
+    let actionPosts = 0;
+    let rscGets = 0;
+    const onRequest = (req: Request) => {
+      const h = req.headers();
+      if (h["next-action"]) actionPosts += 1;
+      else if (req.method() === "GET" && h["rsc"] === "1" && h["next-router-prefetch"] !== "1") rscGets += 1;
+    };
+    page.on("request", onRequest);
+    await write();
+    await journalQuiet(page);
+    page.off("request", onRequest);
+    const reads = (await journal(page)).slice(before).filter((e) => !writeOps.includes(e.op));
+    return { actionPosts, rscGets, reads: ops(reads), renders: new Set(reads.map((e) => e.request)).size };
+  }
+
+  test("Save draft: one action, one render, no refresh", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/routine`);
+    await page.getByLabel("Sets").first().fill("5");
+    const cost = await writeCost(
+      page,
+      async () => {
+        await page.getByRole("button", { name: "Save draft" }).click();
+        await expect(page.getByText(/^Draft saved /)).toBeVisible();
+      },
+      ["saveRoutineDraft"]
+    );
+    expect(cost).toEqual({
+      actionPosts: 1,
+      rscGets: 0,
+      reads: ["getClient", "getMe", "getRoutine", "getRoutineDraft"],
+      renders: 1,
+    });
+  });
+
+  test("Publish with these changes: one action, one render, no refresh", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${DANA}/routine`);
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    const confirm = page.getByRole("dialog").getByRole("button", { name: "Publish with these changes" });
+    await expect(confirm).toBeVisible();
+    const cost = await writeCost(
+      page,
+      async () => {
+        await confirm.click();
+        await expect(page.getByText("Published. The trainee sees it next time they open the app.")).toBeVisible();
+      },
+      ["publishRoutine"]
+    );
+    // The publish deleted the draft, so the render reads no draft.
+    expect(cost).toEqual({ actionPosts: 1, rscGets: 0, reads: ["getClient", "getMe", "getRoutine"], renders: 1 });
+  });
+
+  test("Save targets: one action, one render, no refresh", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${LINA}/nutrition`);
+    await page.getByLabel("Calories").fill("2300");
+    await page.getByRole("button", { name: "Save targets" }).click();
+    const cost = await writeCost(
+      page,
+      async () => {
+        await page.getByRole("dialog").getByRole("button", { name: "Save targets" }).click();
+        await expect(page.getByText("Targets saved.")).toBeVisible();
+      },
+      ["saveNutritionTargets"]
+    );
+    expect(cost).toEqual({
+      actionPosts: 1,
+      rscGets: 0,
+      reads: ["getClient", "getFoodLog", "getMe", "getNutrition"],
+      renders: 1,
+    });
+  });
+
+  test("Apply a meal week: one action, one render, and the card shows the action's week", async ({ page }) => {
+    await signIn(page);
+    await page.goto(`/clients/${NILS}/nutrition`);
+    await page.getByRole("button", { name: "Apply to Nils K." }).click();
+    const cost = await writeCost(
+      page,
+      async () => {
+        await page.getByRole("dialog").getByRole("button", { name: "Apply", exact: true }).click();
+        await expect(page.getByRole("button", { name: /^Regenerate day: / })).toHaveCount(7);
+      },
+      ["applyMealWeek"]
+    );
+    expect(cost).toEqual({
+      actionPosts: 1,
+      rscGets: 0,
+      reads: ["getClient", "getFoodLog", "getMe", "getNutrition"],
+      renders: 1,
+    });
   });
 });
 

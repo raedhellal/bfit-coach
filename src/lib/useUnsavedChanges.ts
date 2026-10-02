@@ -67,7 +67,7 @@ export function useUnsavedChanges(dirty: boolean) {
    * reaches the layout's redirect to /clients/denied, which is EV-190 edge case 4
    * failing silently.
    */
-  const withCleanHistory = useCallback((then: () => void) => {
+  const withCleanHistory = useCallback((then: () => void = () => {}) => {
     bypass.current = true;
     if (!sentinel.current) {
       bypass.current = false;
@@ -207,8 +207,15 @@ export function useUnsavedChanges(dirty: boolean) {
 
   /**
    * Stand down, and hand the history back clean, for a navigation the page did not
-   * initiate — an access-ended refresh, or the refresh after a successful save.
+   * initiate — an access-ended refresh — or after a successful save.
    * `withCleanHistory` is the whole of it; this name is what the editor reads.
+   *
+   * ADR-0033 branch 2a: after a save, `release()` takes NO callback. The write's server
+   * action calls `revalidatePath`, and on Next 14.2 that makes the action's own response
+   * carry a fresh render of the page, which the router installs (and streams in) as
+   * the action's promise resolves. A `router.refresh()` here used to render the whole
+   * page a second time for nothing. Only the access-ended path still refreshes: a refused write does
+   * not revalidate, so the refresh is the request that reaches the layout's redirect.
    */
   const release = withCleanHistory;
 

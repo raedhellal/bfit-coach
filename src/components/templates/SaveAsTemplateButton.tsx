@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Button, Card, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
@@ -37,7 +36,6 @@ export function SaveAsTemplateButton({
   hasDraft: boolean;
 }) {
   const copy = useCopy();
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [source, setSource] = useState<CoachTemplateSource>("PLAN");
@@ -98,9 +96,11 @@ export function SaveAsTemplateButton({
       setOpen(false);
       setError(null);
       setNotice(copy.templates.saveAsTemplateDone(result.template.name));
-      // The library is a different route; refreshing here is what makes a coach who
-      // navigates to it next see the new row rather than a cached list.
-      router.refresh();
+      // The library is a different route, and a coach who goes there next must see the
+      // new row, not a cached list. `saveAsTemplateAction` revalidates, and on Next 14.2
+      // any action that revalidates purges the whole client router cache, so no
+      // `router.refresh()` is needed for that (ADR-0033 branch 2a): it only rendered
+      // this routine page a second time.
     });
   }
 

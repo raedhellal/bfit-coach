@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import type { Copy } from "@/lib/copy";
@@ -104,7 +103,6 @@ export function RecipeEditor({
   storedMealSlots?: MealSlot[] | null;
 }) {
   const copy = useCopy();
-  const router = useRouter();
   const [recipeId, setRecipeId] = useState<string | null>(initialRecipeId);
   const [draft, setDraft] = useState<RecipeDraft>(initial);
   const [dirty, setDirty] = useState(false);
@@ -252,7 +250,8 @@ export function RecipeEditor({
         });
         return;
       }
-      leaving.release(() => router.refresh());
+      // No `router.refresh()` (ADR-0033 branch 2a): `updateRecipeAction` revalidates.
+      leaving.release();
     });
   }
 

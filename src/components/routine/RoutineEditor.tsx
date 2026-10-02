@@ -162,7 +162,8 @@ export function RoutineEditor({
    * Re-seed the working copy when the SERVER's published plan changes identity — a
    * publish writes a new `plans` row, and the coach must see the REPAIRED plan the
    * trainee received (EV-184 AC3), not the draft they submitted. Keyed on `planId` so an
-   * ordinary save, which refreshes the route, does not blow away the cursor mid-edit.
+   * ordinary save, which re-renders through its action, does not blow away the cursor
+   * mid-edit.
    */
   const publishedPlanId = activePlan?.planId ?? null;
   const lastPublishedPlanId = useRef(publishedPlanId);
@@ -219,10 +220,20 @@ export function RoutineEditor({
     setError(failureSentence(failure, write, sent, copy));
   }
 
-  /** After a write, refresh the route — through `release` when nothing is outstanding. */
-  function refreshAfterWrite(sentRevision: number) {
-    if (revision.current === sentRevision) leaving.release(() => router.refresh());
-    else router.refresh();
+  /**
+   * After a write that landed: hand the history back when nothing is outstanding.
+   *
+   * No `router.refresh()` (ADR-0033 branch 2a). `saveDraftAction` calls
+   * `revalidatePath`, so its response already carries this page rendered after the
+   * write: the router installs that render and clears its cache before the `await`
+   * above returns, and the page's content streams in behind the result (measured: the
+   * notice paints ~120 ms in, the render lands ~290 ms in, at a 60 ms fixture hold). A
+   * refresh rendered the page a second time: every read twice per Save draft. The new
+   * props re-seed nothing here (the re-seed is keyed on the published `planId`, which a
+   * save does not change), exactly as with the refresh.
+   */
+  function afterWrite(sentRevision: number) {
+    if (revision.current === sentRevision) leaving.release();
   }
 
   const reasons = document
@@ -244,7 +255,7 @@ export function RoutineEditor({
       setConflict(null);
       setError(null);
       setNotice(copy.routine.savedAt(new Date().toLocaleTimeString()));
-      refreshAfterWrite(sent);
+      afterWrite(sent);
     });
   }
 
@@ -285,7 +296,8 @@ export function RoutineEditor({
       setDirty(false);
       setNotice(null);
       setError(null);
-      leaving.release(() => router.refresh());
+      // No refresh: `discardDraftAction` revalidates, so its response carried the page.
+      leaving.release();
     });
   }
 
@@ -325,7 +337,17 @@ export function RoutineEditor({
       setDirty(false);
       setNotice(copy.routine.published);
       setError(null);
-      leaving.release(() => router.refresh());
+      /**
+       * No refresh (ADR-0033 branch 2a, D33.9). `publishAction` revalidates, so its
+       * response carries the page rendered AFTER the publish: the new `planId`, the
+       * REPAIRED plan as `activePlan` and no draft. It streams in behind this
+       * continuation (as the refresh's did, only sooner), and when it lands the
+       * `planId` effect above re-seeds the working copy from it (EV-184 AC3), remounts
+       * the rows (`replaced`) and resets the token to the absent draft's null — the
+       * same values this continuation sets, so the order does not matter.
+       * `qa/publish-reseed-no-refresh.spec.ts` holds that.
+       */
+      leaving.release();
     });
   }
 

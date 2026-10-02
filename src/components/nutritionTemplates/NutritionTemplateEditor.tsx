@@ -113,7 +113,7 @@ export function NutritionTemplateEditor({
         return;
       }
       setNotice(t.saved);
-      router.refresh();
+      // No `router.refresh()` (ADR-0033 branch 2a): the update action revalidates.
     });
   }
 

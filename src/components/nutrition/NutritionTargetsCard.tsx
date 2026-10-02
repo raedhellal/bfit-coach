@@ -178,7 +178,8 @@ export function NutritionTargetsCard({
        * arithmetic about a number that was not saved.
        */
       setCalories(String(result.result.targets.calories));
-      router.refresh();
+      // No `router.refresh()` (ADR-0033 branch 2a): `saveTargetsAction` revalidates, so
+      // its response carried the page rendered after the write (the source line).
     });
   }
 
