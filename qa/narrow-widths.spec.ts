@@ -481,3 +481,30 @@ test.describe("EV-204b — /invited/[id] never scrolls a phone sideways", () => 
     });
   }
 });
+
+/**
+ * EV-337f1 X1 — the programme page (`/clients/{id}/routine`) in the sweep: the six-day plan
+ * with its sticky action bar (the fixture's `evoli_fixture_long_plan` switch, on Yusuf), the
+ * empty state (Nils) and the scope sentence (Sara), at every phone width, in both languages.
+ * The nine X1 widths and the bar's own measures live in `pro-programme-frame.spec.ts`.
+ */
+test.describe("EV-337f1 — the programme page never scrolls a phone sideways", () => {
+  const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+  for (const locale of ["en-US", "fr-FR"] as const) {
+    test.describe(locale, () => {
+      test.use({ locale });
+      test(`six-day plan, no plan, no scope at ${PHONE_WIDTHS.join(" / ")} (${locale})`, async ({ page, context, baseURL }) => {
+        await context.addCookies([{ name: "evoli_fixture_long_plan", value: YUSUF, url: baseURL! }]);
+        await signIn(page);
+        for (const id of [YUSUF, "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002", "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003"]) {
+          await page.goto(`/clients/${id}/routine`);
+          await expect(page.locator("h1")).toHaveCount(1);
+          for (const width of PHONE_WIDTHS) {
+            await page.setViewportSize({ width, height: 800 });
+            await expectNoSidewaysScroll(page, `/clients/${id}/routine at ${width} (${locale})`);
+          }
+        }
+      });
+    });
+  }
+});

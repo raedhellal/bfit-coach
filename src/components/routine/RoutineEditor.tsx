@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { StickyActionBar } from "@/components/ui/StickyActionBar";
 import { RoutineDocumentEditor } from "./RoutineDocumentEditor";
 import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
@@ -51,6 +53,14 @@ import type { CoachRoutineDraftResponse, PublishPreview, Routine } from "@/lib/c
  *
  * Publish is never a single press: `previewPublishAction` saves (with the token) and
  * returns the repairs, and `publishAction` echoes the digest the coach was shown.
+ *
+ * EV-337f1 (the programme frame) moved where things are DRAWN, and nothing about how they
+ * behave: Save draft, Discard draft and Publish live in one `StickyActionBar` named
+ * « Actions du programme » (the only three on the page), the save/publish notice and the
+ * error sit in that bar so they are in sight wherever the coach is in the plan, and the
+ * page's aside (the trainee's profile, « Enregistrer comme modèle ») arrives as `aside`
+ * so the editor and its bar can share one two-column frame. Token, `dirty`, `revision`
+ * and the `loads` remount are untouched.
  */
 
 /** The live plan, already made editable by the page (`editableDocument`). */
@@ -81,6 +91,8 @@ export function RoutineEditor({
   initialDraft,
   sourceTemplateName = null,
   unbindableExercises = [],
+  aside = null,
+  lead = null,
 }: {
   clientId: string;
   /** For the conflict dialog's overwrite sentence, which names whose draft it replaces. */
@@ -94,8 +106,25 @@ export function RoutineEditor({
    * api on every open and NEVER stored. Marked in place; nothing is removed on it.
    */
   unbindableExercises?: string[];
+  /**
+   * EV-337f1 — the page's aside (the trainee's profile, « Enregistrer comme modèle »),
+   * server-rendered and passed through untouched. Above the editor in one column, beside it
+   * from 1280 px (`.prog-split`). Null draws no aside.
+   */
+  aside?: ReactNode;
+  /**
+   * EV-337f1 — everything the page draws above the frame (the client header, the tab's
+   * `h2`, the trainee-changed banner), server-rendered and passed through. It is inside the
+   * editor's root ONLY so that the sticky action bar's containing block starts at the top
+   * of the page: a sticky box never rises above its parent's top. With the header, the
+   * `h2` and the banner outside, a 320 × 568 phone left « Publier » under the tab bar on
+   * load (measured on Yusuf, whose banner put the editor's first card at y ≈ 402: the bar
+   * could not climb past it). `qa/pro-programme-frame.spec.ts` F1.1 goes red on that.
+   */
+  lead?: ReactNode;
 }) {
   const copy = useCopy();
+  const publishHintId = useId();
   const router = useRouter();
   const [document, setDocument] = useState<Routine | null>(
     initialDraft?.document ?? activePlan?.document ?? null
@@ -148,15 +177,12 @@ export function RoutineEditor({
   const [loads, setLoads] = useState(0);
   const replaced = () => setLoads((n) => n + 1);
 
-  /**
-   * U6 — the notice and the error render in the TOP card and are brought into view and
-   * announced, because after an edit at the bottom of day 5 both are off-screen.
+  /*
+   * U6 — the notice and the error are where the coach is looking. They used to render in
+   * the TOP card and the page scrolled them into view, which took the coach away from the
+   * day they were editing. Since EV-337f1 they render in the sticky action bar, which is on
+   * screen wherever the coach is in the plan (F1.3), so nothing scrolls.
    */
-  const feedbackRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!notice && !error) return;
-    feedbackRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [notice, error]);
 
   /**
    * Re-seed the working copy when the SERVER's published plan changes identity — a
@@ -396,26 +422,31 @@ export function RoutineEditor({
   // AC1: no plan and no draft is an empty state with ONE primary control.
   if (!document) {
     return (
-      <Card>
-        <EmptyState
-          icon="dumbbell"
-          title={copy.routine.emptyTitle}
-          sub={copy.routine.emptyBody}
-          action={
-            <Button
-              icon="plus"
-              onClick={() => {
-                edit(blankRoutine(copy.routine.title, copy.routine.newDayFocus));
-                // A from-scratch plan's goal and level are placeholders until the first
-                // save resolves them from the trainee's profile.
-                setResolved(false);
-              }}
-            >
-              {copy.routine.build}
-            </Button>
-          }
-        />
-      </Card>
+      <div className="prog-editor">
+        {lead}
+        <ProgrammeFrame aside={aside}>
+          <Card>
+            <EmptyState
+              icon="dumbbell"
+              title={copy.routine.emptyTitle}
+              sub={copy.routine.emptyBody}
+              action={
+                <Button
+                  icon="plus"
+                  onClick={() => {
+                    edit(blankRoutine(copy.routine.title, copy.routine.newDayFocus));
+                    // A from-scratch plan's goal and level are placeholders until the first
+                    // save resolves them from the trainee's profile.
+                    setResolved(false);
+                  }}
+                >
+                  {copy.routine.build}
+                </Button>
+              }
+            />
+          </Card>
+        </ProgrammeFrame>
+      </div>
     );
   }
 
@@ -431,142 +462,178 @@ export function RoutineEditor({
   );
 
   return (
-    <div>
-      <Card style={{ marginBottom: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <label htmlFor="plan-name" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}>
-              {copy.routine.planNameLabel}
-            </label>
-            <input
-              id="plan-name"
-              value={document.name}
-              title={document.name}
-              onChange={(e) => edit({ ...document, name: e.target.value })}
-              style={{
-                display: "block",
-                marginTop: 6,
-                height: MIN_TOUCH_TARGET,
-                width: "min(360px, 100%)",
-                borderRadius: "var(--r-md)",
-                border: "1px solid var(--border-2)",
-                background: "var(--surface)",
-                padding: "0 12px",
-                fontFamily: "var(--font-display)",
-                fontSize: 17,
-                fontWeight: 700,
-                color: "var(--ink)",
-              }}
-            />
-          </div>
-          <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Badge tone={isDraft ? "amber" : "green"}>
-              {/* EV-184 AC2, verbatim. */}
-              {isDraft ? copy.routine.draftBadge : copy.routine.publishedBadge}
-            </Badge>
-            {/* EV-190 AC2: shown from the first edit until the next SUCCESSFUL save. */}
-            {dirty && <Badge tone="red">{copy.routine.unsavedBadge}</Badge>}
-          </span>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          <Button variant="secondary" icon="check" onClick={() => saveDraft()} disabled={pending || !writable}>
-            {pending ? copy.routine.saving : copy.routine.saveDraft}
-          </Button>
-          <Button
-            variant="ghost"
-            icon="trash"
-            onClick={() => setDiscarding(true)}
-            disabled={pending || !isDraft}
+    <div className="prog-editor">
+      {lead}
+      <ProgrammeFrame aside={aside}>
+        <Card style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
           >
-            {copy.routine.discardDraft}
-          </Button>
-          <Button icon="upload" onClick={() => openPublish()} disabled={pending || !writable}>
+            <div style={{ minWidth: 0 }}>
+              <label htmlFor="plan-name" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}>
+                {copy.routine.planNameLabel}
+              </label>
+              <input
+                id="plan-name"
+                value={document.name}
+                title={document.name}
+                onChange={(e) => edit({ ...document, name: e.target.value })}
+                style={{
+                  display: "block",
+                  marginTop: 6,
+                  height: MIN_TOUCH_TARGET,
+                  width: "min(360px, 100%)",
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border-2)",
+                  background: "var(--surface)",
+                  padding: "0 12px",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 17,
+                  fontWeight: 700,
+                  color: "var(--ink)",
+                }}
+              />
+            </div>
+            {/*
+              The status pill (EV-337f1 F1.5, ruling 15): today's words, as text, never colour
+              alone, and no date or time (a server instant needs a zone, D13).
+            */}
+            <span className="prog-status">
+              {/* EV-184 AC2, verbatim. */}
+              <StatusPill
+                tone={isDraft ? "amber" : "green"}
+                icon={isDraft ? "edit" : "checkCircle"}
+                label={isDraft ? copy.routine.draftBadge : copy.routine.publishedBadge}
+              />
+              {/* EV-190 AC2: shown from the first edit until the next SUCCESSFUL save. */}
+              {dirty && <StatusPill tone="red" icon="alert" label={copy.routine.unsavedBadge} />}
+            </span>
+          </div>
+
+          {/*
+            ADR-0016 V1b / ADR-0018 D1 — the server accepts only a publishable document, so
+            the editor holds transient invalid state LOCALLY and says what is outstanding,
+            rather than offering a Save that fails with a 400 a coach cannot act on.
+          */}
+          {reasons.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}>
+                {copy.routine.notSaveableYet}
+              </p>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                {reasons.map((reason) => (
+                  <li key={reason} style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.6 }}>
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* EV-188 AC3, verbatim. Present only while the template still exists. */}
+          {sourceTemplateName && isDraft && (
+            <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+              {copy.templates.startedFrom(sourceTemplateName)}
+            </p>
+          )}
+
+          {/* EV-188 AC5 — the count is the flagged rows STILL PRESENT. */}
+          {flaggedInPlan > 0 && (
+            <p
+              role="status"
+              style={{
+                margin: "12px 0 0",
+                padding: "10px 12px",
+                borderRadius: "var(--r-lg)",
+                background: "var(--warn-bg)",
+                color: "var(--warn-ink)",
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              {copy.templates.unbindable(flaggedInPlan)}
+            </p>
+          )}
+        </Card>
+
+        <RoutineDocumentEditor
+          key={loads}
+          document={document}
+          onChange={edit}
+          subject={{ kind: "trainee", resolved }}
+          dayCountBound={copy.routine.dayCountBound}
+          unbindable={unbindable}
+          replaceHint
+        />
+      </ProgrammeFrame>
+
+      {/*
+        EV-201 AC4 — what Publish does, ALWAYS, before it is pressed. Since EV-337f1 it is in
+        the page directly above the action bar (plan §5.3: "the publish hint sentence moves
+        above the bar, in the page"), never inside it, and Publish names it as its
+        description so a screen reader hears it on the control itself.
+      */}
+      <p id={publishHintId} className="prog-publish-hint">
+        {copy.routine.publishShowsFirst}
+      </p>
+
+      {/*
+        EV-337f1 F1.1–F1.3 — the ONE place the plan is saved, discarded or published: a
+        sticky bar above the tab bar (< 1024) or the legal footer (≥ 1024), so « Publier »
+        is under the thumb at day 6 of a six-day plan. Below 768 px Save and Discard share
+        a row and Publish has the bar's full width under them. The notice and the error are
+        IN the bar, so a save from day 6 is answered at day 6. DOM order = keyboard order:
+        Save, Discard, Publish, as before.
+      */}
+      <StickyActionBar label={copy.routine.actionsLabel}>
+        {notice && (
+          <p className="action-bar-note" role="status" data-tone="ok">
+            {notice}
+          </p>
+        )}
+        {error && (
+          <p className="action-bar-note" role="alert" data-tone="err">
+            {error}
+          </p>
+        )}
+        <div className="prog-bar-actions">
+          <div className="prog-bar-pair">
+            <Button
+              variant="secondary"
+              icon="check"
+              onClick={() => saveDraft()}
+              disabled={pending || !writable}
+              style={BAR_BUTTON}
+            >
+              {pending ? copy.routine.saving : copy.routine.saveDraft}
+            </Button>
+            <Button
+              variant="ghost"
+              icon="trash"
+              onClick={() => setDiscarding(true)}
+              disabled={pending || !isDraft}
+              style={BAR_BUTTON}
+            >
+              {copy.routine.discardDraft}
+            </Button>
+          </div>
+          <Button
+            icon="upload"
+            onClick={() => openPublish()}
+            disabled={pending || !writable}
+            ariaDescribedBy={publishHintId}
+            style={BAR_BUTTON}
+          >
             {pending ? copy.routine.publishing : copy.routine.publish}
           </Button>
         </div>
-
-        {/* EV-201 AC4 — next to the Publish control, ALWAYS, and before it is pressed. */}
-        <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
-          {copy.routine.publishShowsFirst}
-        </p>
-
-        {/*
-          ADR-0016 V1b / ADR-0018 D1 — the server accepts only a publishable document, so
-          the editor holds transient invalid state LOCALLY and says what is outstanding,
-          rather than offering a Save that fails with a 400 a coach cannot act on.
-        */}
-        {reasons.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}>
-              {copy.routine.notSaveableYet}
-            </p>
-            <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-              {reasons.map((reason) => (
-                <li key={reason} style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.6 }}>
-                  {reason}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* EV-188 AC3, verbatim. Present only while the template still exists. */}
-        {sourceTemplateName && isDraft && (
-          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
-            {copy.templates.startedFrom(sourceTemplateName)}
-          </p>
-        )}
-
-        {/* EV-188 AC5 — the count is the flagged rows STILL PRESENT. */}
-        {flaggedInPlan > 0 && (
-          <p
-            role="status"
-            style={{
-              margin: "12px 0 0",
-              padding: "10px 12px",
-              borderRadius: "var(--r-lg)",
-              background: "var(--warn-bg)",
-              color: "var(--warn-ink)",
-              fontSize: 13,
-              lineHeight: 1.5,
-            }}
-          >
-            {copy.templates.unbindable(flaggedInPlan)}
-          </p>
-        )}
-
-        <div ref={feedbackRef}>
-          {notice && (
-            <p role="status" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>
-              {notice}
-            </p>
-          )}
-          {error && (
-            <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
-              {error}
-            </p>
-          )}
-        </div>
-      </Card>
-
-      <RoutineDocumentEditor
-        key={loads}
-        document={document}
-        onChange={edit}
-        subject={{ kind: "trainee", resolved }}
-        dayCountBound={copy.routine.dayCountBound}
-        unbindable={unbindable}
-        replaceHint
-      />
+      </StickyActionBar>
 
       <Modal
         open={discarding}
@@ -770,5 +837,33 @@ function PublishModal({
         </p>
       )}
     </Modal>
+  );
+}
+
+/**
+ * EV-337f1 — the bar's buttons may WRAP their label between words (French « Enregistrer le
+ * brouillon » is two lines in half of a 320 px bar, edge case 3), so they grow from the
+ * 44 px floor instead of clipping. Wider than the label needs, nothing wraps.
+ */
+const BAR_BUTTON: CSSProperties = {
+  height: "auto",
+  minHeight: MIN_TOUCH_TARGET,
+  padding: "6px 14px",
+  whiteSpace: "normal",
+  lineHeight: "18px",
+  textAlign: "center",
+};
+
+/**
+ * EV-337f1 F1.4 — the programme's two-column frame: the aside first in the document (above
+ * the editor in one column, plan §3), beside it from a 1280 px viewport by grid placement.
+ * CSS decides, never a viewport hook (plan §3 rule 5).
+ */
+function ProgrammeFrame({ aside, children }: { aside: ReactNode; children: ReactNode }) {
+  return (
+    <div className="layout-split prog-split">
+      {aside ? <div className="prog-aside">{aside}</div> : null}
+      <div className="prog-main">{children}</div>
+    </div>
   );
 }

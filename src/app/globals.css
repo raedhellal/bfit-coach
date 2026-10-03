@@ -1332,6 +1332,30 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
   .action-bar-end { margin-left: auto; }
 }
 
+/* ── EV-337f1: the programme page (plan §5.3) ─────────────────────────────────────────
+   The tab's own `h2` (ruling 16), the aside beside the editor from a 1280 px viewport and
+   above it below that, and the programme's `StickyActionBar`: Save draft + Discard draft on
+   one row and « Publier » the bar's full width below 768 px, one row of three above. */
+.prog-title { margin: 0 0 14px; font: 600 var(--fs-h2)/26px var(--font-display); color: var(--ink); }
+/* The cards carry their own bottom margins, so one column adds no row gap on top of them. */
+.layout-split.prog-split { row-gap: 0; }
+.prog-split > .prog-aside, .prog-split > .prog-main { min-width: 0; }
+@media (min-width: 1280px) {
+  .prog-split > .prog-main { grid-column: 1; grid-row: 1; }
+  .prog-split > .prog-aside { grid-column: 2; grid-row: 1; }
+}
+.prog-status { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.prog-publish-hint { margin: 4px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-3); }
+.prog-bar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.prog-bar-pair { display: flex; gap: 8px; }
+@media (max-width: 767px) {
+  /* Publish under the pair, as wide as the bar; the pair splits the row in two. A label
+     that does not fit its half wraps between words (the buttons grow from 44 px). */
+  .prog-bar-actions { flex: 1 1 100%; margin-left: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+  .prog-bar-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .prog-bar-actions button { min-width: 0; }
+}
+
 /* ── EV-337e: the client overview (plan §5.2) ─────────────────────────────────────────
    Header, « À traiter », five stat cards, then « Activité récente » beside the programme
    and nutrition summaries (two columns from a 1280 px viewport, `.layout-split`). Every

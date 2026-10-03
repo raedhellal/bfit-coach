@@ -527,6 +527,8 @@ export const fr = {
   /** No sentence here claims the plan is safe for the client's equipment (BUG-053, see copy.ts). */
   routine: {
     title: "Programme",
+    profileTitle: "Profil du client",
+    actionsLabel: "Actions du programme",
     injuries: "Blessures",
     equipment: "Matériel disponible",
     equipmentUnanswered: "Pas encore renseigné.",

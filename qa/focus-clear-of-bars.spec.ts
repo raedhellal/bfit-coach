@@ -146,10 +146,22 @@ test("WebKit 390: a field on /recipes/new is clear of the tab bar when reached b
  * a click-focused input. The island now acts on keyboard focus only. Witness: a field whose
  * top 12 px show above the tab bar is clicked there; the page must not move, and the field
  * must have focus (so the click really landed on it).
+ *
+ * EV-337f1: the routine editor now has a sticky `.action-bar` riding ON the tab bar, so the
+ * bottom edge of the readable page is the action bar's top. The field peeks above THAT bar
+ * (the topmost bottom bar); above the tab bar alone it would sit under the action bar and
+ * the click would land on Save, not on the field.
  */
 async function clickPeekingField(page: Page) {
   const before = await page.evaluate(async () => {
-    const bar = document.querySelector(".shell-tabbar")!.getBoundingClientRect();
+    const barsTop = () =>
+      Math.min(
+        ...Array.from(document.querySelectorAll(".shell-tabbar, .action-bar"))
+          .map((x) => x.getBoundingClientRect())
+          .filter((r) => r.height > 0 && r.bottom > innerHeight - 200)
+          .map((r) => r.top)
+      );
+    const bar = { top: barsTop() };
     const fields = Array.from(document.querySelectorAll<HTMLInputElement>("main input[type=text], main input:not([type])")).filter(
       (e) => e.getBoundingClientRect().height > 20
     );
@@ -159,10 +171,10 @@ async function clickPeekingField(page: Page) {
     await new Promise((r) => setTimeout(r, 250));
     el.setAttribute("data-peek", "");
     const r = el.getBoundingClientRect();
-    return { top: r.top, left: r.left, scrollY: window.scrollY, barTop: document.querySelector(".shell-tabbar")!.getBoundingClientRect().top };
+    return { top: r.top, left: r.left, scrollY: window.scrollY, barTop: barsTop() };
   });
   expect(before, "found a text field on the routine editor").not.toBeNull();
-  expect(before!.top, "the field peeks above the tab bar").toBeLessThan(before!.barTop);
+  expect(before!.top, "the field peeks above the bottom bars").toBeLessThan(before!.barTop);
   await page.mouse.click(before!.left + 10, before!.top + 5);
   await page.waitForTimeout(400);
   const after = await page.evaluate(() => ({
