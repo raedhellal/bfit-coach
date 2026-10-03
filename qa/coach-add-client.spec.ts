@@ -173,6 +173,30 @@ test.describe("AC-P7 — a new address: the account is set up and the roster lis
     expect(all[1].temporaryPassword).not.toBe(all[0].temporaryPassword);
     expect(all[1].expiresAt, "D22.9c: the new email states the same date").toBe(all[0].expiresAt);
     await expect(row.locator("time[data-invited-expires]")).toHaveAttribute("datetime", before!);
+    // Staff nit 2: a Resend in the first minute is still said ("Resent …"), on the row and the page.
+    await expect(row.locator(".invited-resent time")).toHaveText(/^Resent \d{1,2} [A-Z][a-z]{2} \d{4}$/);
+    await row.getByRole("link").click();
+    await page.waitForURL(/\/invited\//);
+    await expect(page.locator(".invited-facts")).toContainText(/Resent \d{1,2} [A-Z][a-z]{2} \d{4}/);
+  });
+
+  test("staff should-fix 1: the dialog cannot be closed while the add is in flight, so its outcome lands in it", async ({ page, context, baseURL }) => {
+    await signIn(page);
+    // Every fixture api call held 1.5 s (fixtureApiJournal.ts), this browser context only.
+    await setSwitch(context, baseURL, "evoli_fixture_api_latency", "1500");
+    await page.getByRole("button", { name: "Add a client", exact: true }).click();
+    const dialog = addDialog(page);
+    await dialog.getByLabel("Name", { exact: true }).fill("Amal Haddad");
+    await dialog.getByLabel("Email address", { exact: true }).fill("amal@example.com");
+    await dialog.getByRole("button", { name: "Add client", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "Adding…" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeVisible();
+    // The answer lands in the same dialog, about the same person.
+    await expect(page.getByRole("dialog", { name: "Account set up" }).locator("[data-add-client-done]")).toContainText(
+      "Amal Haddad's account is set up."
+    );
   });
 });
 
