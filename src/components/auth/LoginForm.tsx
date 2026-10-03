@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
 import { crossSessionBoundary } from "@/lib/clientSession";
@@ -15,6 +15,15 @@ import { useCopy } from "@/lib/i18n/client";
  * The server sets the cookie, and the form then leaves with a DOCUMENT load
  * (`crossSessionBoundary`, ADR-0033 D33.7) — a soft navigation could replay an RSC payload
  * cached without a session.
+ *
+ * BUG-686 — what was typed BEFORE hydration is adopted once, on mount. The server HTML's
+ * fields are live as soon as they paint, and React 18 hydrates a controlled input without
+ * touching its DOM value, so a coach on a slow first load could see both fields filled
+ * while `email`/`password` were still "" and « Se connecter » stayed disabled until he
+ * edited a field. The effect copies the fields' DOM values into state after hydration;
+ * from then on the inputs are controlled as before. Validation is unchanged: the button
+ * still needs both values. Whether browser or password-manager autofill hits the same race
+ * was not tested.
  */
 export function LoginForm({ initialError }: { initialError?: string | null }) {
   const copy = useCopy();
@@ -23,6 +32,16 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
   const [error, setError] = useState<string | null>(initialError || null);
   const [busy, setBusy] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
+  const emailField = useRef<HTMLInputElement>(null);
+  const passwordField = useRef<HTMLInputElement>(null);
+
+  // BUG-686: runs once, after hydration — adopt whatever the server HTML's fields already hold.
+  useEffect(() => {
+    const typedEmail = emailField.current?.value;
+    const typedPassword = passwordField.current?.value;
+    if (typedEmail) setEmail(typedEmail);
+    if (typedPassword) setPassword(typedPassword);
+  }, []);
 
   function messageFor(code: string): string {
     switch (code) {
@@ -121,6 +140,7 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
           icon="mail"
           type="email"
           autoComplete="username"
+          inputRef={emailField}
           value={email}
           placeholder={copy.login.emailPlaceholder}
           full
@@ -134,6 +154,7 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
           icon="key"
           type="password"
           autoComplete="current-password"
+          inputRef={passwordField}
           value={password}
           placeholder={copy.login.passwordPlaceholder}
           full
