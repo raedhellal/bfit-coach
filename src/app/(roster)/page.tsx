@@ -1,6 +1,8 @@
 import { CoachShell } from "@/components/shell/CoachShell";
 import { CapacityMeter } from "@/components/roster/CapacityMeter";
 import { InviteButton } from "@/components/roster/InviteButton";
+import { AddClientButton } from "@/components/roster/AddClientButton";
+import { InvitedSection, type InvitedRowData } from "@/components/roster/InvitedSection";
 import { RosterBrowser, type RosterEntry } from "@/components/roster/RosterBrowser";
 import { RosterRow } from "@/components/roster/RosterRows";
 import { RosterSortToggle } from "@/components/roster/RosterSortToggle";
@@ -11,6 +13,7 @@ import { readRosterSort } from "@/lib/rosterSort";
 import { classifyRosterRow, dayIn, searchKey } from "@/lib/rosterView";
 import { getCopy } from "@/lib/i18n/server";
 import { tierLabel } from "@/lib/format";
+import { readAllInvited } from "@/lib/invited";
 
 /**
  * / — the roster (AC1, AC4).
@@ -42,6 +45,26 @@ export default async function RosterPage() {
    * this page holds one page of it, so sorting here would order page 1 among itself.
    */
   const sort = readRosterSort();
+  /**
+   * EV-204b — the Invited accounts, read beside the roster (one more request in the same
+   * round trip). Its failure is its OWN state: the roster still renders, and the section
+   * says the invitations could not be loaded rather than showing none.
+   */
+  const invitedRead = readAllInvited().then(
+    (rows): { rows: InvitedRowData[]; failed: boolean } => ({
+      // Field by field: the row data is serialised into a client island.
+      rows: rows.map((r) => ({
+        userId: r.userId,
+        fullName: r.fullName,
+        email: r.email,
+        createdAt: r.createdAt,
+        expiresAt: r.expiresAt,
+        passwordIssuedAt: r.passwordIssuedAt,
+      })),
+      failed: false,
+    }),
+    () => ({ rows: [], failed: true })
+  );
 
   try {
     // `listClients` is paged. One page of ROSTER_PAGE_SIZE (the api's own maximum) is
@@ -50,6 +73,7 @@ export default async function RosterPage() {
     const [meResult, roster] = await Promise.all([
       coachApi.getMe(),
       coachApi.listClients(sort),
+      invitedRead,
     ]);
     me = meResult;
     // Rendered in the order the api returned. Re-sorting here is the defect, not the
@@ -88,6 +112,7 @@ export default async function RosterPage() {
     );
   }
 
+  const invited = await invitedRead;
   const full = me.active >= me.capacity;
   // Edge case 5's sentence, built from the api's own tier and capacity so it can never
   // contradict the meter beside it.
@@ -118,9 +143,15 @@ export default async function RosterPage() {
         title={copy.roster.title}
         sub={clients.length > 0 ? copy.roster.subtitleCounts(clients.length, toReview) : copy.roster.subtitle}
         actions={
-          clients.length > 0 ? (
-            <InviteButton disabled={full} disabledReason={fullReason} />
-          ) : undefined
+          // EV-204b: « Ajouter un client » is the roster's primary action. The link invite
+          // stays beside it (its own empty-state home below when there are no clients).
+          <div className="roster-actions">
+            <AddClientButton
+              capacityNote={full ? copy.addClient.capacityNote(tierLabel(me.tier), me.capacity) : undefined}
+              inviteDisabledReason={full ? fullReason : undefined}
+            />
+            {clients.length > 0 && <InviteButton variant="secondary" disabled={full} disabledReason={fullReason} />}
+          </div>
         }
       />
 
@@ -134,6 +165,8 @@ export default async function RosterPage() {
           {clients.length > 0 && <RosterSortToggle sort={sort} />}
         </div>
       </div>
+
+      <InvitedSection rows={invited.rows} loadFailed={invited.failed} />
 
       {clients.length === 0 ? (
         <Card pad={0}>
