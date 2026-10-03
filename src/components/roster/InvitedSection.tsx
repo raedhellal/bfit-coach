@@ -7,6 +7,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { useCopy } from "@/lib/i18n/client";
 import { formatExpiryUtc, formatInstant } from "@/lib/format";
 import { InvitedActions, type InvitedOutcome } from "./InvitedActions";
+import { wasResent } from "@/lib/addClient";
 
 /**
  * EV-204b, AC-P7 — « Invitations en attente » / "Invited": the accounts this coach set up
@@ -33,10 +34,7 @@ export interface InvitedRowData {
   passwordIssuedAt: string;
 }
 
-/** A Resend moves `passwordIssuedAt`; the first email shares `createdAt`'s instant. */
-function wasResent(row: InvitedRowData): boolean {
-  return Date.parse(row.passwordIssuedAt) - Date.parse(row.createdAt) > 60_000;
-}
+
 
 export function InvitedSection({ rows, loadFailed }: { rows: InvitedRowData[]; loadFailed: boolean }) {
   const copy = useCopy();

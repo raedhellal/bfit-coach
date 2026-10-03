@@ -2,6 +2,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { InvitedPageActions } from "@/components/invited/InvitedPageActions";
+import { wasResent } from "@/lib/addClient";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Button } from "@/components/ui/kit";
 import { readCoachMe } from "@/lib/clientOverview";
@@ -53,7 +54,7 @@ export default async function InvitedPage({ params }: { params: { userId: string
 
   const row = loaded.row;
   const expiry = formatExpiryUtc(row.expiresAt, copy.locale);
-  const resent = Date.parse(row.passwordIssuedAt) - Date.parse(row.createdAt) > 60_000;
+  const resent = wasResent(row);
   return (
     <CoachShell coachName={me?.displayName} section="roster">
       <div style={{ marginBottom: 6 }}>

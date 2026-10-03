@@ -107,6 +107,15 @@ export interface AddedClient {
 
 export type AddClientResult = { ok: true; added: AddedClient } | { ok: false; failure: AddClientFailure };
 
+/**
+ * A Resend moves `passwordIssuedAt`; the first email is written with `createdAt`'s own
+ * instant (`InitialiseAccountUseCase.initialise` passes one `now` to both), so any later
+ * instant is a Resend — the first minute included.
+ */
+export function wasResent(row: { createdAt: string; passwordIssuedAt: string }): boolean {
+  return Date.parse(row.passwordIssuedAt) > Date.parse(row.createdAt);
+}
+
 /** Resend and Withdraw. `GONE` is the api's one 404: activated, expired, withdrawn elsewhere. */
 export type InvitationWriteFailure =
   | { code: "GONE" }
