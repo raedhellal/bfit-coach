@@ -26,6 +26,7 @@ import {
 } from "@/lib/progressGoal";
 import { settled } from "@/lib/settled";
 import type { TraineeProgressGoal } from "@/lib/coachApi";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * EV-202b — where the trainee started, where they are, and where they are going.
@@ -98,6 +99,8 @@ export function ProgressGoalBlock({
   const [propSignature, setPropSignature] = useState(signature);
   const [goal, setGoal] = useState(incoming);
   const [fields, setFields] = useState(() => seedFormState(incoming, copy.locale));
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
 
   if (signature !== propSignature) {
     // The signature is advanced whether or not a field was re-seeded — otherwise a
@@ -300,6 +303,7 @@ export function ProgressGoalBlock({
 
       {/* ── the edit form: exactly three fields (EV-274b AC1 counts them) ──────── */}
       <div
+        ref={scope}
         style={{
           display: "flex",
           gap: 12,

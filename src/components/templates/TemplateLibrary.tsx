@@ -20,6 +20,7 @@ import { TEMPLATE_NAME_MAX } from "@/lib/templateDocument";
 import { matchesSearch, searchKey } from "@/lib/rosterView";
 import type { CoachTemplateList, CoachTemplateSummary } from "@/lib/coachApi";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * AC2's library list and its five row controls, plus AC3's "Use on a trainee".
@@ -88,6 +89,8 @@ export function TemplateLibrary({
   const [query, setQuery] = useState("");
   const searchId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
 
   function close() {
     setDialog(null);
@@ -120,7 +123,7 @@ export function TemplateLibrary({
   const searching = query.trim() !== "";
 
   return (
-    <div>
+    <div ref={scope}>
       {templates.length > 0 && (
         <div className="tpl-toolbar">
           <label className="roster-search" htmlFor={searchId}>

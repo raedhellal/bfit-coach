@@ -30,7 +30,7 @@ export default defineConfig({
    * template » row needs a trainee on the roster.
    * pro-challenges.spec.ts (EV-337h) needs the seeded challenges, populated only.
    */
-  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster)\.spec\.ts/,
+  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249) — see
   // playwright.config.ts's `workers` note.

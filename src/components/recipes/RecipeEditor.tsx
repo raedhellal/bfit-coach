@@ -36,6 +36,7 @@ import {
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import type { CoachIngredientOption, MealSlot, RecipeUnit } from "@/lib/coachApi";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * EV-256b AC2/AC4/AC6 — the recipe editor.
@@ -105,6 +106,8 @@ export function RecipeEditor({
   const copy = useCopy();
   const [recipeId, setRecipeId] = useState<string | null>(initialRecipeId);
   const [draft, setDraft] = useState<RecipeDraft>(initial);
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   const [dirty, setDirty] = useState(false);
   /** The server's refusals from the LAST save, each addressed to a control. */
   const [refused, setRefused] = useState<Problem[]>([]);
@@ -275,7 +278,7 @@ export function RecipeEditor({
     sameSlots(draft.mealSlots, UNTAGGED_SLOTS);
 
   return (
-    <div>
+    <div ref={scope}>
       {recipeId !== null && (
         // AC6, verbatim, above the form — on an existing recipe only, and on a new one
         // from the moment its first save made it one.

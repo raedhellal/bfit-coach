@@ -25,6 +25,7 @@ import {
   type TemplateFailure,
 } from "@/lib/templateActions";
 import type { Routine } from "@/lib/coachApi";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * AC1/AC2's template editor — the standalone one, on the coach's own resource.
@@ -115,6 +116,8 @@ export function TemplateEditor({
    */
   const [templateId, setTemplateId] = useState<string | null>(initialTemplateId);
   const [draft, setDraft] = useState<TemplateDraft>(initial);
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +184,7 @@ export function TemplateEditor({
   }
 
   return (
-    <div className="tpl-editor">
+    <div className="tpl-editor" ref={scope}>
       {back}
       <PageHead
         title={title}

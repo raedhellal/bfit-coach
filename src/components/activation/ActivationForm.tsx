@@ -5,6 +5,7 @@ import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
 import { crossSessionBoundary } from "@/lib/clientSession";
 import { useCopy } from "@/lib/i18n/client";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 import { LEGAL_URLS } from "@/lib/legal";
 import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, isApiBlank } from "@/lib/password";
 
@@ -24,6 +25,12 @@ import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, isApiBlank } from "@/lib/password";
  *     `409 CONSENT_VERSION_STALE` the new versions are shown and the tick is TAKEN BACK,
  *     never resubmitted silently (a silent retry would record consent to text the person
  *     did not see — the app's §8b recovery, mirrored).
+ *
+ * What was typed or ticked BEFORE hydration (BUG-686 follow-up) is adopted once, after it,
+ * by `useAdoptPrehydrationInput`: the three passwords, and the consent box. Adopting a tick
+ * does not break the first rule above — the box is ticked on screen because the person
+ * ticked it, and the alternative was a box shown ticked with consent `false` behind it, which
+ * a click would visibly UNtick while leaving the state unchanged.
  */
 
 type Versions = { privacyPolicyVersion: string; termsVersion: string };
@@ -47,6 +54,7 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
   const [closed, setClosed] = useState(false);
   /** 429: the submit is held until this instant (ms). */
   const [heldUntil, setHeldUntil] = useState<number | null>(null);
+  const form = useAdoptPrehydrationInput<HTMLFormElement>();
 
   useEffect(() => {
     if (heldUntil === null) return;
@@ -189,6 +197,7 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
 
   return (
     <form
+      ref={form}
       onSubmit={submit}
       noValidate
       aria-busy={busy || undefined}

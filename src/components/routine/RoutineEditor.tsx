@@ -24,6 +24,7 @@ import {
   saveDraftAction,
 } from "@/lib/routineActions";
 import type { CoachRoutineDraftResponse, PublishPreview, Routine } from "@/lib/coachApi";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * EV-184b's editor for a TRAINEE's plan: the working copy, the draft write path and the
@@ -124,6 +125,8 @@ export function RoutineEditor({
   const [dirty, setDirty] = useState(false);
   /** Bumped by every edit; a save clears `dirty` only if no edit happened in flight. */
   const revision = useRef(0);
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   const [preview, setPreview] = useState<PublishPreview | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const [conflict, setConflict] = useState<Conflict | null>(null);
@@ -431,7 +434,7 @@ export function RoutineEditor({
   );
 
   return (
-    <div>
+    <div ref={scope}>
       <Card style={{ marginBottom: 16 }}>
         <div
           style={{

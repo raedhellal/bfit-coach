@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
 import { crossSessionBoundary } from "@/lib/clientSession";
 import { useCopy } from "@/lib/i18n/client";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * The credential form. It posts to /api/auth/login (this app's own origin) and never
@@ -20,8 +21,9 @@ import { useCopy } from "@/lib/i18n/client";
  * fields are live as soon as they paint, and React 18 hydrates a controlled input without
  * touching its DOM value, so a coach on a slow first load could see both fields filled
  * while `email`/`password` were still "" and « Se connecter » stayed disabled until he
- * edited a field. The effect copies the fields' DOM values into state after hydration;
- * from then on the inputs are controlled as before. Validation is unchanged: the button
+ * edited a field. `useAdoptPrehydrationInput` replays each typed field's change once after
+ * hydration (the shared form of the first fix's per-field refs); from then on the inputs
+ * are controlled as before. Validation is unchanged: the button
  * still needs both values. Whether browser or password-manager autofill hits the same race
  * was not tested.
  */
@@ -32,17 +34,8 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
   const [error, setError] = useState<string | null>(initialError || null);
   const [busy, setBusy] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
-  const emailField = useRef<HTMLInputElement>(null);
-  const passwordField = useRef<HTMLInputElement>(null);
-
-  // BUG-686: idempotent; reads the DOM on mount (after hydration) and adopts whatever the
-  // server HTML's fields already hold. Dev StrictMode runs it twice, harmlessly.
-  useEffect(() => {
-    const typedEmail = emailField.current?.value;
-    const typedPassword = passwordField.current?.value;
-    if (typedEmail) setEmail(typedEmail);
-    if (typedPassword) setPassword(typedPassword);
-  }, []);
+  // BUG-686: what the server HTML's fields hold at hydration reaches state.
+  const form = useAdoptPrehydrationInput<HTMLFormElement>();
 
   function messageFor(code: string): string {
     switch (code) {
@@ -106,6 +99,7 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
     // The form fills `.login-form-inner` (360 px at most, the column minus its padding
     // below that); the page puts the new-coach line and the language switch after it.
     <form
+      ref={form}
       onSubmit={submit}
       aria-busy={busy || undefined}
       style={{ width: "100%", display: "flex", flexDirection: "column", gap: 20 }}
@@ -141,7 +135,6 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
           icon="mail"
           type="email"
           autoComplete="username"
-          inputRef={emailField}
           value={email}
           placeholder={copy.login.emailPlaceholder}
           full
@@ -155,7 +148,6 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
           icon="key"
           type="password"
           autoComplete="current-password"
-          inputRef={passwordField}
           value={password}
           placeholder={copy.login.passwordPlaceholder}
           full

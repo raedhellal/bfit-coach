@@ -218,15 +218,22 @@ export function Card({
   style = {},
   hover,
   onClick,
+  rootRef,
 }: {
   children?: ReactNode;
   pad?: number;
   style?: Sx;
   hover?: boolean;
   onClick?: () => void;
+  /**
+   * The card's own `<div>`, for a form card that adopts what was typed into its fields
+   * before hydration (`useAdoptPrehydrationInput`, BUG-686 follow-up).
+   */
+  rootRef?: Ref<HTMLDivElement>;
 }) {
   return (
     <div
+      ref={rootRef}
       onClick={onClick}
       style={{
         background: "var(--surface)",
@@ -304,7 +311,6 @@ export function Input({
   autoComplete,
   ariaLabel,
   hintId,
-  inputRef,
   style = {},
 }: {
   label?: string;
@@ -342,11 +348,6 @@ export function Input({
   ariaLabel?: string;
   /** Gives the hint/error line this id and points the input's `aria-describedby` at it. */
   hintId?: string;
-  /**
-   * BUG-686 — the `<input>` itself, for a caller that must read what the DOM holds rather
-   * than what React's state holds (LoginForm, after hydration).
-   */
-  inputRef?: Ref<HTMLInputElement>;
   style?: Sx;
 }) {
   return (
@@ -389,7 +390,6 @@ export function Input({
       >
         {icon && <UiIcon name={icon} size={16} color="var(--ink-3)" />}
         <input
-          ref={inputRef}
           value={value}
           placeholder={placeholder}
           type={type || "text"}

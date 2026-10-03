@@ -10,6 +10,7 @@ import { deleteRecipeAction } from "@/lib/recipeActions";
 import { settled } from "@/lib/settled";
 import { MEAL_SLOTS, effectiveSlots } from "@/lib/recipeDocument";
 import type { CoachRecipeList, CoachRecipeSummary, MealSlot } from "@/lib/coachApi";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * EV-256b AC1 and AC5 — the coach's recipe library and its delete.
@@ -32,6 +33,8 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
   const router = useRouter();
   const [deleting, setDeleting] = useState<CoachRecipeSummary | null>(null);
   const [slot, setSlot] = useState<MealSlot | "ALL">("ALL");
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
 
   const count = library.recipes.length;
   const shown =
@@ -45,7 +48,7 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
   );
 
   return (
-    <div>
+    <div ref={scope}>
       <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
         {copy.recipes.private}
       </p>
