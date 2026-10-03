@@ -66,3 +66,4 @@
 - [Overview follow-ups (EV-337m)](overview-followups-337m-facts.md) — gate each block on the api's own scope, one witness per gate; 4 overview-only trainees; WebKit context inherits en-US; addCookies path trap
 - [Vercel: a status rewrite needs a concrete route](vercel-status-rewrite-needs-a-concrete-route.md) — rewrite onto a dynamic-only path gave /_not-found on Vercel, fine under next start (BUG-678)
 - [Coach previews are behind Vercel Auth](coach-previews-are-behind-vercel-auth.md) — find the URL via the public GitHub API; every preview 302s to SSO; push with an explicit refspec
+- [Add a client (EV-204b)](add-client-portal-facts.md) — no GET by id; initialise skips capacity; P18 link and P11 enabled state cannot exist; fixture mail sink + switches

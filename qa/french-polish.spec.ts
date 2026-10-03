@@ -114,6 +114,7 @@ const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
   "activate.expired#0",
   "activate.expiredOnSubmit#0",
   "activate.finishBy#0",
+  "addClient.doneNext#0", // EV-204b: « avant le {date} »
   "challenges.endedOn#0", // EV-337h: « Terminé le {date} »
   "challenges.endsOn#0", // EV-337h: « se termine le {date} »
   "client.coachedSince#0",
@@ -121,6 +122,11 @@ const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
   "client.programmeCard.changedByTrainee#0", // EV-337e: « le {date} »
   "client.programmeCard.draftSaved#0", // EV-337e: « le {date} »
   "client.programmeCard.published#0", // EV-337e: « Publié le {date} »
+  "invited.pageExpiry#0", // EV-204b: « avant le {date} »
+  "invited.resendBody#1", // EV-204b: « expire toujours le {date} »
+  "invited.resent#1", // EV-204b: same
+  "invited.resentOn#0", // EV-204b: « Renvoyée le {date} »
+  "invited.sent#0", // EV-204b: « Envoyée le {date} »
   "nutrition.applyBody#1",
   "nutrition.dayRefusedKept#0", // weekday
   "nutrition.dayRefusedTitle#0", // weekday

@@ -285,7 +285,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 80; // EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types
+const SCHEMAS_EXPECTED = 84; // EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types; EV-204b: +4 initialisation types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -411,9 +411,11 @@ const REQUEST_FACING_EXPECTED = [
   "CoachTemplateFromRoutineRequest",
   "CoachTemplateRenameRequest",
   "CoachTemplateSaveRequest",
+  "InitialiseTraineeRequest",
   "NutritionTemplateSaveRequest",
   "NutritionTemplateTargetsRequest",
   "ProgressionRule",
+  "ResendInvitationRequest",
   "Routine",
   "RoutineConstraints",
   "RoutineExercise",
@@ -428,10 +430,6 @@ const REQUEST_FACING_EXPECTED = [
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
-  InitialiseTraineeRequest:
-    "POST /coach-portal/trainees (EV-204a2, arrived with the EV-278c re-vendor at b-fit-api c69c287): the coach initialises a trainee's account. The portal sends NO request to it yet; EV-204b (b-fit-coach, 'Add a trainee') tags the type — delete this entry when it lands, or the exact comparison goes red.",
-  ResendInvitationRequest:
-    "POST /coach-portal/trainees/{id}/resend (EV-204a2, same re-vendor): the coach's Resend for an Invited row. The portal sends NO request to it yet; EV-204b tags it — delete this entry when it lands.",
 };
 
 const receivable = requestSchemas(spec);
