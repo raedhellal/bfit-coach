@@ -10,7 +10,7 @@
 //   · Button/IconButton accept `title`, `ariaLabel` and `onMouseEnter`-free props only;
 //     no behaviour was invented.
 import { useId } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import { UiIcon } from "./icons";
 import { useCopy } from "@/lib/i18n/client";
 
@@ -304,6 +304,7 @@ export function Input({
   autoComplete,
   ariaLabel,
   hintId,
+  inputRef,
   style = {},
 }: {
   label?: string;
@@ -341,6 +342,11 @@ export function Input({
   ariaLabel?: string;
   /** Gives the hint/error line this id and points the input's `aria-describedby` at it. */
   hintId?: string;
+  /**
+   * BUG-686 — the `<input>` itself, for a caller that must read what the DOM holds rather
+   * than what React's state holds (LoginForm, after hydration).
+   */
+  inputRef?: Ref<HTMLInputElement>;
   style?: Sx;
 }) {
   return (
@@ -383,6 +389,7 @@ export function Input({
       >
         {icon && <UiIcon name={icon} size={16} color="var(--ink-3)" />}
         <input
+          ref={inputRef}
           value={value}
           placeholder={placeholder}
           type={type || "text"}
