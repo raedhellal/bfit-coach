@@ -21,6 +21,10 @@ import { getCopy } from "@/lib/i18n/server";
  *
  * It is never a `notFound()`: a 404 page would say "this does not exist", which is
  * precisely the fact the 403 exists to withhold.
+ *
+ * EV-337i: the h1 stays the template's STORED name (the design titles the page « Modifier
+ * le modèle »): it is the one thing on this page only a server render can change, and
+ * qa/editor-save-no-refresh.spec.ts holds the update action's `revalidatePath` through it.
  */
 export const dynamic = "force-dynamic";
 
@@ -37,24 +41,25 @@ export default async function TemplatePage({ params }: { params: { id: string } 
       .catch((err: unknown) => ({ template: null, forbidden: isForbidden(err) })),
   ]);
 
+  const back = <BackLink href="/templates" label={copy.templates.backToLibrary} flush />;
   return (
     <CoachShell coachName={me?.displayName} section="templates">
-      <PageHead
-        title={loaded.template ? loaded.template.name : copy.templates.editTitle}
-        sub={copy.templates.private}
-        actions={
-          <BackLink href="/templates" label={copy.templates.backToLibrary} />
-        }
-      />
       {loaded.template ? (
         <TemplateEditor
           templateId={loaded.template.id}
           initial={{ name: loaded.template.name, document: loaded.template.document }}
+          title={loaded.template.name}
+          sub={copy.templates.private}
+          back={back}
         />
       ) : (
-        <ClientNotice
-          message={loaded.forbidden ? copy.templates.notYours : copy.templates.loadError}
-        />
+        <>
+          {back}
+          <PageHead title={copy.templates.editTitle} sub={copy.templates.private} />
+          <ClientNotice
+            message={loaded.forbidden ? copy.templates.notYours : copy.templates.loadError}
+          />
+        </>
       )}
     </CoachShell>
   );

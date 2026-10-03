@@ -66,3 +66,4 @@
 - [Overview follow-ups (EV-337m)](overview-followups-337m-facts.md) — gate each block on the api's own scope, one witness per gate; 4 overview-only trainees; WebKit context inherits en-US; addCookies path trap
 - [Vercel: a status rewrite needs a concrete route](vercel-status-rewrite-needs-a-concrete-route.md) — rewrite onto a dynamic-only path gave /_not-found on Vercel, fine under next start (BUG-678)
 - [Coach previews are behind Vercel Auth](coach-previews-are-behind-vercel-auth.md) — find the URL via the public GitHub API; every preview 302s to SSO; push with an explicit refspec
+- [Training templates redesign (EV-337i)](training-templates-redesign-facts.md) — StickyActionBar vs a 66 px tab bar; editor h1 stays server-rendered; row actions behind « ⋯ »; checklist = publishabilityReasons

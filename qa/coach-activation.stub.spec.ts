@@ -403,6 +403,8 @@ async function captureDeleteAction(page: Page) {
     }
     return route.continue();
   });
+  // EV-337i: Delete sits behind the row's « ⋯ » disclosure.
+  await page.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect.poll(() => captured !== null, { message: "the Delete button sent a server action" }).toBe(true);
@@ -454,6 +456,9 @@ for (const status of [503, 429]) {
       (r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/templates",
       { timeout: 15_000 }
     );
+    // EV-337i: Delete sits behind the row's « ⋯ » disclosure (open it unless it is).
+    const more = page.getByRole("button", { name: "More actions" });
+    if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
     await page.getByRole("button", { name: "Delete" }).click();
     await expect(page.getByRole("dialog").getByRole("alert")).toHaveCount(0);
     await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();

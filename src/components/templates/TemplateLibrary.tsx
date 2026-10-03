@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { UiIcon } from "@/components/ui/icons";
 import type { Copy } from "@/lib/copy";
 import { useCopy } from "@/lib/i18n/client";
 import { formatInstant, truncateName } from "@/lib/format";
@@ -16,6 +17,7 @@ import {
   type TemplateFailure,
 } from "@/lib/templateActions";
 import { TEMPLATE_NAME_MAX } from "@/lib/templateDocument";
+import { matchesSearch, searchKey } from "@/lib/rosterView";
 import type { CoachTemplateList, CoachTemplateSummary } from "@/lib/coachApi";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 
@@ -30,6 +32,18 @@ import { startNavigationProgress } from "@/components/shell/NavigationProgress";
  * WHAT THE ROW MAY SHOW: name, day count, exercise count, last-updated — AC2's
  * "and nothing else", which is not a style note. A row that could render an exercise
  * would grow one, and then the library list is a second, worse view of a template.
+ *
+ * EV-337i (plan §5.7) — the redesign of this list:
+ *   · one card of rows from 768 px, one card per template below it (CSS decides);
+ *   · « Appliquer à un client » and « Modifier » on the row, and Duplicate / Rename /
+ *     Delete behind the row's « ⋯ » DISCLOSURE (a button with `aria-expanded`, opening
+ *     IN the row's flow — not an ARIA menu, and not a popover that could cover the next
+ *     row or leave the viewport at 320 px);
+ *   · a search over the names the api listed (case- and accent-insensitive, the roster's
+ *     `searchKey`), and « 6 modèles · 44 restants sur 50 » from the api's own `limit` /
+ *     `remaining`.
+ * Not drawn, because the api does not serve it (plan §7 G19): minutes per session (the
+ * summary has no document) and « utilisé par N clients » (no usage count).
  */
 
 /** A trainee this coach may WRITE to: ACTIVE, and the link carries WORKOUTS. */
@@ -67,11 +81,13 @@ export function TemplateLibrary({
   trainees: ApplyTarget[];
 }) {
   const copy = useCopy();
-  const router = useRouter();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [query, setQuery] = useState("");
+  const searchId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   function close() {
     setDialog(null);
@@ -99,87 +115,113 @@ export function TemplateLibrary({
     });
   }
 
+  const templates = library.templates;
+  const visible = templates.filter((template) => matchesSearch(searchKey(template.name), query));
+  const searching = query.trim() !== "";
+
   return (
     <div>
-      {/* AC4, verbatim, stated ONCE on the library page. */}
-      <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
-        {copy.templates.private}
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexWrap: "wrap",
-          marginBottom: 14,
-        }}
-      >
-        <Button icon="plus" onClick={() => router.push("/templates/new")}>
-          {copy.templates.create}
-        </Button>
-        {/*
-          AC2's cap, shown BEFORE the 409 rather than only after it — which is what the
-          api serves `remaining` for. At zero it is the refusal sentence itself, so a
-          coach reads why "New template" will not work before pressing it.
-        */}
-        {library.remaining === 0 ? (
-          <span style={{ fontSize: 12.5, color: "var(--err-ink)" }}>
-            {copy.templates.limitReached(library.limit)}
-          </span>
-        ) : (
-          <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-            {copy.templates.remaining(library.remaining, library.limit)}
-          </span>
-        )}
-      </div>
+      {templates.length > 0 && (
+        <div className="tpl-toolbar">
+          <label className="roster-search" htmlFor={searchId}>
+            <span aria-hidden="true" style={{ display: "inline-flex", color: "var(--ink-3)" }}>
+              <UiIcon name="search" size={17} />
+            </span>
+            <span className="sr-only">{copy.templateLibrary.searchLabel}</span>
+            <input
+              ref={searchRef}
+              id={searchId}
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={copy.templateLibrary.searchPlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          {/*
+            AC2's cap, shown BEFORE the 409 rather than only after it — which is what the
+            api serves `remaining` for. At zero it is the refusal sentence itself, so a
+            coach reads why "New template" will not work before pressing it.
+          */}
+          <p className="tpl-count" data-full={library.remaining === 0 ? "" : undefined}>
+            {copy.templateLibrary.count(templates.length)}
+            {" · "}
+            {library.remaining === 0
+              ? copy.templates.limitReached(library.limit)
+              : copy.templates.remaining(library.remaining, library.limit)}
+          </p>
+        </div>
+      )}
 
       {notice && (
-        <p role="status" style={{ margin: "0 0 12px", fontSize: 13, color: "var(--ok-ink)" }}>
+        <p role="status" className="tpl-feedback" style={{ color: "var(--ok-ink)" }}>
           {notice}
         </p>
       )}
       {error && (
-        <p role="alert" style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)" }}>
+        <p role="alert" className="tpl-feedback" style={{ color: "var(--err-ink)" }}>
           {error}
         </p>
       )}
+      {/* What a search left, announced; nothing on first paint. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {searching ? copy.templateLibrary.shown(visible.length) : ""}
+      </p>
 
-      {library.templates.length === 0 ? (
+      {templates.length === 0 ? (
         // AC1 — an empty library renders the empty state and ONE primary control,
-        // never a blank page.
+        // never a blank page. (The page head draws no « Nouveau modèle » in this state.)
         <Card>
           <EmptyState
             icon="file"
             title={copy.templates.emptyTitle}
             sub={copy.templates.emptyBody}
             action={
-              <Button icon="plus" onClick={() => router.push("/templates/new")}>
+              <Link href="/templates/new" className="link-button" data-variant="primary">
+                <UiIcon name="plus" size={17} />
                 {copy.templates.create}
-              </Button>
+              </Link>
             }
           />
         </Card>
+      ) : visible.length === 0 ? (
+        <div className="tpl-list">
+          <div className="tpl-nomatch tpl-nomatch-card">
+            <p style={{ margin: 0, fontSize: "var(--fs-body)", color: "var(--ink-2)" }}>
+              {copy.templateLibrary.noMatch}
+            </p>
+            {/* This button unmounts itself; focus goes back to the field, not to <body>. */}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setQuery("");
+                searchRef.current?.focus();
+              }}
+            >
+              {copy.templateLibrary.clearSearch}
+            </Button>
+          </div>
+        </div>
       ) : (
         /*
-          BUG-243: `minmax(0, 1fr)`, not the implicit `auto` track. An auto track sizes to
-          its widest item's min-content, which for a `nowrap` title is the WHOLE title: a
-          66-character name pushed the page 62 px sideways at 320 px and clipped every
-          card. A 0 minimum lets the track follow the viewport and the title ellipsise.
+          BUG-243: every track and flex item that holds a name has a 0 minimum (`min-width:
+          0` in `.tpl-*`), so a 66-character title ellipsises instead of widening the page.
         */
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
-          {library.templates.map((template) => (
-            <TemplateRow
-              key={template.id}
-              template={template}
-              pending={pending}
-              onDuplicate={() => duplicate(template)}
-              onRename={() => setDialog({ kind: "rename", template })}
-              onDelete={() => setDialog({ kind: "delete", template })}
-              onUse={() => setDialog({ kind: "use", template })}
-            />
+        <ul className="tpl-list">
+          {visible.map((template) => (
+            <li key={template.id} className="tpl-item">
+              <TemplateRow
+                template={template}
+                pending={pending}
+                onDuplicate={() => duplicate(template)}
+                onRename={() => setDialog({ kind: "rename", template })}
+                onDelete={() => setDialog({ kind: "delete", template })}
+                onUse={() => setDialog({ kind: "use", template })}
+              />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       <RenameDialog
@@ -228,88 +270,64 @@ function TemplateRow({
   onUse: () => void;
 }) {
   const copy = useCopy();
+  const [more, setMore] = useState(false);
+  const moreId = useId();
   return (
-    <Card>
-      {/*
-        A named group per row. Without it a screen reader reads five identical control
-        labels per template with nothing tying them to the template they act on — and a
-        test asserting "the Delete on THIS row" has nothing to address either.
-      */}
-      <div
-        role="group"
-        aria-label={template.name}
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div
-            title={template.name}
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 16,
-              fontWeight: 700,
-              color: "var(--ink)",
-              // Edge case 8: an 80-character name, and an Arabic one, truncate rather
-              // than pushing the controls off the row.
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              maxWidth: "min(100%, 420px)",
-            }}
-          >
-            {truncateName(template.name)}
-          </div>
-          <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-              {copy.templates.rowSummary(template.dayCount, template.exerciseCount)}
-            </span>
-            <Badge tone="neutral">{updatedLabel(template.updatedAt, copy)}</Badge>
-          </div>
+    /*
+      A named group per row. Without it a screen reader reads identical control labels
+      per template with nothing tying them to the template they act on — and a test
+      asserting "the Delete on THIS row" has nothing to address either.
+    */
+    <div role="group" aria-label={template.name} className="tpl-row">
+      <div className="tpl-row-id">
+        {/* Edge case 8: an 80-character name, and an Arabic one, truncate (`.tpl-row-name`). */}
+        <div className="tpl-row-name" title={template.name}>
+          {truncateName(template.name)}
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {/*
-            Edit is a LINK and not a button: it is a navigation to the editor route, so
-            it must be middle-clickable, openable in a tab, and visible to the browser's
-            own history. The other four are dialogs and stay buttons.
-          */}
-          <Link
-            href={`/templates/${template.id}`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: MIN_TOUCH_TARGET,
-              padding: "0 12px",
-              borderRadius: "var(--r-md)",
-              border: "1px solid var(--border-2)",
-              background: "var(--surface)",
-              color: "var(--ink)",
-              fontSize: 13,
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
-            {copy.templates.edit}
-          </Link>
+        <p className="tpl-row-meta">
+          <span>{copy.templates.rowSummary(template.dayCount, template.exerciseCount)}</span>
+          <span aria-hidden="true"> · </span>
+          <span>{updatedLabel(template.updatedAt, copy)}</span>
+        </p>
+      </div>
+      <div className="tpl-row-actions">
+        <Button variant="soft" onClick={onUse} disabled={pending}>
+          {copy.templates.use}
+        </Button>
+        {/*
+          Edit is a LINK and not a button: it is a navigation to the editor route, so
+          it must be middle-clickable, openable in a tab, and visible to the browser's
+          own history. The others open dialogs and stay buttons.
+        */}
+        <Link href={`/templates/${template.id}`} className="link-button" data-variant="secondary">
+          {copy.templates.edit}
+        </Link>
+        <button
+          type="button"
+          className="tpl-more"
+          aria-label={copy.templateLibrary.more}
+          title={copy.templateLibrary.more}
+          aria-expanded={more}
+          aria-controls={more ? moreId : undefined}
+          onClick={() => setMore((open) => !open)}
+        >
+          <UiIcon name="more" size={20} />
+        </button>
+      </div>
+      {more && (
+        <div id={moreId} className="tpl-row-more">
           <Button variant="ghost" size="sm" icon="refresh" onClick={onDuplicate} disabled={pending}>
             {copy.templates.duplicate}
           </Button>
-          <Button variant="ghost" size="sm" onClick={onRename} disabled={pending}>
+          <Button variant="ghost" size="sm" icon="edit" onClick={onRename} disabled={pending}>
             {copy.templates.rename}
           </Button>
-          <Button variant="ghost" size="sm" icon="trash" onClick={onDelete} disabled={pending}>
+          <Button variant="dangerSoft" size="sm" icon="trash" onClick={onDelete} disabled={pending}>
             {copy.templates.remove}
           </Button>
-          <Button variant="soft" size="sm" icon="upload" onClick={onUse} disabled={pending}>
-            {copy.templates.use}
-          </Button>
         </div>
-      </div>
-    </Card>
+      )}
+    </div>
   );
 }
 

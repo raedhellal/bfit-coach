@@ -59,6 +59,20 @@ function row(page: Page, name: string) {
   return page.getByRole("group", { name, exact: true });
 }
 
+/**
+ * EV-337i: Duplicate, Rename and Delete sit behind the row's « ⋯ » disclosure ("More
+ * actions"). Opens it if it is closed, then presses `action` on THAT row.
+ */
+async function rowAction(page: Page, name: string, action: "Duplicate" | "Rename" | "Delete") {
+  const more = row(page, name).getByRole("button", { name: "More actions" });
+  // Retried until the island answers: a press before hydration opens nothing.
+  await expect(async () => {
+    if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+    await expect(more).toHaveAttribute("aria-expanded", "true", { timeout: 1_000 });
+  }).toPass();
+  await row(page, name).getByRole("button", { name: action, exact: true }).click();
+}
+
 async function openUseDialog(page: Page, template: string) {
   await page.goto("/templates");
   await row(page, template).getByRole("button", { name: "Use on a trainee" }).click();
@@ -237,10 +251,13 @@ test.describe("BUG-196 — a fr-FR browser", () => {
 
   async function useFrench(page: Page, template: string) {
     await page.goto("/templates");
-    await row(page, template).getByRole("button", { name: "Utiliser pour un client" }).click();
+    await row(page, template).getByRole("button", { name: "Appliquer à un client" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.locator("select").selectOption({ label: "Yusuf A." });
-    await dialog.getByRole("button", { name: "Utiliser ce modèle" }).click();
+    // Ruling 11 (I1): the button repeats the question's verb, « Appliquer ».
+    await expect(dialog.getByText(`Appliquer « ${template} » à Yusuf A.\u00a0?`, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Utiliser ce modèle" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Appliquer", exact: true }).click();
     return dialog;
   }
 
@@ -354,7 +371,7 @@ test.describe("AC2 — deleting a template changes nothing about what was made f
     expect(before[0].exercises[0].sets).not.toBe("");
 
     await page.goto("/templates");
-    await row(page, SEEDED_B).getByRole("button", { name: "Delete" }).click();
+    await rowAction(page, SEEDED_B, "Delete");
     await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
     await expect(row(page, SEEDED_B)).toHaveCount(0);
 

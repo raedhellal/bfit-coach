@@ -136,7 +136,7 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await signInFrench(page);
     await page.goto("/templates");
     await expect(page.locator("html")).toHaveAttribute("lang", "fr");
-    await expect(page.getByRole("heading", { name: "Modèles", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Modèles d'entraînement", exact: true })).toBeVisible();
     await expectFooterOnScreen(page, FOOTER_FR);
     await expectNoEnglish(page, "the template library");
 

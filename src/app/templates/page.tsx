@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { TemplateLibrary } from "@/components/templates/TemplateLibrary";
 import { PageHead } from "@/components/ui/kit";
+import { UiIcon } from "@/components/ui/icons";
 import { coachApi, hasScope, type CoachTemplateList, type RosterClient } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
@@ -21,6 +23,11 @@ import { getCopy } from "@/lib/i18n/server";
  *     mean shipping the full roster to the browser to filter it there.
  *
  * Three states, all explicit: load error · empty library · the list. Never a blank page.
+ *
+ * EV-337i (plan §5.7): « Modèles d'entraînement », the design's subtitle followed by AC4's
+ * sentence (verbatim, stated once, here), and « Nouveau modèle » as a LINK in the head — a
+ * navigation, not an action. An EMPTY library draws it once, in the empty state, and not
+ * here: AC1's "the empty state and ONE primary control".
  */
 export const dynamic = "force-dynamic";
 
@@ -56,7 +63,22 @@ export default async function TemplatesPage() {
 
   return (
     <CoachShell coachName={me?.displayName} section="templates">
-      <PageHead title={copy.templates.title} sub={copy.templates.subtitle} />
+      <PageHead
+        title={copy.templates.title}
+        sub={
+          <>
+            <span>{copy.templates.subtitle}</span> <span>{copy.templates.private}</span>
+          </>
+        }
+        actions={
+          library !== null && library.templates.length === 0 ? undefined : (
+            <Link href="/templates/new" className="link-button" data-variant="primary">
+              <UiIcon name="plus" size={17} />
+              {copy.templates.create}
+            </Link>
+          )
+        }
+      />
       {library === null ? (
         <ClientNotice message={copy.templates.loadError} />
       ) : (
