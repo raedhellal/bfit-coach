@@ -21,15 +21,18 @@ const shift = Number(process.env.QA_CLOCK_SHIFT_MS || 0);
 
 if (Number.isFinite(shift) && shift !== 0) {
   const RealDate = globalThis.Date;
-  class ShiftedDate extends RealDate {
-    constructor(...args) {
-      if (args.length === 0) super(RealDate.now() + shift);
-      else super(...args);
-    }
-    static now() {
-      return RealDate.now() + shift;
-    }
+  /**
+   * A function, not a class: `Date()` without `new` must return the (shifted) date string as
+   * the real one does, and a class throws there. `Reflect.construct` keeps `new.target`, so a
+   * subclass of Date still gets its own prototype; `instanceof Date` holds on every result.
+   */
+  function ShiftedDate(...args) {
+    if (!new.target) return new RealDate(RealDate.now() + shift).toString();
+    return Reflect.construct(RealDate, args.length === 0 ? [RealDate.now() + shift] : args, new.target);
   }
+  Object.setPrototypeOf(ShiftedDate, RealDate); // Date.parse, Date.UTC
+  ShiftedDate.prototype = RealDate.prototype;
+  ShiftedDate.now = () => RealDate.now() + shift;
   globalThis.Date = ShiftedDate;
   process.stderr.write(`[clock-shift] pid ${process.pid}: now reads ${new ShiftedDate().toISOString()}\n`);
 }

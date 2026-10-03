@@ -44,16 +44,15 @@ export const test = base.extend<{ fixtureAtSeed: void }, { oneWorkerPerFixtureSe
     if (Number.isFinite(CLOCK_SHIFT_MS) && CLOCK_SHIFT_MS !== 0) {
       await context.addInitScript((shift: number) => {
         const RealDate = Date;
-        class ShiftedDate extends RealDate {
-          constructor(...args: ConstructorParameters<DateConstructor> | []) {
-            if (args.length === 0) super(RealDate.now() + shift);
-            else super(...(args as ConstructorParameters<DateConstructor>));
-          }
-          static now() {
-            return RealDate.now() + shift;
-          }
+        // As in qa/clock-shift.mjs: a function, so `Date()` without `new` returns the string.
+        function ShiftedDate(this: unknown, ...args: unknown[]): unknown {
+          if (!new.target) return new RealDate(RealDate.now() + shift).toString();
+          return Reflect.construct(RealDate, args.length === 0 ? [RealDate.now() + shift] : args, new.target);
         }
-        globalThis.Date = ShiftedDate as DateConstructor;
+        Object.setPrototypeOf(ShiftedDate, RealDate);
+        ShiftedDate.prototype = RealDate.prototype;
+        ShiftedDate.now = () => RealDate.now() + shift;
+        globalThis.Date = ShiftedDate as unknown as DateConstructor;
       }, CLOCK_SHIFT_MS);
     }
     await use(context);

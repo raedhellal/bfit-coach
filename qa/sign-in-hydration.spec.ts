@@ -18,12 +18,14 @@ import { signInThroughForm } from "./sign-in";
  */
 
 /** Hold `/_next/static/chunks/*` until the password field is filled; then let all through. */
-async function hydrateOnlyAfterTyping(page: Page): Promise<{ released: Promise<void> }> {
+async function hydrateOnlyAfterTyping(page: Page): Promise<{ released: Promise<number> }> {
   const held: Route[] = [];
+  let heldCount = 0;
   let open = false;
   await page.route(/\/_next\/static\/chunks\//, async (route) => {
     if (open) return route.continue();
     held.push(route);
+    heldCount += 1;
   });
   const released = page
     .waitForFunction(() => {
@@ -33,6 +35,7 @@ async function hydrateOnlyAfterTyping(page: Page): Promise<{ released: Promise<v
     .then(async () => {
       open = true;
       for (const route of held.splice(0)) await route.continue();
+      return heldCount;
     });
   return { released };
 }
@@ -61,8 +64,9 @@ for (const engine of ["chromium", "webkit"] as const) {
     try {
       const { released } = await hydrateOnlyAfterTyping(page);
       await signInThroughForm(page);
-      // The race really happened: the chunks were held until a value was in the field.
-      await released;
+      // The race really happened: chunks were held until a value was in the field. A route
+      // pattern that matched nothing would let the page hydrate first and prove nothing.
+      expect(await released, "JS chunks held back until the password field had a value").toBeGreaterThan(0);
       await expect(page).toHaveURL(new URL("/", baseURL).href);
       await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(0);
     } finally {

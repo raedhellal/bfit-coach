@@ -1,5 +1,6 @@
 import { expect, request, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { isPendingOnly } from "../src/lib/jwt";
 import { mintFixtureToken } from "../src/lib/fixtureToken";
@@ -24,11 +25,12 @@ const TEMP = "Temp-pass-2026";
 const NEW_PASSWORD = "Coach-pass-2026";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 
+/**
+ * Submits once and returns: some callers assert the form's REFUSAL, so where it lands is
+ * theirs to check (`landing: null`). Hydration is still waited for (qa/sign-in.ts).
+ */
 async function signIn(page: Page, email: string, password = TEMP) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await signInThroughForm(page, { email, password, landing: null });
 }
 
 async function signInPending(page: Page, email = "new.coach@evoli.fit") {

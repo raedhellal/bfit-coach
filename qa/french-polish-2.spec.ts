@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { signInFrench } from "./french";
 import { en } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
@@ -432,11 +433,7 @@ test.describe("a French browser (fr-FR)", () => {
 
 test.describe("an English browser", () => {
   test("BUG-489 — the picker's filters and badges are English words, not the api's raw values", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel("Email").fill("coach@evoli.fit");
-    await page.getByLabel("Password").fill("Password123!");
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL("/");
+    await signInThroughForm(page);
     const picker = await openPicker(page, "Add exercise");
     expect(await optionLabels(page, picker.getByLabel("Muscle"))).toEqual([
       "All", "Back", "Biceps", "Calves", "Chest", "Core", "Glutes", "Hamstrings", "Quads", "Shoulders", "Triceps",

@@ -133,6 +133,7 @@ function isoDate(daysAgo: number): string {
   return dayMinus(dayIn(new Date()), daysAgo);
 }
 
+/** An INSTANT, not a day: local `setDate` is deliberate here, and no screen reads it as a calendar day. */
 function isoInstant(daysAgo: number): string {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);

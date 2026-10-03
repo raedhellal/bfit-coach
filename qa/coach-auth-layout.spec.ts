@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll } from "./layout";
 
 /**
@@ -37,11 +38,7 @@ async function openLogin(page: Page) {
 }
 
 async function openActivate(page: Page): Promise<Locator> {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("new.coach@evoli.fit");
-  await page.getByLabel("Password").fill("Temp-pass-2026");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(/\/activate$/);
+  await signInThroughForm(page, { email: "new.coach@evoli.fit", password: "Temp-pass-2026", landing: /\/activate$/ });
   await expect(page.getByLabel("Temporary password")).toBeVisible();
   return page.getByLabel("Temporary password");
 }
