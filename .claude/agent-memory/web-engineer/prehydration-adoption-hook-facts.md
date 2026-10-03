@@ -41,7 +41,12 @@ a new document (back_forward, no bfcache, the page is no-store), the browser res
 /activate box as ticked, so a ticked box is not proof of an act in this document.
 `data-adopt="never"` makes the hook visibly reset the field to `defaultChecked` through the
 node setter, and the person ticks again. Use the opt-out for any field whose meaning is
-"the person did this here".
+"the person did this here". Since 2026-10-04 the box also has `autoComplete="off"`, so Back no longer restores the
+tick (pinned by activate spec (3), checked before hydration). The reset MUST use the node's
+own (tracked) setter. If it used the prototype setter, React's tracker would still say
+"checked" and the next real tick would be eaten. Only spec (4) catches that: tick before
+hydration with NO passwords, because any replay re-render re-syncs the tracker and hides the
+bug. (1) passes even with no reset at all.
 
 **Not nest-safe:** nested adopting scopes would replay a field twice, which would fire
 LanguageSwitch's `setLocaleAction` twice.
