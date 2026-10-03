@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * The roster under partial consent — ADR-0015 D5/S1. Runs against the POPULATED
@@ -25,11 +26,7 @@ const EMAIL = "coach@evoli.fit";
 const PASSWORD = "Password123!";
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 /** The roster's rows, in render order (EV-337d: one `.roster-row` per client). */

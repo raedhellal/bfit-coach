@@ -1,5 +1,6 @@
 import { expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoEnglish } from "./french";
 import { expectNoSidewaysScroll } from "./layout";
 import { MARK_PATH } from "../src/components/ui/brand";
@@ -57,11 +58,13 @@ type Lang = keyof typeof LANG;
 
 async function signIn(page: Page, lang: Lang, who: { email: string; password: string }, landing: RegExp | string) {
   const t = LANG[lang];
-  await page.goto("/login");
-  await page.getByLabel(t.email, { exact: true }).fill(who.email);
-  await page.getByLabel(t.password, { exact: true }).fill(who.password);
-  await page.getByRole("button", { name: t.signIn, exact: true }).click();
-  await page.waitForURL(landing);
+  // The exact wording stays this spec's: the helper finds the controls by it (qa/sign-in.ts).
+  await signInThroughForm(page, {
+    email: who.email,
+    password: who.password,
+    labels: { email: t.email, password: t.password, submit: t.signIn, exact: true },
+    landing,
+  });
 }
 
 /**

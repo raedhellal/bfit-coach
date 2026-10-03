@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { signInFrench } from "./french";
 import { fr } from "../src/lib/copy.fr";
 import { parseTarget, readNumber, targetRefusal } from "../src/lib/numberInput";
@@ -41,11 +42,7 @@ const M_ROW = "Wednesday Lunch";
 
 
 async function signIn(page: Page, email: string) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: email, password: PASSWORD });
 }
 
 function group(page: Page, name: string): Locator {

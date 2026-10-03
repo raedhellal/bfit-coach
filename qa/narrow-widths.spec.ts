@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll } from "./layout";
 
 /**
@@ -39,12 +40,15 @@ const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const PHONE_WIDTHS = [320, 340, 360, 375, 390, 414] as const;
 const SWEEP: number[] = Array.from({ length: 414 - 320 + 1 }, (_, i) => 320 + i);
 
-async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel(/^(Email|E-mail|Adresse e-mail)$/).fill(EMAIL);
-  await page.getByLabel(/^(Password|Mot de passe)$/).fill(PASSWORD);
-  await page.getByRole("button", { name: /^(Sign in|Se connecter)$/ }).click();
-  await page.waitForURL("/");
+/** Either language: the specs here run the form in both. */
+const EITHER_LANGUAGE = {
+  email: /^(Email|E-mail|Adresse e-mail)$/,
+  password: /^(Password|Mot de passe)$/,
+  submit: /^(Sign in|Se connecter)$/,
+};
+
+async function signIn(page: Page, email = EMAIL, password = PASSWORD, landing: string | RegExp = "/") {
+  await signInThroughForm(page, { email, password, labels: EITHER_LANGUAGE, landing });
 }
 
 /**
@@ -429,11 +433,7 @@ test.describe("EV-337k — the shell-less screens never scroll sideways on a pho
         await sweep("/i/* with a long coach name");
 
         // A pending account lands on /activate.
-        await page.goto("/login");
-        await page.getByLabel(/^(Email|E-mail|Adresse e-mail)$/).fill("new.coach@evoli.fit");
-        await page.getByLabel(/^(Password|Mot de passe)$/).fill("Temp-pass-2026");
-        await page.getByRole("button", { name: /^(Sign in|Se connecter)$/ }).click();
-        await page.waitForURL(/\/activate$/);
+        await signIn(page, "new.coach@evoli.fit", "Temp-pass-2026", /\/activate$/);
         await sweep("/activate");
 
         await page.context().clearCookies();
@@ -454,17 +454,8 @@ test.describe("EV-204b — /invited/[id] never scrolls a phone sideways", () => 
     test.describe(locale, () => {
       test.use({ locale });
       test(`loaded and not-found at ${PHONE_WIDTHS.join(" / ")} (${locale})`, async ({ page }) => {
-        await page.goto("/login");
         const fr = locale === "fr-FR";
-        const button = page.getByRole("button", { name: fr ? "Se connecter" : "Sign in" });
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          await page.getByLabel(fr ? "E-mail" : "Email").fill("coach@evoli.fit");
-          await page.getByLabel(fr ? "Mot de passe" : "Password").fill("Password123!");
-          if (await button.isEnabled()) break;
-          await page.waitForTimeout(250);
-        }
-        await button.click();
-        await page.waitForURL("/");
+        await signInThroughForm(page, { lang: fr ? "fr" : "en" });
         await page.getByRole("button", { name: fr ? "Ajouter un client" : "Add a client", exact: true }).click();
         const dialog = page.getByRole("dialog");
         await dialog.getByLabel(fr ? "Nom" : "Name", { exact: true }).fill("Maximilian Alexander Okonkwo-Lindqvist");

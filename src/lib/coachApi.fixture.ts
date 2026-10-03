@@ -117,12 +117,23 @@ const CAPACITY = 2; // CoachProfile.CapacityTier.STARTER.capacity()
  * against anything here: `setByYou` arrives already computed (amendment ruling (b)). */
 const COACH_ID = "1a2b3c4d-0000-4000-8000-00000000c0ac";
 
+/**
+ * The `YYYY-MM-DD` that is `daysAgo` calendar days before TODAY IN PARIS: "trained
+ * yesterday" means yesterday on the calendar the roster reads (`dayIn`, `src/lib/rosterView.ts`),
+ * at every hour.
+ *
+ * It was `setDate(getDate() - n)` on the host's LOCAL day, printed with `toISOString()`
+ * (the UTC day). Between local midnight and UTC midnight (00:00–02:00 on a Paris host)
+ * the printed day was one earlier than the arithmetic meant. Lina's "yesterday" read
+ * « Il y a 2 jours » instead of « Hier », and Tobias's 9 days became 10. On a UTC host
+ * (CI, Vercel) the same false reds came at 22:00–24:00 UTC. `qa/coach-progress-goal.spec.ts`
+ * builds its expected dates with the same two calls.
+ */
 function isoDate(daysAgo: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
-  return d.toISOString().slice(0, 10);
+  return dayMinus(dayIn(new Date()), daysAgo);
 }
 
+/** An INSTANT, not a day: local `setDate` is deliberate here, and no screen reads it as a calendar day. */
 function isoInstant(daysAgo: number): string {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);

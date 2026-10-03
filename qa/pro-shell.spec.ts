@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { MARK_PATH } from "../src/components/ui/brand";
 
@@ -37,19 +38,11 @@ const NAV_EN = ["Roster", "Templates", "Recipes", "Nutrition templates", "Challe
 const NAV_FR = ["Clients", "Modèles", "Recettes", "Modèles nutrition", "Défis"];
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 async function signInFrench(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("E-mail").fill(EMAIL);
-  await page.getByLabel("Mot de passe").fill(PASSWORD);
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD, lang: "fr" });
 }
 
 async function box(locator: Locator, what: string) {
@@ -562,25 +555,18 @@ test.describe("session boundaries are document loads (ADR-0033 D33.7)", () => {
   });
 
   test("sign-in ends in a document load", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel("Email").fill(EMAIL);
-    await page.getByLabel("Password").fill(PASSWORD);
-    await expect(page.getByRole("button", { name: "Sign in" })).toBeEnabled();
-    await mark(page);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL("/");
+    await signInThroughForm(page, { email: EMAIL, password: PASSWORD, beforeSubmit: () => mark(page) });
     await expect(page.getByRole("heading", { level: 1, name: "Roster" })).toBeVisible();
     expect(await marked(page), "sign-in was a soft navigation").toBe(false);
   });
 
   test("a pending sign-in and a finished activation each end in a document load", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel("Email").fill("new.coach@evoli.fit");
-    await page.getByLabel("Password").fill("Temp-pass-2026");
-    await expect(page.getByRole("button", { name: "Sign in" })).toBeEnabled();
-    await mark(page);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(/\/activate$/);
+    await signInThroughForm(page, {
+      email: "new.coach@evoli.fit",
+      password: "Temp-pass-2026",
+      landing: /\/activate$/,
+      beforeSubmit: () => mark(page),
+    });
     expect(await marked(page), "the pending sign-in was a soft navigation").toBe(false);
 
     await page.getByLabel("Temporary password").fill("Temp-pass-2026");
@@ -595,11 +581,7 @@ test.describe("session boundaries are document loads (ADR-0033 D33.7)", () => {
   });
 
   test("an activation whose session expired leaves for /login with a document load", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel("Email").fill("new.coach@evoli.fit");
-    await page.getByLabel("Password").fill("Temp-pass-2026");
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(/\/activate$/);
+    await signInThroughForm(page, { email: "new.coach@evoli.fit", password: "Temp-pass-2026", landing: /\/activate$/ });
     await page.route("**/api/auth/activate", (route) =>
       route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ code: "SESSION_EXPIRED" }) })
     );

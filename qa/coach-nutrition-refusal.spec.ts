@@ -1,5 +1,6 @@
 import { expect, type ConsoleMessage, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-071b (coach portal) and EV-242b, in **fixture mode** (see playwright.config.ts).
@@ -51,19 +52,11 @@ const REGEN_FAILED = "The day could not be regenerated.";
 test.describe.configure({ mode: "serial" });
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 async function signInFrench(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("E-mail").fill(EMAIL);
-  await page.getByLabel("Mot de passe").fill(PASSWORD);
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD, lang: "fr" });
 }
 
 async function fixtureCookie(page: Page, name: string, value: string) {

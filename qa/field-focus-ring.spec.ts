@@ -2,6 +2,7 @@ import { appendFileSync, existsSync } from "node:fs";
 import { inflateSync } from "node:zlib";
 import { expect, webkit, type Browser, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * BUG-663 (P2, WCAG 2.2 SC 2.4.7 Focus Visible) — every text field in the portal, reached
@@ -412,20 +413,12 @@ async function sweep(page: Page, engine: Engine, scope: string | null) {
 // ─────────────────────────── routes ───────────────────────────
 
 /**
- * Retried until the form answers: under `next start` WebKit gets the HTML well before React
- * hydrates, and a fill before hydration is a no-op for the form's state, so the first click
- * signs in with empty fields (witnessed: the WebKit half hung on every signed-in route).
+ * WebKit gets the HTML well before React hydrates, and a fill before hydration is a no-op
+ * for the form's state (witnessed: the WebKit half hung on every signed-in route). The
+ * shared helper waits for the form's own hydration witness: qa/sign-in.ts.
  */
 async function signIn(page: Page, email = "coach@evoli.fit", password = PASSWORD, landing: RegExp | string = "/") {
-  await page.goto("/login");
-  await expect(async () => {
-    if (new URL(page.url()).pathname !== "/login") return; // an earlier try signed in
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(landing, { timeout: 3_000 });
-  }).toPass({ timeout: 30_000 });
-  await page.waitForURL(landing, { timeout: 10_000 });
+  await signInThroughForm(page, { email, password, landing });
 }
 
 /** A click before hydration is a no-op: retried until the dialog answers. */
@@ -442,19 +435,31 @@ async function openDialog(page: Page, trigger: Locator, name: string | RegExp): 
 
 const nutritionTemplateRow = (page: Page) => page.getByRole("group", { name: NUTRITION_TEMPLATE, exact: true });
 
-/** New nutrition template, saved; retried until hydrated (a fill before it is a no-op). */
+/**
+ * New nutrition template, saved. A fill before hydration is a no-op for the editor's state,
+ * so it waits for the form's own witness first, like `qa/sign-in.ts`: « Save template » is
+ * SSR'd disabled and only React's name state enables it. Once it is enabled the editor has
+ * hydrated, so the numbers are filled once and Save is clicked ONCE. The old loop clicked
+ * again after a 3 s wait, which a loaded machine overran (WebKit, 30 s budget, witnessed),
+ * and a second click on a slow save could create a second template of the same name.
+ */
 async function createNutritionTemplate(page: Page) {
-  await page.goto("/nutrition-templates/new");
+  await page.goto("/nutrition-templates/new", { waitUntil: "domcontentloaded" });
+  const save = page.getByRole("button", { name: "Save template" });
   await expect(async () => {
-    if (new URL(page.url()).pathname === "/nutrition-templates") return; // an earlier try saved
+    // Cleared first: a re-fill with the same text is not a change to React (qa/sign-in.ts).
+    await page.getByLabel("Template name").fill("");
     await page.getByLabel("Template name").fill(NUTRITION_TEMPLATE);
-    await page.getByLabel("Calories", { exact: true }).fill("1800");
-    await page.getByLabel("Protein", { exact: true }).fill("150");
-    await page.getByLabel("Carbs", { exact: true }).fill("170");
-    await page.getByLabel("Fat", { exact: true }).fill("60");
-    await page.getByRole("button", { name: "Save template" }).click();
-    await page.waitForURL("/nutrition-templates", { timeout: 3_000 });
-  }).toPass({ timeout: 30_000 });
+    await expect(save, "« Save template » enabled = the editor's state holds the name (hydrated)").toBeEnabled({
+      timeout: 2_000,
+    });
+  }).toPass({ timeout: 45_000 });
+  await page.getByLabel("Calories", { exact: true }).fill("1800");
+  await page.getByLabel("Protein", { exact: true }).fill("150");
+  await page.getByLabel("Carbs", { exact: true }).fill("170");
+  await page.getByLabel("Fat", { exact: true }).fill("60");
+  await save.click();
+  await page.waitForURL("/nutrition-templates", { timeout: 45_000 });
   await expect(nutritionTemplateRow(page)).toBeVisible();
 }
 

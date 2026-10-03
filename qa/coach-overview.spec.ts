@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { signInFrench } from "./french";
 
 /**
@@ -35,11 +36,7 @@ const MARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008"; // nothing shared
 const UNLINKED = "00000000-0000-0000-0000-000000000000";
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 /** The stat tile whose label is exactly "Weight" (not the "Weight trend" card). */

@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll } from "./layout";
 
 /**
@@ -15,12 +16,7 @@ const STATES = {
 } as const;
 
 async function signIn(page: Page, lang: keyof typeof STATES) {
-  const l = STATES[lang];
-  await page.goto("/login");
-  await page.getByLabel(l.email).fill("coach@evoli.fit");
-  await page.getByLabel(l.password).fill("Password123!");
-  await page.getByRole("button", { name: l.signIn }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!", lang });
 }
 
 for (const lang of ["fr", "en"] as const) {

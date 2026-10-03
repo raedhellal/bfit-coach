@@ -1,5 +1,6 @@
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { expectNoEnglish } from "./french";
 
@@ -59,12 +60,7 @@ const LANG = {
 type Lang = keyof typeof LANG;
 
 async function signIn(page: Page, lang: Lang) {
-  const l = LANG[lang];
-  await page.goto("/login");
-  await page.getByLabel(l.email).fill(EMAIL);
-  await page.getByLabel(l.password).fill(PASSWORD);
-  await page.getByRole("button", { name: l.signIn }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD, lang });
 }
 
 async function boundaryRows(context: BrowserContext, baseURL: string | undefined) {

@@ -1,5 +1,6 @@
 import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-288 AC2 — the coach's Swap sheet recovers from `409 SWAP_OPTIONS_STALE` (BUG-271,
@@ -35,11 +36,7 @@ const SHOW = "Show suggestions";
 const SUGGESTIONS = "Suggestions";
 
 async function signIn(page: Page, email: string) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: email, password: PASSWORD });
 }
 
 async function openNutrition(page: Page, id: string) {

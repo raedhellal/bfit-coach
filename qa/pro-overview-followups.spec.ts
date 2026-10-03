@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { expect, webkit, type Browser, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { signInFrench } from "./french";
 import { en, type Copy } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
@@ -38,11 +39,7 @@ const QUENTIN = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0022";
 const WANDA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0023";
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
 }
 
 function region(page: Page, name: string) {
@@ -174,16 +171,9 @@ test.describe("M1 — five stat cards, no empty grid cell at any width (ruling 2
         extraHTTPHeaders: { "Accept-Language": "fr-FR" },
       });
       const page = await context.newPage();
-      // Retried: WebKit gets the dev server's HTML before React hydrates, and a fill before
-      // hydration leaves the submit disabled (the field-focus-ring.spec.ts recipe).
-      await page.goto("/login");
-      await expect(async () => {
-        if (new URL(page.url()).pathname !== "/login") return;
-        await page.getByLabel("E-mail").fill("coach@evoli.fit");
-        await page.getByLabel("Mot de passe").fill("Password123!");
-        await page.getByRole("button", { name: "Se connecter" }).click({ timeout: 2_000 });
-        await page.waitForURL(`${baseURL}/`, { timeout: 3_000 });
-      }).toPass({ timeout: 45_000 });
+      // WebKit gets the dev server's HTML before React hydrates, and a fill before hydration
+      // leaves the submit disabled: the helper waits for the form to take what was typed.
+      await signInThroughForm(page, { lang: "fr", landing: `${baseURL}/` });
       await page.goto(`/clients/${LINA}`);
       for (const width of M1_WIDTHS) {
         await page.setViewportSize({ width, height: 900 });

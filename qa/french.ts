@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { en } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-324 — what the French specs share: the footer sentences (literals), the English-leftover
@@ -29,11 +30,7 @@ function strings(value: unknown, out: string[] = []): string[] {
 const ENGLISH_ONLY = [...new Set(strings(en))].filter((s) => s.trim().length >= 4 && !strings(fr).includes(s));
 
 export async function signInFrench(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("E-mail").fill(EMAIL);
-  await page.getByLabel("Mot de passe").fill(PASSWORD);
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD, lang: "fr" });
 }
 
 /** Visible text nodes and the accessible/hint attributes of the whole page. */

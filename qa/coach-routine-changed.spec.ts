@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-283b AC5 — the coach sees that the trainee changed the routine, and when.
@@ -51,11 +52,7 @@ const YUSUF_SENTENCE = `Yusuf changed this plan on ${onDay("2026-09-24T18:40:00Z
 const OMAR_SENTENCE = `Omar changed this plan on ${onDay("2026-09-19T08:15:00Z")} (UTC). You're seeing their version.`;
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 /** Any banner at all, located by the half of the sentence that does not vary. */

@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { en } from "../src/lib/copy";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import {
@@ -16,6 +17,7 @@ import {
   toGoValue,
 } from "../src/lib/progressGoal";
 import type { TraineeProgressGoal } from "../src/lib/coachApi";
+import { dayIn, dayMinus } from "../src/lib/rosterView";
 
 /**
  * EV-202b — the progress block on the trainee's page: AC1 (the two values persist),
@@ -73,19 +75,17 @@ const BLOCK = "Progress and milestone";
  */
 const SAVED = "Saved.";
 
-/** The fixture's own `isoDate`, copied so the spec and the fixture cannot disagree. */
+/**
+ * The fixture's own `isoDate`: the same two calls, so the spec and the fixture cannot
+ * disagree. Both count back from TODAY IN PARIS, at every hour. The old copy (a local
+ * `setDate`, printed as the UTC day) was one day early between local and UTC midnight.
+ */
 function isoDate(daysAgo: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - daysAgo);
-  return d.toISOString().slice(0, 10);
+  return dayMinus(dayIn(new Date()), daysAgo);
 }
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 /**

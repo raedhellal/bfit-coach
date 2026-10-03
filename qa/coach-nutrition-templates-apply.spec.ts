@@ -1,5 +1,6 @@
 import { expect, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoEnglish, signInFrench } from "./french";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
@@ -64,11 +65,7 @@ const targetsUnknown = (first: string) =>
   `We couldn't confirm whether ${first}'s targets changed. Check their nutrition page before you try again.`;
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 async function calls(page: Page): Promise<string[]> {
