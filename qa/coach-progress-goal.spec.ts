@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { en } from "../src/lib/copy";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import {
@@ -84,11 +85,7 @@ function isoDate(daysAgo: number): string {
 }
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 /**

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { MARK_PATH } from "../src/components/ui/brand";
 
@@ -37,19 +38,11 @@ const NAV_EN = ["Roster", "Templates", "Recipes", "Nutrition templates", "Challe
 const NAV_FR = ["Clients", "Modèles", "Recettes", "Modèles nutrition", "Défis"];
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 async function signInFrench(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("E-mail").fill(EMAIL);
-  await page.getByLabel("Mot de passe").fill(PASSWORD);
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD, lang: "fr" });
 }
 
 async function box(locator: Locator, what: string) {

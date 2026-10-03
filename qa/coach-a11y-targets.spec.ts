@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-190c / AC8 — the 44 px touch-target floor across the portal, at 390 px.
@@ -39,11 +40,7 @@ test.describe.configure({ mode: "serial" });
 test.use({ viewport: { width: 390, height: 844 } });
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 /** Every rendered control in `scope`, with the size it actually occupies. */

@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { signInFrench } from "./french";
 import { en } from "../src/lib/copy";
 import { de, elides, fr, que } from "../src/lib/copy.fr";
@@ -589,11 +590,7 @@ test.describe("a French browser (fr-FR)", () => {
 });
 
 test("PB-2 — in English, '1,000' kcal is refused with the whole-number sentence, never sent as 1", async ({ page }) => {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
   await page.goto(`/clients/${OMAR}/nutrition`);
   const sent = posts(page);
   await page.getByLabel("Calories", { exact: true }).fill("1,000");

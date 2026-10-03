@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { expectNoEnglish, signInFrench } from "./french";
 
@@ -26,11 +27,7 @@ const SEEDED = ["Upper / Lower split", "Legacy strength", "Core circuit"];
 const X1_WIDTHS = [1440, 1280, 1279, 1024, 1023, 768, 767, 390, 320] as const;
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
 }
 
 function row(page: Page, name: string) {

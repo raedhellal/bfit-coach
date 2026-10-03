@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-185b — the coach's Nutrition tab, in **fixture mode** (see playwright.config.ts).
@@ -54,11 +55,7 @@ const FLOOR_STANDING =
 test.describe.configure({ mode: "serial" });
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 test.describe("AC1 — the coach opens Nutrition and sees the live targets and week", () => {

@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
 /**
@@ -80,11 +81,7 @@ const applyWarning = (n: number, noun: "meal" | "meals", first: string) =>
 test.describe.configure({ mode: "serial" });
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 async function openNutrition(page: Page, id: string) {

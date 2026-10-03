@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { en } from "../src/lib/copy";
 import {
@@ -43,11 +44,7 @@ const NONE_FR = "Choisissez au moins un type de repas.";
 const UNTAGGED_NOTE = "No meal time saved yet: this recipe is used for lunch and dinner by default.";
 
 async function signIn(page: Page, email = "coach@evoli.fit") {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: email, password: "Password123!" });
 }
 
 function row(page: Page, name: string): Locator {
@@ -443,11 +440,7 @@ test.describe("in French", () => {
 
   test("the chips, the reason, the badges and the filter read French", async ({ page }) => {
     page.on("dialog", (d) => d.accept());
-    await page.goto("/login");
-    await page.getByLabel("E-mail").fill("coach@evoli.fit");
-    await page.getByLabel("Mot de passe").fill("Password123!");
-    await page.getByRole("button", { name: "Se connecter" }).click();
-    await page.waitForURL("/");
+    await signInThroughForm(page, { lang: "fr" });
 
     await page.goto("/recipes");
     expect(await badges(page, BOWL)).toEqual({

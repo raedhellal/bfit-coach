@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { expect, webkit, type Browser, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * QA NB-1 (branch 1, 2026-10-02) — WCAG 2.4.11 in WebKIT: keyboard focus must not land
@@ -39,11 +40,8 @@ test.afterAll(async () => {
 async function signedIn(baseURL: string): Promise<Page> {
   const context = await browser.newContext({ baseURL, locale: "en-US" });
   const page = await context.newPage();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(`${baseURL}/`);
+  // WebKit types before hydration under load: the helper waits for the form to take it.
+  await signInThroughForm(page, { landing: `${baseURL}/` });
   return page;
 }
 
@@ -185,11 +183,7 @@ test("WebKit 390: a mouse click into a field above the tab bar does not scroll t
 });
 
 test("Chromium 390: a mouse click into a field above the tab bar does not scroll the page (B2)", async ({ page }) => {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto(`/clients/${LINA}/routine`);
   await page.waitForLoadState("networkidle");

@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { create as createQr } from "qrcode";
 
 /**
@@ -22,11 +23,7 @@ const PASSWORD = "Password123!";
 const TOKEN = "Zm9vYmFyLXRva2VuLTEyMzQ1Njc4OTA";
 
 async function signIn(page: import("@playwright/test").Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 test("the QR encodes the full URL including ?coach=, not just the token path", async ({ page }) => {

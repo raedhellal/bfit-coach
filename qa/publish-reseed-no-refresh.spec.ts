@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * ADR-0033 D33.9's row for branch 2a — publish re-seeds the editor WITHOUT a refresh.
@@ -37,11 +38,7 @@ interface DraftPut {
 }
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: PASSWORD });
 }
 
 function exerciseRow(page: Page, name: string): Locator {

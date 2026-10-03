@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { expect, webkit, type Browser, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * perf/coach-fast-routes-no-skeleton — the navigation progress bar
@@ -43,11 +44,7 @@ async function expectIdle(page: Page) {
 }
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
   await expectIdle(page);
 }
 

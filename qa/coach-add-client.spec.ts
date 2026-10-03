@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll } from "./layout";
 
 /**
@@ -22,18 +23,8 @@ import { expectNoSidewaysScroll } from "./layout";
  */
 
 async function signIn(page: Page, lang: "en" | "fr" = "en") {
-  const l = lang === "en" ? { email: "Email", password: "Password", signIn: "Sign in" } : { email: "E-mail", password: "Mot de passe", signIn: "Se connecter" };
-  await page.goto("/login");
-  const button = page.getByRole("button", { name: l.signIn });
-  // Fill until React's state agrees (a fill before hydration is lost; warm-routes.ts).
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    await page.getByLabel(l.email).fill("coach@evoli.fit");
-    await page.getByLabel(l.password).fill("Password123!");
-    if (await button.isEnabled()) break;
-    await page.waitForTimeout(250);
-  }
-  await button.click();
-  await page.waitForURL("/");
+  // Fills until React's state agrees (a fill before hydration is lost): qa/sign-in.ts.
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!", lang });
 }
 
 interface Mail {

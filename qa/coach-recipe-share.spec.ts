@@ -1,5 +1,6 @@
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { atEachWidth, expectNoSidewaysScroll } from "./layout";
 import { en } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
@@ -30,11 +31,7 @@ const VERA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0015";
 const PIA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0018";
 
 async function signIn(page: Page, email = "coach@evoli.fit", french = false) {
-  await page.goto("/login");
-  await page.getByLabel(french ? "E-mail" : "Email").fill(email);
-  await page.getByLabel(french ? "Mot de passe" : "Password").fill("Password123!");
-  await page.getByRole("button", { name: french ? "Se connecter" : "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email, password: "Password123!", lang: french ? "fr" : "en" });
 }
 
 async function fillOn(context: BrowserContext, page: Page) {

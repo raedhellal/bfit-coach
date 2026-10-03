@@ -2,6 +2,7 @@ import { appendFileSync, existsSync } from "node:fs";
 import { inflateSync } from "node:zlib";
 import { expect, webkit, type Browser, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * BUG-663 (P2, WCAG 2.2 SC 2.4.7 Focus Visible) — every text field in the portal, reached
@@ -412,20 +413,12 @@ async function sweep(page: Page, engine: Engine, scope: string | null) {
 // ─────────────────────────── routes ───────────────────────────
 
 /**
- * Retried until the form answers: under `next start` WebKit gets the HTML well before React
- * hydrates, and a fill before hydration is a no-op for the form's state, so the first click
- * signs in with empty fields (witnessed: the WebKit half hung on every signed-in route).
+ * WebKit gets the HTML well before React hydrates, and a fill before hydration is a no-op
+ * for the form's state (witnessed: the WebKit half hung on every signed-in route). The
+ * shared helper waits for the form's own hydration witness: qa/sign-in.ts.
  */
 async function signIn(page: Page, email = "coach@evoli.fit", password = PASSWORD, landing: RegExp | string = "/") {
-  await page.goto("/login");
-  await expect(async () => {
-    if (new URL(page.url()).pathname !== "/login") return; // an earlier try signed in
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(landing, { timeout: 3_000 });
-  }).toPass({ timeout: 30_000 });
-  await page.waitForURL(landing, { timeout: 10_000 });
+  await signInThroughForm(page, { email, password, landing });
 }
 
 /** A click before hydration is a no-op: retried until the dialog answers. */

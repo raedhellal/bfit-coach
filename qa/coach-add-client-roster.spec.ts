@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-204b on the POPULATED roster (playwright.roster.config.ts): six clients against a
@@ -11,16 +12,7 @@ import { test } from "./fixture-test";
  */
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  const button = page.getByRole("button", { name: "Sign in" });
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    await page.getByLabel("Email").fill("coach@evoli.fit");
-    await page.getByLabel("Password").fill("Password123!");
-    if (await button.isEnabled()) break;
-    await page.waitForTimeout(250);
-  }
-  await button.click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
 }
 
 test("a full plan: « Add a client » stays available and says what full means; the link invite stays refused", async ({ page }) => {

@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoEnglish, signInFrench } from "./french";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
@@ -36,11 +37,7 @@ const deleteBody = (name: string) =>
 const LONG_NAME = "Twelve-week recomposition phase for returning intermediate lifters, weeks 1-4";
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 async function calls(page: Page): Promise<string[]> {

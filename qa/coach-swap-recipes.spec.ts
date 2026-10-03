@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { atEachWidth, expectNoSidewaysScroll } from "./layout";
 import { matchesQuery, orderByKcalDistance, recipesFor } from "../src/lib/recipeSearch";
 
@@ -82,11 +83,7 @@ const applyWarning1 = (first: string) =>
 // not hide the others behind "did not run".
 
 async function signIn(page: Page, email: string) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: email, password: PASSWORD });
 }
 
 async function openNutrition(page: Page, id: string) {

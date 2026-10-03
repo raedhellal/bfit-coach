@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { expectNoEnglish, signInFrench } from "./french";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
@@ -27,11 +28,7 @@ const MARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008";
 const SARA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003";
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
 }
 
 const table = (page: Page) => page.getByRole("region", { name: "Participants' progress" });

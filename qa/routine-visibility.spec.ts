@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 import { VISIBILITY, type Visibility } from "../src/lib/routineVisibility";
 
 /**
@@ -98,11 +99,7 @@ test("every CARRIED_UNSEEN entry carries a written reason, and weeklyProgression
 });
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("coach@evoli.fit");
-  await page.getByLabel("Password").fill("Password123!");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
 }
 
 test("every CONTROLLED component has its control on a trainee's routine page", async ({ page }) => {

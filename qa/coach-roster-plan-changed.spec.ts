@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-283b AC5, the roster's half: a small "Plan changed" marker on the rows whose
@@ -24,11 +25,7 @@ const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 const MARKER = "Plan changed";
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 /**

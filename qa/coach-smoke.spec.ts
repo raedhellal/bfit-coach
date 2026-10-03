@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
+import { signInThroughForm } from "./sign-in";
 
 /**
  * EV-183 WP-4 smoke — login redirect, the roster empty state, and the invite modal.
@@ -13,11 +14,7 @@ const EMAIL = "coach@evoli.fit";
 const PASSWORD = "Password123!";
 
 async function signIn(page: import("@playwright/test").Page) {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
+  await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
 }
 
 test("an unauthenticated visitor is redirected to /login", async ({ page }) => {
