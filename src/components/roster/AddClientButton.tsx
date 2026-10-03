@@ -145,7 +145,9 @@ export function AddClientButton({
   const footer =
     stage === "form" ? (
       <>
-        <Button variant="secondary" onClick={() => setOpen(false)}>
+        {/* Not while the add is in flight: its outcome (or its refusal) must land in this
+            dialog, and a reopened form must never receive the previous person's result. */}
+        <Button variant="secondary" onClick={() => setOpen(false)} disabled={pending}>
           {c.cancel}
         </Button>
         <Button onClick={submit} disabled={pending}>
@@ -173,7 +175,7 @@ export function AddClientButton({
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => !pending && setOpen(false)}
         title={title}
         sub={sub}
         icon={stage === "done" ? "check" : "users"}
