@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
 import type {
@@ -194,10 +196,11 @@ test("PB-1: on an UPCOMING or ENDED challenge nobody has a today, whatever their
     rank: true,
     counts: true,
   });
-  // ACTIVE, but a trainee west of UTC still before the start: no today, nothing counted.
+  // ACTIVE, but a trainee west of UTC still before the start: no today, nothing counted —
+  // and, since ruling 13 (N6), no rank either (see the N6 test below).
   expect(view.participantRowView(progress("2026-09-28", null, false), challenge())).toMatchObject({
     today: false,
-    rank: true,
+    rank: false,
     counts: false,
   });
 });
@@ -291,4 +294,84 @@ test("N1: the met card's foot names who is outside its count, in the ruling's or
   expect(
     view.todayStats({ challenge: { ...challenge(), phase: "ENDED" }, participants: pastEnd })
   ).toMatchObject({ accepted: 0, pastEnd: 0, beforeStart: 0 });
+});
+
+/**
+ * Ruling 13 (EV-337n N6) — on an ACTIVE challenge's first morning, a trainee whose own day 1
+ * has not begun (west of UTC, or no stored zone before 12:00 UTC) shows no days met and no
+ * total: the api's zeros are not a result. The api still ranks him, last, in a tie over those
+ * same zeros, so the rank label goes too. The rank follows the counts, nothing else.
+ */
+test("N6: a row that shows no counts shows no rank; every counted row keeps its rank", () => {
+  const c = challenge();
+  const firstMorningWest = progress("2026-09-28", null, false);
+  expect(firstMorningWest.daysElapsed).toBe(0);
+  expect(view.participantRowView(firstMorningWest, c)).toEqual({ today: false, rank: false, counts: false, total: false });
+  // On his day 1 (counted, nothing synced yet): ranked, like every counted row.
+  expect(view.participantRowView(progress(START, null, false), c)).toMatchObject({ rank: true, counts: true });
+  expect(view.participantRowView(progress(START, 10_500, true), c)).toMatchObject({ rank: true, counts: true });
+  // ENDED keeps the final standings; UPCOMING shows no rank at all (as built).
+  expect(view.participantRowView(progress(END, 6_000, true), { ...c, phase: "ENDED" })).toMatchObject({ rank: true });
+  expect(view.participantRowView(progress(START, 5_000, true), { ...c, phase: "UPCOMING" })).toMatchObject({ rank: false });
+  // The rule is exactly "rank follows counts", over every shape above.
+  for (const [p, phase] of [
+    [firstMorningWest, "ACTIVE"],
+    [progress(START, null, false), "ACTIVE"],
+    [progress(END, 6_000, true), "ENDED"],
+    [progress(START, 5_000, true), "UPCOMING"],
+    [progress("2026-10-06", null, true), "ACTIVE"],
+  ] as const) {
+    const v = view.participantRowView(p, { ...c, phase });
+    expect(v.rank, `${phase} ${p.today}`).toBe(v.counts);
+  }
+});
+
+/**
+ * Ruling 14 (EV-337n N9, BUG-681) — the start of an UPCOMING challenge is printed as a date.
+ * « Commence demain » was counted on the api's UTC calendar: at 00:30 in Paris on 3 Oct
+ * (22:30 UTC on 2 Oct) a challenge starting on 3 Oct read « demain » to a coach for whom it
+ * starts today. A date is true on every calendar.
+ */
+test("N9: an UPCOMING card's window line is the start date, at 00:30 in Paris too", () => {
+  expect(typeof view.phaseLine).toBe("function");
+  const upcoming = (startsOn: string, endsOn: string): CoachChallengeSummary => ({
+    ...challenge(),
+    phase: "UPCOMING",
+    startsOn,
+    endsOn,
+  });
+  const night = Date.parse("2026-10-02T22:30:00Z");
+  expect(view.phaseLine(upcoming("2026-10-03", "2026-10-09"), fr, night)).toBe("Commence le 3 oct.");
+  expect(view.phaseLine(upcoming("2026-10-03", "2026-10-09"), en, night)).toBe("Starts on 3 Oct");
+  // In 3 days: still a date, never a count.
+  expect(view.phaseLine(upcoming("2026-10-05", "2026-10-11"), fr, night)).toBe("Commence le 5 oct.");
+  // The 1st of a month, as the ACTIVE line prints it.
+  expect(view.phaseLine(upcoming("2026-10-01", "2026-10-07"), fr, Date.parse("2026-09-30T22:30:00Z"))).toBe(
+    "Commence le 1er oct."
+  );
+  expect(view.phaseLine(upcoming("2026-10-01", "2026-10-07"), en, Date.parse("2026-09-30T22:30:00Z"))).toBe(
+    "Starts on 1 Oct"
+  );
+  // ACTIVE and ENDED read as before.
+  const midday = Date.parse("2026-10-02T12:00:00Z");
+  expect(view.phaseLine(challenge(), fr, midday)).toBe("Jour 4 sur 7 · se termine le 5 oct.");
+  expect(view.phaseLine(challenge(), en, midday)).toBe("Day 4 of 7 · ends on 5 Oct");
+  expect(view.phaseLine({ ...challenge(), phase: "ENDED" }, fr, Date.parse("2026-10-08T12:00:00Z"))).toBe(
+    "Terminé le 5 oct."
+  );
+  // The window position carries the dates, no count of days to the start.
+  expect(view.windowPosition(upcoming("2026-10-03", "2026-10-09"), night)).toEqual({
+    phase: "UPCOMING",
+    days: 7,
+    startsOn: "2026-10-03",
+    endsOn: "2026-10-09",
+  });
+});
+
+test("N9: no relative start sentence is left in either dictionary", () => {
+  const banned = /Commence demain|Commence dans|Starts tomorrow|Starts in/;
+  for (const file of ["copy.ts", "copy.fr.ts"]) {
+    const text = readFileSync(join(__dirname, "..", "src", "lib", file), "utf8");
+    expect(text.match(banned)?.[0] ?? null, `src/lib/${file}`).toBeNull();
+  }
 });

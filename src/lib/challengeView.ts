@@ -1,5 +1,6 @@
 import type { ChallengeProgress, CoachChallengeDetail, CoachChallengeSummary } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
+import { formatShortDate } from "@/lib/format";
 
 /**
  * EV-337h — what the redesigned challenge screens derive from the api's numbers, in one
@@ -9,11 +10,11 @@ import type { Copy } from "@/lib/copy";
  * what it returned, and a figure with nothing behind it is `null`, which the screen names
  * (« Aucune donnée aujourd'hui »), never `0`.
  *
- * **Whose calendar.** The window position (« Jour 5 sur 7 », « Commence dans 3 jours ») is
- * counted on the UTC date, because that is the calendar the api's own `phase` is computed
- * on (`ChallengePhase`, "computed on the server's UTC date for coach reads"). Counting it on
- * another clock could print « Jour 8 sur 7 » beside « Actif ». So the result is clamped to
- * what the phase allows. The per-participant "today" figures use each trainee's OWN today
+ * **Whose calendar.** The window position (« Jour 5 sur 7 ») is counted on the UTC date,
+ * because that is the calendar the api's own `phase` is computed on (`ChallengePhase`,
+ * "computed on the server's UTC date for coach reads"). Counting it on another clock could
+ * print « Jour 8 sur 7 » beside « Actif ». So the result is clamped to what the phase allows.
+ * The START is never counted (ruling 14): it is printed as a date, true on every calendar. The per-participant "today" figures use each trainee's OWN today
  * (`ChallengeProgress.today`), as the api computed it.
  */
 
@@ -28,10 +29,17 @@ function dayNumber(iso: string): number | null {
   return Math.round(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86_400_000);
 }
 
-/** Where the window stands today, by phase. `null` when the dates cannot be read. */
+/**
+ * Where the window stands today, by phase. `null` when the dates cannot be read.
+ *
+ * UPCOMING carries the start as a DATE, not a count of days (ruling 14, `BUG-681`): the api's
+ * phase is UTC while a coach's day is his own, so from 00:00 to 02:00 CEST a challenge
+ * created for « today » read « Commence demain ». The server does not know the coach's zone,
+ * and a count made in the browser would disagree with the pill beside it.
+ */
 export type WindowPosition =
   | { phase: "ACTIVE"; day: number; days: number; endsOn: string }
-  | { phase: "UPCOMING"; startsIn: number; days: number; startsOn: string }
+  | { phase: "UPCOMING"; days: number; startsOn: string; endsOn: string }
   | { phase: "ENDED"; days: number; endsOn: string };
 
 export function windowPosition(c: CoachChallengeSummary, nowMs: number): WindowPosition | null {
@@ -43,12 +51,33 @@ export function windowPosition(c: CoachChallengeSummary, nowMs: number): WindowP
     case "ACTIVE":
       return { phase: "ACTIVE", day: Math.min(c.days, Math.max(1, today - start + 1)), days: c.days, endsOn: c.endsOn };
     case "UPCOMING":
-      return { phase: "UPCOMING", startsIn: Math.max(1, start - today), days: c.days, startsOn: c.startsOn };
+      return { phase: "UPCOMING", days: c.days, startsOn: c.startsOn, endsOn: c.endsOn };
     case "ENDED":
       return { phase: "ENDED", days: c.days, endsOn: c.endsOn };
     default:
       // A phase this portal does not know (a newer api): say nothing about the window.
       return null;
+  }
+}
+
+/**
+ * The list card's window line: « Jour 5 sur 7 · se termine le 4 oct. », « Commence le
+ * 3 oct. », « Terminé le 18 sept. » (EN "Day 5 of 7 · ends on 4 Oct", "Starts on 3 Oct",
+ * "Ended on 18 Sep"). Dates by `formatShortDate`, no year (the line above carries it).
+ * `null` for a phase this portal does not know.
+ */
+export function phaseLine(c: CoachChallengeSummary, copy: Copy, now: number): string | null {
+  const at = windowPosition(c, now);
+  if (!at) return null;
+  const ch = copy.challenges;
+  const short = (iso: string) => formatShortDate(iso, copy.locale);
+  switch (at.phase) {
+    case "ACTIVE":
+      return `${ch.dayOf(at.day, at.days)} · ${ch.endsOn(short(at.endsOn))}`;
+    case "UPCOMING":
+      return ch.startsOnDate(short(at.startsOn));
+    case "ENDED":
+      return ch.endedOn(short(at.endsOn));
   }
 }
 
@@ -90,13 +119,17 @@ export function todayInWindow(
 }
 
 /**
- * What an ACCEPTED participant's row may draw, decided once (QA PB-1 and PB-2 on 6269343).
+ * What an ACCEPTED participant's row may draw, decided once (QA PB-1 and PB-2 on 6269343;
+ * ruling 13 / N6 for the rank).
  *
  *   · `today` — the today cell: `todayInWindow`, the cards' own question.
- *   · `rank` — not on an UPCOMING challenge. The api ranks by what each trainee's own
- *     calendar has counted, so a trainee east of UTC already on day 1 ranked « 1er » under
- *     a head that says the challenge has not started; with nobody started, every rank is a
- *     tie over zeros. Either way the rank says nothing the head allows.
+ *   · `rank` — exactly when `counts`: the api ranks by days met, then total, so a rank is
+ *     a position over the very numbers `counts` decides the row may show. Under an UPCOMING
+ *     head a trainee east of UTC already on day 1 ranked « 1er » for a challenge the head says
+ *     has not started; on an ACTIVE first morning a trainee whose own day 1 has not begun
+ *     (west of UTC, or no stored zone before 12:00 UTC) ranked last in a tie over the zeros
+ *     the row hides (ruling 13). The row stays where the api's order puts it; only the label
+ *     goes. On UPCOMING that means every row, in the api's order, with no label (as built).
  *   · `counts` — days met and the total, and the sync line: from the first day the HEAD
  *     says has begun (not UPCOMING) and the trainee's own first day (`daysElapsed > 0`).
  *     Before that the api's numbers are zeros over no day (« 0 sur 0 · 0 pas »), or count a
@@ -124,7 +157,7 @@ export function participantRowView(
   const counts = c.phase !== "UPCOMING" && progress.daysElapsed > 0;
   return {
     today: todayInWindow(progress, c),
-    rank: c.phase !== "UPCOMING",
+    rank: counts,
     counts,
     total: counts && (c.metric !== "STEPS" || progress.syncedAt !== null),
   };

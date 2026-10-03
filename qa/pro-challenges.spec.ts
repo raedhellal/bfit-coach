@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { expectNoEnglish } from "./french";
+import { formatShortDate } from "../src/lib/format";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
 /**
@@ -66,7 +67,9 @@ const LANG = {
       beforeStart1: "1 not yet at the first day",
     },
     dayOf: "Day 5 of 7",
-    startsIn: "Starts in 3 days",
+    startsOnDate: (date: string) => `Starts on ${date}`,
+    endsOnFoot: (date: string) => `Ends on ${date}`,
+    startLabel: "Starts",
   },
   fr: {
     locale: "fr-FR",
@@ -94,7 +97,9 @@ const LANG = {
       beforeStart1: "1 pas encore au premier jour",
     },
     dayOf: "Jour 5 sur 7",
-    startsIn: "Commence dans 3\u00a0jours",
+    startsOnDate: (date: string) => `Commence le ${date}`,
+    endsOnFoot: (date: string) => `Se termine le ${date}`,
+    startLabel: "Début",
   },
 } as const;
 type Lang = keyof typeof LANG;
@@ -106,6 +111,13 @@ async function signIn(page: Page, lang: Lang) {
   await page.getByLabel(l.password).fill(PASSWORD);
   await page.getByRole("button", { name: l.signIn }).click();
   await page.waitForURL("/");
+}
+
+/** The UTC date `days` from now — the calendar the fixture seeds its challenges on. */
+function utcPlus(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 const participant = (page: Page, id: string) => page.locator(`li[data-participant="${id}"]`);
@@ -318,7 +330,9 @@ for (const lang of ["fr", "en"] as const) {
       await page.goto("/challenges");
       const list = page.getByRole("list", { name: l.listH1 });
       await expect(list.locator(`[data-challenge-id="${ACTIVE}"] [data-window-position]`)).toContainText(l.dayOf);
-      await expect(list.locator(`[data-challenge-id="${UPCOMING}"] [data-window-position]`)).toHaveText(l.startsIn);
+      await expect(list.locator(`[data-challenge-id="${UPCOMING}"] [data-window-position]`)).toHaveText(
+        l.startsOnDate(formatShortDate(utcPlus(3), lang))
+      );
       if (lang === "fr") await expectNoEnglish(page, "the challenge list");
     });
 
@@ -360,7 +374,7 @@ for (const lang of ["fr", "en"] as const) {
       await signIn(page, lang);
 
       await page.goto(`/challenges/${EDGE_UPCOMING}`);
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Commence demain");
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Départ demain");
       await expect(page.locator(".challenge-head [data-phase]")).toHaveText(l.phase.UPCOMING);
       const tokyo = participant(page, YUSUF);
       await expect(tokyo).toHaveAttribute("data-status", "ACCEPTED");
@@ -509,7 +523,97 @@ for (const lang of ["fr", "en"] as const) {
       await expectNoSidewaysScroll(page, `${lang} 390px: the pager, page 2`);
       if (lang === "fr") await expectNoEnglish(page, "the challenges list, page 2");
     });
+
+    /**
+     * Ruling 13 (EV-337n N6): « Premier matin » starts today (UTC). Tobias is west of UTC and
+     * still the day before the start: no days met, no total — and no rank, which the api
+     * computes from the same zeros (it ranks him 3rd). His row stays where the api puts it.
+     */
+    test("N6: on the first morning, a trainee whose day 1 has not begun shows no rank; the api's order stands", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await context.addCookies([{ name: "evoli_fixture_challenge_edges", value: "1", url: baseURL! }]);
+      await signIn(page, lang);
+      await page.goto(`/challenges/${EDGE_FIRST_MORNING}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Premier matin");
+      await expect(page.locator(".challenge-head [data-phase]")).toHaveText(LANG[lang].phase.ACTIVE);
+      // The api's order: Lina (1 met), Yusuf (0 met, 4 000), Tobias (nothing yet).
+      await expect(page.locator('li[data-participant][data-status="ACCEPTED"]')).toHaveCount(3);
+      const order = await page.locator("li[data-participant]").evaluateAll((els) => els.map((el) => el.getAttribute("data-participant")));
+      expect(order).toEqual([LINA, YUSUF, TOBIAS]);
+
+      const tobias = participant(page, TOBIAS);
+      await expect(tobias).toHaveAttribute("data-status", "ACCEPTED");
+      await expect(tobias.locator("[data-rank-label]")).toHaveCount(0);
+      await expect(tobias).toHaveAttribute("data-rank", "");
+      await expect(tobias.locator("[data-days-met], [data-total]")).toHaveCount(0);
+      expect(await tobias.innerText()).not.toMatch(lang === "fr" ? /\b3e\b/ : /#3/);
+
+      // Every counted row keeps its rank.
+      await expect(participant(page, LINA).locator("[data-rank-label]")).toHaveText(lang === "fr" ? "1er" : "#1");
+      await expect(participant(page, YUSUF).locator("[data-rank-label]")).toHaveText(lang === "fr" ? "2e" : "#2");
+    });
   });
+}
+
+/**
+ * Ruling 14 (EV-337n N9, BUG-681): an UPCOMING challenge's start is a DATE. « Commence demain »
+ * was counted on the api's UTC calendar, so from 00:00 to 02:00 CEST a Paris coach read
+ * "tomorrow" for a challenge that starts today on his. Two UPCOMING challenges: the seeded one
+ * (starts in 3 days, UTC) and the edges' « Départ demain » (tomorrow, UTC). Each browser zone
+ * below must read the same date: the page is rendered on the server, which does not know it.
+ */
+const RELATIVE_START = /Commence demain|Commence dans|Starts tomorrow|Starts in/;
+for (const timezoneId of ["UTC", "Europe/Paris", "Pacific/Kiritimati"]) {
+  for (const lang of ["fr", "en"] as const) {
+    test.describe(`N9 in ${lang.toUpperCase()}, browser zone ${timezoneId}`, () => {
+      test.use({ locale: LANG[lang].locale, timezoneId });
+
+      test("the UPCOMING window line and tile print the start as a date; no relative start anywhere", async ({
+        page,
+        context,
+        baseURL,
+      }) => {
+        const l = LANG[lang];
+        const short = (iso: string) => formatShortDate(iso, lang);
+        await context.addCookies([{ name: "evoli_fixture_challenge_edges", value: "1", url: baseURL! }]);
+        await signIn(page, lang);
+        const upcoming = [
+          { id: UPCOMING, start: utcPlus(3), end: utcPlus(9) },
+          { id: EDGE_UPCOMING, start: utcPlus(1), end: utcPlus(7) },
+        ];
+        for (const width of [390, 1440]) {
+          const at = `${lang} ${timezoneId} ${width}px`;
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto("/challenges");
+          const list = page.getByRole("list", { name: l.listH1 });
+          for (const c of upcoming) {
+            await expect(list.locator(`[data-challenge-id="${c.id}"] [data-window-position]`), at).toHaveText(
+              l.startsOnDate(short(c.start))
+            );
+          }
+          expect((await page.locator("main").innerText()).match(RELATIVE_START)?.[0] ?? null, `${at} list`).toBeNull();
+
+          for (const c of upcoming) {
+            await page.goto(`/challenges/${c.id}`);
+            await expect(page.locator(".challenge-head [data-phase]"), at).toHaveText(l.phase.UPCOMING);
+            const tile = page.locator(".challenge-stats .stat-card").nth(1);
+            await expect(tile.locator(".stat-card-label"), at).toHaveText(l.startLabel);
+            await expect(tile.locator(".stat-card-value"), at).toHaveText(short(c.start));
+            await expect(tile.locator(".stat-card-foot"), at).toHaveText(l.endsOnFoot(short(c.end)));
+            expect((await page.locator("main").innerText()).match(RELATIVE_START)?.[0] ?? null, `${at} ${c.id}`).toBeNull();
+          }
+        }
+        // The ACTIVE and ENDED pages are not touched: same tiles as at f6d22bd.
+        await page.goto(`/challenges/${ACTIVE}`);
+        await expect(page.locator(".challenge-stats .stat-card").nth(3).locator(".stat-card-foot")).toHaveText(
+          l.endsOnFoot(short(utcPlus(2)))
+        );
+      });
+    });
+  }
 }
 
 /**

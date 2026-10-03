@@ -89,7 +89,7 @@ function Identity({
 }: {
   p: CoachChallengeParticipant;
   copy: Copy;
-  /** False on an UPCOMING challenge (`participantRowView`): the api's rank counts no day the head allows. */
+  /** False when the row shows no counts (`participantRowView`): a rank over hidden zeros (ruling 13). */
   showRank?: boolean;
   children?: ReactNode;
 }) {

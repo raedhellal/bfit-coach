@@ -66,7 +66,8 @@ export function ChallengeStats({ detail, copy, now }: { detail: CoachChallengeDe
         <StatTile label={c.stats.day} value={c.ratio(at.day, at.days)} foot={sentenceCase(c.endsOn(short(at.endsOn)))} />
       )}
       {at?.phase === "UPCOMING" && (
-        <StatTile label={c.stats.start} value={short(at.startsOn)} foot={c.startsIn(at.startsIn)} />
+        // Ruling 14: the start as a date and the end in the foot, never « Commence demain ».
+        <StatTile label={c.stats.start} value={short(at.startsOn)} foot={sentenceCase(c.endsOn(short(at.endsOn)))} />
       )}
       {at?.phase === "ENDED" && <StatTile label={c.stats.end} value={short(at.endsOn)} foot={c.days(at.days)} />}
     </div>

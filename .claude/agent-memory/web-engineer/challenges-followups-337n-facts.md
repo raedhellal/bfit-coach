@@ -1,6 +1,6 @@
 ---
 name: challenges-followups-337n-facts
-description: EV-337n (feat/pro-challenges-followups, 2026-10-02) — the head's UTC phase gates every row "today", participantRowView, a never-synced total is a fake zero, met-card foot (ruling 8), zone-edge + extra-challenge fixture switches
+description: EV-337n (feat/pro-challenges-followups + fix/challenge-rank-before-day1, 2026-10-02/03) — the head's UTC phase gates every row "today", participantRowView (rank === counts), a never-synced total is a fake zero, met-card foot (ruling 8), zone-edge + extra-challenge fixture switches
 metadata:
   type: project
 ---
@@ -19,8 +19,11 @@ spec needs.
   « Commence demain » (UPCOMING, UTC) and an LA trainee « 6 000 / 5 000 pas » under « Terminé ».
   Pass the whole `challenge` (needs `phase`, `metric`), never a `{startsOn, endsOn}` range.
 - **`participantRowView(progress, challenge)`** = `{today, rank, counts, total}` is the ONE place
-  the row decides. UPCOMING: no rank, no days-met/total, no sync line (the api ranks over the
-  trainee's own day 1). ENDED keeps final standings (rank, days met, total). The day strip is
+  the row decides. **`rank === counts`** (ruling 13 / N6, `fix/challenge-rank-before-day1`): a
+  rank is a position over days met + total, so a row that hides those hides its rank too —
+  UPCOMING (every row) and an ACTIVE first-morning trainee whose own day 1 has not begun
+  (west of UTC, or no stored zone before 12:00 UTC). Only the label goes; the row keeps the
+  api's order (no client re-sort, ever). ENDED keeps final standings (rank, days met, total). The day strip is
   NOT gated: dated per-day facts, never labelled "today" — a deliberate choice, not an oversight.
   `data-rank` is blanked when the rank is hidden.
 - **`total` vs `syncedAt` (read at b-fit-api main, `ChallengeProgressCalculator.steps`):** total
@@ -51,3 +54,20 @@ spec needs.
   because the switches do not exist. Copy the tip `coachApi.fixture.ts` into the base worktree
   to get the real red (PB-1: `.participant-today` count 2; PB-2: `[data-total]` count 1; N1: no
   foot). N2 is green there — the pager was already 44 px; it was only never measured.
+- **`coach-challenges` "create → list → detail" goes red 00:00–02:00 CEST** (reads « Upcoming »,
+  expects « Active ») — the local-midnight artefact, unrelated to any change; re-run with
+  `TZ=UTC` and it is green ([[coach-gate-red-after-local-midnight]]). Seen again 2026-10-03 00:07.
+- **The start is a DATE, never a count (ruling 14, N9, BUG-681).** `phaseLine` lives in
+  `challengeView.ts` now (pure, unit-testable); UPCOMING reads « Commence le 3 oct. » /
+  "Starts on 3 Oct" and the detail tile's foot « Se termine le {end} ». Copy key
+  `startsOnDate`; `startsIn` is gone and a pure test greps both dictionaries for « Commence
+  demain|dans », "Starts tomorrow|in". The edge challenge was renamed « Départ demain » because a
+  TITLE on the page counts too. A new date-taking French sentence must join
+  `DATE_NUMBER_OR_WEEKDAY_POSITIONS` in `qa/french-polish.spec.ts` (exact list).
+- **Browser zone ≠ api calendar (N10, BUG-624).** `CreateChallengeDialog` defaults to the
+  BROWSER's local today; Playwright's browser takes the HOST zone. Any spec asserting a phase
+  for a challenge the dialog just created must `test.use({ timezoneId: "UTC" })`. To reproduce the
+  Paris-midnight failure at any hour: host `TZ=Pacific/Kiritimati` between 10:00 and 23:59 UTC.
+  Server-rendered dates (`phaseLine`, tiles) do not depend on `timezoneId` — test them across
+  zones anyway, that is the AC.
+

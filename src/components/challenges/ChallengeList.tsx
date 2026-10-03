@@ -3,8 +3,8 @@ import { StatusPill, type StatusTone } from "@/components/ui/StatusPill";
 import { UiIcon } from "@/components/ui/icons";
 import type { ChallengePhase, CoachChallengeSummary } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
-import { formatDate, formatShortDate, formatSteps } from "@/lib/format";
-import { windowPosition } from "@/lib/challengeView";
+import { formatDate, formatSteps } from "@/lib/format";
+import { phaseLine, windowPosition } from "@/lib/challengeView";
 
 /**
  * The phase as a pill: an icon and a WORD, the colour last (plan §5.5, « Actif / À venir /
@@ -42,24 +42,6 @@ export function windowLine(c: CoachChallengeSummary, copy: Copy): string {
   return `${copy.challenges.window(formatDate(c.startsOn, copy.locale), formatDate(c.endsOn, copy.locale))} · ${copy.challenges.days(c.days)}`;
 }
 
-/**
- * Where the window stands: « Jour 5 sur 7 · se termine le 4 oct. », « Commence dans
- * 3 jours », « Terminé le 18 sept. ». Counted from the dates on the api's own (UTC)
- * calendar (`windowPosition`); `null` for a phase this portal does not know.
- */
-export function phaseLine(c: CoachChallengeSummary, copy: Copy, now: number): string | null {
-  const at = windowPosition(c, now);
-  if (!at) return null;
-  const ch = copy.challenges;
-  switch (at.phase) {
-    case "ACTIVE":
-      return `${ch.dayOf(at.day, at.days)} · ${ch.endsOn(formatShortDate(at.endsOn, copy.locale))}`;
-    case "UPCOMING":
-      return ch.startsIn(at.startsIn);
-    case "ENDED":
-      return ch.endedOn(formatShortDate(at.endsOn, copy.locale));
-  }
-}
 
 /**
  * EV-337h (plan §5.5) — the coach's challenges, one card each, in the api's order

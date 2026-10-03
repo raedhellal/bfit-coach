@@ -2263,7 +2263,11 @@ export const en = {
     dayOf: (day: number, days: number) => `Day ${day} of ${days}`,
     /** Joined after "Day 5 of 7 · ", so lower-case. */
     endsOn: (date: string) => `ends on ${date}`,
-    startsIn: (days: number) => (days === 1 ? "Starts tomorrow" : `Starts in ${days} days`),
+    /**
+     * An UPCOMING challenge's start, as a DATE (ruling 14, BUG-681): a count of days ("Starts
+     * tomorrow") was counted on the api's UTC calendar and was false on the coach's at night.
+     */
+    startsOnDate: (date: string) => `Starts on ${date}`,
     endedOn: (date: string) => `Ended on ${date}`,
     participantsTitle: "Participants",
     /** Numbers only: the same in both languages (coach-i18n allowlist). */

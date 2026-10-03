@@ -1244,7 +1244,7 @@ export const fr = {
     viewDetail: "Voir le détail",
     dayOf: (day: number, days: number) => `Jour ${day} sur ${days}`,
     endsOn: (date: string) => `se termine le ${date}`,
-    startsIn: (days: number) => (days === 1 ? "Commence demain" : `Commence dans ${days}\u00a0jours`),
+    startsOnDate: (date: string) => `Commence le ${date}`,
     endedOn: (date: string) => `Terminé le ${date}`,
     participantsTitle: "Participants",
     ratio: (part: number, whole: number) => `${part} / ${whole}`,
