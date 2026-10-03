@@ -10,6 +10,7 @@ import { saveTargetsAction } from "@/lib/nutritionActions";
 import { parseTarget, targetRefusal } from "@/lib/numberInput";
 import { settled } from "@/lib/settled";
 import type { NutritionTargets } from "@/lib/coachApi";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * EV-185b AC2 — the coach's macro targets.
@@ -55,6 +56,8 @@ export function NutritionTargetsCard({
   const [protein, setProtein] = useState(targets ? String(targets.proteinG) : "");
   const [carbs, setCarbs] = useState(targets ? String(targets.carbsG) : "");
   const [fat, setFat] = useState(targets ? String(targets.fatG) : "");
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   /** The refusal on screen (AC2 or PB-2's sentence), or null. No request was sent. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const invalid = refusal !== null;
@@ -208,7 +211,7 @@ export function NutritionTargetsCard({
   const source = sourceLine();
 
   return (
-    <Card style={{ marginBottom: 18 }}>
+    <Card style={{ marginBottom: 18 }} rootRef={scope}>
       <CardHead
         title={copy.nutrition.targetsTitle}
         icon="apple"

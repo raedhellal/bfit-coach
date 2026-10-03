@@ -11,6 +11,7 @@ import {
   type RosterFilter,
   type RosterGroup,
 } from "@/lib/rosterView";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * EV-337d — search, filters and the four groups over the roster the SERVER read.
@@ -38,6 +39,8 @@ export function RosterBrowser({ entries }: { entries: RosterEntry[] }) {
   const copy = useCopy();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<RosterFilter>("all");
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   const searchId = useId();
 
   const counts = useMemo(() => {
@@ -50,7 +53,7 @@ export function RosterBrowser({ entries }: { entries: RosterEntry[] }) {
   const narrowed = filter !== "all" || query.trim() !== "";
 
   return (
-    <div className="roster-browser">
+    <div className="roster-browser" ref={scope}>
       <div className="roster-toolbar">
         <label className="roster-search" htmlFor={searchId}>
           <span aria-hidden="true" style={{ display: "inline-flex", color: "var(--ink-3)" }}>

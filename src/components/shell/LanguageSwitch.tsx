@@ -3,6 +3,7 @@
 import { useId, useState, useTransition } from "react";
 import { setLocaleAction } from "@/lib/i18n/actions";
 import { useCopy } from "@/lib/i18n/client";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 import { LANGUAGE_NAMES, type Locale } from "@/lib/i18n/locale";
 import { settled } from "@/lib/settled";
 
@@ -33,6 +34,8 @@ export function LanguageSwitch({ locale, inline = false }: { locale: Locale; inl
   const [pending, startTransition] = useTransition();
   const [chosen, setChosen] = useState<Locale | null>(null);
   const [failed, setFailed] = useState(false);
+  // BUG-686 follow-up: an option chosen before hydration is chosen, not just drawn checked.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   const current = pending && chosen ? chosen : locale;
 
   function choose(next: Locale) {
@@ -48,6 +51,7 @@ export function LanguageSwitch({ locale, inline = false }: { locale: Locale; inl
 
   return (
     <div
+      ref={scope}
       className={inline ? "lang-switch lang-switch--inline" : "lang-switch"}
       role="radiogroup"
       aria-labelledby={labelId}

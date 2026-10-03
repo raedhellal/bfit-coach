@@ -69,3 +69,4 @@
 - [Training templates redesign (EV-337i)](training-templates-redesign-facts.md) — StickyActionBar vs a 66 px tab bar; editor h1 stays server-rendered; row actions behind « ⋯ »; checklist = publishabilityReasons
 - [Night clock + hydration race harness](night-clock-and-hydration-race-harness.md) — QA_CLOCK_SHIFT_MS preload for 00:30 Paris; qa/sign-in.ts; same-text re-fill is ignored; taskpolicy -b reproduces WebKit race
 - [Programme frame (EV-337f1)](programme-frame-337f1-facts.md) — a sticky bar never rises above its parent: header passed in as `lead`; `aside` slot for f3; long-plan switch; EN h2 "Routine"
+- [Pre-hydration adoption hook](prehydration-adoption-hook-facts.md) — every SSR field raced (2026-10-03); snapshot then replay from a task; consent NEVER adopted (Back restores ticks); Modal forms immune

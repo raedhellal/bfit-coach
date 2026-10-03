@@ -5,6 +5,7 @@ import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
 import { crossSessionBoundary } from "@/lib/clientSession";
 import { useCopy } from "@/lib/i18n/client";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 import { LEGAL_URLS } from "@/lib/legal";
 import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, isApiBlank } from "@/lib/password";
 
@@ -24,6 +25,14 @@ import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, isApiBlank } from "@/lib/password";
  *     `409 CONSENT_VERSION_STALE` the new versions are shown and the tick is TAKEN BACK,
  *     never resubmitted silently (a silent retry would record consent to text the person
  *     did not see — the app's §8b recovery, mirrored).
+ *
+ * What was typed BEFORE hydration (BUG-686 follow-up) is adopted once, after it, by
+ * `useAdoptPrehydrationInput`: the three passwords. The consent box is NOT adopted
+ * (`data-adopt="never"`; staff ruling 2026-10-03, do not reintroduce it). A box found
+ * ticked at hydration is not proof of a tick in this document: Back into a new document
+ * has the browser restore it ticked. So the hook visibly UNticks it, consent stays false,
+ * and the person ticks it once more — the first rule above, and the 409 rule's "the tick
+ * is taken back".
  */
 
 type Versions = { privacyPolicyVersion: string; termsVersion: string };
@@ -47,6 +56,7 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
   const [closed, setClosed] = useState(false);
   /** 429: the submit is held until this instant (ms). */
   const [heldUntil, setHeldUntil] = useState<number | null>(null);
+  const form = useAdoptPrehydrationInput<HTMLFormElement>();
 
   useEffect(() => {
     if (heldUntil === null) return;
@@ -189,6 +199,7 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
 
   return (
     <form
+      ref={form}
       onSubmit={submit}
       noValidate
       aria-busy={busy || undefined}
@@ -265,7 +276,16 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
           links stay OUTSIDE the label, so opening a document to read it never ticks the box. */}
       <div className="consent">
         <label className="consent-row">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+          <input
+            type="checkbox"
+            data-adopt="never"
+            // Staff witnessed (Chromium + WebKit): without it the browser restores the tick
+            // on Back into a new document. With it, there is no stale tick on screen before
+            // hydration. data-adopt="never" still covers a tick made before hydration.
+            autoComplete="off"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+          />
           <span>{copy.activate.consent}</span>
         </label>
         <div className="consent-docs">

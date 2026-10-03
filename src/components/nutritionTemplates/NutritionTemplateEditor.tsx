@@ -13,6 +13,7 @@ import { NUTRITION_TEMPLATE_NAME_MAX } from "@/lib/nutritionTemplateUse";
 import { parseTarget, targetRefusal } from "@/lib/numberInput";
 import { settled } from "@/lib/settled";
 import type { NutritionTemplateTargetsRequest } from "@/lib/coachApi";
+import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * EV-273b AC2 — the nutrition template editor. A name and four targets, and nothing
@@ -46,6 +47,8 @@ export function NutritionTemplateEditor({
   const [protein, setProtein] = useState(initial ? String(initial.targets.proteinG) : "");
   const [carbs, setCarbs] = useState(initial ? String(initial.targets.carbsG) : "");
   const [fat, setFat] = useState(initial ? String(initial.targets.fatG) : "");
+  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
+  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   /** The refusal on screen (AC2 or PB-2's sentence), or null. No request was sent. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const invalid = refusal !== null;
@@ -118,7 +121,7 @@ export function NutritionTemplateEditor({
   }
 
   return (
-    <Card>
+    <Card rootRef={scope}>
       <label style={{ display: "block", marginBottom: 16 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>
           {t.nameLabel}
