@@ -9,7 +9,7 @@ metadata:
 `QA_CLOCK_SHIFT_MS=$(node -e 'console.log(Date.parse(process.argv[1])-Date.now())' 2026-10-04T00:30:00+02:00) NODE_OPTIONS="--import ./qa/clock-shift.mjs" TZ=Europe/Paris npx playwright test …`.
 The preload moves the runner, workers and every `next dev` process (each prints
 `[clock-shift] pid …`); `qa/fixture-test.ts` moves the browser with an init script.
-Not `context.clock.setSystemTime`: Playwright replays it per document against the
+The shim is a function, not a class: `Date()` without `new` must return the string. Not `context.clock.setSystemTime`: Playwright replays it per document against the
 RUNNER's `Date.now()`, which the preload shifted, so the page drifts back by the shift.
 Shift forward only.
 
@@ -20,7 +20,12 @@ default config 1111/1111. Cause: fixture `isoDate` did local `setDate` and print
 classifies against. The create test takes N10's `timezoneId: "UTC"` (cherry-picked a8a3dbf).
 Specs that mirror fixture dates must use the same calls: coach-progress-goal does.
 
-**WebKit sign-in race.** `qa/sign-in.ts` `signInThroughForm` is the one form sign-in.
+**WebKit sign-in race.** `qa/sign-in.ts` `signInThroughForm` is the one form sign-in:
+every fixture-mode spec uses it (67 calls in 57 specs + `french.ts`, after staff's nit 1;
+the first cut's "58" left eight spec sites raw). Only the live/stub/legacy/refresh configs
+keep their own. Options: `labels` (exact or RegExp wording), `landing: null` (refusal paths),
+`beforeSubmit` (pro-shell's document-load mark). Each wait is 40 % of the test timeout, at most
+25 s, so a failure names the helper's step instead of "Test timeout".
 Witness = « Sign in » enabled (SSR'd `disabled`; only React state enables it). Facts:
 - A fill before hydration never reaches state; the plain helper then clicks a
   `<button disabled>` until timeout.
