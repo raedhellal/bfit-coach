@@ -68,3 +68,4 @@
 - [Coach previews are behind Vercel Auth](coach-previews-are-behind-vercel-auth.md) — find the URL via the public GitHub API; every preview 302s to SSO; push with an explicit refspec
 - [Training templates redesign (EV-337i)](training-templates-redesign-facts.md) — StickyActionBar vs a 66 px tab bar; editor h1 stays server-rendered; row actions behind « ⋯ »; checklist = publishabilityReasons
 - [Night clock + hydration race harness](night-clock-and-hydration-race-harness.md) — QA_CLOCK_SHIFT_MS preload for 00:30 Paris; qa/sign-in.ts; same-text re-fill is ignored; taskpolicy -b reproduces WebKit race
+- [Pre-hydration adoption hook](prehydration-adoption-hook-facts.md) — every SSR field raced (2026-10-03); snapshot then one flushSync replay per field; Modal forms immune; WebKit+next start drops the secure cookie
