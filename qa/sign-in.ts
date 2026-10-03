@@ -16,8 +16,12 @@ import { expect, type Page } from "@playwright/test";
  * marker, and adding one would be product code): « Sign in » becomes ENABLED only when
  * React's state holds both fields. That needs the `onChange` handlers to be live, which
  * means the form has hydrated. So the helper fills, waits for that enabled state, and
- * fills again if it does not come. Filling again after hydration is what reaches the state
- * (measured, both engines).
+ * fills again if it does not come. Each fill CLEARS the field first. React tracks the value
+ * it last saw, and after hydration over pre-typed text it has seen that text, so writing the
+ * SAME text again can fire no `onChange`. Measured on the nutrition template editor in
+ * throttled WebKit: hydrated at 2.5 s, then 40 identical re-fills over 80 s never enabled
+ * Save, while one clear-then-fill did at once. The login form's re-fill happened to get
+ * through in the forced race, but nothing guarantees it.
  *
  * Once the button is enabled, React owns the submit (its `onSubmit` prevents the native
  * one), so the click is made ONCE, and the wait for the landing URL is long: under load the
@@ -55,7 +59,9 @@ export async function signInThroughForm(page: Page, options: SignInOptions = {})
   const submit = page.getByRole("button", { name: labels.submit });
 
   await expect(async () => {
+    await emailField.fill("");
     await emailField.fill(email);
+    await passwordField.fill("");
     await passwordField.fill(password);
     // The hydration witness: only React's state, through `onChange`, enables the button.
     await expect(submit, "« Sign in » is enabled only once the form's state holds both fields").toBeEnabled({
