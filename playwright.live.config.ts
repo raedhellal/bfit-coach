@@ -29,7 +29,7 @@ const API_ORIGIN = process.env.COACH_LIVE_API_ORIGIN || "http://localhost:8099";
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /(coach-live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live)\.spec\.ts/,
+  testMatch: /(coach-live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|coach-add-client\.live)\.spec\.ts/,
   fullyParallel: false,
   workers: 1, // every spec here shares one coach account, one roster and one database
   forbidOnly: !!process.env.CI,

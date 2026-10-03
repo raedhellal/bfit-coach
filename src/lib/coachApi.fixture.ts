@@ -74,6 +74,10 @@ import type {
   CoachProgressGoalRequest,
   TraineeProgressGoal,
   TraineeProgressReading,
+  InitialisedAccount,
+  InitialisedAccountPage,
+  InitialiseTraineeRequest,
+  ResendInvitationRequest,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -87,6 +91,7 @@ import { FIXTURE_RECIPE_BOUNDS as B } from "./fixtureRecipeBounds";
 // EV-278c — the fixture's POST /me/activate hands back fresh tokens, minted like the login's.
 import { mintFixtureToken } from "./fixtureToken";
 import { isApiBlank } from "./password";
+import { javaTrim } from "./addClient";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
@@ -4536,6 +4541,18 @@ interface FixtureState {
   activations: FixtureActivationRecord[];
   /** EV-321b — the coach's challenges, by id, each with its participants' day rows. */
   challenges: Map<string, StoredChallenge>;
+  /**
+   * EV-204b — accounts a coach initialised (`POST /coach-portal/trainees`), keyed by USER
+   * id. Hidden seeds only (an expired one, an activated one, another coach's): nothing is
+   * LISTED until a test adds a client, so the `empty` scenario's roster stays empty.
+   */
+  invited: Map<string, FixtureInvitedAccount>;
+  /** The mail sink: every invitation the fixture "sent", WITH its temporary password. */
+  invitationMails: FixtureInvitationMail[];
+  /** `throttle.acquireOrThrow("initialise:<coach>")`'s window: one instant per call. */
+  initialiseCalls: number[];
+  /** `"initialise-resend:<coach>:<user>"`'s window, per user id. */
+  resendCalls: Map<string, number[]>;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -4620,6 +4637,10 @@ function freshState(): FixtureState {
     legalVersions: { privacyPolicyVersion: "v1.0", termsVersion: "v1.0" },
     activations: [],
     challenges: seedChallenges(),
+    invited: seedInvited(),
+    invitationMails: [],
+    initialiseCalls: [],
+    resendCalls: new Map(),
   };
 }
 
@@ -5260,6 +5281,314 @@ async function fixtureActivate(body: ActivateAccountRequest): Promise<AuthTokens
   };
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-204b — « Ajouter un client »: the coach initialises a trainee (b-fit-api
+ * `InitialiseAccountUseCase`, coach branch, at origin/main 2bf3b42).
+ *
+ * Faithful where the portal can see the difference:
+ *   · the order of refusals: 400 (bean validation, before the controller) → 503 (no
+ *     objection inbox) → 429 (30 an hour per coach, EVERY call charged, the 409s included)
+ *     → 409 COACH_PROFILE_REQUIRED → 409 ACCOUNT_EXISTS (active and pending: one answer);
+ *   · an expired, unactivated account at the address counts as ABSENT and is replaced in
+ *     the same write (AC-P14); the list never shows it (no tombstone, D22.10d);
+ *   · Resend moves `passwordIssuedAt` and NOT `expiresAt` (D22.9c), 5 an hour per account;
+ *   · Withdraw deletes; Resend and Withdraw answer one 404 for activated, expired (Resend
+ *     only), another coach's and unknown ids (AC-P13).
+ *   · NO response carries the temporary password (AC-P9). It goes to `invitationMails`,
+ *     the fixture's mail sink (`GET /api/fixture/mail`), which is where a test finds the
+ *     value it then proves absent from every coach surface.
+ *
+ * ⚠ Fixture affordances, ONE browser context each (cookies, read only in fixture mode):
+ *   `evoli_fixture_initialise=unavailable|throttled|profile_required|fail` — `fail` WRITES
+ *     the account and then answers 500: an answer lost after the commit, the unknown outcome.
+ *   `evoli_fixture_invitation_write=unavailable|throttled|gone|fail` — Resend and Withdraw.
+ *     `gone` ACTIVATES the account first (the person finished it in another tab's lifetime),
+ *     so the 404 and the list that drops the row are the api's, not two stories.
+ *   `evoli_fixture_invited_read=fail` — the Invited list read answers 500.
+ * Addresses that already have an account: `EXISTING_ADDRESSES` below, every EV-278c pending
+ * account (`pending.trainee@evoli.fit`…), and every unexpired initialised one.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface FixtureInvitedAccount {
+  userId: string;
+  email: string;
+  fullName: string;
+  createdAt: string;
+  expiresAt: string;
+  passwordIssuedAt: string;
+  /** The initialising coach's user id. */
+  initialisedBy: string;
+  activated: boolean;
+}
+
+interface FixtureInvitationMail {
+  kind: "INITIALISED" | "RESENT";
+  to: string;
+  fullName: string;
+  creatorName: string;
+  /** The email carries it; nothing else in the fixture does. */
+  temporaryPassword: string;
+  expiresAt: string;
+  locale: string | null;
+}
+
+const ANOTHER_COACH_ID = "1a2b3c4d-0000-4000-8000-00000000c0ad";
+const ACCOUNT_WINDOW_MS = 720 * 60 * 60 * 1000; // V65: created_at + INTERVAL '720 hours'
+const HOUR_MS = 60 * 60 * 1000;
+const INITIALISATIONS_PER_WINDOW = 30; // InitialiseAccountUseCase.INITIALISATIONS_PER_WINDOW
+const RESENDS_PER_WINDOW = 5; // InitialiseAccountUseCase.RESENDS_PER_WINDOW
+
+/** Addresses with an ordinary (activated) Evoli account. The seeded `local` profile's three, and one more. */
+const EXISTING_ADDRESSES: ReadonlySet<string> = new Set([
+  "coach@evoli.fit",
+  "user@evoli.fit",
+  "admin@evoli.fit",
+  "deja.client@example.com",
+]);
+
+function seedInvited(): Map<string, FixtureInvitedAccount> {
+  const at = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
+  const rows: FixtureInvitedAccount[] = [
+    // AC-P14: past `expiresAt`, not yet swept. Absent from the list; its address is free.
+    {
+      userId: "204b0000-0000-4000-8000-000000000001",
+      email: "lapsed.invite@example.com",
+      fullName: "Lapsed Invite",
+      createdAt: at(31 * 24 * HOUR_MS),
+      expiresAt: at(24 * HOUR_MS),
+      passwordIssuedAt: at(31 * 24 * HOUR_MS),
+      initialisedBy: COACH_ID,
+      activated: false,
+    },
+    // Activated: not Invited any more, and its address is an account.
+    {
+      userId: "204b0000-0000-4000-8000-000000000002",
+      email: "activated.invite@example.com",
+      fullName: "Activated Invite",
+      createdAt: at(5 * 24 * HOUR_MS),
+      expiresAt: at(5 * 24 * HOUR_MS - ACCOUNT_WINDOW_MS),
+      passwordIssuedAt: at(5 * 24 * HOUR_MS),
+      initialisedBy: COACH_ID,
+      activated: true,
+    },
+    // Another coach's pending account: never listed here, and "already uses Evoli".
+    {
+      userId: "204b0000-0000-4000-8000-000000000003",
+      email: "other.coach.invite@example.com",
+      fullName: "Someone Else's",
+      createdAt: at(2 * 24 * HOUR_MS),
+      expiresAt: at(2 * 24 * HOUR_MS - ACCOUNT_WINDOW_MS),
+      passwordIssuedAt: at(2 * 24 * HOUR_MS),
+      initialisedBy: ANOTHER_COACH_ID,
+      activated: false,
+    },
+  ];
+  return new Map(rows.map((r) => [r.userId, r]));
+}
+
+/** `GET /api/fixture/mail` — the mail sink, for the Playwright gate ONLY. */
+export function fixtureInvitationMails(): FixtureInvitationMail[] {
+  return state().invitationMails.map((m) => ({ ...m }));
+}
+
+function invitedResponse(a: FixtureInvitedAccount): InitialisedAccount {
+  // Built field by field: a spread of the stored row would carry `initialisedBy`/`activated`.
+  return {
+    userId: a.userId,
+    email: a.email,
+    fullName: a.fullName,
+    status: "INVITED",
+    createdAt: a.createdAt,
+    expiresAt: a.expiresAt,
+    passwordIssuedAt: a.passwordIssuedAt,
+  };
+}
+
+function fixtureTemporaryPassword(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return `Evo-${btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, "x")}`;
+}
+
+async function rateLimited(retryAfterSeconds: number): Promise<never> {
+  const { ApiError } = await import("./apiFetch");
+  throw new ApiError(429, "Too many requests", "RATE_LIMITED", null, retryAfterSeconds);
+}
+
+/** Charges one call to a fixed window, like `AuthThrottle.acquireOrThrow`. */
+async function chargeWindow(calls: number[], limit: number, now: number): Promise<void> {
+  const live = calls.filter((t) => now - t < HOUR_MS);
+  calls.length = 0;
+  calls.push(...live);
+  if (live.length >= limit) await rateLimited(Math.max(1, Math.ceil((live[0] + HOUR_MS - now) / 1000)));
+  calls.push(now);
+}
+
+/** The api's bean validation of `InitialiseTraineeRequest`, as a `field + " " + message` 400. */
+async function validateInitialiseRequest(body: InitialiseTraineeRequest): Promise<void> {
+  const raw = body as unknown as Record<string, unknown>;
+  const email = typeof raw.email === "string" ? raw.email : "";
+  const fullName = typeof raw.fullName === "string" ? raw.fullName : "";
+  if (isApiBlank(email)) await fail(400, "VALIDATION_ERROR", "email must not be blank");
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(javaTrim(email)) || !INITIALISE_EMAIL_TEXT.test(email)) {
+    await fail(400, "VALIDATION_ERROR", "email must be a well-formed email address");
+  }
+  if (isApiBlank(fullName)) await fail(400, "VALIDATION_ERROR", "fullName must not be blank");
+  if (fullName.length > 120) await fail(400, "VALIDATION_ERROR", "fullName size must be between 0 and 120");
+  if (!INITIALISE_NAME_TEXT.test(fullName)) {
+    await fail(
+      400,
+      "VALIDATION_ERROR",
+      "fullName must not contain a control character, a line break or an invisible format character"
+    );
+  }
+  if (raw.locale !== undefined && raw.locale !== null) {
+    if (typeof raw.locale !== "string" || !/^[A-Za-z]{2}([-_][A-Za-z]{2})?$/.test(raw.locale)) {
+      await fail(400, "VALIDATION_ERROR", "locale must be a language tag such as en or fr-FR");
+    }
+  }
+}
+
+/** `InitialiseTraineeRequest.NAME_TEXT` / `EMAIL_TEXT`, the JavaScript spelling (openapi.yaml's). */
+const INITIALISE_NAME_TEXT = new RegExp("^(?:[^\\p{Cc}\\p{Cf}\\u2028\\u2029]|[\\u200C\\u200D])*$", "u");
+const INITIALISE_EMAIL_TEXT = new RegExp("^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]*$", "u");
+
+function addressHasAccount(email: string, now: number): FixtureInvitedAccount | "ACCOUNT" | null {
+  if (EXISTING_ADDRESSES.has(email)) return "ACCOUNT";
+  if (state().pendingAccounts.has(email)) return "ACCOUNT";
+  for (const a of state().invited.values()) {
+    if (a.email !== email) continue;
+    // AC-P14 / D22.8f: an expired, unactivated account counts as absent — returned so the
+    // caller can delete it in the same write.
+    return !a.activated && Date.parse(a.expiresAt) <= now ? a : "ACCOUNT";
+  }
+  return null;
+}
+
+async function fixtureInitialiseTrainee(body: InitialiseTraineeRequest): Promise<InitialisedAccount> {
+  await validateInitialiseRequest(body);
+  const sw = await fixtureSwitch("evoli_fixture_initialise");
+  if (sw === "unavailable") {
+    await fail(503, "ACCOUNT_INITIALISATION_UNAVAILABLE", "Creating accounts is not available right now.");
+  }
+  const s = state();
+  const now = Date.now();
+  if (sw === "throttled") await rateLimited(1_740);
+  await chargeWindow(s.initialiseCalls, INITIALISATIONS_PER_WINDOW, now);
+  if (sw === "profile_required") {
+    await fail(
+      409,
+      "COACH_PROFILE_REQUIRED",
+      "finish your coach profile first, so the person knows who set up their account"
+    );
+  }
+  const email = javaTrim(body.email).toLowerCase();
+  const fullName = javaTrim(body.fullName);
+  const existing = addressHasAccount(email, now);
+  if (existing === "ACCOUNT") {
+    return fail(409, "ACCOUNT_EXISTS", "this person already uses Evoli — send them an invite instead");
+  }
+  if (existing) s.invited.delete(existing.userId);
+
+  const created = new Date(now).toISOString();
+  const account: FixtureInvitedAccount = {
+    userId: crypto.randomUUID(),
+    email,
+    fullName,
+    createdAt: created,
+    expiresAt: new Date(now + ACCOUNT_WINDOW_MS).toISOString(),
+    passwordIssuedAt: created,
+    initialisedBy: COACH_ID,
+    activated: false,
+  };
+  s.invited.set(account.userId, account);
+  s.invitationMails.push({
+    kind: "INITIALISED",
+    to: email,
+    fullName,
+    creatorName: "Alex R.",
+    temporaryPassword: fixtureTemporaryPassword(),
+    expiresAt: account.expiresAt,
+    locale: body.locale ?? null,
+  });
+  if (sw === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+  return invitedResponse(account);
+}
+
+/** The person finished their account (an app-side act the portal never sees happen). */
+function activateFixtureAccount(userId: string): void {
+  const a = state().invited.get(userId);
+  if (a) a.activated = true;
+}
+
+/** One of THIS coach's unactivated accounts, or the api's one 404 (AC-P13). */
+async function ownPendingAccount(userId: string, allowExpired: boolean): Promise<FixtureInvitedAccount> {
+  const a = state().invited.get(userId);
+  const usable =
+    a && a.initialisedBy === COACH_ID && !a.activated && (allowExpired || Date.parse(a.expiresAt) > Date.now());
+  if (!usable) {
+    await fail(404, "PENDING_ACCOUNT_NOT_FOUND", "no pending account you initialised has this id");
+  }
+  return a as FixtureInvitedAccount;
+}
+
+async function fixtureResendInvitation(userId: string, body: ResendInvitationRequest): Promise<InitialisedAccount> {
+  const sw = await fixtureSwitch("evoli_fixture_invitation_write");
+  if (sw === "unavailable") {
+    await fail(503, "ACCOUNT_INITIALISATION_UNAVAILABLE", "Creating accounts is not available right now.");
+  }
+  const s = state();
+  const now = Date.now();
+  if (sw === "throttled") await rateLimited(2_400);
+  const calls = s.resendCalls.get(userId) ?? [];
+  s.resendCalls.set(userId, calls);
+  await chargeWindow(calls, RESENDS_PER_WINDOW, now);
+  if (sw === "gone") activateFixtureAccount(userId);
+  const account = await ownPendingAccount(userId, false);
+  account.passwordIssuedAt = new Date(now).toISOString();
+  s.invitationMails.push({
+    kind: "RESENT",
+    to: account.email,
+    fullName: account.fullName,
+    creatorName: "Alex R.",
+    temporaryPassword: fixtureTemporaryPassword(),
+    // D22.9c: the SAME date as the first email.
+    expiresAt: account.expiresAt,
+    locale: body.locale ?? null,
+  });
+  if (sw === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+  return invitedResponse(account);
+}
+
+async function fixtureWithdrawInvitation(userId: string): Promise<void> {
+  const sw = await fixtureSwitch("evoli_fixture_invitation_write");
+  if (sw === "gone") activateFixtureAccount(userId);
+  // An expired, not-yet-swept account is still withdrawn: the sweeper would delete it anyway.
+  const account = await ownPendingAccount(userId, true);
+  state().invited.delete(account.userId);
+  if (sw === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+}
+
+async function fixtureListInvited(page = 0, size = 20): Promise<InitialisedAccountPage> {
+  if ((await fixtureSwitch("evoli_fixture_invited_read")) === "fail") {
+    await fail(500, "INTERNAL_ERROR", "Internal error");
+  }
+  if (page < 0 || size < 1 || size > 100) {
+    await fail(400, "VALIDATION_ERROR", "page below 0, or size outside 1..100");
+  }
+  const now = Date.now();
+  const rows = [...state().invited.values()]
+    .filter((a) => a.initialisedBy === COACH_ID && !a.activated && Date.parse(a.expiresAt) > now)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return {
+    items: rows.slice(page * size, (page + 1) * size).map(invitedResponse),
+    page,
+    size,
+    totalElements: rows.length,
+    totalPages: Math.ceil(rows.length / size),
+  };
+}
+
 export const fixtureCoachApi: CoachApi = {
   // ── EV-278c activation ────────────────────────────────────────────────────
   getActivation: fixtureGetActivation,
@@ -5361,6 +5690,12 @@ export const fixtureCoachApi: CoachApi = {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     return { inviteId: crypto.randomUUID(), token, expiresAt };
   },
+
+  // ── EV-204b « Ajouter un client » (see the block above `fixtureCoachApi`) ──
+  listInvited: fixtureListInvited,
+  initialiseTrainee: fixtureInitialiseTrainee,
+  resendInvitation: fixtureResendInvitation,
+  withdrawInvitation: fixtureWithdrawInvitation,
 
   async getClient(id: string): Promise<ClientOverview> {
     /**

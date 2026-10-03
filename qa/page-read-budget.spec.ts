@@ -118,7 +118,7 @@ async function documentLoad(page: Page, route: string): Promise<Entry[]> {
 
 /** Each main route, the reads its document render makes, and its depth. */
 const ROUTES: { route: string; reads: string[]; depth: number; why?: string }[] = [
-  { route: "/", reads: ["getMe", "listClients"], depth: 1 },
+  { route: "/", reads: ["getMe", "listClients", "listInvited"], depth: 1 }, // EV-204b: the Invited read, in the same round trip
   { route: "/challenges", reads: ["getMe", "listChallenges", "listClients"], depth: 1 },
   { route: `/challenges/${ACTIVE_CHALLENGE}`, reads: ["getChallenge", "getMe"], depth: 1 },
   {

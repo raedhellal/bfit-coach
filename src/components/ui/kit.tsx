@@ -49,6 +49,7 @@ export function Button({
   type = "button",
   title,
   ariaLabel,
+  ariaDescribedBy,
   style = {},
 }: {
   children?: ReactNode;
@@ -64,6 +65,8 @@ export function Button({
       "Send by email" control uses it rather than a hover-only overlay. */
   title?: string;
   ariaLabel?: string;
+  /** EV-204b — the id of the sentence that says why a disabled control is off (AC-P11). */
+  ariaDescribedBy?: string;
   style?: Sx;
 }) {
   const S = {
@@ -91,6 +94,7 @@ export function Button({
       disabled={disabled}
       title={title}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       style={{
         height: S.h,
         padding: `0 ${S.px}px`,

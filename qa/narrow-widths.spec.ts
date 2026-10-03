@@ -444,3 +444,49 @@ test.describe("EV-337k — the shell-less screens never scroll sideways on a pho
     });
   }
 });
+
+/**
+ * EV-204b (staff nit 4) — /invited/[id], loaded and not-found, in both languages: the longest
+ * name and address the api accepts in this shape never scroll a phone sideways.
+ */
+test.describe("EV-204b — /invited/[id] never scrolls a phone sideways", () => {
+  for (const locale of ["en-US", "fr-FR"] as const) {
+    test.describe(locale, () => {
+      test.use({ locale });
+      test(`loaded and not-found at ${PHONE_WIDTHS.join(" / ")} (${locale})`, async ({ page }) => {
+        await page.goto("/login");
+        const fr = locale === "fr-FR";
+        const button = page.getByRole("button", { name: fr ? "Se connecter" : "Sign in" });
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          await page.getByLabel(fr ? "E-mail" : "Email").fill("coach@evoli.fit");
+          await page.getByLabel(fr ? "Mot de passe" : "Password").fill("Password123!");
+          if (await button.isEnabled()) break;
+          await page.waitForTimeout(250);
+        }
+        await button.click();
+        await page.waitForURL("/");
+        await page.getByRole("button", { name: fr ? "Ajouter un client" : "Add a client", exact: true }).click();
+        const dialog = page.getByRole("dialog");
+        await dialog.getByLabel(fr ? "Nom" : "Name", { exact: true }).fill("Maximilian Alexander Okonkwo-Lindqvist");
+        await dialog
+          .getByLabel(fr ? "Adresse e-mail" : "Email address", { exact: true })
+          .fill("maximilian.alexander.okonkwo-lindqvist@a-very-long-domain.example.com");
+        await dialog.getByRole("button", { name: fr ? "Ajouter le client" : "Add client", exact: true }).click();
+        await expect(page.locator("[data-add-client-done]")).toBeVisible();
+        await page.getByRole("button", { name: fr ? "Terminé" : "Done", exact: true }).click();
+        const href = await page
+          .locator("[data-invited-section]")
+          .getByRole("link", { name: "Maximilian Alexander Okonkwo-Lindqvist" })
+          .getAttribute("href");
+        for (const route of [href!, "/invited/00000000-0000-4000-8000-000000000000"]) {
+          for (const width of PHONE_WIDTHS) {
+            await page.setViewportSize({ width, height: 900 });
+            await page.goto(route);
+            await expect(page.locator("h1")).toHaveCount(1);
+            await expectNoSidewaysScroll(page, `${route} at ${width} (${locale})`);
+          }
+        }
+      });
+    });
+  }
+});

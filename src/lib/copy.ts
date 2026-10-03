@@ -342,6 +342,131 @@ export const en = {
   },
 
   /**
+   * EV-204b — « Ajouter un client »: the coach sets up a trainee's account with a name and an
+   * email; the trainee gets a temporary password by email, signs in to the Evoli app,
+   * chooses their own password, finishes onboarding and gives their own consent.
+   *
+   * Three rules every sentence here keeps:
+   *   · No install promise (EV-204 "the gate"): there is no store listing, so nothing here
+   *     says where to get the app. "The Evoli app" names it, covering Fit and Fit Lite.
+   *   · No delivery promise: the api's mail adapter swallows failures (D22.5e), which is
+   *     why Resend exists. "We're emailing", never "they received".
+   *   · No temporary password, and no sentence implying the coach could see one (AC-P9).
+   */
+  addClient: {
+    /** The roster's action, and the dialog's title. */
+    button: "Add a client",
+    title: "Add a client",
+    sub: "We set up their account and email them a temporary password.",
+    nameLabel: "Name",
+    nameHint: "As you know them. They can correct it when they finish their account.",
+    emailLabel: "Email address",
+    emailPlaceholder: "name@example.com",
+    languageLabel: "Language of the email",
+    /** What happens next, said before the coach presses Add (ADR-0022 D22.3b, D22.4a). */
+    howItWorks:
+      "They sign in to the Evoli app with the temporary password, choose their own and agree to share their data with you. Nothing is shared before that. If they haven't finished within 30 days, their account is deleted.",
+    /**
+     * The api does NOT check capacity here (no link is created): it checks at accept
+     * (`CoachLinkService.accept`; `NominationUseCase` skips the pre-check, b-fit-api 2bf3b42).
+     */
+    capacityNote: (tier: string, capacity: number) =>
+      `${tier} includes ${capacity} profile${capacity === 1 ? "" : "s"}, all in use. They can still finish their account, but can join you only once a place is free.`,
+    cancel: "Cancel",
+    submit: "Add client",
+    submitting: "Adding…",
+    problems: {
+      nameBlank: "Enter their name.",
+      nameTooLong: "At most 120 characters.",
+      nameInvisible: "Remove the line breaks and invisible characters.",
+      emailBlank: "Enter their email address.",
+      emailInvalid: "Enter a valid email address.",
+      emailTooLong: "At most 254 characters.",
+    },
+    /** A 400 whose field the portal did not name. */
+    invalid: "Something in the form was refused. Check it and try again.",
+    doneTitle: "Account set up",
+    done: (name: string, email: string) =>
+      `${name}'s account is set up. We're emailing ${email} a temporary password.`,
+    doneNext: (date: string) =>
+      `They finish it in the Evoli app by ${date}. If the email doesn't arrive, use Resend in the Invited list.`,
+    doneClose: "Done",
+    /** AC-P8, verbatim ("this person already uses Evoli — send them an invite instead"). */
+    exists: "This person already uses Evoli — send them an invite instead.",
+    existsHow: "Create a link to share with them. They accept on their phone and appear in your clients.",
+    existsAction: "Create an invite link",
+    back: "Back",
+    /** AC-P18, verbatim. */
+    profileRequired: "Finish your coach profile first, so the person knows who set up their account.",
+    /** There is no coach-profile page in the portal and no api to edit one (G24). */
+    profileHow: "Your coach profile has no name yet, and the portal can't edit it. Write to support@evoli.fit and we'll add it.",
+    throttled: (minutes: number) =>
+      `Too many attempts in the last hour. Nothing was created. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+    throttledNoTime: "Too many attempts in the last hour. Nothing was created. Try again later.",
+    unavailable: "Adding clients isn't available right now. Nothing was created. Try again later.",
+    /** A 5xx or a lost answer: the account may exist, so never "nothing was created". */
+    unknown: (name: string) =>
+      `We couldn't confirm that ${name}'s account was set up. Check the Invited list before trying again: if ${name} is there, it was.`,
+  },
+
+  /** EV-204b — the roster's Invited section and the person's own page (AC-P7, P11, P13). */
+  invited: {
+    /** The section heading. AC-P7: "the row reads Invited". */
+    title: "Invited",
+    count: (n: number) => `${n} invited`,
+    intro: "They have an account they haven't finished yet. They join your clients once they finish it in the Evoli app and accept you.",
+    status: "Invited",
+    colSent: "Invitation",
+    sent: (date: string) => `Sent ${date}`,
+    resentOn: (date: string) => `Resent ${date}`,
+    colExpires: "Access expires",
+    resend: "Resend",
+    withdraw: "Withdraw",
+    /** The two buttons' accessible names: a row of « Resend » buttons must say whose. */
+    resendFor: (name: string) => `Resend the invitation to ${name}`,
+    withdrawFor: (name: string) => `Withdraw ${name}'s invitation`,
+    resendTitle: (name: string) => `Resend ${name}'s invitation?`,
+    resendBody: (email: string, date: string) =>
+      `We email ${email} a new temporary password. The previous one stops working. Access still expires on ${date}.`,
+    resending: "Resending…",
+    resent: (email: string, date: string) =>
+      `Resent to ${email}. The previous temporary password no longer works; access still expires on ${date}.`,
+    withdrawTitle: (name: string) => `Withdraw ${name}'s invitation?`,
+    withdrawBody: (email: string) =>
+      `Their account is deleted now, with everything it holds: their name and ${email}. The temporary password stops working. You can add them again later.`,
+    withdrawing: "Withdrawing…",
+    withdrawn: (name: string) => `${name}'s invitation was withdrawn and their account deleted.`,
+    cancel: "Cancel",
+    gone: "This invitation no longer exists: they may have finished their account, or it expired or was withdrawn. The list is up to date.",
+    resendThrottled: (minutes: number) =>
+      `This invitation was resent several times in the last hour. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+    resendThrottledNoTime: "This invitation was resent several times in the last hour. Try again later.",
+    resendUnavailable: "Resending isn't available right now. Nothing was sent.",
+    resendUnknown: "We couldn't confirm the invitation was resent. If you resend it again, only the newest temporary password works.",
+    withdrawUnknown: "We couldn't confirm the invitation was withdrawn. Check the Invited list: if it is still there, it wasn't.",
+    loadError: "Pending invitations couldn't be loaded.",
+    reload: "Reload",
+    // ── /invited/[userId] ─────────────────────────────────────────────────────
+    pageNextTitle: "What happens next",
+    pageFlow: (name: string) =>
+      `${name} signs in to the Evoli app with the temporary password we emailed, chooses their own password and agrees to share their data with you. Until then they aren't one of your clients and you see nothing about them.`,
+    pageExpiry: (date: string) => `If they haven't finished by ${date}, their account and everything in it are deleted.`,
+    notFound: "This invitation no longer exists. They may have finished their account, or it expired or was withdrawn.",
+    pageLoadError: "This invitation couldn't be loaded.",
+    /**
+     * AC-P11 / ADR-0022 D22.6a: the body-data control is VISIBLE and DISABLED, and says why.
+     * It does not say "until": no coach-entered measurement exists after activation either
+     * (no endpoint on b-fit-api 2bf3b42; EV-202 Ruling 1). What it says is witnessed: nothing
+     * is recorded before consent, the app's onboarding asks the trainee for their own
+     * measurements, and an accepted link carries WEIGH_INS (`CoachLinkService`, every scope).
+     */
+    bodyDataTitle: "Body data",
+    bodyDataAction: "Add a measurement",
+    bodyDataWhy: (name: string) =>
+      `Nothing about ${name}'s body can be recorded before they finish their account and agree to it. They enter their own starting measurements in the Evoli app, and you see their weigh-ins on their client page once they accept you.`,
+  },
+
+  /**
    * /i/<token> — the page the invite QR encodes (ADR-0012 D5, EV-183 edge case 3).
    *
    * Trainee-facing, not coach-facing: the wordmark here is "Evoli Fit", the mobile

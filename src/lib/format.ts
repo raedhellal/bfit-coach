@@ -296,6 +296,18 @@ export function formatUtcTime(iso: string | null | undefined): string {
 }
 
 /**
+ * EV-204b — an account's deletion instant as the invitation email states it: the UTC date
+ * and time ("2 Nov 2026, 09:30 UTC" / "2 nov. 2026, 09:30 UTC"). The api's email prints
+ * `d MMMM yyyy, HH:mm 'UTC'` (`InvitationMail`), and the activation screen already reads
+ * this way, so the coach, the email and the trainee name one instant, not three days.
+ */
+export function formatExpiryUtc(iso: string | null | undefined, locale: Locale): string {
+  if (!iso) return DASH;
+  const date = formatInstant(iso, locale);
+  return date === DASH ? DASH : `${date}, ${formatUtcTime(iso)} UTC`;
+}
+
+/**
  * An ISO instant → "14:42" in the RUNTIME's time zone — for a client component, where
  * that zone is the coach's browser. On the server it would be the host's zone (UTC on
  * Vercel), which is exactly why the challenge page does not call it there. 24-hour in

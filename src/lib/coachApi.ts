@@ -331,6 +331,91 @@ export interface Invite extends InviteResponse {
   url: string;
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-204b — « Ajouter un client »: the coach initialises a trainee's account.
+ *
+ *   POST   /coach-portal/trainees            ← InitialiseTraineeRequest → 201 InitialisedAccountResponse
+ *          409 ACCOUNT_EXISTS (active OR pending: one answer, AC-P8) · 409 COACH_PROFILE_REQUIRED (AC-P18)
+ *          429 RATE_LIMITED + Retry-After (30 an hour per coach, every call counted: the existence
+ *          answer is an oracle, D22.3d) · 503 ACCOUNT_INITIALISATION_UNAVAILABLE (no monitored
+ *          objection inbox) · 400 VALIDATION_ERROR (`field + " " + message`)
+ *   GET    /coach-portal/trainees?page&size   → InitialisedAccountPageResponse: the Invited rows,
+ *          not activated AND not expired, newest first. An expired account is ABSENT (no
+ *          tombstone, D22.10d) even before the sweeper deletes it (AC-P14).
+ *   POST   /coach-portal/trainees/{id}/resend ← ResendInvitationRequest? → 200 InitialisedAccountResponse
+ *          (a new temporary password; the expiry does NOT move, D22.9c). 404 PENDING_ACCOUNT_NOT_FOUND
+ *          (activated, expired, another coach's, unknown: one answer) · 429 (5 an hour per account)
+ *   DELETE /coach-portal/trainees/{id}       → 204 (Withdraw, D22.10c) · 404 as above
+ *
+ * b-fit-api `CoachTraineeInitialisationController` at origin/main 2bf3b42 (EV-204a2 merge
+ * 6cb2289), unchanged since the vendored c82e55b.
+ *
+ * 🔴 **No response carries the temporary password, and none of these types may grow one**
+ * (AC-P9, ADR-0022 D22.5d: a password the coach can read is the impersonation shape EV-204
+ * Ruling 1 refuses). It exists only in the email. The `{id}` is the account's USER id —
+ * the only place this surface addresses a user id, because an Invited person has no
+ * `coach_clients` row yet (Ruling 2: no third link status).
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * One account the coach initialised that has not been activated: the roster's Invited row.
+ *
+ * @wire InitialisedAccountResponse
+ */
+export interface InitialisedAccount {
+  userId: string;
+  /** The address the coach typed, lower-cased by the api. Shown to this coach only. */
+  email: string;
+  /** The name the coach typed. The trainee may correct it when they activate (D22.10e). */
+  fullName: string;
+  /** Always `INVITED`: an activated or an expired account is not in this list. */
+  status: "INVITED";
+  /** ISO instant — when the account was initialised (the invitation's sent date). */
+  createdAt: string;
+  /** ISO instant — `createdAt + 720 h`. The account and its data are deleted at it. */
+  expiresAt: string;
+  /** ISO instant — when the latest temporary password was emailed (moves on Resend). */
+  passwordIssuedAt: string;
+}
+
+/**
+ * `GET /coach-portal/trainees`. The same envelope as the roster's.
+ *
+ * @wire InitialisedAccountPageResponse
+ */
+export interface InitialisedAccountPage {
+  items: InitialisedAccount[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+/**
+ * `POST /coach-portal/trainees`'s body: the two things a coach types, and the email's
+ * language. NO role, AI mode, nominee or password — the api decides those from the caller.
+ *
+ * @wire InitialiseTraineeRequest
+ */
+export interface InitialiseTraineeRequest {
+  email: string;
+  fullName: string;
+  /** `en` or `fr` (the api sends anything else in English). */
+  locale?: string;
+}
+
+/**
+ * `POST /coach-portal/trainees/{id}/resend`'s optional body.
+ *
+ * @wire ResendInvitationRequest
+ */
+export interface ResendInvitationRequest {
+  locale?: string;
+}
+
+/** The api's own maximum page size, read until `totalPages` is exhausted. */
+export const INVITED_PAGE_SIZE = 100;
+
 /**
  * `TraineeWeightPoint`.
  *
@@ -2421,6 +2506,40 @@ export function isChallengeLimitReached(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_CHALLENGE_LIMIT_REACHED";
 }
 
+// ── EV-204b: the refusals of « Ajouter un client », Resend and Withdraw ─────────
+// Mapped by CODE, never by message (the message is the api's English sentence).
+
+/** 409 — the address has an Evoli account, active OR pending: one answer (AC-P8). */
+export function isAccountExists(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "ACCOUNT_EXISTS";
+}
+/** 409 — the coach has no display name to give the email's line 4 (AC-P18). */
+export function isCoachProfileRequired(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "COACH_PROFILE_REQUIRED";
+}
+/** 429 — the per-coach (initialise) or per-account (resend) window; `Retry-After` in seconds. */
+export function isRateLimited(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 429;
+}
+/** 503 — no monitored objection inbox is configured, so no lawful invitation can go out. */
+export function isInitialisationUnavailable(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "ACCOUNT_INITIALISATION_UNAVAILABLE";
+}
+/** 404 — activated, expired, another coach's or unknown: one answer for Resend and Withdraw. */
+export function isPendingAccountNotFound(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404 && err.code === "PENDING_ACCOUNT_NOT_FOUND";
+}
+/**
+ * The field a `400 VALIDATION_ERROR` names: the api's message is `field + " " + message`
+ * (`RestExceptionHandler.handleValidation`), and the default message follows the JVM locale,
+ * so only the leading field name is read.
+ */
+export function validationField(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.code !== "VALIDATION_ERROR") return null;
+  const m = /^([A-Za-z]+)\b/.exec(err.message);
+  return m ? m[1] : null;
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-202b — where the trainee started, where they are, and where they are going.
  *
@@ -2644,6 +2763,33 @@ const liveCoachApi = {
   },
   createInvite(): Promise<InviteResponse> {
     return apiFetch<InviteResponse>("/coach-portal/invites", { method: "POST" });
+  },
+
+  // ── EV-204b « Ajouter un client » (see the block above `InitialisedAccount`) ──
+
+  listInvited(page = 0, size = INVITED_PAGE_SIZE): Promise<InitialisedAccountPage> {
+    return apiFetch<InitialisedAccountPage>(`/coach-portal/trainees?page=${page}&size=${size}`);
+  },
+  /**
+   * Not retried by anything: a 409/429/503 is a refusal that wrote nothing, and a second
+   * POST of a call whose answer was lost is a second throttle charge (and, if the first
+   * one landed, an `ACCOUNT_EXISTS` that would mislead the coach).
+   */
+  initialiseTrainee(body: InitialiseTraineeRequest): Promise<InitialisedAccount> {
+    return apiFetch<InitialisedAccount>("/coach-portal/trainees", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  resendInvitation(userId: string, body: ResendInvitationRequest): Promise<InitialisedAccount> {
+    return apiFetch<InitialisedAccount>(`/coach-portal/trainees/${encodeURIComponent(userId)}/resend`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  async withdrawInvitation(userId: string): Promise<void> {
+    // 204 No Content.
+    await apiFetch<void>(`/coach-portal/trainees/${encodeURIComponent(userId)}`, { method: "DELETE" });
   },
   getClient(id: string): Promise<ClientOverview> {
     return apiFetch<ClientOverview>(

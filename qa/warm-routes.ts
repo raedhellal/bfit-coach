@@ -98,6 +98,8 @@ export default async function warmRoutes(config: FullConfig): Promise<void> {
       `/clients/${LINA}/routine`,
       `/clients/${LINA}/nutrition`,
       "/clients/denied",
+      // EV-204b. A random id renders "this invitation no longer exists" and compiles the route.
+      `/invited/${NOBODYS_TEMPLATE}`,
       "/i/warm-up-token",
     ]) {
       // `domcontentloaded`, not `networkidle`: the point is to make the server compile

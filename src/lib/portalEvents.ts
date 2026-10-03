@@ -52,7 +52,19 @@ export type PortalEvent =
   | { event: "coach_progress_block_empty"; coachId: string | null; clientId: string }
   | { event: "coach_progress_bodyfat_absent"; coachId: string | null; clientId: string }
   /** EV-242 — the day-regeneration cap refused a coach's Regenerate. No properties, by the story. */
-  | { event: "coach_day_regen_capped" };
+  | { event: "coach_day_regen_capped" }
+  /**
+   * EV-204b — « Ajouter un client », Resend and Withdraw, as closed outcomes ONLY: no name, no
+   * address, no id. The api logs the ids itself (`ACCOUNT_INITIALISED`, `…_RESENT`,
+   * `…_WITHDRAWN`); what only the browser sees is how often a coach meets each refusal —
+   * `exists` measures how often the invite branch is the real path.
+   */
+  | {
+      event: "coach_client_add";
+      outcome: "initialised" | "exists" | "profile_required" | "throttled" | "unavailable" | "invalid" | "unknown";
+    }
+  | { event: "coach_invitation_resent"; outcome: "resent" | "gone" | "throttled" | "unavailable" | "unknown" }
+  | { event: "coach_invitation_withdrawn"; outcome: "withdrawn" | "gone" | "throttled" | "unavailable" | "unknown" };
 
 export function logPortalEvent(payload: PortalEvent): void {
   if (typeof window === "undefined") return;

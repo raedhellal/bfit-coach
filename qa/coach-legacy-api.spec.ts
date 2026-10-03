@@ -178,6 +178,11 @@ test("outside fixture mode the fixture reset route is a 404 to a signed-in coach
   // EV-272 — the call journal ships in every build too, and is inert the same way.
   const calls = await page.request.fetch("/api/fixture/calls", { method: "GET", maxRedirects: 0 });
   expect(calls.status(), "GET /api/fixture/calls in live mode").toBe(404);
+  // EV-204b — the fixture's MAIL SINK holds temporary passwords in fixture mode. Outside it
+  // the route must answer nothing at all, to a signed-in coach included.
+  const mail = await page.request.fetch("/api/fixture/mail", { method: "GET", maxRedirects: 0 });
+  expect(mail.status(), "GET /api/fixture/mail in live mode").toBe(404);
+  expect(await mail.text(), "no body in live mode").toBe("");
 });
 
 /**

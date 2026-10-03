@@ -242,6 +242,105 @@ export const fr = {
     capacityReached: "La limite de profils de votre offre est atteinte.",
   },
 
+  /** EV-204b — « Ajouter un client » (see copy.ts for every rule these sentences keep). */
+  addClient: {
+    button: "Ajouter un client",
+    title: "Ajouter un client",
+    sub: "Nous créons son compte et lui envoyons un mot de passe temporaire par e-mail.",
+    nameLabel: "Nom",
+    nameHint: "Tel que vous le connaissez. La personne pourra le corriger en finalisant son compte.",
+    emailLabel: "Adresse e-mail",
+    emailPlaceholder: "nom@exemple.fr",
+    languageLabel: "Langue de l'e-mail",
+    howItWorks:
+      "La personne se connecte à l'app Evoli avec le mot de passe temporaire, choisit le sien et accepte de partager ses données avec vous. Rien n'est partagé avant. Si elle n'a pas terminé sous 30\u00a0jours, son compte est supprimé.",
+    capacityNote: (tier: string, capacity: number) =>
+      `L'offre ${tier} inclut ${capacity} profil${s(capacity)}, tous utilisés. La personne peut finaliser son compte, mais ne pourra vous rejoindre qu'une fois une place libérée.`,
+    cancel: "Annuler",
+    submit: "Ajouter le client",
+    submitting: "Ajout…",
+    problems: {
+      nameBlank: "Saisissez son nom.",
+      nameTooLong: "120\u00a0caractères au maximum.",
+      nameInvisible: "Retirez les retours à la ligne et les caractères invisibles.",
+      emailBlank: "Saisissez son adresse e-mail.",
+      emailInvalid: "Saisissez une adresse e-mail valide.",
+      emailTooLong: "254\u00a0caractères au maximum.",
+    },
+    invalid: "Un élément du formulaire a été refusé. Vérifiez-le et réessayez.",
+    doneTitle: "Compte créé",
+    done: (name: string, email: string) =>
+      `Le compte ${de(name)} est créé. Nous envoyons un mot de passe temporaire à ${email}.`,
+    doneNext: (date: string) =>
+      `La personne le finalise dans l'app Evoli avant le ${date}. Si l'e-mail n'arrive pas, utilisez ${q("Renvoyer")} dans les invitations en attente.`,
+    doneClose: "Terminé",
+    exists: "Cette personne utilise déjà Evoli\u00a0: envoyez-lui plutôt une invitation.",
+    existsHow: "Créez un lien à lui partager. Elle accepte sur son téléphone et apparaît dans vos clients.",
+    existsAction: "Créer un lien d'invitation",
+    back: "Retour",
+    profileRequired: "Complétez d'abord votre profil de coach, pour que la personne sache qui a créé son compte.",
+    profileHow:
+      "Votre profil de coach n'a pas encore de nom, et le portail ne permet pas de le modifier. Écrivez à support@evoli.fit et nous l'ajouterons.",
+    throttled: (minutes: number) =>
+      `Trop de tentatives en une heure. Aucun compte n'a été créé. Réessayez dans ${minutes}\u00a0minute${s(minutes)}.`,
+    throttledNoTime: "Trop de tentatives en une heure. Aucun compte n'a été créé. Réessayez plus tard.",
+    unavailable: "L'ajout de clients est momentanément indisponible. Aucun compte n'a été créé. Réessayez plus tard.",
+    unknown: (name: string) =>
+      `Nous n'avons pas pu confirmer la création du compte ${de(name)}. Vérifiez les invitations en attente avant de réessayer\u00a0: si ${name} y figure, le compte a été créé.`,
+  },
+
+  /** EV-204b — « Invitations en attente » and the person's own page. */
+  invited: {
+    title: "Invitations en attente",
+    count: (n: number) => `${n} invitation${s(n)} en attente`,
+    intro:
+      "Ces personnes ont un compte qu'elles n'ont pas encore finalisé. Elles rejoignent vos clients après l'avoir finalisé dans l'app Evoli et vous avoir accepté comme coach.",
+    status: "En attente",
+    colSent: "Invitation",
+    sent: (date: string) => `Envoyée le ${date}`,
+    resentOn: (date: string) => `Renvoyée le ${date}`,
+    colExpires: "Expire le",
+    resend: "Renvoyer",
+    withdraw: "Retirer",
+    resendFor: (name: string) => `Renvoyer l'invitation à ${name}`,
+    withdrawFor: (name: string) => `Retirer l'invitation ${de(name)}`,
+    resendTitle: (name: string) => `Renvoyer l'invitation ${de(name)}\u00a0?`,
+    resendBody: (email: string, date: string) =>
+      `Nous envoyons un nouveau mot de passe temporaire à ${email}. L'ancien ne fonctionne plus. L'accès expire toujours le ${date}.`,
+    resending: "Envoi…",
+    resent: (email: string, date: string) =>
+      `Renvoyée à ${email}. L'ancien mot de passe temporaire ne fonctionne plus\u00a0; l'accès expire toujours le ${date}.`,
+    withdrawTitle: (name: string) => `Retirer l'invitation ${de(name)}\u00a0?`,
+    withdrawBody: (email: string) =>
+      `Son compte est supprimé maintenant, avec tout ce qu'il contient\u00a0: son nom et ${email}. Le mot de passe temporaire ne fonctionne plus. Vous pourrez ajouter cette personne à nouveau plus tard.`,
+    withdrawing: "Retrait…",
+    withdrawn: (name: string) => `L'invitation ${de(name)} a été retirée et son compte supprimé.`,
+    cancel: "Annuler",
+    gone: "Cette invitation n'existe plus\u00a0: la personne a peut-être finalisé son compte, ou l'invitation a expiré ou a été retirée. La liste est à jour.",
+    resendThrottled: (minutes: number) =>
+      `Cette invitation a été renvoyée plusieurs fois en une heure. Réessayez dans ${minutes}\u00a0minute${s(minutes)}.`,
+    resendThrottledNoTime: "Cette invitation a été renvoyée plusieurs fois en une heure. Réessayez plus tard.",
+    resendUnavailable: "Le renvoi est momentanément indisponible. Rien n'a été envoyé.",
+    resendUnknown:
+      "Nous n'avons pas pu confirmer le renvoi. Si vous renvoyez à nouveau, seul le dernier mot de passe temporaire fonctionnera.",
+    withdrawUnknown:
+      "Nous n'avons pas pu confirmer le retrait. Vérifiez les invitations en attente\u00a0: si elle y figure encore, elle n'a pas été retirée.",
+    loadError: "Les invitations en attente n'ont pas pu être chargées.",
+    reload: "Recharger",
+    pageNextTitle: "La suite",
+    pageFlow: (name: string) =>
+      `${name} se connecte à l'app Evoli avec le mot de passe temporaire envoyé par e-mail, choisit le sien et accepte de partager ses données avec vous. D'ici là, cette personne ne fait pas partie de vos clients et vous ne voyez rien la concernant.`,
+    pageExpiry: (date: string) =>
+      `Sans finalisation avant le ${date}, son compte et tout ce qu'il contient sont supprimés.`,
+    notFound:
+      "Cette invitation n'existe plus. La personne a peut-être finalisé son compte, ou l'invitation a expiré ou a été retirée.",
+    pageLoadError: "Cette invitation n'a pas pu être chargée.",
+    bodyDataTitle: "Données corporelles",
+    bodyDataAction: "Ajouter une mesure",
+    bodyDataWhy: (name: string) =>
+      `Rien sur le corps ${de(name)} ne peut être enregistré avant que cette personne ait finalisé son compte et donné son accord. Elle saisit ses propres mesures de départ dans l'app Evoli, et vous voyez ses pesées sur sa fiche client une fois qu'elle vous a accepté.`,
+  },
+
   /** Trainee-facing (the invite QR's landing): "Evoli Fit", never "Evoli Pro". */
   invitePage: {
     brand: "Evoli Fit",
