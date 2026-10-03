@@ -26,11 +26,13 @@ import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN, isApiBlank } from "@/lib/password";
  *     never resubmitted silently (a silent retry would record consent to text the person
  *     did not see — the app's §8b recovery, mirrored).
  *
- * What was typed or ticked BEFORE hydration (BUG-686 follow-up) is adopted once, after it,
- * by `useAdoptPrehydrationInput`: the three passwords, and the consent box. Adopting a tick
- * does not break the first rule above — the box is ticked on screen because the person
- * ticked it, and the alternative was a box shown ticked with consent `false` behind it, which
- * a click would visibly UNtick while leaving the state unchanged.
+ * What was typed BEFORE hydration (BUG-686 follow-up) is adopted once, after it, by
+ * `useAdoptPrehydrationInput`: the three passwords. The consent box is NOT adopted
+ * (`data-adopt="never"`; staff ruling 2026-10-03, do not reintroduce it). A box found
+ * ticked at hydration is not proof of a tick in this document: Back into a new document
+ * has the browser restore it ticked. So the hook visibly UNticks it, consent stays false,
+ * and the person ticks it once more — the first rule above, and the 409 rule's "the tick
+ * is taken back".
  */
 
 type Versions = { privacyPolicyVersion: string; termsVersion: string };
@@ -274,7 +276,12 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
           links stay OUTSIDE the label, so opening a document to read it never ticks the box. */}
       <div className="consent">
         <label className="consent-row">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+          <input
+            type="checkbox"
+            data-adopt="never"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+          />
           <span>{copy.activate.consent}</span>
         </label>
         <div className="consent-docs">

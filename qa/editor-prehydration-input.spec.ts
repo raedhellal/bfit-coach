@@ -45,8 +45,11 @@ type T = Copy;
 interface EditorCase {
   name: string;
   path: string;
-  /** Fills the server HTML; returns the field whose stored value is checked after a reload. */
-  type: (page: Page, t: T) => Promise<{ field: Locator; value: string }>;
+  /**
+   * Fills the server HTML; returns the field whose stored value is checked after a reload,
+   * and `also` any other fields of the same draft typed before hydration.
+   */
+  type: (page: Page, t: T) => Promise<{ field: Locator; value: string; also?: Array<{ field: Locator; value: string }> }>;
   /** What the form shows once the typed value is in its state. */
   holdsTheEdit: (page: Page, t: T) => Promise<void>;
   save: (page: Page, t: T) => Promise<void>;
@@ -69,6 +72,45 @@ const CASES: EditorCase[] = [
     async save(page, t) {
       await page.getByRole("button", { name: t.templates.save, exact: true }).click({ timeout: CLICK_TIMEOUT });
       await expect(page.getByText(t.templates.saved, { exact: true })).toBeVisible();
+    },
+  },
+  {
+    // Two fields of ONE draft: each handler closes over the render's draft, so a replay that
+    // is not committed before the next one loses the first (staff review: replaying inside
+    // the mount effect lost 3 of 4 fields while the one-field cases stayed green).
+    name: "template editor, two fields of one draft (/templates/[id])",
+    path: `/templates/${UPPER_LOWER}`,
+    async type(page, t) {
+      const field = page.getByLabel(t.templates.nameLabel, { exact: true });
+      await field.fill("Prehydration split");
+      const sets = page.getByLabel(t.routine.sets, { exact: true }).first();
+      await sets.fill("5");
+      return { field, value: "Prehydration split", also: [{ field: sets, value: "5" }] };
+    },
+    async holdsTheEdit(page, t) {
+      await expect(page.getByText(t.templates.unsavedBadge, { exact: true })).toBeVisible();
+    },
+    async save(page, t) {
+      await page.getByRole("button", { name: t.templates.save, exact: true }).click({ timeout: CLICK_TIMEOUT });
+      await expect(page.getByText(t.templates.saved, { exact: true })).toBeVisible();
+    },
+  },
+  {
+    name: "recipe editor, two fields of one draft (/recipes/[id])",
+    path: `/recipes/${CHICKEN_RICE_BOWL}`,
+    async type(page, t) {
+      const field = page.getByLabel(t.recipes.nameLabel, { exact: true });
+      await field.fill("Prehydration bowl");
+      const quantity = page.getByLabel(t.recipes.quantityLabel, { exact: true }).first();
+      await quantity.fill("200");
+      return { field, value: "Prehydration bowl", also: [{ field: quantity, value: "200" }] };
+    },
+    async holdsTheEdit(page, t) {
+      await expect(page.getByText(t.recipes.unsavedBadge, { exact: true })).toBeVisible();
+    },
+    async save(page, t) {
+      await page.getByRole("button", { name: t.recipes.save, exact: true }).click({ timeout: CLICK_TIMEOUT });
+      await expect(page.getByText(t.recipes.saved, { exact: true })).toBeVisible();
     },
   },
   {
@@ -167,20 +209,24 @@ async function run(c: EditorCase, engine: Engine, lang: Lang, width: number, bas
   try {
     const hold = await holdHydration(page);
     await page.goto(c.path, { waitUntil: "domcontentloaded" });
-    const { field, value } = await c.type(page, t);
-    await expectServerHtml(field, `${c.name}: the field`);
-    await expect(field).toHaveValue(value);
+    const { field, value, also = [] } = await c.type(page, t);
+    for (const typed of [{ field, value }, ...also]) {
+      await expectServerHtml(typed.field, `${c.name}: a field`);
+      await expect(typed.field).toHaveValue(typed.value);
+    }
     expect(await hold.release(), "JS chunks held until the form was typed into").toBeGreaterThan(0);
 
-    await expectStateHoldsWhatIsShown(field, c.name);
-    await expect(field).toHaveValue(value);
+    for (const typed of [{ field, value }, ...also]) {
+      await expectStateHoldsWhatIsShown(typed.field, c.name);
+      await expect(typed.field).toHaveValue(typed.value);
+    }
     await c.holdsTheEdit(page, t);
     await c.save(page, t);
     if (c.readBack) {
       await c.readBack(page, t, value);
     } else {
       await page.reload();
-      await expect(field).toHaveValue(value);
+      for (const typed of [{ field, value }, ...also]) await expect(typed.field).toHaveValue(typed.value);
     }
   } finally {
     await page.context().close();

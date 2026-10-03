@@ -9,6 +9,7 @@ import {
   WIDTHS,
   closeBrowsers,
   expectServerHtml,
+  expectStateHoldsWhatIsShown,
   holdHydration,
   openPage,
   waitForFiber,
@@ -17,20 +18,27 @@ import {
 } from "./prehydration";
 
 /**
- * BUG-686 follow-up — /activate (EV-278c): what a new coach types and ticks before React
- * hydrates reaches `ActivationForm`'s state.
+ * BUG-686 follow-up — /activate (EV-278c): the passwords a new coach types before React
+ * hydrates reach `ActivationForm`'s state; the consent box NEVER does.
  *
- * Before the fix (a862698), the three password fields and the consent box kept their
- * pre-hydration DOM values while state stayed "" / false, so « Finish my account » stayed
- * disabled on a visibly complete form, and a click on the visibly ticked box UNticked it
- * with consent still false. `qa/prehydration-sweep.spec.ts` witnessed the four mismatches;
- * this spec is the behaviour. Red on a862698 (Chromium and WebKit): in (1) and (2) the button
- * is still disabled where it must be enabled.
+ * Before the fix (a862698), the three password fields kept their pre-hydration DOM values
+ * while state stayed "", so « Finish my account » stayed disabled on a filled form
+ * (`qa/prehydration-sweep.spec.ts` witnessed the mismatches).
  *
- * (1) everything before hydration → one click finishes the account with the typed values
- *     and the person's own tick (`consentAccepted: true`);
- * (2) passwords before hydration, the box left alone → still disabled (the consent rule:
- *     nothing ticks it but the person), and the person's tick after hydration enables it.
+ * The consent box is excluded from adoption by ruling (staff review, 2026-10-03; BUG-023 /
+ * Planet49 "active tap", ADR-0019 "own act"): a box found ticked at hydration does not prove a
+ * tick in this document — Back into a new document has the browser restore it ticked, (3).
+ * So the form shows it UNticked after hydration, consent is false, and the person ticks once
+ * more.
+ *
+ * (1) passwords and a tick before hydration → passwords adopted; the box is shown unticked
+ *     and the submit disabled; ONE tick enables it, and the body says `consentAccepted: true`;
+ * (2) passwords before hydration, the box left alone → disabled until the person ticks it;
+ * (3) Back restoration: ticked after hydration, away to about:blank, Back → a new document
+ *     whose box the browser restored → shown unticked, held false, submit disabled until
+ *     the person ticks it again.
+ * Red on a862698: (1) and (2) keep the button disabled after the tick (passwords not
+ * adopted); (3) shows the restored box ticked.
  */
 
 const NEW_PASSWORD = "Coach-pass-2026";
@@ -56,7 +64,7 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
     for (const width of WIDTHS) {
       const t = COPY[lang];
       test.describe(`${engine} · ${lang} · ${width} px`, () => {
-        test("(1) passwords and the tick before hydration: one click finishes the account with them", async ({
+        test("(1) passwords and a tick before hydration: passwords adopted, the tick is not", async ({
           baseURL,
         }) => {
           const page = await openPage(engine, lang, width, baseURL, "pending");
@@ -72,9 +80,16 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
             await expectServerHtml(f.consent, "the consent tick");
             expect(await hold.release(), "JS chunks held until the form was filled").toBeGreaterThan(0);
 
-            // Enabled with no further input: only the adoption of the typed values can do it.
+            // The pre-hydration tick is taken back, on screen and in state alike.
+            await waitForFiber(f.consent);
+            await expect(f.consent).not.toBeChecked();
+            await expectStateHoldsWhatIsShown(f.consent, "the consent box");
+            await expectStateHoldsWhatIsShown(f.repeat, "the repeated password");
+            await expect(f.submit).toBeDisabled();
+
+            // One tick, the person's own, enables it: the passwords are already in state.
+            await f.consent.check();
             await expect(f.submit).toBeEnabled();
-            await expect(f.consent).toBeChecked();
             const sent = page.waitForRequest((r) => r.url().endsWith("/api/auth/activate") && r.method() === "POST");
             await f.submit.click({ timeout: CLICK_TIMEOUT });
             expect(activationBody(await sent)).toMatchObject({
@@ -83,6 +98,41 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
               consentAccepted: true,
             });
             await page.waitForURL(new URL("/", baseURL).href);
+          } finally {
+            await page.context().close();
+          }
+        });
+
+        test("(3) a tick the browser restores on Back is not consent: unticked, disabled until ticked again", async ({
+          baseURL,
+        }) => {
+          const page = await openPage(engine, lang, width, baseURL, "pending");
+          try {
+            await page.goto("/activate");
+            const f = form(page, t);
+            await waitForFiber(f.consent);
+            await f.consent.check();
+            await expect(f.consent).toBeChecked();
+
+            await page.goto("about:blank");
+            await page.goBack();
+            await expect(page).toHaveURL(/\/activate$/);
+            // A new document (not the bfcache): the page is no-store, and the browser says so.
+            expect(
+              await page.evaluate(
+                () => (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type,
+              ),
+            ).toBe("back_forward");
+            await waitForFiber(f.consent);
+            await expect(f.consent).not.toBeChecked();
+            await expectStateHoldsWhatIsShown(f.consent, "the restored consent box");
+
+            await f.temporary.fill(PENDING.password);
+            await f.fresh.fill(NEW_PASSWORD);
+            await f.repeat.fill(NEW_PASSWORD);
+            await expect(f.submit).toBeDisabled();
+            await f.consent.check();
+            await expect(f.submit).toBeEnabled();
           } finally {
             await page.context().close();
           }

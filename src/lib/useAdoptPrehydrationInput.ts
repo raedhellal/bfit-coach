@@ -36,17 +36,20 @@ import { flushSync } from "react-dom";
  * the event is dispatched. `<select>` needs none of this: React treats every `change` on a
  * select as a change.
  *
- * Two phases, both forced by what the first two attempts did (measured 2026-10-03):
+ * Two phases; what prevents loss is the snapshot plus the separate task:
  *   1. SNAPSHOT in the mount effect, before anything re-renders. Any re-render of a form
- *      writes every controlled field's value back into its DOM node, so the first replay's
- *      render ERASED what was typed into every field not yet replayed.
- *   2. REPLAY one field at a time, each committed before the next (`flushSync`), from a task
- *      of its own (`setTimeout`: a passive effect runs inside React's commit, where
- *      `flushSync` cannot flush). Replayed in one batch, the editors kept only the last
- *      field: their handlers close over the render's draft (`setDraft({ ...draft, … })`),
- *      so each replay overwrote the one before with the server's values. A keystroke never
- *      meets either problem, because each one gets its own render.
- * Before its replay, each field is given its typed value back.
+ *      writes every controlled field's value back into its DOM node, so a replay's render
+ *      erases what was typed into every field not yet replayed.
+ *   2. REPLAY from a task of its own (`setTimeout`), one field at a time, each field given
+ *      its typed value back first. Replayed inside the effect instead, the editors lost all
+ *      but one field (their handlers close over the render's draft, `setDraft({ ...draft,
+ *      … })`, and updates made inside the commit are batched): measured by staff review,
+ *      3 of 4 typed fields lost, and `qa/editor-prehydration-input.spec.ts`'s two-field
+ *      cases go red under exactly that change. From a task, each dispatched event is
+ *      committed before the next one is handled.
+ *   `flushSync` around each dispatch is a stated SAFETY NET, not a measured need: removing it
+ *   stayed green everywhere (staff review, 2026-10-03). It makes the "committed before the
+ *   next" property explicit instead of relying on React's discrete-event flushing.
  *
  * Radios: the option chosen before hydration (checked now, not checked as rendered) is
  * replayed as a click on it, which is how React sees a radio change; the option it
@@ -56,10 +59,24 @@ import { flushSync } from "react-dom";
  * values agree; measured on the recipe steps). StrictMode's second mount clears the first's
  * timer and snapshots the same values again (the dev-server specs run under StrictMode). Whether browser or
  * password-manager AUTOFILL before hydration lands here too was not tested.
+ *
+ * NEVER ADOPTED: a field marked `data-adopt="never"` is not replayed. It is RESET instead,
+ * through the node's normal setter, to the value React rendered, so the screen and the
+ * state agree on that value and the person has to act again. The activation consent box is
+ * the reason for this (staff ruling, 2026-10-03). A checked box in a fresh document is not
+ * proof that this person ticked it in this document: a Back navigation into a new document
+ * (back_forward, not the bfcache) has the BROWSER restore the box as ticked. Consent must be
+ * the person's own act (BUG-023 / Planet49, ADR-0019), so it is never inferred from the DOM.
+ *
+ * NOT NEST-SAFE: two adopting scopes, one inside the other, would replay the inner fields
+ * twice. That is harmless for a setter. It is not harmless for a handler with an effect:
+ * `LanguageSwitch`'s `choose()` would fire `setLocaleAction` twice. Give each field exactly
+ * one adopting ancestor.
  */
 export function useAdoptPrehydrationInput<T extends HTMLElement>() {
   const scope = useRef<T>(null);
   useEffect(() => {
+    if (scope.current) resetNeverAdopted(scope.current);
     const typed = scope.current ? typedBeforeHydration(scope.current) : [];
     if (typed.length === 0) return;
     const timer = setTimeout(() => typed.forEach(replay), 0);
@@ -69,6 +86,25 @@ export function useAdoptPrehydrationInput<T extends HTMLElement>() {
 }
 
 const NOT_REPLAYED = new Set(["file", "hidden", "button", "submit", "reset", "image"]);
+const NEVER = '[data-adopt="never"]';
+
+/**
+ * Puts every `data-adopt="never"` field in `scope` back to what React rendered, visibly. It
+ * writes through the node's own setter, which React's value tracker observes, so React's
+ * idea of the field and the field itself agree. The state was never changed, so nothing
+ * re-renders and no event is sent.
+ */
+export function resetNeverAdopted(scope: ParentNode) {
+  for (const field of Array.from(scope.querySelectorAll(NEVER))) {
+    if (field instanceof HTMLInputElement && (field.type === "checkbox" || field.type === "radio")) {
+      if (field.checked !== field.defaultChecked) field.checked = field.defaultChecked;
+    } else if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+      if (field.value !== field.defaultValue) field.value = field.defaultValue;
+    } else if (field instanceof HTMLSelectElement) {
+      for (const option of Array.from(field.options)) option.selected = option.defaultSelected;
+    }
+  }
+}
 
 type Typed =
   | { kind: "text"; field: HTMLInputElement | HTMLTextAreaElement; value: string }
@@ -80,6 +116,7 @@ type Typed =
 export function typedBeforeHydration(scope: ParentNode): Typed[] {
   const out: Typed[] = [];
   for (const field of Array.from(scope.querySelectorAll("input, textarea, select"))) {
+    if (field.matches(NEVER)) continue;
     if (field instanceof HTMLSelectElement) {
       if (field.multiple) continue;
       const rendered = Array.from(field.options).find((o) => o.defaultSelected);
@@ -103,7 +140,7 @@ function setUntracked(field: HTMLElement, prop: "value" | "checked", value: stri
   setter?.call(field, value);
 }
 
-/** Puts the typed value back and fires the change React listens for, committed at once. */
+/** Puts the typed value back and fires the change React listens for (`flushSync`: see above). */
 function replay(typed: Typed) {
   const { field } = typed;
   // An earlier replay may have re-rendered the form without this node.

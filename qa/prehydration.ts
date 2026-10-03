@@ -118,7 +118,8 @@ export async function waitForFiber(node: Locator) {
 }
 
 /**
- * Waits until React's controlled value for `field` (its `__reactProps$…`.value, i.e. the
+ * Waits until React's controlled value for `field` (its `__reactProps$…`.value, or .checked
+ * for a checkbox or radio, i.e. the
  * state the form rendered into it) equals what the field shows. Before the fix it never
  * does: the DOM keeps the typed text and the props keep the server's value. For a form whose
  * Save is not gated on the field, this is also the wait that keeps the click from landing
@@ -132,7 +133,10 @@ export async function expectStateHoldsWhatIsShown(field: Locator, what: string) 
           const el = node as HTMLInputElement;
           const key = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
           if (!key) return "(not hydrated)";
-          const props = (el as unknown as Record<string, { value?: unknown }>)[key];
+          const props = (el as unknown as Record<string, { value?: unknown; checked?: unknown }>)[key];
+          if (el.type === "checkbox" || el.type === "radio") {
+            return props.checked === el.checked ? "same" : `shown ${el.checked}, held ${String(props.checked)}`;
+          }
           return String(props.value) === el.value ? "same" : `shown ${JSON.stringify(el.value)}, held ${JSON.stringify(props.value)}`;
         }),
       { message: `${what}: React's value is the shown value`, timeout: 30_000 },
