@@ -40,7 +40,13 @@ import { getCopy } from "@/lib/i18n/server";
  *
  * The trainee's injuries and equipment are rendered HERE, outside the editor, and are
  * never passed into it — CS-22's "the coach may display them, may not submit them",
- * made structural.
+ * made structural. (Since EV-337f1 the editor DRAWS them, in its aside slot, as an
+ * already-rendered server tree: it holds no field of them and sends none.)
+ *
+ * EV-337f1 — the frame (plan §5.3). One `h1`, the client's name, from `ClientHeader`;
+ * the tab's own title is the `h2` below it in EVERY state (ruling 16, F1.6). The
+ * trainee-changed banner sits above both columns; the aside (profile, « Enregistrer comme
+ * modèle ») is beside the editor from 1280 px and above it below that (F1.4).
  */
 export const dynamic = "force-dynamic";
 
@@ -173,61 +179,90 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    */
   const changedByTrainee = traineeChangeNotice(routine, displayName, copy);
 
-  return (
-    <CoachShell coachName={me?.displayName} section="roster">
+  /**
+   * EV-337f1 F1.4 — what the aside holds: the trainee's profile card and « Enregistrer comme
+   * modèle ». Null when neither can render (no guardrails sent, and no plan or draft to
+   * save as a template), so a two-column page never draws an empty column.
+   */
+  const aside =
+    guardrails || activePlan || draft ? (
+      <>
+        {guardrails && (
+          <ProfileFacts
+            title={copy.routine.profileTitle}
+            icon="shield"
+            groups={[
+              { label: copy.routine.injuries, values: injuryLabels(guardrails.injuries, copy) },
+              {
+                label: copy.routine.equipment,
+                values: equipmentLabels(guardrails.equipment, copy),
+                // `equipmentChecked` is the api's own derivation of "a non-empty
+                // equipment list reached the policy", and it is the only thing that
+                // separates a trainee who recorded no equipment from one who never
+                // answered. It is read here and nowhere else: it authorises no
+                // equipment-safety sentence, because BUG-053 is undeployed and
+                // AC3's warning box already says the plan is checked against
+                // injuries and not equipment.
+                empty: guardrails.equipmentChecked ? undefined : copy.routine.equipmentUnanswered,
+              },
+            ]}
+          />
+        )}
+        {/*
+          AC1's two other entry points into the library. Rendered in the editor's aside and
+          outside its document: it writes to the COACH's library, not to this trainee's plan, and
+          nothing it does can reach the editor's working copy. It renders nothing at
+          all when there is neither a plan document nor a draft (edge case 12).
+        */}
+        <SaveAsTemplateButton
+          clientId={params.id}
+          planName={activePlan ? activePlan.document.name : null}
+          hasDraft={draft !== null}
+        />
+      </>
+    ) : null;
+
+  /*
+   * EV-337f1 — what sits above the frame in every state: one `h1` (the client's name, in
+   * `ClientHeader`) and the tab's `h2` (ruling 16, F1.6).
+   */
+  const head = (
+    <>
       <ClientHeader
         clientId={params.id}
         traineeDisplayName={displayName}
         since={overview?.since}
         active="routine"
       />
+      <h2 className="prog-title">{copy.routine.title}</h2>
+    </>
+  );
 
+  return (
+    <CoachShell coachName={me?.displayName} section="roster">
       {message || !routine ? (
-        <ClientNotice message={message ?? copy.routine.loadError} />
-      ) : (
         <>
-          {changedByTrainee && <TraineeChangedBanner sentence={changedByTrainee} />}
-          {guardrails && (
-            <ProfileFacts
-              title={copy.routine.title}
-              icon="shield"
-              groups={[
-                { label: copy.routine.injuries, values: injuryLabels(guardrails.injuries, copy) },
-                {
-                  label: copy.routine.equipment,
-                  values: equipmentLabels(guardrails.equipment, copy),
-                  // `equipmentChecked` is the api's own derivation of "a non-empty
-                  // equipment list reached the policy", and it is the only thing that
-                  // separates a trainee who recorded no equipment from one who never
-                  // answered. It is read here and nowhere else: it authorises no
-                  // equipment-safety sentence, because BUG-053 is undeployed and
-                  // AC3's warning box already says the plan is checked against
-                  // injuries and not equipment.
-                  empty: guardrails.equipmentChecked ? undefined : copy.routine.equipmentUnanswered,
-                },
-              ]}
-            />
-          )}
-          {/*
-            AC1's two other entry points into the library. Rendered ABOVE the editor and
-            outside it: it writes to the COACH's library, not to this trainee's plan, and
-            nothing it does can reach the editor's working copy. It renders nothing at
-            all when there is neither a plan document nor a draft (edge case 12).
-          */}
-          <SaveAsTemplateButton
-            clientId={params.id}
-            planName={activePlan ? activePlan.document.name : null}
-            hasDraft={draft !== null}
-          />
-          <RoutineEditor
-            clientId={params.id}
-            traineeName={displayName}
-            activePlan={activePlan}
-            initialDraft={draft}
-            sourceTemplateName={sourceTemplateName}
-            unbindableExercises={unbindableExercises}
-          />
+          {head}
+          <ClientNotice message={message ?? copy.routine.loadError} />
         </>
+      ) : (
+        <RoutineEditor
+          clientId={params.id}
+          traineeName={displayName}
+          activePlan={activePlan}
+          initialDraft={draft}
+          sourceTemplateName={sourceTemplateName}
+          unbindableExercises={unbindableExercises}
+          // The head and the banner (above both columns, F1.4) are drawn by the editor's
+          // root only so the sticky bar's containing block starts at the page's top.
+          lead={
+            <>
+              {head}
+              {changedByTrainee && <TraineeChangedBanner sentence={changedByTrainee} />}
+            </>
+          }
+          aside={aside}
+        />
       )}
     </CoachShell>
   );

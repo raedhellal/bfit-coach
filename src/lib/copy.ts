@@ -917,6 +917,13 @@ export const en = {
    */
   routine: {
     title: "Routine",
+    /**
+     * EV-337f1 — the aside's card (injuries, equipment), which used to borrow `title` and
+     * now sits under the tab's own `h2` (ruling 16), so it needs its own name.
+     */
+    profileTitle: "Trainee profile",
+    /** EV-337f1 F1.2, verbatim — the name of the one region holding Save, Discard and Publish. */
+    actionsLabel: "Programme actions",
     injuries: "Injuries",
     equipment: "Available equipment",
     /**

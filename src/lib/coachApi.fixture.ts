@@ -2329,6 +2329,33 @@ function yusufPlan(): SeedPlan {
   };
 }
 
+/**
+ * EV-337f1 — the six-day, six-exercise plan F1.1 measures « Publier » on (the largest
+ * document the api accepts: `TrainingDayBounds` 2–6). Served only behind
+ * `evoli_fixture_long_plan=<clientId>` (see `withLongPlanSwitch`), never seeded, so no
+ * existing spec sees it.
+ */
+const LONG_PLAN_ID = "plan-long-0006";
+function longPlan(): SeedPlan {
+  const day = (dayOfWeek: number, focus: string, slugs: string[]): SeedDay => ({
+    dayOfWeek,
+    focus,
+    exercises: slugs.map((slug) => exercise(slug, 3, "8-12", "90s")),
+  });
+  return {
+    planId: LONG_PLAN_ID,
+    name: "Six Day Split",
+    trainingDays: [
+      day(1, "Push A", ["barbell-bench-press", "barbell-overhead-press", "dumbbell-bench-press", "cable-lateral-raise", "cable-triceps-pushdown", "push-up"]),
+      day(2, "Pull A", ["pull-up", "lat-pulldown", "seated-cable-row", "chest-supported-row", "barbell-curl", "incline-dumbbell-curl"]),
+      day(3, "Legs A", ["barbell-back-squat", "romanian-deadlift", "leg-press", "seated-leg-curl", "standing-calf-raise", "hanging-knee-raise"]),
+      day(4, "Push B", ["machine-chest-press", "landmine-press", "dumbbell-bench-press", "cable-lateral-raise", "cable-triceps-pushdown", "push-up"]),
+      day(5, "Pull B", ["lat-pulldown", "chest-supported-row", "seated-cable-row", "pull-up", "incline-dumbbell-curl", "barbell-curl"]),
+      day(6, "Legs B", ["goblet-squat", "hip-thrust", "walking-lunge", "seated-leg-curl", "standing-calf-raise", "hanging-knee-raise"]),
+    ],
+  };
+}
+
 function omarPlan(): SeedPlan {
   return {
     planId: "plan-omar-0005",
@@ -3217,6 +3244,21 @@ async function withServedWeekStatus(state: NutritionState): Promise<NutritionSta
 async function heldDetailRead(): Promise<void> {
   const ms = Number(await fixtureSwitch("evoli_fixture_read_delay"));
   if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 5_000)));
+}
+/**
+ * EV-337f1 — ⚠ fixture affordance: `evoli_fixture_long_plan=<clientId>` (one browser
+ * context) swaps that client's SEEDED published plan for `longPlan()` (6 days × 6
+ * exercises) on the routine read, so « Publier » can be measured at day 1, 3 and 6 of the
+ * largest plan the api accepts without a seventh roster row. It writes the STORE, not a
+ * served copy, so a save, a « Enregistrer comme modèle » from the published plan and a
+ * publish all see the same document; the per-test reset (fixture-test) puts the seed
+ * back. A plan published since the seed (a new `planId`) is left alone.
+ */
+const SEED_PLAN_IDS = new Set(["plan-lina-0001", "plan-dana-0004", "plan-omar-0005", "plan-yusuf-0007", "plan-yann-0020"]);
+async function withLongPlanSwitch(id: string): Promise<void> {
+  if ((await fixtureSwitch("evoli_fixture_long_plan")) !== id) return;
+  const stored = state().plans.get(id);
+  if (stored && SEED_PLAN_IDS.has(stored.planId)) state().plans.set(id, seededPlan(id, longPlan()));
 }
 async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
@@ -5825,6 +5867,7 @@ export const fixtureCoachApi: CoachApi = {
   async getRoutine(id: string): Promise<CoachRoutineResponse> {
     await assertScope(id, "WORKOUTS");
     await summaryReadFailure("routine", id);
+    await withLongPlanSwitch(id);
     state().lastRoutineClient = id;
     const plan = state().plans.get(id) ?? null;
     const draft = state().drafts.get(id) ?? null;
