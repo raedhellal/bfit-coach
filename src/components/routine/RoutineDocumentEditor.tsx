@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Badge, Button, Card } from "@/components/ui/kit";
+import { UiIcon } from "@/components/ui/icons";
 import { CatalogPicker } from "./CatalogPicker";
 import {
   DayFocusField,
@@ -63,6 +64,18 @@ import type { CatalogExercise, Routine, RoutineExercise, RoutineTrainingDay } fr
  * badges are lost on reload by design; see `RoutineExercise` in coachApi.ts).
  */
 
+/**
+ * EV-337f2 F2.2 — the open days on load: day 1, and any day holding an exercise the
+ * catalogue would not match (EV-188 AC5), so its mark is seen without a click. Every
+ * other day starts closed.
+ */
+export function initialOpenDays(document: Routine | null, unbindable?: ReadonlySet<string>): boolean[] {
+  if (!document) return [];
+  return document.trainingDays.map(
+    (day, i) => i === 0 || day.exercises.some((ex) => unbindable?.has(ex.name.toLowerCase()) ?? false)
+  );
+}
+
 type PickerTarget =
   | { mode: "add"; dayIndex: number }
   | { mode: "replace"; dayIndex: number; exerciseIndex: number };
@@ -86,6 +99,8 @@ export function RoutineDocumentEditor({
   showDocumentName = false,
   replaceHint = false,
   showRowSummary = false,
+  openDays,
+  onOpenDaysChange,
 }: {
   document: Routine;
   onChange: (next: Routine) => void;
@@ -105,6 +120,12 @@ export function RoutineDocumentEditor({
   replaceHint?: boolean;
   /** The template editor's "{days} · {exercises}" line. */
   showRowSummary?: boolean;
+  /**
+   * EV-337f2 — the open days, when the PARENT holds them (both or neither). `RoutineEditor`
+   * does, because it remounts this component on every document replaced from the server.
+   */
+  openDays?: boolean[];
+  onOpenDaysChange?: (next: boolean[]) => void;
 }) {
   const copy = useCopy();
   const [picker, setPicker] = useState<PickerTarget | null>(null);
@@ -132,6 +153,28 @@ export function RoutineDocumentEditor({
    */
   const [structure, setStructure] = useState(0);
   const reshaped = () => setStructure((n) => n + 1);
+
+  /**
+   * EV-337f2 — which training days are open, by POSITION (the cards are keyed on it too).
+   * Held by the parent when it passes `openDays` (`RoutineEditor`, so the `loads` remount
+   * of a replaced document keeps them), here otherwise (`TemplateEditor`). See
+   * `initialOpenDays` for the rule on load; a day added here opens, and a removed day's
+   * entry goes with it.
+   *
+   * A closed day is HIDDEN, never unmounted (F2.3): its fields keep their DOM and each
+   * `ExerciseRow` keeps its own state (BUG-490's stashed seconds). Every value lives in the
+   * parent's document anyway, so the save, the dirty flag and the « pas encore prêt » list
+   * read a closed day exactly as an open one. A position with no entry (a document from
+   * elsewhere with more days, a plan just built from scratch) reads as OPEN: nothing is
+   * hidden by surprise.
+   */
+  const [ownOpenDays, setOwnOpenDays] = useState<boolean[]>(() => initialOpenDays(document, unbindable));
+  const expanded = openDays ?? ownOpenDays;
+  const setExpanded = onOpenDaysChange ?? setOwnOpenDays;
+  const isOpen = (dayIndex: number) => expanded[dayIndex] ?? true;
+  const toggleDay = (dayIndex: number) =>
+    setExpanded(document.trainingDays.map((_, i) => (i === dayIndex ? !isOpen(i) : isOpen(i))));
+  const dayIds = useId();
 
   function change(next: Routine) {
     setWeekdayError(null);
@@ -356,117 +399,150 @@ export function RoutineDocumentEditor({
          */
         <Card key={dayIndex} style={{ marginBottom: 14 }}>
           <div role="group" aria-label={copy.routine.dayLabel(dayIndex + 1)}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                marginBottom: 14,
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
-                <WeekdaySelect
-                  dayIndex={dayIndex}
-                  value={day.dayOfWeek}
-                  onChange={(dayOfWeek) => setWeekday(dayIndex, dayOfWeek)}
-                />
-                <DayFocusField
-                  dayIndex={dayIndex}
-                  value={day.focus}
-                  onChange={(focus) => editDay(dayIndex, (d) => ({ ...d, focus }))}
-                />
-                <OptionalNumberField
-                  label={copy.routine.estimatedMinutesLabel}
-                  ariaLabel={copy.routine.estimatedMinutesName(dayIndex + 1)}
-                  value={day.estimatedMinutes}
-                  min={1}
-                  max={600}
-                  onChange={(estimatedMinutes) => editDay(dayIndex, (d) => ({ ...d, estimatedMinutes }))}
-                />
-                <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-                  {copy.routine.exercises(day.exercises.length)}
+            {/*
+              EV-337f2 F2.1 — the day's header IS the control (WAI-ARIA accordion: a button
+              in a heading). Its name starts with « Jour {n} »; its text carries the weekday,
+              the focus and the count, so a closed day still says what it holds. The count
+              is its own span: it reads « 4 exercices » exactly, as it did in the row.
+            */}
+            <h3 className="day-acc-head">
+              <button
+                type="button"
+                className="day-acc-toggle"
+                aria-expanded={isOpen(dayIndex)}
+                aria-controls={`${dayIds}-day-${dayIndex}`}
+                onClick={() => toggleDay(dayIndex)}
+              >
+                <span className="day-acc-text">
+                  <span className="day-acc-title">
+                    {copy.routine.dayHead(dayIndex + 1, isoWeekdayLabel(day.dayOfWeek, copy.locale))}
+                  </span>
+                  <span className="day-acc-meta">
+                    {day.focus.trim() !== "" && (
+                      <>
+                        <span className="day-acc-focus">{day.focus}</span>
+                        <span aria-hidden="true"> · </span>
+                      </>
+                    )}
+                    <span>{copy.routine.exercises(day.exercises.length)}</span>
+                  </span>
                 </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="trash"
-                ariaLabel={copy.common.labelled(copy.routine.removeDay, isoWeekdayLabel(day.dayOfWeek, copy.locale))}
-                title={days.length <= MIN_TRAINING_DAYS ? dayCountBound : undefined}
-                disabled={days.length <= MIN_TRAINING_DAYS}
-                onClick={() => {
-                  reshaped();
-                  editDays((list) => list.filter((_, i) => i !== dayIndex));
+                <span className="day-acc-chev" aria-hidden="true">
+                  <UiIcon name="chevD" size={18} />
+                </span>
+              </button>
+            </h3>
+            <div id={`${dayIds}-day-${dayIndex}`} className="day-acc-body" hidden={!isOpen(dayIndex)}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 14,
+                  flexWrap: "wrap",
                 }}
               >
-                {copy.routine.removeDay}
-              </Button>
-            </div>
-
-            {weekdayError?.dayIndex === dayIndex && (
-              <p role="alert" style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)" }}>
-                {weekdayError.message}
-              </p>
-            )}
-
-            {/* EV-201 AC2 — once per day card, and not over an empty day. */}
-            {replaceHint && day.exercises.length > 0 && (
-              <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--ink-3)" }}>
-                {copy.routine.replaceKeepsPrescription}
-              </p>
-            )}
-
-            <div style={{ display: "grid", gap: 10 }}>
-              {day.exercises.map((exercise, exerciseIndex) => (
-                <ExerciseRow
-                  key={`${structure}-${exercise.name}-${exerciseIndex}`}
-                  exercise={exercise}
-                  first={exerciseIndex === 0}
-                  last={exerciseIndex === day.exercises.length - 1}
-                  unbindable={unbindable?.has(exercise.name.toLowerCase()) ?? false}
-                  picked={picked[exercise.name.toLowerCase()] ?? null}
-                  onChange={(mutate) => editExercise(dayIndex, exerciseIndex, mutate)}
-                  onMove={(delta) => move(dayIndex, exerciseIndex, exerciseIndex + delta)}
-                  onReplace={() => setPicker({ mode: "replace", dayIndex, exerciseIndex })}
-                  onRemove={() => {
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
+                  <WeekdaySelect
+                    dayIndex={dayIndex}
+                    value={day.dayOfWeek}
+                    onChange={(dayOfWeek) => setWeekday(dayIndex, dayOfWeek)}
+                  />
+                  <DayFocusField
+                    dayIndex={dayIndex}
+                    value={day.focus}
+                    onChange={(focus) => editDay(dayIndex, (d) => ({ ...d, focus }))}
+                  />
+                  <OptionalNumberField
+                    label={copy.routine.estimatedMinutesLabel}
+                    ariaLabel={copy.routine.estimatedMinutesName(dayIndex + 1)}
+                    value={day.estimatedMinutes}
+                    min={1}
+                    max={600}
+                    onChange={(estimatedMinutes) => editDay(dayIndex, (d) => ({ ...d, estimatedMinutes }))}
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="trash"
+                  ariaLabel={copy.common.labelled(copy.routine.removeDay, isoWeekdayLabel(day.dayOfWeek, copy.locale))}
+                  title={days.length <= MIN_TRAINING_DAYS ? dayCountBound : undefined}
+                  disabled={days.length <= MIN_TRAINING_DAYS}
+                  onClick={() => {
                     reshaped();
-                    editDay(dayIndex, (d) => ({
-                      ...d,
-                      exercises: d.exercises.filter((_, i) => i !== exerciseIndex),
-                    }));
+                    setExpanded(days.map((_, i) => isOpen(i)).filter((_, i) => i !== dayIndex));
+                    editDays((list) => list.filter((_, i) => i !== dayIndex));
                   }}
-                />
-              ))}
-            </div>
+                >
+                  {copy.routine.removeDay}
+                </Button>
+              </div>
 
-            {/*
-              A template's day is capped at 12: at the cap the control is UNAVAILABLE and
-              says why — never a control that looks pressable and then fails.
-            */}
-            <div style={{ marginTop: 12 }}>
-              {(() => {
-                const full = maxExercisesPerDay !== undefined && day.exercises.length >= maxExercisesPerDay;
-                return (
-                  <>
-                    <Button
-                      variant="soft"
-                      icon="plus"
-                      disabled={full}
-                      title={full ? copy.templates.dayFull : undefined}
-                      onClick={() => setPicker({ mode: "add", dayIndex })}
-                    >
-                      {copy.routine.addExercise}
-                    </Button>
-                    {full && (
-                      <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
-                        {copy.templates.dayFull}
-                      </p>
-                    )}
-                  </>
-                );
-              })()}
+              {weekdayError?.dayIndex === dayIndex && (
+                <p role="alert" style={{ margin: "0 0 12px", fontSize: 13, color: "var(--err-ink)" }}>
+                  {weekdayError.message}
+                </p>
+              )}
+
+              {/* EV-201 AC2 — once per day card, and not over an empty day. */}
+              {replaceHint && day.exercises.length > 0 && (
+                <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--ink-3)" }}>
+                  {copy.routine.replaceKeepsPrescription}
+                </p>
+              )}
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {day.exercises.map((exercise, exerciseIndex) => (
+                  <ExerciseRow
+                    key={`${structure}-${exercise.name}-${exerciseIndex}`}
+                    exercise={exercise}
+                    first={exerciseIndex === 0}
+                    last={exerciseIndex === day.exercises.length - 1}
+                    unbindable={unbindable?.has(exercise.name.toLowerCase()) ?? false}
+                    picked={picked[exercise.name.toLowerCase()] ?? null}
+                    onChange={(mutate) => editExercise(dayIndex, exerciseIndex, mutate)}
+                    onMove={(delta) => move(dayIndex, exerciseIndex, exerciseIndex + delta)}
+                    onReplace={() => setPicker({ mode: "replace", dayIndex, exerciseIndex })}
+                    onRemove={() => {
+                      reshaped();
+                      editDay(dayIndex, (d) => ({
+                        ...d,
+                        exercises: d.exercises.filter((_, i) => i !== exerciseIndex),
+                      }));
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/*
+                A template's day is capped at 12: at the cap the control is UNAVAILABLE and
+                says why — never a control that looks pressable and then fails.
+              */}
+              <div style={{ marginTop: 12 }}>
+                {(() => {
+                  const full = maxExercisesPerDay !== undefined && day.exercises.length >= maxExercisesPerDay;
+                  return (
+                    <>
+                      <Button
+                        variant="soft"
+                        icon="plus"
+                        disabled={full}
+                        title={full ? copy.templates.dayFull : undefined}
+                        onClick={() => setPicker({ mode: "add", dayIndex })}
+                      >
+                        {copy.routine.addExercise}
+                      </Button>
+                      {full && (
+                        <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+                          {copy.templates.dayFull}
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
             </div>
           </div>
         </Card>
@@ -484,6 +560,8 @@ export function RoutineDocumentEditor({
         onClick={() => {
           const next = firstFreeWeekday(days);
           if (next === null) return;
+          // F2.2: the day the coach just added is open, ready for its first exercise.
+          setExpanded([...days.map((_, i) => isOpen(i)), true]);
           editDays((list) => [
             ...list,
             emptyDay(

@@ -957,6 +957,12 @@ export const en = {
     planNameLabel: "Plan name",
     dayLabel: (n: number) => `Day ${n}`,
     exercises: (n: number) => `${n} exercise${n === 1 ? "" : "s"}`,
+    /**
+     * EV-337f2 F2.1 — the first line of a training day's accordion header, which is the
+     * start of its button's accessible name ("Day {n}" first). The weekday is left out when
+     * the day has none to print (`isoWeekdayLabel` answers "" outside 1–7).
+     */
+    dayHead: (n: number, weekday: string) => (weekday ? `Day ${n} · ${weekday}` : `Day ${n}`),
     sets: "Sets",
     reps: "Reps",
     rest: "Rest",

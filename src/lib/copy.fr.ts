@@ -543,6 +543,8 @@ export const fr = {
     planNameLabel: "Nom du plan",
     dayLabel: (n: number) => `Jour ${n}`,
     exercises: (n: number) => `${n} exercice${s(n)}`,
+    // « Jour 1 · lundi » : le jour de la semaine en minuscule au milieu de la ligne.
+    dayHead: (n: number, weekday: string) => (weekday ? `Jour ${n} · ${weekday.toLowerCase()}` : `Jour ${n}`),
     sets: "Séries",
     reps: "Répétitions",
     rest: "Repos",

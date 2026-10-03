@@ -3260,6 +3260,49 @@ async function withLongPlanSwitch(id: string): Promise<void> {
   const stored = state().plans.get(id);
   if (stored && SEED_PLAN_IDS.has(stored.planId)) state().plans.set(id, seededPlan(id, longPlan()));
 }
+/**
+ * EV-337f2 — ⚠ fixture affordance: `evoli_fixture_unbindable_day=<clientId>` (one browser
+ * context) gives that client, when they have NO draft yet, a draft copied from their
+ * published plan with one exercise the catalogue does not hold (« Zercher Carry », the
+ * Legacy-strength name) appended to the LAST training day. It is how F2.2's exception (a
+ * day other than day 1 holding an unbindable exercise opens on load) is reachable: the
+ * editor cannot produce such a name (exercises arrive through `CatalogPicker`), and the
+ * one seeded case ("Legacy strength") has it on day 1. It writes the STORE, so a save and
+ * a reload see the same draft; the per-test reset (fixture-test) removes it.
+ */
+async function withUnbindableDaySwitch(id: string): Promise<void> {
+  if ((await fixtureSwitch("evoli_fixture_unbindable_day")) !== id) return;
+  if (state().drafts.has(id)) return;
+  const plan = state().plans.get(id);
+  if (!plan || plan.document.trainingDays.length < 2) return;
+  const days = plan.document.trainingDays;
+  const raw = rawEntry("Zercher Carry", 3, "30m", "90s");
+  const document: Routine = {
+    ...plan.document,
+    trainingDays: days.map((day, i) =>
+      i === days.length - 1
+        ? {
+            ...day,
+            exercises: [
+              ...day.exercises,
+              {
+                name: raw.name,
+                sets: raw.sets,
+                reps: raw.reps,
+                rest: raw.rest,
+                tempo: null,
+                notes: null,
+                trackingType: "WEIGHT_REPS" as const,
+                durationSeconds: null,
+                weight: null,
+              },
+            ],
+          }
+        : day
+    ),
+  };
+  state().drafts.set(id, { document, updatedAt: new Date().toISOString() });
+}
 async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
 }
@@ -5868,6 +5911,7 @@ export const fixtureCoachApi: CoachApi = {
     await assertScope(id, "WORKOUTS");
     await summaryReadFailure("routine", id);
     await withLongPlanSwitch(id);
+    await withUnbindableDaySwitch(id);
     state().lastRoutineClient = id;
     const plan = state().plans.get(id) ?? null;
     const draft = state().drafts.get(id) ?? null;
