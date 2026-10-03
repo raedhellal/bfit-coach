@@ -323,7 +323,8 @@ export const fr = {
     resendUnavailable: "Le renvoi est momentanément indisponible. Rien n'a été envoyé.",
     resendUnknown:
       "Nous n'avons pas pu confirmer le renvoi. Si vous renvoyez à nouveau, seul le dernier mot de passe temporaire fonctionnera.",
-    withdrawUnknown: "Nous n'avons pas pu confirmer le retrait. Rechargez la page pour vérifier.",
+    withdrawUnknown:
+      "Nous n'avons pas pu confirmer le retrait. Vérifiez les invitations en attente\u00a0: si elle y figure encore, elle n'a pas été retirée.",
     loadError: "Les invitations en attente n'ont pas pu être chargées.",
     reload: "Recharger",
     pageNextTitle: "La suite",

@@ -443,7 +443,7 @@ export const en = {
     resendThrottledNoTime: "This invitation was resent several times in the last hour. Try again later.",
     resendUnavailable: "Resending isn't available right now. Nothing was sent.",
     resendUnknown: "We couldn't confirm the invitation was resent. If you resend it again, only the newest temporary password works.",
-    withdrawUnknown: "We couldn't confirm the invitation was withdrawn. Reload the page to check.",
+    withdrawUnknown: "We couldn't confirm the invitation was withdrawn. Check the Invited list: if it is still there, it wasn't.",
     loadError: "Pending invitations couldn't be loaded.",
     reload: "Reload",
     // ── /invited/[userId] ─────────────────────────────────────────────────────
