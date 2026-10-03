@@ -26,19 +26,26 @@ import {
  * (`qa/prehydration-sweep.spec.ts` witnessed the mismatches).
  *
  * The consent box is excluded from adoption by ruling (staff review, 2026-10-03; BUG-023 /
- * Planet49 "active tap", ADR-0019 "own act"): a box found ticked at hydration does not prove a
- * tick in this document — Back into a new document has the browser restore it ticked, (3).
- * So the form shows it UNticked after hydration, consent is false, and the person ticks once
- * more.
+ * Planet49 "active tap", ADR-0019 "own act"). A box found ticked at hydration does not prove
+ * a tick in this document: before `autoComplete="off"`, Back into a new document had the
+ * browser restore it ticked. The hook therefore RESETS it (`data-adopt="never"`) through the
+ * node's own setter, so React's value tracker sees "unticked" too. The person ticks it once
+ * more, and that tick must register.
  *
  * (1) passwords and a tick before hydration → passwords adopted; the box is shown unticked
  *     and the submit disabled; ONE tick enables it, and the body says `consentAccepted: true`;
  * (2) passwords before hydration, the box left alone → disabled until the person ticks it;
- * (3) Back restoration: ticked after hydration, away to about:blank, Back → a new document
- *     whose box the browser restored → shown unticked, held false, submit disabled until
- *     the person ticks it again.
+ * (3) Back: ticked after hydration, away to about:blank, Back → a new document (back_forward)
+ *     whose box the browser did NOT restore (`autoComplete="off"`, read before hydration),
+ *     unticked and held false after it;
+ * (4) THE RESET'S GUARD — the only test that pins how the box is reset. Only the box is ticked
+ *     before hydration (no password, so no replay re-renders the form and re-syncs React's
+ *     tracker as a side effect). After the reset, the very next tick must reach state.
+ *     Staff's mutants: with no reset at all (M2), (1) still passes; with a reset through the
+ *     untracked prototype setter (M3), every other test passes but the first tick is eaten
+ *     (shown ticked, held false). (4) is red under M3.
  * Red on a862698: (1) and (2) keep the button disabled after the tick (passwords not
- * adopted); (3) shows the restored box ticked.
+ * adopted).
  */
 
 const NEW_PASSWORD = "Coach-pass-2026";
@@ -103,7 +110,7 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
           }
         });
 
-        test("(3) a tick the browser restores on Back is not consent: unticked, disabled until ticked again", async ({
+        test("(3) Back into a new document: the browser does not restore the tick, and it is not held", async ({
           baseURL,
         }) => {
           const page = await openPage(engine, lang, width, baseURL, "pending");
@@ -115,7 +122,8 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
             await expect(f.consent).toBeChecked();
 
             await page.goto("about:blank");
-            await page.goBack();
+            const hold = await holdHydration(page);
+            await page.goBack({ waitUntil: "domcontentloaded" });
             await expect(page).toHaveURL(/\/activate$/);
             // A new document (not the bfcache): the page is no-store, and the browser says so.
             expect(
@@ -123,15 +131,49 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
                 () => (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type,
               ),
             ).toBe("back_forward");
+            // Before hydration: no restored tick on screen at all (autoComplete="off").
+            await expectServerHtml(f.consent, "the consent box after Back");
+            await expect(f.consent).not.toBeChecked();
+            expect(await hold.release()).toBeGreaterThan(0);
+
             await waitForFiber(f.consent);
             await expect(f.consent).not.toBeChecked();
-            await expectStateHoldsWhatIsShown(f.consent, "the restored consent box");
+            await expectStateHoldsWhatIsShown(f.consent, "the consent box after Back");
+            await f.consent.check();
+            await expectStateHoldsWhatIsShown(f.consent, "the first tick after Back");
+            await f.temporary.fill(PENDING.password);
+            await f.fresh.fill(NEW_PASSWORD);
+            await f.repeat.fill(NEW_PASSWORD);
+            await expect(f.submit).toBeEnabled();
+          } finally {
+            await page.context().close();
+          }
+        });
+
+        test("(4) the reset's guard: a box ticked before hydration is reset, and the next tick registers", async ({
+          baseURL,
+        }) => {
+          const page = await openPage(engine, lang, width, baseURL, "pending");
+          try {
+            const hold = await holdHydration(page);
+            await page.goto("/activate", { waitUntil: "domcontentloaded" });
+            const f = form(page, t);
+            await f.consent.check();
+            await expectServerHtml(f.consent, "the consent tick");
+            expect(await hold.release(), "JS chunks held until the box was ticked").toBeGreaterThan(0);
+
+            await waitForFiber(f.consent);
+            // The reset ran (it is what unticks the box).
+            await expect(f.consent).not.toBeChecked();
+            await expectStateHoldsWhatIsShown(f.consent, "the reset consent box");
+            // The person's tick, at once and before any other input: it must reach state.
+            await f.consent.check();
+            await expectStateHoldsWhatIsShown(f.consent, "the first tick after the reset");
+            await expect(f.consent).toBeChecked();
 
             await f.temporary.fill(PENDING.password);
             await f.fresh.fill(NEW_PASSWORD);
             await f.repeat.fill(NEW_PASSWORD);
-            await expect(f.submit).toBeDisabled();
-            await f.consent.check();
             await expect(f.submit).toBeEnabled();
           } finally {
             await page.context().close();

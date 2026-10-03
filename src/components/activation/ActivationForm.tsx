@@ -279,6 +279,10 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
           <input
             type="checkbox"
             data-adopt="never"
+            // Staff witnessed (Chromium + WebKit): without it the browser restores the tick
+            // on Back into a new document. With it, there is no stale tick on screen before
+            // hydration. data-adopt="never" still covers a tick made before hydration.
+            autoComplete="off"
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
           />
