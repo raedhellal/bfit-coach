@@ -26,7 +26,38 @@ import { refuseParallelFixtureRun } from "./fixture-single-worker";
  * the reset's status check would pass on the login screen and the failure would only
  * surface one step later, as a JSON parse error on the seed check.
  */
+/** See `qa/clock-shift.mjs`: 0 (the default) leaves every clock alone. */
+const CLOCK_SHIFT_MS = Number(process.env.QA_CLOCK_SHIFT_MS || 0);
+
 export const test = base.extend<{ fixtureAtSeed: void }, { oneWorkerPerFixtureServer: void }>({
+  /**
+   * The browser's half of `qa/clock-shift.mjs` (which moves node: the runner and `next dev`):
+   * with `QA_CLOCK_SHIFT_MS` set, every page of the test's context reads the same shifted
+   * wall clock, so a "00:30 Paris" run moves the browser and the server together.
+   *
+   * Not `context.clock.setSystemTime`: Playwright replays that on each new document against
+   * the RUNNER's `Date.now()` — which the preload has shifted — and the browser's real one,
+   * so the page after a navigation drifts back by the shift. An init script with the one
+   * offset has no such replay. Only `new Date()` and `Date.now()` move, as in node.
+   */
+  context: async ({ context }, use) => {
+    if (Number.isFinite(CLOCK_SHIFT_MS) && CLOCK_SHIFT_MS !== 0) {
+      await context.addInitScript((shift: number) => {
+        const RealDate = Date;
+        class ShiftedDate extends RealDate {
+          constructor(...args: ConstructorParameters<DateConstructor> | []) {
+            if (args.length === 0) super(RealDate.now() + shift);
+            else super(...(args as ConstructorParameters<DateConstructor>));
+          }
+          static now() {
+            return RealDate.now() + shift;
+          }
+        }
+        globalThis.Date = ShiftedDate as DateConstructor;
+      }, CLOCK_SHIFT_MS);
+    }
+    await use(context);
+  },
   /**
    * The context's language on EVERY request, not only the browser's.
    *
