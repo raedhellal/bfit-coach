@@ -35,7 +35,8 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
   const emailField = useRef<HTMLInputElement>(null);
   const passwordField = useRef<HTMLInputElement>(null);
 
-  // BUG-686: runs once, after hydration — adopt whatever the server HTML's fields already hold.
+  // BUG-686: idempotent; reads the DOM on mount (after hydration) and adopts whatever the
+  // server HTML's fields already hold. Dev StrictMode runs it twice, harmlessly.
   useEffect(() => {
     const typedEmail = emailField.current?.value;
     const typedPassword = passwordField.current?.value;

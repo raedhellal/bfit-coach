@@ -157,11 +157,15 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
             await page.getByLabel(t.email, { exact: true }).fill(COACH.email);
             expect(await isHydrated(page, EMAIL_FIELD), "the email was typed into server HTML").toBe(false);
             await page.getByLabel(t.password, { exact: true }).fill(COACH.password);
+            expect(await isHydrated(page, PASSWORD_FIELD), "the password was typed into server HTML").toBe(false);
             await race.released;
             expect(race.held(), "at least one JS chunk was held until both fields had a value").toBeGreaterThan(0);
 
+            // Enabled with no further input: only LoginForm's adoption of the DOM values can do this.
+            const button = page.getByRole("button", { name: t.signIn, exact: true });
+            await expect(button).toBeEnabled();
             const login = page.waitForRequest((r) => r.url().endsWith("/api/auth/login") && r.method() === "POST");
-            await page.getByRole("button", { name: t.signIn, exact: true }).click({ timeout: CLICK_TIMEOUT });
+            await button.click({ timeout: CLICK_TIMEOUT });
             expect(loginBody(await login)).toEqual(COACH);
             await expect(page).toHaveURL(new URL("/", baseURL).href);
             await expect(page.getByRole("button", { name: t.signIn, exact: true })).toHaveCount(0);
@@ -187,6 +191,7 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
             await page.getByLabel(t.email, { exact: true }).fill(COACH.email);
             expect(await isHydrated(page, EMAIL_FIELD), "the email was typed into server HTML").toBe(false);
             await page.getByLabel(t.password, { exact: true }).fill(WRONG);
+            expect(await isHydrated(page, PASSWORD_FIELD), "the password was typed into server HTML").toBe(false);
             await race.released;
             expect(race.held(), "at least one JS chunk was held until both fields had a value").toBeGreaterThan(0);
 
@@ -216,6 +221,9 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
 
             await waitForHydration(page);
             const button = page.getByRole("button", { name: t.signIn, exact: true });
+            // AC3's "stays disabled" half. It holds on e98a53f too (nothing reached state there),
+            // so it is a non-regression check, not the witness: the request body below is what
+            // proves the pre-hydration email was adopted into state.
             await expect(button).toBeDisabled();
 
             await page.getByLabel(t.password, { exact: true }).fill(COACH.password);
