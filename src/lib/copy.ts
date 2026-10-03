@@ -923,7 +923,7 @@ export const en = {
      */
     profileTitle: "Trainee profile",
     /** EV-337f1 F1.2, verbatim — the name of the one region holding Save, Discard and Publish. */
-    actionsLabel: "Programme actions",
+    actionsLabel: "Routine actions",
     injuries: "Injuries",
     equipment: "Available equipment",
     /**

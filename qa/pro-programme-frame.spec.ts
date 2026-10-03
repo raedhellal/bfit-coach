@@ -42,7 +42,7 @@ type Lang = "en" | "fr";
 const LOCALE: Record<Lang, string> = { en: "en-US", fr: "fr-FR" };
 const L = {
   en: {
-    region: "Programme actions",
+    region: "Routine actions",
     save: "Save draft",
     discard: "Discard draft",
     publish: "Publish",
