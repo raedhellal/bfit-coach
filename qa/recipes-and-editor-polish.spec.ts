@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
 import { signInFrench } from "./french";
 import { fr } from "../src/lib/copy.fr";
 import { parseTarget, readNumber, targetRefusal } from "../src/lib/numberInput";
@@ -238,6 +239,8 @@ test.describe("BUG-537 — the swap sheet marks the recipe the meal already show
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 async function addPlank(page: Page): Promise<Locator> {
+  // EV-337f2: days after the first are closed on load; open them before reaching into them.
+  await openEveryDay(page);
   await page.getByRole("button", { name: "Add exercise" }).nth(1).click();
   const picker = page.getByRole("dialog");
   await picker.getByLabel("Search the catalog").fill("Plank");
@@ -253,6 +256,7 @@ async function saveDraftAndReload(page: Page) {
   await expect(page.getByText(/^Draft saved /)).toBeVisible();
   await page.reload();
   await expect(page.getByText("Draft — not yet published")).toBeVisible();
+  await openEveryDay(page); // EV-337f2: a reload closes days 2+ again
 }
 
 test.describe("BUG-490 — Duration → Weight & reps → Duration keeps the seconds", () => {
@@ -302,6 +306,7 @@ test.describe("BUG-490 — Duration → Weight & reps → Duration keeps the sec
  * two empty days, so the positions are exactly the ones the test builds).
  */
 async function addTo(page: Page, dayIndex: number, name: string) {
+  await openEveryDay(page); // EV-337f2: days after the first are closed on load
   await page.getByRole("button", { name: "Add exercise" }).nth(dayIndex).click();
   const picker = page.getByRole("dialog");
   await picker.getByLabel("Search the catalog").fill(name);
@@ -341,6 +346,7 @@ test.describe("staff S1 — a structural edit drops the stashed seconds; they ne
     await signIn(page, "coach@evoli.fit");
     await page.goto("/templates/new");
     await page.getByRole("button", { name: "Add day" }).click();
+    await openEveryDay(page); // EV-337f2: day 2 of a blank template is closed on load
     await expect(page.getByRole("button", { name: "Add exercise" })).toHaveCount(3);
     await addTo(page, 1, "Plank");
     await addTo(page, 2, "Plank");

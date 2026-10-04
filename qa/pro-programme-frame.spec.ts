@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { expect, webkit, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { expectNoEnglish } from "./french";
 import { en } from "../src/lib/copy";
@@ -389,6 +390,8 @@ for (const lang of ["en", "fr"] as const) {
           expect(onTop, `${width}, day ${day}: the footer is not covered at its centre`).toBe(true);
         }
       }
+      // EV-337f2: day 6 is closed on load; its last exercise row is measured open.
+      await openEveryDay(page);
       for (const [width, height] of [[1440, 900], ...PHONES] as const) {
         await page.setViewportSize({ width, height });
         await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -431,6 +434,7 @@ for (const lang of ["en", "fr"] as const) {
       await signIn(page, lang);
       await page.setViewportSize({ width: 390, height: 844 });
       await openLongPlan(page, lang);
+      await openEveryDay(page); // EV-337f2: day 6 is closed on load
       await scrollToDay(page, lang, 6);
       const day6 = page.getByRole("group", { name: L[lang].day(6), exact: true });
       const sets = day6.getByRole("group", { name: "Goblet Squat", exact: true }).getByLabel(L[lang].sets);

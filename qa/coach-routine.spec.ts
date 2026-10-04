@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
 
 /**
  * EV-184b — the coach's Routine tab, in **fixture mode** (see playwright.config.ts).
@@ -98,6 +99,8 @@ test.describe("AC1 — the coach opens Routine and sees the live plan", () => {
     // Nothing is unpublished yet, so the header must not claim a draft.
     await expect(page.getByText("Published plan")).toBeVisible();
     await expect(page.getByText("Draft — not yet published")).toHaveCount(0);
+    // EV-337f2: days 2 and 3 are closed on load; every exercise below is read open.
+    await openEveryDay(page);
 
     /**
      * The three training days, in the api's schedule order.
@@ -252,6 +255,7 @@ test.describe("AC2 — the coach edits, and the edit survives a reload as a draf
     await signIn(page);
     await page.goto(`/clients/${DANA}/routine`);
     await expect(page.getByText("Published plan")).toBeVisible();
+    await openEveryDay(page); // EV-337f2: the edits below reach into day 2, closed on load
 
     // Edge case 6: a 50-character name is elided rather than wrapping the row.
     await expect(page.getByText(LONG_EXERCISE_SHOWN)).toBeVisible();
@@ -298,6 +302,7 @@ test.describe("AC2 — the coach edits, and the edit survives a reload as a draf
     await page.reload();
 
     await expect(page.getByText("Draft — not yet published")).toBeVisible();
+    await openEveryDay(page); // EV-337f2: a reload closes day 2 again
     await expect(exerciseRow(page, "Lat Pulldown")).toBeVisible();
     await expect(exerciseRow(page, "Seated Cable Row")).toBeVisible();
     await expect(exerciseRow(page, "Pull-Up")).toHaveCount(0);
@@ -692,6 +697,7 @@ test.describe("EV-190 AC1 — the coach chooses which weekdays the trainee train
   }) => {
     await signIn(page);
     await page.goto(`/clients/${YUSUF}/routine`);
+    await openEveryDay(page); // EV-337f2: day 2's weekday is in its body, closed on load
 
     // Day 2 is Thursday; Tuesday is day 1's. `RoutinePlanWriter`'s
     // `workoutByDay.put(dayOfWeek, ...)` would silently DROP one of the two on publish,
@@ -712,6 +718,7 @@ test.describe("EV-190 AC1 — the coach chooses which weekdays the trainee train
   test("the weekdays the coach sets survive a save and a hard reload", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${YUSUF}/routine`);
+    await openEveryDay(page); // EV-337f2: day 2's weekday is in its body, closed on load
 
     await page.getByLabel("Day 1 weekday").selectOption("1"); // Monday
     await page.getByLabel("Day 2 weekday").selectOption("6"); // Saturday
@@ -769,6 +776,7 @@ test.describe("EV-190 AC1 — the coach chooses which weekdays the trainee train
   test("adding days stops at the six-day bound, with the reason on screen", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${YUSUF}/routine`);
+    await openEveryDay(page); // EV-337f2: every weekday select is read below; day 2 is closed on load
 
     // Two days to start; each added day takes the first weekday not already in use, so
     // the plan can never hold two days on one weekday even before the coach edits it.
@@ -1053,6 +1061,7 @@ test.describe("EV-190 U4 — adding several exercises in one opening", () => {
   test("replacing still closes on the pick — it is a single act", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${YUSUF}/routine`);
+    await openEveryDay(page); // EV-337f2: Leg Press is on day 2, closed on load
 
     await page.getByRole("button", { name: "Replace: Leg Press" }).click();
     const picker = page.getByRole("dialog");

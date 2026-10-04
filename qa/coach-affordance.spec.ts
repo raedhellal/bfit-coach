@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
 
 /**
  * EV-201 — the five things the portal already did and never said, in **fixture mode**.
@@ -161,6 +162,7 @@ test.describe("AC1 — the day focus looks like the field it is", () => {
       await page.setViewportSize({ width, height: 844 });
       await signIn(page);
       await page.goto(`/clients/${LINA}/routine`);
+      await openEveryDay(page); // EV-337f2: every day's focus field is measured; days 2+ are closed on load
 
       await expect(page.getByLabel("Day 1 weekday")).toBeVisible();
       await expect(page.getByText(DAY_FOCUS_LABEL, { exact: true })).toHaveCount(3);
@@ -321,6 +323,7 @@ test.describe("AC3 — the picker says it is staying open", () => {
     acceptLeaving(page);
     await signIn(page);
     await page.goto(`/clients/${LINA}/routine`);
+    await openEveryDay(page); // EV-337f2: Lat Pulldown is on day 3, closed on load
 
     await page.getByRole("button", { name: "Replace: Lat Pulldown" }).click();
     const picker = page.getByRole("dialog");
@@ -369,6 +372,7 @@ test.describe("AC4 — Publish says what pressing it does, before it is pressed"
     await signIn(page);
     await page.goto(`/clients/${DANA}/routine`);
     await expect(page.getByText(PUBLISH_HINT)).toBeVisible();
+    await openEveryDay(page); // EV-337f2: Pull-Up is on day 2, closed on load
 
     await page.getByRole("group", { name: "Pull-Up", exact: true }).getByLabel("Sets").fill("5");
     await page.getByRole("button", { name: "Publish", exact: true }).first().click();
@@ -382,6 +386,7 @@ test.describe("AC4 — Publish says what pressing it does, before it is pressed"
     // Byte-identical: the draft the coach was holding, not the repaired plan.
     await page.reload();
     await expect(page.getByText("Draft — not yet published")).toBeVisible();
+    await openEveryDay(page); // EV-337f2: a reload closes day 2 again
     await expect(
       page.getByRole("group", { name: "Pull-Up", exact: true }).getByLabel("Sets")
     ).toHaveValue("5");
