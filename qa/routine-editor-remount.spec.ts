@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
 
 /**
  * `fix/routine-editor-load-saved-remount` — two follow-ups from staff's re-review of
@@ -37,6 +38,8 @@ function group(page: Page, name: string): Locator {
 }
 
 async function addTo(page: Page, dayIndex: number, name: string) {
+  // EV-337f2: days after the first are closed on load; open them before reaching into them.
+  await openEveryDay(page);
   await page.getByRole("button", { name: "Add exercise" }).nth(dayIndex).click();
   const picker = page.getByRole("dialog");
   await picker.getByLabel("Search the catalog").fill(name);
@@ -74,6 +77,7 @@ test.describe("(E) a document replaced from the server remounts the rows; no sta
     const other = await context.newPage();
     await other.goto(`/clients/${LINA}/routine`);
     await expect(other.getByText("Draft — not yet published")).toBeVisible();
+    await openEveryDay(other); // EV-337f2: the Planks are on days 2 and 3, closed on load
     const planksB = group(other, "Plank");
     await expect(planksB).toHaveCount(2);
     await expect(planksB.nth(1).getByLabel("Seconds")).toHaveValue("20");

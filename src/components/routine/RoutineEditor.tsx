@@ -6,7 +6,7 @@ import { Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/
 import { UiIcon } from "@/components/ui/icons";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { StickyActionBar } from "@/components/ui/StickyActionBar";
-import { RoutineDocumentEditor } from "./RoutineDocumentEditor";
+import { RoutineDocumentEditor, initialOpenDays } from "./RoutineDocumentEditor";
 import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -179,6 +179,22 @@ export function RoutineEditor({
    */
   const [loads, setLoads] = useState(0);
   const replaced = () => setLoads((n) => n + 1);
+  /**
+   * EV-337f2 — which training days are open. Held HERE, not in the keyed editor, so the
+   * remount above drops stashes and badges but not the coach's place: a publish from day 6
+   * (the re-seed) or « Load the saved version » leaves the days open that were open.
+   * Positional, as the cards are. The rule on load is `initialOpenDays` (F2.2).
+   *
+   * Computed ONCE, from the initial document and its unbindable exercises. After a re-seed,
+   * a day that newly holds an unbindable exercise stays as the coach left it (closed, if it
+   * was): F2.2's exception applies "on load", and a re-seed is not a load.
+   */
+  const [openDays, setOpenDays] = useState<boolean[]>(() =>
+    initialOpenDays(
+      initialDraft?.document ?? activePlan?.document ?? null,
+      new Set(unbindableExercises.map((name) => name.toLowerCase()))
+    )
+  );
 
   /*
    * U6 — the notice and the error are where the coach is looking. They used to render in
@@ -573,6 +589,8 @@ export function RoutineEditor({
           dayCountBound={copy.routine.dayCountBound}
           unbindable={unbindable}
           replaceHint
+          openDays={openDays}
+          onOpenDaysChange={setOpenDays}
         />
       </ProgrammeFrame>
 

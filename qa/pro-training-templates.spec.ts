@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { expectNoEnglish, signInFrench } from "./french";
 
@@ -395,6 +396,8 @@ test.describe("X3", () => {
 
 /** Add `count` exercises to day `dayIndex` through the catalogue picker (English editor). */
 async function addExercises(page: Page, dayIndex: number, count: number) {
+  // EV-337f2: days after the first are closed on load; open them before reaching into them.
+  await openEveryDay(page);
   await page
     .getByRole("group", { name: `Day ${dayIndex + 1}`, exact: true })
     .getByRole("button", { name: "Add exercise" })

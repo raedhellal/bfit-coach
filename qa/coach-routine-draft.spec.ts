@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
 
 /**
  * BUG-195c — the routine write path against the BUG-195b contract, in FIXTURE mode.
@@ -37,6 +38,8 @@ function exerciseRow(page: Page, name: string) {
 }
 
 async function addFromCatalog(page: Page, dayIndex: number, name: string) {
+  // EV-337f2: days after the first are closed on load; open them before reaching into them.
+  await openEveryDay(page);
   await page.getByRole("button", { name: "Add exercise" }).nth(dayIndex).click();
   const picker = page.getByRole("dialog");
   await picker.getByLabel("Search the catalog").fill(name);
@@ -94,6 +97,7 @@ test.describe("AC3.2 — what the coach saves is what the reloaded editor shows,
     await page.reload();
 
     await expect(page.getByText("Draft — not yet published")).toBeVisible();
+    await openEveryDay(page); // EV-337f2: a reload closes days 2+ again
     const benchAfter = exerciseRow(page, "Barbell Bench Press");
     await expect(benchAfter.getByLabel("Tempo")).toHaveValue("3-1-1");
     await expect(benchAfter.getByLabel("Weight")).toHaveValue("60 kg");
@@ -168,6 +172,7 @@ test.describe("AC3.10 — a published plan carries the trainee's lists; the draf
   }) => {
     await signIn(page);
     await page.goto(`/clients/${DANA}/routine`);
+    await openEveryDay(page); // EV-337f2: Pull-Up is on day 2, closed on load
     await exerciseRow(page, "Pull-Up").getByLabel("Sets").fill("5");
     await saveDraft(page);
 

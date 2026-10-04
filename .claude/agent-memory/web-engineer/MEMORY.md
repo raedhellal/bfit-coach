@@ -70,3 +70,4 @@
 - [Night clock + hydration race harness](night-clock-and-hydration-race-harness.md) — QA_CLOCK_SHIFT_MS preload for 00:30 Paris; qa/sign-in.ts; same-text re-fill is ignored; taskpolicy -b reproduces WebKit race
 - [Programme frame (EV-337f1)](programme-frame-337f1-facts.md) — a sticky bar never rises above its parent: header passed in as `lead`; `aside` slot for f3; long-plan switch; EN h2 "Routine"
 - [Pre-hydration adoption hook](prehydration-adoption-hook-facts.md) — every SSR field raced (2026-10-03); snapshot then replay from a task; consent NEVER adopted (Back restores ticks); Modal forms immune
+- [Day accordions (EV-337f2)](day-accordions-337f2-facts.md) — hidden not unmounted; open days held by RoutineEditor across the loads remount; role locators skip hidden fields
