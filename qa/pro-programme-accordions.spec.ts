@@ -101,11 +101,14 @@ function header(page: Page, lang: Lang, n: number) {
 
 /** The region the header controls, found through its `aria-controls` (never by class). */
 async function controlled(page: Page, button: Locator) {
-  const id = await button.getAttribute("aria-controls");
-  expect(id, "the header names the region it controls").toBeTruthy();
-  const region = page.locator(`[id="${id}"]`);
-  await expect(region, "aria-controls points at one element").toHaveCount(1);
-  return region;
+  // Read together and retried: a remount (the publish re-seed) gives the header a new id.
+  let id: string | null = null;
+  await expect(async () => {
+    id = await button.getAttribute("aria-controls");
+    expect(id, "the header names the region it controls").toBeTruthy();
+    await expect(page.locator(`[id="${id}"]`), "aria-controls points at one element").toHaveCount(1, { timeout: 1_000 });
+  }).toPass();
+  return page.locator(`[id="${id}"]`);
 }
 
 /** Opens or closes a day, retried: a press before hydration toggles nothing. */
