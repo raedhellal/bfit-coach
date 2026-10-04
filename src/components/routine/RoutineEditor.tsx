@@ -181,6 +181,10 @@ export function RoutineEditor({
    * remount above drops stashes and badges but not the coach's place: a publish from day 6
    * (the re-seed) or « Load the saved version » leaves the days open that were open.
    * Positional, as the cards are. The rule on load is `initialOpenDays` (F2.2).
+   *
+   * Computed ONCE, from the initial document and its unbindable exercises. After a re-seed,
+   * a day that newly holds an unbindable exercise stays as the coach left it (closed, if it
+   * was): F2.2's exception applies "on load", and a re-seed is not a load.
    */
   const [openDays, setOpenDays] = useState<boolean[]>(() =>
     initialOpenDays(

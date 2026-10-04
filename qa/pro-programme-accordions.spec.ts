@@ -373,6 +373,87 @@ for (const lang of ["en", "fr"] as const) {
   });
 }
 
+/* ═══ Staff review on b56012c ═══════════════════════════════════════════════════════════ */
+
+/**
+ * A value that reaches a CLOSED day without anybody typing it — a Back/Forward restore that
+ * BUG-687's pre-hydration hook replays — opens the day, so "unsaved" never shows over a
+ * change nobody can see. The hook is not on this branch, so the replay is reproduced the
+ * way the hook does it: the value written past React's tracker, then the event React
+ * listens for, on a field inside the hidden body.
+ */
+async function replayIntoClosedDay(page: Page, lang: Lang, where: string) {
+  const day2 = header(page, lang, 2);
+  const day3 = header(page, lang, 3);
+  // Hydrated (a toggle answers), and both days closed again.
+  await setOpen(day2, true);
+  await setOpen(day2, false);
+  await expect(day3).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText(L[lang].unsaved, { exact: true })).toHaveCount(0);
+
+  const body2 = await controlled(page, day2);
+  const focus = body2.locator(`input[aria-label="${lang === "en" ? "Day 2 focus" : "Focus du jour 2"}"]`);
+  await expect(focus, `${where}: the field is hidden before the replay`).toBeHidden();
+  await focus.evaluate((el) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, "Legs restored");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(day2, `${where}: a replayed input opens its day`).toHaveAttribute("aria-expanded", "true");
+  await expect(focus).toBeVisible();
+  await expect(focus).toHaveValue("Legs restored");
+  await expect(day2.getByText("Legs restored", { exact: true }), `${where}: the header shows it too`).toBeVisible();
+  await expect(page.getByText(L[lang].unsaved, { exact: true })).toBeVisible();
+
+  // A select (the weekday) replays as `change`.
+  const body3 = await controlled(page, day3);
+  const weekday = body3.locator("select").first();
+  await weekday.evaluate((el) => {
+    (el as HTMLSelectElement).value = "7";
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(day3, `${where}: a replayed change opens its day`).toHaveAttribute("aria-expanded", "true");
+  await expect(weekday).toHaveValue("7");
+}
+
+test.describe("EV-337f2 staff review (en)", () => {
+  test.use({ locale: "en-US" });
+
+  test("a value replayed into a closed day opens the day (BUG-687 restore)", async ({ page }) => {
+    page.on("dialog", (dialog) => dialog.accept());
+    await signInThroughForm(page, { lang: "en" });
+    await page.goto(`/clients/${LINA}/routine`);
+    await replayIntoClosedDay(page, "en", "Chromium");
+  });
+
+  test("Discard back to a shorter plan, then « Add day »: the new day opens despite the longer stale list", async ({
+    page,
+  }) => {
+    page.on("dialog", (dialog) => dialog.accept());
+    await signInThroughForm(page, { lang: "en" });
+    await page.goto(`/clients/${LINA}/routine`);
+    const add = page.getByRole("button", { name: L.en.addDay, exact: true });
+    await expect(async () => {
+      await add.click();
+      await expect(header(page, "en", 4)).toHaveCount(1, { timeout: 1_000 });
+    }).toPass();
+    await add.click();
+    await expect(header(page, "en", 5)).toHaveCount(1);
+    // Days 4 and 5 closed: the list is now [open, closed, closed, closed, closed].
+    await setOpen(header(page, "en", 4), false);
+    await setOpen(header(page, "en", 5), false);
+    // Discard replaces the document with the 3-day published plan; the list stays 5 long.
+    await page.getByRole("region", { name: L.en.region, exact: true }).getByRole("button", { name: "Discard draft", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Discard draft?" });
+    await dialog.getByRole("button", { name: "Discard draft" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(header(page, "en", 4)).toHaveCount(0);
+    await expectStates(page, "en", [true, false, false], "after Discard");
+    // The new day 4 sits where the stale list says "closed": it must open anyway.
+    await add.click();
+    await expectStates(page, "en", [true, false, false, true], "the day added after Discard");
+  });
+});
+
 /* ═══ The same ACs in real WebKit ═════════════════════════════════════════════════════ */
 
 test.describe("EV-337f2 WebKit", () => {
@@ -411,6 +492,16 @@ test.describe("EV-337f2 WebKit", () => {
       await context.close();
     });
   }
+
+  test("WebKit: a value replayed into a closed day opens the day (BUG-687 restore)", async ({ baseURL }) => {
+    const context = await browser.newContext({ baseURL, locale: "en-US", extraHTTPHeaders: { "Accept-Language": "en-US" } });
+    const page = await context.newPage();
+    page.on("dialog", (dialog) => dialog.accept());
+    await signInThroughForm(page, { lang: "en", landing: `${baseURL}/` });
+    await page.goto(`/clients/${LINA}/routine`);
+    await replayIntoClosedDay(page, "en", "WebKit");
+    await context.close();
+  });
 
   test("WebKit: an unbindable exercise on day 3 opens day 3 on load", async ({ baseURL }) => {
     const context = await browser.newContext({ baseURL, locale: "en-US", extraHTTPHeaders: { "Accept-Language": "en-US" } });

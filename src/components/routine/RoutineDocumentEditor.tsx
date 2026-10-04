@@ -432,7 +432,15 @@ export function RoutineDocumentEditor({
                 </span>
               </button>
             </h3>
-            <div id={`${dayIds}-day-${dayIndex}`} className="day-acc-body" hidden={!isOpen(dayIndex)}>
+            <div
+              id={`${dayIds}-day-${dayIndex}`}
+              className="day-acc-body"
+              hidden={!isOpen(dayIndex)}
+              // Nobody types into a hidden body: a change here is a browser restore or BUG-687's replay, so show it.
+              onChangeCapture={() => {
+                if (!isOpen(dayIndex)) toggleDay(dayIndex);
+              }}
+            >
               <div
                 style={{
                   display: "flex",
@@ -560,7 +568,9 @@ export function RoutineDocumentEditor({
         onClick={() => {
           const next = firstFreeWeekday(days);
           if (next === null) return;
-          // F2.2: the day the coach just added is open, ready for its first exercise.
+          // F2.2: the day the coach just added is open, ready for its first exercise. Rebuilt from
+          // the days on screen, so a stale longer list (a document replaced by a shorter one,
+          // e.g. Discard back to the published plan) cannot hand the new day a closed entry.
           setExpanded([...days.map((_, i) => isOpen(i)), true]);
           editDays((list) => [
             ...list,
