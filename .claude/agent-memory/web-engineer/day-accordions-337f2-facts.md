@@ -26,6 +26,18 @@ unbindable exercise); an added day opens; a missing entry reads OPEN.
   So `getByLabel("Day 2 weekday").toHaveValue()` passes on a closed day but `selectOption`,
   `getByRole(...).nth(1)` and `getByRole("combobox")` counts do not. To witness a hidden field,
   hold its `elementHandle()` across the collapse.
+- **A hidden field can still change** (Back/Forward restore, replayed by BUG-687's hook): the
+  body's `onChangeCapture` opens a closed day, so "unsaved" never sits over an invisible edit
+  (staff should-fix on b56012c). Test it without the hook: write the value past React's
+  tracker (`HTMLInputElement.prototype` value setter), then dispatch `input`; for a select,
+  set `.value` and dispatch `change`.
+- **The open list can outlive the document** (Discard back to a shorter plan keeps the longer
+  list), so "Add day" rebuilds the list from the days on screen and appends `true`. Without
+  that the new day inherits a stale `false`.
+- **Ruling 19 (hub 071a295)** accepts `openEveryDay` in the older specs on four conditions: only
+  added lines, the helper clicks the real header, the accordion spec never uses the helper,
+  and test counts match d94c104. Check them with `git diff d94c104 -- qa | grep '^-[^-]'` and
+  `playwright test --list` per file. In zsh, a `$SPECS` string does not word-split, so use an array.
 - Fixture switch `evoli_fixture_unbindable_day=<clientId>`: a draft with « Zercher Carry » on
   the LAST day (the only seeded unbindable is Legacy strength's day 1).
 - Serial spec files (`coach-routine.spec.ts`) hide later reds behind the first: count
