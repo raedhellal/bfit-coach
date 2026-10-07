@@ -146,14 +146,16 @@ test.describe("J.3 — widths", () => {
   /**
    * ⚠ J.3 asks for "at least one screen shorter than 3,133 px"; this slice does NOT reach
    * that, and this test does not pretend it does. Measured at 768 × 1024 on Lina (the
-   * audit's page), c2768c2 → this branch: 3,222 → 2,791 px under `next start`, 3,189 →
-   * 2,758 px under `next dev` — 431 px either way, under half of a 1,024 px screen. The
-   * ruling keeps every other block, so the rest is the PO's call.
+   * audit's page), c2768c2 → this branch: 3,222 → 2,791 px in French (`next start`, and
+   * the same 2,791 under `next dev`), 3,189 → 2,758 px in English (this test's browser):
+   * 431 px either way, under half of a 1,024 px screen. The PO re-anchored J.3 to
+   * `next start`, French, ≤ 2,198 px, and carded the rest as EV-345: the `test.fixme` at
+   * the end of this file holds that target.
    *
-   * What is pinned is the fold's own saving (the old block's ~490 px, less the summary
-   * line and the control that moved into the card): 2,820 px, with ~30 px of margin over
-   * both servers' measurements, which c2768c2 fails by ~370 px. The history block cannot
-   * come back below the card without this going red.
+   * What is pinned HERE is the regression guard, the fold's own saving (the old block's
+   * ~490 px, less the summary line and the control that moved into the card): 2,820 px,
+   * ~30 px over the French measurement, which c2768c2 fails by ~370 px. The history
+   * block cannot come back below the card without this going red.
    */
   test("768 px: the overview loses the old block's height (J.3 partial: 2,820 px at most)", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
@@ -175,4 +177,25 @@ test.describe("J.3 — widths", () => {
       await expectNoSidewaysScroll(page, `the overview at ${width}`);
     });
   }
+});
+
+test.describe("J.3 as ruled (French, 768 × 1024)", () => {
+  test.use({ locale: "fr-FR" });
+
+  /**
+   * The PO's ruling (hub 3cec7b49): the weigh-in rows' removal is accepted, and J.3 is
+   * re-anchored to `next start` — Lina, FR, Chromium, 768 × 1024, at most 2,198 px (one
+   * 1,024 px screen under the 3,222 px measured at c2768c2). This slice reaches 2,791 px;
+   * the rest is EV-345. `fixme` until it lands, so the target is written down and the run
+   * says it is open. Run as a plain test today it fails at 2,791 px (`next dev`, the same
+   * height `next start` gives in French); still read EV-345's number on `next start`.
+   */
+  test.fixme("EV-342j J.3 (EV-345): 768 px, the overview is one screen shorter — at most 2,198 px", async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await signInFrench(page);
+    await page.goto(`/clients/${LINA}`);
+    await expect(page.getByRole("region", { name: "Activité récente" }).getByRole("listitem")).toHaveCount(5);
+    const height = await page.evaluate(() => document.documentElement.scrollHeight);
+    expect(height).toBeLessThanOrEqual(2198);
+  });
 });
