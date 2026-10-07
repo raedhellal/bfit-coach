@@ -3220,39 +3220,30 @@ async function fixtureSwitch(name: string): Promise<string | null> {
   }
 }
 /**
- * BUG-689 — ⚠ fixture affordance: `evoli_fixture_render_error=<once|always>` (one browser
- * context) makes a page's SERVER RENDER throw, which is the only way to reach the root
- * error boundary (`src/app/error.tsx`): every read a page makes is caught and turned into
- * that page's own load-error state, by design. `getMe` answers a value whose every field
- * throws when read, and every signed-in page reads the coach's name OUTSIDE its read's
- * `try` (`coachName={me?.displayName}`), so the throw lands in the render. `then` and
- * symbols read as absent, so the value still resolves as a promise result.
+ * BUG-689 / BUG-704 — ⚠ fixture affordance: `evoli_fixture_render_error=<once|always>` (one
+ * browser context) makes a page's SERVER RENDER throw, which is the only way to reach the
+ * root error boundary (`src/app/error.tsx`): every read a page makes is caught and turned
+ * into that page's own load-error state, by design.
  *
  *   · `always` — every render throws (the error persists).
  *   · `once`   — the FIRST render after the reset throws and the next one does not (a
  *                transient server error that « Réessayer » must recover from).
- * Read only in fixture mode: by the fixture's `getMe` (the roster, the one page that still
- * calls it) and, since EV-342k, by `readCoachMe` (`src/lib/clientOverview.ts`) through
- * `fixtureRenderError` — every other page takes the name from the identity cookie and no
- * longer calls `getMe`, so the switch is asked there directly, before the cookie.
+ *
+ * WHERE it fires (BUG-704): not here. This function only decides; the throw is
+ * `throwIfFixtureRenderError` (`src/lib/fixtureFault.ts`), called at the top of
+ * `CoachShell` — the frame every signed-in coach page draws — and from nowhere that makes
+ * an api read. It used to poison `getMe`, on the premise that every page reads the coach's
+ * name; EV-342k removed that read from every page but the roster and the switch went
+ * silent. A fault seam must sit on something every render passes through, never on an
+ * incidental data read. Returns the mode when this render must throw, else null.
  */
-export async function fixtureRenderError(): Promise<CoachMe | null> {
-  return renderErrorSwitch();
-}
-
-async function renderErrorSwitch(): Promise<CoachMe | null> {
-  const mode = await fixtureSwitch("evoli_fixture_render_error");
+export function renderErrorSwitch(mode: string | null): "always" | "once" | null {
   if (mode !== "always" && mode !== "once") return null;
   if (mode === "once") {
     if (state().renderErrorsServed > 0) return null;
     state().renderErrorsServed += 1;
   }
-  return new Proxy({} as CoachMe, {
-    get(_target, key) {
-      if (typeof key === "symbol" || key === "then") return undefined;
-      throw new Error(`BUG-689 fixture: forced server render error (read of ${String(key)})`);
-    },
-  });
+  return mode;
 }
 
 async function placementOff(id: string): Promise<boolean> {
@@ -4636,7 +4627,7 @@ async function assertChallengeRequest(body: CoachChallengeCreateRequest): Promis
 interface FixtureState {
   /** AC6: revoking takes the whole roster away for the rest of the process. */
   revoked: boolean;
-  /** BUG-689 — how many poisoned `getMe` answers `evoli_fixture_render_error=once` has served. */
+  /** BUG-689 — how many forced render errors `evoli_fixture_render_error=once` has served. */
   renderErrorsServed: number;
   /**
    * The trainee whose routine page was rendered last, so the catalog outage is
@@ -5757,8 +5748,6 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getMe(): Promise<CoachMe> {
-    const poisoned = await renderErrorSwitch();
-    if (poisoned) return poisoned;
     return {
       coachId: COACH_ID,
       displayName: "Alex R.",

@@ -7,8 +7,6 @@ import {
   type TraineeProgress,
 } from "./coachApi";
 import { readCoachIdentity, type CoachIdentity } from "./session";
-import { COACH_API_MODE } from "./env";
-import { fixtureRenderError } from "./coachApi.fixture";
 
 /**
  * The trainee overview, read ONCE per request and shared by the two components that
@@ -95,12 +93,6 @@ export const readClientProgress = cache(
  * without a name.
  */
 export const readCoachMe = cache(async (): Promise<CoachIdentity | null> => {
-  // Fixture mode only (a test affordance, never live): BUG-689's forced render error, which
-  // used to ride on every page's `getMe`. See `fixtureRenderError`.
-  if (COACH_API_MODE === "fixture") {
-    const poisoned = await fixtureRenderError();
-    if (poisoned) return poisoned;
-  }
   const fromCookie = readCoachIdentity();
   if (fromCookie) return fromCookie;
   try {
