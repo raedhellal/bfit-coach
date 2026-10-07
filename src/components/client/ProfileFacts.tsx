@@ -54,7 +54,9 @@ export function ProfileFacts({
       ) : (
         <div style={{ display: "grid", gap: 12, marginBottom: 12 }}>
           {groups.map((group) => (
-            <div key={group.label}>
+            // `data-profile-group` / `data-profile-values`: a named place for a spec to read one
+            // group's values in order (BUG-694), instead of a block found by its text.
+            <div key={group.label} data-profile-group={group.label}>
               <div
                 style={{
                   fontSize: 12.5,
@@ -70,9 +72,11 @@ export function ProfileFacts({
                   {group.empty ?? copy.profile.none}
                 </span>
               ) : (
-                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                  {group.values.map((value) => (
-                    <Badge key={value} tone="neutral">
+                <div data-profile-values="" style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  {/* Keyed by position: two values can print the same text (BUG-694: a typed
+                      « Arachides » beside the preset "Peanuts", shown as « Arachides »). */}
+                  {group.values.map((value, i) => (
+                    <Badge key={`${i}:${value}`} tone="neutral">
                       {value}
                     </Badge>
                   ))}

@@ -121,6 +121,8 @@ const SAME_IN_BOTH: Record<string, string> = {
   "nutrition.kcal": "unit",
   "nutrition.grams": "unit",
   "nutrition.allergies": "French 'Allergies'",
+  "nutrition.allergyPresetLabels.Gluten": "French 'Gluten' (BUG-694, b-fit-mobile fr.json)",
+  "nutrition.dislikePresetLabels.Olives": "French 'Olives' (BUG-694, b-fit-mobile fr.json)",
   "foodLog.calories": "French 'Calories'",
   "foodLog.kcal": "unit",
   "foodLog.grams": "unit",
