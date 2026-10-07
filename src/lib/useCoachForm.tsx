@@ -54,8 +54,14 @@ import { useUnsavedChanges } from "./useUnsavedChanges";
  * while the form is dirty, and a `router.push` over it leaves a dead Back press, after which
  * the guard's cleanup would step the coach back off the page they were sent to.
  *
- * Autosave is a different transport and a different hook (`useAutosave`, ADR-0034 D34.10):
- * a form that autosaves feeds that hook's `dirty` in through `extraDirty`.
+ * ONE GUARDED FORM PER PAGE. Each form built with this hook runs its own
+ * `useUnsavedChanges`: two dirty on one page would each push a history entry and each
+ * capture a link click (document-level capture listeners; `stopPropagation` does not stop a
+ * sibling listener on the same node), so the coach would get two stacked questions, and
+ * Leave in one would re-arm the other through its popstate. No page has two today (the
+ * overview holds the progress goal only, the nutrition tab the targets only). A page that
+ * needs several sections (EV-341b's intake) builds them as ONE form, or lifts the guard
+ * out of the sections first.
  */
 export interface CoachForm<V extends FormShape<V>> {
   values: V;
@@ -79,14 +85,11 @@ export interface CoachForm<V extends FormShape<V>> {
 export function useCoachForm<V extends FormShape<V>>({
   server,
   enabled = true,
-  extraDirty = false,
 }: {
   /** The server's values for the fields, in the form's terms (strings for text fields). */
   server: V;
   /** False while the form is not on screen (a closed dialog): nothing to guard then. */
   enabled?: boolean;
-  /** Unsaved work this hook does not hold (an autosave queue's `dirty`). */
-  extraDirty?: boolean;
 }): CoachForm<V> {
   const [state, setState] = useState<CoachFormState<V>>(() => seedForm(server));
 
@@ -99,12 +102,12 @@ export function useCoachForm<V extends FormShape<V>>({
     setState((s) => (s.seen === signature ? s : reseedFromServer(s, server)));
   }
 
-  const dirty = enabled && (isDirty(current) || extraDirty);
+  const dirty = enabled && isDirty(current);
   const leaving = useUnsavedChanges(dirty);
   const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   /** The state as last rendered, for `saved` to decide synchronously (see there). */
-  const latest = useRef({ state: current, extraDirty });
-  latest.current = { state: current, extraDirty };
+  const latest = useRef(current);
+  latest.current = current;
 
   const set = useCallback(<K extends keyof V>(key: K, value: V[K]) => {
     setState((s) => editField(s, key, value));
@@ -128,9 +131,9 @@ export function useCoachForm<V extends FormShape<V>>({
    */
   const saved = useCallback(
     (stored?: V, then?: () => void) => {
-      const next = markSaved(latest.current.state, stored);
+      const next = markSaved(latest.current, stored);
       if (then) release(then);
-      else if (!isDirty(next) && !latest.current.extraDirty) release();
+      else if (!isDirty(next)) release();
       setState((s) => markSaved(s, stored));
     },
     [release]

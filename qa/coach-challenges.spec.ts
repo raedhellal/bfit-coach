@@ -844,9 +844,15 @@ for (const lang of ["en", "fr"] as const) {
       await expect(dialog).toHaveCount(0);
       await guardDisarmed(page);
 
-      // Reopened: the defaults again, and nothing to ask about.
-      const again = await openLeaveGuardDialog(page, w);
+      // Reopened in the SAME document (staff S2): `reset` put the defaults back, not a
+      // fresh mount. Closed untouched, it leaves nothing armed…
+      await page.getByRole("button", { name: w.open }).click();
+      const again = page.getByRole("dialog", { name: w.dialog, exact: true });
       await expect(again.getByLabel(w.title)).toHaveValue("");
+      await again.getByRole("button", { name: w.cancel, exact: true }).click();
+      await expect(again).toHaveCount(0);
+      // …and the Cancel path handed its history entry back: ONE Back lands on the roster
+      // (a sentinel left behind would make this press land on /challenges again).
       await page.goBack();
       await expect(page).toHaveURL(/\/$/);
       await expect(leaveDialog(page)).toHaveCount(0);

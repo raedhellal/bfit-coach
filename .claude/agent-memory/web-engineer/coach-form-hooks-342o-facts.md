@@ -5,14 +5,33 @@ metadata:
   type: project
 ---
 
-`feat/ev342o-coach-form-hooks` (b-fit-coach, off c2768c2). BUG-665 was RESTATED to four
+`feat/ev342o-coach-form-hooks` (b-fit-coach, rebased onto d7ab381 = sprint 1). BUG-665 was RESTATED to four
 forms (nutrition template editor, daily targets, progress goal, « Nouveau défi ») and EV-342o's
 merge condition names them as the hook's consumer, so both ship on the one branch;
 `fix/bug665-nutrition-template-unsaved` was left at base.
 
 **Where:** `src/lib/coachFormState.ts` (pure rules), `src/lib/useCoachForm.tsx`,
-`src/components/ui/UnsavedChangesDialog.tsx`, `src/lib/autosave.ts` (pure engine, injected
-clock), `src/lib/autosaveTransport.ts` (`putAutosave`), `src/lib/useAutosave.ts`.
+`src/components/ui/UnsavedChangesDialog.tsx`.
+
+**Autosave is PARKED on `feat/ev342o-autosave` (4c3b4e5, parent 2c3ebcc)** by staff's
+REQUEST CHANGES: "No unused hook lands on main" is categorical. It holds `autosave.ts`
+(engine, injected clock), `autosaveTransport.ts` (`putAutosave`), `useAutosave.ts`, the
+`copy.autosave` words and `useCoachForm`'s `extraDirty` (deleted from the merging branch).
+EV-341b replays it: `git rebase --onto <main> 2c3ebcc feat/ev342o-autosave`. Before that
+lands, staff's H1–H4 must be done:
+- **H1 (blocking then):** `resolveConflict(key, version)` re-arms the idle timer with the
+  coach's PENDING payload, so after a 409 the engine silently PUTs the stale answers at the
+  new version = last-writer-wins with a delay, and the spec enshrines it. ADR-0034 Q6/B5 says
+  re-read and SHOW BOTH. Fix: `resolveConflict(key, version, keep: P | null)` (null = take the
+  server's, drop pending); test both branches.
+- **H2:** `useAutosave`'s doc says `router.refresh()` on `onAccessEnded`; it must say
+  `form.endAccess(() => router.refresh())` (the sentinel blocks the layout redirect).
+- **H3:** the transport reads any non-JSON 2xx (a 204 too) as session ended; pin in the
+  route handler's test that it always answers `{version, updatedAt}` JSON.
+- **H4:** `extraDirty` comes back with a test where only the autosave queue is dirty and the
+  guard asks.
+- Also: ONE guarded form per page (two dirty islands = two sentinels, two stacked dialogs):
+  the intake's sections must be one form or lift the guard.
 The old progress-goal form helpers (`editField`/`markSent`/`reseedPreservingEdits`/
 `seedFormState`) were DELETED from `progressGoal.ts`; `seedFields` stays.
 
