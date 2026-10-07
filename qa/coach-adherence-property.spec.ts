@@ -591,8 +591,8 @@ test.describe("EV-210b AC4 / P-ADH C3 — an absence is rendered as the absence 
     expect(text).not.toContain(BANNED);
 
     // The truthful half is untouched: the sessions are still listed, by the block whose
-    // job that is.
-    await expect(block(page, "Recent sessions").getByRole("listitem")).toHaveCount(5);
+    // job that is (« Recent activity » since EV-342j folded the session history into it).
+    await expect(block(page, "Recent activity").getByRole("listitem")).toHaveCount(5);
   });
 
   test("a plan that scheduled nothing: the block makes NO claim that a plan is absent", async ({

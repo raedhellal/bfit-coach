@@ -12,9 +12,10 @@ import { signInThroughForm } from "./sign-in";
  *     of that width, on `/`, `/clients/{id}` and a library page; a nav link leaves it.
  *   · BUG-672: exactly one `h1`, and its text is the error sentence.
  *
- * `evoli_fixture_render_error=<once|always>` (`coachApi.fixture.ts`, `renderErrorSwitch`)
- * makes the server render throw; `once` is consumed by the first render after the
- * per-test reset.
+ * `evoli_fixture_render_error=<once|always>` makes the server render throw, from the seam at
+ * the top of `CoachShell` (`src/lib/fixtureFault.ts`; the decision is `renderErrorSwitch` in
+ * `coachApi.fixture.ts`); `once` is consumed by the first render after the per-test reset.
+ * `qa/render-error-every-route.spec.ts` (BUG-704) walks every signed-in route.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";

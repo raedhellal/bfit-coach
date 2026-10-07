@@ -198,8 +198,8 @@ const KAIA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0010";
  *           `POST /me/plan/generate` and never `POST /plans/select`), AND five real
  *           completed sessions dated inside the window. He is the only trainee on whom
  *           the two blocks can be read against each other on one screen: the adherence
- *           card must describe the missing PLAN, while *Recent sessions* below it still
- *           lists the five workouts he actually did. Kaia cannot carry this — she has
+ *           card must describe the missing PLAN, while *Recent activity* (the session
+ *           list since EV-342j) still lists the five workouts he actually did. Kaia cannot carry this — she has
  *           no sessions at all, so on her page the old sentence was merely useless
  *           rather than false, which is why 242 green tests never saw BUG-205.
  *   Elif  — AC2: a plan DID exist in the window and scheduled nothing, so
@@ -1198,9 +1198,10 @@ const PROGRESS: Record<string, () => TraineeProgress> = {
    *
    * `hasPlan = false` on every week (the whole window pre-dates any `user_plan` row),
    * so `done` and `planned` both sum to 0 — and five COMPLETED sessions, dated inside
-   * the same window, in the block directly below. The pair is the defect: the adherence
-   * card must now describe the missing plan, and *Recent sessions* must still list all
-   * five, unchanged. Suppressing either block was refused by the story.
+   * the same window, on the same page. The pair is the defect: the adherence card must
+   * now describe the missing plan, and the session list (« Recent activity » since
+   * EV-342j) must still list all five, unchanged. Suppressing either block was refused by
+   * the story.
    */
   [RUBEN_ID]: () => ({
     clientId: RUBEN_ID,
@@ -3220,32 +3221,30 @@ async function fixtureSwitch(name: string): Promise<string | null> {
   }
 }
 /**
- * BUG-689 — ⚠ fixture affordance: `evoli_fixture_render_error=<once|always>` (one browser
- * context) makes a page's SERVER RENDER throw, which is the only way to reach the root
- * error boundary (`src/app/error.tsx`): every read a page makes is caught and turned into
- * that page's own load-error state, by design. `getMe` answers a value whose every field
- * throws when read, and every signed-in page reads the coach's name OUTSIDE its read's
- * `try` (`coachName={me?.displayName}`), so the throw lands in the render. `then` and
- * symbols read as absent, so the value still resolves as a promise result.
+ * BUG-689 / BUG-704 — ⚠ fixture affordance: `evoli_fixture_render_error=<once|always>` (one
+ * browser context) makes a page's SERVER RENDER throw, which is the only way to reach the
+ * root error boundary (`src/app/error.tsx`): every read a page makes is caught and turned
+ * into that page's own load-error state, by design.
  *
  *   · `always` — every render throws (the error persists).
  *   · `once`   — the FIRST render after the reset throws and the next one does not (a
  *                transient server error that « Réessayer » must recover from).
- * Read here only, so only in fixture mode.
+ *
+ * WHERE it fires (BUG-704): not here. This function only decides; the throw is
+ * `throwIfFixtureRenderError` (`src/lib/fixtureFault.ts`), called at the top of
+ * `CoachShell` — the frame every signed-in coach page draws — and from nowhere that makes
+ * an api read. It used to poison `getMe`, on the premise that every page reads the coach's
+ * name; EV-342k removed that read from every page but the roster and the switch went
+ * silent. A fault seam must sit on something every render passes through, never on an
+ * incidental data read. Returns the mode when this render must throw, else null.
  */
-async function renderErrorSwitch(): Promise<CoachMe | null> {
-  const mode = await fixtureSwitch("evoli_fixture_render_error");
+export function renderErrorSwitch(mode: string | null): "always" | "once" | null {
   if (mode !== "always" && mode !== "once") return null;
   if (mode === "once") {
     if (state().renderErrorsServed > 0) return null;
     state().renderErrorsServed += 1;
   }
-  return new Proxy({} as CoachMe, {
-    get(_target, key) {
-      if (typeof key === "symbol" || key === "then") return undefined;
-      throw new Error(`BUG-689 fixture: forced server render error (read of ${String(key)})`);
-    },
-  });
+  return mode;
 }
 
 async function placementOff(id: string): Promise<boolean> {
@@ -4629,7 +4628,7 @@ async function assertChallengeRequest(body: CoachChallengeCreateRequest): Promis
 interface FixtureState {
   /** AC6: revoking takes the whole roster away for the rest of the process. */
   revoked: boolean;
-  /** BUG-689 — how many poisoned `getMe` answers `evoli_fixture_render_error=once` has served. */
+  /** BUG-689 — how many forced render errors `evoli_fixture_render_error=once` has served. */
   renderErrorsServed: number;
   /**
    * The trainee whose routine page was rendered last, so the catalog outage is
@@ -5750,8 +5749,6 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getMe(): Promise<CoachMe> {
-    const poisoned = await renderErrorSwitch();
-    if (poisoned) return poisoned;
     return {
       coachId: COACH_ID,
       displayName: "Alex R.",

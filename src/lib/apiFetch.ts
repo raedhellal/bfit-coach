@@ -188,10 +188,11 @@ export async function apiGet<T>(path: string): Promise<T> {
  * refresh-on-401 here: the token was minted by the login a moment ago, and a 401 on it
  * is a refusal to report, not an expiry to paper over.
  */
-export async function apiGetAs<T>(path: string, bearer: string): Promise<T> {
+export async function apiGetAs<T>(path: string, bearer: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(apiUrl(path), {
     headers: { Authorization: `Bearer ${bearer}` },
     cache: "no-store",
+    signal,
   });
   const data = await parse(res);
   if (!res.ok) throw toApiError(res.status, data, res);

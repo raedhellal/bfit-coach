@@ -4,9 +4,9 @@ import {
   coachApi,
   isForbidden,
   type ClientOverview,
-  type CoachMe,
   type TraineeProgress,
 } from "./coachApi";
+import { readCoachIdentity, type CoachIdentity } from "./session";
 
 /**
  * The trainee overview, read ONCE per request and shared by the two components that
@@ -76,17 +76,28 @@ export const readClientProgress = cache(
 );
 
 /**
- * The coach's own name, for the header. Cached for the same reason: one read per
- * request, however many components ask. Every page starts it in its own `Promise.all`.
- * Next renders `[id]/layout.tsx` and the page concurrently, so the read is in flight
- * alongside the overview without the layout starting it (see that file).
+ * The coach's own id and name, for the header (and the overview's analytics `coachId`).
+ * Cached for the same reason: one answer per request, however many components ask.
+ *
+ * EV-342k: from the identity cookie the sign-in wrote (`readCoachIdentity`), so a page
+ * costs NO `GET /coach-portal/me` — that read was a profile query plus an active-link
+ * count on every navigation and every action re-render, for one name. Only when the
+ * cookie is missing (a session signed in before EV-342k, or one whose cookie was written
+ * for another subject) is `/me` read, once per request (K.4).
+ *
+ * The type is the two fields and nothing else, on purpose: capacity, tier and the active
+ * count are not on a cookie, and a page that needs them (the roster, K.3) must read
+ * `coachApi.getMe()` itself rather than get a value that could be a sign-in old.
  *
  * A failure here must never take down the screen it decorates: it degrades to a header
  * without a name.
  */
-export const readCoachMe = cache(async (): Promise<CoachMe | null> => {
+export const readCoachMe = cache(async (): Promise<CoachIdentity | null> => {
+  const fromCookie = readCoachIdentity();
+  if (fromCookie) return fromCookie;
   try {
-    return await coachApi.getMe();
+    const me = await coachApi.getMe();
+    return { coachId: me.coachId, displayName: me.displayName };
   } catch {
     return null;
   }

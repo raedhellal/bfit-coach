@@ -1,4 +1,5 @@
 import { getCopy, getLocale } from "@/lib/i18n/server";
+import { throwIfFixtureRenderError } from "@/lib/fixtureFault";
 import { ShellFrame, type Section } from "./ShellFrame";
 
 /**
@@ -29,6 +30,7 @@ export function CoachShell({
   coachName,
   section,
   toReviewCount,
+  faultSeam = true,
   children,
 }: {
   coachName?: string | null;
@@ -44,8 +46,15 @@ export function CoachShell({
    * a page that did not load the roster passes nothing, and "nobody to review" is no badge.
    */
   toReviewCount?: number;
+  /**
+   * BUG-704 — the fixture's render-error seam (`throwIfFixtureRenderError`) runs here, for
+   * every signed-in page. Only the root `not-found.tsx` turns it off: it is built into every
+   * page's payload, so it must neither throw on a healthy page nor spend a `once`.
+   */
+  faultSeam?: boolean;
   children: React.ReactNode;
 }) {
+  if (faultSeam) throwIfFixtureRenderError();
   return (
     <ShellFrame
       copy={getCopy()}

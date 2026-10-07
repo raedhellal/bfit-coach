@@ -33,10 +33,10 @@ export function AdherenceSeries({ series }: { series: Series }) {
    * numerator and the denominator are gated on `hadAPlanDuring`, so the branch is
    * reached whenever no week in the window had a plan — which is ordinary for anyone
    * who trains ad hoc without ever calling `POST /plans/select`. The single sentence
-   * this used to print, "No sessions in the last 8 weeks", then sat directly above a
-   * *Recent sessions* list of five real dated workouts (BUG-205): a false claim about a
-   * person, inferred from a missing `user_plan` row, and a contradiction of the per-week
-   * "No plan" state one line down.
+   * this used to print, "No sessions in the last 8 weeks", then sat on the same page as a
+   * list of five real dated workouts (BUG-205; « Recent activity » since EV-342j): a false
+   * claim about a person, inferred from a missing `user_plan` row, and a contradiction of
+   * the per-week "No plan" state one line down.
    *
    * So the portal tells the two worlds apart itself, from `hasPlan` — which is already
    * on the wire, so this needed no api change. `weeks.some(w => w.hasPlan)` is the

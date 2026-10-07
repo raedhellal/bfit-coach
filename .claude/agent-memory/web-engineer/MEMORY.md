@@ -76,3 +76,4 @@
 - [Pre-hydration adoption hook](prehydration-adoption-hook-facts.md) — every SSR field raced (2026-10-03); snapshot then replay from a task; consent NEVER adopted (Back restores ticks); Modal forms immune
 - [Day accordions (EV-337f2)](day-accordions-337f2-facts.md) — hidden not unmounted; open days held by RoutineEditor across the loads remount; role locators skip hidden fields
 - [Form hooks (EV-342o)](coach-form-hooks-342o-facts.md) — useCoachForm/useAutosave; a navigating save is saved(stored, then); a dismissed beforeunload = ERR_ABORTED reload; two "Portal" navs
+- [EV-342k/j/m (2026-10-07)](ev342-kjm-portal-facts.md) — evoli_pro_coach cookie bound to sub; one session list, weigh-ins dropped, J.3 unmet; import() per-locale dict, route table hides the async chunk; zsh `$T:q` trap
