@@ -12,21 +12,17 @@ import {
   bodyFatAbsent,
   buildProgressGoalRequest,
   describeChange,
-  editField,
   hasAnyReading,
-  markSent,
   milestoneAttribution,
   progressRows,
   refusedMilestone,
-  reseedPreservingEdits,
-  seedFormState,
+  seedFields,
   startedOnLine,
   storedValues,
-  type ProgressGoalInputError,
 } from "@/lib/progressGoal";
 import { settled } from "@/lib/settled";
 import type { TraineeProgressGoal } from "@/lib/coachApi";
-import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
+import { useCoachForm } from "@/lib/useCoachForm";
 
 /**
  * EV-202b — where the trainee started, where they are, and where they are going.
@@ -91,29 +87,32 @@ export function ProgressGoalBlock({
    * 🔴 **The TABLE follows the props unconditionally; the FIELDS do not.** Props
    * arrive here on the back of the coach's own save — `revalidatePath` returns a
    * fresh RSC payload with the action's response, in the same tick — so a form that
-   * re-seeded on every prop change would delete anything typed during the round trip.
-   * `reseedPreservingEdits` skips a field the coach has touched since the last save
-   * was sent. `src/lib/progressGoal.ts` carries the measurement behind that rule.
+   * re-seeded on every prop change would delete anything typed during the round
+   * trip. Since EV-342o the FIELDS are `useCoachForm`'s, which skips a field the coach
+   * has typed in since the last save was sent (`src/lib/progressGoal.ts` carries the
+   * measurement behind that rule, `coachFormState.ts` the rule). The table is this
+   * component's, and follows the props.
    */
   const signature = `${incoming.startedOn}|${incoming.startedOnSource}|${incoming.milestoneWeightKg}|${incoming.milestoneBodyFatPct ?? null}|${incoming.milestoneUpdatedAt}`;
   const [propSignature, setPropSignature] = useState(signature);
   const [goal, setGoal] = useState(incoming);
-  const [fields, setFields] = useState(() => seedFormState(incoming, copy.locale));
-  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
-  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
 
   if (signature !== propSignature) {
-    // The signature is advanced whether or not a field was re-seeded — otherwise a
-    // dirty field would leave the island one prop behind for good, and the NEXT,
-    // unrelated prop push would re-seed against a signature that is two changes old.
     setPropSignature(signature);
     setGoal(incoming);
-    setFields((current) => reseedPreservingEdits(current, incoming, copy.locale));
   }
+
+  /**
+   * BUG-665 / EV-342o — the three fields, the leave guard, pre-hydration adoption and the
+   * per-field refusals. `touched("bodyFat")` is EV-274 B4's flag: the body-fat text is the
+   * coach's, so its key goes on the request (it survives a refused save; only a re-seed
+   * from the server ends it).
+   */
+  const form = useCoachForm({ server: seedFields(incoming, copy.locale) });
+  const fields = form.values;
 
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [invalid, setInvalid] = useState<ProgressGoalInputError | null>(null);
   const [pending, startTransition] = useTransition();
 
   const name = firstName(traineeDisplayName, copy.locale);
@@ -149,16 +148,22 @@ export function ProgressGoalBlock({
      */
     const built = buildProgressGoalRequest(fields.startedOn, fields.milestone, {
       text: fields.bodyFat,
-      touched: fields.bodyFatTouched,
+      touched: form.touched("bodyFat"),
     });
     if (!built.ok) {
       // Rejected here; NO request is sent, which is why the sentence names what to do.
-      setInvalid(built.reason);
+      form.setErrors(
+        built.reason === "DATE"
+          ? { startedOn: copy.progressGoal.invalidDate }
+          : built.reason === "MILESTONE"
+            ? { milestone: copy.progressGoal.invalidMilestone }
+            : { bodyFat: copy.progressGoal.invalidBodyFat }
+      );
       setNotice(null);
       setError(null);
       return;
     }
-    setInvalid(null);
+    form.setErrors({});
     const body = built.body;
     const changed = describeChange(storedValues(goal), body);
     /**
@@ -166,7 +171,7 @@ export function ProgressGoalBlock({
      * being sent. Anything typed from here until the response lands re-marks that
      * field dirty and is therefore kept, which is the whole of the race fix.
      */
-    setFields(markSent);
+    form.markSent();
 
     startTransition(async () => {
       // `settled`: a rejected action resolves to a value instead of taking the two
@@ -184,9 +189,10 @@ export function ProgressGoalBlock({
            * overview read now 403s, and the layout redirects to /clients/denied — the
            * coach leaves a screen of a revoked trainee's data rather than reading a
            * sentence under it. The 403 is undifferentiated (ADR-0012 D4), so it is
-           * never rendered as a consent sentence here.
+           * never rendered as a consent sentence here. `endAccess` first, so the leave
+           * guard stands down and the refresh reaches the layout's redirect.
            */
-          router.refresh();
+          form.endAccess(() => router.refresh());
           return;
         }
         setError(
@@ -209,8 +215,8 @@ export function ProgressGoalBlock({
       setGoal(result.goal);
       // Same rule as the prop path: a field touched while the save was in flight is
       // the coach's, and the api's echo of the value they had already sent does not
-      // get to overwrite it.
-      setFields((current) => reseedPreservingEdits(current, result.goal, copy.locale));
+      // get to overwrite it (and it stays unsaved, so the guard stays armed).
+      form.saved(seedFields(result.goal, copy.locale));
       logPortalEvent({
         event: "coach_progress_goal_set",
         coachId,
@@ -303,7 +309,7 @@ export function ProgressGoalBlock({
 
       {/* ── the edit form: exactly three fields (EV-274b AC1 counts them) ──────── */}
       <div
-        ref={scope}
+        ref={form.scope}
         style={{
           display: "flex",
           gap: 12,
@@ -319,7 +325,7 @@ export function ProgressGoalBlock({
             type="date"
             full
             value={fields.startedOn}
-            error={invalid === "DATE" ? copy.progressGoal.invalidDate : undefined}
+            error={form.errors.startedOn}
             /**
              * `invalidDate` is not dead copy for an unreachable state: a browser
              * without `type="date"` support renders this as a plain text field, which
@@ -328,9 +334,7 @@ export function ProgressGoalBlock({
              * back to the link date, not a no-op (edge case 7).
              */
             hint={copy.progressGoal.startDateHint}
-            onChange={(e) =>
-              setFields((current) => editField(current, "startedOn", e.target.value))
-            }
+            onChange={(e) => form.set("startedOn", e.target.value)}
           />
         </div>
         <div style={{ flex: "1 1 180px", minWidth: 0 }}>
@@ -338,7 +342,7 @@ export function ProgressGoalBlock({
             label={copy.progressGoal.milestoneLabel}
             full
             value={fields.milestone}
-            error={invalid === "MILESTONE" ? copy.progressGoal.invalidMilestone : undefined}
+            error={form.errors.milestone}
             /**
              * 🔴 G-GOAL, said to the coach in one sentence. It is a NEGATIVE claim
              * about the system, so it owes a witness: EV-202 AC8's static limb and its
@@ -350,9 +354,7 @@ export function ProgressGoalBlock({
              * for instead of showing them why it was refused.
              */
             hint={copy.progressGoal.milestoneNote}
-            onChange={(e) =>
-              setFields((current) => editField(current, "milestone", e.target.value))
-            }
+            onChange={(e) => form.set("milestone", e.target.value)}
           />
         </div>
         <div style={{ flex: "1 1 180px", minWidth: 0 }}>
@@ -360,7 +362,7 @@ export function ProgressGoalBlock({
             label={copy.progressGoal.bodyFatMilestoneLabel}
             full
             value={fields.bodyFat}
-            error={invalid === "BODY_FAT" ? copy.progressGoal.invalidBodyFat : undefined}
+            error={form.errors.bodyFat}
             /**
              * EV-274b AC1. TEXT, like the weight beside it, and range-checked in the
              * browser by `parseBodyFatMilestone` with the api's own rule — not by
@@ -373,7 +375,7 @@ export function ProgressGoalBlock({
              * copy for senior-po. The G-GOAL property itself holds for this number, and
              * its witness is api-side (EV-274a AC7), not anything rendered here.
              */
-            onChange={(e) => setFields((current) => editField(current, "bodyFat", e.target.value))}
+            onChange={(e) => form.set("bodyFat", e.target.value)}
           />
         </div>
       </div>
@@ -394,6 +396,7 @@ export function ProgressGoalBlock({
           {error}
         </p>
       )}
+      {form.guard}
     </MonitoringBlock>
   );
 }

@@ -5,7 +5,7 @@ import { signInFrench } from "./french";
 import { en } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
 import { formatDate, formatDayLabel, formatInstant, formatShortDate } from "../src/lib/format";
-import { buildProgressGoalRequest, seedFormState } from "../src/lib/progressGoal";
+import { buildProgressGoalRequest, seedFields } from "../src/lib/progressGoal";
 import { forSave, fromRecipe, readQuantity } from "../src/lib/recipeDocument";
 import { equipmentLabel, muscleLabel, musclesLabel } from "../src/lib/catalogLabels";
 import type { CoachRecipe, TraineeProgressGoal } from "../src/lib/coachApi";
@@ -100,18 +100,18 @@ function goal(milestoneWeightKg: number | null, milestoneBodyFatPct: number | nu
 
 test.describe("BUG-464 — the milestone fields are pre-filled the page's way, and read back unchanged", () => {
   test("French: « 70,4 » and « 20,5 »; English: 70.4 and 20.5 as before", () => {
-    const french = seedFormState(goal(70.4, 20.5), "fr");
+    const french = seedFields(goal(70.4, 20.5), "fr");
     expect(french.milestone).toBe("70,4");
     expect(french.bodyFat).toBe("20,5");
-    const english = seedFormState(goal(70.4, 20.5), "en");
+    const english = seedFields(goal(70.4, 20.5), "en");
     expect(english.milestone).toBe("70.4");
     expect(english.bodyFat).toBe("20.5");
     // A whole number has no comma to add.
-    expect(seedFormState(goal(68, null), "fr").milestone).toBe("68");
+    expect(seedFields(goal(68, null), "fr").milestone).toBe("68");
   });
 
   test("a French pre-fill saved untouched sends the stored numbers", () => {
-    const seeded = seedFormState(goal(70.4, 20.5), "fr");
+    const seeded = seedFields(goal(70.4, 20.5), "fr");
     const built = buildProgressGoalRequest(seeded.startedOn, seeded.milestone, { text: seeded.bodyFat, touched: true });
     expect(built).toEqual({
       ok: true,

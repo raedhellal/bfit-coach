@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { logPortalEvent } from "./portalEvents";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
@@ -39,6 +39,9 @@ import { startNavigationProgress } from "@/components/shell/NavigationProgress";
  */
 export type LeaveRoute = "tabs" | "breadcrumb" | "back" | "unload";
 
+/** `useLayoutEffect` in the browser; nothing on the server, where it only warns. */
+const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 type Pending = { route: LeaveRoute; href: string | null };
 
 export function useUnsavedChanges(dirty: boolean) {
@@ -57,6 +60,19 @@ export function useUnsavedChanges(dirty: boolean) {
    * about this hook, not about the document.
    */
   const sentinel = useRef(false);
+  /**
+   * EV-342o — `dirty` as of the last COMMIT, set before the browser paints it.
+   *
+   * The listeners below are removed by passive-effect cleanups, which run some time after
+   * the commit that cleared `dirty` has painted. In that window a reload (or a closed tab)
+   * still met the `beforeunload` prompt for work the screen already called saved; Playwright
+   * dismisses that prompt, which cancels the reload (`net::ERR_ABORTED`). The handler reads
+   * this instead, so anything the coach can see of a clean commit also disarms it.
+   */
+  const live = useRef(dirty);
+  useCommitEffect(() => {
+    live.current = dirty;
+  }, [dirty]);
 
   /**
    * Take our sentinel entry back out of the history, then do `then`.
@@ -89,6 +105,7 @@ export function useUnsavedChanges(dirty: boolean) {
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!live.current) return;
       // The browser owns this dialog; `preventDefault` + `returnValue` is the whole
       // API, and the sentence is Chrome's, not ours. It is still the only thing
       // standing between a closed tab and lost work.
