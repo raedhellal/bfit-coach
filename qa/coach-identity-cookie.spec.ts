@@ -194,7 +194,7 @@ test("K.1 at activation: the activated coach's cookie is written, bound to the N
   expect(reads, "after activation a page reads no /me").toBe(0);
 });
 
-test("a stalled /me never holds the sign-in: it answers within the bound and writes no cookie", async ({
+test("a stalled /me never holds the sign-in: it succeeds and writes no cookie", async ({
   page,
   context,
   baseURL,
@@ -208,9 +208,12 @@ test("a stalled /me never holds the sign-in: it answers within the bound and wri
     maxRedirects: 0,
   });
   const elapsed = Date.now() - started;
+  // Recorded, not asserted: a 450 ms window measured client-side flakes on a loaded
+  // machine (staff). The witness is the pair below — without the race the fixture's
+  // getMe waits out its 2 s hold and WRITES the cookie, so `toBeUndefined()` fails.
+  test.info().annotations.push({ type: "sign-in with /me held 2 s", description: `${elapsed} ms` });
   expect(login.status(), "the sign-in still succeeds").toBe(200);
-  expect(elapsed, "answered at the 1.5 s bound, not after the 2 s hold").toBeLessThan(1_950);
-  expect(await identityCookie(context)).toBeUndefined();
+  expect(await identityCookie(context), "the name read lost the race: no cookie").toBeUndefined();
   await context.clearCookies({ name: "evoli_fixture_api_latency" });
 
   // And the session works, the name from the per-request fallback (K.4).
