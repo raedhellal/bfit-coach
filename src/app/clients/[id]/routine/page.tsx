@@ -202,11 +202,12 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    * renseigné » when the trainee never answered (a 0 would say they own nothing). Rendered
    * only when the api sent the guardrails (see `guardrails` above).
    */
+  const injuryWords = guardrails ? injuryLabels(guardrails.injuries, copy) : [];
   const profile = guardrails ? (
     <ProfileLine
       line={copy.routine.profileLine(
-        injuryLabels(guardrails.injuries, copy),
-        guardrails.equipmentChecked ? guardrails.equipment.length : null
+        injuryWords.length > 0 ? injuryWords.join(", ") : copy.routine.profileNoInjury,
+        guardrails.equipmentChecked ? String(guardrails.equipment.length) : copy.routine.profileUnanswered
       )}
       details={copy.routine.profileDetails}
     >
@@ -214,7 +215,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
         title={copy.routine.profileTitle}
         icon="shield"
         groups={[
-          { label: copy.routine.injuries, values: injuryLabels(guardrails.injuries, copy) },
+          { label: copy.routine.injuries, values: injuryWords },
           {
             label: copy.routine.equipment,
             values: equipmentLabels(guardrails.equipment, copy),

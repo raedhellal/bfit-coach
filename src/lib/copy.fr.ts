@@ -532,8 +532,9 @@ export const fr = {
     injuries: "Blessures",
     equipment: "Matériel disponible",
     equipmentUnanswered: "Pas encore renseigné.",
-    profileLine: (injuries: string[], equipment: number | null) =>
-      `Blessures\u00a0: ${injuries.length > 0 ? injuries.join(", ") : "aucune"} · Matériel\u00a0: ${equipment ?? "pas encore renseigné"}`,
+    profileLine: (injuries: string, equipment: string) => `Blessures\u00a0: ${injuries} · Matériel\u00a0: ${equipment}`,
+    profileNoInjury: "aucune",
+    profileUnanswered: "pas encore renseigné",
     profileDetails: "Détails",
     emptyTitle: "Aucun plan actif",
     emptyBody: "Rien n'est encore programmé pour ce client.",
