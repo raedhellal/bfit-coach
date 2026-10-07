@@ -106,7 +106,7 @@ test.describe("a dictionary chunk that fails to load", () => {
    */
   test.use({ locale: "fr-FR" });
 
-  async function setUp(page: Page, failures: number) {
+  async function setUp(page: Page, failures: number, probe: string = FR_PROBE) {
     const login = await page.request.post("/api/auth/login", {
       data: { email: "coach@evoli.fit", password: "Password123!" },
       maxRedirects: 0,
@@ -116,7 +116,7 @@ test.describe("a dictionary chunk that fails to load", () => {
     await page.route("**/_next/static/chunks/**", async (route) => {
       const response = await route.fetch();
       const body = await response.text();
-      if (seen.failed < failures && body.includes(FR_PROBE)) {
+      if (seen.failed < failures && body.includes(probe)) {
         seen.failed += 1;
         await route.fulfill({ status: 404, body: "" });
         return;
@@ -147,5 +147,24 @@ test.describe("a dictionary chunk that fails to load", () => {
     await page.waitForTimeout(3_000);
     expect(seen.documents).toBe(2);
     expect(await page.evaluate(() => window.sessionStorage.getItem("evoli.copy.reloaded"))).toBe("1");
+  });
+
+  test("M.6: the English chunk fails once during the FR → EN switch: one reload, then the page in English", async ({
+    page,
+  }) => {
+    const seen = await setUp(page, 1, EN_PROBE);
+    await page.goto("/");
+    await expect(page.locator("[data-nav-progress-ready]"), "the French page hydrated").toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Ajouter un client" })).toBeVisible();
+    expect(seen).toEqual({ failed: 0, documents: 1 });
+
+    await page.getByRole("radiogroup", { name: "Langue" }).getByRole("radio", { name: /^EN/ }).check();
+    // The switch asked for the English chunk, it 404'd, the page reloaded once, and the
+    // server drew the reload in English (the locale cookie was already set).
+    await expect(page.getByRole("button", { name: "Add a client" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Roster");
+    await expect(page.locator("[data-nav-progress-ready]"), "the English page hydrated").toHaveCount(1);
+    expect(seen).toEqual({ failed: 1, documents: 2 });
+    expect(await page.evaluate(() => window.sessionStorage.getItem("evoli.copy.reloaded"))).toBeNull();
   });
 });
