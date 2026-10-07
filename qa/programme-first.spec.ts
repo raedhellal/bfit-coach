@@ -147,9 +147,13 @@ for (const lang of ["en", "fr"] as const) {
        * weekdays) still runs from y=494 to ~860, so Day 1 starts at y=878 and its first
        * exercise row at y=1041 at 1024×800 (y=1022 at 1180×820), under the action bar at
        * 700 / 720. The PO's ruling moved the profile and « Enregistrer comme modèle » only;
-       * moving or folding the settings card is a product decision, not taken here.
+       * moving or folding the settings card is a product decision, not taken here. Staff's
+       * arithmetic: removing the settings card alone still leaves the row's bottom under the
+       * bar at 1024×800, so the ruling has to cover the day header too, or restate F.1.
        */
-      test.fixme(`F.1 at ${width}×${height}: the first exercise row on the first screen`, async ({ page }) => {
+      test.fixme(`EV-342f F.1 exercise-row half (pending senior-po ruling): at ${width}×${height} the first exercise row on the first screen`, async ({
+        page,
+      }) => {
         await page.setViewportSize({ width, height });
         await signInThroughForm(page, { lang });
         await page.goto(`/clients/${LINA}/routine`);
