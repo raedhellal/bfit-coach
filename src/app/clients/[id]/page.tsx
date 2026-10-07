@@ -363,7 +363,15 @@ export default async function ClientPage({ params }: { params: { id: string } })
             the session content inside it. */}
         <RecentActivity
           history={monitoringShared ? progress?.sessions ?? null : null}
-          state={!monitoringShared ? "notShared" : progress?.sessions ? "shared" : "unavailable"}
+          state={
+            !progressShared
+              ? "notSharedProgress"
+              : !workoutsShared
+                ? "notSharedWorkouts"
+                : progress?.sessions
+                  ? "shared"
+                  : "unavailable"
+          }
         />
         <div className="ov-stack">
           <ProgrammeSummary clientId={overview.clientId} read={programme} />

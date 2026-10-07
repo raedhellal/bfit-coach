@@ -45,6 +45,7 @@ const ELIF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0012";
 const NOOR = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0013";
 
 const NOT_SHARED_PROGRESS = "This trainee has not shared their progress with you.";
+const NOT_SHARED_WORKOUTS = "This trainee has not shared their workouts with you.";
 
 async function signIn(page: Page) {
   await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
@@ -474,9 +475,14 @@ test.describe("AC5 — the last ten sessions, with what the trainee said", () =>
 });
 
 test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
-  for (const [name, id] of [
-    ["WORKOUTS only (no PROGRESS)", YUSUF],
-    ["PROGRESS + WEIGH_INS (no WORKOUTS)", SARA],
+  /**
+   * EV-342j: the session list is « Recent activity », and its sentence names the scope
+   * that is actually missing — PROGRESS for Yusuf, WORKOUTS for Sara, who HAS shared her
+   * progress (staff review). The adherence block keeps AC1's sentence for both.
+   */
+  for (const [name, id, activitySentence] of [
+    ["WORKOUTS only (no PROGRESS)", YUSUF, NOT_SHARED_PROGRESS],
+    ["PROGRESS + WEIGH_INS (no WORKOUTS)", SARA, NOT_SHARED_WORKOUTS],
   ] as const) {
     test(`${name}: the workout blocks say so, with no number in them`, async ({ page }) => {
       await signIn(page);
@@ -485,9 +491,12 @@ test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
       // on one block may not take the trainee's whole page with it.
       expect(response?.status()).toBe(200);
 
-      for (const title of ["Adherence, last 8 weeks", "Recent activity"]) {
+      for (const [title, sentence] of [
+        ["Adherence, last 8 weeks", NOT_SHARED_PROGRESS],
+        ["Recent activity", activitySentence],
+      ] as const) {
         const region = block(page, title);
-        await expect(region).toContainText(NOT_SHARED_PROGRESS);
+        await expect(region).toContainText(sentence);
         /**
          * AC1: "no number, no zero, no empty chart and no '0 sessions' appears in any of
          * them". The title carries the only legitimate digit on the card ("8 weeks"), so
@@ -495,7 +504,7 @@ test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
          * coach was not given.
          */
         const text = (await region.textContent())!;
-        expect(text.replace(title, "").replace(NOT_SHARED_PROGRESS, "")).not.toMatch(/\d/);
+        expect(text.replace(title, "").replace(sentence, "")).not.toMatch(/\d/);
       }
     });
   }

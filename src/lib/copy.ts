@@ -617,7 +617,8 @@ export const en = {
      * plan — so it told a coach their client did nothing while "Recent sessions"
      * listed five workouts they did (BUG-205). It also contradicted `weekNoPlan` one
      * line up. Neither of the two sentences here says anything about whether the
-     * trainee trained; the session-history block below is the only block entitled to.
+     * trainee trained; the session list (« Recent activity » since EV-342j) is the only
+     * block entitled to.
      */
     noPlanInWindow: "No plan on record for these 8 weeks",
     /** EV-208 AC2, verbatim — a plan existed in the window, but nothing was scheduled. */

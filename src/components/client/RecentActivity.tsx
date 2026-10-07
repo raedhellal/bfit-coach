@@ -22,8 +22,12 @@ import type { SessionHistory as History } from "@/lib/coachApi";
  * weigh-in is still on the page, in the weight trend card's chart (date and kg) and in the
  * weight tile.
  *
- * The four states, decided from `scopes` first and the data only after (ADR-0015 D5):
- *   · notShared — PROGRESS and WORKOUTS are not both held: AC1's sentence, no number;
+ * The five states, decided from `scopes` first and the data only after (ADR-0015 D5):
+ *   · notSharedProgress — no PROGRESS (the monitoring read's own scope): AC1's sentence,
+ *     no number;
+ *   · notSharedWorkouts — PROGRESS held, WORKOUTS not (session content is workout data):
+ *     the routine card's sentence. Never "has not shared their progress", which would be
+ *     false about a trainee who did share it (staff review of EV-342j);
  *   · unavailable — both held and the read did not answer: said, never "not shared";
  *   · no completed session — AC5's sentence, never an empty list;
  *   · the summary line and the list.
@@ -34,16 +38,18 @@ export function RecentActivity({
 }: {
   /** The monitoring read's session history, or null when not shared or not answered. */
   history: History | null;
-  /** Why `history` may be null: the scopes are not held, or the read did not answer. */
-  state: "shared" | "notShared" | "unavailable";
+  /** Why `history` may be null: which scope is not held, or the read did not answer. */
+  state: "shared" | "notSharedProgress" | "notSharedWorkouts" | "unavailable";
 }) {
   const copy = getCopy();
   const c = copy.client.activity;
 
-  if (state === "notShared") {
+  if (state === "notSharedProgress" || state === "notSharedWorkouts") {
     return (
       <OverviewCard id="ov-activity" title={c.title}>
-        <OverviewNote>{copy.client.notSharedProgress}</OverviewNote>
+        <OverviewNote>
+          {state === "notSharedProgress" ? copy.client.notSharedProgress : copy.routine.scopeMissing}
+        </OverviewNote>
       </OverviewCard>
     );
   }

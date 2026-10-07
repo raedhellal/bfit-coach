@@ -260,12 +260,13 @@ test.describe("« Activité récente »", () => {
     await expect(rows.first()).toContainText("Upper Body A");
   });
 
-  test("sessions held but not PROGRESS and WORKOUTS both: the not-shared sentence, no row", async ({ page }) => {
+  test("PROGRESS without WORKOUTS: the card names WORKOUTS, never progress, and lists no row", async ({ page }) => {
     await signIn(page);
-    // Sara holds PROGRESS and WEIGH_INS, not WORKOUTS: session content is not hers to give.
+    // Sara holds PROGRESS and WEIGH_INS, not WORKOUTS: she HAS shared her progress, so the
+    // only true sentence is the workouts one (session content is workout data).
     await page.goto(`/clients/${SARA}`);
     const card = region(page, "Recent activity");
-    await expect(card).toHaveText(/^Recent activity\s*This trainee has not shared their progress with you\.$/);
+    await expect(card).toHaveText(/^Recent activity\s*This trainee has not shared their workouts with you\.$/);
     await expect(card.locator(".activity-row")).toHaveCount(0);
   });
 
