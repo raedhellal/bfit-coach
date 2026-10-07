@@ -1,6 +1,8 @@
-import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { expect, webkit, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm, type SignInLang } from "./sign-in";
+import { expectUnoccluded } from "./layout";
 
 /**
  * BUG-665 (restated 2026-10-07, audit A14) and EV-342o O.3 / O.4 — the three server-rendered
@@ -363,5 +365,75 @@ test.describe("BUG-665 — what the hook owns by construction (EN)", () => {
     // the library before it is one Back away.
     await page.goBack();
     await expect(page).not.toHaveURL(/\/nutrition-templates\/new$/);
+  });
+});
+
+/**
+ * The epic's common bar (EV-342: widths 1440 / 1024 / 768 / 390, Chromium and WebKit) for the
+ * guard itself: at each width the question is asked, its two buttons are on screen and
+ * answerable (not under the tab bar at 390), Stay keeps the edit, and after a save one Back
+ * press leaves. The nav link is whichever of the shell's two navs shows at that width; the
+ * count of exactly one visible link is also the wait for the width's stylesheet.
+ */
+const WIDTHS = [1440, 1024, 768, 390] as const;
+
+async function guardAtWidth(page: Page, width: number, engine: string) {
+  const w = L.en;
+  const label = `${engine} ${width}px`;
+  await page.setViewportSize({ width, height: 900 });
+  await progressGoal.open(page, w);
+  const field = progressGoal.field(page, w);
+  await field.fill("71");
+  await armed(page);
+  const link = page.getByRole("navigation", { name: w.portal }).getByRole("link", { name: w.recipes, exact: true });
+  await expect(link, `${label}: one visible Recipes link`).toHaveCount(1);
+  await link.click();
+  const dialog = leaveDialog(page, w);
+  await expect(dialog, label).toBeVisible();
+  await expectUnoccluded(page, dialog.getByRole("button", { name: w.go, exact: true }), { label: `${label} leave` });
+  const stay = dialog.getByRole("button", { name: w.stay, exact: true });
+  await expectUnoccluded(page, stay, { label: `${label} stay` });
+  await stay.click();
+  await expect(field).toHaveValue("71");
+  await progressGoal.save(page, w);
+  await disarmed(page);
+  await page.goBack();
+  await expect(page, label).toHaveURL(/\/$/);
+  await expect(leaveDialog(page, w)).toHaveCount(0);
+}
+
+test.describe("BUG-665 — the guard at the slice widths, Chromium and WebKit (EN)", () => {
+  test.use({ locale: "en-US" });
+
+  for (const width of WIDTHS) {
+    test(`Chromium ${width}px: asked, answerable, and one Back after a save`, async ({ page }) => {
+      await signIn(page, "en");
+      await guardAtWidth(page, width, "Chromium");
+    });
+  }
+
+  test.describe("WebKit", () => {
+    let browser: Browser;
+    test.beforeAll(async () => {
+      expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+      browser = await webkit.launch();
+    });
+    test.afterAll(async () => {
+      await browser?.close();
+    });
+
+    for (const width of [1440, 390] as const) {
+      test(`WebKit ${width}px: asked, answerable, and one Back after a save`, async ({ baseURL }) => {
+        const context = await browser.newContext({
+          baseURL,
+          locale: "en-US",
+          extraHTTPHeaders: { "Accept-Language": "en-US" },
+        });
+        const page = await context.newPage();
+        await signInThroughForm(page, { email: EMAIL, password: PASSWORD, lang: "en", landing: `${baseURL}/` });
+        await guardAtWidth(page, width, "WebKit");
+        await context.close();
+      });
+    }
   });
 });

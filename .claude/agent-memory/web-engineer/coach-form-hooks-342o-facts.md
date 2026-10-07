@@ -47,6 +47,9 @@ The old progress-goal form helpers (`editField`/`markSent`/`reseedPreservingEdit
 - The shell renders TWO navs named "Portal"; one run had both in the a11y tree (strict-mode
   violation). Scope with `nav.shell-side-nav`.
 - On base, every guard test times out in `armed` (60 s each): a red run of the file takes ~25 min.
+- I broke a full run (606 red from test 596 on, `/api/auth/login` 404) by starting a SHORT
+  targeted run on another port in the SAME checkout mid-run: both `next dev` share `.next`.
+  The one-server-per-checkout rule covers a 20-second spec too; use a scratch worktree.
 - Parallel branches all append to the configs' testIgnore/testMatch regex line, so a new
   roster-only spec file conflicts with every sibling that adds one. The challenge-dialog tests
   went INTO `qa/coach-challenges.spec.ts` (already roster-matched) to keep the configs untouched.
