@@ -50,8 +50,11 @@ import { hasUnsavedWork } from "../useUnsavedChanges";
  *     and the tab keeps working in the language it had.
  *   · If the reload already happened and it fails again, the error is THROWN, and no
  *     boundary of ours catches it: this provider sits in the ROOT layout, above
- *     `app/error.tsx`, and there is no `app/global-error.tsx`, so the coach sees Next's
- *     own "Application error" page. Never an English fallback, never a page of keys.
+ *     `app/error.tsx`, and there is no `app/global-error.tsx`. What QA observed (EV-342m
+ *     gate on `48077bb`, FR → EN with the English chunk 404ing on every request): one
+ *     reload, the English server-rendered HTML on screen, and the page error "Minified
+ *     React error #329". Not Next's "Application error" page. Whether that HTML is still
+ *     interactive was not tested.
  *
  * `dictionaries.ts` (both, statically) stays the SERVER's accessor: a server bundle's
  * size costs the browser nothing.

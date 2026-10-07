@@ -1,4 +1,5 @@
-import { expect, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { expect, webkit, type BrowserContext, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 
@@ -168,14 +169,40 @@ test.describe("a dictionary chunk that fails to load", () => {
     expect(await page.evaluate(() => window.sessionStorage.getItem("evoli.copy.reloaded"))).toBeNull();
   });
 
-  test("BUG-703: the switch's chunk fails over unsaved work — no prompt, the switch is abandoned, the tab keeps working", async ({
-    page,
-    context,
-  }) => {
-    // QA's repro: unsaved work on /nutrition-templates/new, the English chunk 404s once, the
-    // coach switches to EN. Before the fix the one-time reload raised "Leave site?"; "Stay"
-    // (a dismissed dialog) left a render suspended for good, and the next navigation never
-    // finished. Every native dialog is dismissed here, which is "Stay".
+  /**
+   * BUG-703 — QA's repro: unsaved work on /nutrition-templates/new, the English chunk 404s
+   * once, the coach switches to EN. Before the fix the one-time reload raised "Leave site?";
+   * "Stay" (a dismissed dialog) left a render suspended for good, and the next navigation
+   * never finished. Every native dialog is dismissed here, which is "Stay".
+   *
+   * EV-349 349.3 (BUG-703 Expected (6)'s spec half, moved): besides "the URL reaches
+   * /recipes and the progress bar stops", this asserts
+   *   (1) « Quitter sans enregistrer » lands on /recipes WITH its h1 shown, within 5 s of the
+   *       click;
+   *   (3) after the abandoned switch, on /nutrition-templates/new and on the next page reached
+   *       in-app, the h1 and the side-nav labels are in ONE language and the switch's checked
+   *       option is that language;
+   *   (4) « EN » again (the chunk now served) switches in place (or offers the reload again),
+   *       and the tab still navigates.
+   * Chromium (the config's project) and WebKit (launched here, as focus-clear-of-bars does).
+   * Mutant: `hasUnsavedWork` → `return false` turns it red in both (the reload is attempted,
+   * "Stay" is answered, and the abandon sentence never comes).
+   */
+  const NAV_FR = ["Clients", "Modèles", "Recettes", "Modèles nutrition", "Défis"];
+  const NAV_EN = ["Roster", "Templates", "Recipes", "Nutrition templates", "Challenges"];
+
+  /** h1, nav labels and the checked radio, all in `lang`. */
+  async function expectOneLanguage(page: Page, lang: "fr" | "en", h1: string, where: string) {
+    await expect(page.locator("html"), `${where}: html lang`).toHaveAttribute("lang", lang);
+    await expect(page.getByRole("heading", { level: 1 }), `${where}: the h1`).toHaveText([h1]);
+    const nav = page.getByRole("navigation", { name: lang === "fr" ? "Portail" : "Portal" });
+    await expect(nav.getByRole("link"), `${where}: the side-nav labels`).toHaveText(lang === "fr" ? NAV_FR : NAV_EN);
+    const switcher = page.getByRole("radiogroup", { name: lang === "fr" ? "Langue" : "Language" });
+    await expect(switcher.getByRole("radio", { name: lang === "fr" ? /^FR/ : /^EN/ }), `${where}: checked`).toBeChecked();
+    await expect(switcher.getByRole("radio", { name: lang === "fr" ? /^EN/ : /^FR/ })).not.toBeChecked();
+  }
+
+  async function refusedReload(page: Page, context: BrowserContext) {
     const seen = await setUp(page, 1, EN_PROBE);
     const prompts: string[] = [];
     page.on("dialog", (dialog) => {
@@ -190,17 +217,107 @@ test.describe("a dictionary chunk that fails to load", () => {
     await languages.getByRole("radio", { name: /^EN/ }).check();
     // The switch is abandoned, said, and undone: French on screen, FR checked, cookie back.
     await expect(page.getByText("La langue n'a pas pu être changée. Réessayez.").first()).toBeVisible();
-    await expect(languages.getByRole("radio", { name: /^FR/ })).toBeChecked();
     await expect(page.getByLabel("Nom du modèle")).toHaveValue("Sèche 1800");
     const localeCookie = (await context.cookies()).find((c) => c.name === "evoli_pro_locale");
     expect(localeCookie?.value).toBe("fr");
+    // (3) on the page where it happened.
+    await expectOneLanguage(page, "fr", "Nouveau modèle nutrition", "/nutrition-templates/new after the abandon");
 
-    // And the tab still navigates: the in-app guard asks, and leaving leaves.
+    // (1) The tab still navigates: the in-app guard asks, and leaving lands, h1 shown, in 5 s.
     await page.getByRole("link", { name: "Recettes" }).first().click();
-    await page.getByRole("dialog").getByRole("button", { name: "Quitter sans enregistrer" }).click();
-    await page.waitForURL(/\/recipes$/);
+    const leave = page.getByRole("dialog").getByRole("button", { name: "Quitter sans enregistrer" });
+    await expect(leave).toBeVisible();
+    const clicked = Date.now();
+    await leave.click();
+    await page.waitForURL(/\/recipes$/, { timeout: 5_000 });
+    await expect(page.getByRole("heading", { level: 1, name: "Recettes" })).toBeVisible({
+      timeout: Math.max(1, 5_000 - (Date.now() - clicked)),
+    });
+    expect(Date.now() - clicked, "« Quitter sans enregistrer » to the /recipes h1").toBeLessThanOrEqual(5_000);
     await expect(page.locator('[data-nav-progress="visible"]'), "the progress bar stopped").toHaveCount(0);
+    // (3) on the next page reached in-app.
+    await expectOneLanguage(page, "fr", "Recettes", "/recipes after the abandon");
+
+    // (4) EN again, the chunk now served: English in place, no reload, no prompt.
+    await page.getByRole("radiogroup", { name: "Langue" }).getByRole("radio", { name: /^EN/ }).check();
+    await expectOneLanguage(page, "en", "Recipes", "/recipes after EN again");
+    expect((await context.cookies()).find((c) => c.name === "evoli_pro_locale")?.value).toBe("en");
+    // ...and the tab still navigates afterwards.
+    await page.getByRole("navigation", { name: "Portal" }).getByRole("link", { name: "Challenges", exact: true }).click();
+    await page.waitForURL(/\/challenges$/, { timeout: 5_000 });
+    await expectOneLanguage(page, "en", "Challenges", "/challenges, reached in-app after EN");
+
     expect(prompts, "no native Leave-site prompt").toEqual([]);
     expect(seen).toEqual({ failed: 1, documents: 1 });
+  }
+
+  /**
+   * 349.3 (4) where the work is still unsaved (staff's probe `zz-staff-703.spec.ts.probe`,
+   * its first test): after the abandon, « EN » again on the SAME page, the chunk now served,
+   * switches in place and keeps what was typed; then the tab still navigates.
+   */
+  async function enAgainOverUnsavedWork(page: Page, context: BrowserContext) {
+    const seen = await setUp(page, 1, EN_PROBE);
+    const prompts: string[] = [];
+    page.on("dialog", (dialog) => {
+      prompts.push(dialog.type());
+      void dialog.dismiss();
+    });
+    await page.goto("/nutrition-templates/new");
+    await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
+    await page.getByLabel("Nom du modèle").fill("Sèche 1800");
+    await page.getByRole("radiogroup", { name: "Langue" }).getByRole("radio", { name: /^EN/ }).check();
+    await expect(page.getByText("La langue n'a pas pu être changée. Réessayez.").first()).toBeVisible();
+    await expectOneLanguage(page, "fr", "Nouveau modèle nutrition", "/nutrition-templates/new after the abandon");
+
+    await page.getByRole("radiogroup", { name: "Langue" }).getByRole("radio", { name: /^EN/ }).check();
+    await expectOneLanguage(page, "en", "New nutrition template", "/nutrition-templates/new after EN again");
+    await expect(page.getByLabel("Template name")).toHaveValue("Sèche 1800");
+    expect((await context.cookies()).find((c) => c.name === "evoli_pro_locale")?.value).toBe("en");
+
+    await page.getByRole("navigation", { name: "Portal" }).getByRole("link", { name: "Recipes", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Leave without saving" }).click();
+    await page.waitForURL(/\/recipes$/, { timeout: 5_000 });
+    await expectOneLanguage(page, "en", "Recipes", "/recipes, reached in-app after EN again");
+    expect(prompts, "no native Leave-site prompt").toEqual([]);
+    expect(seen).toEqual({ failed: 1, documents: 1 });
+  }
+
+  test("349.3 (4): « EN » again over the still-unsaved work switches in place and keeps it", async ({
+    page,
+    context,
+  }) => {
+    await enAgainOverUnsavedWork(page, context);
+  });
+
+  test("349.3 (4) in WebKit", async ({ baseURL }) => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    const browser = await webkit.launch();
+    try {
+      const context = await browser.newContext({ baseURL, locale: "fr-FR" });
+      await enAgainOverUnsavedWork(await context.newPage(), context);
+      await context.close();
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test("BUG-703: the switch's chunk fails over unsaved work — no prompt, the switch is abandoned, the tab keeps working", async ({
+    page,
+    context,
+  }) => {
+    await refusedReload(page, context);
+  });
+
+  test("BUG-703 / 349.3 in WebKit: the same refused reload", async ({ baseURL }) => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    const browser = await webkit.launch();
+    try {
+      const context = await browser.newContext({ baseURL, locale: "fr-FR" });
+      await refusedReload(await context.newPage(), context);
+      await context.close();
+    } finally {
+      await browser.close();
+    }
   });
 });
