@@ -511,15 +511,22 @@ export function Modal({
   width = 440,
   icon,
   iconTone = "blue",
-  dirty = false,
+  dirty,
 }: {
   open: boolean;
   onClose: () => void;
   /**
    * BUG-699 — a field in the dialog differs from the value it had when the dialog opened.
    * A click on the backdrop is then ignored; × and the footer's Cancel still close.
+   *
+   * BUG-702 — REQUIRED, with no default. When it was optional and defaulted to `false`, a
+   * new dialog with a field whose author forgot it would close on a stray backdrop click
+   * and drop what the coach typed (BUG-699 back), and nothing would go red. Now every
+   * `<Modal>` states it: `dirty={false}` for a dialog with no editable field, an expression
+   * over the fields on screen otherwise. Leaving it out is a `tsc` error at that call site
+   * (TS2741, "Property 'dirty' is missing"), which is the guard.
    */
-  dirty?: boolean;
+  dirty: boolean;
   title: ReactNode;
   sub?: ReactNode;
   children?: ReactNode;

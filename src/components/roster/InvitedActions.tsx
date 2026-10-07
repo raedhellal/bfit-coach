@@ -148,6 +148,7 @@ export function InvitedActions({
       </Modal>
 
       <Modal
+        dirty={false}
         open={dialog === "withdraw"}
         onClose={() => !pending && setDialog(null)}
         title={c.withdrawTitle(target.fullName)}

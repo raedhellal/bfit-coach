@@ -20,6 +20,7 @@ export function UnsavedChangesDialog({ leaving }: { leaving: ReturnType<typeof u
   const copy = useCopy();
   return (
     <Modal
+      dirty={false}
       open={leaving.prompted}
       onClose={leaving.stay}
       title={copy.routine.leaveTitle}

@@ -488,6 +488,7 @@ function DeleteDialog({
 
   return (
     <Modal
+      dirty={false}
       open={open}
       onClose={() => !pending && onClose()}
       title={copy.templates.deleteTitle}

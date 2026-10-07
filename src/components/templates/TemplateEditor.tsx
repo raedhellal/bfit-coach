@@ -307,6 +307,7 @@ export function TemplateEditor({
       </StickyActionBar>
 
       <Modal
+        dirty={false}
         open={leaving.prompted}
         onClose={leaving.stay}
         title={copy.routine.leaveTitle}

@@ -698,6 +698,7 @@ export function NutritionWeekCard({
       )}
 
       <Modal
+        dirty={false}
         open={confirming}
         onClose={() => !pending && setConfirming(false)}
         title={copy.nutrition.applyTitle}
@@ -742,6 +743,7 @@ export function NutritionWeekCard({
       </Modal>
 
       <Modal
+        dirty={false}
         open={swapping !== null}
         onClose={() => !pending && setSwapping(null)}
         title={copy.nutrition.swapTitle}
