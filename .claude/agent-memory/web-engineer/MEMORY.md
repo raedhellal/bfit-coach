@@ -77,3 +77,5 @@
 - [Day accordions (EV-337f2)](day-accordions-337f2-facts.md) — hidden not unmounted; open days held by RoutineEditor across the loads remount; role locators skip hidden fields
 - [Form hooks (EV-342o)](coach-form-hooks-342o-facts.md) — useCoachForm/useAutosave; a navigating save is saved(stored, then); a dismissed beforeunload = ERR_ABORTED reload; two "Portal" navs
 - [EV-342k/j/m (2026-10-07)](ev342-kjm-portal-facts.md) — evoli_pro_coach cookie bound to sub; one session list, weigh-ins dropped, J.3 unmet; import() per-locale dict, route table hides the async chunk; zsh `$T:q` trap
+- [Free-text label lookup hits the prototype](a-label-map-lookup-of-free-text-hits-the-prototype.md) — BUG-694: labels["constructor"] is a function; own-property check, literal keys, key by index
+- [A nested button was a spec's discriminator](removing-a-nested-button-can-break-a-spec-that-used-it.md) — BUG-616 broke pro-back-link by count; grep qa for locator("button") first

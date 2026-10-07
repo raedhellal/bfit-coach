@@ -3210,7 +3210,12 @@ const PLACEMENT_OFF_IDS = new Set([PIA_ID]);
  * A COOKIE, not process state, so the switch is scoped to the browser context that set
  * it: the suite shares one dev server, and `revokeClient()`'s process-wide flag is
  * exactly the terminal-for-everyone behaviour these tests must not have. Read only
- * here, only in fixture mode; `live` never imports this file.
+ * here, and only reached in fixture mode: `coachApi.ts` routes calls to this file only
+ * when `COACH_API_MODE === "fixture"`. The FILE is not absent from live: `coachApi.ts`
+ * imports it statically, so it is in the live SERVER bundle. It is in no client bundle:
+ * both files start with `import "server-only"` (EV-349 349.2; witnessed on `next build`:
+ * the seed's "lapsed.invite@example.com" is in `.next/server`, and in nothing under
+ * `.next/static`).
  */
 async function fixtureSwitch(name: string): Promise<string | null> {
   try {
@@ -3372,7 +3377,8 @@ async function lockedSince(mealId: string): Promise<boolean> {
  * unavailable state (500) and the late-denial redirect (403) without a patch: every seeded
  * id is either readable or refused before the page asks. It fails the read wherever it is
  * made (the routine and nutrition tabs too), which is what the api would do. Read here
- * only, so only in fixture mode; `live` never imports this file.
+ * only, so only reached in fixture mode (the file itself is in the live server bundle and
+ * in no client bundle: see `fixtureSwitch`).
  */
 async function summaryReadFailure(read: "routine" | "nutrition", id: string): Promise<void> {
   const raw = await fixtureSwitch("evoli_fixture_summary_read");
