@@ -196,7 +196,8 @@ test.describe("the header", () => {
   test("an injury chip shows the coded label only, never the trainee's free text", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${DANA}`);
-    const chips = page.getByRole("main").locator(".client-head .status-pill");
+    // BUG-701: under the tab bar, above the first card, not in the header.
+    const chips = page.getByRole("main").locator(".client-injuries .status-pill");
     await expect(chips).toHaveText(["Limitation: Shoulders"]);
     // Her free-typed note is on the routine tab, where it was; the overview does not restate it.
     await expect(page.getByRole("main")).not.toContainText("left shoulder");
@@ -205,7 +206,7 @@ test.describe("the header", () => {
   test("no chip without WORKOUTS: the injuries come from the routine read", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${SARA}`);
-    await expect(page.getByRole("main").locator(".client-head .status-pill")).toHaveCount(0);
+    await expect(page.getByRole("main").locator(".client-injuries .status-pill")).toHaveCount(0);
   });
 });
 

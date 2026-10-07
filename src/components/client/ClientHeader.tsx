@@ -17,7 +17,10 @@ import { formatInstant, truncateName } from "@/lib/format";
  * `action` is the overview's revoke menu. The other two tabs pass nothing: revoking
  * from inside the editor would discard work with no warning.
  *
- * EV-337e (plan §5.2): the header can carry chips (the trainee's recorded injuries).
+ * BUG-701 (senior-po ruling, 2026-10-07): the header carries NO injury chip on any page. They
+ * were the overview's only, which put the tab bar 34 px lower there than on the other two
+ * tabs at 390 px; the overview now shows them under the tab bar (`clients/[id]/page.tsx`),
+ * and the routine tab shows injuries in its profile line and card (EV-342f).
  * EV-342e (audit A5): ONE tab bar on every client page, in the same place under the name,
  * the overview included. EV-337e had replaced the overview's strip with two buttons
  * (« Programme », « Nutrition »); those are gone, so the coach meets the same control on
@@ -31,15 +34,12 @@ export function ClientHeader({
   since,
   active,
   action,
-  chips,
 }: {
   clientId: string;
   traineeDisplayName: string;
   since?: string | null;
   active: ClientTab;
   action?: ReactNode;
-  /** Words shown as warning chips under the name. Each is text, never a colour alone. */
-  chips?: string[];
 }) {
   const copy = getCopy();
   return (
@@ -73,12 +73,9 @@ export function ClientHeader({
               a roster-row field only. Rendering "No plan" here would state something about
               the trainee that this response does not say.
             */}
-            {(since || (chips && chips.length > 0)) && (
+            {since && (
               <div className="client-head-chips">
-                {since && (
-                  <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
-                )}
-                {chips?.map((chip) => <StatusPill key={chip} tone="amber" icon="shield" label={chip} />)}
+                <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
               </div>
             )}
           </div>
@@ -87,6 +84,23 @@ export function ClientHeader({
       </div>
 
       <ClientTabs clientId={clientId} active={active} />
+    </div>
+  );
+}
+
+/**
+ * BUG-701 — the overview's injury chips, rendered UNDER the tab bar and above the first card
+ * (senior-po ruling), never inside the header: the header is then the same block on all three
+ * client pages, and the bar does not move between them. Each chip is text, never a colour
+ * alone. Renders nothing for an empty list.
+ */
+export function ClientInjuryChips({ chips }: { chips: string[] }) {
+  if (chips.length === 0) return null;
+  return (
+    <div className="ov-section client-injuries">
+      {chips.map((chip) => (
+        <StatusPill key={chip} tone="amber" icon="shield" label={chip} />
+      ))}
     </div>
   );
 }

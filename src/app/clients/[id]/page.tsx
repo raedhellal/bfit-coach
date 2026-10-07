@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
-import { ClientHeader } from "@/components/client/ClientHeader";
+import { ClientHeader, ClientInjuryChips } from "@/components/client/ClientHeader";
 import { RevokeMenu } from "@/components/client/RevokeMenu";
 import { StatTile } from "@/components/client/StatTile";
 import { ProgressRing } from "@/components/client/ProgressRing";
@@ -201,7 +201,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
   const fired = returned.filter((f) => Object.hasOwn(copy.client.redFlagLabels, f.flag));
   const routineHref = workoutsShared ? `/clients/${overview.clientId}/routine` : null;
 
-  /** The header's chips: the CODED injuries the trainee recorded (G5), from the routine read only. */
+  /** The injury chips (under the tab bar since BUG-701): the CODED injuries the trainee recorded (G5), from the routine read only. */
   const injuries =
     programme.state === "ok" ? codedInjuryLabels(programme.data.guardrails?.injuries, copy).map(copy.client.injuryChip) : [];
 
@@ -216,9 +216,12 @@ export default async function ClientPage({ params }: { params: { id: string } })
         traineeDisplayName={overview.traineeDisplayName}
         since={overview.since}
         active="overview"
-        chips={injuries}
         action={<RevokeMenu clientId={overview.clientId} displayName={overview.traineeDisplayName} />}
       />
+
+      {/* BUG-701 (senior-po ruling): the injury chips sit under the tab bar, above the first
+          card, so the header and the bar are the same block on all three client pages. */}
+      <ClientInjuryChips chips={injuries} />
 
       {nothingShared && (
         // The design's « Vide » state: the link shares no data scope at all. Said once, up
