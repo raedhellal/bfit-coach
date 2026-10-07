@@ -15,3 +15,4 @@
 - [EV-217 gate](project_ev217-gate.md) — 2026-09-26 PASS at f185c82; mutants QA1-5; [GUARD] BUG-258; the :839 flake is BUG-232 drifted
 - [EV-342 sprint-1 gate](project_ev342-sprint1-gate.md) — 2026-10-07 train 2325555 4 units PASS; list-route hold, write-bound injection, stalled sign-in 301.6 s, 2 pre-existing flakes
 - [EV-342 sprint-1b gate](project_ev342-sprint1b-gate.md) — 2026-10-07 train ba0ca15: 342e FAIL (BUG-699 bar jump), rest PASS; locale/bfcache/Chrome-channel/F.4 rig facts
+- [EV-342 sprint-1b re-gate](project_ev342-sprint1b-regate.md) — 2026-10-07 3242f16: BUG-699 backdrop PASS 58/58; EV-342e fix rejected mid-gate; backdrop-probe traps
