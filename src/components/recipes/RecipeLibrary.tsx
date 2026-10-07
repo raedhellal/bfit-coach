@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import { truncateName } from "@/lib/format";
@@ -42,7 +43,14 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
       ? library.recipes
       : library.recipes.filter((recipe) => effectiveSlots(recipe.mealSlots).includes(slot));
   const newRecipe = (
-    <Button icon="plus" onClick={() => router.push("/recipes/new")}>
+    <Button
+      icon="plus"
+      onClick={() => {
+        // EV-342a: no `loading.tsx` above `/recipes/new` any more; the bar covers a slow render.
+        startNavigationProgress("/recipes/new");
+        router.push("/recipes/new");
+      }}
+    >
       {copy.recipes.create}
     </Button>
   );

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 import { Button, Card, CardHead, MIN_TOUCH_TARGET } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import {
@@ -111,7 +112,9 @@ export function NutritionTemplateEditor({
       }
       if (templateId === null) {
         // `replace`: Back from the library must not land on a "new" route that would
-        // create a second template.
+        // create a second template. EV-342a: the list has no `loading.tsx` any more, so
+        // the progress bar is what covers a slow list read.
+        startNavigationProgress("/nutrition-templates");
         router.replace("/nutrition-templates");
         return;
       }

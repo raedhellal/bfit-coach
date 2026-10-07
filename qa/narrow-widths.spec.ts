@@ -19,7 +19,8 @@ import { expectNoSidewaysScroll } from "./layout";
  *   BUG-597 — the three library detail pages' `loading.tsx` drew a fixed 320 px
  *             skeleton inside a padded card, so a 320 px page scrolled 35 px sideways
  *             for as long as the detail read took (`coach-nutrition-templates.spec.ts`'s
- *             "the editor" step, red under `next start` only).
+ *             "the editor" step, red under `next start` only). EV-342a removed those
+ *             skeletons; the spec now holds the read and asserts the page on screen.
  *   BUG-601 — `copy.nutrition.macros` split "14" from "g de lipides" on a meal row in
  *             French at 400 px (ordinary spaces between each number and its unit).
  *
@@ -220,21 +221,21 @@ test.describe("BUG-601 — a meal row's macro line never splits a number from it
 });
 
 /**
- * The library detail pages' LOADING state, stood in for 1.5 s.
+ * A slow library DETAIL read, stood in for 600 ms (EV-342a A1.3 / A1.4).
  *
- * `evoli_fixture_read_delay` holds the detail read on the server, so the page streams its
- * `loading.tsx` first and the real page 1.5 s later — the shape a slow api gives a coach
- * on a phone. The skeleton is found by its animation (`shimmer`, the kit's Skeleton),
- * and the overflow is read in the SAME evaluate as that check: a measurement taken after
- * the real page arrived would be a measurement of the wrong screen.
+ * Until EV-342a these pages had a `loading.tsx`, and BUG-597 was that skeleton scrolling a
+ * 320 px page sideways. The skeletons are gone (React's ~300 ms reveal throttle made every
+ * first visit ~310 ms while the data was ready in ~50 ms), so a slow read now keeps the LIST
+ * on screen and `NavigationProgress` shows its bar after 400 ms. What BUG-597 protected is
+ * still asserted, on the page that is now on screen: nothing scrolls sideways at 320 px,
+ * neither while the read is held nor once the detail arrives.
+ *
+ * `evoli_fixture_read_delay` holds the detail read on the server. Everything that happens
+ * between the click and the content is recorded by a MutationObserver installed before the
+ * click (never sampled), including whether any skeleton (`shimmer`, the kit's Skeleton)
+ * was ever drawn.
  */
-const SKELETON_SAMPLE = `(() => {
-  const shimmering = Array.from(document.querySelectorAll("main *")).filter(
-    (el) => getComputedStyle(el).animationName === "shimmer"
-  ).length;
-  const doc = document.documentElement;
-  return { shimmering, scrollWidth: doc.scrollWidth, clientWidth: doc.clientWidth };
-})()`;
+const HELD_MS = 600;
 
 async function createNutritionTemplate(page: Page, name: string) {
   await page.goto("/nutrition-templates/new");
@@ -247,7 +248,7 @@ async function createNutritionTemplate(page: Page, name: string) {
   await page.waitForURL("/nutrition-templates");
 }
 
-test.describe("BUG-597 — a detail page's loading state never scrolls a 320 px page sideways", () => {
+test.describe("BUG-597 / EV-342a — a slow detail read: the list stays, the bar shows, nothing scrolls sideways at 320 px", () => {
   const ROUTES = [
     { list: "/templates", item: "Upper / Lower split", detail: /\/templates\/[0-9a-f-]{36}$/ },
     { list: "/recipes", item: "Chicken rice bowl", detail: /\/recipes\/[0-9a-f-]{36}$/ },
@@ -255,7 +256,7 @@ test.describe("BUG-597 — a detail page's loading state never scrolls a 320 px 
   ] as const;
 
   for (const route of ROUTES) {
-    test(`${route.list}/[id] while its read is held 1.5 s`, async ({ page, context, baseURL }) => {
+    test(`${route.list}/[id] while its read is held ${HELD_MS} ms`, async ({ page, context, baseURL }) => {
       await signIn(page);
       // The `empty` scenario seeds no nutrition templates; the other two libraries are seeded.
       if (route.list === "/nutrition-templates") await createNutritionTemplate(page, route.item);
@@ -264,35 +265,66 @@ test.describe("BUG-597 — a detail page's loading state never scrolls a 320 px 
       await page.goto(route.list);
       const edit = page.getByRole("group", { name: route.item, exact: true }).getByRole("link", { name: "Edit" });
       await expect(edit).toBeVisible();
-      await context.addCookies([{ name: "evoli_fixture_read_delay", value: "1500", url: baseURL! }]);
-      await edit.click();
+      const href = (await edit.getAttribute("href"))!;
+      expect(href).toMatch(route.detail);
+      // Warm the route's code (next dev compiles on first request) so the hold is the wait.
+      await page.request.get(href);
+      await context.addCookies([{ name: "evoli_fixture_read_delay", value: String(HELD_MS), url: baseURL! }]);
 
-      await page.waitForFunction(
-        () =>
-          Array.from(document.querySelectorAll("main *")).some(
-            (el) => getComputedStyle(el).animationName === "shimmer"
-          ),
-        undefined,
-        { timeout: 1_400 }
+      const seen = await page.evaluate(
+        async ({ href, list }) => {
+          const target = new URL(href, location.href).pathname;
+          const facts = {
+            barAt: null as number | null,
+            listOnScreenAtBar: false,
+            sidewaysAtBar: null as number | null,
+            contentAt: null as number | null,
+            shimmerEver: false,
+          };
+          const t0 = performance.now();
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`no ${target} after 15 s`)), 15_000);
+            const observer = new MutationObserver(() => {
+              const now = performance.now() - t0;
+              if (
+                !facts.shimmerEver &&
+                Array.from(document.querySelectorAll("main *")).some(
+                  (el) => getComputedStyle(el).animationName === "shimmer"
+                )
+              )
+                facts.shimmerEver = true;
+              const bar = document.querySelector<HTMLElement>(".nav-progress");
+              if (facts.barAt === null && bar !== null && bar.checkVisibility()) {
+                facts.barAt = now;
+                facts.listOnScreenAtBar =
+                  location.pathname === list && document.querySelector(`main a[href="${href}"]`) !== null;
+                facts.sidewaysAtBar = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+              }
+              if (location.pathname === target && document.querySelector("main h1")) {
+                facts.contentAt = now;
+                observer.disconnect();
+                clearTimeout(timer);
+                resolve();
+              }
+            });
+            observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+            document.querySelector<HTMLAnchorElement>(`main a[href="${href}"]`)!.click();
+          });
+          return facts;
+        },
+        { href, list: route.list }
       );
-      const sample = (await page.evaluate(SKELETON_SAMPLE)) as {
-        shimmering: number;
-        scrollWidth: number;
-        clientWidth: number;
-      };
-      expect(sample.shimmering, "the measurement was not taken on the loading state").toBeGreaterThan(0);
-      expect(
-        sample.scrollWidth,
-        `${route.list}/[id] loading: the page scrolls sideways by ${sample.scrollWidth - sample.clientWidth}px at 320px`
-      ).toBeLessThanOrEqual(sample.clientWidth);
 
-      // The real page still arrives, and it fits too.
+      expect(seen.shimmerEver, "no skeleton is drawn: the route has no loading.tsx").toBe(false);
+      expect(seen.barAt, "the progress bar showed while the read was held").not.toBeNull();
+      expect(seen.barAt!, "not before the 400 ms threshold").toBeGreaterThanOrEqual(390);
+      expect(seen.listOnScreenAtBar, "the list was still on screen when the bar showed").toBe(true);
+      expect(seen.sidewaysAtBar, "the list scrolled sideways at 320 px while the read was held").toBeLessThanOrEqual(0);
+      expect(seen.contentAt!, "the read really was held").toBeGreaterThan(HELD_MS);
+
+      // The real page arrives, and it fits too.
       await page.waitForURL(route.detail);
-      await expect
-        .poll(async () => ((await page.evaluate(SKELETON_SAMPLE)) as { shimmering: number }).shimmering, {
-          timeout: 10_000,
-        })
-        .toBe(0);
+      await expect(page.locator(".nav-progress")).toBeHidden();
       await expectNoSidewaysScroll(page, `${route.list}/[id] loaded`);
     });
   }
