@@ -19,6 +19,8 @@ import { refreshOutcome } from "@/lib/refreshOutcome";
 
 const ACCESS_COOKIE = "evoli_pro_at";
 const REFRESH_COOKIE = "evoli_pro_rt";
+/** EV-342k — the shell's name (`src/lib/session.ts`); a session sent to /login loses it too. */
+const IDENTITY_COOKIE = "evoli_pro_coach";
 const LOGIN = "/login";
 /**
  * EV-278c — the one page a PENDING session may reach (ADR-0022 D22.9e: "only to the
@@ -89,6 +91,7 @@ function toLogin(req: NextRequest, reason?: "not_coach" | "expired") {
   const res = NextResponse.redirect(url);
   res.cookies.set(ACCESS_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
   res.cookies.set(REFRESH_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
+  res.cookies.set(IDENTITY_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
   return res;
 }
 

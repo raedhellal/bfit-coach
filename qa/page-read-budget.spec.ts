@@ -120,36 +120,42 @@ async function documentLoad(page: Page, route: string): Promise<Entry[]> {
   return mine;
 }
 
-/** Each main route, the reads its document render makes, and its depth. */
+/**
+ * Each main route, the reads its document render makes, and its depth.
+ *
+ * EV-342k: `getMe` is the ROSTER's alone (it needs the capacity). Every other page takes
+ * the coach's name from the identity cookie the sign-in wrote, so a `getMe` reappearing
+ * in any row below is a page reading `/coach-portal/me` for its header again.
+ */
 const ROUTES: { route: string; reads: string[]; depth: number; why?: string }[] = [
   { route: "/", reads: ["getMe", "listClients", "listInvited"], depth: 1 }, // EV-204b: the Invited read, in the same round trip
-  { route: "/challenges", reads: ["getMe", "listChallenges", "listClients"], depth: 1 },
-  { route: `/challenges/${ACTIVE_CHALLENGE}`, reads: ["getChallenge", "getMe"], depth: 1 },
+  { route: "/challenges", reads: ["listChallenges", "listClients"], depth: 1 },
+  { route: `/challenges/${ACTIVE_CHALLENGE}`, reads: ["getChallenge"], depth: 1 },
   {
     // EV-337e (plan §5.2, G11/G12): the programme and nutrition summary cards cost one read
     // each, made only after the overview's `scopes` show WORKOUTS / NUTRITION (ADR-0015 D5),
     // in parallel: one more round trip, the « 2 where a consent check must come first » shape.
     route: `/clients/${LINA}`,
-    reads: ["getClient", "getClientProgress", "getMe", "getNutrition", "getRoutine"],
+    reads: ["getClient", "getClientProgress", "getNutrition", "getRoutine"],
     depth: 2,
     why: "the summary reads wait for the overview's `scopes`; the monitoring read and the name do not",
   },
   {
     // EV-342c: the draft is read with the routine, even when `hasDraft` will say no.
     route: `/clients/${LINA}/routine`,
-    reads: ["getClient", "getMe", "getRoutine", "getRoutineDraft"],
+    reads: ["getClient", "getRoutine", "getRoutineDraft"],
     depth: 2,
     why: "the routine and draft reads wait for the overview's `scopes` to show WORKOUTS (ADR-0015 D5)",
   },
   {
     route: `/clients/${LINA}/nutrition`,
-    reads: ["getClient", "getFoodLog", "getMe", "getNutrition"],
+    reads: ["getClient", "getFoodLog", "getNutrition"],
     depth: 2,
     why: "the two nutrition reads wait for NUTRITION in the overview's `scopes`",
   },
-  { route: "/templates", reads: ["getMe", "listClients", "listTemplates"], depth: 1 },
-  { route: "/recipes", reads: ["getMe", "listRecipes"], depth: 1 },
-  { route: "/nutrition-templates", reads: ["getMe", "listClients", "listNutritionTemplates"], depth: 1 },
+  { route: "/templates", reads: ["listClients", "listTemplates"], depth: 1 },
+  { route: "/recipes", reads: ["listRecipes"], depth: 1 },
+  { route: "/nutrition-templates", reads: ["listClients", "listNutritionTemplates"], depth: 1 },
 ];
 
 test.describe("each main route's document render", () => {
@@ -162,12 +168,12 @@ test.describe("each main route's document render", () => {
 
   // BUG-701 guard: the rejected fix read the routine on the nutrition page for header chips.
   // The ruling is no chip in any header and no new read; this pins the nutrition page of a
-  // client who shares NUTRITION alone to its four reads, and no chip in its header. Asking
+  // client who shares NUTRITION alone to its three reads, and no chip in its header. Asking
   // for a routine she withheld would not be a no-op, even if the api refused it.
   test("a NUTRITION-only client's nutrition page asks for no routine, and shows no chip", async ({ page }) => {
     await signIn(page);
     const route = `/clients/${PETRA}/nutrition`;
-    expect(ops(await documentLoad(page, route))).toEqual(["getClient", "getFoodLog", "getMe", "getNutrition"]);
+    expect(ops(await documentLoad(page, route))).toEqual(["getClient", "getFoodLog", "getNutrition"]);
     await expect(page.locator(".client-head")).toHaveCount(1);
     await expect(page.locator(".client-head .status-pill")).toHaveCount(0);
   });
@@ -202,7 +208,7 @@ test.describe("the routine tab with a draft", () => {
     await hold(page, baseURL, HOLD_MS);
     const entries = await documentLoad(page, `/clients/${YUSUF}/routine`);
     await expect(page.getByText(/^Started from /)).toHaveText(line!);
-    expect(ops(entries)).toEqual(["getClient", "getMe", "getRoutine", "getRoutineDraft", "listTemplates"]);
+    expect(ops(entries)).toEqual(["getClient", "getRoutine", "getRoutineDraft", "listTemplates"]);
     // overview → routine + draft → library (EV-342c C.1: was 4, one round per read).
     expect(depth(entries)).toBe(3);
   });
@@ -220,7 +226,7 @@ test.describe("the routine tab with a draft", () => {
     const entries = await documentLoad(page, `/clients/${LINA}/routine`);
     await expect(page.getByText("Draft — not yet published")).toBeVisible();
     await expect(page.getByText(/^Started from /)).toHaveCount(0);
-    expect(ops(entries)).toEqual(["getClient", "getMe", "getRoutine", "getRoutineDraft"]);
+    expect(ops(entries)).toEqual(["getClient", "getRoutine", "getRoutineDraft"]);
     // overview → routine + draft (EV-342c: was 3).
     expect(depth(entries)).toBe(2);
   });
@@ -292,7 +298,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
     expect(cost).toEqual({
       actionPosts: 1,
       rscGets: 0,
-      reads: ["getClient", "getMe", "getRoutine", "getRoutineDraft"],
+      reads: ["getClient", "getRoutine", "getRoutineDraft"],
       renders: 1,
     });
   });
@@ -316,7 +322,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
     expect(cost).toEqual({
       actionPosts: 1,
       rscGets: 0,
-      reads: ["getClient", "getMe", "getRoutine", "getRoutineDraft"],
+      reads: ["getClient", "getRoutine", "getRoutineDraft"],
       renders: 1,
     });
   });
@@ -337,7 +343,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
     expect(cost).toEqual({
       actionPosts: 1,
       rscGets: 0,
-      reads: ["getClient", "getFoodLog", "getMe", "getNutrition"],
+      reads: ["getClient", "getFoodLog", "getNutrition"],
       renders: 1,
     });
   });
@@ -357,7 +363,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
     expect(cost).toEqual({
       actionPosts: 1,
       rscGets: 0,
-      reads: ["getClient", "getFoodLog", "getMe", "getNutrition"],
+      reads: ["getClient", "getFoodLog", "getNutrition"],
       renders: 1,
     });
   });

@@ -7,6 +7,7 @@ import { mintFixtureToken } from "@/lib/fixtureToken";
 import { hasCoachRole, isPendingOnly } from "@/lib/jwt";
 import { refuseCrossOrigin } from "@/lib/sameOrigin";
 import { writeSession, type SessionTokens } from "@/lib/session";
+import { rememberCoach } from "@/lib/rememberCoach";
 
 /**
  * POST /api/auth/login — the BFF sign-in (EV-183 AC1, ADR-0012 D5).
@@ -47,8 +48,9 @@ function fail(status: number, code: string) {
  */
 type Landing = "/" | "/activate";
 
-function signedIn(tokens: SessionTokens, next: Landing) {
+async function signedIn(tokens: SessionTokens, next: Landing) {
   writeSession(tokens);
+  if (next === "/") await rememberCoach(tokens.accessToken);
   return NextResponse.json({ ok: true, next });
 }
 

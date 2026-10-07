@@ -2744,8 +2744,12 @@ const liveCoachApi = {
     return apiGet<LegalVersions>("/legal/versions");
   },
 
-  getMe(): Promise<CoachMe> {
-    return apiFetch<CoachMe>("/coach-portal/me");
+  /**
+   * `GET /coach-portal/me`. With `bearer`, the token a sign-in handler has just received
+   * (EV-342k: the name goes into the identity cookie at sign-in); without, the cookie's.
+   */
+  getMe(bearer?: string): Promise<CoachMe> {
+    return bearer ? apiGetAs<CoachMe>("/coach-portal/me", bearer) : apiFetch<CoachMe>("/coach-portal/me");
   },
   /**
    * `sort` is sent on every call, including for the default: the api's default and
