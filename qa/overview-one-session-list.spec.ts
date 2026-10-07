@@ -183,10 +183,11 @@ test.describe("J.3 — widths", () => {
    * `next start`, French, ≤ 2,198 px, and carded the rest as EV-345: the `test.fixme` at
    * the end of this file holds that target.
    *
-   * What is pinned HERE is the regression guard, the fold's own saving (the old block's
-   * ~490 px, less the summary line and the control that moved into the card): 2,820 px,
-   * ~30 px over the French measurement, which c2768c2 fails by ~370 px. The history
-   * block cannot come back below the card without this going red.
+   * What is pinned HERE is the regression guard (the PO's J-R6): ≤ 2,900 px in this test's
+   * English browser. Basis: the sprint-1b train measures 2,818 px here (EV-342e's header
+   * added height after this branch's 2,758), plus 82 px of headroom for unrelated layout
+   * changes. Undoing the fold puts the old block back (+431 px, ~3,249 px), which still
+   * trips it. J.3 itself (≤ 2,198, French, `next start`) is the fixme below, unchanged.
    */
   // Title prescribed by the PO (EV-342 J-R3).
   test("EV-342j J.3 partial: regression guard (EV-345 owns J.3)", async ({ page }) => {
@@ -196,7 +197,7 @@ test.describe("J.3 — widths", () => {
     await expect(activity(page).getByRole("listitem")).toHaveCount(5);
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
     test.info().annotations.push({ type: "overview height at 768x1024", description: `${height} px` });
-    expect(height).toBeLessThanOrEqual(2820);
+    expect(height).toBeLessThanOrEqual(2900);
   });
 
   for (const width of [1440, 1024, 768, 390]) {
