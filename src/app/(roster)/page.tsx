@@ -66,10 +66,18 @@ export default async function RosterPage() {
     () => ({ rows: [], failed: true })
   );
 
+  /**
+   * BUG-692 — how many ACTIVE links the api holds beyond the one page read. `listClients`
+   * is paged; one page of ROSTER_PAGE_SIZE (100, the api's own maximum) is the entire
+   * roster for every tier sold today (STARTER, 10), so there is no pager on this screen.
+   * Past 100, rows 101+ would otherwise vanish without a word: the envelope's
+   * `totalElements` is read here and the roster says how many are not shown. The fixture
+   * constructs it: `evoli_fixture_roster_extra=95` serves 101 links, page 0 holds 100
+   * (qa/roster-not-shown.spec.ts).
+   */
+  let hiddenCount = 0;
+
   try {
-    // `listClients` is paged. One page of ROSTER_PAGE_SIZE (the api's own maximum) is
-    // the entire roster for every tier that can exist today, so there is no pager on
-    // this screen — but the envelope's `totalElements` is what would prove otherwise.
     const [meResult, roster] = await Promise.all([
       coachApi.getMe(),
       coachApi.listClients(sort),
@@ -79,6 +87,7 @@ export default async function RosterPage() {
     // Rendered in the order the api returned. Re-sorting here is the defect, not the
     // safety net: see the block where `sortNeedsAttentionFirst` used to live.
     clients = roster.items;
+    hiddenCount = Math.max(0, roster.totalElements - roster.items.length);
     today = dayIn(new Date());
   } catch {
     failed = true;
@@ -179,7 +188,15 @@ export default async function RosterPage() {
           />
         </Card>
       ) : (
-        <RosterBrowser entries={entries} />
+        <>
+          {/* BUG-692: above the list, where a coach looking for a missing client reads first. */}
+          {hiddenCount > 0 && (
+            <p className="roster-not-shown" data-roster-not-shown="">
+              {copy.roster.notShown(hiddenCount)}
+            </p>
+          )}
+          <RosterBrowser entries={entries} />
+        </>
       )}
     </CoachShell>
   );

@@ -271,6 +271,14 @@ export const en = {
     subtitleCounts: (total: number, toReview: number) =>
       `${total} client${total === 1 ? "" : "s"} · ${toReview} to review`,
     /**
+     * BUG-692 — the roster reads ONE page (`ROSTER_PAGE_SIZE`, the api's maximum) and the
+     * envelope's `totalElements` says more links exist. The rows past the page are not
+     * shown, and this sentence says so instead of dropping them without a word. A pager is
+     * a separate row. `hidden` is always ≥ 1 where it is used.
+     */
+    notShown: (hidden: number) =>
+      hidden === 1 ? "1 client is not shown." : `${hidden} clients are not shown.`,
+    /**
      * The four groups (`src/lib/rosterView.ts`). "To review" and not "Needs attention":
      * that is the sort toggle's option, and one screen must not use one phrase for two
      * controls. There is no "Pending invites" group: the api has no read of pending
