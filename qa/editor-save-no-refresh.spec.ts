@@ -133,10 +133,13 @@ test("recipe editor: a save re-renders the page title through its action, histor
  * navigations (ADR-0033 D33.7), taking 4 more: 9 remain, and each follows a write that
  * does NOT revalidate (a 403, MEAL_CHANGED, PLACEMENT_OFF) or is the challenge poll or
  * Refresh button. (The release that merged both, b82c018, still pinned 13 and was red
- * here.) A new call is a decision: if its action revalidates, it renders the page a
+ * here.) BUG-689 added one: the root error boundary's retry (`src/app/error.tsx`), which
+ * follows no write at all: it asks the server for a fresh render after a server-side throw,
+ * because `reset()` alone re-renders the failed payload. 10 now.
+ * A new call is a decision: if its action revalidates, it renders the page a
  * second time for nothing. Comment lines are not counted.
  */
-test("src holds exactly 9 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four)", () => {
+test("src holds exactly 10 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry)", () => {
   const src = join(__dirname, "..", "src");
   const calls: string[] = [];
   for (const file of readdirSync(src, { recursive: true, encoding: "utf8" })) {
@@ -149,5 +152,5 @@ test("src holds exactly 9 router.refresh() calls (ADR-0033 2a's inventory, less 
         if (code.includes("router.refresh()")) calls.push(`${file}:${i + 1}`);
       });
   }
-  expect(calls.length, calls.sort().join("\n")).toBe(9);
+  expect(calls.length, calls.sort().join("\n")).toBe(10);
 });

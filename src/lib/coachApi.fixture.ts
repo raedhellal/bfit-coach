@@ -3219,6 +3219,35 @@ async function fixtureSwitch(name: string): Promise<string | null> {
     return null; // outside a request (nothing in the fixture calls it there)
   }
 }
+/**
+ * BUG-689 — ⚠ fixture affordance: `evoli_fixture_render_error=<once|always>` (one browser
+ * context) makes a page's SERVER RENDER throw, which is the only way to reach the root
+ * error boundary (`src/app/error.tsx`): every read a page makes is caught and turned into
+ * that page's own load-error state, by design. `getMe` answers a value whose every field
+ * throws when read, and every signed-in page reads the coach's name OUTSIDE its read's
+ * `try` (`coachName={me?.displayName}`), so the throw lands in the render. `then` and
+ * symbols read as absent, so the value still resolves as a promise result.
+ *
+ *   · `always` — every render throws (the error persists).
+ *   · `once`   — the FIRST render after the reset throws and the next one does not (a
+ *                transient server error that « Réessayer » must recover from).
+ * Read here only, so only in fixture mode.
+ */
+async function renderErrorSwitch(): Promise<CoachMe | null> {
+  const mode = await fixtureSwitch("evoli_fixture_render_error");
+  if (mode !== "always" && mode !== "once") return null;
+  if (mode === "once") {
+    if (state().renderErrorsServed > 0) return null;
+    state().renderErrorsServed += 1;
+  }
+  return new Proxy({} as CoachMe, {
+    get(_target, key) {
+      if (typeof key === "symbol" || key === "then") return undefined;
+      throw new Error(`BUG-689 fixture: forced server render error (read of ${String(key)})`);
+    },
+  });
+}
+
 async function placementOff(id: string): Promise<boolean> {
   return PLACEMENT_OFF_IDS.has(id) || (await fixtureSwitch("evoli_fixture_placement")) === "off";
 }
@@ -4600,6 +4629,8 @@ async function assertChallengeRequest(body: CoachChallengeCreateRequest): Promis
 interface FixtureState {
   /** AC6: revoking takes the whole roster away for the rest of the process. */
   revoked: boolean;
+  /** BUG-689 — how many poisoned `getMe` answers `evoli_fixture_render_error=once` has served. */
+  renderErrorsServed: number;
   /**
    * The trainee whose routine page was rendered last, so the catalog outage is
    * reachable. `GET /coach-portal/catalog/exercises` carries no trainee id — rightly,
@@ -4681,6 +4712,7 @@ type GlobalWithFixture = typeof globalThis & Record<symbol, FixtureState | undef
 function freshState(): FixtureState {
   return {
     revoked: false,
+    renderErrorsServed: 0,
     lastRoutineClient: null,
     plans: new Map<string, StoredPlan | null>([
       [LINA_ID, seededPlan(LINA_ID, linaPlan())],
@@ -5718,6 +5750,8 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async getMe(): Promise<CoachMe> {
+    const poisoned = await renderErrorSwitch();
+    if (poisoned) return poisoned;
     return {
       coachId: COACH_ID,
       displayName: "Alex R.",
