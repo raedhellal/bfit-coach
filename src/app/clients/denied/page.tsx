@@ -22,8 +22,9 @@ import { getCopy } from "@/lib/i18n/server";
  * It makes **no** call for the trainee: it never had one to make. The api answers 403
  * identically for a foreign id, a revoked link and an id that never existed
  * (ADR-0012 D4), so there is nothing to look up and nothing to disclose — which is
- * also why the route being reachable for any id at all costs nothing. `getMe` is for
- * the header only, exactly as on the overview itself.
+ * also why the route being reachable for any id at all costs nothing. The header's name
+ * comes from `readCoachMe`, exactly as on the overview itself (the identity cookie since
+ * EV-342k, so no api call either).
  *
  * EV-337k (plan §5.10, design screen 16): the design's centred card — a neutral tile, the
  * title, one line, the way back — drawn INSIDE the shell, which the design does not draw.

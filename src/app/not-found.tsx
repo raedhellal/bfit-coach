@@ -75,7 +75,8 @@ export default function NotFound() {
     </Card>
   );
 
-  if (coach) return <CoachShell>{card}</CoachShell>;
+  // BUG-704: no fixture render-error seam here (see CoachShell's `faultSeam`).
+  if (coach) return <CoachShell faultSeam={false}>{card}</CoachShell>;
   return (
     <main className="page" style={{ maxWidth: 520, margin: "0 auto", paddingTop: 64 }}>
       <div style={{ marginBottom: 24 }}>

@@ -311,13 +311,13 @@ test.describe("the programme and nutrition summaries", () => {
 
   test("a withheld scope is never asked for, and says so in words", async ({ page }) => {
     await signIn(page);
-    expect(await readsOf(page, `/clients/${MARA}`)).toEqual(["getClient", "getClientProgress", "getMe"]);
+    expect(await readsOf(page, `/clients/${MARA}`)).toEqual(["getClient", "getClientProgress"]);
     await expect(region(page, "Routine")).toContainText("This trainee has not shared their workouts with you.");
     await expect(region(page, "Nutrition")).toContainText("This trainee has not shared their nutrition with you.");
     await expect(region(page, "No data shared")).toContainText("This is not a zero");
 
-    expect(await readsOf(page, `/clients/${PETRA}`)).toEqual(["getClient", "getClientProgress", "getMe", "getNutrition"]);
-    expect(await readsOf(page, `/clients/${YUSUF}`)).toEqual(["getClient", "getClientProgress", "getMe", "getRoutine"]);
+    expect(await readsOf(page, `/clients/${PETRA}`)).toEqual(["getClient", "getClientProgress", "getNutrition"]);
+    expect(await readsOf(page, `/clients/${YUSUF}`)).toEqual(["getClient", "getClientProgress", "getRoutine"]);
     await expect(region(page, "No data shared")).toHaveCount(0);
   });
 });

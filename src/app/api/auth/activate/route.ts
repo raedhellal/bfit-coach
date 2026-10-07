@@ -5,6 +5,7 @@ import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN } from "@/lib/password";
 import { routeAccessToken } from "@/lib/routeSession";
 import { refuseCrossOrigin } from "@/lib/sameOrigin";
 import { clearSession, writeSession } from "@/lib/session";
+import { rememberCoach } from "@/lib/rememberCoach";
 
 /**
  * POST /api/auth/activate — EV-278c, ADR-0022 D22.9: finish an account the admin
@@ -124,6 +125,8 @@ export async function POST(request: Request) {
       return refuse(502, "ACTIVATED_SIGN_IN_AGAIN");
     }
     writeSession(tokens);
+    // EV-342k: the activated coach's name, as a sign-in writes it.
+    await rememberCoach(tokens.accessToken);
     // No destination: the form goes to "/" itself, and middleware decides from there.
     return NextResponse.json({ ok: true });
   } catch (err) {
