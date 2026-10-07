@@ -406,6 +406,8 @@ function RenameDialog({
     <Modal
       open={open}
       onClose={() => !pending && onClose()}
+      // BUG-699 — the field opens holding the template's name.
+      dirty={template !== null && name !== template.name}
       title={copy.templates.renameTitle}
       width={440}
       footer={
@@ -626,6 +628,8 @@ function UseDialog({
     <Modal
       open={open}
       onClose={() => !pending && onClose()}
+      // BUG-699 — the picker opens on the first trainee.
+      dirty={!noTrainees && clientId !== (trainees[0]?.id ?? "")}
       title={copy.templates.useTitle}
       icon="upload"
       iconTone="blue"

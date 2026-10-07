@@ -310,6 +310,9 @@ export function SwapSheet({
     <Modal
       open
       onClose={() => !pending && onClose()}
+      // BUG-699 — the search opens empty; it is on screen unless the meal is locked or a
+      // recipe is chosen (the confirm step has no field).
+      dirty={!target.locked && chosen === null && query !== ""}
       title={copy.nutrition.swapTitle}
       sub={<span title={target.mealName}>{truncateName(target.mealName)}</span>}
       icon="apple"

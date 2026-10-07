@@ -351,6 +351,8 @@ function RenameDialog({
     <Modal
       open={template !== null}
       onClose={() => !pending && onClose()}
+      // BUG-699 — the field opens holding the template's name.
+      dirty={template !== null && name !== template.name}
       title={T.renameTitle}
       width={440}
       footer={
