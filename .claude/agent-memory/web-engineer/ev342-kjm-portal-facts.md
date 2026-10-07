@@ -41,3 +41,13 @@ module evaluation, so hydration can wait one round trip (localhost +0–9 ms med
 must be a dictionary value found nowhere else (`Ouvrir le plan`, `Add a client`); prod
 chunks escape accents (`d\xe9connecter`). Running Playwright (`next dev`) in a worktree
 overwrites its production `.next`. See [[one-worker-per-fixture-server]].
+
+**Staff fixes (same day):** `rememberCoach` races `AbortSignal.timeout(1500)` — an
+unbounded read there held the ACTIVATION response after the account was already activated;
+the fixture latency cookie (cap 2 s) is the witness. The fixture's activated accounts have
+their own sub while `/me` answers the shared COACH_ID, which is what makes `c != s`
+testable. `CopyProvider` sits ABOVE `app/error.tsx` and there is no `global-error.tsx`: a
+throw there is Next's bare error page, so a failed dictionary chunk reloads once
+(sessionStorage flag). An overview card's not-shared sentence must name the scope actually
+missing: Sara holds PROGRESS without WORKOUTS, so "has not shared their progress" is false
+about her.
