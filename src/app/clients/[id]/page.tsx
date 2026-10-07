@@ -434,7 +434,10 @@ export default async function ClientPage({ params }: { params: { id: string } })
       {/* ── EV-187 AC3: eight weeks of adherence ───────────────────────────── */}
       {!monitoringShared ? (
         <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">
-          <BlockNote>{copy.client.notSharedProgress}</BlockNote>
+          {/* BUG-700: name the scope that is actually missing. PROGRESS held without
+              WORKOUTS (Sara) is the workouts sentence — "has not shared their progress"
+              would be false about a trainee who shared it. */}
+          <BlockNote>{progressShared ? copy.routine.scopeMissing : copy.client.notSharedProgress}</BlockNote>
         </MonitoringBlock>
       ) : !progress?.adherence ? (
         <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">

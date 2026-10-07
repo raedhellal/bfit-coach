@@ -476,11 +476,12 @@ test.describe("AC5 — the last ten sessions, with what the trainee said", () =>
 
 test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
   /**
-   * EV-342j: the session list is « Recent activity », and its sentence names the scope
-   * that is actually missing — PROGRESS for Yusuf, WORKOUTS for Sara, who HAS shared her
-   * progress (staff review). The adherence block keeps AC1's sentence for both.
+   * Both workout blocks name the scope that is actually missing — PROGRESS for Yusuf,
+   * WORKOUTS for Sara, who HAS shared her progress. « Recent activity » since EV-342j
+   * (staff review), the adherence block since BUG-700; EV-187 AC1 never specified a
+   * PROGRESS-without-WORKOUTS link, so its sentence still holds wherever PROGRESS is absent.
    */
-  for (const [name, id, activitySentence] of [
+  for (const [name, id, sentence] of [
     ["WORKOUTS only (no PROGRESS)", YUSUF, NOT_SHARED_PROGRESS],
     ["PROGRESS + WEIGH_INS (no WORKOUTS)", SARA, NOT_SHARED_WORKOUTS],
   ] as const) {
@@ -491,10 +492,7 @@ test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
       // on one block may not take the trainee's whole page with it.
       expect(response?.status()).toBe(200);
 
-      for (const [title, sentence] of [
-        ["Adherence, last 8 weeks", NOT_SHARED_PROGRESS],
-        ["Recent activity", activitySentence],
-      ] as const) {
+      for (const title of ["Adherence, last 8 weeks", "Recent activity"]) {
         const region = block(page, title);
         await expect(region).toContainText(sentence);
         /**
