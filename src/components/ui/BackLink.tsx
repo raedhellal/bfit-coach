@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { MouseEventHandler } from "react";
 import { UiIcon } from "./icons";
 
 /**
@@ -18,11 +19,22 @@ import { UiIcon } from "./icons";
  * `flush` pulls the link left by its own padding so its arrow lines up with the content
  * edge, for a link that sits above a page title rather than beside it.
  *
- * Server-safe: no hooks, no client JavaScript.
+ * Server-safe: no hooks, no client JavaScript. `onClick` is for a client caller only
+ * (BUG-691's `RosterBackLink`); a server component cannot pass one.
  */
-export function BackLink({ href, label, flush }: { href: string; label: string; flush?: boolean }) {
+export function BackLink({
+  href,
+  label,
+  flush,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  flush?: boolean;
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
+}) {
   return (
-    <Link href={href} className="back-link" data-flush={flush ? "" : undefined}>
+    <Link href={href} className="back-link" data-flush={flush ? "" : undefined} onClick={onClick}>
       <span aria-hidden="true" className="back-link-icon">
         <UiIcon name="arrowL" size={16} />
       </span>

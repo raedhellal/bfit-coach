@@ -4,6 +4,7 @@ import "./globals.css";
 import { fontVariables } from "./fonts";
 import { LegalFooter } from "@/components/shell/LegalFooter";
 import { NavigationProgress } from "@/components/shell/NavigationProgress";
+import { UrlChangeCounter } from "@/components/shell/UrlChangeCounter";
 import { CopyProvider } from "@/lib/i18n/client";
 import { getCopy, getLocale } from "@/lib/i18n/server";
 
@@ -45,6 +46,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Suspense: it reads useSearchParams. */}
           <Suspense fallback={null}>
             <NavigationProgress />
+            {/* BUG-691: « Retour aux clients » needs to know whether the roster is one entry back. */}
+            <UrlChangeCounter />
           </Suspense>
           <div id="app-root">{children}</div>
         </CopyProvider>
