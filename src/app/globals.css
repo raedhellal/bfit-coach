@@ -1339,11 +1339,40 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .prog-title { margin: 0 0 14px; font: 600 var(--fs-h2)/26px var(--font-display); color: var(--ink); }
 /* The cards carry their own bottom margins, so one column adds no row gap on top of them. */
 .layout-split.prog-split { row-gap: 0; }
-.prog-split > .prog-aside, .prog-split > .prog-main { min-width: 0; }
+.prog-split > .prog-aside, .prog-split > .prog-main, .prog-split > .prog-profile { min-width: 0; }
 @media (min-width: 1280px) {
-  .prog-split > .prog-main { grid-column: 1; grid-row: 1; }
-  .prog-split > .prog-aside { grid-column: 2; grid-row: 1; }
+  /* EV-342f: the profile and « Enregistrer comme modèle » are two grid items now (the
+     editor sits between them in one column). Row 1 is the profile's height, row 2 takes
+     the rest of the editor's, so the two cards stack with no gap: the layout of EV-337f1. */
+  .prog-split { grid-template-rows: auto 1fr; }
+  .prog-split > .prog-main { grid-column: 1; grid-row: 1 / span 2; }
+  .prog-split > .prog-profile { grid-column: 2; grid-row: 1; }
+  .prog-split > .prog-aside { grid-column: 2; grid-row: 2; }
 }
+/* EV-342f (audit A6, PO ruling): below 1280 px the profile is ONE line above the editor,
+   « Blessures : … · Matériel : n » + « Détails », and the card opens in place under it.
+   From 1280 px the line is gone and the card always shows, in the second column (F.4). */
+.prog-profile-line {
+  display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 6px 6px 6px 16px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+}
+.prog-profile-text { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); line-height: 20px; color: var(--ink-2); overflow-wrap: anywhere; }
+.prog-profile-toggle {
+  min-height: 44px; padding: 0 14px; border: 0; border-radius: var(--r-md); background: transparent;
+  font: inherit; font-size: var(--fs-body); font-weight: 600; color: var(--blue-600); cursor: pointer;
+}
+.prog-profile-toggle:hover { background: var(--surface-2); }
+.prog-profile-toggle:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+@media (max-width: 1279px) {
+  .prog-profile-box:not([data-open]) > .prog-profile-card { display: none; }
+  /* F.3: the plan name takes the whole row, and the status pills wrap under it. */
+  .prog-name { flex: 1 1 100%; }
+}
+@media (min-width: 1280px) { .prog-profile-line { display: none; } }
+/* F.4: from 1280 px the field keeps EV-337f1's width. */
+.prog-name-input { width: 100%; }
+@media (min-width: 1280px) { .prog-name-input { width: min(360px, 100%); } }
 .prog-status { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .prog-publish-hint { margin: 4px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-3); }
 .prog-bar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
