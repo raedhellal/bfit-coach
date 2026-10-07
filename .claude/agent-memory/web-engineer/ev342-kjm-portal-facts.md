@@ -23,7 +23,10 @@ the rest in place. Weigh-in rows were DROPPED from the card (judgment call on th
 "latest 5 sessions"; flag if a PO/Raed ruling says otherwise). `SessionHistory.tsx` was
 repurposed as the client island rather than deleted (deleting files needs a sign-off).
 J.3 ("one screen shorter than 3,133 px at 768") is NOT reachable by the fold: 3,222 →
-2,791 px under next start; next dev measures ~33 px less than next start.
+2,791 px in French on next start AND next dev; English reads 33 px less (2,758). PO
+ruling (hub 3cec7b49): weigh-in removal accepted, J.3 re-anchored to next start, FR,
+≤ 2,198 px, remainder carded EV-345 (a `test.fixme` holds it). BUG-700 (adherence block's
+false progress sentence) rides on the j branch.
 
 **EV-342m** (`perf/ev342m-locale-only-bundle`): `src/lib/i18n/client.tsx` loads each
 dictionary with `import()` and `use()` (vendored React canary; `/// <reference
