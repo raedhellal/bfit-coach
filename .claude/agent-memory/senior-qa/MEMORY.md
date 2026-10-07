@@ -17,3 +17,4 @@
 - [EV-342 sprint-1b gate](project_ev342-sprint1b-gate.md) — 2026-10-07 train ba0ca15: 342e FAIL (BUG-699 bar jump), rest PASS; locale/bfcache/Chrome-channel/F.4 rig facts
 - [EV-342 sprint-1b re-gate](project_ev342-sprint1b-regate.md) — 2026-10-07 3242f16: BUG-699 backdrop PASS 58/58; EV-342e fix rejected mid-gate; backdrop-probe traps
 - [EV-342 sprint-1b v2 gate](project_ev342-sprint1b-v2-gate.md) — 2026-10-07 train 711f4c2: all 6 units PASS, mergeable; rebuilt-train SHA-identity checks, BUG-701 mutant
+- [EV-342 perf k/j/m gate](project_ev342-perf-kjm-gate.md) — 2026-10-07 d4f924a: k FAIL (getMe removal killed BUG-689 fixture switch), j partial, m PASS + BUG-703
