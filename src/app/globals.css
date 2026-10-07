@@ -1430,6 +1430,8 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .client-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px 16px; flex-wrap: wrap; }
 .client-head-id { display: flex; align-items: flex-start; gap: 14px; flex: 1 1 280px; min-width: 0; }
 .client-head-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+/* BUG-701: the overview's injury chips, under the tab bar, above the first card. */
+.client-injuries { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .ov-section { margin-bottom: 16px; }
 .ov-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }

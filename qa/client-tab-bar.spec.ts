@@ -112,6 +112,79 @@ for (const lang of ["en", "fr"] as const) {
   });
 }
 
+/*
+ * BUG-701 (QA of 242d5fa; senior-po ruling 2026-10-07). Only the overview passed injury chips
+ * to the header, so for Dana the bar sat 34 px lower on the overview at 390 px (3 px wider).
+ * Ruling: no chip in the header on any client page; on the overview they sit under the bar,
+ * above the first card; no new read. So the header is the same block everywhere and the
+ * bar's TOP is identical (0 px) on the three pages, for: Lina (no chip), Dana (a chip),
+ * Quentin H. (the longest seeded name), and Dana served a 50-character name through the
+ * fixture's `evoli_fixture_display_name` switch (the header's truncation path).
+ */
+const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
+const QUENTIN = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0022";
+const LONG_NAME = "Maximiliana-Josefina Wolkenstein de la Fontaine R.";
+const DANA_CHIP = { en: "Limitation: Shoulders", fr: "Limitation\u00a0: Épaules" } as const;
+const BUG701_CLIENTS = [
+  { label: "Lina", id: LINA, longName: false },
+  { label: "Dana", id: DANA, longName: false },
+  { label: "Quentin H.", id: QUENTIN, longName: false },
+  { label: "Dana, 50-character name", id: DANA, longName: true },
+] as const;
+
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`BUG-701: the bar's top on the three client pages, ${lang.toUpperCase()}`, () => {
+    test.use({ locale: LANG[lang].locale });
+
+    for (const client of BUG701_CLIENTS) {
+      test(`${client.label}: the same top at 1440, 1024, 768 and 390; no chip in the header`, async ({ page }) => {
+        test.setTimeout(120_000);
+        await signInThroughForm(page, { lang });
+        if (client.longName) {
+          expect(LONG_NAME.length).toBe(50);
+          await page.context().addCookies([
+            {
+              name: "evoli_fixture_display_name",
+              value: `${client.id}:${encodeURIComponent(LONG_NAME)}`,
+              url: new URL("/", page.url()).href,
+            },
+          ]);
+        }
+        for (const width of [1440, 1024, 768, 390] as const) {
+          await page.setViewportSize({ width, height: 900 });
+          const tops: number[] = [];
+          for (const path of [`/clients/${client.id}`, `/clients/${client.id}/routine`, `/clients/${client.id}/nutrition`]) {
+            await page.goto(path);
+            const where = `${path} at ${width}`;
+            await expect(page.locator(".client-head"), where).toHaveCount(1);
+            if (client.longName) await expect(page.locator(".client-head h1"), where).toHaveAttribute("title", LONG_NAME);
+            await expect(page.locator(".client-head .status-pill"), `${where}: no chip in the header`).toHaveCount(0);
+            const nav = bar(page, lang);
+            await expect(nav, `${where}: one bar`).toHaveCount(1);
+            tops.push(await nav.evaluate((el) => el.getBoundingClientRect().top + window.scrollY));
+          }
+          expect(tops[1] - tops[0], `${width}: routine vs overview, px`).toBe(0);
+          expect(tops[2] - tops[0], `${width}: nutrition vs overview, px`).toBe(0);
+        }
+      });
+    }
+
+    test("Dana's overview: the chip under the bar, above the first card", async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await page.goto(`/clients/${DANA}`);
+      const chips = page.locator(".client-injuries .status-pill");
+      await expect(chips).toHaveText([DANA_CHIP[lang]]);
+      const [barBox, chipBox, firstCard] = await Promise.all([
+        bar(page, lang).boundingBox(),
+        page.locator(".client-injuries").boundingBox(),
+        page.locator(".client-injuries + *").boundingBox(),
+      ]);
+      expect(chipBox!.y, "under the tab bar").toBeGreaterThanOrEqual(barBox!.y + barBox!.height);
+      expect(chipBox!.y + chipBox!.height, "above the first card").toBeLessThanOrEqual(firstCard!.y);
+    });
+  });
+}
+
 test.describe("E.3 keyboard and the narrow bar", () => {
   test("Tab reaches the bar from the back link, Enter follows a tab", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
