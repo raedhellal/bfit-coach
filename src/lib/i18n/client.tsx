@@ -33,8 +33,15 @@ import { isLocale, type Locale } from "./locale";
  *   · The FR/EN switch (`setLocaleAction`) re-renders the layout with the other locale
  *     inside a transition: the provider suspends on the other chunk and React keeps the
  *     current page until it arrives, then swaps every string at once.
- *   · A chunk that fails to load is forgotten, so the next render asks again; the error
- *     itself goes to the nearest error boundary, never to an English fallback.
+ *   · A chunk that fails to load reloads the page ONCE (`reloadOnce`). The likely cause
+ *     is a deploy between the tab's load and this fetch: the old hashed chunk is gone
+ *     (404, unless the host keeps old deployments' assets), and a reload gets the new
+ *     deployment's HTML and chunks, in the locale the server decides. A sessionStorage
+ *     flag stops a loop; it is cleared by the next dictionary that loads.
+ *   · If the reload already happened and it fails again, the error is THROWN, and no
+ *     boundary of ours catches it: this provider sits in the ROOT layout, above
+ *     `app/error.tsx`, and there is no `app/global-error.tsx`, so the coach sees Next's
+ *     own "Application error" page. Never an English fallback, never a page of keys.
  *
  * `dictionaries.ts` (both, statically) stays the SERVER's accessor: a server bundle's
  * size costs the browser nothing.
@@ -45,6 +52,25 @@ const LocaleContext = createContext<Locale | null>(null);
 const loaded: Partial<Record<Locale, Copy>> = {};
 const pending: Partial<Record<Locale, Promise<Copy>>> = {};
 
+/** Set when this tab reloaded because a dictionary chunk failed; read by `reloadOnce`. */
+export const COPY_RELOAD_FLAG = "evoli.copy.reloaded";
+
+/**
+ * Reload the page unless this tab already did for the same reason. True when a reload was
+ * started. Storage that throws (a locked-down browser) means no reload: the error is
+ * thrown instead, which is the honest answer when a loop cannot be ruled out.
+ */
+function reloadOnce(): boolean {
+  try {
+    if (window.sessionStorage.getItem(COPY_RELOAD_FLAG)) return false;
+    window.sessionStorage.setItem(COPY_RELOAD_FLAG, "1");
+  } catch {
+    return false;
+  }
+  window.location.reload();
+  return true;
+}
+
 function load(locale: Locale): Promise<Copy> {
   const inFlight = pending[locale];
   if (inFlight) return inFlight;
@@ -53,8 +79,21 @@ function load(locale: Locale): Promise<Copy> {
       ? import("../copy.fr").then((m): Copy => m.fr)
       : import("../copy").then((m): Copy => m.en)
   ).then(
-    (copy) => (loaded[locale] = copy),
+    (copy) => {
+      loaded[locale] = copy;
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.removeItem(COPY_RELOAD_FLAG);
+        } catch {
+          // Nothing to clear where storage is unavailable.
+        }
+      }
+      return copy;
+    },
     (err: unknown) => {
+      // Reloading: stay pending (the provider stays suspended, the server HTML stays on
+      // screen) and keep this promise, so no render asks for the chunk again meanwhile.
+      if (typeof window !== "undefined" && reloadOnce()) return new Promise<Copy>(() => undefined);
       delete pending[locale];
       throw err;
     }
@@ -65,7 +104,7 @@ function load(locale: Locale): Promise<Copy> {
 
 if (typeof document !== "undefined") {
   const lang = document.documentElement.lang;
-  // Started now, read in render below; a failure here is reported by that render.
+  // Started now, read in render below; a failure here reloads once (see `load`).
   if (isLocale(lang)) load(lang).catch(() => undefined);
 }
 

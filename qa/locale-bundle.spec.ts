@@ -93,3 +93,59 @@ test.describe("the switch", () => {
     await expect(page.getByRole("button", { name: "Ajouter un client" })).toHaveCount(0);
   });
 });
+
+test.describe("a dictionary chunk that fails to load", () => {
+  /**
+   * Staff should-fix on 4c48ba0. The provider sits in the ROOT layout, above
+   * `app/error.tsx`, so a failed dictionary fetch (a deploy since the tab loaded: the old
+   * hashed chunk is gone) used to end on Next's bare "Application error". Now the page
+   * reloads ONCE, guarded by a sessionStorage flag so a chunk that keeps failing cannot
+   * loop. The French chunk is recognised by its content (the probe), so this works on any
+   * build's chunk names. Enabling `page.route` disables the HTTP cache, so every load
+   * really asks for it.
+   */
+  test.use({ locale: "fr-FR" });
+
+  async function setUp(page: Page, failures: number) {
+    const login = await page.request.post("/api/auth/login", {
+      data: { email: "coach@evoli.fit", password: "Password123!" },
+      maxRedirects: 0,
+    });
+    expect(login.status()).toBe(200);
+    const seen = { failed: 0, documents: 0 };
+    await page.route("**/_next/static/chunks/**", async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      if (seen.failed < failures && body.includes(FR_PROBE)) {
+        seen.failed += 1;
+        await route.fulfill({ status: 404, body: "" });
+        return;
+      }
+      await route.fulfill({ response, body });
+    });
+    page.on("request", (request) => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) seen.documents += 1;
+    });
+    return seen;
+  }
+
+  test("a 404 once: one reload, then a working French page", async ({ page }) => {
+    const seen = await setUp(page, 1);
+    await page.goto("/");
+    await expect(page.locator("[data-nav-progress-ready]"), "the page hydrated").toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Ajouter un client" })).toBeVisible();
+    expect(seen).toEqual({ failed: 1, documents: 2 });
+    // The flag is cleared by the dictionary that loaded, so a later deploy can reload again.
+    expect(await page.evaluate(() => window.sessionStorage.getItem("evoli.copy.reloaded"))).toBeNull();
+  });
+
+  test("a 404 every time: exactly one reload, never a loop", async ({ page }) => {
+    const seen = await setUp(page, Number.POSITIVE_INFINITY);
+    await page.goto("/");
+    await expect.poll(() => seen.documents).toBe(2);
+    // Long enough for a third load to have started if the guard did not hold.
+    await page.waitForTimeout(3_000);
+    expect(seen.documents).toBe(2);
+    expect(await page.evaluate(() => window.sessionStorage.getItem("evoli.copy.reloaded"))).toBe("1");
+  });
+});
