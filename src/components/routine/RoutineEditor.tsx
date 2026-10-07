@@ -92,6 +92,7 @@ export function RoutineEditor({
   initialDraft,
   sourceTemplateName = null,
   unbindableExercises = [],
+  profile = null,
   aside = null,
   lead = null,
 }: {
@@ -108,9 +109,15 @@ export function RoutineEditor({
    */
   unbindableExercises?: string[];
   /**
-   * EV-337f1 — the page's aside (the trainee's profile, « Enregistrer comme modèle »),
-   * server-rendered and passed through untouched. Above the editor in one column, beside it
-   * from 1280 px (`.prog-split`). Null draws no aside.
+   * EV-342f — the trainee's profile (`ProfileLine` around the card), server-rendered and
+   * passed through untouched: one line ABOVE the editor below 1280 px, the card at the top
+   * of the second column from 1280 px (`.prog-split`). Null draws none.
+   */
+  profile?: ReactNode;
+  /**
+   * EV-337f1 — the page's aside (« Enregistrer comme modèle » since EV-342f moved the profile
+   * to `profile`), server-rendered and passed through untouched. AFTER the editor below
+   * 1280 px (EV-342f), under the profile in the second column from 1280 px. Null draws no aside.
    */
   aside?: ReactNode;
   /**
@@ -443,7 +450,7 @@ export function RoutineEditor({
     return (
       <div className="prog-editor">
         {lead}
-        <ProgrammeFrame aside={aside}>
+        <ProgrammeFrame profile={profile} aside={aside}>
           <Card>
             <EmptyState
               icon="dumbbell"
@@ -483,7 +490,7 @@ export function RoutineEditor({
   return (
     <div className="prog-editor" ref={scope}>
       {lead}
-      <ProgrammeFrame aside={aside}>
+      <ProgrammeFrame profile={profile} aside={aside}>
         <Card style={{ marginBottom: 16 }}>
           <div
             style={{
@@ -494,12 +501,14 @@ export function RoutineEditor({
               flexWrap: "wrap",
             }}
           >
-            <div style={{ minWidth: 0 }}>
+            {/* EV-342f F.3: below 1280 px the name takes the whole row (`.prog-name`). */}
+            <div className="prog-name" style={{ minWidth: 0 }}>
               <label htmlFor="plan-name" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}>
                 {copy.routine.planNameLabel}
               </label>
               <input
                 id="plan-name"
+                className="prog-name-input"
                 value={document.name}
                 title={document.name}
                 onChange={(e) => edit({ ...document, name: e.target.value })}
@@ -507,7 +516,8 @@ export function RoutineEditor({
                   display: "block",
                   marginTop: 6,
                   height: MIN_TOUCH_TARGET,
-                  width: "min(360px, 100%)",
+                  // The width is the class's (EV-342f F.3): a media query cannot reach an
+                  // inline declaration (BUG-380).
                   borderRadius: "var(--r-md)",
                   border: "1px solid var(--border-2)",
                   background: "var(--surface)",
@@ -876,15 +886,21 @@ const BAR_BUTTON: CSSProperties = {
 };
 
 /**
- * EV-337f1 F1.4 — the programme's two-column frame: the aside first in the document (above
- * the editor in one column, plan §3), beside it from a 1280 px viewport by grid placement.
- * CSS decides, never a viewport hook (plan §3 rule 5).
+ * EV-337f1 F1.4 — the programme's two-column frame, beside each other from a 1280 px
+ * viewport by grid placement. CSS decides, never a viewport hook (plan §3 rule 5).
+ *
+ * EV-342f (audit A6) — in ONE column (below 1280 px) the document order is the reading
+ * order: the profile line, the editor, then « Enregistrer comme modèle ». It used to be the
+ * whole aside first, which put the plan-name field at y≈630 at 1024×800. From 1280 px the
+ * profile and the aside are placed back in the second column, one under the other, so that
+ * layout is unchanged (F.4).
  */
-function ProgrammeFrame({ aside, children }: { aside: ReactNode; children: ReactNode }) {
+function ProgrammeFrame({ profile, aside, children }: { profile: ReactNode; aside: ReactNode; children: ReactNode }) {
   return (
     <div className="layout-split prog-split">
-      {aside ? <div className="prog-aside">{aside}</div> : null}
+      {profile ? <div className="prog-profile">{profile}</div> : null}
       <div className="prog-main">{children}</div>
+      {aside ? <div className="prog-aside">{aside}</div> : null}
     </div>
   );
 }

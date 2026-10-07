@@ -3,6 +3,7 @@ import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientHeader } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
+import { ProfileLine } from "@/components/routine/ProfileLine";
 import {
   RoutineEditor,
   type PublishedRoutine,
@@ -46,7 +47,8 @@ import { getCopy } from "@/lib/i18n/server";
  * EV-337f1 — the frame (plan §5.3). One `h1`, the client's name, from `ClientHeader`;
  * the tab's own title is the `h2` below it in EVERY state (ruling 16, F1.6). The
  * trainee-changed banner sits above both columns; the aside (profile, « Enregistrer comme
- * modèle ») is beside the editor from 1280 px and above it below that (F1.4).
+ * modèle ») is beside the editor from 1280 px (F1.4). EV-342f: below 1280 px the profile is
+ * one line above the editor and « Enregistrer comme modèle » comes after it.
  */
 export const dynamic = "force-dynamic";
 
@@ -195,46 +197,55 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   const changedByTrainee = traineeChangeNotice(routine, displayName, copy);
 
   /**
-   * EV-337f1 F1.4 — what the aside holds: the trainee's profile card and « Enregistrer comme
-   * modèle ». Null when neither can render (no guardrails sent, and no plan or draft to
-   * save as a template), so a two-column page never draws an empty column.
+   * EV-337f1 F1.4 — the trainee's profile card, and (EV-342f) the one line it folds into
+   * below 1280 px: the injuries by name, the equipment as a count, or « pas encore
+   * renseigné » when the trainee never answered (a 0 would say they own nothing). Rendered
+   * only when the api sent the guardrails (see `guardrails` above).
+   */
+  const profile = guardrails ? (
+    <ProfileLine
+      line={copy.routine.profileLine(
+        injuryLabels(guardrails.injuries, copy),
+        guardrails.equipmentChecked ? guardrails.equipment.length : null
+      )}
+      details={copy.routine.profileDetails}
+    >
+      <ProfileFacts
+        title={copy.routine.profileTitle}
+        icon="shield"
+        groups={[
+          { label: copy.routine.injuries, values: injuryLabels(guardrails.injuries, copy) },
+          {
+            label: copy.routine.equipment,
+            values: equipmentLabels(guardrails.equipment, copy),
+            // `equipmentChecked` is the api's own derivation of "a non-empty
+            // equipment list reached the policy", and it is the only thing that
+            // separates a trainee who recorded no equipment from one who never
+            // answered. It is read here and nowhere else: it authorises no
+            // equipment-safety sentence, because BUG-053 is undeployed and
+            // AC3's warning box already says the plan is checked against
+            // injuries and not equipment.
+            empty: guardrails.equipmentChecked ? undefined : copy.routine.equipmentUnanswered,
+          },
+        ]}
+      />
+    </ProfileLine>
+  ) : null;
+
+  /**
+   * AC1's two other entry points into the library. Rendered in the editor's aside and
+   * outside its document: it writes to the COACH's library, not to this trainee's plan, and
+   * nothing it does can reach the editor's working copy. It renders nothing at all when
+   * there is neither a plan document nor a draft (edge case 12), and then no aside is drawn,
+   * so a two-column page never draws an empty column.
    */
   const aside =
-    guardrails || activePlan || draft ? (
-      <>
-        {guardrails && (
-          <ProfileFacts
-            title={copy.routine.profileTitle}
-            icon="shield"
-            groups={[
-              { label: copy.routine.injuries, values: injuryLabels(guardrails.injuries, copy) },
-              {
-                label: copy.routine.equipment,
-                values: equipmentLabels(guardrails.equipment, copy),
-                // `equipmentChecked` is the api's own derivation of "a non-empty
-                // equipment list reached the policy", and it is the only thing that
-                // separates a trainee who recorded no equipment from one who never
-                // answered. It is read here and nowhere else: it authorises no
-                // equipment-safety sentence, because BUG-053 is undeployed and
-                // AC3's warning box already says the plan is checked against
-                // injuries and not equipment.
-                empty: guardrails.equipmentChecked ? undefined : copy.routine.equipmentUnanswered,
-              },
-            ]}
-          />
-        )}
-        {/*
-          AC1's two other entry points into the library. Rendered in the editor's aside and
-          outside its document: it writes to the COACH's library, not to this trainee's plan, and
-          nothing it does can reach the editor's working copy. It renders nothing at
-          all when there is neither a plan document nor a draft (edge case 12).
-        */}
-        <SaveAsTemplateButton
-          clientId={params.id}
-          planName={activePlan ? activePlan.document.name : null}
-          hasDraft={draft !== null}
-        />
-      </>
+    activePlan || draft ? (
+      <SaveAsTemplateButton
+        clientId={params.id}
+        planName={activePlan ? activePlan.document.name : null}
+        hasDraft={draft !== null}
+      />
     ) : null;
 
   /*
@@ -276,6 +287,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
               {changedByTrainee && <TraineeChangedBanner sentence={changedByTrainee} />}
             </>
           }
+          profile={profile}
           aside={aside}
         />
       )}

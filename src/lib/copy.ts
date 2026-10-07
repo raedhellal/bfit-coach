@@ -935,6 +935,16 @@ export const en = {
      * trainee who owns nothing.
      */
     equipmentUnanswered: "Not answered yet.",
+    /**
+     * EV-342f F.2, verbatim: below 1280 px the profile card folds into this one line above
+     * the editor, so the injuries stay readable without a click. `equipment` is the count,
+     * or null when the trainee never answered (`equipmentChecked` false): a 0 there would
+     * say they own nothing, the claim `equipmentUnanswered` exists to avoid.
+     */
+    profileLine: (injuries: string[], equipment: number | null) =>
+      `Injuries: ${injuries.length > 0 ? injuries.join(", ") : "none"} · Equipment: ${equipment ?? "not answered yet"}`,
+    /** EV-342f F.2, verbatim: the control that opens the full profile card in place. */
+    profileDetails: "Details",
     emptyTitle: "No active plan", // AC1, verbatim
     emptyBody: "Nothing is scheduled for this trainee yet.",
     build: "Build a plan", // AC1, verbatim
