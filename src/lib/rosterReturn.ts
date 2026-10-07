@@ -32,7 +32,9 @@ import type { RosterFilter } from "./rosterView";
  *      back past the roster). The residual false positive is a plain click whose navigation
  *      never commits (cancelled, failed), followed by a Back or Forward that lands on the
  *      noted target: that traversal is counted as the push, and « Retour » then goes Back to
- *      whatever precedes the target's entry. Not constructed in a test; stated so nobody
+ *      whatever precedes the target's entry. A full document load onto the noted target (a
+ *      typed URL, a bookmark) is not counted either: the counter starts fresh in each document.
+ *      Not constructed in a test; stated so nobody
  *      reads the count as proof.
  *      On the Back path the browser restores the scroll position itself (Chromium and
  *      WebKit, measured); the explicit restore (`takeScrollRestore`) is what the link path

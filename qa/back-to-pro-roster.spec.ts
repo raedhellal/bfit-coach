@@ -179,8 +179,12 @@ test.describe("BUG-691 staff review", () => {
     await signInThroughForm(page);
     await page.goto("/templates");
     await page.goto(`/clients/${LINA}`);
+    // Hydrated before any click (staff N1): under load a pre-hydration page has no React
+    // listener, so a click would prove nothing about the guard either way.
+    await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
     await page.getByRole("link", { name: "Back to roster", exact: true }).click();
     await expect.poll(() => rosterPath(page)).toBe("/");
+    await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
 
     const opened = context.waitForEvent("page", { timeout: 5_000 }).catch(() => null);
     await page.locator(`a.roster-row[href="/clients/${LINA}"]`).click({ modifiers: ["ControlOrMeta"] });
