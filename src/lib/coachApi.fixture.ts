@@ -198,8 +198,8 @@ const KAIA_ID = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0010";
  *           `POST /me/plan/generate` and never `POST /plans/select`), AND five real
  *           completed sessions dated inside the window. He is the only trainee on whom
  *           the two blocks can be read against each other on one screen: the adherence
- *           card must describe the missing PLAN, while *Recent sessions* below it still
- *           lists the five workouts he actually did. Kaia cannot carry this — she has
+ *           card must describe the missing PLAN, while *Recent activity* (the session
+ *           list since EV-342j) still lists the five workouts he actually did. Kaia cannot carry this — she has
  *           no sessions at all, so on her page the old sentence was merely useless
  *           rather than false, which is why 242 green tests never saw BUG-205.
  *   Elif  — AC2: a plan DID exist in the window and scheduled nothing, so
