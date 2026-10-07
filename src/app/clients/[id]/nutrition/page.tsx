@@ -17,6 +17,7 @@ import {
 } from "@/lib/coachApi";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
+import { dietValueLabel } from "@/lib/dietValueLabel";
 import { recipePlacementOn } from "@/lib/recipePlacement";
 
 /**
@@ -116,12 +117,19 @@ export default async function NutritionPage({ params }: { params: { id: string }
             title={copy.nutrition.title}
             icon="shield"
             groups={[
-              { label: copy.nutrition.allergies, values: nutrition.dietProfile.allergies },
+              // BUG-694: the app stores its presets' English labels; show them in the page's language.
+              {
+                label: copy.nutrition.allergies,
+                values: nutrition.dietProfile.allergies.map((v) => dietValueLabel(copy.nutrition.allergyPresetLabels, v)),
+              },
               {
                 label: copy.nutrition.rules,
                 values: nutrition.dietProfile.rules.map((rule) => copy.nutrition.ruleLabels[rule] ?? rule),
               },
-              { label: copy.nutrition.dislikes, values: nutrition.dietProfile.dislikes },
+              {
+                label: copy.nutrition.dislikes,
+                values: nutrition.dietProfile.dislikes.map((v) => dietValueLabel(copy.nutrition.dislikePresetLabels, v)),
+              },
             ]}
             emptyAll={copy.nutrition.noRestrictions}
           />
