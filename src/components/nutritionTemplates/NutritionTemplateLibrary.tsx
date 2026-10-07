@@ -69,7 +69,11 @@ export function NutritionTemplateLibrary({
   const [pending, startTransition] = useTransition();
 
   const close = () => setDialog(null);
-  const create = () => router.push("/nutrition-templates/new");
+  // EV-342a: `/new` drew the list's `loading.tsx` until that file went; the bar covers it now.
+  const create = () => {
+    startNavigationProgress("/nutrition-templates/new");
+    router.push("/nutrition-templates/new");
+  };
 
   function duplicate(template: NutritionTemplate) {
     startTransition(async () => {

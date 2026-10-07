@@ -3237,9 +3237,9 @@ async function withServedWeekStatus(state: NutritionState): Promise<NutritionSta
  * BUG-597 (2026-10-01) — ⚠ fixture affordance: `evoli_fixture_read_delay=<ms>`
  * holds the three library DETAIL reads (a workout template, a recipe, a nutrition
  * template) for that long, capped at 5 s, in ONE browser context. A fixture read answers
- * in microseconds, so a page's `loading.tsx` is otherwise on screen for a frame or two,
- * which is long enough to scroll a 320 px page sideways and too short to measure. The
- * delay is what makes the loading state a state a test can stand in.
+ * in microseconds, so the wait a slow api gives a coach is otherwise too short to stand
+ * in. Since EV-342a those pages have no `loading.tsx`: the hold is what lets a test
+ * watch the list stay on screen and the navigation progress bar show.
  */
 async function heldDetailRead(): Promise<void> {
   const ms = Number(await fixtureSwitch("evoli_fixture_read_delay"));

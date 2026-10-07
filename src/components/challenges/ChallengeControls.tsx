@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 import { Button, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
@@ -64,7 +65,9 @@ export function ChallengeControls({ id, title, metric }: { id: string; title: st
       }
       setConfirm(false);
       // No `router.refresh()` (ADR-0033 branch 2a): `deleteChallengeAction` revalidates,
-      // which purged the router cache, so this navigation renders the list fresh.
+      // which purged the router cache, so this navigation renders the list fresh. The list
+      // has no `loading.tsx` (EV-342a): the progress bar covers a slow read.
+      startNavigationProgress("/challenges");
       router.replace("/challenges");
     });
   }
