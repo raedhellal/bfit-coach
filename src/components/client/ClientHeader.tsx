@@ -1,9 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar, Badge } from "@/components/ui/kit";
-import { BackLink } from "@/components/ui/BackLink";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { ClientTabs, type ClientTab } from "./ClientTabs";
+import { RosterBackLink } from "./RosterBackLink";
 import { getCopy } from "@/lib/i18n/server";
 import { formatInstant, truncateName } from "@/lib/format";
 
@@ -46,7 +46,8 @@ export function ClientHeader({
   return (
     <div className="client-head-wrap">
       <div style={{ marginBottom: 6 }}>
-        <BackLink href="/" label={copy.shell.backToRoster} flush />
+        {/* BUG-691: Back to the roster as the coach left it, without a new history entry. */}
+        <RosterBackLink label={copy.shell.backToRoster} />
       </div>
 
       <div className="client-head">
