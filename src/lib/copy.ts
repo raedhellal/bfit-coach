@@ -16,18 +16,14 @@
  * item 12 — ⛔ D8/D9 are open).
  */
 import type { Locale } from "./i18n/locale";
+import { endSentence } from "./endSentence";
 
 /**
- * Append a full stop unless the value already ends a sentence.
- *
- * Trainee display names in this product are frequently `"Yusuf A."` — an initial with
- * its own stop — so any sentence that interpolates one and then punctuates produces a
- * double stop. It is the smallest possible defect and it was shipped and then pinned by
- * a test, which is why it gets a named helper rather than a `.replace` at one call site.
+ * Re-exported for the callers that always found it here. It LIVES in its own module
+ * (EV-342m) so that `copy.fr.ts` can use it without importing this file: in the browser
+ * each dictionary is its own chunk, and the French one must not pull the English one in.
  */
-export function endSentence(value: string): string {
-  return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`;
-}
+export { endSentence };
 
 export const en = {
   /** EV-324 — the dictionary's own language; formatters take it (`src/lib/format.ts`). */
