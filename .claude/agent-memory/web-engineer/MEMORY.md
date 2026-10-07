@@ -79,3 +79,4 @@
 - [EV-342k/j/m (2026-10-07)](ev342-kjm-portal-facts.md) — evoli_pro_coach cookie bound to sub; one session list, weigh-ins dropped, J.3 unmet; import() per-locale dict, route table hides the async chunk; zsh `$T:q` trap
 - [Free-text label lookup hits the prototype](a-label-map-lookup-of-free-text-hits-the-prototype.md) — BUG-694: labels["constructor"] is a function; own-property check, literal keys, key by index
 - [A nested button was a spec's discriminator](removing-a-nested-button-can-break-a-spec-that-used-it.md) — BUG-616 broke pro-back-link by count; grep qa for locator("button") first
+- [A module split can grow its page](a-module-split-can-grow-the-page-it-was-for.md) — EV-348: webpack duplicated split modules, client page +0.78 kB; measure encodedBodySize first
