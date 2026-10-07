@@ -47,6 +47,7 @@ export function InviteButton({
       </Button>
 
       <Modal
+        dirty={false}
         open={open}
         onClose={() => setOpen(false)}
         title={copy.invite.title}

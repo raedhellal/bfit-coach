@@ -88,6 +88,7 @@ export function ChallengeControls({ id, title, metric }: { id: string; title: st
         {c.remove}
       </Button>
       <Modal
+        dirty={false}
         open={confirm}
         onClose={() => setConfirm(false)}
         title={c.deleteTitle}

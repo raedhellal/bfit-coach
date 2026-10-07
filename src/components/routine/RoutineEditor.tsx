@@ -667,6 +667,7 @@ export function RoutineEditor({
       </StickyActionBar>
 
       <Modal
+        dirty={false}
         open={discarding}
         onClose={() => !pending && setDiscarding(false)}
         title={copy.routine.discardTitle}
@@ -697,6 +698,7 @@ export function RoutineEditor({
         a retry would overwrite on a guess.
       */}
       <Modal
+        dirty={false}
         open={conflict !== null}
         onClose={() => !pending && setConflict(null)}
         title={copy.routine.conflictTitle}
@@ -751,6 +753,7 @@ export function RoutineEditor({
         a dialog about losing work whose primary button loses it is a trap.
       */}
       <Modal
+        dirty={false}
         open={leaving.prompted}
         onClose={leaving.stay}
         title={copy.routine.leaveTitle}
@@ -806,6 +809,7 @@ function PublishModal({
   const hasRepairs = repairs.length > 0;
   return (
     <Modal
+      dirty={false}
       open={preview !== null}
       onClose={() => !pending && onCancel()}
       title={hasRepairs ? copy.routine.repairsTitle(repairs.length) : copy.routine.noChanges}

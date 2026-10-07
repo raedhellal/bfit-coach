@@ -324,6 +324,7 @@ function DeleteDialog({
 
   return (
     <Modal
+      dirty={false}
       open={recipe !== null}
       onClose={() => !pending && onClose()}
       title={copy.recipes.deleteTitle}

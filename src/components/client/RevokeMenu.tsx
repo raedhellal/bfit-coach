@@ -106,6 +106,7 @@ export function RevokeMenu({ clientId, displayName }: { clientId: string; displa
       )}
 
       <Modal
+        dirty={false}
         open={confirmOpen}
         onClose={() => !busy && setConfirmOpen(false)}
         title={copy.client.revokeTitle}
