@@ -3268,7 +3268,8 @@ async function withLongPlanSwitch(id: string): Promise<void> {
  * day other than day 1 holding an unbindable exercise opens on load) is reachable: the
  * editor cannot produce such a name (exercises arrive through `CatalogPicker`), and the
  * one seeded case ("Legacy strength") has it on day 1. It writes the STORE, so a save and
- * a reload see the same draft; the per-test reset (fixture-test) removes it.
+ * a reload see the same draft; the per-test reset (fixture-test) removes it. Applied by
+ * BOTH routine reads (EV-342c reads them in parallel), whichever runs first.
  */
 async function withUnbindableDaySwitch(id: string): Promise<void> {
   if ((await fixtureSwitch("evoli_fixture_unbindable_day")) !== id) return;
@@ -3351,6 +3352,29 @@ async function summaryReadFailure(read: "routine" | "nutrition", id: string): Pr
   if (which !== read || client !== id) return;
   if (status === "403") await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
   if (status === "500") await fail(500, "INTERNAL_ERROR", "Internal error");
+}
+
+/**
+ * EV-342c — ⚠ fixture affordance: `evoli_fixture_draft_read=<mode>:<clientId>` (one browser
+ * context) changes ONE client's `GET …/routine/draft` answer, the read the programme tab
+ * now makes alongside the routine read instead of after it:
+ *   · `500` / `403` — the draft read alone fails (`INTERNAL_ERROR` / `COACH_ACCESS_DENIED`);
+ *     the routine read is untouched, so `hasDraft` keeps its stored value.
+ *   · `orphan` — the draft read answers a DOCUMENT (the client's published plan, renamed)
+ *     although no draft is stored, so the routine read says `hasDraft: false`. The two
+ *     reads are not atomic, and this is the disagreement C.2 says must be ignored.
+ * Returns the orphan draft to serve, or null. Read here only, so only in fixture mode.
+ */
+async function draftReadSwitch(id: string): Promise<StoredDraft | null> {
+  const raw = await fixtureSwitch("evoli_fixture_draft_read");
+  const [mode, client] = raw?.split(":") ?? [];
+  if (client !== id) return null;
+  if (mode === "403") await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  if (mode === "500") await fail(500, "INTERNAL_ERROR", "Internal error");
+  if (mode !== "orphan") return null;
+  const plan = state().plans.get(id);
+  if (!plan) return null;
+  return { document: { ...plan.document, name: "Orphan draft (EV-342c)" }, updatedAt: "2026-10-07T08:00:00Z" };
 }
 
 type SeededNutrition = Omit<NutritionState, "eaten" | "pool" | "excludedKeys" | "excludedNameWords"> &
@@ -5934,7 +5958,12 @@ export const fixtureCoachApi: CoachApi = {
   /** A 200 with nulls when there is no draft — never a 404, exactly as the api answers. */
   async getRoutineDraft(id: string): Promise<CoachRoutineDraftResponse> {
     await assertScope(id, "WORKOUTS");
-    const draft = state().drafts.get(id) ?? null;
+    // EV-342c: this read now runs ALONGSIDE `getRoutine`, so the switch that plants a
+    // draft must be applied here too, or the draft read can beat the plant and answer
+    // "none" while the routine read says `hasDraft: true` (idempotent: it plants once).
+    await withUnbindableDaySwitch(id);
+    const orphan = await draftReadSwitch(id);
+    const draft = state().drafts.get(id) ?? orphan;
     if (!draft) {
       return {
         document: null,

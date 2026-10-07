@@ -47,6 +47,15 @@ const CLIENT = process.env.PERF_CLIENT ?? "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001"
 const CHALLENGE = process.env.PERF_CHALLENGE ?? "c4a11e00-0000-4000-8000-000000000001";
 const HOLD_MS = Number(process.env.PERF_HOLD_MS ?? 60);
 /**
+ * EV-342c — opt-in: before the walk, apply the library's first routine template to
+ * PERF_CLIENT through « Use on a trainee », so the timed "overview → routine (first)"
+ * is the draft-started-from-a-template page (overview → routine + draft → library),
+ * not the no-draft one. The apply's own page is a document load the walk replaces with
+ * `page.goto("/")`, so the routine visit is still a first visit. Writes a draft: local
+ * fixture runs only (`SAVE`'s rule), and every iteration starts from the seed anyway.
+ */
+const DRAFT_FROM_TEMPLATE = process.env.PERF_DRAFT_TEMPLATE === "1";
+/**
  * Live mode only: a URL answering the number of requests b-fit-api has received so far
  * (a counting proxy in front of the LOCAL api). Read around each Save draft, it gives
  * the api requests a save costs when there is no fixture journal to count them.
@@ -340,6 +349,17 @@ for (let run = 1; run <= RUNS; run += 1) {
           listMarker: { path: list, selector: `a[href="${detailPath}"]` },
           detail: { path: detailPath, selector: "h1", text: name! },
         });
+      }
+
+      if (DRAFT_FROM_TEMPLATE) {
+        expect(SAVE, "PERF_DRAFT_TEMPLATE writes a draft: local runs only").toBe(true);
+        await page.goto("/templates");
+        await page.getByRole("button", { name: "Use on a trainee" }).first().click();
+        const dialog = page.getByRole("dialog");
+        await dialog.locator("select").selectOption(CLIENT);
+        await dialog.getByRole("button", { name: "Use this template" }).click();
+        await page.waitForURL(M.routine.path);
+        await page.getByText(/^Started from /).waitFor();
       }
 
       await page.goto("/");
