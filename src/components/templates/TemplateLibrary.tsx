@@ -563,10 +563,13 @@ function UseDialog({
   const [refusedAgain, setRefusedAgain] = useState(false);
   const [pending, startTransition] = useTransition();
   const [seeded, setSeeded] = useState(false);
+  /** BUG-699 — the trainee the picker opened on, kept: a refresh may reorder `trainees`. */
+  const [openingId, setOpeningId] = useState("");
 
   if (open && !seeded) {
     setSeeded(true);
     setClientId(trainees[0]?.id ?? "");
+    setOpeningId(trainees[0]?.id ?? "");
     setConflict(null);
     setError(null);
     setRefusedAgain(false);
@@ -628,8 +631,8 @@ function UseDialog({
     <Modal
       open={open}
       onClose={() => !pending && onClose()}
-      // BUG-699 — the picker opens on the first trainee.
-      dirty={!noTrainees && clientId !== (trainees[0]?.id ?? "")}
+      // BUG-699 — a trainee other than the one the picker opened on.
+      dirty={!noTrainees && clientId !== openingId}
       title={copy.templates.useTitle}
       icon="upload"
       iconTone="blue"

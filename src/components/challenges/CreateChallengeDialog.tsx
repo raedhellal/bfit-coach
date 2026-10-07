@@ -50,8 +50,9 @@ export interface InviteTarget {
  * untouched dialog, a closed one and a created challenge are never guarded. Closing the
  * dialog itself (Cancel, ×) is the coach's own explicit dismissal and is not a leave. The
  * backdrop closes it only while nothing differs from the opening values (BUG-699: the same
- * `draft.dirty`, so a stray click outside cannot throw a typed challenge away). Its fields are not in the server HTML (`Modal` renders nothing while closed),
- * so there is nothing typed before hydration to adopt and `scope` is not attached.
+ * `draft.dirty`, so a stray click outside cannot throw a typed challenge away). Its fields
+ * are not in the server HTML (`Modal` renders nothing while closed), so there is nothing
+ * typed before hydration to adopt and `scope` is not attached.
  */
 export function CreateChallengeDialog({
   clients,
