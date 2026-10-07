@@ -17,9 +17,24 @@ import type { Locale } from "./locale";
  * rather than quietly speaking English to a French coach.
  */
 const CopyContext = createContext<Copy | null>(null);
+const LocaleContext = createContext<Locale | null>(null);
 
 export function CopyProvider({ locale, children }: { locale: Locale; children: React.ReactNode }) {
-  return <CopyContext.Provider value={copyFor(locale)}>{children}</CopyContext.Provider>;
+  return (
+    <LocaleContext.Provider value={locale}>
+      <CopyContext.Provider value={copyFor(locale)}>{children}</CopyContext.Provider>
+    </LocaleContext.Provider>
+  );
+}
+
+/**
+ * BUG-689 — the locale string, for a client component that must draw what a server one
+ * draws with `getLocale()` (the error boundary's shell: its language switch shows it).
+ */
+export function useLocale(): Locale {
+  const locale = useContext(LocaleContext);
+  if (!locale) throw new Error("useLocale() outside <CopyProvider> — the root layout mounts it.");
+  return locale;
 }
 
 /** `const copy = useCopy();` at the top of a client component. */
