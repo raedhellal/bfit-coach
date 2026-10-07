@@ -1,4 +1,5 @@
-import { endSentence, type Copy } from "./copy";
+import type { Copy } from "./copy";
+import { endSentence } from "./endSentence";
 import { formatKcal } from "./format";
 
 /**
