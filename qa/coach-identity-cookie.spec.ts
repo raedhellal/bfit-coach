@@ -1,6 +1,7 @@
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { decodeJwt } from "../src/lib/jwt";
 
 /**
  * EV-342k (audit A17) — the coach's name without a `GET /coach-portal/me` on every page.
@@ -156,4 +157,63 @@ test("a cookie written for another account is not believed: the name comes from 
   });
   expect(reads).toBe(1);
   await expect(page.getByText("Mallory")).toHaveCount(0);
+});
+
+test("K.1 at activation: the activated coach's cookie is written, bound to the NEW token's subject", async ({
+  page,
+  context,
+}) => {
+  // A fixture account the admin initialised (EV-278c): its token's sub is its own, and the
+  // fixture's `/me` answers the shared coach id — so here `s` and `c` DIFFER, and a writer
+  // that put the subject where the coach id belongs (`c: s`) fails this test.
+  await signInThroughForm(page, { email: "new.coach@evoli.fit", password: "Temp-pass-2026", landing: null });
+  await page.waitForURL(/\/activate$/);
+  expect(await identityCookie(context), "no cookie for a PENDING session").toBeUndefined();
+
+  await page.getByLabel("Temporary password").fill("Temp-pass-2026");
+  await page.getByLabel("New password", { exact: true }).fill("Coach-pass-2026");
+  await page.getByLabel("Repeat the new password").fill("Coach-pass-2026");
+  await page.getByRole("checkbox", { name: "I agree to the Terms of Service and the Privacy Policy." }).check();
+  await page.getByRole("button", { name: "Finish my account" }).click();
+  await page.waitForURL(/\/$/);
+
+  const cookie = await identityCookie(context);
+  expect(cookie, `the ${IDENTITY} cookie exists after activation`).toBeTruthy();
+  expect(cookie!.httpOnly).toBe(true);
+  const access = (await context.cookies()).find((c) => c.name === "evoli_pro_at");
+  const sub = decodeJwt(access!.value)?.sub;
+  expect(sub, "the activated token has a subject of its own").toBeTruthy();
+  expect(sub).not.toBe(COACH_ID);
+  const value = JSON.parse(decodeURIComponent(cookie!.value)) as { s: string; c: string; n: string };
+  expect(value).toEqual({ s: sub, c: COACH_ID, n: COACH_NAME });
+
+  const reads = await meReadsDuring(page, async () => {
+    await page.goto("/templates");
+    await expect(shellName(page)).toHaveText(COACH_NAME);
+  });
+  expect(reads, "after activation a page reads no /me").toBe(0);
+});
+
+test("a stalled /me never holds the sign-in: it answers within the bound and writes no cookie", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  // The fixture holds every call for the latency cookie's value (capped at 2 s): 2 s is
+  // past `REMEMBER_COACH_TIMEOUT_MS` (1.5 s), so the name read loses the race.
+  await context.addCookies([{ name: "evoli_fixture_api_latency", value: "2000", url: baseURL! }]);
+  const started = Date.now();
+  const login = await page.request.post("/api/auth/login", {
+    data: { email: "coach@evoli.fit", password: "Password123!" },
+    maxRedirects: 0,
+  });
+  const elapsed = Date.now() - started;
+  expect(login.status(), "the sign-in still succeeds").toBe(200);
+  expect(elapsed, "answered at the 1.5 s bound, not after the 2 s hold").toBeLessThan(1_950);
+  expect(await identityCookie(context)).toBeUndefined();
+  await context.clearCookies({ name: "evoli_fixture_api_latency" });
+
+  // And the session works, the name from the per-request fallback (K.4).
+  await page.goto("/templates");
+  await expect(shellName(page)).toHaveText(COACH_NAME);
 });

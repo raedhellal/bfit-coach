@@ -2746,10 +2746,11 @@ const liveCoachApi = {
 
   /**
    * `GET /coach-portal/me`. With `bearer`, the token a sign-in handler has just received
-   * (EV-342k: the name goes into the identity cookie at sign-in); without, the cookie's.
+   * (EV-342k: the name goes into the identity cookie at sign-in), bounded by `signal`;
+   * without, the cookie's.
    */
-  getMe(bearer?: string): Promise<CoachMe> {
-    return bearer ? apiGetAs<CoachMe>("/coach-portal/me", bearer) : apiFetch<CoachMe>("/coach-portal/me");
+  getMe(bearer?: string, signal?: AbortSignal): Promise<CoachMe> {
+    return bearer ? apiGetAs<CoachMe>("/coach-portal/me", bearer, signal) : apiFetch<CoachMe>("/coach-portal/me");
   },
   /**
    * `sort` is sent on every call, including for the default: the api's default and
