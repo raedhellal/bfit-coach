@@ -550,87 +550,16 @@ export function seedFields(goal: TraineeProgressGoal, locale: Locale): {
  * re-seeded, whatever caused the props to change.** A field they have not touched
  * still tracks the server, so a value changed in another tab still lands.
  *
+ * Since EV-342o the rule lives in `useCoachForm` (`coachFormState.ts`: `edited` is the
+ * flag above, `touched` is EV-274 B4's "the body-fat text is the coach's"), so every
+ * portal form built with the hook has it, not only this block.
+ *
  * `revalidatePath` STAYS. It is what keeps every other path — a reload, a
  * back-navigation, a second tab — reading the stored values rather than a cached
  * render, and the same review that found the race confirmed nothing is stale on any
  * of them precisely because it fires.
  * ═══════════════════════════════════════════════════════════════════════════
  */
-export type ProgressGoalField = "startedOn" | "milestone" | "bodyFat";
-
-export interface ProgressGoalFormState {
-  startedOn: string;
-  milestone: string;
-  bodyFat: string;
-  /** Touched since the last settled save. Not rendered — it decides re-seeding only. */
-  dirty: { startedOn: boolean; milestone: boolean; bodyFat: boolean };
-  /**
-   * EV-274 B4 — is the body-fat TEXT the coach's rather than the server's? Decides
-   * whether `milestoneBodyFatPct` goes on the request at all.
-   *
-   * ⚠ Not the same flag as `dirty.bodyFat`, and the difference is a lost edit. `dirty` is
-   * cleared when a save is SENT (`markSent`) so the reply may re-seed the field; this is
-   * cleared only when the field IS re-seeded from the server. Between the two sits a save
-   * the api refused — a weight out of range — after which the field still holds the body
-   * fat the coach typed, and the next save must still carry it. Driving the key off
-   * `dirty` would send nothing, answer "Saved." and keep the old value.
-   */
-  bodyFatTouched: boolean;
-}
-
-/** A clean form, seeded from the server. Every field tracks the server again. */
-export function seedFormState(goal: TraineeProgressGoal, locale: Locale): ProgressGoalFormState {
-  return {
-    ...seedFields(goal, locale),
-    dirty: { startedOn: false, milestone: false, bodyFat: false },
-    bodyFatTouched: false,
-  };
-}
-
-/**
- * Re-seed from `goal`, keeping any field the coach is in the middle of editing.
- *
- * `dirty` is carried forward rather than cleared: a prop push is not a save, so it
- * must not decide that the coach has finished with a field. Only a settled save
- * clears it (`seedFormState`).
- */
-export function reseedPreservingEdits(
-  current: ProgressGoalFormState,
-  goal: TraineeProgressGoal,
-  locale: Locale
-): ProgressGoalFormState {
-  const seeded = seedFields(goal, locale);
-  return {
-    startedOn: current.dirty.startedOn ? current.startedOn : seeded.startedOn,
-    milestone: current.dirty.milestone ? current.milestone : seeded.milestone,
-    bodyFat: current.dirty.bodyFat ? current.bodyFat : seeded.bodyFat,
-    dirty: current.dirty,
-    // Re-seeded ⇒ the text is the server's again ⇒ the key stays off the next request.
-    bodyFatTouched: current.dirty.bodyFat ? current.bodyFatTouched : false,
-  };
-}
-
-/** One field edited by the coach — which marks it dirty and nothing else. */
-export function editField(
-  current: ProgressGoalFormState,
-  field: ProgressGoalField,
-  value: string
-): ProgressGoalFormState {
-  return {
-    ...current,
-    [field]: value,
-    dirty: { ...current.dirty, [field]: true },
-    bodyFatTouched: current.bodyFatTouched || field === "bodyFat",
-  };
-}
-
-/**
- * A save has been sent: every field is the coach's settled intent until re-touched.
- * `bodyFatTouched` is deliberately left as it is — see its jsdoc.
- */
-export function markSent(current: ProgressGoalFormState): ProgressGoalFormState {
-  return { ...current, dirty: { startedOn: false, milestone: false, bodyFat: false } };
-}
 
 /** What `describeChange` compares against — the stored values, not the field text. */
 export function storedValues(goal: TraineeProgressGoal): {

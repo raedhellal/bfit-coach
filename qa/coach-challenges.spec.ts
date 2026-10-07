@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
-import { signInThroughForm } from "./sign-in";
+import { signInThroughForm, type SignInLang } from "./sign-in";
 import { expectNoEnglish, signInFrench } from "./french";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 
@@ -747,3 +747,131 @@ test.describe("layout", () => {
     });
   });
 });
+
+/* ── BUG-665 / EV-342o — « Nouveau défi » built with useCoachForm ─────────────────────── */
+
+/**
+ * BUG-665 (restated, audit A14) and EV-342o O.3 / O.4 — « Nouveau défi », the fourth form,
+ * now built with `useCoachForm` and guarded while the dialog is open.
+ *
+ * The dialog covers the page, so the way out that loses a typed challenge is Back (and
+ * closing the tab, which the hook's `beforeunload` covers for every form). Closing the
+ * dialog itself, by Cancel, × or the backdrop, is the coach's own explicit dismissal and is
+ * NOT guarded: that is stated in the component and pinned below, so a later change to it is
+ * a decision and not a drift.
+ *
+ * In this file because it needs this file's config (`playwright.roster.config.ts`, the
+ * populated scenario): a challenge needs a client to invite. Copy is literal here.
+ */
+
+const LEAVE_GUARD = {
+  en: {
+    open: "New challenge",
+    dialog: "New challenge",
+    title: "Title",
+    submit: "Create and invite",
+    cancel: "Cancel",
+    leave: "Leave with unsaved changes?",
+    stay: "Stay on this page",
+    go: "Leave without saving",
+    client: "Lina M.",
+  },
+  fr: {
+    open: "Nouveau défi",
+    dialog: "Nouveau défi",
+    title: "Titre",
+    submit: "Créer et inviter",
+    cancel: "Annuler",
+    leave: "Quitter sans enregistrer ?",
+    stay: "Rester sur cette page",
+    go: "Quitter sans enregistrer",
+    client: "Lina M.",
+  },
+} as const;
+type Words = (typeof LEAVE_GUARD)[SignInLang];
+
+async function guardArmed(page: Page) {
+  await page.waitForFunction(() => window.history.state?.evoliUnsavedGuard === true);
+}
+async function guardDisarmed(page: Page) {
+  await page.waitForFunction(() => !window.history.state?.evoliUnsavedGuard);
+}
+async function pressBackHeld(page: Page) {
+  await page.goBack({ timeout: 3000 }).catch(() => null);
+}
+
+/** The roster first, then /challenges as a page of its own, so Back has somewhere to go. */
+async function openLeaveGuardDialog(page: Page, w: Words) {
+  await page.goto("/");
+  await page.goto("/challenges");
+  await page.getByRole("button", { name: w.open }).click();
+  const dialog = page.getByRole("dialog", { name: w.dialog, exact: true });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+for (const lang of ["en", "fr"] as const) {
+  const w = LEAVE_GUARD[lang];
+  const leaveDialog = (page: Page) => page.getByRole("dialog", { name: w.leave, exact: true });
+
+  test.describe(`BUG-665 — « Nouveau défi » in ${lang.toUpperCase()}`, () => {
+    test.use({ locale: lang === "en" ? "en-US" : "fr-FR", timezoneId: "UTC" });
+
+    test("a typed challenge: Back asks above the dialog, Stay keeps it, Leave goes", async ({ page }) => {
+      await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!", lang });
+      const dialog = await openLeaveGuardDialog(page, w);
+      await dialog.getByLabel(w.title).fill("Semaine des 10 000 pas");
+      await guardArmed(page);
+
+      await pressBackHeld(page);
+      await expect(leaveDialog(page)).toBeVisible();
+      await leaveDialog(page).getByRole("button", { name: w.stay, exact: true }).click();
+      await expect(leaveDialog(page)).toHaveCount(0);
+      await expect(page).toHaveURL(/\/challenges$/);
+      await expect(dialog.getByLabel(w.title)).toHaveValue("Semaine des 10 000 pas");
+
+      await pressBackHeld(page);
+      await leaveDialog(page).getByRole("button", { name: w.go, exact: true }).click();
+      await expect(page).toHaveURL(/\/$/);
+    });
+
+    test("an untouched dialog, and one closed by Cancel, are not asked about", async ({ page }) => {
+      await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!", lang });
+      const dialog = await openLeaveGuardDialog(page, w);
+      await dialog.getByLabel(w.title).fill("Abandoned");
+      await guardArmed(page);
+      await dialog.getByRole("button", { name: w.cancel, exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await guardDisarmed(page);
+
+      // Reopened in the SAME document (staff S2): `reset` put the defaults back, not a
+      // fresh mount. Closed untouched, it leaves nothing armed…
+      await page.getByRole("button", { name: w.open }).click();
+      const again = page.getByRole("dialog", { name: w.dialog, exact: true });
+      await expect(again.getByLabel(w.title)).toHaveValue("");
+      await again.getByRole("button", { name: w.cancel, exact: true }).click();
+      await expect(again).toHaveCount(0);
+      // …and the Cancel path handed its history entry back: ONE Back lands on the roster
+      // (a sentinel left behind would make this press land on /challenges again).
+      await page.goBack();
+      await expect(page).toHaveURL(/\/$/);
+      await expect(leaveDialog(page)).toHaveCount(0);
+    });
+
+    test("a created challenge opens with no question, and one Back press returns to the list", async ({ page }) => {
+      await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!", lang });
+      const dialog = await openLeaveGuardDialog(page, w);
+      await dialog.getByLabel(w.title).fill("Semaine des 10 000 pas");
+      await dialog.getByRole("checkbox", { name: w.client }).check();
+      await guardArmed(page);
+      await dialog.getByRole("button", { name: w.submit, exact: true }).click();
+      await page.waitForURL(/\/challenges\/[0-9a-f-]{36}\?created=1$/);
+      await expect(leaveDialog(page)).toHaveCount(0);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Semaine des 10 000 pas");
+
+      await page.goBack();
+      await expect(page).toHaveURL(/\/challenges$/);
+      await expect(leaveDialog(page)).toHaveCount(0);
+    });
+  });
+}

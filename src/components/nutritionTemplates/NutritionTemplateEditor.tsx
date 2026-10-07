@@ -14,7 +14,7 @@ import { NUTRITION_TEMPLATE_NAME_MAX } from "@/lib/nutritionTemplateUse";
 import { parseTarget, targetRefusal } from "@/lib/numberInput";
 import { settled } from "@/lib/settled";
 import type { NutritionTemplateTargetsRequest } from "@/lib/coachApi";
-import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
+import { useCoachForm } from "@/lib/useCoachForm";
 
 /**
  * EV-273b AC2 — the nutrition template editor. A name and four targets, and nothing
@@ -29,6 +29,11 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  *
  * The body is assembled in the server action from named values, so the island cannot
  * add a key to it (AC2: top-level keys exactly `name` and `targets`).
+ *
+ * BUG-665 / EV-342o: built with `useCoachForm`, so it asks before a link, Back or a closed
+ * tab drops unsaved work (the training-template editor's rules), and re-seeds from the
+ * server's props after its own update's `revalidatePath` without touching a field typed
+ * during the save.
  */
 export function NutritionTemplateEditor({
   templateId,
@@ -43,13 +48,16 @@ export function NutritionTemplateEditor({
   const router = useRouter();
   const copy = useCopy();
   const t = copy.nutritionTemplates;
-  const [name, setName] = useState(initial?.name ?? "");
-  const [calories, setCalories] = useState(initial ? String(initial.targets.calories) : "");
-  const [protein, setProtein] = useState(initial ? String(initial.targets.proteinG) : "");
-  const [carbs, setCarbs] = useState(initial ? String(initial.targets.carbsG) : "");
-  const [fat, setFat] = useState(initial ? String(initial.targets.fatG) : "");
-  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
-  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
+  const form = useCoachForm({
+    server: {
+      name: initial?.name ?? "",
+      calories: initial ? String(initial.targets.calories) : "",
+      protein: initial ? String(initial.targets.proteinG) : "",
+      carbs: initial ? String(initial.targets.carbsG) : "",
+      fat: initial ? String(initial.targets.fatG) : "",
+    },
+  });
+  const { name, calories, protein, carbs, fat } = form.values;
   /** The refusal on screen (AC2 or PB-2's sentence), or null. No request was sent. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const invalid = refusal !== null;
@@ -58,11 +66,11 @@ export function NutritionTemplateEditor({
   const [pending, startTransition] = useTransition();
 
   const fields = [
-    { key: "calories", label: copy.nutrition.calories, unit: copy.nutrition.kcal, value: calories, set: setCalories },
-    { key: "protein", label: copy.nutrition.protein, unit: copy.nutrition.grams, value: protein, set: setProtein },
-    { key: "carbs", label: copy.nutrition.carbs, unit: copy.nutrition.grams, value: carbs, set: setCarbs },
-    { key: "fat", label: copy.nutrition.fat, unit: copy.nutrition.grams, value: fat, set: setFat },
-  ];
+    { key: "calories", label: copy.nutrition.calories, unit: copy.nutrition.kcal },
+    { key: "protein", label: copy.nutrition.protein, unit: copy.nutrition.grams },
+    { key: "carbs", label: copy.nutrition.carbs, unit: copy.nutrition.grams },
+    { key: "fat", label: copy.nutrition.fat, unit: copy.nutrition.grams },
+  ] as const;
 
   const trimmed = name.trim();
   const nameRefusal =
@@ -99,6 +107,7 @@ export function NutritionTemplateEditor({
     if (nameRefusal) return;
     const [kcal, proteinG, carbsG, fatG] = values;
     const targets = { calories: kcal, proteinG, carbsG, fatG };
+    form.markSent();
     startTransition(async () => {
       const result = await settled(
         templateId === null
@@ -107,24 +116,31 @@ export function NutritionTemplateEditor({
         { ok: false, code: "FAILED" } as const
       );
       if (!result.ok) {
+        // The work stays unsaved, so the guard stays armed.
         setError(FAILURE[result.code]);
         return;
       }
       if (templateId === null) {
         // `replace`: Back from the library must not land on a "new" route that would
         // create a second template. EV-342a: the list has no `loading.tsx` any more, so
-        // the progress bar is what covers a slow list read.
-        startNavigationProgress("/nutrition-templates");
-        router.replace("/nutrition-templates");
+        // the progress bar is what covers a slow list read. Handed to `saved`, so the
+        // guard's history entry is gone first (a `replace` over it would leave a dead Back
+        // press behind), and the bar starts after that entry's popstate, which would stop a
+        // bar started before it.
+        form.saved(undefined, () => {
+          startNavigationProgress("/nutrition-templates");
+          router.replace("/nutrition-templates");
+        });
         return;
       }
+      form.saved();
       setNotice(t.saved);
       // No `router.refresh()` (ADR-0033 branch 2a): the update action revalidates.
     });
   }
 
   return (
-    <Card rootRef={scope}>
+    <Card rootRef={form.scope}>
       <label style={{ display: "block", marginBottom: 16 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>
           {t.nameLabel}
@@ -132,7 +148,7 @@ export function NutritionTemplateEditor({
         <input
           value={name}
           onChange={(e) => {
-            setName(e.target.value);
+            form.set("name", e.target.value);
             setError(null);
           }}
           style={{
@@ -169,9 +185,9 @@ export function NutritionTemplateEditor({
             <input
               aria-label={field.label}
               inputMode="numeric"
-              value={field.value}
+              value={form.values[field.key]}
               onChange={(e) => {
-                field.set(e.target.value);
+                form.set(field.key, e.target.value);
                 setRefusal(null);
               }}
               style={{
@@ -224,6 +240,7 @@ export function NutritionTemplateEditor({
           {error}
         </p>
       )}
+      {form.guard}
     </Card>
   );
 }

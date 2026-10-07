@@ -7,15 +7,13 @@ import {
   bodyFatToGoValue,
   buildProgressGoalRequest,
   describeChange,
-  editField,
-  markSent,
   parseBodyFatMilestone,
   progressRows,
   refusedMilestone,
-  reseedPreservingEdits,
-  seedFormState,
+  seedFields,
   toGoValue,
 } from "../src/lib/progressGoal";
+import { editField, markSent, reseedFromServer, seedForm } from "../src/lib/coachFormState";
 import type { TraineeProgressGoal } from "../src/lib/coachApi";
 import { dayIn, dayMinus } from "../src/lib/rosterView";
 
@@ -143,13 +141,30 @@ async function saveAndSettle(page: Page) {
   await answered;
 }
 
+/**
+ * After a save the server ACCEPTED: wait until a reload or a navigation is not a "leave".
+ *
+ * Since EV-342o / BUG-665 the block carries the unsaved-changes guard. A save that the
+ * server accepted hands the guard's history entry back (one `history.back()`), and the
+ * `beforeunload` prompt stands down with the save's own render. A reload sent before both
+ * was either cancelled by the prompt (Playwright dismisses it) or raced the traversal:
+ * `net::ERR_ABORTED` at ":686 editing only the start date…", 2 of 3 runs, because "Saved."
+ * from the PREVIOUS save is already on screen while this one is pending. So: the guard's
+ * entry is gone, and the button is back from « Saving… » (the transition has committed).
+ */
+async function savedAndSettled(page: Page) {
+  await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+  await page.waitForFunction(() => !window.history.state?.evoliUnsavedGuard);
+  await expect(block(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+}
+
 /** Put Lina back to a known state before a write test, so the file order is not a trap. */
 async function setLina(page: Page, startedOn: string, milestone: string) {
   await page.goto(`/clients/${LINA}`);
   await startDateField(page).fill(startedOn);
   await milestoneField(page).fill(milestone);
   await save(page);
-  await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+  await savedAndSettled(page);
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -483,28 +498,26 @@ test.describe("the request is a whole representation", () => {
      * returns a fresh RSC payload with the action's response), so "props changed" is
      * not evidence that the coach has finished typing.
      */
-    const opened = seedFormState(storedGoal("2026-06-01", 80), "en");
-    expect(opened).toEqual({
-      startedOn: "2026-06-01",
-      milestone: "80",
-      bodyFat: "",
-      dirty: { startedOn: false, milestone: false, bodyFat: false },
-      bodyFatTouched: false,
-    });
+    // EV-342o: the rule moved into `useCoachForm`'s state (`coachFormState.ts`); the block
+    // seeds it with `seedFields`, and these are the same assertions on the new home.
+    const opened = seedForm(seedFields(storedGoal("2026-06-01", 80), "en"));
+    expect(opened.values).toEqual({ startedOn: "2026-06-01", milestone: "80", bodyFat: "" });
+    expect(opened.edited).toEqual({ startedOn: false, milestone: false, bodyFat: false });
+    expect(opened.touched).toEqual({ startedOn: false, milestone: false, bodyFat: false });
 
     const typing = editField(opened, "milestone", "69");
-    const pushed = reseedPreservingEdits(typing, storedGoal("2026-07-01", 67), "en");
+    const pushed = reseedFromServer(typing, seedFields(storedGoal("2026-07-01", 67), "en"));
 
     // The touched field is the coach's…
-    expect(pushed.milestone, "an edited field was re-seeded from props").toBe("69");
+    expect(pushed.values.milestone, "an edited field was re-seeded from props").toBe("69");
     // …and the untouched one still follows the server.
-    expect(pushed.startedOn).toBe("2026-07-01");
+    expect(pushed.values.startedOn).toBe("2026-07-01");
     // A prop push is not a save, so it does not decide the coach has finished.
-    expect(pushed.dirty).toEqual({ startedOn: false, milestone: true, bodyFat: false });
+    expect(pushed.edited).toEqual({ startedOn: false, milestone: true, bodyFat: false });
 
     // Only a sent save settles them — after which both track the server again.
-    const afterSend = reseedPreservingEdits(markSent(typing), storedGoal("2026-07-01", 67), "en");
-    expect(afterSend.milestone).toBe("67");
+    const afterSend = reseedFromServer(markSent(typing), seedFields(storedGoal("2026-07-01", 67), "en"));
+    expect(afterSend.values.milestone).toBe("67");
   });
 
   test("a save that changes nothing is not reported as a clear", () => {
@@ -668,7 +681,7 @@ test.describe("🔴 the edit form always sends BOTH fields", () => {
     // date, and the provenance line would fall back to the link-date clause.
     await milestoneField(page).fill("66");
     await saveAndSettle(page);
-    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    await savedAndSettled(page);
     await page.reload();
 
     await expect(startDateField(page)).toHaveValue(isoDate(50));
@@ -686,7 +699,7 @@ test.describe("🔴 the edit form always sends BOTH fields", () => {
 
     await startDateField(page).fill(isoDate(22));
     await saveAndSettle(page);
-    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    await savedAndSettled(page);
     await page.reload();
 
     await expect(milestoneField(page)).toHaveValue("65");
@@ -821,7 +834,7 @@ test.describe("edge cases 6 and 7 — a refused number, and a deliberate clear",
     // Edge case 7: an explicit null is a write, not a no-op.
     await milestoneField(page).fill("");
     await saveAndSettle(page);
-    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    await savedAndSettled(page);
     await page.reload();
 
     await expect(cell(page, "weight", "milestone")).toHaveCount(0);
@@ -846,7 +859,7 @@ test.describe("edge cases 6 and 7 — a refused number, and a deliberate clear",
      */
     await startDateField(page).fill("");
     await saveAndSettle(page);
-    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    await savedAndSettled(page);
     await page.reload();
 
     await expect(block(page).locator("[data-provenance='startedOn']")).toHaveText(
@@ -1095,7 +1108,7 @@ test.describe("EV-274b AC3 — no body-fat reading", () => {
 
     await bodyFatField(page).fill("22.0");
     await saveAndSettle(page);
-    await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
+    await savedAndSettled(page);
     await page.reload();
 
     // EV-274b AC3, verbatim. The api sends no `bodyFatToGoPts` here — absent, not 0.
@@ -1381,16 +1394,16 @@ test.describe("EV-274b — the pure rules", () => {
 
   test("touched survives a sent save and ends only at a re-seed from the server", () => {
     const goal = traineeA();
-    const typed = editField(seedFormState(goal, "en"), "bodyFat", "21");
-    expect(typed.bodyFatTouched).toBe(true);
-    // Sent: dirty clears so the reply may re-seed — touched does NOT.
+    const typed = editField(seedForm(seedFields(goal, "en")), "bodyFat", "21");
+    expect(typed.touched.bodyFat).toBe(true);
+    // Sent: `edited` clears so the reply may re-seed — touched does NOT.
     const sent = markSent(typed);
-    expect(sent.dirty.bodyFat).toBe(false);
-    expect(sent.bodyFatTouched).toBe(true);
+    expect(sent.edited.bodyFat).toBe(false);
+    expect(sent.touched.bodyFat).toBe(true);
     // The server's answer re-seeds the field, and only then is the text the server's.
-    const reseeded = reseedPreservingEdits(sent, { ...goal, milestoneBodyFatPct: 21 }, "en");
-    expect(reseeded.bodyFat).toBe("21");
-    expect(reseeded.bodyFatTouched).toBe(false);
+    const reseeded = reseedFromServer(sent, seedFields({ ...goal, milestoneBodyFatPct: 21 }, "en"));
+    expect(reseeded.values.bodyFat).toBe("21");
+    expect(reseeded.touched.bodyFat).toBe(false);
   });
 
   test("changed: bodyfat alone, both for more than one, cleared for all three", () => {
