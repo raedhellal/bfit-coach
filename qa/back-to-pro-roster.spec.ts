@@ -163,6 +163,64 @@ test.describe("BUG-691, the other paths back", () => {
   });
 });
 
+test.describe("BUG-691 staff review", () => {
+  test.use({ viewport: { width: 1440, height: 700 } });
+
+  /*
+   * B1 (staff probe, made a test): a Cmd/Ctrl+click opens the row in another tab and THIS tab
+   * stays on the roster. It used to write the "leaving" note anyway; the browser Back that
+   * followed was then counted as the push from the roster, and « Back to roster » went Back
+   * past it, to /templates (or out of Evoli for a client opened from an email).
+   */
+  test("B1: a Cmd/Ctrl+click on a row notes nothing; after a browser Back, « Back to roster » lands on the roster", async ({
+    page,
+    context,
+  }) => {
+    await signInThroughForm(page);
+    await page.goto("/templates");
+    await page.goto(`/clients/${LINA}`);
+    await page.getByRole("link", { name: "Back to roster", exact: true }).click();
+    await expect.poll(() => rosterPath(page)).toBe("/");
+
+    const opened = context.waitForEvent("page", { timeout: 5_000 }).catch(() => null);
+    await page.locator(`a.roster-row[href="/clients/${LINA}"]`).click({ modifiers: ["ControlOrMeta"] });
+    await (await opened)?.close();
+    expect(rosterPath(page), "this tab stayed on the roster").toBe("/");
+    expect(await page.evaluate(() => sessionStorage.getItem("evoli.roster.return")), "no note written").toBeNull();
+
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/clients/${LINA}$`));
+    await page.getByRole("link", { name: "Back to roster", exact: true }).click();
+    await expect.poll(() => rosterPath(page), "on the roster, not the page before it").toBe("/");
+  });
+
+  /* S1: the note holds the coach's search and a client id; a session boundary drops it. */
+  test("S1: signing out forgets the roster's note; the next session's back link is the plain roster", async ({ page }) => {
+    await signInThroughForm(page);
+    await narrowAndScroll(page, "en");
+    await openLina(page);
+    expect(await page.evaluate(() => sessionStorage.getItem("evoli.roster.return")), "the note exists").toContain(
+      "q=lin"
+    );
+
+    await page.getByRole("button", { name: "Sign out", exact: true }).click();
+    await page.waitForURL(/\/login/);
+    await signInThroughForm(page);
+    expect(
+      await page.evaluate(() => [
+        sessionStorage.getItem("evoli.roster.return"),
+        sessionStorage.getItem("evoli.roster.restoreScroll"),
+        sessionStorage.getItem("evoli.urlChanges"),
+      ]),
+      "nothing of the last session's roster survives"
+    ).toEqual([null, null, null]);
+
+    await page.goto(`/clients/${LINA}`);
+    await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
+    await expect(page.getByRole("link", { name: "Back to roster", exact: true })).toHaveAttribute("href", "/");
+  });
+});
+
 /* The configs' project is Chromium; WebKit is launched here, like focus-clear-of-bars.spec.ts. */
 test.describe("BUG-691 in WebKit, French, 390 px", () => {
   let browser: Browser;

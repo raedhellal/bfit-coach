@@ -29,7 +29,9 @@ import { filterFromParam, noteLeavingRoster, rosterHref, takeScrollRestore } fro
  *
  * BUG-691: the query and the filter are also the URL's (`?filter=alerts&q=lin`, see
  * `src/lib/rosterReturn.ts`), so coming back from a client, a reload and Back all show the
- * roster as the coach left it.
+ * roster as the coach left it. The island OWNS the roster's query string: any other
+ * parameter (`?utm=x`) or an unknown filter (`?filter=bogus`) is rewritten away on mount, so
+ * a future roster parameter must be added to `rosterHref`/`filterFromParam`.
  */
 export interface RosterEntry {
   id: string;
@@ -62,8 +64,13 @@ export function RosterBrowser({ entries }: { entries: RosterEntry[] }) {
     const y = takeScrollRestore();
     if (y !== null) window.scrollTo(0, y);
   }, []);
-  /** Any link followed out of the roster (a row) notes the roster as it is now. */
+  /**
+   * A link followed out of the roster (a row) IN THIS TAB notes the roster as it is now. A
+   * modified or middle click opens elsewhere and this tab stays here: noting it made
+   * « Retour aux clients » go Back past the roster later (staff review B1).
+   */
   const onLinkClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
     if (!anchor || anchor.origin !== window.location.origin) return;
     noteLeavingRoster(`${anchor.pathname}${anchor.search}`);

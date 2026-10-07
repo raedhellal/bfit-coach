@@ -19,13 +19,21 @@ import type { RosterFilter } from "./rosterView";
  *      its scroll position, the link followed and the URL-change count at that moment.
  *   3. **« Retour aux clients » goes BACK when the previous entry is that roster**
  *      (`cameStraightFromRoster`), and otherwise links to the noted URL. "Previous entry" is
- *      not something a page can read from the History API, so it is proved by counting: every
- *      committed URL change is counted (`UrlChangeCounter`, in the root layout), and the
- *      client page is directly after the roster exactly when ONE change happened since the
- *      roster noted its count, and that change landed on the link it noted. Any other path
- *      (a tab, a Back then Forward, a reload of another page) fails the test and gets the
- *      link, which still restores the filter, the search and the scroll position; it only
- *      adds the history entry this row is about, in the cases the count cannot vouch for.
+ *      not something a page can read from the History API, so it is INFERRED by counting:
+ *      every committed URL change is counted (`UrlChangeCounter`, in the root layout), and
+ *      the test passes when ONE change happened since the roster noted its count and that
+ *      change landed on the link it noted. Any other path (a tab, a Back then Forward, a
+ *      reload of another page) fails the test and gets the link, which still restores the
+ *      filter, the search and the scroll position; it only adds the history entry this row
+ *      is about, in the cases the count cannot vouch for.
+ *      **What the count cannot see:** a change is counted, not its kind. The note is only
+ *      written for a plain left click (a Cmd/Ctrl/Shift/Alt or middle click opens elsewhere
+ *      and this tab stays on the roster: staff review B1 showed that note sending « Retour »
+ *      back past the roster). The residual false positive is a plain click whose navigation
+ *      never commits (cancelled, failed), followed by a Back or Forward that lands on the
+ *      noted target: that traversal is counted as the push, and « Retour » then goes Back to
+ *      whatever precedes the target's entry. Not constructed in a test; stated so nobody
+ *      reads the count as proof.
  *      On the Back path the browser restores the scroll position itself (Chromium and
  *      WebKit, measured); the explicit restore (`takeScrollRestore`) is what the link path
  *      needs, because a push scrolls to the top.
@@ -106,6 +114,18 @@ function here(): string {
 export function noteLeavingRoster(target: string): void {
   const note: RosterReturn = { href: here(), scrollY: Math.round(window.scrollY), target, count: urlChangeCount() };
   write(RETURN_KEY, JSON.stringify(note));
+}
+
+/**
+ * Forget the roster's note, the restore request and the URL-change count. Called at every
+ * session boundary (`clearClientSession`, ADR-0033 D33.7): the note holds the coach's search
+ * text (often a trainee's name) and a client id, and a second coach in the same tab must not
+ * be sent back to the first one's `/?q=…` (staff review S1).
+ */
+export function clearRosterReturn(): void {
+  write(RETURN_KEY, null);
+  write(RESTORE_KEY, null);
+  write(COUNT_KEY, null);
 }
 
 export function readRosterReturn(): RosterReturn | null {
