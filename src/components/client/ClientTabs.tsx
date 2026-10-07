@@ -1,11 +1,10 @@
-import Link from "next/link";
 import { getCopy } from "@/lib/i18n/server";
-import { MIN_TOUCH_TARGET } from "@/components/ui/kit";
-
-export type ClientTab = "overview" | "routine" | "nutrition";
+import type { CoachAccessScope } from "@/lib/coachApi";
+import type { Copy } from "@/lib/copy";
+import { TabBar, type TabDef } from "./TabBar";
 
 /**
- * Overview · Routine · Nutrition (EV-184 AC1, EV-185 AC1).
+ * Overview · Routine · Nutrition (EV-184 AC1, EV-185 AC1), on EVERY client page (EV-342e).
  *
  * Real routes, not client-side panels. Three reasons: each tab is a separate api read
  * and a panel would make the overview pay for all three; a tab must be linkable,
@@ -13,62 +12,44 @@ export type ClientTab = "overview" | "routine" | "nutrition";
  * scope denial is per tab, so each one needs to be able to render its own sentence
  * under its own request.
  *
- * **All three tabs are always present, including for a scope the trainee has not
- * shared** (ADR-0015 D5). The ADR's B1 leaves the choice to EV-184b and this is it:
- * a tab that disappears is indistinguishable from a product that has no such feature,
- * so a coach would read a withheld scope as "Evoli Pro cannot do nutrition" and ask
- * support rather than ask their trainee. The tab is therefore rendered, and the page
- * behind it says in one sentence why it is empty — which is also why no `scopes` prop
- * is threaded through here: this component makes no decision that needs one, and an
- * unused prop is a contract someone will start depending on.
+ * **All tabs are always present, including for a scope the trainee has not shared**
+ * (ADR-0015 D5). The ADR's B1 leaves the choice to EV-184b and this is it: a tab that
+ * disappears is indistinguishable from a product that has no such feature, so a coach
+ * would read a withheld scope as "Evoli Pro cannot do nutrition" and ask support rather
+ * than ask their trainee. The tab is therefore rendered, and the page behind it says in
+ * one sentence why it is empty.
+ *
+ * **EV-342e (audit A5): the sections are DATA.** Before it, the overview drew two buttons
+ * and only the other pages drew this strip, and `ClientTab` was a closed union: a fourth
+ * section (EV-341b's intake) would have been added in two places. Now adding a section is
+ * ONE entry of `CLIENT_SECTIONS` (its key, its path under `/clients/{id}`, the scope its page
+ * reads) AND its two labels, `copy.tabs.<key>` in `copy.ts` and `copy.fr.ts` (the `satisfies`
+ * below refuses a key without one); `ClientTab` is derived from the array. `scope` is
+ * the section's data scope, stated beside it for the reader and for EV-341b; it does NOT
+ * hide the tab (D5 above), and `TabBar` (`./TabBar.tsx`) never reads it.
  *
  * Server component — the active tab is a prop, not `usePathname`, so this adds no
  * client JavaScript to a page that may otherwise need none.
  */
+export const CLIENT_SECTIONS = [
+  { key: "overview", path: "" },
+  { key: "routine", path: "/routine", scope: "WORKOUTS" },
+  { key: "nutrition", path: "/nutrition", scope: "NUTRITION" },
+] as const satisfies readonly { key: keyof Omit<Copy["tabs"], "label">; path: string; scope?: CoachAccessScope }[];
+
+export type ClientTab = (typeof CLIENT_SECTIONS)[number]["key"];
+
+/** The client's tabs, in order, in the request's language. */
+export function clientTabs(clientId: string, copy: Copy): TabDef[] {
+  return CLIENT_SECTIONS.map((s) => ({
+    key: s.key,
+    href: `/clients/${clientId}${s.path}`,
+    label: copy.tabs[s.key],
+    scope: "scope" in s ? s.scope : undefined,
+  }));
+}
+
 export function ClientTabs({ clientId, active }: { clientId: string; active: ClientTab }) {
   const copy = getCopy();
-  const tabs: { key: ClientTab; label: string; href: string }[] = [
-    { key: "overview", label: copy.tabs.overview, href: `/clients/${clientId}` },
-    { key: "routine", label: copy.tabs.routine, href: `/clients/${clientId}/routine` },
-    { key: "nutrition", label: copy.tabs.nutrition, href: `/clients/${clientId}/nutrition` },
-  ];
-  return (
-    <nav
-      aria-label={copy.tabs.label}
-      style={{
-        display: "flex",
-        gap: 4,
-        marginTop: 16,
-        borderBottom: "1px solid var(--border)",
-        overflowX: "auto",
-      }}
-    >
-      {tabs.map((tab) => {
-        const on = tab.key === active;
-        return (
-          <Link
-            key={tab.key}
-            href={tab.href}
-            aria-current={on ? "page" : undefined}
-            style={{
-              // The 44 px floor applies to a link that behaves like a control
-              // (BUG-146): these are thumb targets at the 390 px viewport EV-183 demos.
-              minHeight: MIN_TOUCH_TARGET,
-              display: "inline-flex",
-              alignItems: "center",
-              padding: "0 14px",
-              fontSize: 14,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-              color: on ? "var(--blue-600)" : "var(--ink-3)",
-              borderBottom: `2px solid ${on ? "var(--blue-500)" : "transparent"}`,
-              marginBottom: -1,
-            }}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return <TabBar tabs={clientTabs(clientId, copy)} active={active} label={copy.tabs.label} />;
 }

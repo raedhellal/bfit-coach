@@ -61,9 +61,8 @@ test.describe("a French browser (fr-FR) at 1280 × 800", () => {
     await page.goto(`/clients/${LINA}`);
     await expect(page.locator("html")).toHaveAttribute("lang", "fr");
     await expect(page.getByText("Assiduité, 8 dernières semaines", { exact: true }).first()).toBeVisible();
-    // EV-337e (plan §5.2): the overview's tab strip became the design's two buttons, so the
-    // French navigation checked here is « Programme » / « Nutrition » (the tabs, with
-    // « Vue d'ensemble », stay on the routine and nutrition pages).
+    // The French navigation: « Programme » / « Nutrition », links of the tab bar the overview
+    // shares with the other client pages since EV-342e (EV-337e had made them two buttons).
     await expect(page.getByRole("main").getByRole("link", { name: "Programme", exact: true })).toBeVisible();
     await expect(page.getByRole("main").getByRole("link", { name: "Nutrition", exact: true })).toBeVisible();
     await expectFooterOnScreen(page, FOOTER_FR);
