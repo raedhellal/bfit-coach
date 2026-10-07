@@ -1386,7 +1386,6 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .client-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px 16px; flex-wrap: wrap; }
 .client-head-id { display: flex; align-items: flex-start; gap: 14px; flex: 1 1 280px; min-width: 0; }
 .client-head-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.client-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .ov-section { margin-bottom: 16px; }
 .ov-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -1505,9 +1504,6 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
   .ov-stack { gap: 12px; }
   .ov-card { padding: 16px; }
   .client-head-wrap { margin-bottom: 16px; }
-  /* A phone: the two buttons share the row under the name, the menu keeps its 44 px. */
-  .client-head-actions { width: 100%; }
-  .client-head-actions > .link-button { flex: 1 1 0; }
   /* The date above the title, the feeling on the title's line: nothing truncates at 320. */
   .activity-row { grid-template-columns: minmax(0, 1fr) auto; }
   .activity-date { grid-column: 1 / -1; font-size: var(--fs-label); }

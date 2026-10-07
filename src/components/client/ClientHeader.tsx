@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar, Badge } from "@/components/ui/kit";
 import { BackLink } from "@/components/ui/BackLink";
@@ -18,12 +17,13 @@ import { formatInstant, truncateName } from "@/lib/format";
  * `action` is the overview's revoke menu. The other two tabs pass nothing: revoking
  * from inside the editor would discard work with no warning.
  *
- * EV-337e (plan §5.2): on the OVERVIEW the tab strip gives way to the design's two
- * buttons, « Programme » and « Nutrition », beside the revoke menu, and the header can
- * carry chips (the trainee's recorded injuries). The routine and nutrition tabs keep the
- * strip until their own redesign (EV-337f/g): it is still how they lead back here.
- * Every control in the header is a 44 px target; the layout is in classes (`.client-head`,
- * globals.css) so the actions wrap under the name on a phone.
+ * EV-337e (plan §5.2): the header can carry chips (the trainee's recorded injuries).
+ * EV-342e (audit A5): ONE tab bar on every client page, in the same place under the name,
+ * the overview included. EV-337e had replaced the overview's strip with two buttons
+ * (« Programme », « Nutrition »); those are gone, so the coach meets the same control on
+ * every client page and a new section is one entry of `CLIENT_SECTIONS`. The revoke menu
+ * stays in the header. Every control in the header is a 44 px target; the layout is in
+ * classes (`.client-head`, globals.css).
  */
 export function ClientHeader({
   clientId,
@@ -42,7 +42,6 @@ export function ClientHeader({
   chips?: string[];
 }) {
   const copy = getCopy();
-  const overview = active === "overview";
   return (
     <div className="client-head-wrap">
       <div style={{ marginBottom: 6 }}>
@@ -84,22 +83,10 @@ export function ClientHeader({
             )}
           </div>
         </div>
-        {overview ? (
-          <div className="client-head-actions">
-            <Link href={`/clients/${clientId}/routine`} className="link-button" data-variant="secondary">
-              {copy.tabs.routine}
-            </Link>
-            <Link href={`/clients/${clientId}/nutrition`} className="link-button" data-variant="secondary">
-              {copy.tabs.nutrition}
-            </Link>
-            {action}
-          </div>
-        ) : (
-          action
-        )}
+        {action}
       </div>
 
-      {!overview && <ClientTabs clientId={clientId} active={active} />}
+      <ClientTabs clientId={clientId} active={active} />
     </div>
   );
 }
