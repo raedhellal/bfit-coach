@@ -28,11 +28,13 @@ import { test } from "./fixture-test";
  *     perf/coach-fast-routes-no-skeleton (no loading.tsx under `[id]`): 1 → 0, so the
  *     roster's background reads went 6 → 0.
  *
- * The routine tab with a draft stays sequential BY RULING (staff, 2026-10-01): the draft
- * is read only after `hasDraft`, and the template library only after the draft names a
- * template. Reading the library alongside the draft saved one short cdg1 round trip, and
- * it cost two unused `GET /coach-portal/templates` per Save draft on every non-template
- * draft, because a save re-rendered the page twice (revalidatePath + router.refresh).
+ * The routine tab's template library stays sequential BY RULING (staff, 2026-10-01): it
+ * is read only after the draft names a template. Reading the library alongside the draft
+ * saved one short cdg1 round trip, and it cost two unused `GET /coach-portal/templates`
+ * per Save draft on every non-template draft. EV-342c (audit A2) changed the draft half
+ * of that ruling: the draft is read TOGETHER with the routine, because the draft endpoint
+ * answers 200 with `document: null` under the same scope, so waiting for `hasDraft` only
+ * cost a round trip. The price is one `getRoutineDraft` per render without a draft.
  * Both draft rows are pinned below, so that ordering is a decision a test holds.
  *
  * ADR-0033 branch 2a removed that second render: a write whose action revalidates is
@@ -131,10 +133,11 @@ const ROUTES: { route: string; reads: string[]; depth: number; why?: string }[] 
     why: "the summary reads wait for the overview's `scopes`; the monitoring read and the name do not",
   },
   {
+    // EV-342c: the draft is read with the routine, even when `hasDraft` will say no.
     route: `/clients/${LINA}/routine`,
-    reads: ["getClient", "getMe", "getRoutine"],
+    reads: ["getClient", "getMe", "getRoutine", "getRoutineDraft"],
     depth: 2,
-    why: "the routine is read only after the overview's `scopes` show WORKOUTS (ADR-0015 D5)",
+    why: "the routine and draft reads wait for the overview's `scopes` to show WORKOUTS (ADR-0015 D5)",
   },
   {
     route: `/clients/${LINA}/nutrition`,
@@ -186,8 +189,8 @@ test.describe("the routine tab with a draft", () => {
     const entries = await documentLoad(page, `/clients/${YUSUF}/routine`);
     await expect(page.getByText(/^Started from /)).toHaveText(line!);
     expect(ops(entries)).toEqual(["getClient", "getMe", "getRoutine", "getRoutineDraft", "listTemplates"]);
-    // overview → routine → draft → library: each read is decided by the one before it.
-    expect(depth(entries)).toBe(4);
+    // overview → routine + draft → library (EV-342c C.1: was 4, one round per read).
+    expect(depth(entries)).toBe(3);
   });
 
   test("written by hand: never reads the template library", async ({ page, baseURL }) => {
@@ -204,8 +207,8 @@ test.describe("the routine tab with a draft", () => {
     await expect(page.getByText("Draft — not yet published")).toBeVisible();
     await expect(page.getByText(/^Started from /)).toHaveCount(0);
     expect(ops(entries)).toEqual(["getClient", "getMe", "getRoutine", "getRoutineDraft"]);
-    // overview → routine → draft.
-    expect(depth(entries)).toBe(3);
+    // overview → routine + draft (EV-342c: was 3).
+    expect(depth(entries)).toBe(2);
   });
 });
 
@@ -294,8 +297,14 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
       },
       ["publishRoutine"]
     );
-    // The publish deleted the draft, so the render reads no draft.
-    expect(cost).toEqual({ actionPosts: 1, rscGets: 0, reads: ["getClient", "getMe", "getRoutine"], renders: 1 });
+    // The publish deleted the draft; since EV-342c the render still ASKS for it, alongside
+    // the routine, and ignores the empty answer.
+    expect(cost).toEqual({
+      actionPosts: 1,
+      rscGets: 0,
+      reads: ["getClient", "getMe", "getRoutine", "getRoutineDraft"],
+      renders: 1,
+    });
   });
 
   test("Save targets: one action, one render, no refresh", async ({ page }) => {

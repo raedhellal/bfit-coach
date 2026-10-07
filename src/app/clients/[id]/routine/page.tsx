@@ -83,23 +83,37 @@ export default async function RoutinePage({ params }: { params: { id: string } }
     message = copy.routine.scopeMissing;
   } else {
     try {
-      routine = await coachApi.getRoutine(params.id);
       /**
-       * The draft DOCUMENT is a second read — `GET …/routine` reports only that a draft
-       * EXISTS. Sequential and not `Promise.all`, because `hasDraft` is what decides
-       * whether the second call happens at all: asking for a draft the envelope has
-       * already said is absent can only ever be told the same thing again.
+       * EV-342c (audit A2) — the routine and the draft are read TOGETHER. The draft
+       * endpoint answers `200` with `document: null` when there is none, under the same
+       * WORKOUTS scope as the routine, so waiting for `hasDraft` before asking bought
+       * nothing but a round trip. `hasDraft` still decides whether the answer is USED:
+       * with `hasDraft: false` the draft read is ignored, whatever it says (C.2), and a
+       * failure of it alone does not touch the page (that read used not to happen at all).
        *
-       * A draft read that THROWS (a 500 or any other status `apiFetch` throws on, a lost
-       * connection) IS a load error for the whole tab: it is inside this `try`, so the
-       * `catch` below sets `copy.routine.loadError` — or redirects to the denial page on
-       * a 403 — even though the published plan was read successfully just above. Only a
+       * `allSettled`, not `all`: a draft read that fails must not reject before the
+       * routine read has answered, and its rejection must never go unhandled.
+       *
+       * A draft read that THROWS while `hasDraft` is true (a 500 or any other status
+       * `apiFetch` throws on, a lost connection) IS a load error for the whole tab, as it
+       * was when the reads were sequential: it is rethrown inside this `try`, so the
+       * `catch` below sets `copy.routine.loadError` — or redirects to the denial page on a
+       * 403. A 403 on EITHER read is a denial (C.3): the two share one scope, so a 403 on
+       * the draft says the link changed even when the envelope reported no draft. Only a
        * draft read that ANSWERS with a document this surface cannot use (no `document`,
        * or no `updatedAt`: BUG-195c below) opens the editor on the published plan, the
        * same state a discard produces.
        */
+      const [routineRead, draftRead] = await Promise.allSettled([
+        coachApi.getRoutine(params.id),
+        coachApi.getRoutineDraft(params.id),
+      ]);
+      if (routineRead.status === "rejected") throw routineRead.reason;
+      if (draftRead.status === "rejected" && isForbidden(draftRead.reason)) throw draftRead.reason;
+      routine = routineRead.value;
       if (routine.hasDraft) {
-        const saved = await coachApi.getRoutineDraft(params.id);
+        if (draftRead.status === "rejected") throw draftRead.reason;
+        const saved = draftRead.value;
         /**
          * BUG-195c — the draft is the WHOLE document plus the token it was read at. A
          * draft document with no `updatedAt` is a response this surface cannot save
@@ -128,7 +142,8 @@ export default async function RoutinePage({ params }: { params: { id: string } }
          * the draft is in hand and is what the coach came for, so the tab must not
          * refuse to render because a decorative sentence could not be resolved. A
          * template deleted since the apply is simply not in the list, and the line
-         * disappears, which is AC2's delete rule arriving through the read.
+         * disappears, which is AC2's delete rule arriving through the read. (EV-342d
+         * moves the name onto the draft and drops this third round.)
          */
         if (saved?.sourceTemplateId) {
           const library = await coachApi.listTemplates().catch(() => null);
