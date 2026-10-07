@@ -160,6 +160,8 @@ export function CatalogPicker({
     <Modal
       open={open}
       onClose={onClose}
+      // BUG-699 — every opening starts from an empty query and no filter (the effect above).
+      dirty={!unavailable && (q !== "" || muscle !== "" || equipment !== "")}
       title={title}
       icon="search"
       width={560}

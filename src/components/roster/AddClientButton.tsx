@@ -139,6 +139,11 @@ export function AddClientButton({
   }
 
   const lines = failure ? failureLines(failure, fullName, copy) : null;
+  /**
+   * BUG-699 — the form's fields differ from the ones `openDialog` set. Only the form stage
+   * has fields: « done » and the invite panel close on a backdrop click as before.
+   */
+  const dirty = stage === "form" && (fullName !== "" || email !== "" || locale !== copy.locale);
   const title = stage === "invite" ? copy.invite.title : stage === "done" ? c.doneTitle : c.title;
   const sub = stage === "invite" ? copy.invite.subtitle : stage === "done" ? undefined : c.sub;
 
@@ -176,6 +181,7 @@ export function AddClientButton({
       <Modal
         open={open}
         onClose={() => !pending && setOpen(false)}
+        dirty={dirty}
         title={title}
         sub={sub}
         icon={stage === "done" ? "check" : "users"}

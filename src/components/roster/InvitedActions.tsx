@@ -123,6 +123,8 @@ export function InvitedActions({
       <Modal
         open={dialog === "resend"}
         onClose={() => !pending && setDialog(null)}
+        // BUG-699 — `openResend` sets the page's language; another one is the coach's choice.
+        dirty={locale !== copy.locale}
         title={c.resendTitle(target.fullName)}
         icon="send"
         width={480}

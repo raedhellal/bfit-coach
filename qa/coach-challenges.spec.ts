@@ -756,9 +756,10 @@ test.describe("layout", () => {
  *
  * The dialog covers the page, so the way out that loses a typed challenge is Back (and
  * closing the tab, which the hook's `beforeunload` covers for every form). Closing the
- * dialog itself, by Cancel, × or the backdrop, is the coach's own explicit dismissal and is
- * NOT guarded: that is stated in the component and pinned below, so a later change to it is
- * a decision and not a drift.
+ * dialog itself, by Cancel or × (or the backdrop, which since BUG-699 closes it only while
+ * nothing differs from the opening values: `qa/dialog-backdrop.spec.ts`), is the coach's own
+ * explicit dismissal and is NOT guarded: that is stated in the component and pinned below,
+ * so a later change to it is a decision and not a drift.
  *
  * In this file because it needs this file's config (`playwright.roster.config.ts`, the
  * populated scenario): a challenge needs a client to invite. Copy is literal here.
