@@ -245,24 +245,28 @@ test.describe("the stat cards", () => {
 });
 
 test.describe("« Activité récente »", () => {
-  test("sessions and weigh-ins, newest first, five at most", async ({ page }) => {
+  /**
+   * EV-342j: the card is the overview's ONE session list (the « Recent sessions » block
+   * folded into it): the latest five sessions, the rest opened in place. Since then it
+   * lists no weigh-in rows: the ruling's list is sessions, and each weigh-in is still in
+   * the weight trend card. `qa/overview-one-session-list.spec.ts` holds J.1–J.3.
+   */
+  test("the latest five sessions, newest first, and no weigh-in row", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${LINA}`);
     const rows = region(page, "Recent activity").locator(".activity-row");
     await expect(rows).toHaveCount(5);
-    await expect(rows.filter({ hasText: /^.*Weigh-in · 70\.4\s*kg/ })).toHaveCount(1);
+    await expect(rows.filter({ hasText: /Weigh-in/ })).toHaveCount(0);
+    await expect(rows.first()).toContainText("Upper Body A");
   });
 
-  test("only one source shared: its rows, and a line naming what is not shared", async ({ page }) => {
+  test("PROGRESS without WORKOUTS: the card names WORKOUTS, never progress, and lists no row", async ({ page }) => {
     await signIn(page);
-    await page.goto(`/clients/${DANA}`);
-    await expect(region(page, "Recent activity").locator(".activity-row").first()).toBeVisible();
-
+    // Sara holds PROGRESS and WEIGH_INS, not WORKOUTS: she HAS shared her progress, so the
+    // only true sentence is the workouts one (session content is workout data).
     await page.goto(`/clients/${SARA}`);
     const card = region(page, "Recent activity");
-    // WEIGH_INS held and empty; sessions not shared (no WORKOUTS): two facts, two sentences.
-    await expect(card).toContainText("No weigh-ins recorded recently.");
-    await expect(card).toContainText("Sessions are not shared.");
+    await expect(card).toHaveText(/^Recent activity\s*This trainee has not shared their workouts with you\.$/);
     await expect(card.locator(".activity-row")).toHaveCount(0);
   });
 
@@ -270,7 +274,7 @@ test.describe("« Activité récente »", () => {
     await signIn(page);
     await page.goto(`/clients/${MARA}`);
     await expect(region(page, "Recent activity")).toHaveText(
-      /Recent activity\s*This trainee has not shared their sessions or weigh-ins with you\./
+      /^Recent activity\s*This trainee has not shared their progress with you\.$/
     );
   });
 });

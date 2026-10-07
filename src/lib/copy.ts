@@ -617,14 +617,17 @@ export const en = {
      * plan — so it told a coach their client did nothing while "Recent sessions"
      * listed five workouts they did (BUG-205). It also contradicted `weekNoPlan` one
      * line up. Neither of the two sentences here says anything about whether the
-     * trainee trained; the session-history block below is the only block entitled to.
+     * trainee trained; the session list (« Recent activity » since EV-342j) is the only
+     * block entitled to.
      */
     noPlanInWindow: "No plan on record for these 8 weeks",
     /** EV-208 AC2, verbatim — a plan existed in the window, but nothing was scheduled. */
     nothingScheduledIn8Weeks: "No sessions scheduled in the last 8 weeks",
 
-    /** AC5. The title is ours; the summary line and both empty states are the story's. */
-    sessionHistory: "Recent sessions",
+    /**
+     * AC5's summary line and empty state. Since EV-342j they sit in « Recent activity »,
+     * which folded the « Recent sessions » block in (its title went with it).
+     */
     /**
      * AC5, verbatim: "Of the last <n> sessions: <n> easy · <n> OK · <n> hard · <n> no
      * feedback". `returned` is the api's REAL count, so a trainee with six reads "Of
@@ -717,15 +720,9 @@ export const en = {
     },
     activity: {
       title: "Recent activity",
-      weighIn: (kg: string) => `Weigh-in · ${kg}`,
-      none: "No activity recorded yet.",
-      /** Only one source is readable, and it is empty: the sentence names that source alone. */
-      noSessions: "No sessions recorded yet.",
-      noWeighIns: "No weigh-ins recorded recently.",
-      notShared: "This trainee has not shared their sessions or weigh-ins with you.",
-      sessionsNotShared: "Sessions are not shared.",
-      weighInsNotShared: "Weigh-ins are not shared.",
       sessionsUnavailable: "Sessions could not be loaded.",
+      /** EV-342j, the PO's ruling verbatim for ten ("Show the last 10"); the real count below ten. */
+      showLast: (count: number) => `Show the last ${count}`,
     },
     /**
      * The routine summary (one more read, `GET …/routine`, after `scopes` show WORKOUTS).

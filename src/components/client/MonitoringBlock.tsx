@@ -6,8 +6,9 @@ import { Card, CardHead } from "@/components/ui/kit";
  *
  * `<section aria-label>` is a named region, which buys two things at once:
  *
- *   · a coach using a screen reader can jump between "Adherence, last 8 weeks",
- *     "Recent sessions" and "Red flags" instead of arrowing through a wall of figures;
+ *   · a coach using a screen reader can jump between "Adherence, last 8 weeks" and the
+ *     other blocks instead of arrowing through a wall of figures (the session history
+ *     that was one of them is « Recent activity »'s list since EV-342j);
  *   · every state of a block — its data, its "not shared" sentence, its empty state and
  *     its load error — is addressable as ONE element. Without it, a spec asking "does
  *     the adherence card say 'not shared'" has to guess at a div, and the guess lands on

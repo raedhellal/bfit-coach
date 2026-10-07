@@ -45,6 +45,7 @@ const ELIF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0012";
 const NOOR = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0013";
 
 const NOT_SHARED_PROGRESS = "This trainee has not shared their progress with you.";
+const NOT_SHARED_WORKOUTS = "This trainee has not shared their workouts with you.";
 
 async function signIn(page: Page) {
   await signInThroughForm(page, { email: EMAIL, password: PASSWORD });
@@ -274,7 +275,8 @@ test.describe("EV-208 — the whole-series empty state names the absence it meas
      * refused suppressing either block. Five dated rows and the summary that counts
      * them, on the same screen as the sentence above.
      */
-    const sessions = block(page, "Recent sessions");
+    // « Recent activity » since EV-342j, which folded the session history into it.
+    const sessions = block(page, "Recent activity");
     await expect(sessions.getByRole("listitem")).toHaveCount(5);
     await expect(
       sessions.getByText("Of the last 5 sessions: 0 easy · 5 OK · 0 hard · 0 no feedback", {
@@ -408,7 +410,10 @@ test.describe("AC5 — the last ten sessions, with what the trainee said", () =>
     expect(easy + ok + hard + none, "the four numbers must sum to the rows shown").toBe(returned);
     expect(text).toContain(`${easy} easy · ${ok} OK · ${hard} hard · ${none} no feedback`);
 
-    const history = block(page, "Recent sessions");
+    // EV-342j: the history is « Recent activity »'s list — five rows, the rest opened in place.
+    const history = block(page, "Recent activity");
+    await expect(history.getByRole("listitem")).toHaveCount(5);
+    await history.getByRole("button", { name: "Show the last 10" }).click();
     await expect(history.getByRole("listitem")).toHaveCount(10);
   });
 
@@ -431,7 +436,7 @@ test.describe("AC5 — the last ten sessions, with what the trainee said", () =>
     expect(tileText, "the shipped Last session tile must carry a date").toMatch(
       /\d{1,2} \w{3,5} \d{4}/
     );
-    const newest = (await block(page, "Recent sessions")
+    const newest = (await block(page, "Recent activity")
       .getByRole("listitem")
       .first()
       .textContent())!;
@@ -449,7 +454,10 @@ test.describe("AC5 — the last ten sessions, with what the trainee said", () =>
 
     await expect(page.getByText(/^Of the last 6 sessions: /)).toBeVisible();
     await expect(page.getByText(/^Of the last 10 sessions: /)).toHaveCount(0);
-    await expect(block(page, "Recent sessions").getByRole("listitem")).toHaveCount(6);
+    // Six: five shown and the sixth behind a control that names the real count (EV-342j).
+    const history = block(page, "Recent activity");
+    await history.getByRole("button", { name: "Show the last 6" }).click();
+    await expect(history.getByRole("listitem")).toHaveCount(6);
     // A session the trainee gave no feedback on reads the sentence, not a blank cell.
     await expect(page.getByText("No feedback given").first()).toBeVisible();
   });
@@ -461,15 +469,21 @@ test.describe("AC5 — the last ten sessions, with what the trainee said", () =>
     await page.goto(`/clients/${KAIA}`);
 
     await expect(page.getByText("No completed sessions yet")).toBeVisible();
-    await expect(block(page, "Recent sessions").getByRole("listitem")).toHaveCount(0);
+    await expect(block(page, "Recent activity").getByRole("listitem")).toHaveCount(0);
     await expect(page.getByText(/^Of the last /)).toHaveCount(0);
   });
 });
 
 test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
-  for (const [name, id] of [
-    ["WORKOUTS only (no PROGRESS)", YUSUF],
-    ["PROGRESS + WEIGH_INS (no WORKOUTS)", SARA],
+  /**
+   * Both workout blocks name the scope that is actually missing — PROGRESS for Yusuf,
+   * WORKOUTS for Sara, who HAS shared her progress. « Recent activity » since EV-342j
+   * (staff review), the adherence block since BUG-700; EV-187 AC1 never specified a
+   * PROGRESS-without-WORKOUTS link, so its sentence still holds wherever PROGRESS is absent.
+   */
+  for (const [name, id, sentence] of [
+    ["WORKOUTS only (no PROGRESS)", YUSUF, NOT_SHARED_PROGRESS],
+    ["PROGRESS + WEIGH_INS (no WORKOUTS)", SARA, NOT_SHARED_WORKOUTS],
   ] as const) {
     test(`${name}: the workout blocks say so, with no number in them`, async ({ page }) => {
       await signIn(page);
@@ -478,9 +492,9 @@ test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
       // on one block may not take the trainee's whole page with it.
       expect(response?.status()).toBe(200);
 
-      for (const title of ["Adherence, last 8 weeks", "Recent sessions"]) {
+      for (const title of ["Adherence, last 8 weeks", "Recent activity"]) {
         const region = block(page, title);
-        await expect(region).toContainText(NOT_SHARED_PROGRESS);
+        await expect(region).toContainText(sentence);
         /**
          * AC1: "no number, no zero, no empty chart and no '0 sessions' appears in any of
          * them". The title carries the only legitimate digit on the card ("8 weeks"), so
@@ -488,7 +502,7 @@ test.describe("AC1 — a missing scope is a sentence, never a zero", () => {
          * coach was not given.
          */
         const text = (await region.textContent())!;
-        expect(text.replace(title, "").replace(NOT_SHARED_PROGRESS, "")).not.toMatch(/\d/);
+        expect(text.replace(title, "").replace(sentence, "")).not.toMatch(/\d/);
       }
     });
   }
@@ -527,12 +541,18 @@ test.describe("AC6 — the page is read-only, by a closed list", () => {
     await signIn(page);
     await page.goto(`/clients/${LINA}`);
 
-    for (const title of ["Adherence, last 8 weeks", "Recent sessions"]) {
-      await expect(
-        block(page, title).locator("input, textarea, select, button"),
-        `${title} is a read, and must carry no control`
-      ).toHaveCount(0);
-    }
+    await expect(
+      block(page, "Adherence, last 8 weeks").locator("input, textarea, select, button"),
+      "Adherence, last 8 weeks is a read, and must carry no control"
+    ).toHaveCount(0);
+    /**
+     * EV-342j: the session history is « Recent activity »'s list now, and its one control
+     * is « Show the last 10 », which opens rows already on the client. It reads; it
+     * neither writes nor asks the api for anything.
+     */
+    const activity = block(page, "Recent activity");
+    await expect(activity.locator("input, textarea, select")).toHaveCount(0);
+    await expect(activity.getByRole("button")).toHaveText(["Show the last 10"]);
 
     /**
      * The two fields EV-202b adds plus EV-274b's milestone body fat (its AC1: "The form
@@ -569,7 +589,8 @@ test.describe("AC6 — the page is read-only, by a closed list", () => {
      * EV-202b's, and it is the ONLY write on this page. The shell's "Sign out" is
      * chrome and is scoped out above. A new control arriving here fails by name.
      */
-    expect(names.sort()).toEqual(["More", "Save"]);
+    // EV-342j added « Show the last 10 » (a read: it opens rows already on the page).
+    expect(names.sort()).toEqual(["More", "Save", "Show the last 10"]);
   });
 });
 
