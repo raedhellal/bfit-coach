@@ -116,6 +116,31 @@ for (const lang of ["en", "fr"] as const) {
   });
 }
 
+/*
+ * Staff review S1: the error page is a signed-in page too. Since BUG-689 the root error
+ * boundary draws `ShellFrame`, so the skip link and `main#main` come with it. One case, the
+ * one BUG-689's spec uses: a client's page whose server render always fails.
+ */
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`EV-342g on the error page, ${lang.toUpperCase()}`, () => {
+    test.use({ locale: lang === "fr" ? "fr-FR" : "en-US" });
+
+    test("G.1 + G.2 on the error boundary's page, which has exactly one main", async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await signInThroughForm(page, { lang });
+      await page
+        .context()
+        .addCookies([{ name: "evoli_fixture_render_error", value: "always", url: new URL("/", page.url()).href }]);
+      const path = `/clients/${LINA}`;
+      await page.goto(path);
+      await expect(page.locator("h1"), "the error page, not the overview").toHaveCount(1);
+      await expect(page.locator(".app-shell"), "drawn in the shell").toHaveCount(1);
+      await expect(page.locator("main"), "one main").toHaveCount(1);
+      await expectSkipFirstAndWorking(page, lang, `${path} (error page)`);
+    });
+  });
+}
+
 test("G.4: the /i/* invite page has no skip link", async ({ page }) => {
   await page.goto("/i/abc");
   await expect(page.getByRole("link", { name: LABEL.en })).toHaveCount(0);

@@ -12,6 +12,11 @@
  * unsaved-changes guard reads as Back (it would offer to discard an editor's work) and which
  * would put a same-page entry between the coach and the previous page. Before hydration
  * the plain `href="#main"` still works, as a fragment link.
+ *
+ * A side effect of `tabIndex={-1}` on `main`, stated: a pointer click on non-interactive
+ * text inside the page now focuses `main` (the body used to keep focus). Nothing reads
+ * `activeElement === body`, `FocusClearOfBars` ignores pointer focus, and `main#main:focus`
+ * draws no ring (globals.css), so nothing changes on screen.
  */
 export function SkipLink({ label }: { label: string }) {
   return (
