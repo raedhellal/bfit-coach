@@ -186,6 +186,8 @@ export const en = {
     roster: "Roster",
     signOut: "Sign out",
     backToRoster: "Back to roster",
+    /** EV-342g G.1, verbatim: the skip link, the first Tab stop of every signed-in page. */
+    skipToContent: "Skip to content",
     /**
      * The logo link's name (redesign, branch 1). It starts with the visible wordmark
      * (WCAG 2.5.3, label in name) and still says where it goes; "Back to roster" stays a

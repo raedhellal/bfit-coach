@@ -1175,6 +1175,21 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
 }
 .back-link:hover { background: var(--hover); color: var(--ink); }
 .back-link:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+
+/* ── EV-342g: « Aller au contenu » ──────────────────────────────────────────────────────
+   Off screen until it has focus (it stays in the accessibility tree: never display:none),
+   then at the window's top-left over everything, the sticky bars included. A 44 px target
+   (BUG-146). `main#main` takes focus from it; it is not a control, so it draws no ring. */
+.skip-link {
+  position: fixed; top: 8px; left: 8px; z-index: 1100;
+  display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; padding: 0 16px;
+  border-radius: var(--r-md); background: var(--surface); color: var(--blue-600);
+  font: 600 var(--fs-body)/20px var(--font-body); text-decoration: none;
+  box-shadow: 0 2px 12px rgba(16, 24, 40, 0.18);
+  transform: translateY(calc(-100% - 16px));
+}
+.skip-link:focus { transform: none; outline: 2px solid var(--blue-500); outline-offset: 2px; }
+main#main:focus { outline: none; }
 .back-link-icon { display: inline-flex; flex: none; }
 /* Above a title: the arrow lines up with the content edge, the box keeps its 44 px. */
 .back-link[data-flush] { margin-left: -10px; }
