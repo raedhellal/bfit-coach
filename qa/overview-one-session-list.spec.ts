@@ -91,6 +91,37 @@ test.describe("J.1 — one session list: five rows, the rest opened in place", (
   });
 });
 
+test.describe("J-R4 — the summary counts the whole list (N), not the rows painted", () => {
+  /**
+   * The PO's ruling (EV-342 J-R4): on Lina (N = 10) and a trainee with 6–9 sessions (Nils,
+   * N = 6) the four numbers sum to N, N is the summary's number, the control's label
+   * carries the same N, and the opened list has N rows; with N ≤ 5 (Ruben) there is no
+   * control and N equals the rows shown.
+   */
+  for (const [name, id] of [
+    ["Lina", LINA],
+    ["Nils", NILS],
+    ["Ruben", RUBEN],
+  ] as const) {
+    test(`${name}: summary N, label N, N rows`, async ({ page }) => {
+      await signInThroughForm(page);
+      await page.goto(`/clients/${id}`);
+      const card = activity(page);
+      const summary = card.getByText(/^Of the last \d+ sessions: /);
+      const [n, easy, ok, hard, none] = (await summary.textContent())!.match(/\d+/g)!.map(Number);
+      expect(easy + ok + hard + none, "the four numbers sum to N").toBe(n);
+      if (n <= 5) {
+        await expect(card.getByRole("button")).toHaveCount(0);
+        await expect(card.getByRole("listitem")).toHaveCount(n);
+        return;
+      }
+      await expect(card.getByRole("listitem")).toHaveCount(5);
+      await card.getByRole("button", { name: `Show the last ${n}`, exact: true }).click();
+      await expect(card.getByRole("listitem")).toHaveCount(n);
+    });
+  }
+});
+
 test.describe("J.2 — nothing the history block showed is lost", () => {
   test("every row has its date, its session and what the trainee said, and the summary counts the rows", async ({
     page,
@@ -157,7 +188,8 @@ test.describe("J.3 — widths", () => {
    * ~30 px over the French measurement, which c2768c2 fails by ~370 px. The history
    * block cannot come back below the card without this going red.
    */
-  test("768 px: the overview loses the old block's height (J.3 partial: 2,820 px at most)", async ({ page }) => {
+  // Title prescribed by the PO (EV-342 J-R3).
+  test("EV-342j J.3 partial: regression guard (EV-345 owns J.3)", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await signInThroughForm(page);
     await page.goto(`/clients/${LINA}`);
@@ -190,7 +222,9 @@ test.describe("J.3 as ruled (French, 768 × 1024)", () => {
    * says it is open. Run as a plain test today it fails at 2,791 px (`next dev`, the same
    * height `next start` gives in French); still read EV-345's number on `next start`.
    */
-  test.fixme("EV-342j J.3 (EV-345): 768 px, the overview is one screen shorter — at most 2,198 px", async ({ page }) => {
+  // Title prescribed by the PO (EV-342 J-R3); EV-345.2 turns it into a plain `test` with
+  // the assertion unchanged.
+  test.fixme("EV-342j J.3 (EV-345): at 768×1024 the overview is one screen shorter than at c2768c2", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await signInFrench(page);
     await page.goto(`/clients/${LINA}`);
