@@ -133,7 +133,9 @@ for (const lang of ["en", "fr"] as const) {
         .addCookies([{ name: "evoli_fixture_render_error", value: "always", url: new URL("/", page.url()).href }]);
       const path = `/clients/${LINA}`;
       await page.goto(path);
-      await expect(page.locator("h1"), "the error page, not the overview").toHaveCount(1);
+      await expect(page.locator("h1"), "the error page, not the overview").toHaveText(
+        lang === "fr" ? "Une erreur est survenue." : "Something went wrong."
+      );
       await expect(page.locator(".app-shell"), "drawn in the shell").toHaveCount(1);
       await expect(page.locator("main"), "one main").toHaveCount(1);
       await expectSkipFirstAndWorking(page, lang, `${path} (error page)`);
