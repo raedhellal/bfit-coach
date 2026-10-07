@@ -55,6 +55,8 @@ const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
 /** A shoulder injury: publishing her plan repairs two exercises. */
 const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
+/** NUTRITION only: no WORKOUTS, so no routine read may ever be made for her. */
+const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
 const ACTIVE_CHALLENGE = "c4a11e00-0000-4000-8000-000000000001";
 const HOLD_MS = 120;
 
@@ -157,6 +159,18 @@ test.describe("each main route's document render", () => {
       expect(ops(await documentLoad(page, route))).toEqual(reads);
     });
   }
+
+  // BUG-701 guard: the rejected fix read the routine on the nutrition page for header chips.
+  // The ruling is no chip in any header and no new read; this pins the nutrition page of a
+  // client who shares NUTRITION alone to its four reads, and no chip in its header. Asking
+  // for a routine she withheld would not be a no-op, even if the api refused it.
+  test("a NUTRITION-only client's nutrition page asks for no routine, and shows no chip", async ({ page }) => {
+    await signIn(page);
+    const route = `/clients/${PETRA}/nutrition`;
+    expect(ops(await documentLoad(page, route))).toEqual(["getClient", "getFoodLog", "getMe", "getNutrition"]);
+    await expect(page.locator(".client-head")).toHaveCount(1);
+    await expect(page.locator(".client-head .status-pill")).toHaveCount(0);
+  });
 
   test("no main route waits on a read it could have started with the others", async ({ page, baseURL }) => {
     await signIn(page);
