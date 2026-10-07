@@ -7,6 +7,7 @@ import { AccountMenu } from "./AccountMenu";
 import { FocusClearOfBars } from "./FocusClearOfBars";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { ShellAvatar } from "./ShellAvatar";
+import { SkipLink } from "./SkipLink";
 import { BackForwardCacheGuard, SignOutButton } from "./SignOutButton";
 
 export type Section = "roster" | "templates" | "recipes" | "nutrition-templates" | "challenges";
@@ -58,6 +59,8 @@ export function ShellFrame({
     );
   return (
     <div className="app-shell">
+      {/* EV-342g: the first Tab stop of every signed-in page. */}
+      <SkipLink label={copy.shell.skipToContent} />
       <BackForwardCacheGuard />
       <FocusClearOfBars />
       <header className="shell-sidebar">
@@ -105,7 +108,10 @@ export function ShellFrame({
           <AccountMenu coachName={coachName} locale={locale} />
         </header>
 
-        <main className="page">{children}</main>
+        {/* EV-342g: the skip link's target; -1 so it takes focus without becoming a Tab stop. */}
+        <main id="main" tabIndex={-1} className="page">
+          {children}
+        </main>
 
         <nav aria-label={copy.shell.nav} className="shell-tabbar">
           {items.map((item) => (

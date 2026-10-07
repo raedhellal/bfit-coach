@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { UiIcon } from "@/components/ui/icons";
 import { useCopy } from "@/lib/i18n/client";
 import {
@@ -12,6 +13,7 @@ import {
   type RosterGroup,
 } from "@/lib/rosterView";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
+import { filterFromParam, noteLeavingRoster, rosterHref, takeScrollRestore } from "@/lib/rosterReturn";
 
 /**
  * EV-337d — search, filters and the four groups over the roster the SERVER read.
@@ -24,6 +26,12 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  * The rows themselves are SERVER-rendered (`RosterRow`) and arrive here as nodes with the
  * facts the filters need beside them. The island owns the query and the filter, nothing
  * else: no fetch, no data of its own.
+ *
+ * BUG-691: the query and the filter are also the URL's (`?filter=alerts&q=lin`, see
+ * `src/lib/rosterReturn.ts`), so coming back from a client, a reload and Back all show the
+ * roster as the coach left it. The island OWNS the roster's query string: any other
+ * parameter (`?utm=x`) or an unknown filter (`?filter=bogus`) is rewritten away on mount, so
+ * a future roster parameter must be added to `rosterHref`/`filterFromParam`.
  */
 export interface RosterEntry {
   id: string;
@@ -37,8 +45,36 @@ export interface RosterEntry {
 
 export function RosterBrowser({ entries }: { entries: RosterEntry[] }) {
   const copy = useCopy();
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<RosterFilter>("all");
+  // BUG-691: the URL is the initial state (also on the server, so a reload paints the
+  // filtered roster at once, with no flash of « Tous »).
+  const params = useSearchParams();
+  const [query, setQuery] = useState(() => params?.get("q") ?? "");
+  const [filter, setFilter] = useState<RosterFilter>(() => filterFromParam(params?.get("filter")));
+  useEffect(() => {
+    const href = rosterHref(filter, query);
+    // REPLACE, never push: a keystroke is not a page. `null` as the state on purpose: Next
+    // patches `replaceState` and syncs its router (and `useSearchParams`) only for a call
+    // that does not carry its own internal state. Passing `history.state` through would skip
+    // that sync, and the next server action (the sort toggle, the language switch) would
+    // write Next's stale URL, `/`, back over this one.
+    if (href !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(null, "", href);
+  }, [filter, query]);
+  useEffect(() => {
+    // « Retour aux clients » asked for the coach's place back (once, and only on the URL it noted).
+    const y = takeScrollRestore();
+    if (y !== null) window.scrollTo(0, y);
+  }, []);
+  /**
+   * A link followed out of the roster (a row) IN THIS TAB notes the roster as it is now. A
+   * modified or middle click opens elsewhere and this tab stays here: noting it made
+   * « Retour aux clients » go Back past the roster later (staff review B1).
+   */
+  const onLinkClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+    if (!anchor || anchor.origin !== window.location.origin) return;
+    noteLeavingRoster(`${anchor.pathname}${anchor.search}`);
+  };
   // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
   const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   const searchId = useId();
@@ -53,7 +89,7 @@ export function RosterBrowser({ entries }: { entries: RosterEntry[] }) {
   const narrowed = filter !== "all" || query.trim() !== "";
 
   return (
-    <div className="roster-browser" ref={scope}>
+    <div className="roster-browser" ref={scope} onClickCapture={onLinkClick}>
       <div className="roster-toolbar">
         <label className="roster-search" htmlFor={searchId}>
           <span aria-hidden="true" style={{ display: "inline-flex", color: "var(--ink-3)" }}>

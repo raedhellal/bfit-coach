@@ -511,9 +511,15 @@ export function Modal({
   width = 440,
   icon,
   iconTone = "blue",
+  dirty = false,
 }: {
   open: boolean;
   onClose: () => void;
+  /**
+   * BUG-699 — a field in the dialog differs from the value it had when the dialog opened.
+   * A click on the backdrop is then ignored; × and the footer's Cancel still close.
+   */
+  dirty?: boolean;
   title: ReactNode;
   sub?: ReactNode;
   children?: ReactNode;
@@ -541,7 +547,21 @@ export function Modal({
   }[iconTone];
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(16,23,41,0.45)", backdropFilter: "blur(2px)" }} />
+      {/*
+        BUG-699: a click outside the dialog, often a stray one, closed it and threw away what
+        the coach had typed. With a changed field it now does nothing: the dialog, every value
+        and the focus stay as they were, and the coach leaves with × or Cancel, which say what
+        they do. An unchanged dialog still closes on it. `onMouseDown` keeps the focus in the
+        field: a press on a plain div otherwise blurs the focused input.
+      */}
+      <div
+        data-modal-backdrop=""
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          if (!dirty) onClose();
+        }}
+        style={{ position: "absolute", inset: 0, background: "rgba(16,23,41,0.45)", backdropFilter: "blur(2px)" }}
+      />
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ position: "relative", width: `min(${width}px, 100vw - 24px)`, maxWidth: "100%", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: "var(--surface)", borderRadius: "var(--r-2xl)", boxShadow: "var(--e-3)", border: "1px solid var(--border)", overflow: "hidden" }}>
         <div style={{ padding: "22px 24px 0", flexShrink: 0 }}>
           {/* EV-256e: at 320 px a title as wide as "Use one of my recipes" squeezed the

@@ -22,6 +22,7 @@ import {
   type ChallengeForm,
 } from "@/lib/challengeDocument";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
+import { useCoachForm } from "@/lib/useCoachForm";
 
 /** A trainee the coach may invite: an ACTIVE roster row. STEPS needs no data scope. */
 export interface InviteTarget {
@@ -43,6 +44,15 @@ export interface InviteTarget {
  *
  * `rosterFailed`: the page's roster read failed. That is not "no linked clients", and
  * saying so would send a coach who has clients off to invite them again.
+ *
+ * BUG-665 / EV-342o: the values are `useCoachForm`'s, guarded while the dialog is open. A
+ * coach who has typed a challenge and presses Back (or closes the tab) is asked first; an
+ * untouched dialog, a closed one and a created challenge are never guarded. Closing the
+ * dialog itself (Cancel, ×) is the coach's own explicit dismissal and is not a leave. The
+ * backdrop closes it only while nothing differs from the opening values (BUG-699: the same
+ * `draft.dirty`, so a stray click outside cannot throw a typed challenge away). Its fields
+ * are not in the server HTML (`Modal` renders nothing while closed), so there is nothing
+ * typed before hydration to adopt and `scope` is not attached.
  */
 export function CreateChallengeDialog({
   clients,
@@ -55,21 +65,27 @@ export function CreateChallengeDialog({
   const c = copy.challenges;
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<ChallengeForm>(() => defaultChallengeForm(localToday(), copy.locale));
+  const draft = useCoachForm<ChallengeForm>({
+    server: defaultChallengeForm(localToday(), copy.locale),
+    enabled: open,
+  });
+  const form = draft.values;
   const [attempted, setAttempted] = useState(false);
   const [server, setServer] = useState<{ field: ChallengeField | null; message: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const ids = { title: useId(), target: useId(), start: useId(), end: useId(), clients: useId(), form: useId() };
 
   function openDialog() {
-    setForm(defaultChallengeForm(localToday(), copy.locale));
+    draft.reset(defaultChallengeForm(localToday(), copy.locale));
     setAttempted(false);
     setServer(null);
     setOpen(true);
   }
 
   function update(patch: Partial<ChallengeForm>) {
-    setForm((f) => ({ ...f, ...patch }));
+    for (const key of Object.keys(patch) as (keyof ChallengeForm)[]) {
+      draft.set(key, patch[key] as ChallengeForm[typeof key]);
+    }
     setServer(null);
   }
 
@@ -85,6 +101,7 @@ export function CreateChallengeDialog({
     setAttempted(true);
     const built = buildChallengeRequest(form, utcToday());
     if (!built.ok) return;
+    draft.markSent();
     startTransition(async () => {
       const result = await settled(createChallengeAction(built.body), {
         ok: false,
@@ -95,8 +112,13 @@ export function CreateChallengeDialog({
         return;
       }
       setOpen(false);
-      startNavigationProgress(`/challenges/${encodeURIComponent(result.id)}?created=1`);
-      router.push(`/challenges/${encodeURIComponent(result.id)}?created=1`);
+      // Handed to `saved`: the guard's history entry goes first, or the push would land
+      // behind it and the guard's cleanup would step the coach back off the new challenge.
+      const href = `/challenges/${encodeURIComponent(result.id)}?created=1`;
+      draft.saved(undefined, () => {
+        startNavigationProgress(href);
+        router.push(href);
+      });
     });
   }
 
@@ -124,6 +146,7 @@ export function CreateChallengeDialog({
       <Modal
         open={open}
         onClose={() => setOpen(false)}
+        dirty={draft.dirty}
         title={c.dialogTitle}
         sub={c.dialogSub}
         icon="trophy"
@@ -290,6 +313,7 @@ export function CreateChallengeDialog({
           <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
         </form>
       </Modal>
+      {draft.guard}
     </>
   );
 }

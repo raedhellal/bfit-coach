@@ -171,29 +171,33 @@ test.describe("« À traiter » — alert cards for the flags the api returned, 
 });
 
 test.describe("the header", () => {
-  test("Routine and Nutrition are 44 px links beside the menu; the tab strip is gone here", async ({ page }) => {
+  // EV-342e (audit A5) reversed EV-337e's two header buttons: the overview carries the same
+  // tab bar as the other client pages (qa/client-tab-bar.spec.ts), and the menu stays.
+  test("Routine and Nutrition are 44 px links in the tab bar; the menu stays in the header", async ({ page }) => {
     await signIn(page);
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(`/clients/${LINA}`);
     const main = page.getByRole("main");
+    const tabs = main.getByRole("navigation", { name: "Trainee sections" });
     for (const [name, href] of [
       ["Routine", `/clients/${LINA}/routine`],
       ["Nutrition", `/clients/${LINA}/nutrition`],
     ] as const) {
-      const link = main.getByRole("link", { name, exact: true });
+      await expect(main.getByRole("link", { name, exact: true }), `${name}: once on the page`).toHaveCount(1);
+      const link = tabs.getByRole("link", { name, exact: true });
       await expect(link).toHaveAttribute("href", href);
       const box = (await link.boundingBox())!;
       expect(box.height, name).toBeGreaterThanOrEqual(44);
       expect(box.width, name).toBeGreaterThanOrEqual(44);
     }
-    await expect(main.getByRole("navigation", { name: "Trainee sections" })).toHaveCount(0);
-    await expect(main.getByRole("button", { name: "More" })).toBeVisible();
+    await expect(main.locator(".client-head").getByRole("button", { name: "More" })).toBeVisible();
   });
 
   test("an injury chip shows the coded label only, never the trainee's free text", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${DANA}`);
-    const chips = page.getByRole("main").locator(".client-head .status-pill");
+    // BUG-701: under the tab bar, above the first card, not in the header.
+    const chips = page.getByRole("main").locator(".client-injuries .status-pill");
     await expect(chips).toHaveText(["Limitation: Shoulders"]);
     // Her free-typed note is on the routine tab, where it was; the overview does not restate it.
     await expect(page.getByRole("main")).not.toContainText("left shoulder");
@@ -202,7 +206,7 @@ test.describe("the header", () => {
   test("no chip without WORKOUTS: the injuries come from the routine read", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${SARA}`);
-    await expect(page.getByRole("main").locator(".client-head .status-pill")).toHaveCount(0);
+    await expect(page.getByRole("main").locator(".client-injuries .status-pill")).toHaveCount(0);
   });
 });
 

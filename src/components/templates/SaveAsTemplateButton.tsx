@@ -42,6 +42,8 @@ export function SaveAsTemplateButton({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  /** BUG-699 — the name and source `start` opened the dialog with. */
+  const [opening, setOpening] = useState<{ name: string; source: CoachTemplateSource } | null>(null);
 
   const sources: CoachTemplateSource[] = [
     ...(planName !== null ? (["PLAN"] as const) : []),
@@ -56,11 +58,13 @@ export function SaveAsTemplateButton({
     setSource(first);
     // AC1 — "pre-named with the plan's name and editable before saving".
     setName(planName ?? "");
+    setOpening({ name: planName ?? "", source: first });
     setNotice(null);
     setError(null);
     setOpen(true);
   }
 
+  const dirty = opening !== null && (name !== opening.name || source !== opening.source);
   const trimmed = name.trim();
   const localRefusal =
     trimmed === ""
@@ -131,6 +135,7 @@ export function SaveAsTemplateButton({
       <Modal
         open={open}
         onClose={() => !pending && setOpen(false)}
+        dirty={dirty}
         title={copy.templates.saveAsTemplateTitle}
         icon="file"
         iconTone="blue"

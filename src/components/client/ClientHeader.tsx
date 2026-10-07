@@ -1,9 +1,8 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar, Badge } from "@/components/ui/kit";
-import { BackLink } from "@/components/ui/BackLink";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { ClientTabs, type ClientTab } from "./ClientTabs";
+import { RosterBackLink } from "./RosterBackLink";
 import { getCopy } from "@/lib/i18n/server";
 import { formatInstant, truncateName } from "@/lib/format";
 
@@ -18,12 +17,16 @@ import { formatInstant, truncateName } from "@/lib/format";
  * `action` is the overview's revoke menu. The other two tabs pass nothing: revoking
  * from inside the editor would discard work with no warning.
  *
- * EV-337e (plan §5.2): on the OVERVIEW the tab strip gives way to the design's two
- * buttons, « Programme » and « Nutrition », beside the revoke menu, and the header can
- * carry chips (the trainee's recorded injuries). The routine and nutrition tabs keep the
- * strip until their own redesign (EV-337f/g): it is still how they lead back here.
- * Every control in the header is a 44 px target; the layout is in classes (`.client-head`,
- * globals.css) so the actions wrap under the name on a phone.
+ * BUG-701 (senior-po ruling, 2026-10-07): the header carries NO injury chip on any page. They
+ * were the overview's only, which put the tab bar 34 px lower there than on the other two
+ * tabs at 390 px; the overview now shows them under the tab bar (`clients/[id]/page.tsx`),
+ * and the routine tab shows injuries in its profile line and card (EV-342f).
+ * EV-342e (audit A5): ONE tab bar on every client page, in the same place under the name,
+ * the overview included. EV-337e had replaced the overview's strip with two buttons
+ * (« Programme », « Nutrition »); those are gone, so the coach meets the same control on
+ * every client page and a new section is one entry of `CLIENT_SECTIONS`. The revoke menu
+ * stays in the header. Every control in the header is a 44 px target; the layout is in
+ * classes (`.client-head`, globals.css).
  */
 export function ClientHeader({
   clientId,
@@ -31,22 +34,19 @@ export function ClientHeader({
   since,
   active,
   action,
-  chips,
 }: {
   clientId: string;
   traineeDisplayName: string;
   since?: string | null;
   active: ClientTab;
   action?: ReactNode;
-  /** Words shown as warning chips under the name. Each is text, never a colour alone. */
-  chips?: string[];
 }) {
   const copy = getCopy();
-  const overview = active === "overview";
   return (
     <div className="client-head-wrap">
       <div style={{ marginBottom: 6 }}>
-        <BackLink href="/" label={copy.shell.backToRoster} flush />
+        {/* BUG-691: Back to the roster as the coach left it, without a new history entry. */}
+        <RosterBackLink label={copy.shell.backToRoster} />
       </div>
 
       <div className="client-head">
@@ -74,32 +74,34 @@ export function ClientHeader({
               a roster-row field only. Rendering "No plan" here would state something about
               the trainee that this response does not say.
             */}
-            {(since || (chips && chips.length > 0)) && (
+            {since && (
               <div className="client-head-chips">
-                {since && (
-                  <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
-                )}
-                {chips?.map((chip) => <StatusPill key={chip} tone="amber" icon="shield" label={chip} />)}
+                <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
               </div>
             )}
           </div>
         </div>
-        {overview ? (
-          <div className="client-head-actions">
-            <Link href={`/clients/${clientId}/routine`} className="link-button" data-variant="secondary">
-              {copy.tabs.routine}
-            </Link>
-            <Link href={`/clients/${clientId}/nutrition`} className="link-button" data-variant="secondary">
-              {copy.tabs.nutrition}
-            </Link>
-            {action}
-          </div>
-        ) : (
-          action
-        )}
+        {action}
       </div>
 
-      {!overview && <ClientTabs clientId={clientId} active={active} />}
+      <ClientTabs clientId={clientId} active={active} />
+    </div>
+  );
+}
+
+/**
+ * BUG-701 — the overview's injury chips, rendered UNDER the tab bar and above the first card
+ * (senior-po ruling), never inside the header: the header is then the same block on all three
+ * client pages, and the bar does not move between them. Each chip is text, never a colour
+ * alone. Renders nothing for an empty list.
+ */
+export function ClientInjuryChips({ chips }: { chips: string[] }) {
+  if (chips.length === 0) return null;
+  return (
+    <div className="ov-section client-injuries">
+      {chips.map((chip) => (
+        <StatusPill key={chip} tone="amber" icon="shield" label={chip} />
+      ))}
     </div>
   );
 }

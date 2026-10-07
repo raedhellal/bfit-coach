@@ -332,10 +332,17 @@ test.describe("F1.1 + F1.4 WebKit", () => {
       ] as const) {
         await page.setViewportSize({ width, height: 900 });
         await page.evaluate(() => window.scrollTo(0, 0));
+        // EV-342f: the profile and « save as template » are two items now (see F1.4 below).
+        const p = await box(page.locator(".prog-profile"));
         const a = await box(page.locator(".prog-aside"));
         const m = await box(page.locator(".prog-main"));
-        if (columns === 2) expect(a.x, `WebKit ${width}: the aside is beside the editor`).toBeGreaterThan(m.x + m.width - 1);
-        else expect(a.y + a.height, `WebKit ${width}: the aside is above the editor`).toBeLessThanOrEqual(m.y + 1);
+        if (columns === 2) {
+          expect(p.x, `WebKit ${width}: the profile is beside the editor`).toBeGreaterThan(m.x + m.width - 1);
+          expect(a.x, `WebKit ${width}: « save as template » under it`).toBeGreaterThan(m.x + m.width - 1);
+        } else {
+          expect(p.y + p.height, `WebKit ${width}: the profile line is above the editor`).toBeLessThanOrEqual(m.y + 1);
+          expect(a.y, `WebKit ${width}: « save as template » is after the editor`).toBeGreaterThanOrEqual(m.y + m.height - 1);
+        }
       }
       await context.close();
     });
@@ -502,13 +509,17 @@ for (const lang of ["en", "fr"] as const) {
   });
 }
 
-/* ═══ F1.4 — two columns from 1280, the aside above the editor below that ═══════════════ */
+/* ═══ F1.4 — two columns from 1280; below that, EV-342f's order ══════════════════════════
+ * EV-337f1 put the whole aside above the editor below 1280 px. EV-342f (audit A6, PO ruling)
+ * replaced that: below 1280 the profile is one line ABOVE the editor and « save as template »
+ * comes AFTER it; from 1280 both sit in the second column, unchanged
+ * (qa/programme-first.spec.ts holds the rest of EV-342f). */
 
 for (const lang of ["en", "fr"] as const) {
   test.describe(`F1.4 (${lang})`, () => {
     test.use({ locale: LOCALE[lang] });
 
-    test("the aside holds the profile and « save as template »; beside from 1280, above below; the banner above both", async ({
+    test("the profile and « save as template » beside the editor from 1280; below, the profile above and the template after; the banner above all", async ({
       page,
       context,
       baseURL,
@@ -517,9 +528,10 @@ for (const lang of ["en", "fr"] as const) {
       await signIn(page, lang);
       await page.setViewportSize({ width: 1440, height: 900 });
       await openLongPlan(page, lang);
+      const profile = page.locator(".prog-profile");
       const aside = page.locator(".prog-aside");
       const main = page.locator(".prog-main");
-      await expect(aside.getByText(L[lang].profile, { exact: true })).toBeVisible();
+      await expect(profile.getByText(L[lang].profile, { exact: true })).toBeVisible();
       await expect(aside.getByRole("button", { name: L[lang].asTemplate, exact: true })).toBeVisible();
       await expect(main.getByLabel(L[lang].planName)).toBeVisible();
       // Yusuf's seed carries the EV-283b "trainee changed this plan" banner.
@@ -528,16 +540,21 @@ for (const lang of ["en", "fr"] as const) {
 
       for (const width of [1440, 1280, 1279, 1024, 768, 390]) {
         await page.setViewportSize({ width, height: 900 });
+        const p = await box(profile);
         const a = await box(aside);
         const m = await box(main);
         const n = await box(banner);
-        expect(n.y + n.height, `${width}: the banner is above the aside`).toBeLessThanOrEqual(a.y + 0.5);
+        expect(n.y + n.height, `${width}: the banner is above the profile`).toBeLessThanOrEqual(p.y + 0.5);
         expect(n.y + n.height, `${width}: the banner is above the editor`).toBeLessThanOrEqual(m.y + 0.5);
         if (width >= 1280) {
-          expect(a.x, `${width}: the aside is to the right of the editor`).toBeGreaterThanOrEqual(m.x + m.width - 0.5);
-          expect(Math.abs(a.y - m.y), `${width}: the two columns start on one line`).toBeLessThanOrEqual(1);
+          expect(p.x, `${width}: the profile is to the right of the editor`).toBeGreaterThanOrEqual(m.x + m.width - 0.5);
+          expect(Math.abs(p.y - m.y), `${width}: the two columns start on one line`).toBeLessThanOrEqual(1);
+          expect(Math.abs(a.x - p.x), `${width}: « save as template » in the same column`).toBeLessThanOrEqual(1);
+          expect(Math.abs(a.y - (p.y + p.height)), `${width}: right under the profile`).toBeLessThanOrEqual(1);
         } else {
-          expect(a.y + a.height, `${width}: the aside is above the editor`).toBeLessThanOrEqual(m.y + 0.5);
+          expect(p.y + p.height, `${width}: the profile line is above the editor`).toBeLessThanOrEqual(m.y + 0.5);
+          expect(a.y, `${width}: « save as template » is after the editor`).toBeGreaterThanOrEqual(m.y + m.height - 0.5);
+          expect(Math.abs(p.x - m.x), `${width}: one column`).toBeLessThanOrEqual(1);
           expect(Math.abs(a.x - m.x), `${width}: one column`).toBeLessThanOrEqual(1);
         }
       }

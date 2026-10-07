@@ -90,7 +90,7 @@ test("publishing to the trainee clears the marker, reached by clicking", async (
   // The whole row is the link (EV-337d).
   await yusufRow.click();
   await page.waitForURL(`/clients/${YUSUF}`);
-  // EV-337e: on the overview the tab strip became the header's « Routine » link (plan §5.2).
+  // The overview's « Routine » tab (EV-342e: the same tab bar as every client page).
   await page.getByRole("main").getByRole("link", { name: "Routine", exact: true }).click();
   await page.waitForURL(`/clients/${YUSUF}/routine`);
 

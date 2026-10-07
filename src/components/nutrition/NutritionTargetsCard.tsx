@@ -10,7 +10,7 @@ import { saveTargetsAction } from "@/lib/nutritionActions";
 import { parseTarget, targetRefusal } from "@/lib/numberInput";
 import { settled } from "@/lib/settled";
 import type { NutritionTargets } from "@/lib/coachApi";
-import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
+import { useCoachForm } from "@/lib/useCoachForm";
 
 /**
  * EV-185b AC2 — the coach's macro targets.
@@ -40,6 +40,11 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  * instead of "above 0", which was not. Either way nothing is sent.
  * BUG-552: digits that cannot be read ("18 00", "1  800", "1 25") get the format
  * sentence (`numberFormat`); "above 0" is kept for empty, zero and negative fields.
+ *
+ * BUG-665 / EV-342o: built with `useCoachForm`. A coach who types targets and clicks the
+ * Programme tab is asked first; after a save, or a 403 that ends the access, nobody is.
+ * The fields re-seed from the server's props (another write, a revalidation) except one
+ * the coach is typing in.
  */
 export function NutritionTargetsCard({
   clientId,
@@ -52,12 +57,15 @@ export function NutritionTargetsCard({
 }) {
   const copy = useCopy();
   const router = useRouter();
-  const [calories, setCalories] = useState(targets ? String(targets.calories) : "");
-  const [protein, setProtein] = useState(targets ? String(targets.proteinG) : "");
-  const [carbs, setCarbs] = useState(targets ? String(targets.carbsG) : "");
-  const [fat, setFat] = useState(targets ? String(targets.fatG) : "");
-  // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
-  const scope = useAdoptPrehydrationInput<HTMLDivElement>();
+  const form = useCoachForm({
+    server: {
+      calories: targets ? String(targets.calories) : "",
+      protein: targets ? String(targets.proteinG) : "",
+      carbs: targets ? String(targets.carbsG) : "",
+      fat: targets ? String(targets.fatG) : "",
+    },
+  });
+  const { calories, protein, carbs, fat } = form.values;
   /** The refusal on screen (AC2 or PB-2's sentence), or null. No request was sent. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const invalid = refusal !== null;
@@ -68,11 +76,11 @@ export function NutritionTargetsCard({
   const [pending, startTransition] = useTransition();
 
   const fields = [
-    { key: "calories", label: copy.nutrition.calories, unit: copy.nutrition.kcal, value: calories, set: setCalories },
-    { key: "protein", label: copy.nutrition.protein, unit: copy.nutrition.grams, value: protein, set: setProtein },
-    { key: "carbs", label: copy.nutrition.carbs, unit: copy.nutrition.grams, value: carbs, set: setCarbs },
-    { key: "fat", label: copy.nutrition.fat, unit: copy.nutrition.grams, value: fat, set: setFat },
-  ];
+    { key: "calories", label: copy.nutrition.calories, unit: copy.nutrition.kcal },
+    { key: "protein", label: copy.nutrition.protein, unit: copy.nutrition.grams },
+    { key: "carbs", label: copy.nutrition.carbs, unit: copy.nutrition.grams },
+    { key: "fat", label: copy.nutrition.fat, unit: copy.nutrition.grams },
+  ] as const;
 
   /** The four targets, or null for any field that is not a whole number above 0. */
   function parsed(): (number | null)[] {
@@ -151,6 +159,7 @@ export function NutritionTargetsCard({
         saved: true,
       });
     }
+    form.markSent();
     startTransition(async () => {
       // `settled`: a failed request resolves with `undefined`, and without this the
       // four numbers the coach just typed go down with the error boundary.
@@ -164,8 +173,10 @@ export function NutritionTargetsCard({
           // The link ended mid-session. Refreshing re-runs `[id]/layout.tsx`, whose
           // overview read now 403s, and the layout redirects to /clients/denied — the
           // coach leaves a screen of a revoked trainee's data instead of reading a
-          // sentence beneath it.
-          router.refresh();
+          // sentence beneath it. `endAccess` first: nothing typed can be saved now, so the
+          // leave guard stands down and hands the history back clean, or the refresh
+          // would never reach the layout's redirect (`useUnsavedChanges.release`).
+          form.endAccess(() => router.refresh());
           return;
         }
         setError(copy.nutrition.targetsFailed);
@@ -178,9 +189,16 @@ export function NutritionTargetsCard({
        * The server may have clamped the calories; show what was actually stored — and
        * because the reconciliation line is derived from this state, it recomputes
        * against the STORED calories (AC3's last clause). A coach is never shown
-       * arithmetic about a number that was not saved.
+       * arithmetic about a number that was not saved. A field typed while the save was
+       * in flight keeps the coach's text (and stays unsaved).
        */
-      setCalories(String(result.result.targets.calories));
+      const stored = result.result.targets;
+      form.saved({
+        calories: String(stored.calories),
+        protein: String(stored.proteinG),
+        carbs: String(stored.carbsG),
+        fat: String(stored.fatG),
+      });
       // No `router.refresh()` (ADR-0033 branch 2a): `saveTargetsAction` revalidates, so
       // its response carried the page rendered after the write (the source line).
     });
@@ -211,7 +229,7 @@ export function NutritionTargetsCard({
   const source = sourceLine();
 
   return (
-    <Card style={{ marginBottom: 18 }} rootRef={scope}>
+    <Card style={{ marginBottom: 18 }} rootRef={form.scope}>
       <CardHead
         title={copy.nutrition.targetsTitle}
         icon="apple"
@@ -246,8 +264,8 @@ export function NutritionTargetsCard({
             <input
               aria-label={field.label}
               inputMode="numeric"
-              value={field.value}
-              onChange={(e) => field.set(e.target.value)}
+              value={form.values[field.key]}
+              onChange={(e) => form.set(field.key, e.target.value)}
               style={{
                 height: MIN_TOUCH_TARGET,
                 width: 120,
@@ -331,6 +349,7 @@ export function NutritionTargetsCard({
           {copy.nutrition.seesStraightAway(truncateName(traineeDisplayName))}
         </p>
       </Modal>
+      {form.guard}
     </Card>
   );
 }
