@@ -39,6 +39,12 @@ function bar(page: Page, lang: keyof typeof LANG) {
   return page.getByRole("main").getByRole("navigation", { name: LANG[lang].nav, exact: true });
 }
 
+/*
+ * E.2 renders `TabBar` from a HAND-WRITTEN four-entry array, not from `CLIENT_SECTIONS`: it
+ * proves the bar draws whatever array it is given. That the three pages use
+ * `CLIENT_SECTIONS` is E.1's job (the same three tabs on every page). A real fourth section
+ * is one `CLIENT_SECTIONS` entry plus its `copy.tabs` label in both languages.
+ */
 test.describe("E.2 the bar is data", () => {
   test("four entries render four tabs, in order, the active one marked", () => {
     const tabs: TabDef[] = [

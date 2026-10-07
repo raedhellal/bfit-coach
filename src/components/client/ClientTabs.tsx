@@ -21,9 +21,10 @@ import { TabBar, type TabDef } from "./TabBar";
  *
  * **EV-342e (audit A5): the sections are DATA.** Before it, the overview drew two buttons
  * and only the other pages drew this strip, and `ClientTab` was a closed union: a fourth
- * section (EV-341b's intake) would have been added in two places. Now a section is ONE
- * entry of `CLIENT_SECTIONS` (its key, its path under `/clients/{id}`, the scope its page
- * reads) plus its label in `copy.tabs`; `ClientTab` is derived from the array. `scope` is
+ * section (EV-341b's intake) would have been added in two places. Now adding a section is
+ * ONE entry of `CLIENT_SECTIONS` (its key, its path under `/clients/{id}`, the scope its page
+ * reads) AND its two labels, `copy.tabs.<key>` in `copy.ts` and `copy.fr.ts` (the `satisfies`
+ * below refuses a key without one); `ClientTab` is derived from the array. `scope` is
  * the section's data scope, stated beside it for the reader and for EV-341b; it does NOT
  * hide the tab (D5 above), and `TabBar` (`./TabBar.tsx`) never reads it.
  *
