@@ -3231,8 +3231,15 @@ async function fixtureSwitch(name: string): Promise<string | null> {
  *   · `always` — every render throws (the error persists).
  *   · `once`   — the FIRST render after the reset throws and the next one does not (a
  *                transient server error that « Réessayer » must recover from).
- * Read here only, so only in fixture mode.
+ * Read only in fixture mode: by the fixture's `getMe` (the roster, the one page that still
+ * calls it) and, since EV-342k, by `readCoachMe` (`src/lib/clientOverview.ts`) through
+ * `fixtureRenderError` — every other page takes the name from the identity cookie and no
+ * longer calls `getMe`, so the switch is asked there directly, before the cookie.
  */
+export async function fixtureRenderError(): Promise<CoachMe | null> {
+  return renderErrorSwitch();
+}
+
 async function renderErrorSwitch(): Promise<CoachMe | null> {
   const mode = await fixtureSwitch("evoli_fixture_render_error");
   if (mode !== "always" && mode !== "once") return null;
