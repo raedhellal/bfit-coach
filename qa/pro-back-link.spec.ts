@@ -56,15 +56,16 @@ async function signIn(page: Page) {
 }
 
 /**
- * The page's back link: in `main`, by its exact name, and NOT the notice's "back" button
- * (`ClientNotice` wraps a `<Button>` in a link with the same words on the two "not yours"
- * pages). Exactly one must remain, so a page that drew two would fail here by count.
+ * The page's back link: in `main`, by its exact name, and NOT the notice's way back
+ * (`ClientNotice` draws a link with the same words on the two "not yours" pages; since
+ * BUG-616 it is a `.link-button`, no longer a link round a `<button>`, so it is told apart
+ * by that class). Exactly one must remain, so a page that drew two would fail here by count.
  */
 function backLink(page: Page, name: string): Locator {
   return page
     .getByRole("main")
     .getByRole("link", { name, exact: true })
-    .filter({ hasNot: page.locator("button") });
+    .and(page.locator(":not(.link-button)"));
 }
 
 async function expectTarget(page: Page, link: Locator, where: string) {

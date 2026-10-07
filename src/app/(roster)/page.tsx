@@ -6,7 +6,7 @@ import { InvitedSection, type InvitedRowData } from "@/components/roster/Invited
 import { RosterBrowser, type RosterEntry } from "@/components/roster/RosterBrowser";
 import { RosterRow } from "@/components/roster/RosterRows";
 import { RosterSortToggle } from "@/components/roster/RosterSortToggle";
-import { Button, Card, EmptyState, PageHead } from "@/components/ui/kit";
+import { Card, EmptyState, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { coachApi, type CoachMe, type RosterClient } from "@/lib/coachApi";
 import { readRosterSort } from "@/lib/rosterSort";
@@ -101,10 +101,11 @@ export default async function RosterPage() {
           >
             <UiIcon name="ban" size={26} color="var(--err-ink)" />
             <div style={{ fontSize: 14.5, color: "var(--ink-2)" }}>{copy.roster.loadError}</div>
-            <a href="/">
-              <Button variant="secondary" icon="refresh">
-                {copy.roster.retry}
-              </Button>
+            {/* BUG-616: one control, a link drawn as the secondary button (was a <button>
+                inside the <a>). Still a plain <a>: the retry is a full document load. */}
+            <a href="/" className="link-button" data-variant="secondary">
+              <UiIcon name="refresh" size={16.5} />
+              {copy.roster.retry}
             </a>
           </div>
         </Card>
