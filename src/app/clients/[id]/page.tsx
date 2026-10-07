@@ -7,7 +7,6 @@ import { StatTile } from "@/components/client/StatTile";
 import { ProgressRing } from "@/components/client/ProgressRing";
 import { AdherenceSeries } from "@/components/client/AdherenceSeries";
 import { BlockNote, MonitoringBlock } from "@/components/client/MonitoringBlock";
-import { SessionHistory } from "@/components/client/SessionHistory";
 import { ProgressGoalBlock } from "@/components/client/ProgressGoalBlock";
 import { RedFlagEvidence } from "@/components/client/RedFlagEvidence";
 import { RecentActivity } from "@/components/client/RecentActivity";
@@ -168,7 +167,8 @@ export default async function ClientPage({ params }: { params: { id: string } })
   const streak = progressShared ? overview.currentStreakDays : null;
 
   /**
-   * EV-187b's two workout blocks (AC3's series, AC5's history) need TWO scopes, and
+   * EV-187b's two workout blocks (AC3's series, AC5's history — in « Recent activity »
+   * since EV-342j) need TWO scopes, and
    * both checks are the portal reading `scopes` rather than reading a status code:
    * PROGRESS, because the api names it at the monitoring endpoint's guard; WORKOUTS,
    * because session names and weekly adherence are workout CONTENT and the api blanks
@@ -357,11 +357,13 @@ export default async function ClientPage({ params }: { params: { id: string } })
       {/* Two columns from a 1280 px viewport (plan §3), one below: the activity, then the
           programme and nutrition summaries. */}
       <div className="layout-split ov-section">
+        {/* EV-342j: the overview's one session list. EV-187 AC5's history block below
+            folded into it (the last ten, five shown, the rest opened in place). The same
+            two scopes the history block needed: PROGRESS for the read, WORKOUTS for
+            the session content inside it. */}
         <RecentActivity
-          sessions={monitoringShared ? progress?.sessions?.items ?? null : null}
-          weights={weighInsShared ? series : null}
-          sessionsState={!monitoringShared ? "notShared" : progress?.sessions ? "shared" : "unavailable"}
-          weighInsShared={weighInsShared}
+          history={monitoringShared ? progress?.sessions ?? null : null}
+          state={!monitoringShared ? "notShared" : progress?.sessions ? "shared" : "unavailable"}
         />
         <div className="ov-stack">
           <ProgrammeSummary clientId={overview.clientId} read={programme} />
@@ -435,19 +437,6 @@ export default async function ClientPage({ params }: { params: { id: string } })
         </MonitoringBlock>
       ) : (
         <AdherenceSeries series={progress.adherence} />
-      )}
-
-      {/* ── EV-187 AC5: the last ten sessions ──────────────────────────────── */}
-      {!monitoringShared ? (
-        <MonitoringBlock title={copy.client.sessionHistory} icon="calendar">
-          <BlockNote>{copy.client.notSharedProgress}</BlockNote>
-        </MonitoringBlock>
-      ) : !progress?.sessions ? (
-        <MonitoringBlock title={copy.client.sessionHistory} icon="calendar">
-          <BlockNote>{copy.client.monitoringLoadError}</BlockNote>
-        </MonitoringBlock>
-      ) : (
-        <SessionHistory history={progress.sessions} />
       )}
 
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>

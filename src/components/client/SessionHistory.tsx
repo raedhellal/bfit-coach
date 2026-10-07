@@ -1,87 +1,72 @@
-import { BlockNote, MonitoringBlock } from "@/components/client/MonitoringBlock";
-import { getCopy } from "@/lib/i18n/server";
-import { formatDate } from "@/lib/format";
-import type { SessionHistory as History } from "@/lib/coachApi";
+"use client";
+
+import { useEffect, useId, useRef, useState } from "react";
+
+/** How many sessions « Activité récente » lists before « Voir les 10 dernières » (EV-342j). */
+export const SESSIONS_SHOWN = 5;
+
+/** One session, already worded on the server: the three fields of an EV-187 AC5 row. */
+export interface SessionRow {
+  key: string;
+  date: string;
+  title: string;
+  meta: string;
+}
 
 /**
- * EV-187 AC5 — the last ten completed sessions, newest first.
+ * EV-342j — the overview's one session list: the latest five, and a control that opens
+ * the rest IN PLACE (at most ten: the cap is the api's, and this component never asks for
+ * more — there is nothing to ask with). One `<ul>`, so a screen reader hears one list of
+ * N items once it is open, not two lists.
  *
- * **Three fields on a row and nothing else**: the date, the session or plan name, and
- * the difficulty the trainee reported. AC5 says "and nothing else on the row" in those
- * words, so there is no duration here, no volume, no exercise count and no link — the
- * per-exercise analytics suite is explicitly NOT in this story.
+ * The label carries the real count (`showAll`, « Voir les 7 dernières » for seven), for
+ * the reason AC5's summary line does: "the last 10" over seven rows would be false.
  *
- * The summary line's four numbers are the api's, not a count of the rows: `returned` is
- * the real count, which is what lets a trainee with six sessions read "Of the last 6
- * sessions: …" instead of the "of the last 10" that AC5 forbids.
- *
- * The cap is server-side. There is no "show more": a client asking for more receives
- * ten, and this component has no control that could ask.
+ * Opening moves focus to the first row it revealed (the control itself goes away, so
+ * focus must land somewhere, and the new rows are what the coach asked to read). There
+ * is no "show fewer": the ruling's control opens, and a reload starts at five again.
  */
-export function SessionHistory({ history }: { history: History }) {
-  const copy = getCopy();
-  if (history.returned === 0 || history.items.length === 0) {
-    return (
-      <MonitoringBlock title={copy.client.sessionHistory} icon="calendar">
-        {/* An empty state, not an empty table: a table head over no rows is a page
-            that looks broken rather than a trainee who has not started. */}
-        <BlockNote>{copy.client.noCompletedSessions}</BlockNote>
-      </MonitoringBlock>
-    );
-  }
+export function SessionHistory({ rows, showAll }: { rows: SessionRow[]; showAll: string }) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  const firstRevealed = useRef<HTMLLIElement>(null);
+  const hidden = rows.length - SESSIONS_SHOWN;
+  const shown = open ? rows : rows.slice(0, SESSIONS_SHOWN);
+
+  useEffect(() => {
+    if (open) firstRevealed.current?.focus();
+  }, [open]);
 
   return (
-    <MonitoringBlock title={copy.client.sessionHistory} icon="calendar">
-      <p style={{ margin: "0 0 12px", fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-        {copy.client.sessionSummary(
-          history.returned,
-          history.easy,
-          history.ok,
-          history.hard,
-          history.noFeedback
-        )}
-      </p>
-      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 2 }}>
-        {history.items.map((item, i) => (
+    <>
+      <ul id={listId} className="activity-list">
+        {shown.map((row, i) => (
           <li
-            key={`${item.date}-${i}`}
-            style={{
-              display: "grid",
-              // 320 px safe: the date is fixed, the name takes the slack and truncates,
-              // the difficulty word sizes itself (edge case 9, long session names).
-              gridTemplateColumns: "96px minmax(0, 1fr) auto",
-              alignItems: "center",
-              gap: 10,
-              padding: "9px 0",
-              borderTop: i === 0 ? "none" : "1px solid var(--hairline)",
-              fontSize: 13.5,
-            }}
+            key={row.key}
+            className="activity-row"
+            ref={i === SESSIONS_SHOWN ? firstRevealed : undefined}
+            tabIndex={i === SESSIONS_SHOWN ? -1 : undefined}
           >
-            <span style={{ color: "var(--ink-3)", whiteSpace: "nowrap" }}>
-              {formatDate(item.date, copy.locale)}
-            </span>
-            <span
-              title={item.name ?? undefined}
-              style={{
-                color: "var(--ink)",
-                fontWeight: 600,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {/* A null name is a workout row that has since gone. The dash is the
-                  surface's one absence glyph; inventing a name would be worse. */}
-              {item.name || copy.common.dash}
-            </span>
-            <span style={{ color: "var(--ink-2)", whiteSpace: "nowrap" }}>
-              {item.difficulty
-                ? copy.client.feedback[item.difficulty]
-                : copy.client.noFeedback}
-            </span>
+            <span className="activity-date">{row.date}</span>
+            <span className="activity-title">{row.title}</span>
+            <span className="activity-meta">{row.meta}</span>
           </li>
         ))}
       </ul>
-    </MonitoringBlock>
+      {hidden > 0 && !open && (
+        <div className="activity-more">
+          {/* The shared link-button look on a real button: 44 px, the secondary variant. */}
+          <button
+            type="button"
+            className="link-button"
+            data-variant="secondary"
+            aria-controls={listId}
+            onClick={() => setOpen(true)}
+          >
+            {showAll}
+          </button>
+        </div>
+      )}
+    </>
   );
 }

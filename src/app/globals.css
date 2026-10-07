@@ -1544,6 +1544,10 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 /* Wraps, never an ellipsis: a session name is the trainee's plan and is read whole (PB-1). */
 .activity-title { color: var(--ink); font-weight: 600; min-width: 0; overflow-wrap: break-word; }
 .activity-meta { color: var(--ink-2); white-space: nowrap; text-align: right; }
+/* EV-342j: the AC5 summary line above the list, and « Voir les 10 dernières » below it. */
+.activity-summary { margin: 0 0 6px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.activity-more { margin-top: 10px; }
+.activity-row[tabindex="-1"]:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; border-radius: 4px; }
 
 @media (max-width: 767px) {
   .ov-section { margin-bottom: 12px; }

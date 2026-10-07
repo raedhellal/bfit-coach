@@ -393,7 +393,6 @@ export const fr = {
     noPlanInWindow: "Aucun plan enregistré sur ces 8 semaines",
     nothingScheduledIn8Weeks: "Aucune séance prévue ces 8 dernières semaines",
 
-    sessionHistory: "Séances récentes",
     sessionSummary: (
       returned: number,
       easy: number,
@@ -443,14 +442,8 @@ export const fr = {
     },
     activity: {
       title: "Activité récente",
-      weighIn: (kg: string) => `Pesée · ${kg}`,
-      none: "Aucune activité enregistrée pour l'instant.",
-      noSessions: "Aucune séance enregistrée pour l'instant.",
-      noWeighIns: "Aucune pesée enregistrée récemment.",
-      notShared: "Ce client n'a partagé ni ses séances ni ses pesées avec vous.",
-      sessionsNotShared: "Les séances ne sont pas partagées.",
-      weighInsNotShared: "Les pesées ne sont pas partagées.",
       sessionsUnavailable: "Les séances n'ont pas pu être chargées.",
+      showLast: (count: number) => `Voir les ${count} dernières`,
     },
     programmeCard: {
       days: (count: number) => `${count} jour${s(count)} par semaine`,

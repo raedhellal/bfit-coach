@@ -1,111 +1,82 @@
 import { OverviewCard, OverviewNote } from "./OverviewCard";
+import { SessionHistory, type SessionRow } from "./SessionHistory";
 import { getCopy } from "@/lib/i18n/server";
-import { formatDate, formatKg, formatKgDelta } from "@/lib/format";
-import type { SessionHistoryItem, WeightPoint } from "@/lib/coachApi";
-
-/** How many rows the card shows. The full lists stay in their own blocks below. */
-const ROWS = 5;
+import { formatDate } from "@/lib/format";
+import type { SessionHistory as History } from "@/lib/coachApi";
 
 /**
- * « Activité récente » (plan §5.2): the trainee's last sessions and weigh-ins, newest first,
- * in one short list. Two api reads feed it and nothing else: the monitoring read's session
- * history (date, name, difficulty) and the overview's 8-week weight series (date, kg). A
- * weigh-in's delta is the difference from the point before it in that same series; the
- * oldest point in the window has none, and none is invented.
+ * « Activité récente » — EV-342j: the overview's ONE session list (audit A16).
  *
- * Each source is passed as `null` when the coach may not read it or it did not arrive, and
- * the card then says which part is missing under whatever the other part holds. When
- * neither is shared it is one sentence, never an empty list.
+ * Until EV-342j the sessions were listed twice: here (the five newest, mixed with
+ * weigh-ins) and in EV-187's « Séances récentes » block further down (the last ten). The
+ * PO's ruling folds the history into this card: one list, the latest 5 sessions, and
+ * « Voir les 10 dernières » / "Show the last 10" opening the rest in place.
+ *
+ * What moved here from the history block, so nothing it showed is lost (J.2): the AC5
+ * summary line, every row field (date, session name, what the trainee said), the AC5
+ * empty sentence, and AC1's not-shared sentence. The rows are the history's rows, from
+ * the monitoring read (`progress.sessions`, at most ten, newest first, capped server-side).
+ *
+ * The weigh-in rows this card used to interleave (EV-337e) are not in it any more: the
+ * ruling's list is "the latest 5 sessions", and a weigh-in row is not a session row. Each
+ * weigh-in is still on the page, in the weight trend card's chart (date and kg) and in the
+ * weight tile.
+ *
+ * The four states, decided from `scopes` first and the data only after (ADR-0015 D5):
+ *   · notShared — PROGRESS and WORKOUTS are not both held: AC1's sentence, no number;
+ *   · unavailable — both held and the read did not answer: said, never "not shared";
+ *   · no completed session — AC5's sentence, never an empty list;
+ *   · the summary line and the list.
  */
 export function RecentActivity({
-  sessions,
-  weights,
-  sessionsState,
-  weighInsShared,
+  history,
+  state,
 }: {
-  sessions: SessionHistoryItem[] | null;
-  weights: WeightPoint[] | null;
-  /** Why `sessions` may be null: the scope is not held, or the read did not answer. */
-  sessionsState: "shared" | "notShared" | "unavailable";
-  weighInsShared: boolean;
+  /** The monitoring read's session history, or null when not shared or not answered. */
+  history: History | null;
+  /** Why `history` may be null: the scopes are not held, or the read did not answer. */
+  state: "shared" | "notShared" | "unavailable";
 }) {
   const copy = getCopy();
   const c = copy.client.activity;
 
-  if (sessionsState === "notShared" && !weighInsShared) {
+  if (state === "notShared") {
     return (
       <OverviewCard id="ov-activity" title={c.title}>
-        <OverviewNote>{c.notShared}</OverviewNote>
+        <OverviewNote>{copy.client.notSharedProgress}</OverviewNote>
+      </OverviewCard>
+    );
+  }
+  if (state === "unavailable" || !history) {
+    return (
+      <OverviewCard id="ov-activity" title={c.title}>
+        <OverviewNote>{c.sessionsUnavailable}</OverviewNote>
+      </OverviewCard>
+    );
+  }
+  if (history.returned === 0 || history.items.length === 0) {
+    return (
+      <OverviewCard id="ov-activity" title={c.title}>
+        <OverviewNote>{copy.client.noCompletedSessions}</OverviewNote>
       </OverviewCard>
     );
   }
 
-  type Row = { key: string; date: string; title: string; meta: string; order: number };
-  const rows: Row[] = [];
-  (sessions ?? []).forEach((item, i) => {
-    rows.push({
-      key: `s-${item.date}-${i}`,
-      date: item.date,
-      // A null name is a workout row that has since gone: the dash, never an invented name.
-      title: item.name || copy.common.dash,
-      meta: item.difficulty ? copy.client.feedback[item.difficulty] : copy.client.noFeedback,
-      order: 0,
-    });
-  });
-  const series = weighInsShared ? (weights ?? []) : [];
-  series.forEach((point, i) => {
-    const before = i > 0 ? series[i - 1] : null;
-    rows.push({
-      key: `w-${point.date}-${i}`,
-      date: point.date,
-      title: c.weighIn(formatKg(point.weightKg, copy.locale)),
-      meta: before ? formatKgDelta(point.weightKg - before.weightKg, copy.locale) : "",
-      order: 1,
-    });
-  });
-  // Newest first; on one day, the session before the weigh-in. ISO dates sort as strings.
-  rows.sort((a, b) => (a.date === b.date ? a.order - b.order : a.date < b.date ? 1 : -1));
-  const shown = rows.slice(0, ROWS);
-
-  /**
-   * An empty list says what it is empty OF: both sources read and empty is "no activity";
-   * one source read and empty names that one; a source that did not answer claims nothing.
-   */
-  const sessionsRead = sessionsState === "shared";
-  const empty =
-    sessionsState === "unavailable"
-      ? null
-      : sessionsRead && weighInsShared
-        ? c.none
-        : sessionsRead
-          ? c.noSessions
-          : weighInsShared
-            ? c.noWeighIns
-            : null;
-
-  const notes: string[] = [];
-  if (sessionsState === "notShared") notes.push(c.sessionsNotShared);
-  if (sessionsState === "unavailable") notes.push(c.sessionsUnavailable);
-  if (!weighInsShared) notes.push(c.weighInsNotShared);
+  const rows: SessionRow[] = history.items.map((item, i) => ({
+    key: `${item.date}-${i}`,
+    date: formatDate(item.date, copy.locale),
+    // A null name is a workout row that has since gone: the dash, never an invented name.
+    title: item.name || copy.common.dash,
+    meta: item.difficulty ? copy.client.feedback[item.difficulty] : copy.client.noFeedback,
+  }));
 
   return (
     <OverviewCard id="ov-activity" title={c.title}>
-      {shown.length === 0 ? (
-        empty && <OverviewNote>{empty}</OverviewNote>
-      ) : (
-        <ul className="activity-list">
-          {shown.map((row) => (
-            <li key={row.key} className="activity-row">
-              <span className="activity-date">{formatDate(row.date, copy.locale)}</span>
-              <span className="activity-title">{row.title}</span>
-              <span className="activity-meta">{row.meta}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {notes.map((note) => (
-        <OverviewNote key={note}>{note}</OverviewNote>
-      ))}
+      {/* AC5: the api's own four numbers, over its REAL count (`returned`), not the rows shown. */}
+      <p className="activity-summary">
+        {copy.client.sessionSummary(history.returned, history.easy, history.ok, history.hard, history.noFeedback)}
+      </p>
+      <SessionHistory rows={rows} showAll={c.showLast(rows.length)} />
     </OverviewCard>
   );
 }
