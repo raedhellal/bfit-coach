@@ -13,3 +13,4 @@
 - [GUARD rows vs product rows](feedback_guard-rows-vs-product-rows.md) — a hole in our own guard is a numbered BUGS.md row that is NOT counted; the axis is user-reachable, not merged
 - [EV-218 gate](project_ev218-gate.md) — 2026-09-23 PASS at ab3e134; BUG-227 glyph bar + BUG-228 zero-height outline [GUARD]; weekday-sim + lint-creates-.next traps
 - [EV-217 gate](project_ev217-gate.md) — 2026-09-26 PASS at f185c82; mutants QA1-5; [GUARD] BUG-258; the :839 flake is BUG-232 drifted
+- [EV-342 sprint-1 gate](project_ev342-sprint1-gate.md) — 2026-10-07 train 2325555 4 units PASS; list-route hold, write-bound injection, stalled sign-in 301.6 s, 2 pre-existing flakes
