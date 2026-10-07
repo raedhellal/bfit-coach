@@ -55,6 +55,7 @@
 - [Auth + system screens (EV-337k)](auth-system-screens-portal-facts.md) — root not-found is in every page's payload (assert painted DOM); /i 404s fell to the Pro 404 (head needs i/layout metadata); reaching /unavailable; clock traps
 - [French portal, EV-324](coach-portal-i18n-facts.md) — Record maps escape `satisfies Copy`; api text stays English; fixture signs in anyone; AC2 beats AC3 on EN dates
 - [Routine draft write path (BUG-195c)](routine-draft-write-path-facts.md) — one editor, forDraftSave, token echoed as a string, 409 dialog, 4-e partition, live traps
+- [A read that plants state races a parallel read (EV-342c)](a-read-that-plants-state-races-a-parallel-read.md) — apply store-writing switches in every read; draft read rules
 - [Step challenges (EV-321b)](challenges-portal-facts.md) — null is never 0; api ranks; trainee's own today; U+202F is invisible in a PNG; date field locale; roster picker reads every page (BUG-472); source = today only
 - [Challenges redesign (EV-337h)](challenges-redesign-portal-facts.md) — li[data-participant] rows/cards, whole-card list link; todayValue null = no data OR outside window; h1 name only
 - [Challenges follow-ups (EV-337n)](challenges-followups-337n-facts.md) — head's UTC phase gates every row today; participantRowView; never-synced total is fake 0; met-card foot; edges/extra fixture switches
