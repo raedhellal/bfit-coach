@@ -963,6 +963,9 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
   margin: -6px 0 20px;
 }
 
+/* BUG-692 — the roster holds one page; this line says how many links are past it. */
+.roster-not-shown { margin: 0 0 16px; font-size: var(--fs-meta); line-height: 18px; color: var(--ink-2); }
+
 .roster-browser { display: flex; flex-direction: column; gap: 24px; }
 .roster-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .roster-search {

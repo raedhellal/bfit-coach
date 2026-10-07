@@ -198,6 +198,8 @@ export const fr = {
     // give the roster and the client page two words for one thing).
     subtitleCounts: (total: number, toReview: number) =>
       `${total} client${s(total)} · ${toReview} à traiter`,
+    notShown: (hidden: number) =>
+      hidden === 1 ? "1 client n'est pas affiché." : `${hidden} clients ne sont pas affichés.`,
     groups: {
       attention: "À traiter",
       onTrack: "Sur la bonne voie",

@@ -310,7 +310,8 @@ export interface RosterPage {
  * The api caps `size` at 100 and the largest contemplated tier is 100 profiles, so
  * one page of 100 is the whole roster for every tier that can exist. If a tier ever
  * exceeds that, this constant stops being sufficient and the roster needs real
- * pagination — which is why the page reads `totalElements` and not `items.length`.
+ * pagination. Until then the roster page reads `totalElements` beside `items` and says
+ * how many rows are not shown (BUG-692).
  */
 export const ROSTER_PAGE_SIZE = 100;
 
