@@ -4,6 +4,8 @@
 import { createContext, use, useContext } from "react";
 import type { Copy } from "../copy";
 import { isLocale, type Locale } from "./locale";
+import { setLocaleAction } from "./actions";
+import { hasUnsavedWork } from "../useUnsavedChanges";
 
 /**
  * EV-324 — the dictionary for client components.
@@ -38,6 +40,14 @@ import { isLocale, type Locale } from "./locale";
  *     (404, unless the host keeps old deployments' assets), and a reload gets the new
  *     deployment's HTML and chunks, in the locale the server decides. A sessionStorage
  *     flag stops a loop; it is cleared by the next dictionary that loads.
+ *   · BUG-703: never over unsaved work. A reload would raise the editor's `beforeunload`
+ *     prompt, and a coach who answered "stay" was left on a render suspended for good —
+ *     every later navigation waited behind it. So when a guard is armed
+ *     (`hasUnsavedWork`) and the failed chunk is the TARGET of a language switch, the
+ *     switch is abandoned instead: the provider is answered with the language already on
+ *     screen, the locale cookie is put back (`setLocaleAction`), and the switch says it
+ *     could not change the language (`LOCALE_SWITCH_ABANDONED`). No prompt, no reload,
+ *     and the tab keeps working in the language it had.
  *   · If the reload already happened and it fails again, the error is THROWN, and no
  *     boundary of ours catches it: this provider sits in the ROOT layout, above
  *     `app/error.tsx`, and there is no `app/global-error.tsx`, so the coach sees Next's
@@ -71,6 +81,28 @@ function reloadOnce(): boolean {
   return true;
 }
 
+/** BUG-703 — dispatched on `window` when a switch is abandoned; `LanguageSwitch` listens. */
+export const LOCALE_SWITCH_ABANDONED = "evoli:locale-switch-abandoned";
+
+/**
+ * BUG-703 — the dictionary for `locale` failed while unsaved work forbids a reload. Answer
+ * with the language on screen (`from`), put the cookie back, and only then forget the
+ * stand-in, so a later switch asks for the chunk again. Null when there is no language on
+ * screen to keep (a cold load): the caller throws as before.
+ */
+function abandonSwitch(locale: Locale): Promise<Copy> | null {
+  const from: Locale = locale === "fr" ? "en" : "fr";
+  const onScreen = loaded[from];
+  if (!onScreen) return null;
+  void setLocaleAction(from)
+    .catch(() => undefined)
+    .finally(() => {
+      delete pending[locale];
+      window.dispatchEvent(new Event(LOCALE_SWITCH_ABANDONED));
+    });
+  return Promise.resolve(onScreen);
+}
+
 function load(locale: Locale): Promise<Copy> {
   const inFlight = pending[locale];
   if (inFlight) return inFlight;
@@ -91,9 +123,14 @@ function load(locale: Locale): Promise<Copy> {
       return copy;
     },
     (err: unknown) => {
-      // Reloading: stay pending (the provider stays suspended, the server HTML stays on
-      // screen) and keep this promise, so no render asks for the chunk again meanwhile.
-      if (typeof window !== "undefined" && reloadOnce()) return new Promise<Copy>(() => undefined);
+      if (typeof window !== "undefined") {
+        // Unsaved work: abandon the switch rather than prompt (BUG-703).
+        const kept = hasUnsavedWork() ? abandonSwitch(locale) : null;
+        if (kept) return kept;
+        // Reloading: stay pending (the provider stays suspended, the server HTML stays on
+        // screen) and keep this promise, so no render asks for the chunk again meanwhile.
+        if (!hasUnsavedWork() && reloadOnce()) return new Promise<Copy>(() => undefined);
+      }
       delete pending[locale];
       throw err;
     }

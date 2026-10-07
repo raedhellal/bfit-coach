@@ -44,6 +44,21 @@ const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEff
 
 type Pending = { route: LeaveRoute; href: string | null };
 
+/**
+ * BUG-703 — the guards armed right now (each one's `live`, see below). Read by the
+ * dictionary loader (`src/lib/i18n/client.tsx`) before it reloads the page for a failed
+ * dictionary chunk: a reload over unsaved work would raise this hook's `beforeunload`
+ * prompt, and a coach who answers "stay" left the tab stranded on a render that could never
+ * finish. With work unsaved the loader abandons the language switch instead.
+ */
+const armedGuards = new Set<{ current: boolean }>();
+
+/** True when some screen holds work its `beforeunload` guard would prompt for. */
+export function hasUnsavedWork(): boolean {
+  for (const live of armedGuards) if (live.current) return true;
+  return false;
+}
+
 export function useUnsavedChanges(dirty: boolean) {
   const router = useRouter();
   const [pending, setPending] = useState<Pending | null>(null);
@@ -122,7 +137,12 @@ export function useUnsavedChanges(dirty: boolean) {
       });
     };
     window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    const guard = live;
+    armedGuards.add(guard);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      armedGuards.delete(guard);
+    };
   }, [dirty]);
 
   // ── The client tabs and the roster breadcrumb ───────────────────────────────

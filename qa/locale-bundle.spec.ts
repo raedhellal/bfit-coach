@@ -167,4 +167,40 @@ test.describe("a dictionary chunk that fails to load", () => {
     expect(seen).toEqual({ failed: 1, documents: 2 });
     expect(await page.evaluate(() => window.sessionStorage.getItem("evoli.copy.reloaded"))).toBeNull();
   });
+
+  test("BUG-703: the switch's chunk fails over unsaved work — no prompt, the switch is abandoned, the tab keeps working", async ({
+    page,
+    context,
+  }) => {
+    // QA's repro: unsaved work on /nutrition-templates/new, the English chunk 404s once, the
+    // coach switches to EN. Before the fix the one-time reload raised "Leave site?"; "Stay"
+    // (a dismissed dialog) left a render suspended for good, and the next navigation never
+    // finished. Every native dialog is dismissed here, which is "Stay".
+    const seen = await setUp(page, 1, EN_PROBE);
+    const prompts: string[] = [];
+    page.on("dialog", (dialog) => {
+      prompts.push(dialog.type());
+      void dialog.dismiss();
+    });
+    await page.goto("/nutrition-templates/new");
+    await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
+    await page.getByLabel("Nom du modèle").fill("Sèche 1800");
+
+    const languages = page.getByRole("radiogroup", { name: "Langue" });
+    await languages.getByRole("radio", { name: /^EN/ }).check();
+    // The switch is abandoned, said, and undone: French on screen, FR checked, cookie back.
+    await expect(page.getByText("La langue n'a pas pu être changée. Réessayez.").first()).toBeVisible();
+    await expect(languages.getByRole("radio", { name: /^FR/ })).toBeChecked();
+    await expect(page.getByLabel("Nom du modèle")).toHaveValue("Sèche 1800");
+    const localeCookie = (await context.cookies()).find((c) => c.name === "evoli_pro_locale");
+    expect(localeCookie?.value).toBe("fr");
+
+    // And the tab still navigates: the in-app guard asks, and leaving leaves.
+    await page.getByRole("link", { name: "Recettes" }).first().click();
+    await page.getByRole("dialog").getByRole("button", { name: "Quitter sans enregistrer" }).click();
+    await page.waitForURL(/\/recipes$/);
+    await expect(page.locator('[data-nav-progress="visible"]'), "the progress bar stopped").toHaveCount(0);
+    expect(prompts, "no native Leave-site prompt").toEqual([]);
+    expect(seen).toEqual({ failed: 1, documents: 1 });
+  });
 });

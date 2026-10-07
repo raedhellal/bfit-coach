@@ -1,8 +1,8 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import { setLocaleAction } from "@/lib/i18n/actions";
-import { useCopy } from "@/lib/i18n/client";
+import { LOCALE_SWITCH_ABANDONED, useCopy } from "@/lib/i18n/client";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 import { LANGUAGE_NAMES, type Locale } from "@/lib/i18n/locale";
 import { settled } from "@/lib/settled";
@@ -37,6 +37,14 @@ export function LanguageSwitch({ locale, inline = false }: { locale: Locale; inl
   // BUG-686 follow-up: an option chosen before hydration is chosen, not just drawn checked.
   const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   const current = pending && chosen ? chosen : locale;
+
+  // BUG-703: the dictionary loader abandoned the switch (its chunk failed over unsaved
+  // work). The cookie is already back; say so in the same line a failed action uses.
+  useEffect(() => {
+    const onAbandoned = () => setFailed(true);
+    window.addEventListener(LOCALE_SWITCH_ABANDONED, onAbandoned);
+    return () => window.removeEventListener(LOCALE_SWITCH_ABANDONED, onAbandoned);
+  }, []);
 
   function choose(next: Locale) {
     if (next === locale) return;
