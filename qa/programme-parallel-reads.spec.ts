@@ -59,7 +59,7 @@ test.describe("EV-342c — the routine and the draft are read together", () => {
   test("without a draft, the draft read is made in the same render and its answer is not shown", async ({ page }) => {
     await signIn(page);
     // The control: the published plan's name, with no switch.
-    expect(await load(page)).toEqual(["getClient", "getMe", "getRoutine", "getRoutineDraft"]);
+    expect(await load(page)).toEqual(["getClient", "getRoutine", "getRoutineDraft"]);
     const planName = await page.locator("#plan-name").inputValue();
     expect(planName.length).toBeGreaterThan(0);
     await expect(page.getByText(DRAFT_BADGE, { exact: true })).toHaveCount(0);
