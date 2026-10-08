@@ -82,3 +82,4 @@
 - [A module split can grow its page](a-module-split-can-grow-the-page-it-was-for.md) — EV-348: webpack duplicated split modules, client page +0.78 kB; measure encodedBodySize first
 - [A failed preload poisons the URL in WebKit (EV-350)](a-failed-preload-poisons-the-url-in-webkit.md) — buildId-named chunk + DefinePlugin to preload an async chunk; skip on RSC/actions; evict with fetch cache:reload
 - [A route-table URL can match its file and reach another](a-route-table-url-can-match-its-file-and-reach-another.md) — EV-352: /templates/new matches [id]; resolve by Next precedence, refuse @/(.) segments
+- [Overview at 768–1279 (EV-345)](overview-768-band-ev345-facts.md) — `.ov-pair` display:contents outside the band; probe by addStyleTag on next start; inline margins, :scope locators

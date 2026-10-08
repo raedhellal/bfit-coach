@@ -20,7 +20,8 @@ import { fr } from "../src/lib/copy.fr";
  *     is ≥ 44 px, there is one h1, and the blocks keep their DOM (= Tab, = reading) order.
  *   · outside it (390, 1440): the three monitoring blocks stack full width in DOM order and the
  *     alert's action is under its evidence, as at EV-342j's merge. 1440 keeps its two-column
- *     activity row; 390 keeps one column.
+ *     activity row; 390 keeps one column. These, and Tobias's two stacked alert cards, pass on
+ *     6caecb8 (before EV-345) as well; the band test and the J.3 heights fail there.
  *
  * Lina (every scope, one alert, ten sessions) is the page J.3 is measured on. Tobias has two
  * alerts, which keep the stacked card.
@@ -46,8 +47,12 @@ function blocks(page: Page, copy: Copy) {
     activity: main.locator('section[aria-labelledby="ov-activity"]'),
     programme: main.locator('section[aria-labelledby="ov-programme"]'),
     nutrition: main.locator('section[aria-labelledby="ov-nutrition"]'),
-    // The trend is a plain card (no landmark): the one direct child of `.ov-pair` that holds its title.
-    trend: main.locator(".ov-pair > div").filter({ has: page.getByText(copy.client.weightTrend, { exact: true }) }),
+    // The trend is a plain card (no landmark): the one card-level div that holds its title, as a
+    // child of main (EV-342j's merge) or of `.ov-pair` (EV-345), so the 390/1440 checks below read
+    // the same block on both trees and pass on both.
+    trend: main
+      .locator(":scope > div:not(.ov-pair), :scope > .ov-pair > div")
+      .filter({ has: page.getByText(copy.client.weightTrend, { exact: true }) }),
     goal: main.getByRole("region", { name: copy.progressGoal.title, exact: true }),
     series: main.getByRole("region", { name: copy.client.adherenceSeries, exact: true }),
   };
@@ -193,8 +198,9 @@ test.describe("EV-345.4 — outside the band the overview is as at EV-342j's mer
         expect(Math.abs(other.x - trend.x), `${name} aligned with the trend`).toBeLessThanOrEqual(1);
         expect(Math.abs(other.width - trend.width), `${name} as wide as the trend`).toBeLessThanOrEqual(1);
       }
-      // `.ov-pair` is not a box out here: it lays nothing out.
-      await expect(page.locator(".ov-pair")).toHaveCSS("display", "contents");
+      // `.ov-pair` (EV-345) is not a box out here: it lays nothing out. (Absent at EV-342j's
+      // merge, where these checks pass too: that is what makes them "unchanged" witnesses.)
+      for (const pair of await page.locator(".ov-pair").all()) await expect(pair).toHaveCSS("display", "contents");
 
       const act = await box(b.activity, "activity");
       const prog = await box(b.programme, "programme");
