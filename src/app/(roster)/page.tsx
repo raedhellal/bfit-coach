@@ -6,7 +6,7 @@ import { InvitedSection, type InvitedRowData } from "@/components/roster/Invited
 import { RosterBrowser, type RosterEntry } from "@/components/roster/RosterBrowser";
 import { RosterRow } from "@/components/roster/RosterRows";
 import { RosterSortToggle } from "@/components/roster/RosterSortToggle";
-import { Button, Card, EmptyState, PageHead } from "@/components/ui/kit";
+import { Card, EmptyState, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { coachApi, type CoachMe, type RosterClient } from "@/lib/coachApi";
 import { readRosterSort } from "@/lib/rosterSort";
@@ -66,10 +66,18 @@ export default async function RosterPage() {
     () => ({ rows: [], failed: true })
   );
 
+  /**
+   * BUG-692 — how many ACTIVE links the api holds beyond the one page read. `listClients`
+   * is paged; one page of ROSTER_PAGE_SIZE (100, the api's own maximum) is the entire
+   * roster for every tier sold today (STARTER, 10), so there is no pager on this screen.
+   * Past 100, rows 101+ would otherwise vanish without a word: the envelope's
+   * `totalElements` is read here and the roster says how many are not shown. The fixture
+   * constructs it: `evoli_fixture_roster_extra=95` serves 101 links, page 0 holds 100
+   * (qa/roster-not-shown.spec.ts).
+   */
+  let hiddenCount = 0;
+
   try {
-    // `listClients` is paged. One page of ROSTER_PAGE_SIZE (the api's own maximum) is
-    // the entire roster for every tier that can exist today, so there is no pager on
-    // this screen — but the envelope's `totalElements` is what would prove otherwise.
     const [meResult, roster] = await Promise.all([
       coachApi.getMe(),
       coachApi.listClients(sort),
@@ -79,6 +87,7 @@ export default async function RosterPage() {
     // Rendered in the order the api returned. Re-sorting here is the defect, not the
     // safety net: see the block where `sortNeedsAttentionFirst` used to live.
     clients = roster.items;
+    hiddenCount = Math.max(0, roster.totalElements - roster.items.length);
     today = dayIn(new Date());
   } catch {
     failed = true;
@@ -101,10 +110,11 @@ export default async function RosterPage() {
           >
             <UiIcon name="ban" size={26} color="var(--err-ink)" />
             <div style={{ fontSize: 14.5, color: "var(--ink-2)" }}>{copy.roster.loadError}</div>
-            <a href="/">
-              <Button variant="secondary" icon="refresh">
-                {copy.roster.retry}
-              </Button>
+            {/* BUG-616: one control, a link drawn as the secondary button (was a <button>
+                inside the <a>). Still a plain <a>: the retry is a full document load. */}
+            <a href="/" className="link-button" data-variant="secondary">
+              <UiIcon name="refresh" size={16.5} />
+              {copy.roster.retry}
             </a>
           </div>
         </Card>
@@ -178,7 +188,15 @@ export default async function RosterPage() {
           />
         </Card>
       ) : (
-        <RosterBrowser entries={entries} />
+        <>
+          {/* BUG-692: above the list, where a coach looking for a missing client reads first. */}
+          {hiddenCount > 0 && (
+            <p className="roster-not-shown" data-roster-not-shown="">
+              {copy.roster.notShown(hiddenCount)}
+            </p>
+          )}
+          <RosterBrowser entries={entries} />
+        </>
       )}
     </CoachShell>
   );

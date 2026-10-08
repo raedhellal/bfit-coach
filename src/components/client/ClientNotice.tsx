@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button, Card } from "@/components/ui/kit";
+import { Card } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { getCopy } from "@/lib/i18n/server";
 
@@ -50,10 +50,11 @@ export function ClientNotice({
         >
           {message}
         </Message>
-        <Link href={back?.href ?? "/"}>
-          <Button variant="secondary" icon="arrowL">
-            {back?.label ?? copy.shell.backToRoster}
-          </Button>
+        {/* BUG-616: one control, a link drawn as the secondary button. It was a <button>
+            inside the link: two Tab stops and two announced controls for one action. */}
+        <Link href={back?.href ?? "/"} className="link-button" data-variant="secondary">
+          <UiIcon name="arrowL" size={16.5} />
+          {back?.label ?? copy.shell.backToRoster}
         </Link>
       </div>
     </Card>

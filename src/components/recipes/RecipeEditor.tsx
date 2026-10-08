@@ -526,6 +526,7 @@ export function RecipeEditor({
       </Card>
 
       <Modal
+        dirty={false}
         open={leaving.prompted}
         onClose={leaving.stay}
         title={copy.routine.leaveTitle}

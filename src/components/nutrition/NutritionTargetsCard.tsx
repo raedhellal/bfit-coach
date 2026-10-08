@@ -328,6 +328,7 @@ export function NutritionTargetsCard({
       </p>
 
       <Modal
+        dirty={false}
         open={confirming}
         onClose={() => !pending && setConfirming(false)}
         title={copy.nutrition.saveTargetsTitle}

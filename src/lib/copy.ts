@@ -271,6 +271,14 @@ export const en = {
     subtitleCounts: (total: number, toReview: number) =>
       `${total} client${total === 1 ? "" : "s"} · ${toReview} to review`,
     /**
+     * BUG-692 — the roster reads ONE page (`ROSTER_PAGE_SIZE`, the api's maximum) and the
+     * envelope's `totalElements` says more links exist. The rows past the page are not
+     * shown, and this sentence says so instead of dropping them without a word. A pager is
+     * a separate row. `hidden` is always ≥ 1 where it is used.
+     */
+    notShown: (hidden: number) =>
+      hidden === 1 ? "1 client is not shown." : `${hidden} clients are not shown.`,
+    /**
      * The four groups (`src/lib/rosterView.ts`). "To review" and not "Needs attention":
      * that is the sort toggle's option, and one screen must not use one phrase for two
      * controls. There is no "Pending invites" group: the api has no read of pending
@@ -1240,6 +1248,34 @@ export const en = {
      */
     ruleLabels: { HALAL: "HALAL", KOSHER: "KOSHER" } as Record<string, string>,
     dislikes: "Dislikes",
+    /**
+     * BUG-694 — the trainee app's preset chips, keyed by the value the app STORES. The app
+     * sends the English label on purpose (`b-fit-mobile` `prefsVocabulary.ts`: the api's hard
+     * exclusions match on these strings) and translates only what it shows, so the portal
+     * does the same: a preset is shown with the app's label (`en.json` / `fr.json`
+     * `nutrition.prefs.allergen.*` and `.avoid.*`), anything else exactly as typed
+     * (`dietValueLabel`). The nine `ALLERGY_PRESETS` and the five `AVOID_PRESETS`, nothing
+     * more: "Fish" is an allergy preset but not a dislike preset, so a typed dislike "Fish"
+     * stays "Fish". Literal keys, so `fr … satisfies Copy` refuses a missing preset.
+     */
+    allergyPresetLabels: {
+      Dairy: "Dairy",
+      Gluten: "Gluten",
+      Nuts: "Nuts",
+      Peanuts: "Peanuts",
+      Shellfish: "Shellfish",
+      Eggs: "Eggs",
+      Soy: "Soy",
+      Fish: "Fish",
+      Sesame: "Sesame",
+    },
+    dislikePresetLabels: {
+      Liver: "Liver",
+      Mushrooms: "Mushrooms",
+      Olives: "Olives",
+      Cilantro: "Cilantro",
+      "Blue cheese": "Blue cheese",
+    },
     // Edge case 1, verbatim: no preferences row is not the same as an empty checked list.
     noRestrictions: "No dietary restrictions recorded.",
     saveTargets: "Save targets", // AC2, verbatim

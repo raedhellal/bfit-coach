@@ -3210,7 +3210,12 @@ const PLACEMENT_OFF_IDS = new Set([PIA_ID]);
  * A COOKIE, not process state, so the switch is scoped to the browser context that set
  * it: the suite shares one dev server, and `revokeClient()`'s process-wide flag is
  * exactly the terminal-for-everyone behaviour these tests must not have. Read only
- * here, only in fixture mode; `live` never imports this file.
+ * here, and only reached in fixture mode: `coachApi.ts` routes calls to this file only
+ * when `COACH_API_MODE === "fixture"`. The FILE is not absent from live: `coachApi.ts`
+ * imports it statically, so it is in the live SERVER bundle. It is in no client bundle:
+ * both files start with `import "server-only"` (EV-349 349.2; witnessed on `next build`:
+ * the seed's "lapsed.invite@example.com" is in `.next/server`, and in nothing under
+ * `.next/static`).
  */
 async function fixtureSwitch(name: string): Promise<string | null> {
   try {
@@ -3372,7 +3377,8 @@ async function lockedSince(mealId: string): Promise<boolean> {
  * unavailable state (500) and the late-denial redirect (403) without a patch: every seeded
  * id is either readable or refused before the page asks. It fails the read wherever it is
  * made (the routine and nutrition tabs too), which is what the api would do. Read here
- * only, so only in fixture mode; `live` never imports this file.
+ * only, so only reached in fixture mode (the file itself is in the live server bundle and
+ * in no client bundle: see `fixtureSwitch`).
  */
 async function summaryReadFailure(read: "routine" | "nutrition", id: string): Promise<void> {
   const raw = await fixtureSwitch("evoli_fixture_summary_read");
@@ -6569,13 +6575,36 @@ export const fixtureCoachApi: CoachApi = {
     await assertScope(id, "NUTRITION");
     await summaryReadFailure("nutrition", id);
     const state = await withServedWeekStatus(nutritionState(id));
+    /**
+     * BUG-694 — ⚠ fixture affordance: `evoli_fixture_diet_profile=presets` (this browser
+     * context only) serves, on THIS read alone, every preset the trainee app offers (the
+     * nine allergies and the five foods to avoid, as the app stores them: English) beside
+     * values a trainee typed. The stored profile is untouched, so placement and its
+     * refusals still read the seed.
+     */
+    const dietProfile =
+      (await fixtureSwitch("evoli_fixture_diet_profile")) === "presets"
+        ? {
+            allergies: [
+              "Dairy", "Gluten", "Nuts", "Peanuts", "Shellfish", "Eggs", "Soy", "Fish", "Sesame",
+              // Typed, not presets: shown exactly as typed in both languages.
+              "Kiwi", "peanuts", "Arachides",
+            ],
+            rules: state.dietProfile.rules,
+            dislikes: [
+              "Liver", "Mushrooms", "Olives", "Cilantro", "Blue cheese",
+              // "Fish" is an allergy preset, not a dislike preset: typed here.
+              "Fish", "Raw onion",
+            ],
+          }
+        : state.dietProfile;
     return {
       clientId: id,
       traineeDisplayName: await servedDisplayName(id, OVERVIEWS[id]().traineeDisplayName),
       targets: state.targets,
       week: state.week,
       currentWeekStart: await servedWeekStart(),
-      dietProfile: state.dietProfile,
+      dietProfile,
       // ON for everyone but the placement-off world (see PLACEMENT_OFF_IDS) — the
       // value the api's `local` profile and staging carry.
       recipePlacementEnabled: !(await placementOff(id)),

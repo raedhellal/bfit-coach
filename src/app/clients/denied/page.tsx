@@ -34,7 +34,8 @@ import { getCopy } from "@/lib/i18n/server";
  * the design's shorter « Ce client ne fait pas partie de votre liste »: AC5's text is the
  * story's, and the design's « le lien appartient à un autre coach » claims a reason the api
  * deliberately does not give. The way back is a real link drawn as a button, not a link
- * wrapped round a <button> (two nested interactive elements, as `ClientNotice` still has).
+ * wrapped round a <button> (two nested interactive elements; `ClientNotice` had the same until
+ * BUG-616).
  */
 export const dynamic = "force-dynamic";
 

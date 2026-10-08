@@ -425,6 +425,7 @@ function DeleteDialog({
 
   return (
     <Modal
+      dirty={false}
       open={template !== null}
       onClose={() => !pending && onClose()}
       title={T.deleteTitle}
@@ -475,6 +476,7 @@ function PickDialog({
   const T = copy.nutritionTemplates;
   return (
     <Modal
+      dirty={false}
       open={template !== null}
       onClose={onClose}
       title={T.pickTitle}
@@ -662,6 +664,7 @@ function ConfirmDialog({
 
   return (
     <Modal
+      dirty={false}
       open
       onClose={() => !pending && onClose()}
       title={T.confirmTitle(template.name, first)}

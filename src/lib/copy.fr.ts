@@ -198,6 +198,8 @@ export const fr = {
     // give the roster and the client page two words for one thing).
     subtitleCounts: (total: number, toReview: number) =>
       `${total} client${s(total)} · ${toReview} à traiter`,
+    notShown: (hidden: number) =>
+      hidden === 1 ? "1 client n'est pas affiché." : `${hidden} clients ne sont pas affichés.`,
     groups: {
       attention: "À traiter",
       onTrack: "Sur la bonne voie",
@@ -678,6 +680,25 @@ export const fr = {
     rules: "Règles alimentaires",
     ruleLabels: { HALAL: "Halal", KOSHER: "Casher" } as Record<string, string>,
     dislikes: "Aversions",
+    // BUG-694 — the app's own French labels (`b-fit-mobile` `fr.json` `nutrition.prefs.*`).
+    allergyPresetLabels: {
+      Dairy: "Produits laitiers",
+      Gluten: "Gluten",
+      Nuts: "Fruits à coque",
+      Peanuts: "Arachides",
+      Shellfish: "Fruits de mer",
+      Eggs: "Œufs",
+      Soy: "Soja",
+      Fish: "Poisson",
+      Sesame: "Sésame",
+    },
+    dislikePresetLabels: {
+      Liver: "Foie",
+      Mushrooms: "Champignons",
+      Olives: "Olives",
+      Cilantro: "Coriandre",
+      "Blue cheese": "Fromage bleu",
+    },
     noRestrictions: "Aucune restriction alimentaire enregistrée.",
     saveTargets: "Enregistrer les objectifs",
     saving: "Enregistrement…",
