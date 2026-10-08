@@ -25,8 +25,15 @@ pattern: hydrated page, append a preload that a route 404s once, (optionally evi
   id). Cost: URL changes every deploy. Fail the build in an `emit` hook if the named chunks are missing.
 - Mirror Next's `?dpl=` suffix (`NEXT_DEPLOYMENT_ID`, `client/app-webpack.js`) or the hint never matches
   under Vercel skew protection.
-- `preload()` in a layout also rides every RSC payload (navigations, server actions) into `<head>`. Skip
-  it when the request has `RSC` or `Next-Action` headers, or a language switch preloads the OTHER chunk.
+- `preload()` in a layout also rides every RSC payload that re-renders it (refresh, server action) into
+  `<head>`. Skip it on `Next-Action`, or a language switch preloads the OTHER chunk. Do NOT test
+  `headers().has("rsc")`: Next 14.2 deletes `RSC`, `Next-Router-State-Tree` and `Next-Router-Prefetch`
+  from `headers()` (`request-async-storage-wrapper` `getHeaders`), so that arm is dead and a mutant of it
+  stays green (staff, EV-350 round 1). A same-locale refresh's hint is harmless (React dedupes it), but a
+  refresh after ANOTHER tab changed the locale cookie puts the other language's preload in `<head>`, and
+  in WebKit that poisons BUG-703's "EN again over unsaved work" (0 network requests, abandoned again).
+  `Sec-Fetch-Dest` survives `headers()`: `document` on a page load, `empty` on every RSC fetch; skipping
+  when it is present and not `document` closed it in both engines (proposed, not merged, 2026-10-08).
 - webpack's `ChunkLoadError.request` is the absolute URL it asked for; webpack's script loader REUSES an
   existing `<script src>` with the same URL, so a `preinit` (async script) that already failed would hang
   `import()` for webpack's 120 s timeout. Preload, not preinit.
