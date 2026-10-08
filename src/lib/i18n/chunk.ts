@@ -39,10 +39,12 @@ export function copyChunkHref(locale: Locale): string {
  * Other RSC requests (a refresh, a navigation that re-renders this layout) DO carry the
  * hint: Next 14.2 strips `RSC`, `Next-Router-State-Tree` and `Next-Router-Prefetch` from
  * `headers()` (`request-async-storage-wrapper`'s `getHeaders`), so a server component
- * cannot tell them from a document request. That costs nothing: the hint names the
- * document's own language, and React dedupes it against the `<link>` the document already
- * has (observed on a `router.refresh()`: still one `<link>`, one dictionary request, no
- * console message).
+ * cannot tell them from a document request. In the document's own language that costs
+ * nothing: React dedupes the hint against the `<link>` the document already has (observed
+ * on a `router.refresh()`: still one `<link>`, one dictionary request, no console
+ * message). After ANOTHER tab changed the locale cookie, a refresh here renders the other
+ * language and its hint lands in `<head>` beside the document's (observed, Chromium and
+ * WebKit, EV-350 staff round 1; open, see the merge record).
  */
 export function preloadCopyChunk(locale: Locale): void {
   const request = headers();
