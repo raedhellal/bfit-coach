@@ -354,9 +354,9 @@ export default async function ClientPage({ params }: { params: { id: string } })
         />
       </div>
 
-      {/* Two columns from a 1280 px viewport (plan §3), one below: the activity, then the
-          programme and nutrition summaries. */}
-      <div className="layout-split ov-section">
+      {/* Two columns from a 1280 px viewport (plan §3), one below 768: the activity, then the
+          programme and nutrition summaries. EV-345: two columns from 768 as well (`.ov-split`). */}
+      <div className="layout-split ov-split ov-section">
         {/* EV-342j: the overview's one session list. EV-187 AC5's history block below
             folded into it (the last ten, five shown, the rest opened in place). The same
             two scopes the history block needed: PROGRESS for the read, WORKOUTS for
@@ -379,76 +379,83 @@ export default async function ClientPage({ params }: { params: { id: string } })
         </div>
       </div>
 
-      <Card style={{ marginBottom: 18 }}>
-        <CardHead title={copy.client.weightTrend} icon="chart" />
+      {/* EV-345: the weight trend, the progress goal and the adherence series, in this DOM
+          order everywhere. `.ov-pair` is `display: contents` outside 768–1279 px, so the
+          three lay out exactly as before there; inside that band the trend and the series
+          share a row and the goal (a form) spans the row below, directly under the trend it
+          belongs with (G-GOAL). See globals.css « EV-345 ». */}
+      <div className="ov-pair">
+        <Card style={{ marginBottom: 18 }}>
+          <CardHead title={copy.client.weightTrend} icon="chart" />
+          {!weighInsShared ? (
+            <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
+              {copy.client.notSharedWeighIns}
+            </p>
+          ) : series.length > 0 ? (
+            <TrendChart
+              points={series.map((p) => ({ label: formatShortDate(p.date, copy.locale), value: p.weightKg }))}
+              ariaLabel={copy.common.labelled(
+                copy.client.weightTrend,
+                series.map((p) => `${formatShortDate(p.date, copy.locale)} ${formatKg(p.weightKg, copy.locale)}`).join(", ")
+              )}
+            />
+          ) : (
+            <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
+              {copy.client.noWeighIns}
+            </p>
+          )}
+        </Card>
+
+        {/* ── EV-202b: where they started, where they are, where they are going ─
+            The WEIGH_INS block, so it sits with the weight trend and nowhere near the
+            plan or the calorie targets — G-GOAL is a layout constraint as well as an
+            api one. The scope flag is asked FIRST and the null only after it, the same
+            ordering every other block on this page uses. */}
         {!weighInsShared ? (
-          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
-            {copy.client.notSharedWeighIns}
-          </p>
-        ) : series.length > 0 ? (
-          <TrendChart
-            points={series.map((p) => ({ label: formatShortDate(p.date, copy.locale), value: p.weightKg }))}
-            ariaLabel={copy.common.labelled(
-              copy.client.weightTrend,
-              series.map((p) => `${formatShortDate(p.date, copy.locale)} ${formatKg(p.weightKg, copy.locale)}`).join(", ")
-            )}
-          />
+          <MonitoringBlock title={copy.progressGoal.title} icon="trend">
+            {/* AC6, verbatim, and decided from `scopes` — never inferred from the 403
+                that `PUT …/progress-goal` would answer, which is undifferentiated
+                across five denials and says nothing about consent. */}
+            <BlockNote>
+              {copy.progressGoal.notShared(firstName(overview.traineeDisplayName, copy.locale))}
+            </BlockNote>
+          </MonitoringBlock>
+        ) : !overview.progressGoal ? (
+          <MonitoringBlock title={copy.progressGoal.title} icon="trend">
+            {/* WEIGH_INS IS held, so the api owed a block: `progressGoal` is non-null
+                even for a trainee who has never recorded anything (every reading inside
+                is then null). Its absence is therefore an api that did not answer — an
+                older deployment, or a degraded one — and never a consent statement. */}
+            <BlockNote>{copy.progressGoal.loadError}</BlockNote>
+          </MonitoringBlock>
         ) : (
-          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-3)" }}>
-            {copy.client.noWeighIns}
-          </p>
+          <ProgressGoalBlock
+            clientId={overview.clientId}
+            coachId={me?.coachId ?? null}
+            traineeDisplayName={overview.traineeDisplayName}
+            goal={overview.progressGoal}
+          />
         )}
-      </Card>
 
-      {/* ── EV-202b: where they started, where they are, where they are going ─
-          The WEIGH_INS block, so it sits with the weight trend and nowhere near the
-          plan or the calorie targets — G-GOAL is a layout constraint as well as an
-          api one. The scope flag is asked FIRST and the null only after it, the same
-          ordering every other block on this page uses. */}
-      {!weighInsShared ? (
-        <MonitoringBlock title={copy.progressGoal.title} icon="trend">
-          {/* AC6, verbatim, and decided from `scopes` — never inferred from the 403
-              that `PUT …/progress-goal` would answer, which is undifferentiated
-              across five denials and says nothing about consent. */}
-          <BlockNote>
-            {copy.progressGoal.notShared(firstName(overview.traineeDisplayName, copy.locale))}
-          </BlockNote>
-        </MonitoringBlock>
-      ) : !overview.progressGoal ? (
-        <MonitoringBlock title={copy.progressGoal.title} icon="trend">
-          {/* WEIGH_INS IS held, so the api owed a block: `progressGoal` is non-null
-              even for a trainee who has never recorded anything (every reading inside
-              is then null). Its absence is therefore an api that did not answer — an
-              older deployment, or a degraded one — and never a consent statement. */}
-          <BlockNote>{copy.progressGoal.loadError}</BlockNote>
-        </MonitoringBlock>
-      ) : (
-        <ProgressGoalBlock
-          clientId={overview.clientId}
-          coachId={me?.coachId ?? null}
-          traineeDisplayName={overview.traineeDisplayName}
-          goal={overview.progressGoal}
-        />
-      )}
-
-      {/* ── EV-187 AC3: eight weeks of adherence ───────────────────────────── */}
-      {!monitoringShared ? (
-        <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">
-          {/* BUG-700: name the scope that is actually missing. PROGRESS held without
-              WORKOUTS (Sara) is the workouts sentence — "has not shared their progress"
-              would be false about a trainee who shared it. */}
-          <BlockNote>{progressShared ? copy.routine.scopeMissing : copy.client.notSharedProgress}</BlockNote>
-        </MonitoringBlock>
-      ) : !progress?.adherence ? (
-        <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">
-          {/* `monitoringShared` says the api should have sent a series, so a missing one
-              is the api not answering — never "not shared", which would be this page
-              inventing a consent fact from an outage. */}
-          <BlockNote>{copy.client.monitoringLoadError}</BlockNote>
-        </MonitoringBlock>
-      ) : (
-        <AdherenceSeries series={progress.adherence} />
-      )}
+        {/* ── EV-187 AC3: eight weeks of adherence ───────────────────────────── */}
+        {!monitoringShared ? (
+          <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">
+            {/* BUG-700: name the scope that is actually missing. PROGRESS held without
+                WORKOUTS (Sara) is the workouts sentence — "has not shared their progress"
+                would be false about a trainee who shared it. */}
+            <BlockNote>{progressShared ? copy.routine.scopeMissing : copy.client.notSharedProgress}</BlockNote>
+          </MonitoringBlock>
+        ) : !progress?.adherence ? (
+          <MonitoringBlock title={copy.client.adherenceSeries} icon="chart">
+            {/* `monitoringShared` says the api should have sent a series, so a missing one
+                is the api not answering — never "not shared", which would be this page
+                inventing a consent fact from an outage. */}
+            <BlockNote>{copy.client.monitoringLoadError}</BlockNote>
+          </MonitoringBlock>
+        ) : (
+          <AdherenceSeries series={progress.adherence} />
+        )}
+      </div>
 
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
         {copy.client.footNote}

@@ -101,7 +101,7 @@ export function RedFlagEvidence({
               )}
 
               {fired.flag === "MISSED_TWO_OR_MORE_SESSIONS" && routineHref && (
-                <div>
+                <div className="alert-card-action">
                   <Link href={routineHref} className="link-button" data-variant="on-tint">
                     {copy.client.adjustPlan}
                   </Link>

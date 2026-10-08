@@ -1565,7 +1565,59 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
   .stat-card[data-visual] > .stat-card-visual { grid-row: auto; align-self: start; margin-bottom: 4px; }
 }
 
-/* ── EV-204b: « Ajouter un client » and « Invitations en attente » ────────────────────────
+/* ── EV-345 (A16 remainder): at 768–1279 px the overview is one screen shorter ────────────
+   The goal (EV-342j J.3 as restated, J-R2): Lina, FR, 768 × 1024, `next start`, at most
+   2,198 px, one 1,024 px screen under c2768c2. Layout only: nothing is removed, folded or
+   moved in the DOM, so the Tab order and the reading order of the blocks are unchanged.
+   Outside the band every rule below is inert (`.ov-pair` is `display: contents`), and < 768
+   and ≥ 1280 render as at EV-342j's merge.
+   · « Activité récente » beside the programme and nutrition summaries (`.ov-split`), the
+     ≥ 1280 split brought down to 768.
+   · The weight trend beside « Assiduité, 8 dernières semaines », and « Progression et
+     objectif » across the row below, directly under the trend (G-GOAL: the goal sits with
+     the weight). The goal stays full width because its three fields would stack in half a
+     row and make it taller than the two blocks it would sit beside. Its DOM place (between
+     the trend and the series) is kept; only the grid area moves the series up.
+   · A lone alert card puts its action beside its title instead of under its evidence.
+   · Gaps and card padding step down to 12 px / 18 × 20 px, and the page's bottom padding
+     (which sits above the bottom tab bar here) from 56 to 32 px. */
+.ov-pair { display: contents; }
+@media (min-width: 768px) and (max-width: 1279px) {
+  .layout-split.ov-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  /* Scoped to the overview (the page that holds `.ov-pair`): /invited/[userId] shares
+     `.ov-card` / `.ov-section` and stays as it was. */
+  .page:has(.ov-pair) { padding-bottom: 32px; }
+  .page:has(.ov-pair) .ov-section { margin-bottom: 12px; }
+  .page:has(.ov-pair) .ov-stack { gap: 12px; }
+  .page:has(.ov-pair) .ov-card { padding: 18px 20px; }
+  .stat-grid.overview-stats { gap: 12px; }
+  /* The blocks keep their own 18 px bottom margin (inline on the card and the section), so
+     the rows need no row gap. */
+  .ov-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "trend series" "goal goal";
+    column-gap: 12px;
+    align-items: start;
+  }
+  .ov-pair > :nth-child(1) { grid-area: trend; }
+  .ov-pair > :nth-child(2) { grid-area: goal; }
+  .ov-pair > :nth-child(3) { grid-area: series; }
+  /* One alert spans the whole card (680 px at 768): its « Adapter le plan » goes to the right
+     of the « Alerte » word and the title (two rows that always render, 48 px ≥ the 44 px
+     control), not on a line of its own. Two or more alerts sit side by side and keep the
+     stacked card. */
+  .alert-list > .alert-card:only-child > .alert-card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 16px;
+    justify-items: start;
+  }
+  .alert-list > .alert-card:only-child > .alert-card-body > * { grid-column: 1; }
+  .alert-list > .alert-card:only-child > .alert-card-body > .alert-card-action { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+}
+
+/* ── EV-204b:« Ajouter un client » and « Invitations en attente » ────────────────────────
    The Invited section sits between the roster's meta line and its groups. It is NOT a roster
    group (Ruling 2: no third link status), so it borrows the group's head and list frame but
    none of its rules: no search, no filter, no nav count. */
