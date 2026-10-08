@@ -51,8 +51,11 @@ export function ClientNotice({
           {message}
         </Message>
         {/* BUG-616: one control, a link drawn as the secondary button. It was a <button>
-            inside the link: two Tab stops and two announced controls for one action. */}
-        <Link href={back?.href ?? "/"} className="link-button" data-variant="secondary">
+            inside the link: two Tab stops and two announced controls for one action.
+            EV-352: `data-notice-back` is this link's own marker. On the "not yours" pages it
+            has the same name as the page's BackLink, and qa/pro-back-link.spec.ts tells the
+            two apart by it; `.link-button` is shared by every button-styled link. */}
+        <Link href={back?.href ?? "/"} className="link-button" data-variant="secondary" data-notice-back="">
           <UiIcon name="arrowL" size={16.5} />
           {back?.label ?? copy.shell.backToRoster}
         </Link>
