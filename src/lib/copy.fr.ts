@@ -678,7 +678,8 @@ export const fr = {
     scopeMissing: "Ce client n'a pas partagé sa nutrition avec vous.",
     allergies: "Allergies",
     rules: "Règles alimentaires",
-    ruleLabels: { HALAL: "Halal", KOSHER: "Casher" } as Record<string, string>,
+    // The app's own French labels (`b-fit-mobile` `fr.json` `nutrition.prefs.rule.*`).
+    ruleLabels: { HALAL: "Halal", KOSHER: "Casher" },
     dislikes: "Aversions",
     // BUG-694 — the app's own French labels (`b-fit-mobile` `fr.json` `nutrition.prefs.*`).
     allergyPresetLabels: {

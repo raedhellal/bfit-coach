@@ -128,7 +128,8 @@ test.describe("AC1 — the coach opens Nutrition and sees the live targets and w
     await expect(page.getByText("Dietary rules", { exact: true })).toBeVisible();
     await expect(page.getByText("Dislikes", { exact: true })).toBeVisible();
     await expect(page.getByText("Peanuts")).toBeVisible();
-    await expect(page.getByText("HALAL")).toBeVisible();
+    // BUG-706: the app's English label, not the stored enum (getByText is case-insensitive without exact).
+    await expect(page.getByText("Halal", { exact: true })).toBeVisible();
     await expect(
       page.getByText("From the trainee's profile — you cannot change these here.")
     ).toBeVisible();
