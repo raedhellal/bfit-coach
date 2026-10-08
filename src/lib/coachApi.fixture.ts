@@ -3954,11 +3954,12 @@ async function nutritionCopyName(original: string): Promise<string> {
  *                                      failed")`, exactly what `apiFetch` sees when the
  *                                      connection to b-fit-api is lost (staff review, M4).
  *   `evoli_fixture_targets=gateway_502|gateway_503|gateway_504` (and the same on
- *   `evoli_fixture_week`) — BUG-523: a GATEWAY in front of the api answers that status with
- *                                      no envelope, so `apiFetch` builds an `ApiError` with no
- *                                      code and "Request failed (502)". Nothing is written
- *                                      here, but the portal cannot know that: the write may
- *                                      have landed behind the gateway.
+ *   `evoli_fixture_week`) — BUG-523: the write answers that status as an `ApiError` with
+ *                                      no string `code` (message "Request failed (502)").
+ *                                      The portal classifies it by status alone, whatever a
+ *                                      gateway's body holds. Nothing is written here, but the
+ *                                      portal cannot know that: the write may have landed
+ *                                      behind the gateway.
  *   `evoli_fixture_week_start=YYYY-MM-DD` — the week the API considers current, served as
  *                                      `currentWeekStart` and the only one apply accepts.
  *                                      A date that is NOT the UTC Monday pins "the apply sends

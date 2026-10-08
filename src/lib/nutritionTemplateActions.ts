@@ -50,8 +50,15 @@ import {
  * One exception to "a status is a refusal" (BUG-523, senior-po's ruling of 2026-09-30,
  * extending BUG-248's rule for a lost answer): a `502`, `503` or `504` is a status the
  * portal received, but from whatever stands between it and b-fit-api, which may have
- * written behind it. It does not prove nothing changed, so it is `NO_ANSWER`. None of the
- * three is a refusal b-fit-api itself sends on these endpoints (see `coachApi.ts`'s table).
+ * written behind it. It does not prove nothing changed, so it is `NO_ANSWER`.
+ *
+ * None of the three is a refusal b-fit-api itself sends on the two writes used here (trace
+ * on b-fit-api origin/main, 2026-10-09): `RestExceptionHandler` answers 503 only for
+ * `ACCOUNT_INITIALISATION_UNAVAILABLE`, `CATALOG_UNAVAILABLE` and the exercise provider's
+ * unavailability, and 502 only for `ROUTINE_GENERATION_FAILED`; on the week apply, a
+ * failing model is caught in `WeeklyMealPlanService.generateValidated`'s model arm
+ * (`catch (RuntimeException ex)`, "falling back to stub"), so no generation failure
+ * reaches the handler as a 502. A 5xx here can only come from in front of the api.
  */
 
 export type NutritionTemplateFailure =
