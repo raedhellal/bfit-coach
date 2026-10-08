@@ -1,4 +1,5 @@
-import { expect, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { expect, webkit, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 
 /**
@@ -172,5 +173,55 @@ test.describe("the switch", () => {
     expect(await dictionaryRequests(seen, "en"), "English: the switch's one request").toHaveLength(1);
     expect(seen.preloadMessages).toEqual([]);
     expect(seen.errors).toEqual([]);
+  });
+});
+
+test.describe("a preloaded chunk that fails once", () => {
+  /**
+   * EV-342m's M.6 cold-load case, now that the chunk is PRELOADED: one 404, one reload, a
+   * hydrated French page. WebKit keeps a failed preload in its memory cache and answers the
+   * next document's request for the same URL from it, without a network request; until
+   * `forgetFailedPreload` (client.tsx) the reload failed again and the page stopped on
+   * React's #329, unhydrated. Chromium never showed it (`locale-bundle.spec.ts` covers it
+   * there). The French chunk is recognised by its content, as in `locale-bundle.spec.ts`.
+   *
+   * Mutant: make `reloadOnce`'s argument `() => Promise.resolve()` and this goes red on
+   * "the page hydrated" (WebKit), with the chunk asked of the network once.
+   */
+  test("WebKit: one 404 on the hinted chunk → one reload, then a hydrated French page (350.7)", async ({ baseURL }) => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    const browser = await webkit.launch();
+    try {
+      const context = await browser.newContext({ baseURL, locale: "fr-FR" });
+      await context.addCookies([{ name: "evoli_pro_locale", value: "fr", url: baseURL! }]);
+      const page = await context.newPage();
+      await signInWithoutALoad(page);
+      const seen = { failed: 0, served: 0, documents: 0 };
+      await page.route("**/_next/static/chunks/**", async (route) => {
+        const response = await route.fetch();
+        const body = await response.text();
+        if (body.includes(PROBE.fr)) {
+          if (seen.failed < 1) {
+            seen.failed += 1;
+            await route.fulfill({ status: 404, body: "" });
+            return;
+          }
+          seen.served += 1;
+        }
+        await route.fulfill({ response, body });
+      });
+      page.on("request", (request) => {
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) seen.documents += 1;
+      });
+      await page.goto("/");
+      await expect(page.locator("[data-nav-progress-ready]"), "the page hydrated").toHaveCount(1);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Clients");
+      expect(seen.failed).toBe(1);
+      expect(seen.documents, "one reload, no loop").toBe(2);
+      expect(await page.evaluate(() => window.sessionStorage.getItem("evoli.copy.reloaded"))).toBeNull();
+      await context.close();
+    } finally {
+      await browser.close();
+    }
   });
 });
