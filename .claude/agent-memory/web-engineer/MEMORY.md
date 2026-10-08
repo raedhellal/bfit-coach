@@ -83,3 +83,4 @@
 - [A failed preload poisons the URL in WebKit (EV-350)](a-failed-preload-poisons-the-url-in-webkit.md) — buildId-named chunk + DefinePlugin to preload an async chunk; skip on RSC/actions; evict with fetch cache:reload
 - [A route-table URL can match its file and reach another](a-route-table-url-can-match-its-file-and-reach-another.md) — EV-352: /templates/new matches [id]; resolve by Next precedence, refuse @/(.) segments
 - [A first-viewport AC is about the bottom (EV-344)](a-first-viewport-ac-is-about-the-bottom.md) — row is 319 px at 1024, do floor arithmetic first; settings fold gated by `.prog-doc`; screenshot-pair method
+- [An N/A needs the whole write path](a-not-applicable-needs-the-whole-write-path.md) — EV-344 B1: a DB CHECK (session_minutes 20–90) refuses Publish; a 'known flake' needs the list entry or a base --repeat-each
