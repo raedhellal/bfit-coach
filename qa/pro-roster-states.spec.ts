@@ -23,6 +23,12 @@ async function signIn(page: Page, lang: keyof typeof STATES) {
  * BUG-667 — the frame around the content, read in ONE frame: whether the skeleton's shimmer is
  * on screen, and the box of every DISPLAYED navigation named `nav` (one per width: the sidebar's
  * from 1024 px, the tab bar below), each link's box, and every displayed banner's box.
+ *
+ * `css`: whether `globals.css` has applied (its `--ink` token resolves). On a streamed document
+ * load a script can read the DOM before the head's stylesheet has loaded; the browser paints
+ * nothing until it has, but a read in that window sees the unstyled page (both navigations,
+ * stacked). The skeleton's `animation-name` is inline, so it reads `shimmer` there too. A frame
+ * is only what the coach sees once `css` is true.
  */
 function frameFacts(page: Page, nav: string) {
   return page.evaluate((nav) => {
@@ -33,6 +39,7 @@ function frameFacts(page: Page, nav: string) {
     const shown = (e: Element) => e.checkVisibility() && e.getBoundingClientRect().width > 0;
     return {
       shimmer: Array.from(document.querySelectorAll("*")).some((e) => getComputedStyle(e).animationName === "shimmer"),
+      css: getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() !== "",
       navs: Array.from(document.querySelectorAll("nav"))
         .filter((n) => n.getAttribute("aria-label") === nav && shown(n))
         .map((n) => ({ box: box(n), links: Array.from(n.querySelectorAll("a")).map((a) => `${a.textContent?.trim()}@${box(a)}`) })),
@@ -120,9 +127,14 @@ for (const lang of ["fr", "en"] as const) {
             await context.addCookies([{ name: "evoli_fixture_api_latency", value: "1500", url: baseURL! }]);
             await page.goto("/", { waitUntil: "commit" });
           }
-          await expect.poll(async () => (await frameFacts(page, l.nav)).shimmer, { message: `${label}: the skeleton never showed` }).toBe(true);
+          await expect
+            .poll(async () => {
+              const f = await frameFacts(page, l.nav);
+              return f.shimmer && f.css;
+            }, { message: `${label}: the styled skeleton never showed` })
+            .toBe(true);
           const loading = await frameFacts(page, l.nav);
-          expect(loading.shimmer, `${label}: read in the skeleton's frame`).toBe(true);
+          expect(loading.shimmer && loading.css, `${label}: read in the styled skeleton's frame`).toBe(true);
           expect(loading.navs, `${label}: exactly one navigation is displayed while loading`).toHaveLength(1);
           expect(loading.navs[0].links, `${label}: its five sections`).toHaveLength(5);
           await expect(page.getByText(l.empty, { exact: true })).toBeVisible({ timeout: 15_000 });
