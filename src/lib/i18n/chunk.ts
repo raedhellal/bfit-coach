@@ -28,26 +28,34 @@ export function copyChunkHref(locale: Locale): string {
  * requests it in the first wave, with the route's own scripts, instead of one round trip
  * later when `client.tsx`'s `import()` runs. That `import()` then reuses the response.
  *
- * Never on a server action (`Next-Action`: the language switch is one). An action's
- * response re-renders the root layout, and the hint would travel in its RSC payload for
- * the switch's TARGET language, the other one, which is out of scope and harmful: React
- * turns a payload hint into a `<link rel="preload">` in `<head>`, WebKit answers a later
- * `import()` of that URL from a preload still in the document, so a chunk that 404'd once
- * would fail every retry and the coach could never switch again (EV-342m's M.6 and
- * BUG-703, found by `locale-bundle.spec.ts`'s WebKit tests).
+ * Only on a document request. Everything else Next asks the server for is an RSC fetch
+ * (a server action, a refresh, a navigation that re-renders this layout), and there the
+ * hint travels in the payload and React turns it into a `<link rel="preload">` in
+ * `<head>`. That `<link>` can name the OTHER language, which is out of scope and harmful:
+ *   · a server action (`Next-Action`): the language switch is one, and it renders the
+ *     switch's TARGET language;
+ *   · a refresh after ANOTHER tab changed the locale cookie: this tab re-renders in that
+ *     tab's language (a `router.refresh()`: ChallengeControls' 45 s poll, error.tsx's
+ *     retry, CatalogPicker, SwapSheet).
+ * WebKit answers a later `import()` of a URL from a preload still in the document, so a
+ * chunk that 404'd once fails every retry with no network request: after BUG-703's
+ * abandoned switch, « EN » again over the still-unsaved work is abandoned again instead of
+ * switching in place (EV-342m's M.6, BUG-703 / 349.3 (4),
+ * `locale-bundle.spec.ts` and `locale-chunk-preload.spec.ts`'s WebKit tests).
  *
- * Other RSC requests (a refresh, a navigation that re-renders this layout) DO carry the
- * hint: Next 14.2 strips `RSC`, `Next-Router-State-Tree` and `Next-Router-Prefetch` from
- * `headers()` (`request-async-storage-wrapper`'s `getHeaders`), so a server component
- * cannot tell them from a document request. In the document's own language that costs
- * nothing: React dedupes the hint against the `<link>` the document already has (observed
- * on a `router.refresh()`: still one `<link>`, one dictionary request, no console
- * message). After ANOTHER tab changed the locale cookie, a refresh here renders the other
- * language and its hint lands in `<head>` beside the document's (observed, Chromium and
- * WebKit, EV-350 staff round 1; open, see the merge record).
+ * How a document request is told apart. NOT by `RSC`: Next 14.2 strips `RSC`,
+ * `Next-Router-State-Tree` and `Next-Router-Prefetch` from `headers()`
+ * (`request-async-storage-wrapper`'s `getHeaders`), so a server component never sees
+ * them. By `Sec-Fetch-Dest`, which the browser sets and Next leaves alone: `document` on a
+ * page load (including `location.reload()`), `empty` on every `fetch()` Next makes. When
+ * the header is ABSENT (an old browser, or a proxy that strips it), the hint is sent, as it
+ * was before this check, and only `Next-Action` is skipped; a same-language refresh then
+ * costs nothing (React dedupes the hint against the document's `<link>`) and the
+ * cross-tab case reopens there only.
  */
 export function preloadCopyChunk(locale: Locale): void {
   const request = headers();
-  if (request.has("next-action")) return;
+  const dest = request.get("sec-fetch-dest");
+  if (request.has("next-action") || (dest !== null && dest !== "document")) return;
   preload(copyChunkHref(locale), { as: "script" });
 }
