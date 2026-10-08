@@ -13,6 +13,18 @@ import { contrast, decodePng, hex, hue, type Rgb } from "./png";
  * under an overlay are all read as painted. The rounded corners are left out (they blend
  * with the page behind them), and so is the 2 px edge band (antialiasing).
  *
+ * The corner inset and the edge band are in CSS px and the screenshot is read as if one
+ * pixel were one CSS px: that holds at a device pixel ratio of 1 (the config's Desktop
+ * Chrome), and `lightestFill` checks it. At DPR 2 the inset would cover half the corner
+ * and the blended corner pixels would read as a lighter fill (a false red, never a false
+ * green).
+ *
+ * Covered: the kit Button's three filled variants; the `.link-button` primary (its hover
+ * `filter: brightness(1.05)`); the invite page's « Ouvrir dans Evoli Fit », which paints
+ * its own inline fill rather than a kit variant; and the login brand panel's body text,
+ * which is not a button but is white on the same gradient UNDER the panel's `::before`
+ * highlight (read at rest: it has no other state).
+ *
  * Red at 6caecb8: the kit's danger variant was white on `--red-500` #EF4444, 3.76:1 in all
  * three states (the delete dialog's « Delete »). Primary and gradient were already on
  * `--grad-energy-strong` there (5.37:1 at their light end) and stay pinned here.
@@ -33,9 +45,11 @@ async function lightestFill(page: Page, button: Locator): Promise<{ ratio: numbe
     content: `[${PROBE}], [${PROBE}] * { color: transparent !important; } [${PROBE}] svg { visibility: hidden !important; }`,
   });
   try {
+    expect(await page.evaluate(() => devicePixelRatio), "the pixel reading assumes DPR 1").toBe(1);
     const radius = await button.evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0);
     const png = decodePng(await button.screenshot({ animations: "disabled" }));
-    const inset = Math.ceil(radius) + 1;
+    // A pill's declared radius (`--r-pill`, 999px) is drawn at half the shorter side.
+    const inset = Math.ceil(Math.min(radius, png.width / 2, png.height / 2)) + 1;
     let worst: { ratio: number; rgb: Rgb } | null = null;
     for (let y = 2; y < png.height - 2; y++) {
       for (let x = inset; x < png.width - inset; x++) {
@@ -93,6 +107,14 @@ test.describe("BUG-602 — white labels on filled buttons reach 4.5:1", () => {
       await expect(submit).toBeEnabled({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
     await inEachState(page, submit, "Sign in");
+
+    // The brand panel's body text: white on --grad-energy-strong under the panel's
+    // `::before` highlight (globals.css `.login-brand-body`). Probe at 64bd211: 5.79:1.
+    const body = page.locator(".login-brand-body");
+    await expect(body).toBeVisible();
+    expect(await body.evaluate((el) => getComputedStyle(el).color), "brand body: text colour").toBe("rgb(255, 255, 255)");
+    const { ratio, rgb } = await lightestFill(page, body);
+    expect(ratio, `brand body: white on ${hex(rgb)} reads ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(MIN);
   });
 
   test("primary: « New recipe » (kit Button) and « New template » (link-button, hover filter)", async ({ page }) => {
@@ -114,5 +136,20 @@ test.describe("BUG-602 — white labels on filled buttons reach 4.5:1", () => {
       const h = hue(rgb);
       expect(h <= 15 || h >= 345, `danger, ${state}: ${hex(rgb)} (hue ${h.toFixed(0)}°) is still a red`).toBe(true);
     }
+  });
+});
+
+/**
+ * The invite landing's primary link sets its OWN inline fill (`src/app/i/[token]/page.tsx`),
+ * so the kit's variants say nothing about it. French, as the row names it: « Ouvrir dans
+ * Evoli Fit ». The page needs no session.
+ */
+test.describe("BUG-602 — the invite page's primary link, in a French browser (fr-FR)", () => {
+  test.use({ locale: "fr-FR", viewport: { width: 1440, height: 900 } });
+
+  test("gradient: « Ouvrir dans Evoli Fit » on /i/<token>", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/i/abc");
+    await inEachState(page, page.getByRole("link", { name: "Ouvrir dans Evoli Fit", exact: true }), "Ouvrir dans Evoli Fit");
   });
 });
