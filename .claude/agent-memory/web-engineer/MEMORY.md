@@ -80,3 +80,4 @@
 - [Free-text label lookup hits the prototype](a-label-map-lookup-of-free-text-hits-the-prototype.md) — BUG-694: labels["constructor"] is a function; own-property check, literal keys, key by index
 - [A nested button was a spec's discriminator](removing-a-nested-button-can-break-a-spec-that-used-it.md) — BUG-616 broke pro-back-link by count; grep qa for locator("button") first
 - [A module split can grow its page](a-module-split-can-grow-the-page-it-was-for.md) — EV-348: webpack duplicated split modules, client page +0.78 kB; measure encodedBodySize first
+- [A failed preload poisons the URL in WebKit (EV-350)](a-failed-preload-poisons-the-url-in-webkit.md) — buildId-named chunk + DefinePlugin to preload an async chunk; skip on RSC/actions; evict with fetch cache:reload

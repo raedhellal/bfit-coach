@@ -30,6 +30,12 @@ import { hasUnsavedWork } from "../useUnsavedChanges";
  *     the root layout sets from the same `getLocale`), so it does not wait for React to
  *     render the provider. The provider then `use()`s the same promise: during hydration
  *     it waits for that one chunk, with the server's HTML on screen the whole time.
+ *   · EV-350: by then the chunk is usually already arriving. The root layout's document
+ *     carries a `preload` hint for this language's chunk (`chunk.ts`), so its request leaves
+ *     in the first wave instead of one round trip after it, and this `import()` reuses that
+ *     response. The `webpackChunkName`s below are load-bearing: next.config.mjs names the
+ *     files after them and fails a production build that does not emit both. A browser
+ *     that ignores the hint still gets the chunk from here, one round trip later.
  *   · The server never waits after the first request: the promise is resolved once per
  *     process and the object is read synchronously from `loaded` after that.
  *   · The FR/EN switch (`setLocaleAction`) re-renders the layout with the other locale
@@ -73,15 +79,48 @@ export const COPY_RELOAD_FLAG = "evoli.copy.reloaded";
  * started. Storage that throws (a locked-down browser) means no reload: the error is
  * thrown instead, which is the honest answer when a loop cannot be ruled out.
  */
-function reloadOnce(): boolean {
+function reloadOnce(before: () => Promise<void>): boolean {
   try {
     if (window.sessionStorage.getItem(COPY_RELOAD_FLAG)) return false;
     window.sessionStorage.setItem(COPY_RELOAD_FLAG, "1");
   } catch {
     return false;
   }
-  window.location.reload();
+  void before()
+    .catch(() => undefined)
+    .finally(() => window.location.reload());
   return true;
+}
+
+/**
+ * EV-350 — before the one-time reload, un-poison a dictionary chunk the DOCUMENT preloaded.
+ *
+ * WebKit keeps a preload that failed (an HTTP error) in its memory cache and answers every
+ * later request for that URL from it: the `import()` in the same document, AND the next
+ * document's, even with the hint stripped from it and the `<link>` removed. So a cold load
+ * whose chunk 404'd once reloaded into the same failure, and stopped there on React's
+ * #329 instead of recovering (M.6's "a cold load with one 404 → 2 documents, hydrated",
+ * red in WebKit only). A `fetch(url, { cache: "reload" })` replaces that entry; measured
+ * in WebKit: without it the next document's script fails from the cache with no network
+ * request, with it the script loads. Chromium never reuses the failure; the extra request
+ * is on a failure path only, and only for the URL the document hinted (webpack's
+ * `ChunkLoadError.request` is the absolute URL it asked for). Bounded at 2 s, so a hung
+ * fetch cannot hold the reload back.
+ */
+function forgetFailedPreload(err: unknown): Promise<void> {
+  const url = (err as { request?: unknown } | null)?.request;
+  if (typeof url !== "string") return Promise.resolve();
+  const hinted = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="preload"][as="script"]')).some(
+    (link) => link.href === url
+  );
+  if (!hinted) return Promise.resolve();
+  return Promise.race([
+    fetch(url, { cache: "reload" }).then(
+      () => undefined,
+      () => undefined
+    ),
+    new Promise<void>((resolve) => window.setTimeout(resolve, 2_000)),
+  ]);
 }
 
 /** BUG-703 — dispatched on `window` when a switch is abandoned; `LanguageSwitch` listens. */
@@ -111,8 +150,8 @@ function load(locale: Locale): Promise<Copy> {
   if (inFlight) return inFlight;
   const request = (
     locale === "fr"
-      ? import("../copy.fr").then((m): Copy => m.fr)
-      : import("../copy").then((m): Copy => m.en)
+      ? import(/* webpackChunkName: "evoli-copy-fr" */ "../copy.fr").then((m): Copy => m.fr)
+      : import(/* webpackChunkName: "evoli-copy-en" */ "../copy").then((m): Copy => m.en)
   ).then(
     (copy) => {
       loaded[locale] = copy;
@@ -132,7 +171,7 @@ function load(locale: Locale): Promise<Copy> {
         if (kept) return kept;
         // Reloading: stay pending (the provider stays suspended, the server HTML stays on
         // screen) and keep this promise, so no render asks for the chunk again meanwhile.
-        if (!hasUnsavedWork() && reloadOnce()) return new Promise<Copy>(() => undefined);
+        if (!hasUnsavedWork() && reloadOnce(() => forgetFailedPreload(err))) return new Promise<Copy>(() => undefined);
       }
       delete pending[locale];
       throw err;
