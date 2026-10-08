@@ -48,10 +48,27 @@ export function copyChunkHref(locale: Locale): string {
  * (`request-async-storage-wrapper`'s `getHeaders`), so a server component never sees
  * them. By `Sec-Fetch-Dest`, which the browser sets and Next leaves alone: `document` on a
  * page load (including `location.reload()`), `empty` on every `fetch()` Next makes. When
- * the header is ABSENT (an old browser, or a proxy that strips it), the hint is sent, as it
- * was before this check, and only `Next-Action` is skipped; a same-language refresh then
- * costs nothing (React dedupes the hint against the document's `<link>`) and the
- * cross-tab case reopens there only.
+ * the header is ABSENT, the hint is sent, as it was before this check, and only
+ * `Next-Action` is skipped; a same-language refresh then costs nothing (React dedupes the
+ * hint against the document's `<link>`).
+ *
+ * Where the header is absent, and what follows (EV-353 353.1):
+ *   · Safari before 16.4 and iOS Safari before 16.4 send no `Sec-Fetch-Dest` at all (and so
+ *     does every iOS browser on iOS before 16.4: they are all WebKit). Source, MDN's
+ *     compatibility table (browser-compat-data `http.headers.Sec-Fetch-Dest`: Safari
+ *     `version_added` 16.4, iOS Safari and the iOS WebView both mirror it):
+ *     https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Dest#browser_compatibility
+ *   · those browsers therefore get the hint on RSC requests too (a refresh, a navigation),
+ *     so the cross-tab WebKit failed-preload case above (EV-350, ruling 350-R1) CAN STILL
+ *     HAPPEN there: a refresh after another tab switched the language hints the other
+ *     dictionary, and if that preload fails, WebKit answers every later `import()` of it
+ *     from the failed preload (the replay is witnessed in Playwright's current WebKit, not
+ *     on a pre-16.4 Safari);
+ *   · a proxy that strips the header behaves the same, for every browser behind it;
+ *   · Chrome before 80 and Firefox before 90 send none either (same table) and get the same
+ *     stray hint; whether they then replay a failed preload as WebKit does was not tested.
+ * Not closed by a user-agent branch: rejected in 350-R1. `qa/locale-chunk-hint-request.spec.ts`
+ * pins all three cases (`document`, `empty`, absent) at the request level.
  */
 export function preloadCopyChunk(locale: Locale): void {
   const request = headers();
