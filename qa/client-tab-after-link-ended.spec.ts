@@ -62,7 +62,11 @@ for (const lang of ["en", "fr"] as const) {
           const l = LANG[lang];
           await signInThroughForm(page, { lang });
           await openHydrated(page, from.path, lang);
-          await page.context().addCookies([{ name: "evoli_fixture_link", value: "ended", url: page.url() }]);
+          // At the ROOT: a cookie set with `url: page.url()` on `/clients/{id}/routine` gets the
+          // path `/clients/{id}/`, which `/clients/{id}` (the overview) does not match.
+          await page
+            .context()
+            .addCookies([{ name: "evoli_fixture_link", value: "ended", url: new URL("/", page.url()).href }]);
           await tabBar(page, lang).getByRole("link", { name: l.tabs[to.key], exact: true }).click();
           await page.waitForURL("**/clients/denied");
           await expect(page.getByRole("heading", { level: 1 })).toHaveText([l.denied]);
