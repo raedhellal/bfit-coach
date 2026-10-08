@@ -2,8 +2,10 @@
 
 import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { ClientNoticeCard } from "@/components/client/ClientNoticeCard";
 import { ShellFrame, sectionFor } from "@/components/shell/ShellFrame";
 import { Button, Card } from "@/components/ui/kit";
+import { isClientLoadError } from "@/lib/clientLoadError";
 import { useCopy, useLocale } from "@/lib/i18n/client";
 
 /**
@@ -29,10 +31,16 @@ import { useCopy, useLocale } from "@/lib/i18n/client";
  *
  * BUG-672 — the sentence is the page's one `h1` (EV-337 X4: exactly one `h1` in the
  * loaded, empty and error states), drawn at the size and colour the `div` had.
+ *
+ * BUG-629 — one error is not a crash: `/clients/[id]` THROWS when the trainee overview could
+ * not be read, so that the response is a 500 a monitor can see (`src/lib/clientLoadError.ts`).
+ * Recognised by its digest, it gets the page that branch always drew — `ClientNoticeCard`
+ * with `copy.client.loadError` as the one h1 and the way back to the roster, in the shell
+ * under « Clients » — not the generic sentence and its retry.
  */
 const SHELL_LESS = /^\/(login|activate|unavailable|i)(\/|$)/;
 
-export default function Error({ reset }: { error: Error; reset: () => void }) {
+export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const copy = useCopy();
   const locale = useLocale();
   const pathname = usePathname();
@@ -78,6 +86,13 @@ export default function Error({ reset }: { error: Error; reset: () => void }) {
     </Card>
   );
 
+  if (isClientLoadError(error)) {
+    return (
+      <ShellFrame copy={copy} locale={locale} section="roster">
+        <ClientNoticeCard message={copy.client.loadError} backHref="/" backLabel={copy.shell.backToRoster} asHeading />
+      </ShellFrame>
+    );
+  }
   if (SHELL_LESS.test(pathname)) return <main className="page">{card}</main>;
   return (
     <ShellFrame copy={copy} locale={locale} section={sectionFor(pathname)}>
