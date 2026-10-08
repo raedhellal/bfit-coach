@@ -17,7 +17,7 @@ import { test } from "./fixture-test";
  *   (c) no `Sec-Fetch-Dest`        → exactly one, as in (a).
  *
  * Why no browser: a browser always sends the header (Chromium and WebKit here are both new
- * enough), so (c) cannot be reached through `page`. Playwright's `request` fixture is a plain
+ * enough), so (c) is not reached through `page` here. Playwright's `request` fixture is a plain
  * HTTP client that sends no `Sec-Fetch-*` header unless told to, which is what makes (c) a
  * real absent-header request. M1 below is the witness of that: if the request carried the
  * header after all, M1 would stay green.

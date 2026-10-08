@@ -56,13 +56,14 @@ export function copyChunkHref(locale: Locale): string {
  *   · Safari before 16.4 and iOS Safari before 16.4 send no `Sec-Fetch-Dest` at all (and so
  *     does every iOS browser on iOS before 16.4: they are all WebKit). Source, MDN's
  *     compatibility table (browser-compat-data `http.headers.Sec-Fetch-Dest`: Safari
- *     `version_added` 16.4, iOS Safari mirrors it):
+ *     `version_added` 16.4, iOS Safari and the iOS WebView both mirror it):
  *     https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Dest#browser_compatibility
  *   · those browsers therefore get the hint on RSC requests too (a refresh, a navigation),
  *     so the cross-tab WebKit failed-preload case above (EV-350, ruling 350-R1) CAN STILL
  *     HAPPEN there: a refresh after another tab switched the language hints the other
  *     dictionary, and if that preload fails, WebKit answers every later `import()` of it
- *     from the failed preload;
+ *     from the failed preload (the replay is witnessed in Playwright's current WebKit, not
+ *     on a pre-16.4 Safari);
  *   · a proxy that strips the header behaves the same, for every browser behind it;
  *   · Chrome before 80 and Firefox before 90 send none either (same table) and get the same
  *     stray hint; whether they then replay a failed preload as WebKit does was not tested.
