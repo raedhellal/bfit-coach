@@ -29,4 +29,6 @@ stored enum. Before trusting such a map, diff it against `b-fit-mobile`
 `src/i18n/locales/{en,fr}.json` at hub `origin/main` (`git show`, never the live checkout),
 and pin the app's labels as literals in the spec. `ruleLabels` is literal-keyed now and goes
 through `dietValueLabel` too. A spec of a printed label reads BOTH `allInnerTexts()` and
-`allTextContents()`: a CSS `text-transform` passes a textContent read.
+`allTextContents()`: a CSS `text-transform` passes a textContent read. Changing an English label so it EQUALS the French one trips `qa/coach-i18n.spec.ts`'s
+identical-string guard (it named `nutrition.ruleLabels.HALAL`): add the key to `SAME_IN_BOTH`
+with the app dictionaries as the reason, in the same commit.
