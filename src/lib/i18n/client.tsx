@@ -30,6 +30,12 @@ import { hasUnsavedWork } from "../useUnsavedChanges";
  *     the root layout sets from the same `getLocale`), so it does not wait for React to
  *     render the provider. The provider then `use()`s the same promise: during hydration
  *     it waits for that one chunk, with the server's HTML on screen the whole time.
+ *   · EV-350: by then the chunk is usually already arriving. The root layout's document
+ *     carries a `preload` hint for this language's chunk (`chunk.ts`), so its request leaves
+ *     in the first wave instead of one round trip after it, and this `import()` reuses that
+ *     response. The `webpackChunkName`s below are load-bearing: next.config.mjs names the
+ *     files after them and fails a production build that does not emit both. A browser
+ *     that ignores the hint still gets the chunk from here, one round trip later.
  *   · The server never waits after the first request: the promise is resolved once per
  *     process and the object is read synchronously from `loaded` after that.
  *   · The FR/EN switch (`setLocaleAction`) re-renders the layout with the other locale
@@ -111,8 +117,8 @@ function load(locale: Locale): Promise<Copy> {
   if (inFlight) return inFlight;
   const request = (
     locale === "fr"
-      ? import("../copy.fr").then((m): Copy => m.fr)
-      : import("../copy").then((m): Copy => m.en)
+      ? import(/* webpackChunkName: "evoli-copy-fr" */ "../copy.fr").then((m): Copy => m.fr)
+      : import(/* webpackChunkName: "evoli-copy-en" */ "../copy").then((m): Copy => m.en)
   ).then(
     (copy) => {
       loaded[locale] = copy;

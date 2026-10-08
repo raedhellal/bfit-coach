@@ -7,6 +7,7 @@ import { NavigationProgress } from "@/components/shell/NavigationProgress";
 import { UrlChangeCounter } from "@/components/shell/UrlChangeCounter";
 import { CopyProvider } from "@/lib/i18n/client";
 import { getCopy, getLocale } from "@/lib/i18n/server";
+import { preloadCopyChunk } from "@/lib/i18n/chunk";
 
 /**
  * EV-324 — the title and description are in the request's language, so `metadata` is a
@@ -38,6 +39,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = getLocale();
   const copy = getCopy();
+  // EV-350: on a document load, this page language's dictionary chunk leaves with the
+  // first-wave scripts, not after them (CopyProvider's import() then reuses it).
+  preloadCopyChunk(locale);
   return (
     <html lang={locale} className={fontVariables}>
       <body>
