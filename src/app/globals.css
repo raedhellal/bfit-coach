@@ -1638,8 +1638,8 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
    Below 1280 px, on a TRAINEE's plan only (`.prog-doc`): the plan settings fold into one line
    (`PlanSettingsFold`) and the space between « Jours d'entraînement » and Day 1's first
    exercise shrinks. Nothing is hidden but the closed card, and every control stays ≥ 44 px
-   (EV-344.6). Measured at 1024×800 (Lina): Day 1's header 636→682 under a bar at 700, the
-   first row's top at 779. */
+   (EV-344.6). Measured at 1024×800 (Lina) on the prototype `c736eb9`, the same CSS: Day 1's
+   header 636→682 under a bar at 700, the first row's top at 779. */
 .doc-days-head { margin: 0 0 12px; }
 .doc-days-note { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.55; }
 .doc-day-fields { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }

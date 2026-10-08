@@ -854,14 +854,18 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
  * 1280 px the line is hidden and the card always shows (EV-344.7). The viewport is decided by
  * CSS, never by a hook, so the server HTML is already the folded page.
  *
- * Measured on the prototype (`c736eb9`, Lina, 1024×800): the open card ran 494→784 and Day 1's
- * header started at 878 under the bar at 700; folded, the line is 494→552 and Day 1's header
- * is at 636→682.
+ * Measured at 1024×800 on Lina, the bar's top at 700: on `main` `6caecb8` the open card ran
+ * 494→784; EV-342f's card records Day 1's header at y≈878 (measured on `2630a4b`); on the
+ * prototype `c736eb9`, folded, the line is 494→552 and Day 1's header 636→682.
  *
  * Closed means `display: none`, never unmounted, so a value typed in the card survives a fold
- * (EV-344.4). A change that reaches a field while the card is closed (a Back/Forward restore,
- * BUG-687's pre-hydration replay) opens it, as a closed training day does (EV-337f2): an edit
- * is never sitting out of sight.
+ * (EV-344.4). The capture handler below opens it on any change inside the card:
+ *   · below 1280 px a closed card cannot be typed into, so the only change that reaches it is a
+ *     browser form restore (Back/Forward) replayed by BUG-687's adoption hook. Opening the card
+ *     then means an edit is never sitting out of sight, as with a closed training day (EV-337f2);
+ *   · from 1280 px the card always shows, whatever the state, so the coach's first keystroke in
+ *     it sets the state to open. A window narrowed below 1280 afterwards (an iPad rotated to
+ *     portrait) shows the card open, with the edit in sight. That is intended.
  */
 function PlanSettingsFold({
   line,

@@ -34,6 +34,7 @@ import { signInThroughForm } from "./sign-in";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const TOBIAS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
 const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
+const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
 
 const LANG = {
   en: {
@@ -185,9 +186,11 @@ for (const lang of ["en", "fr"] as const) {
 
       /*
        * EV-344.8 — F.1's exercise-row half, as `D-FOLD-1` (A) restates it (EV-344.2A). F.1's
-       * WHOLE-ROW form ("the first exercise row is inside the first viewport") was withdrawn by
-       * `D-FOLD-1` (A) (senior-po, ruling EV-344-R1, 2026-10-08): it cannot be met without hiding
-       * content EV-344.6 keeps visible. Measured by EV-344.1's probe (`c736eb9`, Lina, EN = FR):
+       * WHOLE-ROW form ("the first exercise row is inside the first viewport") cannot be met
+       * without hiding content EV-344.6 keeps visible. Ruling EV-344-R1 (senior-po, 2026-10-08)
+       * sent the choice to Raed as `D-FOLD-1`; option (A), which withdraws the whole-row form,
+       * was taken by the orchestrating session under Raed's 2026-10-08 overnight delegation,
+       * and it is reversible. Measured by EV-344.1's probe (`c736eb9`, Lina, EN = FR):
        * the first row (Barbell Bench Press) at y 779, h 319 → bottom 1098 against the bar's top
        * at 700 (1024×800), and y 779, h 245 → bottom 1024 against 720 (1180×820). These were the
        * four `test.fixme` at 6caecb8, renamed and un-fixme'd; they now assert (2) the
@@ -368,6 +371,9 @@ const FOLD = {
     minutes: "Minutes per session",
     summary: "Summary",
     heading: "Training days — Evoli enforces these.",
+    bar: "Routine actions",
+    publish: "Publish",
+    published: /^Published\. /,
   },
   fr: {
     line: "Prise de muscle · Intermédiaire · 45\u00a0min",
@@ -377,6 +383,9 @@ const FOLD = {
     minutes: "Minutes par séance",
     summary: "Résumé",
     heading: "Jours d'entraînement — Evoli les applique.",
+    bar: "Actions du programme",
+    publish: "Publier",
+    published: /^Publié\. /,
   },
 } as const;
 
@@ -444,8 +453,11 @@ for (const lang of ["en", "fr"] as const) {
       await expect(settingsCard(page)).toBeHidden();
     });
 
-    test("EV-344.3: at 768 and 390 px the line wraps, nothing is cut, nothing scrolls sideways", async ({ page }) => {
-      await openLina(page, lang, 768);
+    test("EV-344.3: folded at 1279; at 768 and 390 px the line wraps, nothing is cut, nothing scrolls sideways", async ({ page }) => {
+      // 1279: the last width of the fold (staff nit 4; a `max-width: 1199px` rule goes red here).
+      await openLina(page, lang, 1279);
+      await expect(page.locator(".plan-settings-text")).toHaveText(FOLD[lang].line);
+      await expect(settingsCard(page), "1279: the card is folded").toBeHidden();
       for (const width of [768, 390] as const) {
         await page.setViewportSize({ width, height: 800 });
         await expect(settingsLine(page)).toBeVisible();
@@ -513,6 +525,41 @@ for (const lang of ["en", "fr"] as const) {
       await expect(settingsCard(page)).toBeVisible();
       await expect(page.getByRole("spinbutton", { name: FOLD[lang].minutes, exact: true })).toHaveValue("55");
       await expect(page.locator(".plan-settings-text")).toHaveText(FOLD[lang].line.replace("45", "55"));
+    });
+
+    /*
+     * Staff S1 (review of 889598f): the open state is held by `RoutineEditor`, so the remount
+     * after a publish (`loads`, BUG-490) does not fold the card the coach is working in. Red
+     * with `settingsOpen` / `onSettingsOpenChange` no longer passed (the editor's own state
+     * restarts closed on the remount).
+     */
+    test("EV-344: the open settings card stays open through the publish re-seed (Yusuf's long plan, 1024)", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await context.addCookies([{ name: "evoli_fixture_long_plan", value: YUSUF, url: baseURL! }]);
+      await page.setViewportSize({ width: 1024, height: 800 });
+      await signInThroughForm(page, { lang });
+      await page.goto(`/clients/${YUSUF}/routine`);
+      const toggle = settingsToggle(page, lang);
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      const minutes = page.getByRole("spinbutton", { name: FOLD[lang].minutes, exact: true });
+      await minutes.fill("50");
+      // Held across the publish: if it is detached afterwards, the editor DID remount.
+      const before = await minutes.elementHandle();
+      const bar = page.getByRole("region", { name: FOLD[lang].bar, exact: true });
+      await bar.getByRole("button", { name: FOLD[lang].publish, exact: true }).click();
+      await page.getByRole("dialog").getByRole("button", { name: FOLD[lang].publish, exact: true }).click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.getByText(FOLD[lang].published)).toBeVisible();
+      await expect
+        .poll(() => before!.evaluate((el) => el.isConnected), { message: "the publish re-seed remounted the editor" })
+        .toBe(false);
+      await expect(toggle, "still open after the re-seed").toHaveAttribute("aria-expanded", "true");
+      await expect(settingsCard(page)).toBeVisible();
+      await expect(minutes).toHaveValue("50");
     });
 
     test("EV-344.6: below 1280 px nothing is lost — names, ≥ 44 px, the Tab order of 1440, the heading verbatim", async ({
