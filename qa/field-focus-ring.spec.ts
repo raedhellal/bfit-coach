@@ -693,6 +693,31 @@ test.afterAll(async () => {
   await webkitBrowser?.close();
 });
 
+/**
+ * BUG-688 — the sweep starts only once every field the route names is DRAWN in the scope.
+ *
+ * A visible dialog is not a loaded one. The swap sheet draws « Search your recipes » only
+ * after its library read (`recipeChoicesAction`, a server action) answers; until then it
+ * shows « Loading your recipes… » and two buttons. On a cold `next dev` the first action
+ * call is slow, so the sweep could Tab round Close and « Show suggestions », come back to
+ * the first stop and stop there: 0 fields, « the keyboard reached no text field » (~1 run
+ * in 20). Holding that action for 2 s turns it red on every run; this wait makes it green.
+ *
+ * It waits for the product's own witness, the named field, not for a time, and it only
+ * waits: a field that never comes still fails here, by name.
+ */
+async function expectedFieldsDrawn(page: Page, scope: string | null, route: Route) {
+  for (const want of route.expectNames) {
+    await expect
+      .poll(
+        async () =>
+          (await fieldsInScope(page, scope)).some((f) => f.name.toLowerCase().includes(want.toLowerCase())),
+        { message: `${route.name}: "${want}" is never drawn in the scope`, timeout: 20_000 }
+      )
+      .toBe(true);
+  }
+}
+
 async function pageFor(engine: Engine, page: Page, baseURL: string | undefined): Promise<Page> {
   if (engine === "chromium") {
     await page.setViewportSize(VIEWPORT);
@@ -717,6 +742,7 @@ for (const engine of ["chromium", "webkit"] as const) {
         const page = await pageFor(engine, chromiumPage, baseURL);
         try {
           const scope = await route.open(page);
+          await expectedFieldsDrawn(page, scope, route);
           const { results, unreached } = await sweep(page, engine, scope);
           const report = results.map(
             (r) => `${r.failures.length ? "FAIL" : "ok  "} ${r.name}\n      ${r.indicator}\n      ${r.sides.join("\n      ")}${
