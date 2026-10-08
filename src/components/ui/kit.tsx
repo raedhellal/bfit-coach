@@ -84,7 +84,10 @@ export function Button({
     secondary: { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--border-2)", boxShadow: "var(--e-1)" },
     ghost: { background: "transparent", color: "var(--ink-2)", border: "1px solid transparent" },
     soft: { background: "var(--blue-50)", color: "var(--blue-600)", border: "1px solid transparent" },
-    danger: { background: "var(--red-500)", color: "#fff", border: "1px solid transparent" },
+    // BUG-602: white on --red-500 #EF4444 read 3.76:1. --err #DC2626 is the same red one
+    // step darker, already the palette's status red: 4.83:1, at rest, hovered and focused
+    // (the kit Button changes no fill on either; qa/button-label-contrast.spec.ts).
+    danger: { background: "var(--err)", color: "#fff", border: "1px solid transparent" },
     dangerSoft: { background: "var(--err-bg)", color: "var(--err-ink)", border: "1px solid transparent" },
   };
   return (
