@@ -24,4 +24,13 @@ layer that can refuse (CLAUDE.md's witness rule) or a base measurement.
 AND `git grep` the migrations for a CHECK / NOT NULL / UNIQUE on its column. For a red test
 you blame on flakiness, quote the list entry or run `--repeat-each=20` on base first.
 
+**Outcome (EV-344-R2, `e1539f8`):** the portal now lists the 20–90 reason for trainee plans
+only (`DocumentRules.sessionMinutesRange`, `sessionMinutesOutOfRange` in `routineDocument.ts`;
+`minutesRequired` wins below 1, never both), `NumberField` takes an optional `invalid`
+(`aria-invalid`), and the card opens on load when a stored draft is out of range. A draft at
+120 is only reachable through the fixture switch `evoli_fixture_draft_minutes=<id>:<n>`, since
+the editor refuses to save one. Save/Publish are `disabled` while a reason stands, so a "sends
+nothing" test force-clicks and counts `next-action` POSTs. It needs a positive control (the
+save at 90 IS logged), or an empty log proves nothing. The api half is BUG-708.
+
 See [[a-first-viewport-ac-is-about-the-bottom]].
