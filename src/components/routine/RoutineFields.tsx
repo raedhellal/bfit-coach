@@ -42,6 +42,7 @@ export function NumberField({
   min = 1,
   max = 20,
   width,
+  invalid,
 }: {
   label: string;
   value: number;
@@ -49,6 +50,8 @@ export function NumberField({
   min?: number;
   max?: number;
   width?: number;
+  /** `aria-invalid` while a reason names this field (EV-344.5A); absent otherwise. */
+  invalid?: boolean;
 }) {
   return (
     <label style={{ display: "block" }}>
@@ -61,6 +64,7 @@ export function NumberField({
         max={max}
         value={value}
         onChange={(e) => onChange(Math.max(min, Number(e.target.value) || min))}
+        aria-invalid={invalid ? true : undefined}
         style={width ? { ...FIELD_STYLE, width } : FIELD_STYLE}
       />
     </label>

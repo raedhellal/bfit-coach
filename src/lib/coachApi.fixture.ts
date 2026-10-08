@@ -3337,6 +3337,30 @@ async function withUnbindableDaySwitch(id: string): Promise<void> {
   };
   state().drafts.set(id, { document, updatedAt: new Date().toISOString() });
 }
+/**
+ * EV-344.5A item 3 — ⚠ fixture affordance: `evoli_fixture_draft_minutes=<clientId>:<n>` (one
+ * browser context) gives that client, when they have NO draft yet, a draft copied from their
+ * published plan with `constraints.minutesPerSession` = n. It is how "the editor loads with the
+ * 20–90 reason already standing" is reachable: since EV-344-R2 the editor itself refuses to
+ * save such a draft, but the api stores one (`@Positive` only), and so could another client or
+ * an older portal. It writes the STORE; the per-test reset (fixture-test) removes it. Applied
+ * by BOTH routine reads, like `withUnbindableDaySwitch` (EV-342c runs them in parallel).
+ */
+async function withDraftMinutesSwitch(id: string): Promise<void> {
+  const value = await fixtureSwitch("evoli_fixture_draft_minutes");
+  if (!value) return;
+  const [target, raw] = value.split(":");
+  const minutes = Number(raw);
+  if (target !== id || !Number.isInteger(minutes)) return;
+  if (state().drafts.has(id)) return;
+  const plan = state().plans.get(id);
+  if (!plan) return;
+  const document: Routine = {
+    ...plan.document,
+    constraints: { ...plan.document.constraints, minutesPerSession: minutes },
+  };
+  state().drafts.set(id, { document, updatedAt: new Date().toISOString() });
+}
 async function linkEnded(): Promise<boolean> {
   return (await fixtureSwitch("evoli_fixture_link")) === "ended";
 }
@@ -5973,6 +5997,7 @@ export const fixtureCoachApi: CoachApi = {
     await summaryReadFailure("routine", id);
     await withLongPlanSwitch(id);
     await withUnbindableDaySwitch(id);
+    await withDraftMinutesSwitch(id);
     state().lastRoutineClient = id;
     const plan = state().plans.get(id) ?? null;
     const draft = state().drafts.get(id) ?? null;
@@ -5999,6 +6024,7 @@ export const fixtureCoachApi: CoachApi = {
     // draft must be applied here too, or the draft read can beat the plant and answer
     // "none" while the routine read says `hasDraft: true` (idempotent: it plants once).
     await withUnbindableDaySwitch(id);
+    await withDraftMinutesSwitch(id);
     const orphan = await draftReadSwitch(id);
     const draft = state().drafts.get(id) ?? orphan;
     if (!draft) {

@@ -26,6 +26,7 @@ import {
   firstFreeWeekday,
   isDuration,
   newExercise,
+  sessionMinutesOutOfRange,
   withTrackingType,
 } from "@/lib/routineDocument";
 import type { CatalogExercise, Routine, RoutineExercise, RoutineTrainingDay } from "@/lib/coachApi";
@@ -323,6 +324,7 @@ export function RoutineDocumentEditor({
           value={document.constraints.minutesPerSession}
           min={1}
           max={240}
+          invalid={subject.kind === "trainee" && sessionMinutesOutOfRange(document.constraints.minutesPerSession)}
           onChange={(minutesPerSession) =>
             change({ ...document, constraints: { ...document.constraints, minutesPerSession } })
           }
@@ -389,7 +391,12 @@ export function RoutineDocumentEditor({
       */}
       {subject.kind === "trainee" ? (
         <PlanSettingsFold
-          line={copy.routine.settingsLine(goalShown, levelShown, document.constraints.minutesPerSession)}
+          line={
+            subject.resolved
+              ? copy.routine.settingsLine(goalShown, levelShown, document.constraints.minutesPerSession)
+              : // EV-344-R3: the card's one sentence stands for both fields, so it is said once.
+                copy.routine.settingsLinePending(copy.routine.subjectOnSave, document.constraints.minutesPerSession)
+          }
           toggle={copy.routine.editSettings}
           open={settingsOpen ?? ownSettingsOpen}
           onOpenChange={onSettingsOpenChange ?? setOwnSettingsOpen}

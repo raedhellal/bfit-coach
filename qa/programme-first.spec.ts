@@ -35,6 +35,7 @@ const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const TOBIAS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
 const DANA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004";
 const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
 
 const LANG = {
   en: {
@@ -374,6 +375,13 @@ const FOLD = {
     bar: "Routine actions",
     publish: "Publish",
     published: /^Published\. /,
+    saveDraft: "Save draft",
+    saved: /^Draft saved /,
+    build: "Build a plan",
+    // EV-344-R2, verbatim.
+    outOfRange: "Minutes per session: enter a value between 20 and 90.",
+    // EV-344-R3, verbatim.
+    pendingSentence: "Set from their profile when you save.",
   },
   fr: {
     line: "Prise de muscle · Intermédiaire · 45\u00a0min",
@@ -386,6 +394,12 @@ const FOLD = {
     bar: "Actions du programme",
     publish: "Publier",
     published: /^Publié\. /,
+    saveDraft: "Enregistrer le brouillon",
+    saved: /^Brouillon enregistré à /,
+    build: "Créer un plan",
+    // EV-344-R2, verbatim; U+00A0 before the colon is the house rule (BUG-462).
+    outOfRange: "Minutes par séance\u00a0: indiquez une valeur entre 20 et 90.",
+    pendingSentence: "Repris de son profil à l'enregistrement.",
   },
 } as const;
 
@@ -528,6 +542,88 @@ for (const lang of ["en", "fr"] as const) {
     });
 
     /*
+     * EV-344-R2 / EV-344.5A — b-fit-api's database refuses a published plan whose session is
+     * outside 20–90 min (V11 `chk_plans_session_minutes`), so the editor lists the reason and
+     * sends nothing, as it does for every other refusal it can foresee (ADR-0016 V1b). The
+     * request log is a server action POST (`next-action` header); 90 at the end is the
+     * control that the log does see a save.
+     */
+    test("EV-344.5A: minutes at 120 are listed, aria-invalid, and neither Save nor Publish is sent; 90 clears it", async ({
+      page,
+    }) => {
+      await openLina(page, lang, 1024);
+      const actions: string[] = [];
+      page.on("request", (r) => {
+        if (r.method() === "POST" && r.headers()["next-action"] !== undefined) actions.push(r.url());
+      });
+      const toggle = settingsToggle(page, lang);
+      await toggle.click();
+      const minutes = page.getByRole("spinbutton", { name: FOLD[lang].minutes, exact: true });
+      await expect(minutes).not.toHaveAttribute("aria-invalid", "true");
+      await minutes.fill("120");
+      const reason = page.getByText(FOLD[lang].outOfRange, { exact: true });
+      await expect(reason).toBeVisible();
+      await expect(reason).toHaveText(FOLD[lang].outOfRange);
+      await expect(minutes).toHaveAttribute("aria-invalid", "true");
+
+      const bar = page.getByRole("region", { name: FOLD[lang].bar, exact: true });
+      for (const name of [FOLD[lang].saveDraft, FOLD[lang].publish]) {
+        const button = bar.getByRole("button", { name, exact: true });
+        await expect(button, `${name} is not offered while the reason stands`).toBeDisabled();
+        await button.click({ force: true });
+      }
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await page.waitForTimeout(500);
+      expect(actions, "no Save or Publish request was sent at 120").toEqual([]);
+
+      // Folded: the line carries the value as typed, and the reason is still listed.
+      await toggle.click();
+      await expect(settingsCard(page)).toBeHidden();
+      await expect(page.locator(".plan-settings-text")).toHaveText(new RegExp(` · 120\u00a0min$`));
+      await expect(reason).toBeVisible();
+
+      await toggle.click();
+      await minutes.fill("90");
+      await expect(reason).toHaveCount(0);
+      await expect(minutes).not.toHaveAttribute("aria-invalid", "true");
+      // Control: the log sees a save once the reason is gone.
+      await bar.getByRole("button", { name: FOLD[lang].saveDraft, exact: true }).click();
+      await expect.poll(() => actions.length, { message: "the save at 90 was sent" }).toBeGreaterThan(0);
+      await expect(page.getByText(FOLD[lang].saved)).toBeVisible();
+    });
+
+    test("EV-344.5A item 3: a draft that loads at 120 opens the card on load; the toggle still folds it", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await context.addCookies([{ name: "evoli_fixture_draft_minutes", value: `${LINA}:120`, url: baseURL! }]);
+      await openLina(page, lang, 1024);
+      const toggle = settingsToggle(page, lang);
+      await expect(toggle, "open on load").toHaveAttribute("aria-expanded", "true");
+      await expect(settingsCard(page)).toBeVisible();
+      await expect(page.getByRole("spinbutton", { name: FOLD[lang].minutes, exact: true })).toHaveValue("120");
+      await expect(page.getByText(FOLD[lang].outOfRange, { exact: true })).toBeVisible();
+      await expect(toggle).toBeEnabled();
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(settingsCard(page)).toBeHidden();
+      await expect(page.locator(".plan-settings-text")).toHaveText(new RegExp(` · 120\u00a0min$`));
+      await expect(page.getByText(FOLD[lang].outOfRange, { exact: true })).toBeVisible();
+    });
+
+    test("EV-344-R3: a plan built from scratch says the profile sentence once on the folded line", async ({ page }) => {
+      await page.setViewportSize({ width: 1024, height: 800 });
+      await signInThroughForm(page, { lang });
+      await page.goto(`/clients/${NILS}/routine`);
+      await page.getByRole("button", { name: FOLD[lang].build, exact: true }).click();
+      const text = page.locator(".plan-settings-text");
+      await expect(text).toHaveText(`${FOLD[lang].pendingSentence} · 45\u00a0min`);
+      const shown = (await text.textContent()) ?? "";
+      expect(shown.split(FOLD[lang].pendingSentence).length - 1, "the sentence occurs exactly once").toBe(1);
+    });
+
+    /*
      * Staff S1 (review of 889598f): the open state is held by `RoutineEditor`, so the remount
      * after a publish (`loads`, BUG-490) does not fold the card the coach is working in. Red
      * with `settingsOpen` / `onSettingsOpenChange` no longer passed (the editor's own state
@@ -632,7 +728,7 @@ async function tabOrderFromPlanName(page: Page, lang: Lang, n: number): Promise<
 }
 
 test.describe("EV-344: the template editor is not folded", () => {
-  test("at 1024 px a template's goal, level and minutes are on the page without a click", async ({ page }) => {
+  test("at 1024 px a template's goal, level and minutes are on the page without a click, and no 20–90 reason", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 800 });
     await signInThroughForm(page);
     await page.goto("/templates/7c2d0a11-0000-4000-8000-0000000000b1");
@@ -640,5 +736,11 @@ test.describe("EV-344: the template editor is not folded", () => {
     await expect(page.getByRole("spinbutton", { name: "Minutes per session", exact: true })).toBeVisible();
     await expect(settingsLine(page)).toHaveCount(0);
     await expect(page.locator(".prog-doc")).toHaveCount(0);
+    // EV-344.5A item 4: a template has no 20–90 reason at any value.
+    const minutes = page.getByRole("spinbutton", { name: "Minutes per session", exact: true });
+    await minutes.fill("120");
+    await expect(minutes).toHaveValue("120");
+    await expect(page.getByText("Minutes per session: enter a value between 20 and 90.")).toHaveCount(0);
+    await expect(minutes).not.toHaveAttribute("aria-invalid", /.*/);
   });
 });

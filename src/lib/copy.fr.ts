@@ -534,6 +534,7 @@ export const fr = {
     profileUnanswered: "pas encore renseigné",
     profileDetails: "Détails",
     settingsLine: (goal: string, level: string, minutes: number) => `${goal} · ${level} · ${minutes}\u00a0min`,
+    settingsLinePending: (sentence: string, minutes: number) => `${sentence} · ${minutes}\u00a0min`,
     editSettings: "Modifier les réglages",
     emptyTitle: "Aucun plan actif",
     emptyBody: "Rien n'est encore programmé pour ce client.",
@@ -629,6 +630,8 @@ export const fr = {
     notSaveableYet: "Ce plan n'est pas encore prêt à être enregistré :",
     summaryHint: "Fait partie du plan que vous publiez. Laissez vide si vous n'avez rien à ajouter.",
     minutesRequired: "Indiquez la durée d'une séance en minutes.",
+    // U+00A0 before the colon, as `common.labelled` writes it (BUG-462's rule).
+    minutesOutOfRange: "Minutes par séance\u00a0: indiquez une valeur entre 20 et 90.",
     setsBound: (day: number, exercise: string) =>
       `Jour ${day} : ${exercise} doit compter entre 1 et 20 séries.`,
     restRequired: (day: number, exercise: string) =>

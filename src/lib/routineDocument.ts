@@ -305,6 +305,27 @@ export interface DocumentRules {
   maxExercisesPerDay?: number;
   /** Templates only (`CoachTemplateDocument.MAX_FREE_TEXT`). */
   maxFreeText?: number;
+  /**
+   * Trainee plans only (EV-344-R2 / EV-344.5A): minutes per session outside
+   * `MIN_SESSION_MINUTES`–`MAX_SESSION_MINUTES` is a reason. A template never publishes a
+   * plan row, so it has no such reason.
+   */
+  sessionMinutesRange?: boolean;
+}
+
+/**
+ * EV-344-R2 — the session length a PUBLISHED plan can hold: b-fit-api
+ * `V11__personalized_plans.sql:22-23`, `chk_plans_session_minutes CHECK (session_minutes
+ * BETWEEN 20 AND 90)` (api `2bf3b42`). The api's `Constraints.minutesPerSession` is only
+ * `@Positive`, so a draft at 120 is stored and its Publish is refused by the database
+ * (BUG-708 carries the api half). The editor says so first, in the not-saveable-yet list.
+ */
+export const MIN_SESSION_MINUTES = 20;
+export const MAX_SESSION_MINUTES = 90;
+
+/** A positive number of minutes the database would refuse at publish (EV-344.5A). */
+export function sessionMinutesOutOfRange(minutes: number): boolean {
+  return minutes > 0 && (minutes < MIN_SESSION_MINUTES || minutes > MAX_SESSION_MINUTES);
 }
 
 /**
@@ -343,7 +364,11 @@ export function documentReasons(document: Routine, copy: Copy, rules: DocumentRu
   if (new Set(days.map((day) => day.dayOfWeek)).size !== days.length) {
     reasons.push(copy.templates.duplicateWeekday);
   }
+  // Never both: `minutesRequired` for a value that is not > 0, the range for one that is.
   if (!(document.constraints.minutesPerSession > 0)) reasons.push(copy.routine.minutesRequired);
+  else if (rules.sessionMinutesRange && sessionMinutesOutOfRange(document.constraints.minutesPerSession)) {
+    reasons.push(copy.routine.minutesOutOfRange);
+  }
   if (rules.maxFreeText !== undefined && longestFreeText(document) > rules.maxFreeText) {
     reasons.push(copy.templates.freeTextTooLong);
   }

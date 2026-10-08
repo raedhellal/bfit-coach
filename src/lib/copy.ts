@@ -957,6 +957,11 @@ export const en = {
      * then « {n} min ». U+00A0 keeps the number with its unit when the line wraps.
      */
     settingsLine: (goal: string, level: string, minutes: number) => `${goal} · ${level} · ${minutes}\u00a0min`,
+    /**
+     * EV-344-R3: a plan built from scratch, before its first save, has no goal or level yet;
+     * the card prints `subjectOnSave` for both, and the line prints it ONCE, then the minutes.
+     */
+    settingsLinePending: (sentence: string, minutes: number) => `${sentence} · ${minutes}\u00a0min`,
     /** EV-344 scope 1, verbatim: the control that opens the plan-settings card in place. */
     editSettings: "Edit settings",
     emptyTitle: "No active plan", // AC1, verbatim
@@ -1169,6 +1174,8 @@ export const en = {
     notSaveableYet: "This plan is not ready to save yet:",
     summaryHint: "Part of the plan you publish. Leave it empty if you have nothing to add.",
     minutesRequired: "Set how many minutes a session lasts.",
+    /** EV-344-R2 (EV-344.5A), verbatim: the database's 20–90 bound on a published plan. */
+    minutesOutOfRange: "Minutes per session: enter a value between 20 and 90.",
     setsBound: (day: number, exercise: string) =>
       `Day ${day}: ${exercise} needs between 1 and 20 sets.`,
     restRequired: (day: number, exercise: string) => `Day ${day}: ${exercise} needs a rest time.`,
