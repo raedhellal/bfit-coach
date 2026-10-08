@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Badge, Button, Card } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { CatalogPicker } from "./CatalogPicker";
@@ -258,13 +258,7 @@ export function RoutineDocumentEditor({
         ? dayCountBound
         : null;
 
-  return (
-    <div>
-      {/*
-        The document's own fields. Every one the document CARRIES is on screen: a
-        control for the coach's, a read-only value for the trainee's, and a sentence
-        for the one that is carried unseen.
-      */}
+  const settingsCard = (
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
           {showDocumentName && (
@@ -372,16 +366,39 @@ export function RoutineDocumentEditor({
           </p>
         )}
       </Card>
+  );
+
+  return (
+    <div className={subject.kind === "trainee" ? "prog-doc" : undefined}>
+      {/*
+        The document's own fields. Every one the document CARRIES is on screen: a
+        control for the coach's, a read-only value for the trainee's, and a sentence
+        for the one that is carried unseen.
+      */}
+      {subject.kind === "trainee" ? (
+        <PlanSettingsFold
+          line={[
+            subject.resolved ? (copy.templates.goalLabels[document.goal] ?? document.goal) : copy.routine.subjectOnSave,
+            subject.resolved ? (copy.templates.levelLabels[document.level] ?? document.level) : copy.routine.subjectOnSave,
+            `${document.constraints.minutesPerSession} min`,
+          ].join(" · ")}
+          toggle={copy.locale === "fr" ? "Modifier les réglages" : "Edit settings"}
+        >
+          {settingsCard}
+        </PlanSettingsFold>
+      ) : (
+        settingsCard
+      )}
 
       {/*
         AC1 / AC6 — the heading states the KIND of control that sits under it: these
         weekdays are written straight into `plan_schedule` on publish.
       */}
-      <div style={{ margin: "0 0 12px" }}>
+      <div className="doc-days-head">
         <h2 className="dt" style={{ margin: 0, fontSize: 15.5, fontWeight: 600, color: "var(--ink)" }}>
           {copy.routine.trainingDaysHeading}
         </h2>
-        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+        <p className="doc-days-note">
           {copy.routine.trainingDaysNote}
         </p>
         {/* The bound, said ONCE, when the plan is at the bottom of it. */}
@@ -441,16 +458,7 @@ export function RoutineDocumentEditor({
                 if (!isOpen(dayIndex)) toggleDay(dayIndex);
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  marginBottom: 14,
-                  flexWrap: "wrap",
-                }}
-              >
+              <div className="doc-day-fields">
                 <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
                   <WeekdaySelect
                     dayIndex={dayIndex}
@@ -496,7 +504,7 @@ export function RoutineDocumentEditor({
 
               {/* EV-201 AC2 — once per day card, and not over an empty day. */}
               {replaceHint && day.exercises.length > 0 && (
-                <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--ink-3)" }}>
+                <p className="doc-day-hint">
                   {copy.routine.replaceKeepsPrescription}
                 </p>
               )}
@@ -825,5 +833,30 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
         }}
       />
     </label>
+  );
+}
+
+/** EV-344.1 PROTOTYPE — the plan settings folded to one line below 1280 px. */
+function PlanSettingsFold({ line, toggle, children }: { line: string; toggle: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className="plan-settings-box" data-open={open ? "" : undefined}>
+      <div className="plan-settings-line">
+        <span className="plan-settings-text">{line}</span>
+        <button
+          type="button"
+          className="prog-profile-toggle"
+          aria-expanded={open}
+          aria-controls={id}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {toggle}
+        </button>
+      </div>
+      <div id={id} className="plan-settings-card">
+        {children}
+      </div>
+    </div>
   );
 }
