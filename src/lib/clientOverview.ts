@@ -9,6 +9,17 @@ import {
 import { readCoachIdentity, type CoachIdentity } from "./session";
 
 /**
+ * BUG-600 — the api's `{id}` is a `UUID` path variable (the shape `recipes/[id]` checks too).
+ * A segment that is not one is not the id of any trainee: the live api answers it
+ * `400 INVALID_REQUEST`, which is not a 403, so the portal must not send it at all.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isClientId(id: string): boolean {
+  return UUID.test(id);
+}
+
+/**
  * The trainee overview, read ONCE per request and shared by the two components that
  * need it (BUG-139).
  *
@@ -26,6 +37,10 @@ import { readCoachIdentity, type CoachIdentity } from "./session";
  */
 export const readClientOverview = cache(
   async (id: string): Promise<{ overview: ClientOverview | null; forbidden: boolean }> => {
+    // BUG-600: not a trainee id at all, so the answer an unknown id gets, and no api call.
+    // Next renders the page beside the layout, so the layout's redirect alone does not stop
+    // the page's own read of the same id.
+    if (!isClientId(id)) return { overview: null, forbidden: true };
     try {
       return { overview: await coachApi.getClient(id), forbidden: false };
     } catch (err) {
@@ -64,6 +79,7 @@ export const readClientOverview = cache(
  */
 export const readClientProgress = cache(
   async (id: string): Promise<TraineeProgress | null> => {
+    if (!isClientId(id)) return null; // BUG-600: never sent; the layout denies the page.
     try {
       return await coachApi.getClientProgress(id);
     } catch {

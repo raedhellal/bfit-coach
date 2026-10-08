@@ -35,12 +35,13 @@ interface Entry {
   arg: string | null;
 }
 
-async function overviewReadsOf(page: Page, id: string): Promise<number> {
+/** Every api call the fixture answered whose first argument is `id` (any operation). */
+async function apiCallsWith(page: Page, id: string): Promise<number> {
   const res = await page.request.get("/api/fixture/calls", { maxRedirects: 0 });
   expect(res.status(), "GET /api/fixture/calls (fixture mode only)").toBe(200);
   const body = (await res.json()) as { api?: Entry[] };
   expect(Array.isArray(body.api), "the calls route serves the api journal as `api`").toBe(true);
-  return body.api!.filter((e) => e.op === "getClient" && e.arg === id).length;
+  return body.api!.filter((e) => e.arg === id).length;
 }
 
 async function expectDenied(page: Page, path: string, lang: keyof typeof DENIED) {
@@ -60,7 +61,7 @@ for (const lang of ["en", "fr"] as const) {
         for (const tab of TABS) {
           await expectDenied(page, `/clients/${id}${tab}`, lang);
         }
-        expect(await overviewReadsOf(page, id), `${id}: overview reads sent to the api`).toBe(0);
+        expect(await apiCallsWith(page, id), `${id}: api calls made with it`).toBe(0);
       }
     });
 
@@ -70,7 +71,7 @@ for (const lang of ["en", "fr"] as const) {
         await expectDenied(page, `/clients/${UNKNOWN_UUID}${tab}`, lang);
       }
       // It IS asked: the api's 403 is what decides an unknown id (no oracle in the portal).
-      expect(await overviewReadsOf(page, UNKNOWN_UUID)).toBeGreaterThan(0);
+      expect(await apiCallsWith(page, UNKNOWN_UUID)).toBeGreaterThan(0);
     });
   });
 }

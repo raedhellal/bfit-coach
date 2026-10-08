@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { readClientOverview } from "@/lib/clientOverview";
+import { isClientId, readClientOverview } from "@/lib/clientOverview";
 
 /**
  * The overview's status boundary (EV-183 AC5, BUG-139).
@@ -26,9 +26,6 @@ import { readClientOverview } from "@/lib/clientOverview";
  * although the pages answer in 50-150 ms, so the old page now stays until the new one is
  * ready, and `NavigationProgress` (root layout) shows a bar if that takes over 400 ms.
  */
-/** The api's `{id}` is a `UUID` path variable; the same shape `recipes/[id]` checks. */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export default async function ClientLayout({
   children,
   params,
@@ -61,7 +58,7 @@ export default async function ClientLayout({
    * `400 INVALID_REQUEST`, which is not a 403, and the coach read « This trainee could not
    * be loaded. » under a 200 for a URL that was never a client's.
    */
-  if (!UUID.test(params.id)) redirect("/clients/denied");
+  if (!isClientId(params.id)) redirect("/clients/denied");
 
   const { forbidden } = await readClientOverview(params.id);
   if (forbidden) redirect("/clients/denied");
