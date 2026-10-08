@@ -32,8 +32,12 @@ pattern: hydrated page, append a preload that a route 404s once, (optionally evi
   stays green (staff, EV-350 round 1). A same-locale refresh's hint is harmless (React dedupes it), but a
   refresh after ANOTHER tab changed the locale cookie puts the other language's preload in `<head>`, and
   in WebKit that poisons BUG-703's "EN again over unsaved work" (0 network requests, abandoned again).
-  `Sec-Fetch-Dest` survives `headers()`: `document` on a page load, `empty` on every RSC fetch; skipping
-  when it is present and not `document` closed it in both engines (proposed, not merged, 2026-10-08).
+  `Sec-Fetch-Dest` survives `headers()`: `document` on a page load, `empty` on every RSC fetch. The
+  layout now skips when it is present and not `document` (absent header = hint, the safe fallback);
+  guarded by `locale-chunk-preload.spec.ts`'s "a refresh after another tab changed the language"
+  (A: no other-language `<link>`; B: WebKit EN again in place). The poisoning reproduces under
+  `next dev` too, so B runs in the default suite. Lever for a refresh in a spec:
+  `window.next.router.refresh()` (Next's own handle, present in dev and prod).
 - webpack's `ChunkLoadError.request` is the absolute URL it asked for; webpack's script loader REUSES an
   existing `<script src>` with the same URL, so a `preinit` (async script) that already failed would hang
   `import()` for webpack's 120 s timeout. Preload, not preinit.
