@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test";
 import { readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 
@@ -18,11 +19,16 @@ import { signInThroughForm } from "./sign-in";
  * (with the reason it draws none); the first test below enumerates the files at run time and
  * names any page in neither, so a new page cannot pass by not being listed. A page file is
  * `page.tsx`, `page.ts`, `page.jsx` or `page.js` (EV-352 352.2): Next's default
- * `pageExtensions`, which `next.config.js` does not change.
+ * `pageExtensions`, which `next.config.mjs` does not change. That is pinned, not assumed
+ * (EV-353 353.3): the third static test fails, naming `next.config.mjs`, if its exported
+ * config sets `pageExtensions`.
  *
  * EV-352 352.4: each `ROUTE_FILES` URL is checked against its file, statically (second test):
- * the URL must be one Next serves from THAT file, so a URL copied onto the wrong entry, or two
- * entries' URLs swapped, is red by name instead of testing some other page twice.
+ * the URL must be one that Next's FILE-SYSTEM ROUTER serves from THAT file, so a URL copied
+ * onto the wrong entry, or two entries' URLs swapped, is red by name instead of testing some
+ * other page twice. Only the file-system router is modelled (EV-353 353.4): `middleware.ts`
+ * (its redirects and rewrites) and any `rewrites` / `redirects` in `next.config.mjs` are NOT,
+ * so a URL that such a rule sends elsewhere would still pass this check.
  *
  * Populated scenario, for the seeded challenge and nutrition template. `/invited/[userId]` is
  * reached with `LAPSED_INVITATION` (349.4): the fixture's LAPSED invitation (`seedInvited`,
@@ -123,7 +129,10 @@ function urlPattern(file: string): RegExp {
   return new RegExp(`^${body}/?$`);
 }
 
-/** The page file Next serves `url` from, among `pages`: the most specific match, segment by segment. */
+/**
+ * The page file Next's file-system router serves `url` from, among `pages`: the most specific
+ * match, segment by segment. Middleware and config rewrites are not modelled (353.4).
+ */
 function resolvePage(url: string, pages: string[]): string | undefined {
   const rank = (file: string) => segmentsOf(file).map((s) => s.kind);
   const byRank = (a: string, b: string) => {
@@ -163,6 +172,31 @@ test("352.4: each ROUTES URL is the one Next serves from the file listed beside 
     .filter(([file, , served]) => served !== file)
     .map(([file, url, served]) => `${file} -> ${url} is served by ${served ?? "no page"}`);
   expect(reachedElsewhere, "ROUTE_FILES entries whose URL Next serves from another page").toEqual([]);
+});
+
+/**
+ * EV-353 353.3 — the default `pageExtensions` that `PAGE_FILE` assumes is PINNED: if
+ * `next.config.mjs` sets `pageExtensions` (even to the defaults), this fails by name, and
+ * whoever set it updates `PAGE_FILE` in the same change. The exported config itself is read
+ * (imported, as Next imports it), not its source text, so a comment that mentions the key
+ * cannot trip it and a computed key cannot slip past it. A function export (Next's
+ * `(phase) => config` form) is called with the build phase.
+ *
+ * Mutant: add `pageExtensions: ["tsx", "ts", "jsx", "js"]` to `nextConfig` → red, naming
+ * `next.config.mjs`.
+ */
+test("353.3: next.config.mjs leaves pageExtensions at Next's default (static, no page opened)", async () => {
+  const file = join(__dirname, "..", "next.config.mjs");
+  const exported: unknown = (await import(pathToFileURL(file).href)).default;
+  const config =
+    typeof exported === "function" ? await exported("phase-production-build", { defaultConfig: {} }) : exported;
+  expect(config !== null && typeof config === "object", "next.config.mjs exports a config object").toBe(true);
+  expect(
+    Object.prototype.hasOwnProperty.call(config, "pageExtensions")
+      ? `next.config.mjs sets pageExtensions = ${JSON.stringify((config as { pageExtensions: unknown }).pageExtensions)}`
+      : "next.config.mjs does not set pageExtensions",
+    "PAGE_FILE assumes Next's default pageExtensions; update it with the config"
+  ).toBe("next.config.mjs does not set pageExtensions");
 });
 
 /** The root error page's h1: the roster's own sentence on `/` (`error.tsx` `onRoster`), else the general one. */

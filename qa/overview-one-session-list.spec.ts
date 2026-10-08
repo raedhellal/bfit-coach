@@ -16,7 +16,7 @@ import { signInFrench } from "./french";
  *   J.2 nothing the old blocks showed is lost (each field of a history row appears in the
  *       new one);
  *   J.3 at 768 px the page is at least one screen shorter than 3,133 px — NOT met by this
- *       slice; what it does achieve is pinned below.
+ *       slice (restated by J-R2 and carded EV-345, which meets it: see the end of this file).
  *
  * Lina has twelve completed sessions in the seed; the api caps the history at ten. Nils
  * has six, Ruben five, Kaia none.
@@ -175,31 +175,14 @@ test.describe("in French", () => {
 
 test.describe("J.3 — widths", () => {
   /**
-   * ⚠ J.3 asks for "at least one screen shorter than 3,133 px"; this slice does NOT reach
-   * that, and this test does not pretend it does. Measured at 768 × 1024 on Lina (the
-   * audit's page), c2768c2 → this branch: 3,222 → 2,791 px in French (`next start`, and
-   * the same 2,791 under `next dev`), 3,189 → 2,758 px in English (this test's browser):
-   * 431 px either way, under half of a 1,024 px screen. The PO re-anchored J.3 to
-   * `next start`, French, ≤ 2,198 px, and carded the rest as EV-345: the `test.fixme` at
-   * the end of this file holds that target.
-   *
-   * What is pinned HERE is the regression guard (the PO's J-R6): ≤ 2,900 px in this test's
-   * English browser. Basis: the sprint-1b train measures 2,818 px here (EV-342e's header
-   * added height after this branch's 2,758), plus 82 px of headroom for unrelated layout
-   * changes. Undoing the fold puts the old block back (+431 px, ~3,249 px), which still
-   * trips it. J.3 itself (≤ 2,198, French, `next start`) is the fixme below, unchanged.
+   * J.3's history: EV-342j's fold took Lina's overview at 768 × 1024 from 3,222 to 2,791 px
+   * (French, `next start`, c2768c2 → 04a5c3b), under half of a 1,024 px screen. The PO
+   * re-anchored J.3 (J-R2: `next start`, French, ≤ 2,198 px) and carded the rest as EV-345.
+   * The J-R6 regression guard that stood here (English, ≤ 2,900 px, "EV-342j J.3 partial:
+   * regression guard (EV-345 owns J.3)") was deleted by EV-345, as J-R6 allows once J.3 is a
+   * plain test: the two tests below hold a bound 702 px tighter in both languages, so undoing
+   * the fold (+431 px) or EV-345's layout trips them.
    */
-  // Title prescribed by the PO (EV-342 J-R3).
-  test("EV-342j J.3 partial: regression guard (EV-345 owns J.3)", async ({ page }) => {
-    await page.setViewportSize({ width: 768, height: 1024 });
-    await signInThroughForm(page);
-    await page.goto(`/clients/${LINA}`);
-    await expect(activity(page).getByRole("listitem")).toHaveCount(5);
-    const height = await page.evaluate(() => document.documentElement.scrollHeight);
-    test.info().annotations.push({ type: "overview height at 768x1024", description: `${height} px` });
-    expect(height).toBeLessThanOrEqual(2900);
-  });
-
   for (const width of [1440, 1024, 768, 390]) {
     test(`${width} px: the opened list scrolls nothing sideways`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -212,25 +195,40 @@ test.describe("J.3 — widths", () => {
   }
 });
 
-test.describe("J.3 as ruled (French, 768 × 1024)", () => {
-  test.use({ locale: "fr-FR" });
-
+test.describe("J.3 as ruled (768 × 1024)", () => {
   /**
-   * The PO's ruling (hub 3cec7b49): the weigh-in rows' removal is accepted, and J.3 is
-   * re-anchored to `next start` — Lina, FR, Chromium, 768 × 1024, at most 2,198 px (one
-   * 1,024 px screen under the 3,222 px measured at c2768c2). This slice reaches 2,791 px;
-   * the rest is EV-345. `fixme` until it lands, so the target is written down and the run
-   * says it is open. Run as a plain test today it fails at 2,791 px (`next dev`, the same
-   * height `next start` gives in French); still read EV-345's number on `next start`.
+   * The PO's ruling (hub 3cec7b49, J-R2): J.3 is Lina, FR, Chromium, 768 × 1024, at most
+   * 2,198 px (one 1,024 px screen under the 3,222 px measured at c2768c2 on `next start`).
+   * EV-342j's fold reached 2,791 px; the train (sprint 1/1b + k, j, m) 2,851. EV-345's layout
+   * between 768 and 1279 px closes it: 2,152 px FR / 2,099 px EN on `next start` (EV-345.1's
+   * probe, 2026-10-08, on 6caecb8 + EV-345). This suite runs on `next dev`, which reads the
+   * same heights for this page; EV-345's number of record is still the `next start` one.
+   *
+   * Title prescribed by the PO (EV-342 J-R3); EV-345.2 turned the `test.fixme` into a plain
+   * `test` with its assertion unchanged. Failed before EV-345 at 2,851 px.
    */
-  // Title prescribed by the PO (EV-342 J-R3); EV-345.2 turns it into a plain `test` with
-  // the assertion unchanged.
-  test.fixme("EV-342j J.3 (EV-345): at 768×1024 the overview is one screen shorter than at c2768c2", async ({ page }) => {
+  test.describe("French", () => {
+    test.use({ locale: "fr-FR" });
+
+    test("EV-342j J.3 (EV-345): at 768×1024 the overview is one screen shorter than at c2768c2", async ({ page }) => {
+      await page.setViewportSize({ width: 768, height: 1024 });
+      await signInFrench(page);
+      await page.goto(`/clients/${LINA}`);
+      await expect(page.getByRole("region", { name: "Activité récente" }).getByRole("listitem")).toHaveCount(5);
+      const height = await page.evaluate(() => document.documentElement.scrollHeight);
+      test.info().annotations.push({ type: "overview height at 768x1024 (fr)", description: `${height} px` });
+      expect(height).toBeLessThanOrEqual(2198);
+    });
+  });
+
+  /** EV-345.2's English limb: "EN is measured and recorded, and it is also ≤ 2,198 px". */
+  test("EV-345.2 (EN): at 768×1024 the English overview is also at most 2,198 px", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await signInFrench(page);
+    await signInThroughForm(page);
     await page.goto(`/clients/${LINA}`);
-    await expect(page.getByRole("region", { name: "Activité récente" }).getByRole("listitem")).toHaveCount(5);
+    await expect(activity(page).getByRole("listitem")).toHaveCount(5);
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
+    test.info().annotations.push({ type: "overview height at 768x1024 (en)", description: `${height} px` });
     expect(height).toBeLessThanOrEqual(2198);
   });
 });
