@@ -1,6 +1,6 @@
 ---
 name: a-first-viewport-ac-is-about-the-bottom
-description: EV-344.1 STOP (2026-10-08) — an "inside the first viewport" AC needs the element's BOTTOM above the sticky bar; the exercise row is 319 px at 1024, so arithmetic on its top was wrong from the start
+description: EV-344 (2026-10-08) — a first-viewport AC needs the element's BOTTOM above the sticky bar (row is 319 px at 1024); probe STOP, D-FOLD-1 (A) restatement, `.prog-doc` gating and the screenshot-pair method
 metadata:
   type: feedback
 ---
@@ -28,5 +28,20 @@ moved the row's top 1041 → 779 and still missed by 304–398 px in all four ca
   a file (`PROBE_OUT`); never commit it (it has no assertions).
 - Stack at 1024×800 on main `6caecb8` (Lina): h2 216 · profile line 256→314 · plan card
   328→478 (field 375→419) · settings card 494→784 · « Jours d'entraînement » 800 · row 1041.
+
+**Outcome (2026-10-08 night):** senior-po adopted the lesson for every first-viewport AC and
+sent the shape to Raed as `D-FOLD-1`; (A) was taken: F.1 restated as EV-344.2A (Day 1's
+`h3.day-acc-head` wholly above the bar + the first row's top ≤ 100 px under it). Built on
+`84ac21b`. Facts from the build:
+- `.prog-doc` (on `RoutineDocumentEditor`'s root, trainee only) scopes the tighter spacing;
+  the margin classes' BASE values equal the old inline ones, so `/templates/*` and ≥ 1280 are
+  byte-identical (EV-344.9A). The spacing is load-bearing at 1024 only: without it the row's
+  top is 807 (+107, red), at 1180 it is +87 either way.
+- The fold's open state lives in `RoutineEditor` beside `openDays` (survives the `loads`
+  remount); the card is hidden, not unmounted; `onChangeCapture` opens it on a restore.
+- Screenshot-pair method that worked: a detached `6caecb8` worktree in the scratchpad + the
+  branch tree, the same throwaway spec in each `qa/`, `animations: "disabled"`, `caret:
+  "hide"`, viewport AND fullPage, `cmp`. Control it: a 4 px margin mutant shows only in the
+  fullPage pair (the template's heading is below the fold at 1024).
 
 See [[programme-frame-337f1-facts]], [[day-accordions-337f2-facts]], [[layout-assertions-need-occlusion]].

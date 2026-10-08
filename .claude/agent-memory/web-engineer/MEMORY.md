@@ -82,4 +82,4 @@
 - [A module split can grow its page](a-module-split-can-grow-the-page-it-was-for.md) — EV-348: webpack duplicated split modules, client page +0.78 kB; measure encodedBodySize first
 - [A failed preload poisons the URL in WebKit (EV-350)](a-failed-preload-poisons-the-url-in-webkit.md) — buildId-named chunk + DefinePlugin to preload an async chunk; skip on RSC/actions; evict with fetch cache:reload
 - [A route-table URL can match its file and reach another](a-route-table-url-can-match-its-file-and-reach-another.md) — EV-352: /templates/new matches [id]; resolve by Next precedence, refuse @/(.) segments
-- [A first-viewport AC is about the bottom (EV-344.1 STOP)](a-first-viewport-ac-is-about-the-bottom.md) — the exercise row is 319 px at 1024; do the floor arithmetic on its height before any layout probe
+- [A first-viewport AC is about the bottom (EV-344)](a-first-viewport-ac-is-about-the-bottom.md) — row is 319 px at 1024, do floor arithmetic first; settings fold gated by `.prog-doc`; screenshot-pair method
