@@ -87,23 +87,15 @@ export function AdherenceSeries({ series }: { series: Series }) {
         {copy.client.adherenceSeriesHeadline(series.done, series.planned)}
       </p>
       {/*
-        BUG-707 — ONE grid for the whole list, and each row a SUBGRID of it, so the date
-        column is as wide as the widest date (FR « 28 sept. 2026 » is 82.5 px; the old fixed
-        76 px column let it spill into the gap before the bar) and still the same width on
-        every row. The figure column is shared the same way, so the bars line up at both ends.
+        BUG-707 — the list and its rows are laid out by `.adherence-series` /
+        `.adherence-week` in globals.css: ONE grid for the list and each row a SUBGRID of it,
+        so the date column is as wide as the widest date (FR « 28 sept. 2026 » is 82.5 px;
+        the old fixed 76 px column let it spill into the gap before the bar) and the same on
+        every row; the figure column is shared too, so the bars line up at both ends. Without
+        subgrid (behind @supports there) each row is its own three-column grid sized to its
+        own date: nothing spills, only the cross-row alignment is lost.
       */}
-      <ul
-        style={{
-          margin: 0,
-          padding: 0,
-          listStyle: "none",
-          display: "grid",
-          // 320 px safe: the bar takes what is left (a 0 minimum, never the row's overflow),
-          // and the dates and figures keep their own widths without wrapping.
-          gridTemplateColumns: "max-content minmax(0, 1fr) max-content",
-          gap: 10,
-        }}
-      >
+      <ul className="adherence-series" style={{ margin: 0, padding: 0, listStyle: "none" }}>
         {series.weeks.map((week) => {
           /**
            * **A BAR IS DRAWN ONLY FOR A WEEK THAT IS OVER AND HAD A PLAN, AND IT IS
@@ -140,15 +132,11 @@ export function AdherenceSeries({ series }: { series: Series }) {
           return (
             <li
               key={week.weekCommencing}
+              // `.adherence-week` (globals.css): the date column sized to the widest date, the
+              // bar the rest (a 0 minimum, so 320 px is safe), the figure sized to itself, so
+              // "7 / 7 sessions" (edge case 2) neither wraps nor pushes the row sideways.
+              className="adherence-week"
               style={{
-                display: "grid",
-                // A subgrid of the list's three columns (above): the date column sized to
-                // the widest date, the bar the rest, the figure sized to the widest figure,
-                // so "7 / 7 sessions" (edge case 2) neither wraps nor pushes the row
-                // sideways, and every row's date, bar and figure line up down the card.
-                gridColumn: "1 / -1",
-                gridTemplateColumns: "subgrid",
-                alignItems: "center",
                 fontSize: 12.5,
                 color: "var(--ink-2)",
               }}
