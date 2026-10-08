@@ -46,6 +46,12 @@ import {
  * landed, so it is `NO_ANSWER` — never folded into a refusal. The browser-side twin of
  * the same case is the `settled()` fallback at the call site: a server action whose
  * REQUEST fails resolves `undefined`, and the island maps that to `NO_ANSWER` too.
+ *
+ * One exception to "a status is a refusal" (BUG-523, senior-po's ruling of 2026-09-30,
+ * extending BUG-248's rule for a lost answer): a `502`, `503` or `504` is a status the
+ * portal received, but from whatever stands between it and b-fit-api, which may have
+ * written behind it. It does not prove nothing changed, so it is `NO_ANSWER`. None of the
+ * three is a refusal b-fit-api itself sends on these endpoints (see `coachApi.ts`'s table).
  */
 
 export type NutritionTemplateFailure =
@@ -166,8 +172,12 @@ export async function deleteNutritionTemplateAction(
 
 export type UseFailure = "ACCESS_DENIED" | "REFUSED" | "NO_ANSWER";
 
+/** BUG-523 — the gateway statuses: received, but not an answer from the api. */
+const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
 function classifyUse(err: unknown): UseFailure {
   if (!(err instanceof ApiError)) return "NO_ANSWER";
+  if (GATEWAY_STATUSES.has(err.status)) return "NO_ANSWER";
   if (isForbidden(err)) return "ACCESS_DENIED";
   return "REFUSED";
 }

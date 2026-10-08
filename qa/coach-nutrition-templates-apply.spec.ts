@@ -403,6 +403,85 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
   });
 });
 
+/**
+ * BUG-523 — a 502, 503 or 504 is NO ANSWER (senior-po's ruling, 2026-09-30, extending
+ * BUG-248's rule for a lost answer). The status was received, but from a gateway in front
+ * of b-fit-api, which may have written behind it: the week reads "couldn't confirm", the
+ * targets read "couldn't confirm", never "couldn't be rebuilt" or "Nothing was changed",
+ * and no week request follows a targets 5xx.
+ *
+ * The fixture's `gateway_50x` switches throw what `apiFetch` builds from a bare gateway
+ * answer: an `ApiError` with that status and no code. Red at 6caecb8, where every
+ * `ApiError` but a 403 was a refusal (`REFUSED`).
+ */
+test.describe("BUG-523 — a gateway 5xx is no answer", () => {
+  for (const status of [502, 503, 504] as const) {
+    test(`targets ${status}: 'couldn't confirm', never 'nothing was changed', and NO week request`, async ({ page, context, baseURL }) => {
+      await signIn(page);
+      const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+      await setSwitch(context, baseURL as string, "evoli_fixture_targets", `gateway_${status}`);
+      const timeline = actionTimeline(page);
+      await dialog.getByRole("button", { name: "Confirm" }).click();
+      await page.waitForURL(`/clients/${PETRA}/nutrition`);
+      await expect(outcome(page)).toHaveText(targetsUnknown("Petra"));
+      await expect(page.getByText(targetsFailed("Petra"))).toHaveCount(0);
+      await quietMs(page);
+      expect(timeline.filter((e) => e.startsWith("week"))).toEqual([]);
+      expect(traineeWrites(await calls(page))).toEqual([
+        `PUT /coach-portal/clients/${PETRA}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
+      ]);
+    });
+
+    test(`week ${status}: targets updated, the week unconfirmed — not 'couldn't be rebuilt'`, async ({ page, context, baseURL }) => {
+      await signIn(page);
+      const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+      await setSwitch(context, baseURL as string, "evoli_fixture_week", `gateway_${status}`);
+      await dialog.getByRole("button", { name: "Confirm" }).click();
+      await page.waitForURL(`/clients/${PETRA}/nutrition`);
+      await expect(outcome(page)).toHaveText(weekUnknown("Petra"));
+      await expect(page.getByText(/couldn't be rebuilt/)).toHaveCount(0);
+      expect(traineeWrites(await calls(page))).toEqual([
+        `PUT /coach-portal/clients/${PETRA}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
+        `POST /coach-portal/clients/${PETRA}/nutrition/week/apply {weekStart}`,
+      ]);
+    });
+  }
+
+  test("a 500 is still a refusal: the gateway rule is the three statuses, not every 5xx", async ({ page, context, baseURL }) => {
+    await signIn(page);
+    const dialog = await openConfirm(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "fail");
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(weekFailed("Petra", "Apply to Petra L."));
+  });
+});
+
+test.describe("BUG-523 — a gateway 5xx is no answer, in a French browser (fr-FR)", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("targets 503 and week 504: the French 'couldn't confirm' sentences", async ({ page, context, baseURL }) => {
+    await signInFrench(page);
+    let dialog = await openConfirmFrench(page, CUT, "Petra L.", "Petra");
+    await setSwitch(context, baseURL as string, "evoli_fixture_targets", "gateway_503");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      "Nous n'avons pas pu confirmer si les objectifs de Petra ont changé. Vérifiez sa page nutrition avant de réessayer."
+    );
+
+    await context.clearCookies({ name: "evoli_fixture_targets" });
+    await setSwitch(context, baseURL as string, "evoli_fixture_week", "gateway_504");
+    dialog = await openConfirmFrench(page, CUT, "Petra L.", "Petra");
+    await dialog.getByRole("button", { name: "Confirmer" }).click();
+    await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await expect(outcome(page)).toHaveText(
+      "Les objectifs de Petra sont mis à jour. Nous n'avons pas pu confirmer si ses repas ont été reconstruits. Vérifiez sa page nutrition avant de réessayer."
+    );
+    await expectNoEnglish(page, "the French gateway outcome");
+  });
+});
+
 test.describe("staff review of EV-273b — the transport, the latch, the read, the week start", () => {
   test("targets: the API hop dies with no status (TypeError) → 'couldn't confirm', and no week request", async ({ page, context, baseURL }) => {
     await signIn(page);
