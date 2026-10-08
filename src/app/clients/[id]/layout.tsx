@@ -26,6 +26,9 @@ import { readClientOverview } from "@/lib/clientOverview";
  * although the pages answer in 50-150 ms, so the old page now stays until the new one is
  * ready, and `NavigationProgress` (root layout) shows a bar if that takes over 400 ms.
  */
+/** The api's `{id}` is a `UUID` path variable; the same shape `recipes/[id]` checks. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function ClientLayout({
   children,
   params,
@@ -51,6 +54,15 @@ export default async function ClientLayout({
    * under `[id]`, so the prefetch renders nothing at all (Next sends the route tree
    * only). `qa/page-read-budget.spec.ts` counts a prefetch of this route.
    */
+  /**
+   * BUG-600 — a path segment that is not a UUID is not the id of any trainee, so it gets
+   * the answer an unknown id gets (the 403 denial page: no existence oracle either way),
+   * WITHOUT an api call. Sent on, the live api's UUID conversion answers
+   * `400 INVALID_REQUEST`, which is not a 403, and the coach read « This trainee could not
+   * be loaded. » under a 200 for a URL that was never a client's.
+   */
+  if (!UUID.test(params.id)) redirect("/clients/denied");
+
   const { forbidden } = await readClientOverview(params.id);
   if (forbidden) redirect("/clients/denied");
 
