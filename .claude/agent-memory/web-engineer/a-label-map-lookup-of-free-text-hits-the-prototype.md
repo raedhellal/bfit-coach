@@ -20,3 +20,13 @@ is user text by design.
 keys in `copy.ts` (not `as Record<string, string>`), so `fr … satisfies Copy` refuses a missing
 preset at compile time. Two values can then print the same text (a typed « Arachides » beside
 the preset "Peanuts"), so a list keyed by value warns about duplicate keys — key by index.
+
+**A label map whose English value equals its key is a smell (BUG-706, 2026-10-08).**
+`ruleLabels` read `{ HALAL: "HALAL", KOSHER: "KOSHER" }` under a comment saying English
+"shows the token as it always has"; QA read that as deliberate. The trainee app's `en.json`
+(`nutrition.prefs.rule.*`) says "Halal" / "Kosher", so the English portal was printing the
+stored enum. Before trusting such a map, diff it against `b-fit-mobile`
+`src/i18n/locales/{en,fr}.json` at hub `origin/main` (`git show`, never the live checkout),
+and pin the app's labels as literals in the spec. `ruleLabels` is literal-keyed now and goes
+through `dietValueLabel` too. A spec of a printed label reads BOTH `allInnerTexts()` and
+`allTextContents()`: a CSS `text-transform` passes a textContent read.
