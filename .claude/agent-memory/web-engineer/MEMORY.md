@@ -78,5 +78,7 @@
 - [Form hooks (EV-342o)](coach-form-hooks-342o-facts.md) — useCoachForm/useAutosave; a navigating save is saved(stored, then); a dismissed beforeunload = ERR_ABORTED reload; two "Portal" navs
 - [EV-342k/j/m (2026-10-07)](ev342-kjm-portal-facts.md) — evoli_pro_coach cookie bound to sub; one session list, weigh-ins dropped, J.3 unmet; import() per-locale dict, route table hides the async chunk; zsh `$T:q` trap
 - [Free-text label lookup hits the prototype](a-label-map-lookup-of-free-text-hits-the-prototype.md) — BUG-694: labels["constructor"] is a function; own-property check, literal keys, key by index
-- [A nested button was a spec's discriminator](removing-a-nested-button-can-break-a-spec-that-used-it.md) — BUG-616 broke pro-back-link by count; grep qa for locator("button") first
+- [A nested button was a spec's discriminator](removing-a-nested-button-can-break-a-spec-that-used-it.md) — BUG-616 broke pro-back-link by count; exclude by an owned data-* marker (EV-352), never a shared class
 - [A module split can grow its page](a-module-split-can-grow-the-page-it-was-for.md) — EV-348: webpack duplicated split modules, client page +0.78 kB; measure encodedBodySize first
+- [A failed preload poisons the URL in WebKit (EV-350)](a-failed-preload-poisons-the-url-in-webkit.md) — buildId-named chunk + DefinePlugin to preload an async chunk; skip on RSC/actions; evict with fetch cache:reload
+- [A route-table URL can match its file and reach another](a-route-table-url-can-match-its-file-and-reach-another.md) — EV-352: /templates/new matches [id]; resolve by Next precedence, refuse @/(.) segments

@@ -49,6 +49,69 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+/**
+ * EV-350 — the dictionary chunk is requested in the FIRST wave of a cold load.
+ *
+ * EV-342m made each dictionary its own async chunk (`import()` in src/lib/i18n/client.tsx),
+ * fetched once the first-wave scripts have run: one round trip before hydration, ~95 ms on
+ * HTTP/2 at 100 ms RTT. The root layout now puts a `<link rel="preload" as="script">` for
+ * the page's language in the document (src/lib/i18n/chunk.ts), so the request leaves with
+ * the route's own scripts and the `import()` finds it already on its way.
+ *
+ * The difficulty: the server compilation runs BEFORE the client one (Next 14's compiler
+ * order is server, edge-server, client), so no server component can know an async chunk's
+ * `[contenthash]`. Hence two things, both here so they cannot drift apart:
+ *   · in the client compilation, the two named chunks (`webpackChunkName` in client.tsx) are
+ *     written as `evoli-copy-<locale>.<buildId>.js` rather than `<id>.<contenthash>.js`;
+ *   · in the server compilations, the same URLs are inlined (`__EVOLI_COPY_CHUNK_URLS__`).
+ * `buildId` is the one value both compilations share. The cost, named: the URL changes on
+ * every deploy, so a coach re-downloads the dictionary (~20 kB) after each deploy even when
+ * its text did not change. Never a stale one: a new build is always a new URL.
+ *
+ * A production build that does not emit both named chunks FAILS (a renamed or dropped
+ * `webpackChunkName`, or a Next upgrade that stops honouring it), rather than shipping a
+ * hint to a file that does not exist. `qa/locale-chunk-preload.spec.ts` (350.8) is the
+ * runtime half: the hint and the request must name the same URL.
+ */
+const COPY_CHUNKS = { fr: "evoli-copy-fr", en: "evoli-copy-en" };
+const copyChunkFile = (name, buildId) => `static/chunks/${name}.${buildId}.js`;
+
+function preloadableCopyChunks(config, { isServer, dev, buildId, webpack }) {
+  if (isServer) {
+    const urls = Object.fromEntries(
+      Object.entries(COPY_CHUNKS).map(([locale, name]) => [locale, `/_next/${copyChunkFile(name, buildId)}`])
+    );
+    config.plugins.push(new webpack.DefinePlugin({ __EVOLI_COPY_CHUNK_URLS__: JSON.stringify(urls) }));
+    return config;
+  }
+  const names = Object.values(COPY_CHUNKS);
+  const fallback = config.output.chunkFilename;
+  config.output.chunkFilename = (pathData, assetInfo) => {
+    const name = pathData.chunk?.name;
+    if (names.includes(name)) return copyChunkFile(name, buildId);
+    return typeof fallback === "function" ? fallback(pathData, assetInfo) : fallback;
+  };
+  if (!dev) {
+    config.plugins.push({
+      apply(compiler) {
+        compiler.hooks.emit.tap("EvoliCopyChunks", (compilation) => {
+          for (const name of names) {
+            if (!compilation.getAsset(copyChunkFile(name, buildId))) {
+              compilation.errors.push(
+                new webpack.WebpackError(
+                  `EV-350: the client build emitted no "${name}" chunk, so the root layout's preload ` +
+                    `hint would name a missing file. Check the webpackChunkName comments in src/lib/i18n/client.tsx.`
+                )
+              );
+            }
+          }
+        });
+      },
+    });
+  }
+  return config;
+}
+
 const nextConfig = {
   reactStrictMode: true,
   // No NEXT_PUBLIC_* API URL here on purpose: the browser never talks to b-fit-api.
@@ -71,6 +134,7 @@ const nextConfig = {
      */
     staleTimes: { dynamic: 30, static: 300 },
   },
+  webpack: preloadableCopyChunks,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

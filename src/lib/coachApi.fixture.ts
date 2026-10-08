@@ -6579,8 +6579,9 @@ export const fixtureCoachApi: CoachApi = {
      * BUG-694 — ⚠ fixture affordance: `evoli_fixture_diet_profile=presets` (this browser
      * context only) serves, on THIS read alone, every preset the trainee app offers (the
      * nine allergies and the five foods to avoid, as the app stores them: English) beside
-     * values a trainee typed. The stored profile is untouched, so placement and its
-     * refusals still read the seed.
+     * values a trainee typed, and both food rules (BUG-706: HALAL and KOSHER, the api's
+     * enum). The stored profile is untouched, so placement and its refusals still read the
+     * seed.
      */
     const dietProfile =
       (await fixtureSwitch("evoli_fixture_diet_profile")) === "presets"
@@ -6590,7 +6591,7 @@ export const fixtureCoachApi: CoachApi = {
               // Typed, not presets: shown exactly as typed in both languages.
               "Kiwi", "peanuts", "Arachides",
             ],
-            rules: state.dietProfile.rules,
+            rules: ["HALAL", "KOSHER"],
             dislikes: [
               "Liver", "Mushrooms", "Olives", "Cilantro", "Blue cheese",
               // "Fish" is an allergy preset, not a dislike preset: typed here.

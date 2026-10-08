@@ -1,0 +1,379 @@
+import { existsSync } from "node:fs";
+import { expect, webkit, type BrowserContext, type Page } from "@playwright/test";
+import { test } from "./fixture-test";
+
+/**
+ * EV-350 (350.8, with 350.5's `/login` and 350.6's switch) — the dictionary chunk is
+ * requested in the FIRST wave of a cold load.
+ *
+ * EV-342m fetches the page language's dictionary with an `import()` that only runs once the
+ * first-wave scripts have run: one more round trip before hydration (~95 ms on HTTP/2 at
+ * 100 ms RTT). The root layout now puts `<link rel="preload" as="script">` for that chunk in
+ * the document (`src/lib/i18n/chunk.ts`), and next.config.mjs names the chunk so the server
+ * can know its URL. The timing win is measured on EV-346's rig, not here; this spec guards
+ * the mechanism, so that a change which breaks it (a renamed chunk, a Next upgrade, a
+ * different prefix) goes red instead of silently costing the round trip again:
+ *   · the document carries a hint whose URL IS the dictionary request's URL;
+ *   · exactly one request for that language's dictionary (the hint was used, not doubled);
+ *   · nothing names, or fetches, the other language.
+ *
+ * A dictionary is recognised by its CONTENT, never by its file name, as in
+ * `locale-bundle.spec.ts`: "Ouvrir le plan" is French only, "Add a client" English only
+ * (both are dictionary values found nowhere else in `src/`, comments included, because
+ * `next dev` ships comments). So a build that renames the chunk still has to keep the hint
+ * and the request on the same URL to pass.
+ *
+ * Mutants (QA records red and green):
+ *   · delete the `preloadCopyChunk(locale)` line in `src/app/layout.tsx`: all five go red, the
+ *     four cold loads on "the document hints this language's dictionary", the switch on
+ *     "the only dictionary hint is the document's" (there is none);
+ *   · delete the server-action early return in `preloadCopyChunk` (`next-action`): the
+ *     switch test goes red on "after FR → EN, the only dictionary hint is the document's"
+ *     (and `locale-bundle.spec.ts`'s two WebKit tests with it). There is no RSC arm to
+ *     mutate: Next 14.2 strips the `RSC` header from `headers()`, so a refresh's payload
+ *     carries the hint and React dedupes it against the document's `<link>`;
+ *   · delete the `Sec-Fetch-Dest` clause in `preloadCopyChunk` (keep `next-action`): the
+ *     cross-tab refresh tests below go red, (A) on "<head> holds only the document's
+ *     language" in Chromium and WebKit, (B) in WebKit on "EN again switches in place".
+ */
+
+const PROBE = { en: "Add a client", fr: "Ouvrir le plan" } as const;
+type Lang = keyof typeof PROBE;
+const other = (lang: Lang): Lang => (lang === "fr" ? "en" : "fr");
+
+interface Seen {
+  /** Every JavaScript response, URL → body (one entry per request, in order). */
+  scripts: { url: string; body: Promise<string> }[];
+  documents: number;
+  /** Console lines of any level that mention a preload (350.9). */
+  preloadMessages: string[];
+  errors: string[];
+}
+
+function watch(page: Page): Seen {
+  const seen: Seen = { scripts: [], documents: 0, preloadMessages: [], errors: [] };
+  page.on("response", (response) => {
+    if (/\.js(\?|$)/.test(new URL(response.url()).pathname)) {
+      seen.scripts.push({ url: response.url(), body: response.text().catch(() => "") });
+    }
+  });
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) seen.documents += 1;
+  });
+  page.on("console", (message) => {
+    if (/preload/i.test(message.text())) seen.preloadMessages.push(`${message.type()}: ${message.text()}`);
+    if (message.type() === "error") seen.errors.push(message.text());
+  });
+  page.on("pageerror", (error) => seen.errors.push(error.message));
+  return seen;
+}
+
+/** The URLs of every request whose body is `lang`'s dictionary. */
+async function dictionaryRequests(seen: Seen, lang: Lang): Promise<string[]> {
+  const bodies = await Promise.all(seen.scripts.map((s) => s.body));
+  return seen.scripts.filter((_, i) => bodies[i].includes(PROBE[lang])).map((s) => s.url);
+}
+
+/** `<link rel="preload" as="script">` hrefs in the document AS THE SERVER SENT IT, absolute. */
+async function scriptHints(page: Page, html: string): Promise<string[]> {
+  const links = [...html.matchAll(/<link\b[^>]*>/g)].map((m) => m[0]);
+  const hrefs = links
+    .filter((l) => /\brel="preload"/.test(l) && /\bas="script"/.test(l))
+    .map((l) => /\bhref="([^"]+)"/.exec(l)?.[1])
+    .filter((h): h is string => Boolean(h))
+    .map((h) => new URL(h.replace(/&amp;/g, "&"), page.url()).toString());
+  return hrefs;
+}
+
+/** Which dictionaries a set of hinted URLs would fetch, by content. */
+async function hintedLanguages(page: Page, hrefs: string[]): Promise<Lang[]> {
+  const langs: Lang[] = [];
+  for (const href of hrefs) {
+    const body = await (await page.request.get(href)).text();
+    for (const lang of ["fr", "en"] as const) if (body.includes(PROBE[lang])) langs.push(lang);
+  }
+  return langs;
+}
+
+/** A session cookie with no page load: the first document of the test is the cold one. */
+async function signInWithoutALoad(page: Page) {
+  const login = await page.request.post("/api/auth/login", {
+    data: { email: "coach@evoli.fit", password: "Password123!" },
+    maxRedirects: 0,
+  });
+  expect(login.status()).toBe(200);
+}
+
+async function coldLoad(page: Page, path: string): Promise<{ seen: Seen; html: string }> {
+  const seen = watch(page);
+  const response = await page.goto(path, { waitUntil: "load" });
+  expect(response, `${path} answered`).not.toBeNull();
+  const html = await response!.text();
+  await expect(page.locator("[data-nav-progress-ready]"), "the page hydrated").toHaveCount(1);
+  await page.waitForLoadState("networkidle");
+  return { seen, html };
+}
+
+async function expectFirstWaveHint(page: Page, lang: Lang, path: string) {
+  const { seen, html } = await coldLoad(page, path);
+  await expect(page.locator("html")).toHaveAttribute("lang", lang);
+
+  const hints = await scriptHints(page, html);
+  const requested = await dictionaryRequests(seen, lang);
+  expect(requested, `exactly one request for the ${lang} dictionary`).toHaveLength(1);
+  expect(hints, "the document hints this language's dictionary, at the URL it is fetched from").toContain(
+    requested[0]
+  );
+  expect(await hintedLanguages(page, hints), `no hint names the ${other(lang)} dictionary`).toEqual([lang]);
+  expect(await dictionaryRequests(seen, other(lang)), `the ${other(lang)} dictionary is not fetched`).toEqual([]);
+  expect(seen.documents, "one document").toBe(1);
+  expect(seen.preloadMessages, "no console message about a preload").toEqual([]);
+  expect(seen.errors, "no page or console error").toEqual([]);
+}
+
+for (const lang of ["fr", "en"] as const) {
+  test.describe(`a cold ${lang.toUpperCase()} load`, () => {
+    test.use({ locale: lang === "fr" ? "fr-FR" : "en-US" });
+
+    test(`/ hints the ${lang} dictionary chunk and fetches it once (350.8)`, async ({ page, context, baseURL }) => {
+      await signInWithoutALoad(page);
+      await context.addCookies([{ name: "evoli_pro_locale", value: lang, url: baseURL! }]);
+      await expectFirstWaveHint(page, lang, "/");
+    });
+
+    test(`/login signed out follows <html lang> (${lang}) (350.5)`, async ({ page, context }) => {
+      await context.clearCookies();
+      await expectFirstWaveHint(page, lang, "/login");
+    });
+  });
+}
+
+test.describe("the switch", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("FR → EN → FR: no document load, each dictionary requested at most once (350.6)", async ({ page }) => {
+    await signInWithoutALoad(page);
+    const { seen } = await coldLoad(page, "/");
+    const languages = () => page.getByRole("radiogroup", { name: /^(Langue|Language)$/ });
+
+    await languages().getByRole("radio", { name: /^EN/ }).check();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Roster");
+    // The hint is the DOCUMENT's: the switch's re-render must not add one for English. A
+    // hint in the switch's RSC payload becomes a <link rel="preload"> in <head>, and WebKit
+    // then answers every later import() of that URL from the preload, a failed one
+    // included: after a 404 on the switch the coach could never switch again (found on
+    // locale-bundle.spec.ts's BUG-703 / 349.3 WebKit tests during EV-350).
+    const domHints = await page.evaluate(() =>
+      [...document.querySelectorAll('link[rel="preload"][as="script"]')].map((l) => (l as HTMLLinkElement).href)
+    );
+    expect(await hintedLanguages(page, domHints), "after FR → EN, the only dictionary hint is the document's").toEqual([
+      "fr",
+    ]);
+    await languages().getByRole("radio", { name: /^FR/ }).check();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Clients");
+    await page.waitForLoadState("networkidle");
+
+    expect(seen.documents, "the switch never loads a document").toBe(1);
+    expect(await dictionaryRequests(seen, "fr"), "French: the cold load's one request").toHaveLength(1);
+    expect(await dictionaryRequests(seen, "en"), "English: the switch's one request").toHaveLength(1);
+    expect(seen.preloadMessages).toEqual([]);
+    expect(seen.errors).toEqual([]);
+  });
+});
+
+test.describe("a preloaded chunk that fails once", () => {
+  /**
+   * EV-342m's M.6 cold-load case, now that the chunk is PRELOADED: one 404, one reload, a
+   * hydrated French page. WebKit keeps a failed preload in its memory cache and answers the
+   * next document's request for the same URL from it, without a network request; until
+   * `forgetFailedPreload` (client.tsx) the reload failed again and the page stopped on
+   * React's #329, unhydrated. Chromium never showed it (`locale-bundle.spec.ts` covers it
+   * there). The French chunk is recognised by its content, as in `locale-bundle.spec.ts`.
+   *
+   * Mutant: make `reloadOnce`'s argument `() => Promise.resolve()` and this goes red on
+   * "the page hydrated" (WebKit), with the chunk asked of the network once.
+   */
+  test("WebKit: one 404 on the hinted chunk → one reload, then a hydrated French page (350.7)", async ({ baseURL }) => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    const browser = await webkit.launch();
+    try {
+      const context = await browser.newContext({ baseURL, locale: "fr-FR" });
+      await context.addCookies([{ name: "evoli_pro_locale", value: "fr", url: baseURL! }]);
+      const page = await context.newPage();
+      await signInWithoutALoad(page);
+      const seen = { failed: 0, served: 0, documents: 0 };
+      await page.route("**/_next/static/chunks/**", async (route) => {
+        const response = await route.fetch();
+        const body = await response.text();
+        if (body.includes(PROBE.fr)) {
+          if (seen.failed < 1) {
+            seen.failed += 1;
+            await route.fulfill({ status: 404, body: "" });
+            return;
+          }
+          seen.served += 1;
+        }
+        await route.fulfill({ response, body });
+      });
+      page.on("request", (request) => {
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) seen.documents += 1;
+      });
+      await page.goto("/");
+      await expect(page.locator("[data-nav-progress-ready]"), "the page hydrated").toHaveCount(1);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Clients");
+      expect(seen.failed).toBe(1);
+      expect(seen.documents, "one reload, no loop").toBe(2);
+      expect(await page.evaluate(() => window.sessionStorage.getItem("evoli.copy.reloaded"))).toBeNull();
+      await context.close();
+    } finally {
+      await browser.close();
+    }
+  });
+});
+
+test.describe("a refresh after another tab changed the language", () => {
+  /**
+   * EV-350 staff round 1's edge case. Tab 2 switches the coach to English (the locale
+   * cookie is the context's); tab 1, still French, then runs a `router.refresh()`. The
+   * refresh re-renders the root layout in English, and before the `Sec-Fetch-Dest` check
+   * in `preloadCopyChunk` its RSC payload carried the ENGLISH hint, which React put in
+   * tab 1's `<head>` beside the document's French one. In WebKit that `<link>` poisons the
+   * URL: if the English chunk failed on that refresh over unsaved work (BUG-703's
+   * abandon), « EN » again was answered from the failed preload, with no network request,
+   * and abandoned again instead of switching in place (349.3 (4)).
+   *
+   * The refresh is `window.next.router.refresh()`: Next's own handle on the app router (it
+   * IS `useRouter().refresh()`), in dev and in production. It stands in for the product's
+   * refreshes (ChallengeControls' 45 s poll, error.tsx's retry, CatalogPicker, SwapSheet),
+   * none of which this suite's `empty` fixture can reach on a page with a form.
+   *
+   * (A) asserts the server side of the fix (no other-language `<link>`), (B) its
+   * consequence in WebKit. Both run under `next dev` in the default suite, and both were
+   * also run on a production build behind EV-346's HTTPS front. With the check removed,
+   * all three went red under `next dev` (A on the extra English hint; B on "EN again
+   * switches in place", the English chunk never asked of the network again); the WebKit
+   * poisoning behind B was first witnessed on the production build.
+   */
+  test.use({ locale: "fr-FR" });
+
+  async function anotherTabSwitchesToEnglish(context: BrowserContext) {
+    const other = await context.newPage();
+    await other.goto("/");
+    await expect(other.locator("[data-nav-progress-ready]")).toHaveCount(1);
+    await other.getByRole("radiogroup", { name: "Langue" }).getByRole("radio", { name: /^EN/ }).check();
+    await expect(other.getByRole("heading", { level: 1 })).toHaveText("Roster");
+    expect((await context.cookies()).find((c) => c.name === "evoli_pro_locale")?.value).toBe("en");
+    await other.close();
+  }
+
+  async function refresh(page: Page) {
+    await page.evaluate(() => (window as unknown as { next: { router: { refresh(): void } } }).next.router.refresh());
+  }
+
+  async function domHintLanguages(page: Page): Promise<Lang[]> {
+    const hrefs = await page.evaluate(() =>
+      [...document.querySelectorAll('link[rel="preload"][as="script"]')].map((l) => (l as HTMLLinkElement).href)
+    );
+    return hintedLanguages(page, hrefs);
+  }
+
+  /** (A) The refresh renders English; `<head>` keeps only the document's French hint. */
+  async function onlyTheDocumentsHint(page: Page, context: BrowserContext, baseURL: string) {
+    await signInWithoutALoad(page);
+    await context.addCookies([{ name: "evoli_pro_locale", value: "fr", url: baseURL }]);
+    const { seen } = await coldLoad(page, "/");
+    expect(await domHintLanguages(page), "before: the document's hint").toEqual(["fr"]);
+
+    await anotherTabSwitchesToEnglish(context);
+    await refresh(page);
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Roster");
+    await page.waitForLoadState("networkidle");
+
+    expect(await domHintLanguages(page), "after the refresh, <head> holds only the document's language").toEqual([
+      "fr",
+    ]);
+    expect(await dictionaryRequests(seen, "en"), "English: the refresh's one import()").toHaveLength(1);
+    expect(seen.documents, "the refresh loads no document").toBe(1);
+    expect(seen.preloadMessages).toEqual([]);
+    expect(seen.errors).toEqual([]);
+  }
+
+  test("(A) <head> keeps only the document's hint (Chromium)", async ({ page, context, baseURL }) => {
+    await onlyTheDocumentsHint(page, context, baseURL!);
+  });
+
+  test("(A) <head> keeps only the document's hint (WebKit)", async ({ baseURL }) => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    const browser = await webkit.launch();
+    try {
+      const context = await browser.newContext({ baseURL, locale: "fr-FR" });
+      await onlyTheDocumentsHint(await context.newPage(), context, baseURL!);
+      await context.close();
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test("(B) WebKit: the English chunk fails on that refresh over unsaved work; EN again switches in place", async ({
+    baseURL,
+  }) => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    const browser = await webkit.launch();
+    try {
+      const context = await browser.newContext({ baseURL, locale: "fr-FR" });
+      await context.addCookies([{ name: "evoli_pro_locale", value: "fr", url: baseURL! }]);
+      const page = await context.newPage();
+      await signInWithoutALoad(page);
+      const seen = { failed: 0, english: 0, documents: 0 };
+      // Tab 1 only: the other tab's switch loads English normally.
+      await page.route("**/_next/static/chunks/**", async (route) => {
+        const response = await route.fetch();
+        const body = await response.text();
+        if (body.includes(PROBE.en)) {
+          seen.english += 1;
+          if (seen.failed < 1) {
+            seen.failed += 1;
+            await route.fulfill({ status: 404, body: "" });
+            return;
+          }
+        }
+        await route.fulfill({ response, body });
+      });
+      page.on("request", (request) => {
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) seen.documents += 1;
+      });
+      const prompts: string[] = [];
+      page.on("dialog", (dialog) => {
+        prompts.push(dialog.type());
+        void dialog.dismiss();
+      });
+
+      await page.goto("/nutrition-templates/new");
+      await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
+      await page.getByLabel("Nom du modèle").fill("Sèche 1800");
+
+      await anotherTabSwitchesToEnglish(context);
+      await refresh(page);
+      // The refresh's English chunk 404s over unsaved work: BUG-703 abandons, French stays,
+      // and the cookie is put back.
+      await expect
+        .poll(async () => (await context.cookies()).find((c) => c.name === "evoli_pro_locale")?.value)
+        .toBe("fr");
+      await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+      await expect(page.getByLabel("Nom du modèle")).toHaveValue("Sèche 1800");
+      expect(seen.failed, "the refresh asked for English once, and it failed").toBe(1);
+
+      // « EN » again, the work still unsaved, the chunk now served.
+      await page.getByRole("radiogroup", { name: "Langue" }).getByRole("radio", { name: /^EN/ }).check();
+      await expect(page.getByLabel("Template name"), "EN again switches in place").toHaveValue("Sèche 1800");
+      await expect(page.locator("html")).toHaveAttribute("lang", "en");
+      expect((await context.cookies()).find((c) => c.name === "evoli_pro_locale")?.value).toBe("en");
+      expect(seen, "English asked of the network again, no reload").toEqual({ failed: 1, english: 2, documents: 1 });
+      expect(prompts, "no native Leave-site prompt").toEqual([]);
+      await context.close();
+    } finally {
+      await browser.close();
+    }
+  });
+});

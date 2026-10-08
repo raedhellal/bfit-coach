@@ -13,10 +13,16 @@ import { signInThroughForm } from "./sign-in";
  * where a test happened to look. It now fires from `CoachShell` (`throwIfFixtureRenderError`
  * in `src/lib/fixtureFault.ts`), which every route here draws and which makes no api read.
  *
- * EV-349 349.1: the list is BOUND to `src/app`. Every `page.tsx` under it is either in
+ * EV-349 349.1: the list is BOUND to `src/app`. Every page file under it is either in
  * `ROUTES` (a page that draws `CoachShell`, with the URL that reaches it) or in `NO_SHELL`
  * (with the reason it draws none); the first test below enumerates the files at run time and
- * names any page in neither, so a new page cannot pass by not being listed.
+ * names any page in neither, so a new page cannot pass by not being listed. A page file is
+ * `page.tsx`, `page.ts`, `page.jsx` or `page.js` (EV-352 352.2): Next's default
+ * `pageExtensions`, which `next.config.js` does not change.
+ *
+ * EV-352 352.4: each `ROUTE_FILES` URL is checked against its file, statically (second test):
+ * the URL must be one Next serves from THAT file, so a URL copied onto the wrong entry, or two
+ * entries' URLs swapped, is red by name instead of testing some other page twice.
  *
  * Populated scenario, for the seeded challenge and nutrition template. `/invited/[userId]` is
  * reached with `LAPSED_INVITATION` (349.4): the fixture's LAPSED invitation (`seedInvited`,
@@ -59,18 +65,75 @@ const NO_SHELL: { route: string; files: RegExp; reason: string }[] = [
   { route: "/login", files: /^login\/page\.tsx$/, reason: "the sign-in form: no session yet, so no shell" },
   { route: "/activate", files: /^activate\/page\.tsx$/, reason: "EV-278c's activation: a PENDING session only, before the coach has a portal" },
   { route: "/unavailable", files: /^unavailable\/page\.tsx$/, reason: "middleware's 503 when the api gave no session verdict: one card, no api call" },
-  { route: "/i/*", files: /^i\//, reason: "the public invitation pages, read by a trainee, under the /i head" },
+  {
+    route: "/i/*",
+    files: /^i\//,
+    reason:
+      "EVERY page under src/app/i/, present and future: the pattern is the prefix, not a list of files, so a page " +
+      "added under i/ is exempt without being named here. They are the public invitation pages a trainee reads " +
+      "without a coach session, drawn under the /i head (i/layout.tsx), never inside CoachShell.",
+  },
 ];
 
 const ROUTES = Object.values(ROUTE_FILES);
 
-/** Every `page.tsx` under `src/app`, as a `/`-separated path relative to it. */
+/** A Next page file, in any of the default `pageExtensions` (EV-352 352.2). */
+const PAGE_FILE = /(^|\/)page\.(tsx|ts|jsx|js)$/;
+
+/** Every page file under `src/app`, as a `/`-separated path relative to it. */
 function appPages(): string[] {
   const root = join(__dirname, "..", "src", "app");
   return (readdirSync(root, { recursive: true }) as string[])
-    .filter((p) => p === "page.tsx" || p.endsWith(`${sep}page.tsx`))
     .map((p) => relative(root, join(root, p)).split(sep).join("/"))
+    .filter((p) => PAGE_FILE.test(p))
     .sort();
+}
+
+/**
+ * How Next ranks one URL segment of a page file: a static name beats `[param]`, which beats
+ * `[...catchAll]`, which beats `[[...optional]]`. Route groups `(…)` are not segments.
+ */
+type Segment = { kind: 0 | 1 | 2 | 3; name: string };
+
+function segmentsOf(file: string): Segment[] {
+  return file
+    .replace(PAGE_FILE, "")
+    .split("/")
+    .filter((s) => s !== "" && !/^\(.*\)$/.test(s))
+    .map((s): Segment => {
+      if (/^\[\[\.\.\.[^\]]+\]\]$/.test(s)) return { kind: 3, name: s };
+      if (/^\[\.\.\.[^\]]+\]$/.test(s)) return { kind: 2, name: s };
+      if (/^\[[^\].]+\]$/.test(s)) return { kind: 1, name: s };
+      // Parallel slots and intercepting routes change what a URL reaches: refuse, do not guess.
+      if (/^[@(]|[[\]]/.test(s)) throw new Error(`${file}: segment "${s}" is not one this check can derive`);
+      return { kind: 0, name: s };
+    });
+}
+
+/** The URL pattern a page file serves: groups removed, `[param]` one segment. */
+function urlPattern(file: string): RegExp {
+  let body = "";
+  for (const seg of segmentsOf(file)) {
+    if (seg.kind === 0) body += `/${seg.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+    else if (seg.kind === 1) body += "/[^/]+";
+    else if (seg.kind === 2) body += "(?:/[^/]+)+";
+    else body += "(?:/[^/]+)*";
+  }
+  // `/?` so the root (`(roster)/page.tsx`, body "") is "/", and an optional catch-all can be empty.
+  return new RegExp(`^${body}/?$`);
+}
+
+/** The page file Next serves `url` from, among `pages`: the most specific match, segment by segment. */
+function resolvePage(url: string, pages: string[]): string | undefined {
+  const rank = (file: string) => segmentsOf(file).map((s) => s.kind);
+  const byRank = (a: string, b: string) => {
+    const [ra, rb] = [rank(a), rank(b)];
+    for (let i = 0; i < Math.max(ra.length, rb.length); i += 1) {
+      if ((ra[i] ?? 9) !== (rb[i] ?? 9)) return (ra[i] ?? 9) - (rb[i] ?? 9);
+    }
+    return 0;
+  };
+  return pages.filter((p) => urlPattern(p).test(url.split("?")[0])).sort(byRank)[0];
 }
 
 test("349.1: every page under src/app is in ROUTES or in NO_SHELL, and every listed file exists", () => {
@@ -82,9 +145,24 @@ test("349.1: every page under src/app is in ROUTES or in NO_SHELL, and every lis
   const both = pages.filter((p) => p in ROUTE_FILES && NO_SHELL.some((n) => n.files.test(p)));
   expect(both, "pages listed as a shell page AND as a no-shell page").toEqual([]);
   const stale = Object.keys(ROUTE_FILES).filter((f) => !pages.includes(f));
-  expect(stale, "ROUTES entries whose page.tsx no longer exists").toEqual([]);
+  expect(stale, "ROUTES entries whose page file no longer exists").toEqual([]);
   const emptyNoShell = NO_SHELL.filter((n) => !pages.some((p) => n.files.test(p))).map((n) => n.route);
   expect(emptyNoShell, "NO_SHELL entries that match no page").toEqual([]);
+});
+
+test("352.4: each ROUTES URL is the one Next serves from the file listed beside it (static, no page opened)", () => {
+  const pages = appPages();
+  const mismatched = Object.entries(ROUTE_FILES)
+    .filter(([file, url]) => !urlPattern(file).test(url))
+    .map(([file, url]) => `${file} -> ${url} (pattern ${urlPattern(file).source})`);
+  expect(mismatched, "ROUTE_FILES entries whose URL does not match their own file's path").toEqual([]);
+  // Matching is not reaching: `/templates/new` matches `templates/[id]` too, and Next serves
+  // the static `templates/new`. Each URL must resolve to its own file among every page.
+  const reachedElsewhere = Object.entries(ROUTE_FILES)
+    .map(([file, url]) => [file, url, resolvePage(url, pages)] as const)
+    .filter(([file, , served]) => served !== file)
+    .map(([file, url, served]) => `${file} -> ${url} is served by ${served ?? "no page"}`);
+  expect(reachedElsewhere, "ROUTE_FILES entries whose URL Next serves from another page").toEqual([]);
 });
 
 /** The root error page's h1: the roster's own sentence on `/` (`error.tsx` `onRoster`), else the general one. */

@@ -57,15 +57,18 @@ async function signIn(page: Page) {
 
 /**
  * The page's back link: in `main`, by its exact name, and NOT the notice's way back
- * (`ClientNotice` draws a link with the same words on the two "not yours" pages; since
- * BUG-616 it is a `.link-button`, no longer a link round a `<button>`, so it is told apart
- * by that class). Exactly one must remain, so a page that drew two would fail here by count.
+ * (`ClientNotice` draws a link with the same words on the two "not yours" pages). That one
+ * link is excluded by its OWN marker, `data-notice-back` (EV-352 352.1), never by the shared
+ * `.link-button` class: excluding the class also hid every other button-styled link with
+ * the same name, so a second « Back to templates » drawn as a `.link-button` (staff's case:
+ * TemplateEditor's Cancel renamed) passed. Exactly one must remain, so a page that drew two
+ * fails here by count.
  */
 function backLink(page: Page, name: string): Locator {
   return page
     .getByRole("main")
     .getByRole("link", { name, exact: true })
-    .and(page.locator(":not(.link-button)"));
+    .and(page.locator(":not([data-notice-back])"));
 }
 
 async function expectTarget(page: Page, link: Locator, where: string) {

@@ -1243,10 +1243,12 @@ export const en = {
     allergies: "Allergies",
     rules: "Dietary rules",
     /**
-     * EV-324 — `FoodRule` tokens. English shows the token as it always has (AC2); French
-     * gets the word. An unknown token falls back to itself.
+     * `FoodRule` tokens, labelled as the trainee app labels them (`b-fit-mobile` `en.json`
+     * `nutrition.prefs.rule.*`). BUG-706: English printed the stored enum ("HALAL") while the
+     * app, and the French portal, print the word. Literal keys, so `fr … satisfies Copy`
+     * refuses a missing rule; an unknown token falls back to itself (`dietValueLabel`).
      */
-    ruleLabels: { HALAL: "HALAL", KOSHER: "KOSHER" } as Record<string, string>,
+    ruleLabels: { HALAL: "Halal", KOSHER: "Kosher" },
     dislikes: "Dislikes",
     /**
      * BUG-694 — the trainee app's preset chips, keyed by the value the app STORES. The app
