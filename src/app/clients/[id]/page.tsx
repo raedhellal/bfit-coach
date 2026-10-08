@@ -88,7 +88,11 @@ export default async function ClientPage({ params }: { params: { id: string } })
    */
   const progressRead = readClientProgress(params.id);
   const meRead = readCoachMe();
-  const { overview } = await readClientOverview(params.id);
+  const { overview, forbidden } = await readClientOverview(params.id);
+  // BUG-671 — a TAB CHANGE does not render `layout.tsx` again (its segment is unchanged), so
+  // the layout's 403 decision never runs on one; this page's own read is the only witness
+  // that the link ended. Same answer as the layout: the denial page.
+  if (forbidden) redirect("/clients/denied");
 
   if (!overview) {
     // The notice is this page's only content, so its sentence is the h1. Without

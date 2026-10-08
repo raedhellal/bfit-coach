@@ -44,7 +44,10 @@ export const dynamic = "force-dynamic";
 export default async function NutritionPage({ params }: { params: { id: string } }) {
   const copy = getCopy();
   let denied = false;
-  const [me, { overview }] = await Promise.all([readCoachMe(), readClientOverview(params.id)]);
+  const [me, { overview, forbidden }] = await Promise.all([readCoachMe(), readClientOverview(params.id)]);
+  // BUG-671 — on a tab change the layout is not rendered again, so its 403 decision does
+  // not run: a link that ended since the last page is seen HERE, and gets the same answer.
+  if (forbidden) redirect("/clients/denied");
 
   // Fail CLOSED: no overview means the api failed, and an api that failed cannot tell
   // us this trainee shared their nutrition. Asking anyway would request data we may

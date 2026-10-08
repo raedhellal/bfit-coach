@@ -55,12 +55,15 @@ export const dynamic = "force-dynamic";
 export default async function RoutinePage({ params }: { params: { id: string } }) {
   const copy = getCopy();
   let denied = false;
-  const [me, { overview }] = await Promise.all([
+  const [me, { overview, forbidden }] = await Promise.all([
     readCoachMe(),
     // The layout has already awaited this; React `cache` makes it free here and gives
     // the header a name even when the routine read fails.
     readClientOverview(params.id),
   ]);
+  // BUG-671 — on a tab change the layout is not rendered again, so its 403 decision does
+  // not run: a link that ended since the last page is seen HERE, and gets the same answer.
+  if (forbidden) redirect("/clients/denied");
 
   /**
    * Fail CLOSED when the overview did not arrive.
