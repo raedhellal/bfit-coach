@@ -83,8 +83,9 @@ export default async function ClientPage({ params }: { params: { id: string } })
    * ADR-0015 D5 / C4 forbids (`routine/page.tsx` waits the same way), so these cost one
    * more round trip and never a request for withheld data.
    *
-   * The 403 case for the overview never reaches here: `layout.tsx` has already redirected
-   * to /clients/denied, which middleware serves with the status AC5 asks for.
+   * On a document load the 403 case for the overview never reaches here: `layout.tsx` has
+   * already redirected to /clients/denied, which middleware serves with the status AC5 asks
+   * for. On a tab change it does (the layout is not rendered again): BUG-671, below.
    */
   const progressRead = readClientProgress(params.id);
   const meRead = readCoachMe();
