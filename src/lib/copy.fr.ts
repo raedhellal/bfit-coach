@@ -533,6 +533,8 @@ export const fr = {
     profileNoInjury: "aucune",
     profileUnanswered: "pas encore renseigné",
     profileDetails: "Détails",
+    settingsLine: (goal: string, level: string, minutes: number) => `${goal} · ${level} · ${minutes}\u00a0min`,
+    editSettings: "Modifier les réglages",
     emptyTitle: "Aucun plan actif",
     emptyBody: "Rien n'est encore programmé pour ce client.",
     build: "Créer un plan",

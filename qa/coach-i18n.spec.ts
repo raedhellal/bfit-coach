@@ -143,6 +143,7 @@ const SAME_IN_BOTH: Record<string, string> = {
   "challenges.source.HEALTH_CONNECT": "Google's product name, never translated",
   "challenges.participantsTitle": "French 'Participants' (EV-337h)",
   "challenges.ratio": "numbers only (EV-337h: « 1 / 3 », « 5 / 7 »)",
+  "routine.settingsLine": "EV-344: the goal and level arrive already translated; 'min' is the French abbreviation too",
   "guardrails.equipment.KETTLEBELL": "French 'Kettlebell' (b-fit-mobile fr.json)",
   // BUG-489 — catalogue words French spells the same.
   "catalog.muscles.biceps": "French 'Biceps'",

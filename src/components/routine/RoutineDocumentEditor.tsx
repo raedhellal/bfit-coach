@@ -101,6 +101,8 @@ export function RoutineDocumentEditor({
   showRowSummary = false,
   openDays,
   onOpenDaysChange,
+  settingsOpen,
+  onSettingsOpenChange,
 }: {
   document: Routine;
   onChange: (next: Routine) => void;
@@ -126,6 +128,13 @@ export function RoutineDocumentEditor({
    */
   openDays?: boolean[];
   onOpenDaysChange?: (next: boolean[]) => void;
+  /**
+   * EV-344 — whether a trainee's folded plan settings are open, when the PARENT holds it
+   * (both or neither), for the same reason as `openDays`: the `loads` remount must not fold
+   * the card the coach is editing. Folded on every page load (no remembered state, by scope).
+   */
+  settingsOpen?: boolean;
+  onSettingsOpenChange?: (next: boolean) => void;
 }) {
   const copy = useCopy();
   const [picker, setPicker] = useState<PickerTarget | null>(null);
@@ -175,6 +184,7 @@ export function RoutineDocumentEditor({
   const toggleDay = (dayIndex: number) =>
     setExpanded(document.trainingDays.map((_, i) => (i === dayIndex ? !isOpen(i) : isOpen(i))));
   const dayIds = useId();
+  const [ownSettingsOpen, setOwnSettingsOpen] = useState(false);
 
   function change(next: Routine) {
     setWeekdayError(null);
@@ -258,131 +268,131 @@ export function RoutineDocumentEditor({
         ? dayCountBound
         : null;
 
+  /**
+   * The trainee's goal and level as the card prints them. Computed ONCE, so the folded line
+   * (EV-344.3) and the open card cannot print two different words for one value.
+   */
+  const goalShown = subject.kind === "trainee" && !subject.resolved
+    ? copy.routine.subjectOnSave
+    : (copy.templates.goalLabels[document.goal] ?? document.goal);
+  const levelShown = subject.kind === "trainee" && !subject.resolved
+    ? copy.routine.subjectOnSave
+    : (copy.templates.levelLabels[document.level] ?? document.level);
+
   const settingsCard = (
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          {showDocumentName && (
-            <TextField
-              label={copy.templates.documentNameLabel}
-              value={document.name}
-              width={220}
-              onChange={(name) => change({ ...document, name })}
+    <Card style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+        {showDocumentName && (
+          <TextField
+            label={copy.templates.documentNameLabel}
+            value={document.name}
+            width={220}
+            onChange={(name) => change({ ...document, name })}
+          />
+        )}
+        {subject.kind === "template" ? (
+          <>
+            <SelectField
+              label={copy.templates.goalLabel}
+              value={document.goal}
+              options={GOALS}
+              labels={copy.templates.goalLabels}
+              onChange={(goal) => change({ ...document, goal })}
             />
-          )}
-          {subject.kind === "template" ? (
-            <>
-              <SelectField
-                label={copy.templates.goalLabel}
-                value={document.goal}
-                options={GOALS}
-                labels={copy.templates.goalLabels}
-                onChange={(goal) => change({ ...document, goal })}
-              />
-              <SelectField
-                label={copy.templates.levelLabel}
-                value={document.level}
-                options={LEVELS}
-                labels={copy.templates.levelLabels}
-                onChange={(level) => change({ ...document, level })}
-              />
-            </>
-          ) : (
-            <>
-              {/*
-                AC3.4 — read-only, and the page's "From the trainee's profile" sentence
-                beneath says whose they are. A real `readOnly` input rather than text, so
-                assistive tech and QA both read "read-only" and not merely "text".
-              */}
-              <ReadOnlyField
-                label={copy.templates.goalLabel}
-                value={
-                  subject.resolved
-                    ? (copy.templates.goalLabels[document.goal] ?? document.goal)
-                    : copy.routine.subjectOnSave
-                }
-              />
-              <ReadOnlyField
-                label={copy.templates.levelLabel}
-                value={
-                  subject.resolved
-                    ? (copy.templates.levelLabels[document.level] ?? document.level)
-                    : copy.routine.subjectOnSave
-                }
-              />
-            </>
-          )}
-          <NumberField
-            label={copy.templates.minutesLabel}
-            value={document.constraints.minutesPerSession}
-            min={1}
-            max={240}
-            onChange={(minutesPerSession) =>
-              change({ ...document, constraints: { ...document.constraints, minutesPerSession } })
-            }
-          />
+            <SelectField
+              label={copy.templates.levelLabel}
+              value={document.level}
+              options={LEVELS}
+              labels={copy.templates.levelLabels}
+              onChange={(level) => change({ ...document, level })}
+            />
+          </>
+        ) : (
+          <>
+            {/*
+              AC3.4 — read-only, and the page's "From the trainee's profile" sentence
+              beneath says whose they are. A real `readOnly` input rather than text, so
+              assistive tech and QA both read "read-only" and not merely "text".
+            */}
+            <ReadOnlyField label={copy.templates.goalLabel} value={goalShown} />
+            <ReadOnlyField label={copy.templates.levelLabel} value={levelShown} />
+          </>
+        )}
+        <NumberField
+          label={copy.templates.minutesLabel}
+          value={document.constraints.minutesPerSession}
+          min={1}
+          max={240}
+          onChange={(minutesPerSession) =>
+            change({ ...document, constraints: { ...document.constraints, minutesPerSession } })
+          }
+        />
+      </div>
+      {subject.kind === "trainee" && (
+        <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.routine.subjectFromProfile}
+        </p>
+      )}
+      <label style={{ display: "block", marginTop: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}>
+          {copy.templates.summaryLabel}
         </div>
-        {subject.kind === "trainee" && (
-          <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
-            {copy.routine.subjectFromProfile}
-          </p>
-        )}
-        <label style={{ display: "block", marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 }}>
-            {copy.templates.summaryLabel}
-          </div>
-          <textarea
-            aria-label={copy.templates.summaryLabel}
-            value={document.summary ?? ""}
-            rows={2}
-            onChange={(e) =>
-              change({
-                ...document,
-                // An empty box is the ABSENCE of a summary: the wire field is nullable
-                // and "" would render as a blank line wherever a summary is shown.
-                summary: e.target.value.trim() === "" ? null : e.target.value,
-              })
-            }
-            style={{
-              width: "100%",
-              minWidth: 0,
-              borderRadius: "var(--r-md)",
-              border: "1px solid var(--border-2)",
-              background: "var(--surface)",
-              padding: "8px 10px",
-              fontFamily: "var(--font-body)",
-              fontSize: 13.5,
-              color: "var(--ink)",
-              resize: "vertical",
-            }}
-          />
-          <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
-            {subject.kind === "template" ? copy.templates.summaryHint : copy.routine.summaryHint}
-          </span>
-        </label>
-        {/* ADR-0018 D10 — CARRIED_UNSEEN, said rather than hidden. */}
-        {document.weeklyProgression.length > 0 && (
-          <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
-            {copy.routine.progressionCarried(document.weeklyProgression.length)}
-          </p>
-        )}
-      </Card>
+        <textarea
+          aria-label={copy.templates.summaryLabel}
+          value={document.summary ?? ""}
+          rows={2}
+          onChange={(e) =>
+            change({
+              ...document,
+              // An empty box is the ABSENCE of a summary: the wire field is nullable
+              // and "" would render as a blank line wherever a summary is shown.
+              summary: e.target.value.trim() === "" ? null : e.target.value,
+            })
+          }
+          style={{
+            width: "100%",
+            minWidth: 0,
+            borderRadius: "var(--r-md)",
+            border: "1px solid var(--border-2)",
+            background: "var(--surface)",
+            padding: "8px 10px",
+            fontFamily: "var(--font-body)",
+            fontSize: 13.5,
+            color: "var(--ink)",
+            resize: "vertical",
+          }}
+        />
+        <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
+          {subject.kind === "template" ? copy.templates.summaryHint : copy.routine.summaryHint}
+        </span>
+      </label>
+      {/* ADR-0018 D10 — CARRIED_UNSEEN, said rather than hidden. */}
+      {document.weeklyProgression.length > 0 && (
+        <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.routine.progressionCarried(document.weeklyProgression.length)}
+        </p>
+      )}
+    </Card>
   );
 
   return (
+    // `.prog-doc` scopes EV-344's tighter spacing below 1280 px to a trainee's plan.
     <div className={subject.kind === "trainee" ? "prog-doc" : undefined}>
       {/*
         The document's own fields. Every one the document CARRIES is on screen: a
         control for the coach's, a read-only value for the trainee's, and a sentence
         for the one that is carried unseen.
+
+        EV-344 (audit A6 remainder, `D-FOLD-1` (A)) — a trainee's plan settings fold into one
+        line below 1280 px, so Day 1 reaches the first screen. The template editor keeps its
+        card as it was: it authors goal and level, and nothing about it was in scope.
       */}
       {subject.kind === "trainee" ? (
         <PlanSettingsFold
-          line={[
-            subject.resolved ? (copy.templates.goalLabels[document.goal] ?? document.goal) : copy.routine.subjectOnSave,
-            subject.resolved ? (copy.templates.levelLabels[document.level] ?? document.level) : copy.routine.subjectOnSave,
-            `${document.constraints.minutesPerSession} min`,
-          ].join(" · ")}
-          toggle={copy.locale === "fr" ? "Modifier les réglages" : "Edit settings"}
+          line={copy.routine.settingsLine(goalShown, levelShown, document.constraints.minutesPerSession)}
+          toggle={copy.routine.editSettings}
+          open={settingsOpen ?? ownSettingsOpen}
+          onOpenChange={onSettingsOpenChange ?? setOwnSettingsOpen}
         >
           {settingsCard}
         </PlanSettingsFold>
@@ -836,9 +846,36 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** EV-344.1 PROTOTYPE — the plan settings folded to one line below 1280 px. */
-function PlanSettingsFold({ line, toggle, children }: { line: string; toggle: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+/**
+ * EV-344 (audit A6 remainder, `D-FOLD-1` (A)) — below 1280 px a trainee's plan settings are
+ * ONE line, « {objectif} · {niveau} · {n} min » + « Modifier les réglages », and the button
+ * opens the full card in place under it (EV-344.3). The same pattern as EV-342f's
+ * `ProfileLine`: ONE card in the document, folded by CSS below 1280 px while closed; from
+ * 1280 px the line is hidden and the card always shows (EV-344.7). The viewport is decided by
+ * CSS, never by a hook, so the server HTML is already the folded page.
+ *
+ * Measured on the prototype (`c736eb9`, Lina, 1024×800): the open card ran 494→784 and Day 1's
+ * header started at 878 under the bar at 700; folded, the line is 494→552 and Day 1's header
+ * is at 636→682.
+ *
+ * Closed means `display: none`, never unmounted, so a value typed in the card survives a fold
+ * (EV-344.4). A change that reaches a field while the card is closed (a Back/Forward restore,
+ * BUG-687's pre-hydration replay) opens it, as a closed training day does (EV-337f2): an edit
+ * is never sitting out of sight.
+ */
+function PlanSettingsFold({
+  line,
+  toggle,
+  open,
+  onOpenChange,
+  children,
+}: {
+  line: string;
+  toggle: string;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  children: ReactNode;
+}) {
   const id = useId();
   return (
     <div className="plan-settings-box" data-open={open ? "" : undefined}>
@@ -846,15 +883,21 @@ function PlanSettingsFold({ line, toggle, children }: { line: string; toggle: st
         <span className="plan-settings-text">{line}</span>
         <button
           type="button"
-          className="prog-profile-toggle"
+          className="plan-settings-toggle"
           aria-expanded={open}
           aria-controls={id}
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => onOpenChange(!open)}
         >
           {toggle}
         </button>
       </div>
-      <div id={id} className="plan-settings-card">
+      <div
+        id={id}
+        className="plan-settings-card"
+        onChangeCapture={() => {
+          if (!open) onOpenChange(true);
+        }}
+      >
         {children}
       </div>
     </div>

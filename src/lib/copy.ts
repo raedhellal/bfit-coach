@@ -950,6 +950,15 @@ export const en = {
     profileUnanswered: "not answered yet",
     /** EV-342f F.2, verbatim: the control that opens the full profile card in place. */
     profileDetails: "Details",
+    /**
+     * EV-344 (audit A6 remainder, `D-FOLD-1` (A)): below 1280 px the plan-settings card folds
+     * into one line under the plan name. EV-344.3: it reads the values the open card prints,
+     * the goal and level labels as they are (`goalLabels`/`levelLabels`, or `subjectOnSave`),
+     * then « {n} min ». U+00A0 keeps the number with its unit when the line wraps.
+     */
+    settingsLine: (goal: string, level: string, minutes: number) => `${goal} · ${level} · ${minutes}\u00a0min`,
+    /** EV-344 scope 1, verbatim: the control that opens the plan-settings card in place. */
+    editSettings: "Edit settings",
     emptyTitle: "No active plan", // AC1, verbatim
     emptyBody: "Nothing is scheduled for this trainee yet.",
     build: "Build a plan", // AC1, verbatim

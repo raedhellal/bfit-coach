@@ -202,6 +202,12 @@ export function RoutineEditor({
       new Set(unbindableExercises.map((name) => name.toLowerCase()))
     )
   );
+  /**
+   * EV-344 — whether the folded plan settings (below 1280 px) are open. Held here for the
+   * same reason as `openDays`: the remount above must not fold the card the coach is in.
+   * Closed on every page load (EV-344 scope 1; a remembered state is out of scope).
+   */
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   /*
    * U6 — the notice and the error are where the coach is looking. They used to render in
@@ -601,6 +607,8 @@ export function RoutineEditor({
           replaceHint
           openDays={openDays}
           onOpenDaysChange={setOpenDays}
+          settingsOpen={settingsOpen}
+          onSettingsOpenChange={setSettingsOpen}
         />
       </ProgrammeFrame>
 
