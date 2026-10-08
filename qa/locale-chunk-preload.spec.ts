@@ -27,9 +27,11 @@ import { test } from "./fixture-test";
  *   · delete the `preloadCopyChunk(locale)` line in `src/app/layout.tsx`: all five go red, the
  *     four cold loads on "the document hints this language's dictionary", the switch on
  *     "the only dictionary hint is the document's" (there is none);
- *   · delete the RSC / server-action early return in `preloadCopyChunk`: the switch test goes
- *     red on "after FR → EN, the only dictionary hint is the document's" (and
- *     `locale-bundle.spec.ts`'s two WebKit tests with it).
+ *   · delete the server-action early return in `preloadCopyChunk` (`next-action`): the
+ *     switch test goes red on "after FR → EN, the only dictionary hint is the document's"
+ *     (and `locale-bundle.spec.ts`'s two WebKit tests with it). There is no RSC arm to
+ *     mutate: Next 14.2 strips the `RSC` header from `headers()`, so a refresh's payload
+ *     carries the hint and React dedupes it against the document's `<link>`.
  */
 
 const PROBE = { en: "Add a client", fr: "Ouvrir le plan" } as const;

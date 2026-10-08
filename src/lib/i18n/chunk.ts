@@ -23,22 +23,29 @@ export function copyChunkHref(locale: Locale): string {
 }
 
 /**
- * EV-350 — called by the root layout: on a DOCUMENT request, the HTML carries
+ * EV-350 — called by the root layout: on a document request, the HTML carries
  * `<link rel="preload" as="script">` for this language's dictionary chunk, so the browser
  * requests it in the first wave, with the route's own scripts, instead of one round trip
  * later when `client.tsx`'s `import()` runs. That `import()` then reuses the response.
  *
- * Never on an RSC request (`RSC`: a client navigation, a prefetch, a refresh) or a server
- * action (`Next-Action`: the language switch is one). There the hint travels in the RSC
- * payload and React turns it into a `<link rel="preload">` in `<head>` — for the switch,
- * the OTHER language's chunk, which is out of scope, and harmful: WebKit answers a later
- * `import()` of a URL from a preload still in the document, so a chunk that 404'd once
+ * Never on a server action (`Next-Action`: the language switch is one). An action's
+ * response re-renders the root layout, and the hint would travel in its RSC payload for
+ * the switch's TARGET language, the other one, which is out of scope and harmful: React
+ * turns a payload hint into a `<link rel="preload">` in `<head>`, WebKit answers a later
+ * `import()` of that URL from a preload still in the document, so a chunk that 404'd once
  * would fail every retry and the coach could never switch again (EV-342m's M.6 and
- * BUG-703, found by `locale-bundle.spec.ts`'s WebKit tests). Navigations do not need it
- * either: the dictionary is already in memory (`client.tsx`'s `loaded`).
+ * BUG-703, found by `locale-bundle.spec.ts`'s WebKit tests).
+ *
+ * Other RSC requests (a refresh, a navigation that re-renders this layout) DO carry the
+ * hint: Next 14.2 strips `RSC`, `Next-Router-State-Tree` and `Next-Router-Prefetch` from
+ * `headers()` (`request-async-storage-wrapper`'s `getHeaders`), so a server component
+ * cannot tell them from a document request. That costs nothing: the hint names the
+ * document's own language, and React dedupes it against the `<link>` the document already
+ * has (observed on a `router.refresh()`: still one `<link>`, one dictionary request, no
+ * console message).
  */
 export function preloadCopyChunk(locale: Locale): void {
   const request = headers();
-  if (request.has("rsc") || request.has("next-action")) return;
+  if (request.has("next-action")) return;
   preload(copyChunkHref(locale), { as: "script" });
 }

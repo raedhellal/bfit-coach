@@ -86,7 +86,9 @@ function reloadOnce(before: () => Promise<void>): boolean {
   } catch {
     return false;
   }
-  void before().then(() => window.location.reload());
+  void before()
+    .catch(() => undefined)
+    .finally(() => window.location.reload());
   return true;
 }
 
