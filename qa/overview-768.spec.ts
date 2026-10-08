@@ -17,7 +17,8 @@ import { fr } from "../src/lib/copy.fr";
  *     summaries; the weight trend beside « Adherence, last 8 weeks »; « Progress and milestone »
  *     across the row below, under the trend; a lone alert's action beside its title. No two
  *     blocks overlap, nothing scrolls sideways, nothing is cut with an ellipsis, every control
- *     is ≥ 44 px, there is one h1, and the blocks keep their DOM (= Tab, = reading) order.
+ *     is ≥ 44 px, there is one h1, and the blocks keep their DOM order (= Tab and screen-reader order; in the band the visual
+ *     order is trend | series, then goal).
  *   · outside it (390, 1440): the three monitoring blocks stack full width in DOM order and the
  *     alert's action is under its evidence, as at EV-342j's merge. 1440 keeps its two-column
  *     activity row; 390 keeps one column. These, and Tobias's two stacked alert cards, pass on
@@ -60,7 +61,7 @@ function blocks(page: Page, copy: Copy) {
 
 const ORDER = ["review", "activity", "programme", "nutrition", "trend", "goal", "series"] as const;
 
-/** The blocks follow one another in the document in ORDER (Tab order and reading order). */
+/** The blocks follow one another in the document in ORDER (Tab and screen-reader order, not the band's visual order). */
 async function expectDomOrder(page: Page, copy: Copy) {
   const b = blocks(page, copy);
   const handles = [];

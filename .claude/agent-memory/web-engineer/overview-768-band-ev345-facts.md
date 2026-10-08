@@ -12,8 +12,9 @@ for this page, so the default suite can hold J.3.
 **The layout (all inside `@media (768px..1279px)`, globals.css « EV-345 »):**
 `.layout-split.ov-split` two columns; `.ov-pair` wraps trend + goal + series, is
 `display: contents` OUTSIDE the band (byte-identical full-page PNGs at 390/767/1280/1440,
-FR+EN, base vs branch) and a grid `"trend series" "goal goal"` inside it. The goal stays
-full width: its three `flex: 1 1 180px` fields stack in half a row (~800 px). A lone alert
+FR+EN, base vs branch; viewport height 900, fresh context per width, networkidle,
+fonts.ready — at 1024 tall the fixed footer/sidebar make them differ) and a grid `"trend series" "goal goal"` inside it. The goal stays
+full width: its three `flex: 1 1 180px` fields stack in half a row, which makes it taller. A lone alert
 card (`:only-child`) puts `.alert-card-action` beside word+title (`grid-row: 1 / span 2` —
 those two rows always render; a span over optional rows adds empty gap rows).
 
