@@ -118,13 +118,14 @@ export default async function NutritionPage({ params }: { params: { id: string }
             icon="shield"
             groups={[
               // BUG-694: the app stores its presets' English labels; show them in the page's language.
+              // BUG-706: the rules are the api's enum, labelled as the app labels them.
               {
                 label: copy.nutrition.allergies,
                 values: nutrition.dietProfile.allergies.map((v) => dietValueLabel(copy.nutrition.allergyPresetLabels, v)),
               },
               {
                 label: copy.nutrition.rules,
-                values: nutrition.dietProfile.rules.map((rule) => copy.nutrition.ruleLabels[rule] ?? rule),
+                values: nutrition.dietProfile.rules.map((rule) => dietValueLabel(copy.nutrition.ruleLabels, rule)),
               },
               {
                 label: copy.nutrition.dislikes,
