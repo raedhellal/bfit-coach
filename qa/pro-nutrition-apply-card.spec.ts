@@ -64,6 +64,7 @@ const L = {
     weekEmpty: "Set the targets, then apply a meal week.",
     regenerate: /^Regenerate day: /,
     rateLimitedLine: "A meal week can be applied once a day for each trainee. Try again tomorrow.",
+    applyFailedLine: "The meal week could not be applied.",
     generatingLine: "Lina's meal week is still being prepared. Try again in a few minutes.",
     refusedTitle: "We couldn't build a meal week for Lina.",
     applied: (t: string) => `“${t}” is now Lina's plan.`,
@@ -107,6 +108,7 @@ const L = {
     weekEmpty: "Définissez les objectifs, puis appliquez une semaine de repas.",
     regenerate: /^Régénérer le jour\s:\s/,
     rateLimitedLine: "Une semaine de repas peut être appliquée une fois par jour pour chaque client. Réessayez demain.",
+    applyFailedLine: "La semaine de repas n'a pas pu être appliquée.",
     generatingLine: "La semaine de repas de Lina est encore en préparation. Réessayez dans quelques minutes.",
     refusedTitle: "Nous n'avons pas pu construire de semaine de repas pour Lina.",
     applied: (t: string) => `« ${t} » est désormais le plan de Lina.`,
@@ -603,6 +605,201 @@ async function g26NotBuilt(page: Page, lang: Lang, tag: string) {
   expect(await optionTexts(page, lang)).toEqual([t.current, ...SEEDED]);
 }
 
+/* ═══ EV-337g2-R1…R3 (senior-po, 2026-10-09 ~12:30): G2.3b, G2.3c, G2.3d ═══════════════════════ */
+
+async function selectedLabel(page: Page, lang: Lang): Promise<string> {
+  return selector(page, lang).evaluate((el) => {
+    const s = el as HTMLSelectElement;
+    return (s.options[s.selectedIndex]?.textContent ?? "").replace(/\s+/g, " ").trim();
+  });
+}
+
+/** The writes (not GETs) the fixture recorded since `from`, as "METHOD path". */
+async function writesSince(page: Page, from: number): Promise<string[]> {
+  return (await calls(page))
+    .slice(from)
+    .filter((c) => !c.startsWith("GET "))
+    .map((c) => c.split(" ").slice(0, 2).join(" "));
+}
+
+/** A template apply from the card, confirmed under `switches`; returns once the outcome shows. */
+async function templateOutcome(
+  page: Page,
+  context: BrowserContext,
+  baseURL: string,
+  lang: Lang,
+  template: string,
+  switches: [string, string][]
+) {
+  const dialog = await openTemplateDialog(page, lang, template);
+  for (const [name, value] of switches) await setSwitch(context, baseURL, name, value);
+  await dialog.getByRole("button", { name: L[lang].templateConfirm, exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(outcome(page)).toHaveCount(1);
+  for (const [name] of switches) await clearSwitch(context, name);
+}
+
+/** G2.3c — after an outcome whose targets step landed, the selector is back on the first option. */
+async function g23cReset(page: Page, context: BrowserContext, baseURL: string, lang: Lang, tag: string) {
+  const t = L[lang];
+  const weekDialog = page.getByRole("dialog", { name: t.weekDialog });
+  const runs: { week: string | null; width: number }[] = [
+    { week: null, width: 1440 },
+    { week: "rate_limited", width: 1280 },
+    { week: "generating", width: 1024 },
+    { week: "fail", width: 390 },
+    { week: "no_answer", width: 320 },
+  ];
+  for (const { week, width } of runs) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, lang);
+    await templateOutcome(page, context, baseURL, lang, "Cut 1800", week ? [["evoli_fixture_week", week]] : []);
+    const where = `${week ?? "APPLIED"} (${tag}, ${width})`;
+    expect(await selectedLabel(page, lang), `${where}: back on the first option`).toBe(t.current);
+    // The button now opens today's dialog, not the template's.
+    await pressApply(page, lang, t.applyLina, weekDialog);
+    await expect(page.getByRole("dialog", { name: t.templateDialog("Cut 1800", "Lina") })).toHaveCount(0);
+    // G2.3c (4): cancelling leaves the selection as it was.
+    await weekDialog.getByRole("button", { name: t.cancel, exact: true }).click();
+    await expect(weekDialog).toHaveCount(0);
+    expect(await selectedLabel(page, lang), `${where}: cancel keeps it`).toBe(t.current);
+  }
+}
+
+/** G2.3c (2) + G2.3d — after WEEK_FAILED: cancel keeps the sentence; the retry is the week alone, and clears it. */
+async function g23cRetry(page: Page, context: BrowserContext, baseURL: string, lang: Lang, tag: string) {
+  const t = L[lang];
+  const weekDialog = page.getByRole("dialog", { name: t.weekDialog });
+  await page.setViewportSize({ width: 768, height: 900 });
+  await open(page, lang);
+  await templateOutcome(page, context, baseURL, lang, "Cut 1800", [["evoli_fixture_week", "fail"]]);
+  const sentence = plain(await outcome(page).innerText());
+  expect(sentence).toContain(plain(t.outcomes.WEEK_FAILED));
+
+  // G2.3d: cancelling the next dialog is not an attempt: the sentence stays, unchanged.
+  await pressApply(page, lang, t.applyLina, weekDialog);
+  await weekDialog.getByRole("button", { name: t.cancel, exact: true }).click();
+  await expect(weekDialog).toHaveCount(0);
+  await expect(outcome(page)).toHaveCount(1);
+  expect(plain(await outcome(page).innerText()), "cancel leaves the sentence as it was").toBe(sentence);
+
+  // G2.3c (2): the retry is today's apply: one POST week/apply and no PUT targets.
+  const from = (await calls(page)).length;
+  await markDocument(page);
+  await pressApply(page, lang, t.applyLina, weekDialog);
+  await weekDialog.getByRole("button", { name: t.weekConfirm, exact: true }).click();
+  await expect(weekDialog).toHaveCount(0);
+  await expect(card(page, lang).getByRole("button", { name: t.applyLina, exact: true })).toBeEnabled();
+  expect(await writesSince(page, from), `the retry's writes (${tag})`).toEqual([
+    `POST /coach-portal/clients/${LINA}/nutrition/week/apply`,
+  ]);
+  // G2.3d: the apply landed, so the sentence is gone, with no reload.
+  await expect(outcome(page)).toHaveCount(0);
+  expect(await sameDocument(page)).toBe(true);
+}
+
+/** G2.3c (3) — the targets step failed or is unknown: the selection still says « Cut 1800 ». */
+async function g23cTargetsFailed(page: Page, context: BrowserContext, baseURL: string, lang: Lang, tag: string) {
+  const t = L[lang];
+  for (const [value, width] of [["refused", 1279], ["no_answer", 390]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, lang);
+    await templateOutcome(page, context, baseURL, lang, "Cut 1800", [["evoli_fixture_targets", value]]);
+    expect(await selectedLabel(page, lang), `${value} (${tag}): still the template`).toBe("Cut 1800");
+    const dialog = page.getByRole("dialog", { name: t.templateDialog("Cut 1800", "Lina") });
+    await pressApply(page, lang, t.applyLina, dialog);
+    // G2.3c (4): cancelling the template dialog leaves the selection on it.
+    await dialog.getByRole("button", { name: t.cancel, exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(await selectedLabel(page, lang), `${value} (${tag}): cancel keeps it`).toBe("Cut 1800");
+  }
+}
+
+/** G2.3d (2) — a second template apply: exactly one sentence, the new one. */
+async function g23dSecondTemplate(page: Page, context: BrowserContext, baseURL: string, lang: Lang) {
+  const t = L[lang];
+  await open(page, lang);
+  await templateOutcome(page, context, baseURL, lang, "Cut 1800", [["evoli_fixture_week", "fail"]]);
+  await templateOutcome(page, context, baseURL, lang, "Lean 1300", []);
+  await expect(outcome(page)).toHaveCount(1);
+  await expect(outcome(page).locator("p").first()).toHaveText(t.applied("Lean 1300"));
+}
+
+/** G2.3d (3) — the library's landing sentence and the in-page one share one slot; neither comes back. */
+async function g23dLanding(page: Page, context: BrowserContext, baseURL: string, lang: Lang, tag: string) {
+  const t = L[lang];
+  const weekDialog = page.getByRole("dialog", { name: t.weekDialog });
+  for (const path of ["current", "template"] as const) {
+    // Land on Lina's page through the library, with the week step failing.
+    await page.goto("/nutrition-templates");
+    const picker = page.getByRole("dialog", { name: t.use });
+    await expect(async () => {
+      await page.getByRole("group", { name: "Cut 1800", exact: true }).getByRole("button", { name: t.use }).click({ timeout: 2_000 });
+      await expect(picker).toBeVisible({ timeout: 1_500 });
+    }).toPass({ timeout: 20_000 });
+    await picker.getByRole("button", { name: "Lina M.", exact: true }).click();
+    const libraryDialog = page.getByRole("dialog", { name: t.templateDialog("Cut 1800", "Lina") });
+    await expect(libraryDialog.getByRole("button", { name: t.templateConfirm, exact: true })).toBeEnabled();
+    await setSwitch(context, baseURL, "evoli_fixture_week", "fail");
+    await libraryDialog.getByRole("button", { name: t.templateConfirm, exact: true }).click();
+    await page.waitForURL(`/clients/${LINA}/nutrition`);
+    await expect(outcome(page).locator("p").first()).toHaveText(t.outcomes.WEEK_FAILED);
+    await clearSwitch(context, "evoli_fixture_week");
+    await waitForFiber(selector(page, lang));
+
+    if (path === "current") {
+      await pressApply(page, lang, t.applyLina, weekDialog);
+      await weekDialog.getByRole("button", { name: t.weekConfirm, exact: true }).click();
+      await expect(weekDialog).toHaveCount(0);
+      await expect(card(page, lang).getByRole("button", { name: t.applyLina, exact: true })).toBeEnabled();
+      await expect(outcome(page), `${tag}: the landing sentence went with the apply`).toHaveCount(0);
+    } else {
+      await templateOutcome(page, context, baseURL, lang, "Lean 1300", []);
+      await expect(outcome(page)).toHaveCount(1);
+      await expect(outcome(page).locator("p").first()).toHaveText(t.applied("Lean 1300"));
+    }
+    // Neither comes back: a later write re-renders the page (its action revalidates), and a
+    // cancelled dialog is no attempt.
+    const regenerate = page.getByRole("button", { name: t.regenerate }).first();
+    await regenerate.click();
+    await expect(regenerate).toBeEnabled();
+    await pressApply(page, lang, t.applyLina, weekDialog);
+    await weekDialog.getByRole("button", { name: t.cancel, exact: true }).click();
+    if (path === "current") {
+      await expect(outcome(page), `${tag}: the landing sentence did not come back`).toHaveCount(0);
+    } else {
+      await expect(outcome(page)).toHaveCount(1);
+      await expect(outcome(page).locator("p").first(), `${tag}: the landing sentence did not come back`).toHaveText(
+        t.applied("Lean 1300")
+      );
+    }
+  }
+}
+
+/** G2.3b — an APPLIED template week clears the week card's error line; a WEEK_* failure does not. */
+async function g23bErrorLine(page: Page, context: BrowserContext, baseURL: string, lang: Lang) {
+  const t = L[lang];
+  const weekDialog = page.getByRole("dialog", { name: t.weekDialog });
+  const errorLine = page.locator('[data-nut-block="week"]').getByRole("alert").filter({ hasText: t.applyFailedLine });
+  await open(page, lang);
+  const failToday = async () => {
+    await setSwitch(context, baseURL, "evoli_fixture_week", "fail");
+    await pressApply(page, lang, t.applyLina, weekDialog);
+    await weekDialog.getByRole("button", { name: t.weekConfirm, exact: true }).click();
+    await expect(weekDialog).toHaveCount(0);
+    await expect(errorLine).toHaveCount(1);
+    await clearSwitch(context, "evoli_fixture_week");
+  };
+  await failToday();
+  // A template whose week step fails wrote no week: the line stays.
+  await templateOutcome(page, context, baseURL, lang, "Cut 1800", [["evoli_fixture_week", "fail"]]);
+  await expect(errorLine, "a WEEK_FAILED template leaves the line").toHaveCount(1);
+  // An APPLIED one wrote a week: the line goes.
+  await templateOutcome(page, context, baseURL, lang, "Lean 1300", []);
+  await expect(outcome(page).locator("p").first()).toHaveText(t.applied("Lean 1300"));
+  await expect(errorLine, "an APPLIED template clears the line").toHaveCount(0);
+}
+
 /* ═══ Keyboard ═══════════════════════════════════════════════════════════════════════════════ */
 
 async function keyboard(page: Page, lang: Lang, tag: string, engine: Engine) {
@@ -646,6 +843,27 @@ async function keyboard(page: Page, lang: Lang, tag: string, engine: Engine) {
   await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
   await expect(button).toBeFocused();
+
+  // G2.1b (R4): after a CONFIRMED apply, once the button is enabled again (its label back from
+  // « Application… »), `document.activeElement` is the button. Today's apply, then a template's.
+  const isActive = () => button.evaluate((el) => el === document.activeElement);
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: t.templateConfirm, exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: t.templateConfirm, exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(outcome(page)).toHaveCount(1);
+  await expect(button).toBeEnabled();
+  await expect.poll(isActive, { message: "focus back on the button after a confirmed template apply" }).toBe(true);
+  // (R1 put the selector back on the current targets, so Enter now opens today's dialog.)
+  await page.keyboard.press("Enter");
+  await expect(weekDialog).toBeVisible();
+  await weekDialog.getByRole("button", { name: t.weekConfirm, exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(weekDialog).toHaveCount(0);
+  await expect(button).toBeEnabled();
+  await expect.poll(isActive, { message: "focus back on the button after a confirmed week apply" }).toBe(true);
 }
 
 /** BUG-686's class: a template picked before hydration is the one the button applies. */
@@ -677,7 +895,13 @@ const SCENARIOS: [string, (c: Ctx) => Promise<void>][] = [
   ["G2.4: WEEK_FAILED quotes the card's button exactly as rendered (a name, a 40-character name, no name)", (c) => g24Label(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.5: the template list cannot be read: the first option, the sentence, the page and today's apply still work; zero templates: no sentence", (c) => g25ReadFails(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.6: no « ou recettes », « Déjà appliqué aujourd'hui », « Disponible aujourd'hui » or reset time", (c) => g26NotBuilt(c.page, c.lang, c.tag)],
-  ["keyboard: Tab reaches the select then the button, each with a ring; Enter opens; leaving the dialog returns the focus", (c) => keyboard(c.page, c.lang, c.tag, c.engine)],
+  ["G2.3c (R1): after APPLIED and each WEEK_* outcome the selector is back on « Ses objectifs actuels », the button opens today's dialog, and cancel keeps the selection", (c) => g23cReset(c.page, c.context, c.baseURL, c.lang, c.tag)],
+  ["G2.3c (2) + G2.3d (R1, R2): after WEEK_FAILED, cancel keeps the sentence; the retry writes one week apply and no targets, and clears the sentence", (c) => g23cRetry(c.page, c.context, c.baseURL, c.lang, c.tag)],
+  ["G2.3c (3)/(4) (R1): TARGETS_FAILED and TARGETS_UNKNOWN keep « Cut 1800 », the button reopens its dialog, cancel keeps it", (c) => g23cTargetsFailed(c.page, c.context, c.baseURL, c.lang, c.tag)],
+  ["G2.3d (2) (R2): a second template apply shows exactly one sentence, the new one", (c) => g23dSecondTemplate(c.page, c.context, c.baseURL, c.lang)],
+  ["G2.3d (3) (R2): the library's landing sentence and the in-page one share one slot; once cleared neither comes back", (c) => g23dLanding(c.page, c.context, c.baseURL, c.lang, c.tag)],
+  ["G2.3b (R3): an APPLIED template week clears the week card's error line; a WEEK_FAILED one leaves it", (c) => g23bErrorLine(c.page, c.context, c.baseURL, c.lang)],
+  ["keyboard (G2.1b, R4): Tab reaches the select then the button, each with a ring; Enter opens; cancelling or confirming either dialog returns the focus", (c) => keyboard(c.page, c.lang, c.tag, c.engine)],
   ["BUG-686's class: a template chosen before hydration is the one the button applies", (c) => prehydration(c.page, c.lang)],
 ];
 
