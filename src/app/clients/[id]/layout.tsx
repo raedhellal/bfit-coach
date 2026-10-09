@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { readClientOverview } from "@/lib/clientOverview";
+import { isClientId, readClientOverview } from "@/lib/clientOverview";
 
 /**
  * The overview's status boundary (EV-183 AC5, BUG-139).
@@ -51,6 +51,16 @@ export default async function ClientLayout({
    * under `[id]`, so the prefetch renders nothing at all (Next sends the route tree
    * only). `qa/page-read-budget.spec.ts` counts a prefetch of this route.
    */
+  /**
+   * BUG-600 — a path segment that is not a UUID is not the id of any trainee, so it gets
+   * the answer an unknown id gets (the 403 denial page: no existence oracle either way),
+   * WITHOUT an api call. Sent on, the live api's UUID conversion answers most of them
+   * `400 INVALID_REQUEST`, which is not a 403, and the coach read « This trainee could not
+   * be loaded. » under a 200 for a URL that was never a client's. (`isClientId` is
+   * stricter than the api, which also parses some non-canonical forms: see its comment.)
+   */
+  if (!isClientId(params.id)) redirect("/clients/denied");
+
   const { forbidden } = await readClientOverview(params.id);
   if (forbidden) redirect("/clients/denied");
 

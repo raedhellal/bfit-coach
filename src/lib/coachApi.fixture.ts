@@ -1507,6 +1507,7 @@ async function failWithDetails(
  * refuses to be.
  */
 async function assertScope(id: string, required: CoachAccessScope): Promise<void> {
+  await failIfMalformedId(id); // BUG-600: the api's 400 comes before its guard.
   const overview = OVERVIEWS[id];
   if (state().revoked || (await linkEnded()) || !overview || !overview().scopes.includes(required)) {
     await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
@@ -1906,14 +1907,22 @@ async function recipesByName(): Promise<StoredRecipe[]> {
   );
 }
 
-async function ownedRecipe(id: string): Promise<StoredRecipe> {
-  // The api's `{id}` is a `UUID` path variable: a malformed one never reaches the guard,
-  // it is `MethodArgumentTypeMismatchException` → 400 INVALID_REQUEST
-  // (`RestExceptionHandler.handleTypeMismatch`). Reproduced so the portal's own guard
-  // for it is under test and not flattered by the fixture's map lookup.
+/**
+ * The api's `{id}` is a `UUID` path variable: a malformed one never reaches the guard,
+ * it is `MethodArgumentTypeMismatchException` → 400 INVALID_REQUEST
+ * (`RestExceptionHandler.handleTypeMismatch`). Reproduced so the portal's own guard
+ * for it is under test and not flattered by the fixture's map lookup (a recipe id, and
+ * since BUG-600 a trainee id: the fixture used to answer 403 for any id, so the portal's
+ * 200 « could not be loaded » for `/clients/<not-a-UUID>` was invisible here).
+ */
+async function failIfMalformedId(id: string): Promise<void> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     await fail(400, "INVALID_REQUEST", "Invalid value for 'id'.");
   }
+}
+
+async function ownedRecipe(id: string): Promise<StoredRecipe> {
+  await failIfMalformedId(id);
   const found = (await library()).get(id);
   // AC6 — one body for foreign, unknown and deleted.
   if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
@@ -5864,6 +5873,8 @@ export const fixtureCoachApi: CoachApi = {
      * `coachApi.ts` picks the live client otherwise, and that client never reads the
      * cookie (`coach-legacy-api.spec.ts` sets it in live mode and the page still renders).
      */
+    // BUG-600: the api's 400 comes before its handler runs, so before the 500 switch too.
+    await failIfMalformedId(id);
     if ((await fixtureSwitch("evoli_fixture_overview")) === "fail") {
       await fail(500, "INTERNAL_ERROR", "Internal error");
     }

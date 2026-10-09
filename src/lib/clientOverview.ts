@@ -9,6 +9,22 @@ import {
 import { readCoachIdentity, type CoachIdentity } from "./session";
 
 /**
+ * BUG-600 — the api's `{id}` is a `UUID` path variable (the shape `recipes/[id]` checks too).
+ * Only the CANONICAL form passes here (8-4-4-4-12 hex). Most segments that fail it are
+ * answered `400 INVALID_REQUEST` by the live api, which is not a 403, so the portal must not
+ * send them. Not all: Java's `UUID.fromString` is lenient, so a non-canonical id such as
+ * `1-1-1-1-1` parses (staff's jshell witness: `00000001-…`) and the api would answer it like
+ * any UUID. This check is therefore STRICTER than the api: the portal denies those ids too
+ * (the 403 page, the same answer as an unknown id). Its own links carry the ids the api
+ * sends, which Java writes in the canonical form.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isClientId(id: string): boolean {
+  return UUID.test(id);
+}
+
+/**
  * The trainee overview, read ONCE per request and shared by the two components that
  * need it (BUG-139).
  *
@@ -26,6 +42,10 @@ import { readCoachIdentity, type CoachIdentity } from "./session";
  */
 export const readClientOverview = cache(
   async (id: string): Promise<{ overview: ClientOverview | null; forbidden: boolean }> => {
+    // BUG-600: not a trainee id at all, so the answer an unknown id gets, and no api call.
+    // Next renders the page beside the layout, so the layout's redirect alone does not stop
+    // the page's own read of the same id.
+    if (!isClientId(id)) return { overview: null, forbidden: true };
     try {
       return { overview: await coachApi.getClient(id), forbidden: false };
     } catch (err) {
@@ -64,6 +84,7 @@ export const readClientOverview = cache(
  */
 export const readClientProgress = cache(
   async (id: string): Promise<TraineeProgress | null> => {
+    if (!isClientId(id)) return null; // BUG-600: never sent; the layout denies the page.
     try {
       return await coachApi.getClientProgress(id);
     } catch {
