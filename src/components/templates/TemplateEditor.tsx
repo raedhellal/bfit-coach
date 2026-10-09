@@ -195,7 +195,11 @@ export function TemplateEditor({
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateTemplateAction` revalidates.
       // With a late edit the sentinel stays where it is: Back still asks (BUG-735).
+      // `stillUnsaved` is a no-op while that entry is current; it puts one back if a previous
+      // save's step left the form dirty with none (BUG-736's end state; read from the code,
+      // not constructed). Keyed on `late`.
       if (!late) leaving.release();
+      else leaving.stillUnsaved();
     });
   }
 

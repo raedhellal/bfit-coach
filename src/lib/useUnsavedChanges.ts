@@ -335,8 +335,11 @@ export function useUnsavedChanges(dirty: boolean) {
    * it carries the URL a `replaceState` gave the page. Not pushed if a step that leaves the
    * page is queued with it, nor a second time over a sentinel that is still current.
    *
-   * Only for a release that STAYS. An update whose answer leaves the form dirty does not
-   * release at all: its sentinel is still the current entry (`useCoachForm.saved`).
+   * Also after an update whose answer leaves the form dirty: that save does not release at
+   * all, so its sentinel is normally still the current entry and this does nothing. It
+   * pushes only when the guard holds no entry while the form is dirty (BUG-736's end state:
+   * a keystroke batched with an earlier save's clean render), so the next late save re-arms.
+   * That healing is read from this code, not constructed in a test.
    */
   const stillUnsaved = useCallback(() => {
     if (releasing.current || !sentinel.current) push();

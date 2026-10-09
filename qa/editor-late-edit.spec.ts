@@ -70,7 +70,8 @@ const leaveDialog = (page: Page) => page.getByRole("dialog", { name: LEAVE, exac
 const badge = (page: Page) => page.getByText(UNSAVED, { exact: true });
 
 /**
- * Where in the session history the page stands (Chromium's Navigation API), the guard's
+ * Where in the session history the page stands (the Navigation API: Chromium, and Playwright's
+ * WebKit too, where staff ran this file 8/8 at the BUG-735 review), the guard's
  * witness here. The guard holds exactly one extra entry for the page while there is unsaved
  * work, so "armed" is `start + 1` and "clean" is `start`, where `start` is read on load.
  *
@@ -295,6 +296,26 @@ test.describe("BUG-735 — an edit typed while the save is in flight stays unsav
     await expect(leaveDialog(page)).toHaveCount(0);
   });
 
+  test("recipe create: nothing typed during « Saving… » still ends clean, and Back leaves unasked", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(RECIPE.list);
+    await page.goto("/recipes/new");
+    const name = page.getByLabel(RECIPE.nameLabel);
+    // Where the page was loaded, read before the first keystroke arms the guard.
+    const start = await historyIndex(page);
+    await fillNewRecipe(page, name, "Clean skyr");
+    const held = await saveHeld(page, RECIPE);
+    await held.answer();
+    await expect(page).toHaveURL(/\/recipes\/[0-9a-f-]{36}$/);
+    await expect(badge(page)).toHaveCount(0);
+    await expect.poll(() => historyIndex(page), { message: "the clean create left a guard entry behind" }).toBe(start);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/recipes$/);
+    await expect(leaveDialog(page)).toHaveCount(0);
+  });
+
   test("template update: the late rename keeps the badge, Back asks, and the next Save sends it", async ({ page }) => {
     await signIn(page);
     await page.goto(TEMPLATE.list);
@@ -368,6 +389,26 @@ test.describe("BUG-735 — an edit typed while the save is in flight stays unsav
     await held.answer();
     await expect(badge(page)).toHaveCount(0);
     await expect.poll(() => historyIndex(page), { message: "the clean save left its guard entry behind" }).toBe(start);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/templates$/);
+    await expect(leaveDialog(page)).toHaveCount(0);
+  });
+
+  test("template create: nothing typed during « Saving… » still ends clean, and Back leaves unasked", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(TEMPLATE.list);
+    await page.goto("/templates/new");
+    const name = page.getByLabel(TEMPLATE.nameLabel);
+    // Where the page was loaded, read before the first keystroke arms the guard.
+    const start = await historyIndex(page);
+    await fillNewTemplate(page, name, "Clean create");
+    const held = await saveHeld(page, TEMPLATE);
+    await held.answer();
+    await expect(page).toHaveURL(/\/templates\/[0-9a-f-]{36}$/);
+    await expect(badge(page)).toHaveCount(0);
+    await expect.poll(() => historyIndex(page), { message: "the clean create left a guard entry behind" }).toBe(start);
     await page.goBack();
     await expect(page).toHaveURL(/\/templates$/);
     await expect(leaveDialog(page)).toHaveCount(0);
