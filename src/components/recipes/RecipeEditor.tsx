@@ -126,6 +126,12 @@ export function RecipeEditor({
    * when the save succeeds, the chips are re-synced to the tags the server answered with.
    */
   const slotEdits = useRef(0);
+  /**
+   * BUG-735 — counts every edit, so a save can tell whether the coach typed while its request
+   * was in flight (the text fields stay open during « Saving… », above). Only an answer that
+   * covers everything on screen may clear `dirty`; `slotEdits` is the same idea for the chips.
+   */
+  const revision = useRef(0);
   const [slotBaseline, setSlotBaseline] = useState<SlotBaseline>(
     initialRecipeId === null ? { recipe: "new" } : { recipe: "stored", mealSlots: storedMealSlots }
   );
@@ -139,6 +145,7 @@ export function RecipeEditor({
    * Any edit clears the form-level one, which is about the attempt, not a field.
    */
   function edit(next: RecipeDraft, touched: (address: FieldAddress) => boolean) {
+    revision.current += 1;
     setDraft(next);
     setDirty(true);
     setNotice(null);
@@ -212,6 +219,7 @@ export function RecipeEditor({
     if (!saveable || pending) return;
     const body = forSave(draft, slotBaseline);
     const slotEditsAtSend = slotEdits.current;
+    const sent = revision.current;
     const sentLines = draft.ingredients.map((l) => ({ key: l.key, label: l.label }));
     startTransition(async () => {
       const result = await settled(
@@ -227,7 +235,10 @@ export function RecipeEditor({
       }
       setRefused([]);
       setNotice(copy.recipes.saved);
-      setDirty(false);
+      // BUG-735: an edit made after the request left is not in this answer. It stays unsaved
+      // (the badge, the guard, and the next Save sends it), as in `useCoachForm`'s forms.
+      const late = revision.current !== sent;
+      if (!late) setDirty(false);
       setSlotBaseline({ recipe: "stored", mealSlots: result.recipe.mealSlots });
       /*
        * Re-sync the chips to what the server now holds. After a save that OMITTED the key,
@@ -252,10 +263,13 @@ export function RecipeEditor({
           setRecipeId(id);
           window.history.replaceState(window.history.state, "", `/recipes/${id}`);
         }, "stays");
+        // The step takes the sentinel out and `dirty` never changed: ask for it back (BUG-735).
+        if (late) leaving.stillUnsaved();
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateRecipeAction` revalidates.
-      leaving.release();
+      // With a late edit the sentinel stays where it is: Back still asks (BUG-735).
+      if (!late) leaving.release();
     });
   }
 

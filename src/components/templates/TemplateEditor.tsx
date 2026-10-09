@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Button, Card, MIN_TOUCH_TARGET, Modal, PageHead } from "@/components/ui/kit";
@@ -123,8 +123,16 @@ export function TemplateEditor({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const leaving = useUnsavedChanges(dirty);
+  /**
+   * BUG-735 — counts edits, so a save can tell whether the coach typed while its request was
+   * in flight (the name and the document stay open during « Saving… »). The routine editor's
+   * `revision`, for the same reason: only an answer that covers everything on screen may
+   * clear `dirty`.
+   */
+  const revision = useRef(0);
 
   function edit(next: TemplateDraft) {
+    revision.current += 1;
     setDraft(next);
     setDirty(true);
     setNotice(null);
@@ -140,6 +148,7 @@ export function TemplateEditor({
 
   function save() {
     if (!saveable) return;
+    const sent = revision.current;
     startTransition(async () => {
       const body = forSave(draft);
       const result = await settled(
@@ -154,7 +163,10 @@ export function TemplateEditor({
       }
       setError(null);
       setNotice(copy.templates.saved);
-      setDirty(false);
+      // BUG-735: an edit made after the request left is not in this answer. It stays unsaved
+      // (the badge, the guard, and the next Save sends it), as in `useCoachForm`'s forms.
+      const late = revision.current !== sent;
+      if (!late) setDirty(false);
       if (templateId === null) {
         /**
          * A create becomes an edit — WITHOUT a router navigation.
@@ -177,10 +189,13 @@ export function TemplateEditor({
           setTemplateId(id);
           window.history.replaceState(window.history.state, "", `/templates/${id}`);
         }, "stays");
+        // The step takes the sentinel out and `dirty` never changed: ask for it back (BUG-735).
+        if (late) leaving.stillUnsaved();
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateTemplateAction` revalidates.
-      leaving.release();
+      // With a late edit the sentinel stays where it is: Back still asks (BUG-735).
+      if (!late) leaving.release();
     });
   }
 
