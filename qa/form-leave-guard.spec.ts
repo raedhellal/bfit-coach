@@ -500,6 +500,43 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await page.waitForURL("/");
   });
 
+  test("the progress goal: a second save that lands while the first save's step is still in flight steps back once", async ({
+    page,
+  }) => {
+    // Longer than a whole save here, so the second save lands inside the first one's step.
+    await holdHistoryBack(page, 1500);
+    await signIn(page, "en");
+    await progressGoal.open(page, w);
+    const block = page.getByRole("region", { name: w.block });
+    const field = progressGoal.field(page, w);
+    const save = block.getByRole("button", { name: w.save, exact: true });
+    const start = await historyIndex(page);
+
+    await field.fill("71");
+    await armed(page);
+    await save.click();
+    await expect(block.getByText(w.saved, { exact: true })).toBeVisible();
+    await field.fill("69");
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    await save.click();
+    await answered;
+    // Back from « Saving… »: the second save's `saved()` has run, inside the first one's step.
+    await expect(save).toBeEnabled();
+    await heldStepsLanded(page, 1);
+
+    await expect(leaveDialog(page, w)).toHaveCount(0);
+    expect(
+      await page.evaluate(() => (window as unknown as { __bug730Backs: number }).__bug730Backs),
+      "the second save asked for a second step back: the guard had one entry to hand back"
+    ).toBe(1);
+    await disarmed(page);
+    expect(await historyIndex(page), "the history is not where the page was loaded").toBe(start);
+    await page.goBack();
+    await page.waitForURL("/");
+  });
+
   test("a new nutrition template: a keystroke while the create's step is in flight neither asks nor leaves /new behind", async ({
     page,
   }) => {
