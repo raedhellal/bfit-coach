@@ -408,9 +408,9 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
           page.on("request", record);
 
           const field = search(page, lang);
-          await field.pressSequentially("Chi", { delay: 60 });
+          await field.pressSequentially("Chicken", { delay: 60 });
           await expect.poll(() => listed(page)).toEqual([BOWL]);
-          await field.pressSequentially("ckpea zzz", { delay: 40 });
+          await field.pressSequentially(" zzz", { delay: 40 });
           await expect.poll(() => listed(page)).toEqual([]);
           await page.getByLabel(t.filter, { exact: true }).selectOption("DINNER");
           await field.fill("");
