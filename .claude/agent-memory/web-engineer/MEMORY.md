@@ -88,4 +88,4 @@
 - [toHaveText hides a trim defect in French](tohavetext-hides-a-trim-defect-in-french.md) — EV-337j2 M5: «\u00a0  q \u00a0» reads « q »; assert textContent exactly
 - [A photo placeholder passes a text/img scan](a-photo-placeholder-passes-a-text-and-img-scan.md) — EV-337j2 M7b: probe blank leaf boxes + url() backgrounds for R8
 - [Mutants against one hand-started dev server](mutants-against-a-hand-started-dev-server.md) — untracked config, webServer undefined, HMR per mutant, git checkout to revert
-
+- [.roster-search ring fails inside contrast](roster-search-ring-fails-inside-contrast.md) — halo fills the outline gap: 2.82:1; /templates search fails the BUG-663 sweep too
