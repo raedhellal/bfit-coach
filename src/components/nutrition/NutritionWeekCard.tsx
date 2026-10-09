@@ -203,8 +203,9 @@ export function NutritionWeekCard({
    * EV-337g2 G2.3 — a template applied from the apply card wrote a week (its WEEK step landed).
    * Its week reaches this card as the new `week` prop (the write revalidated the page); what the
    * prop cannot carry is this card's own memory of earlier answers. A successful apply here
-   * clears them (`applyWeek` below), and the template's week apply is the same api call, so
-   * the same three: no error line, no refusal, no cap line.
+   * clears them (`applyWeek` below), and the template's week apply is the same api call
+   * (`applyMealWeek`), so it clears the same: no error line, no refusal, no generating line,
+   * and no cap line (`applyWeek`'s reason: the apply writes the counter back to zero).
    */
   const [seenApplied, setSeenApplied] = useState(weekApplied);
   if (weekApplied !== seenApplied) {

@@ -428,12 +428,19 @@ async function g23LibraryComposition(page: Page, lang: Lang, tag: string) {
   expect(reference["Reset 1100"].length).toBeGreaterThan(reference["Cut 1800"].length);
 }
 
-async function g23Applied(page: Page, lang: Lang, tag: string) {
+async function g23Applied(page: Page, context: BrowserContext, baseURL: string, lang: Lang, tag: string) {
   const t = L[lang];
   await page.setViewportSize({ width: 1280, height: 900 });
   await open(page, lang);
   const before = await meals(page);
   expect(before.length, "Lina has a week to replace").toBeGreaterThan(0);
+  // The week card remembers a 429 on « Régénérer le jour » (EV-242b's cap line). A week apply
+  // writes the counter back to zero, so after the template's week lands the line must go, as
+  // after today's apply.
+  await setSwitch(context, baseURL, "evoli_fixture_regen", "capped");
+  await page.getByRole("button", { name: t.regenerate }).first().click();
+  await expect(page.getByTestId("day-regen-capped")).toBeVisible();
+  await clearSwitch(context, "evoli_fixture_regen");
   const callsBefore = (await calls(page)).length;
   await markDocument(page);
 
@@ -459,6 +466,8 @@ async function g23Applied(page: Page, lang: Lang, tag: string) {
   await expect(targets.locator("dd").first()).toHaveText(t.kcal1200);
   const after = await meals(page);
   expect(after, "the meal week is the one the apply wrote").not.toEqual(before);
+  await expect(page.getByTestId("day-regen-capped"), "no cap line after the week was applied").toHaveCount(0);
+  await expect(page.getByRole("button", { name: t.regenerate }).first()).toBeEnabled();
 
   for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
@@ -659,7 +668,7 @@ const SCENARIOS: [string, (c: Ctx) => Promise<void>][] = [
   ["G2.1: a 40-character name wraps inside the button, ≥ 44 px, no sideways scroll", (c) => g21LongName(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.2: « Ses objectifs actuels » is today's apply: its dialog, success, 429, 409 and 422 as at a862698", (c) => g22CurrentTargets(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.3: a template opens the library's dialog for this client, word for word, without the picker", (c) => g23LibraryComposition(c.page, c.lang, c.tag)],
-  ["G2.3: confirming writes the targets then the week; the outcome shows once, the cards show the server's values, no reload", (c) => g23Applied(c.page, c.lang, c.tag)],
+  ["G2.3: confirming writes the targets then the week; the outcome shows once, the cards show the server's values, no reload", (c) => g23Applied(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.3: rate-limited, generating, failed, unknown, targets failed, targets unknown, each once on this page", (c) => g23Outcomes(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.4: WEEK_FAILED quotes the card's button exactly as rendered (a name, a 40-character name, no name)", (c) => g24Label(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.5: the template list cannot be read: the first option, the sentence, the page and today's apply still work; zero templates: no sentence", (c) => g25ReadFails(c.page, c.context, c.baseURL, c.lang, c.tag)],
