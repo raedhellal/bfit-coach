@@ -129,8 +129,11 @@ export function SwapSheet({
   onWeek: (week: MealWeekView) => void;
   onMealChanged: () => void;
   onAccessEnded: () => void;
-  /** A swap failed for a reason that is not the trainee's (today's `swapFailed`). */
-  onSwapFailed: () => void;
+  /**
+   * A swap failed for a reason that is not the trainee's (today's `swapFailed`), or its
+   * answer was lost (`noAnswer`, BUG-711: `swapNoAnswer`).
+   */
+  onSwapFailed: (noAnswer: boolean) => void;
   /** `router.refresh()` — an ended link redirects; a switched-off flag is re-read. */
   onRefresh: () => void;
 }) {
@@ -181,9 +184,10 @@ export function SwapSheet({
     const recipe = chosen;
     if (!recipe) return;
     startTransition(async () => {
+      // A request that failed has no answer (BUG-711): `NO_ANSWER`, not FAILED.
       const result = await settled(placeRecipeAction(clientId, target.mealId, recipe.id), {
         ok: false,
-        failure: { code: "FAILED" },
+        failure: { code: "NO_ANSWER" },
       } as const);
       if (result.ok) {
         onWeek(result.week);
@@ -242,7 +246,7 @@ export function SwapSheet({
     startTransition(async () => {
       const result = await settled(applySwapAction(clientId, target.mealId, candidateIndex), {
         ok: false,
-        code: "FAILED",
+        code: "NO_ANSWER",
       } as const);
       if (!result.ok && result.code === "SWAP_OPTIONS_STALE") {
         /**
@@ -280,7 +284,7 @@ export function SwapSheet({
       }
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return void onAccessEnded();
-        onSwapFailed();
+        onSwapFailed(result.code === "NO_ANSWER");
         return;
       }
       onWeek(result.week);
