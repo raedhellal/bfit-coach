@@ -1302,6 +1302,11 @@ main#main:focus { outline: none; }
    line, and the no-match sentence (a recipe query can be long: it wraps, never widens). */
 .rcp-head-line { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 14px; }
 .rcp-search input { height: 44px; }
+/* BUG-663's sweep measures the keyboard ring against the pixel just INSIDE it: with the
+   shared `--ring` halo filling the 2 px outline offset, that pixel is #D8E0FA and the ring
+   reads 2.82:1 (< 3:1, WCAG 1.4.11). Without the halo the offset shows the page and the
+   ring reads 3.46:1. The pointer focus keeps the blue border. */
+.rcp-search:focus-within { box-shadow: none; }
 .rcp-row-meta { display: flex; gap: 2px 10px; flex-wrap: wrap; }
 .rcp-nomatch-text { margin: 0; min-width: 0; font-size: var(--fs-body); color: var(--ink-2); overflow-wrap: anywhere; }
 
