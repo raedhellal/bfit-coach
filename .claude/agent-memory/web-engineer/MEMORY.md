@@ -85,3 +85,9 @@
 - [Overview at 768–1279 (EV-345)](overview-768-band-ev345-facts.md) — `.ov-pair` display:contents outside the band; probe by addStyleTag on next start; inline margins, :scope locators
 - [A first-viewport AC is about the bottom (EV-344)](a-first-viewport-ac-is-about-the-bottom.md) — row is 319 px at 1024, do floor arithmetic first; settings fold gated by `.prog-doc`; screenshot-pair method
 - [An N/A needs the whole write path](a-not-applicable-needs-the-whole-write-path.md) — EV-344 B1: a DB CHECK (session_minutes 20–90) refuses Publish; a 'known flake' needs the list entry or a base --repeat-each
+- [ClientHeader name slot is the h1](client-header-name-slot-is-the-h1.md) — BUG-713: blank name draws no avatar/h1; tabs take the h1 via headerHasName; live outage rig
+- [Unnamed trainee is absent, not unknown](unnamed-trainee-is-absent-not-unknown.md) — BUG-714: name string|null; fullNameOf for full slots, firstName gets raw; failed read = null input; fixture __null__
+- [Targets form closed on load](targets-form-closed-on-load.md) — EV-337g1: openTargetsForm in 12 specs; prehydration case became an opener witness; roster config separate
+- [One-line probe vs mixed font sizes](a-one-line-probe-must-survive-mixed-font-sizes.md) — overlap not tops; NBSP holds the pair, mutate it too
+- [Screenshot pairs differ by sub-pixel](screenshot-pairs-differ-by-subpixel.md) — ±2 px shift-tolerant compare, count >64 deltas, look at the rest
+- [Verify the base the brief names](verify-the-base-the-brief-names.md) — merge-base --is-ancestor every fix the brief says is in; 198a293 lacked BUG-713
