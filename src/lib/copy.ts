@@ -2057,6 +2057,10 @@ export const en = {
     librarySearch: "Search recipes",
     /** J2.2, verbatim. The query as the coach typed it, trimmed. */
     noMatch: (text: string) => `No recipe matches “${text}”.`,
+    /** J2.6 (ruling EV-337j2-R2), verbatim: what a search left, for a screen reader only. */
+    shown: (count: number) => `${count} recipe${count === 1 ? "" : "s"} shown`,
+    /** The no-match card's control (same words as `templateLibrary.clearSearch`; staff N3). */
+    clearSearch: "Clear the search",
     edit: "Edit",
     remove: "Delete",
 

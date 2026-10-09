@@ -1062,6 +1062,8 @@ export const fr = {
     filterEmpty: "Aucune recette pour ce moment du repas.",
     librarySearch: "Rechercher une recette",
     noMatch: (text: string) => `Aucune recette ne correspond à ${q(text)}.`,
+    shown: (count: number) => `${n(count)} recette${s(count)} affichée${s(count)}`,
+    clearSearch: "Effacer la recherche",
     edit: "Modifier",
     remove: "Supprimer",
     deleteTitle: "Supprimer la recette ?",

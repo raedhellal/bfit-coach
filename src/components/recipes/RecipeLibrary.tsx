@@ -60,6 +60,7 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
       ? library.recipes
       : library.recipes.filter((recipe) => effectiveSlots(recipe.mealSlots).includes(slot));
   const shown = forSlot.filter((recipe) => matchesSearch(searchKey(recipe.name), query));
+  const searching = query.trim() !== "";
   const newRecipe = (
     <Button
       icon="plus"
@@ -107,6 +108,15 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
               </span>
             )}
           </div>
+          {/*
+            J2.6 (ruling EV-337j2-R2) — what a search left, announced, as on /templates: ONE
+            node, rendered from the first paint, empty until the query is not blank. It
+            follows the meal-time filter while a query is typed, and stays empty with a blank
+            field, so the filter alone announces nothing (as before).
+          */}
+          <p className="sr-only" role="status" aria-live="polite">
+            {searching ? copy.recipes.shown(shown.length) : ""}
+          </p>
           <div className="tpl-toolbar">
             <label className="roster-search rcp-search" htmlFor={searchId}>
               <span aria-hidden="true" style={{ display: "inline-flex", color: "var(--ink-3)" }}>
@@ -187,7 +197,7 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
                     searchRef.current?.focus();
                   }}
                 >
-                  {copy.templateLibrary.clearSearch}
+                  {copy.recipes.clearSearch}
                 </Button>
               </div>
             </div>
