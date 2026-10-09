@@ -132,7 +132,7 @@ export function useCoachForm<V extends FormShape<V>>({
   const saved = useCallback(
     (stored?: V, then?: () => void) => {
       const next = markSaved(latest.current, stored);
-      if (then) release(then);
+      if (then) release(then, "leaves");
       else if (!isDirty(next)) release();
       setState((s) => markSaved(s, stored));
     },
@@ -142,7 +142,7 @@ export function useCoachForm<V extends FormShape<V>>({
   const endAccess = useCallback(
     (then: () => void) => {
       setState((s) => ({ ...s, abandoned: true }));
-      release(then);
+      release(then, "leaves");
     },
     [release]
   );

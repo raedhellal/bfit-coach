@@ -45,6 +45,19 @@ const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEff
 type Pending = { route: LeaveRoute; href: string | null };
 
 /**
+ * BUG-730 (staff B1) — what a `then` handed to `release` does once the guard's entry is gone:
+ * `"leaves"` navigates off the page (a create that opens the list, an access-ended refresh,
+ * Leave), `"stays"` keeps the coach on it (a create that becomes an edit with
+ * `replaceState`). It decides whether work typed during the step is guarded afterwards, so
+ * every caller with a `then` must say which: the overload makes it required.
+ */
+export type AfterStep = "stays" | "leaves";
+export interface Release {
+  (): void;
+  (then: () => void, after: AfterStep): void;
+}
+
+/**
  * BUG-703 — the guards armed right now (each one's `live`, see below). Read by the
  * dictionary loader (`src/lib/i18n/client.tsx`) before it reloads the page for a failed
  * dictionary chunk: a reload over unsaved work would raise this hook's `beforeunload`
@@ -91,7 +104,13 @@ export function useUnsavedChanges(dirty: boolean) {
   const releasing = useRef(false);
   const rearm = useRef(false);
   /** What a release asked for while our step was already in flight: run when it lands. */
-  const afterStep = useRef<(() => void)[]>([]);
+  const afterStep = useRef<{ run: () => void; after: AfterStep }[]>([]);
+  /**
+   * The `popstate` of our own step, once it has landed. Every listener on `window` receives
+   * the same event object, so the guard's Back listener can tell this one is not the coach's
+   * Back even when it was added after ours (a re-arm inside the step).
+   */
+  const ours = useRef<Event | null>(null);
 
   /**
    * One extra entry for the SAME url, carrying Next's own router state so the router is not
@@ -131,15 +150,16 @@ export function useUnsavedChanges(dirty: boolean) {
    * failing silently.
    */
   const withCleanHistory = useCallback(
-    (then?: () => void) => {
+    (then?: () => void, after: AfterStep = "leaves") => {
       bypass.current = true;
       if (releasing.current) {
         // BUG-730: our step back is already in flight, and it takes out the only entry this
         // guard holds (a re-arm since then was deferred, not pushed). A second
-        // `history.back()` would step off the page. What re-armed is handed back with that
-        // step, and `then` waits for it to land.
+        // `history.back()` would step off the page. `then` waits for that step to land.
+        // Clearing `rearm` here is UNWITNESSED: in every path constructed, the clean commit's
+        // effect cleanup clears it first. It is kept for a step that lands before that commit.
         rearm.current = false;
-        if (then) afterStep.current.push(then);
+        if (then) afterStep.current.push({ run: then, after });
         return;
       }
       if (!sentinel.current) {
@@ -148,24 +168,21 @@ export function useUnsavedChanges(dirty: boolean) {
         return;
       }
       releasing.current = true;
-      const onPop = () => {
+      const onPop = (event: PopStateEvent) => {
         window.removeEventListener("popstate", onPop);
         releasing.current = false;
         sentinel.current = false;
-        const thens = then ? [then, ...afterStep.current.splice(0)] : afterStep.current.splice(0);
-        if (rearm.current) {
-          rearm.current = false;
-          // The guard re-armed while this step was in flight (BUG-730). Its listener was added
-          // after this one and runs next, for this same event: `bypass` stands until it has.
-          // The new sentinel is pushed now, unless a `then` leaves the page anyway.
-          if (thens.length === 0) push();
-          window.setTimeout(() => {
-            bypass.current = false;
-          }, 0);
-        } else {
-          bypass.current = false;
-        }
-        for (const next of thens) next();
+        ours.current = event;
+        bypass.current = false;
+        const steps = [...(then ? [{ run: then, after }] : []), ...afterStep.current.splice(0)];
+        const rearmed = rearm.current;
+        rearm.current = false;
+        for (const step of steps) step.run();
+        // The guard re-armed while this step was in flight (BUG-730): work typed during it is
+        // unsaved, so a new entry is pushed, AFTER the `then`s, so it carries the URL a
+        // `"stays"` step's `replaceState` gave the page. Not when a step leaves the page: its
+        // navigation would leave the entry behind.
+        if (rearmed && !steps.some((step) => step.after === "leaves")) push();
       };
       window.addEventListener("popstate", onPop);
       window.history.back();
@@ -238,8 +255,8 @@ export function useUnsavedChanges(dirty: boolean) {
      * again, and the coach is asked while still on the page with every edit intact.
      */
     push();
-    const onPop = () => {
-      if (bypass.current) return;
+    const onPop = (event: PopStateEvent) => {
+      if (bypass.current || event === ours.current) return;
       // The browser has already stepped off the sentinel; put it back so the coach is
       // asked while still on the page, with every edit intact.
       sentinel.current = false;
@@ -288,7 +305,7 @@ export function useUnsavedChanges(dirty: boolean) {
         router.push(pending.href);
       }
       else window.history.back();
-    });
+    }, "leaves");
   }, [pending, router, withCleanHistory]);
 
   /**
@@ -302,8 +319,9 @@ export function useUnsavedChanges(dirty: boolean) {
    * the action's promise resolves. A `router.refresh()` here used to render the whole
    * page a second time for nothing. Only the access-ended path still refreshes: a refused write does
    * not revalidate, so the refresh is the request that reaches the layout's redirect.
+   * A `then` comes with whether it leaves the page (`AfterStep`, BUG-730).
    */
-  const release = withCleanHistory;
+  const release: Release = withCleanHistory;
 
   return { prompted: pending !== null, stay, leave, release };
 }
