@@ -32,8 +32,10 @@ export default defineConfig({
    * roster-not-shown.spec.ts (BUG-692) needs the six seeded rows: `evoli_fixture_roster_extra`
    * appends to a populated roster only.
    * template-use-no-week-card.spec.ts (BUG-718) drives "Use on a trainee", so the picker again.
+   * pro-nutrition-apply-card.spec.ts (EV-337g2) offers the seeded nutrition templates on the
+   * client's page and compares its dialog with the library's (the picker again).
    */
-  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card)\.spec\.ts/,
+  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|pro-nutrition-apply-card)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249) — see
   // playwright.config.ts's `workers` note.
