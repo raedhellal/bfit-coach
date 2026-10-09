@@ -114,10 +114,11 @@ export function ClientHeader({
  * has exactly one `h1` either way.
  *
  * BUG-714: it does whenever the read that carries the name succeeded. A trainee with no name
- * still gets an `h1`, the label; only a FAILED read (`null`) leaves the page to its notice.
+ * still gets an `h1`, the label; only a FAILED read (`null`; `undefined` too, failing closed)
+ * leaves the page to its notice.
  */
 export function headerHasName(trainee: { traineeDisplayName: string | null } | null): boolean {
-  return trainee !== null;
+  return trainee != null;
 }
 
 /**

@@ -21,8 +21,11 @@ import { signInThroughForm } from "./sign-in";
  *
  * Expected items, by test: (1) roster row; (2) search; (3) the three client pages; (4) the
  * revoke dialog; (5) no `null`/`undefined` (every test, plus the pickers); (6) the outage.
- * (7), the byte-identical control screenshots, and (8), the mutant, are run outside this file
- * (see the branch's commit message); (9) is QA's live run.
+ * (7) and (8) are run outside this file; their evidence is in the hub,
+ * `b-fit-mobile/docs/qa/evidence/2026-10-09-bug714/`: (7) the control screenshots with no switch,
+ * roster/overview/routine/nutrition at 1280 and 390, EN and FR, 16/16 byte-identical to the base
+ * (and the script that takes them); (8) the mutant `<Avatar name={c.traineeDisplayName}>` in
+ * `RosterRows`, 8/8 of the (1) tests red on the glyph. (9) is QA's live run.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
@@ -50,7 +53,7 @@ const T = {
     seesStraightAway: "Unnamed client will see this straight away.",
     templateUse: "Use on a trainee",
     template: "Upper / Lower split",
-    useConfirm: "Put “Upper / Lower split” on Unnamed client?",
+    useConfirm: /^Put “Upper \/ Lower split” on Unnamed client\?$/,
     guardrails: "Unnamed client's injuries and equipment are applied when you publish.",
     nutritionUse: "Use on a trainee",
     nutritionTemplate: "Cut 1800",
@@ -75,7 +78,8 @@ const T = {
     seesStraightAway: "Client sans nom le verra immédiatement.",
     templateUse: "Appliquer à un client",
     template: "Upper / Lower split",
-    useConfirm: null,
+    // « Appliquer «\u00a0modèle\u00a0» à Client sans nom ? »: the guillemets' inner spaces are NBSP.
+    useConfirm: /^Appliquer «\s?Upper \/ Lower split\s?» à Client sans nom \?$/,
     guardrails: "Les blessures et le matériel de Client sans nom sont pris en compte à la publication.",
     nutritionUse: "Utiliser pour un client",
     nutritionTemplate: "Cut 1800",
@@ -259,8 +263,8 @@ for (const lang of ["en", "fr"] as const) {
           expect(options, "the picker's options").toContain(t.label);
           expect(options.join("|"), "no option reads null").not.toMatch(/\bnull\b|\bundefined\b|^\||\|\||\|$/i);
           await dialog.locator("select").selectOption({ label: t.label });
-          if (t.useConfirm) await expect(dialog.getByText(t.useConfirm, { exact: true })).toBeVisible();
-          else await expect(dialog).toContainText(t.label);
+          // The sentence itself, never the dialog's text: the selected <option> already holds the label.
+          await expect(dialog.getByText(t.useConfirm)).toBeVisible();
           await expect(dialog.getByText(t.guardrails, { exact: true })).toBeVisible();
           await expectNoNullText(dialog, "template picker");
         });
