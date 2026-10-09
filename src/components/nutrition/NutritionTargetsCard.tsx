@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
@@ -46,7 +46,22 @@ import { useCoachForm } from "@/lib/useCoachForm";
  * Programme tab is asked first; after a save, or a 403 that ends the access, nobody is.
  * The fields re-seed from the server's props (another write, a revalidation) except one
  * the coach is typing in.
+ *
+ * EV-337g1 G1.2 (plan §5.4) — the card SHOWS the targets and edits them on request. Closed,
+ * it draws the four values as a `<dl>` (from the `targets` prop: what the server holds,
+ * never what was typed), the source line and the activity pill as before, the EV-190
+ * arithmetic line for the stored values, and « Modifier les objectifs ». The button opens
+ * the form that used to be always open, unchanged: the four fields, the live arithmetic,
+ * the refusals, « Enregistrer les objectifs » through the same confirm dialog. « Annuler »
+ * closes it and puts the fields back to the server's values; nothing is sent. A save that
+ * lands closes it (the four values then show what was stored, the floor sentence under
+ * them); a save that fails or whose answer was lost keeps it open with what was typed.
+ * The form's fields are not in the server HTML while it is closed, so nothing can be typed
+ * into them before hydration (the `Modal` answer of BUG-686's sweep).
  */
+/** One targets card per page: its title names its region. */
+const TITLE_ID = "nutrition-targets-title";
+
 export function NutritionTargetsCard({
   clientId,
   traineeDisplayName,
@@ -58,15 +73,18 @@ export function NutritionTargetsCard({
 }) {
   const copy = useCopy();
   const router = useRouter();
-  const form = useCoachForm({
-    server: {
-      calories: targets ? String(targets.calories) : "",
-      protein: targets ? String(targets.proteinG) : "",
-      carbs: targets ? String(targets.carbsG) : "",
-      fat: targets ? String(targets.fatG) : "",
-    },
-  });
+  /** The server's values, in the form's terms: the seed, and what « Annuler » puts back. */
+  const serverValues = {
+    calories: targets ? String(targets.calories) : "",
+    protein: targets ? String(targets.proteinG) : "",
+    carbs: targets ? String(targets.carbsG) : "",
+    fat: targets ? String(targets.fatG) : "",
+  };
+  const form = useCoachForm({ server: serverValues });
   const { calories, protein, carbs, fat } = form.values;
+  /** The fields as last rendered, for a save's callback to see what was typed since it sent. */
+  const latestValues = useRef(form.values);
+  latestValues.current = form.values;
   /** The refusal on screen (AC2 or PB-2's sentence), or null. No request was sent. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const invalid = refusal !== null;
@@ -75,6 +93,13 @@ export function NutritionTargetsCard({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  /** G1.2 — the form is open. Closed on every page load. */
+  const [editing, setEditing] = useState(false);
+  /** The kit's `Button` takes no ref: its wrapper is how focus finds it again. */
+  const editButtonWrap = useRef<HTMLDivElement>(null);
+  const firstField = useRef<HTMLInputElement>(null);
+  /** Where focus goes after the next render: into the form it opened, or back to its opener. */
+  const focusNext = useRef<"form" | "opener" | null>(null);
 
   const fields = [
     { key: "calories", label: copy.nutrition.calories, unit: copy.nutrition.kcal },
@@ -84,8 +109,8 @@ export function NutritionTargetsCard({
   ] as const;
 
   /** The four targets, or null for any field that is not a whole number above 0. */
-  function parsed(): (number | null)[] {
-    return [calories, protein, carbs, fat].map((v) => {
+  function parsed(values: string[] = [calories, protein, carbs, fat]): (number | null)[] {
+    return values.map((v) => {
       const target = parseTarget(v);
       return target.kind === "whole" ? target.value : null;
     });
@@ -110,8 +135,8 @@ export function NutritionTargetsCard({
    */
   const MATCH_TOLERANCE_KCAL = 25;
 
-  function reconciliation(): { line: string; delta: number } | null {
-    const [kcal, proteinG, carbsG, fatG] = parsed();
+  function reconciliation(values?: string[]): { line: string; delta: number } | null {
+    const [kcal, proteinG, carbsG, fatG] = parsed(values);
     if (kcal === null || proteinG === null || carbsG === null || fatG === null) return null;
     const macroKcal = Math.round(proteinG * 4 + carbsG * 4 + fatG * 9);
     const delta = macroKcal - Math.round(kcal);
@@ -128,7 +153,40 @@ export function NutritionTargetsCard({
     };
   }
 
+  /** The line for what the coach is typing: what the dialog's mismatch event reports. */
   const macros = reconciliation();
+  /**
+   * G1.2 — closed, the card states the arithmetic of the STORED targets (it did on load
+   * before, when the open fields held them), read from the prop like the four values.
+   */
+  const shownMacros = editing
+    ? macros
+    : targets
+      ? reconciliation([targets.calories, targets.proteinG, targets.carbsG, targets.fatG].map(String))
+      : null;
+
+  // Focus follows the control the coach pressed: into the first field on open, back to
+  // « Modifier les objectifs » when the form closes (neither exists until this render).
+  useEffect(() => {
+    const target = focusNext.current;
+    if (!target) return;
+    focusNext.current = null;
+    (target === "form" ? firstField.current : editButtonWrap.current?.querySelector("button"))?.focus();
+  });
+
+  function open() {
+    setEditing(true);
+    focusNext.current = "form";
+  }
+
+  /** « Annuler »: the fields go back to the server's values and nothing is sent. */
+  function cancel() {
+    form.reset(serverValues);
+    setRefusal(null);
+    setError(null);
+    setEditing(false);
+    focusNext.current = "opener";
+  }
 
   function requestSave() {
     const read = [calories, protein, carbs, fat].map(parseTarget);
@@ -160,6 +218,7 @@ export function NutritionTargetsCard({
         saved: true,
       });
     }
+    const sent = { calories, protein, carbs, fat };
     form.markSent();
     startTransition(async () => {
       // `settled`: a failed request resolves with `undefined`, and without this the
@@ -203,6 +262,17 @@ export function NutritionTargetsCard({
         carbs: String(stored.carbsG),
         fat: String(stored.fatG),
       });
+      // G1.2 — the save landed: the card closes on the stored values (the `<dl>` reads the
+      // revalidated prop, the floor sentence and « Objectifs enregistrés. » sit under it).
+      // Unless a field was typed in while the request was out: that text is unsaved work, and
+      // the form stays open on it rather than hiding it behind the values it is not.
+      const typedSince = (Object.keys(sent) as (keyof typeof sent)[]).some(
+        (key) => latestValues.current[key] !== sent[key]
+      );
+      if (!typedSince) {
+        setEditing(false);
+        focusNext.current = "opener";
+      }
       // No `router.refresh()` (ADR-0033 branch 2a): `saveTargetsAction` revalidates, so
       // its response carried the page rendered after the write (the source line).
     });
@@ -232,129 +302,182 @@ export function NutritionTargetsCard({
 
   const source = sourceLine();
 
+  /** G1.2 — the four values the server holds, in the field order of the form. */
+  const tiles = targets
+    ? [
+        { key: "calories", label: copy.nutrition.calories, value: targets.calories, unit: copy.nutrition.kcal },
+        { key: "protein", label: copy.nutrition.protein, value: targets.proteinG, unit: copy.nutrition.grams },
+        { key: "carbs", label: copy.nutrition.carbs, value: targets.carbsG, unit: copy.nutrition.grams },
+        { key: "fat", label: copy.nutrition.fat, value: targets.fatG, unit: copy.nutrition.grams },
+      ]
+    : null;
+
   return (
-    <Card style={{ marginBottom: 18 }} rootRef={form.scope}>
-      <CardHead
-        title={copy.nutrition.targetsTitle}
-        icon="apple"
-        sub={source ?? undefined}
-        /**
-         * BUG-252: the badge is `nowrap` and 204 px ("Activity level: Moderately active"),
-         * 228 px in French, so at phone widths it pushed past the card and scrolled the page
-         * sideways. The head may now wrap, which drops the badge under the title when the
-         * two do not fit side by side; the badge's own text may wrap too, for a width where
-         * even a line of its own is too narrow. Desktop is unchanged: both fit on one line.
-         */
-        style={{ flexWrap: "wrap" }}
-        action={
-          targets?.activity ? (
-            <Badge tone="purple" style={{ whiteSpace: "normal", maxWidth: "100%" }}>
-              {copy.nutrition.activityBadge(
-                copy.nutrition.activityLabels[targets.activity] ?? targets.activity
-              )}
-            </Badge>
-          ) : undefined
-        }
-      />
+    // A named region (plan §5.4's « Objectifs journaliers » section): the page's frame and a
+    // spec find the card by its name, not by a block that happens to hold its title.
+    <section aria-labelledby={TITLE_ID}>
+      <Card style={{ marginBottom: 18 }} rootRef={form.scope}>
+        <CardHead
+          title={<span id={TITLE_ID}>{copy.nutrition.targetsTitle}</span>}
+          icon="apple"
+          sub={source ?? undefined}
+          /**
+           * BUG-252: the badge is `nowrap` and 204 px ("Activity level: Moderately active"),
+           * 228 px in French, so at phone widths it pushed past the card and scrolled the page
+           * sideways. The head may now wrap, which drops the badge under the title when the
+           * two do not fit side by side; the badge's own text may wrap too, for a width where
+           * even a line of its own is too narrow. Desktop is unchanged: both fit on one line.
+           * EV-337g1 G1.3: kept as it is; the redraw is below the head.
+           */
+          style={{ flexWrap: "wrap" }}
+          action={
+            targets?.activity ? (
+              <Badge tone="purple" style={{ whiteSpace: "normal", maxWidth: "100%" }}>
+                {copy.nutrition.activityBadge(
+                  copy.nutrition.activityLabels[targets.activity] ?? targets.activity
+                )}
+              </Badge>
+            ) : undefined
+          }
+        />
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        {fields.map((field) => (
-          <label key={field.key} style={{ display: "block" }}>
-            <div
-              style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}
-            >
-              {`${field.label} (${field.unit})`}
-            </div>
-            <input
-              aria-label={field.label}
-              inputMode="numeric"
-              value={form.values[field.key]}
-              onChange={(e) => form.set(field.key, e.target.value)}
-              style={{
-                height: MIN_TOUCH_TARGET,
-                width: 120,
-                borderRadius: "var(--r-md)",
-                border: `1px solid ${invalid ? "var(--err)" : "var(--border-2)"}`,
-                background: "var(--surface)",
-                padding: "0 12px",
-                fontFamily: "var(--font-body)",
-                fontSize: 14,
-                color: "var(--ink)",
-              }}
-            />
-          </label>
-        ))}
-      </div>
+        {editing ? (
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {fields.map((field, i) => (
+              <label key={field.key} style={{ display: "block" }}>
+                <div
+                  style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}
+                >
+                  {`${field.label} (${field.unit})`}
+                </div>
+                <input
+                  ref={i === 0 ? firstField : undefined}
+                  aria-label={field.label}
+                  inputMode="numeric"
+                  value={form.values[field.key]}
+                  onChange={(e) => form.set(field.key, e.target.value)}
+                  style={{
+                    height: MIN_TOUCH_TARGET,
+                    width: 120,
+                    borderRadius: "var(--r-md)",
+                    border: `1px solid ${invalid ? "var(--err)" : "var(--border-2)"}`,
+                    background: "var(--surface)",
+                    padding: "0 12px",
+                    fontFamily: "var(--font-body)",
+                    fontSize: 14,
+                    color: "var(--ink)",
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+        ) : tiles ? (
+          /*
+            Four labelled values, a `<dl>` (plan §5.4 a11y): each label is its value's term, so
+            a screen reader reads « Protéines, 150 g » and not four numbers in a row. A number
+            and its unit share a line (`nowrap`, BUG-270/300's rule).
+          */
+          <div className="nut-tiles-box">
+            <dl className="nut-tiles">
+              {tiles.map((tile) => (
+                <div key={tile.key} className="nut-tile">
+                  <dt>{tile.label}</dt>
+                  <dd>
+                    {formatKcal(tile.value, copy.locale)}
+                    {"\u00a0"}
+                    <span className="nut-tile-unit">{tile.unit}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : (
+          // No targets stored: no value is drawn (X7), and the card says there are none.
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>{copy.nutrition.noTargets}</p>
+        )}
 
-      {/*
-        Beneath the four fields, above the control — the coach reads the arithmetic
-        before they press Save, and it is a `status`, not an `alert`: nothing is wrong,
-        and a screen reader should not be interrupted mid-field by a running total.
-      */}
-      {macros && (
-        <p
-          role="status"
-          style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ink-2)" }}
-        >
-          {macros.line}
-        </p>
-      )}
+        {/*
+          Beneath the values, above the controls — the coach reads the arithmetic before they
+          press Save, and it is a `status`, not an `alert`: nothing is wrong, and a screen
+          reader should not be interrupted mid-field by a running total. Closed, it is the
+          stored targets' arithmetic; open, the typed values', live.
+        */}
+        {shownMacros && (
+          <p
+            role="status"
+            style={{ margin: "12px 0 0", fontSize: 13, color: "var(--ink-2)" }}
+          >
+            {shownMacros.line}
+          </p>
+        )}
 
-      {refusal && (
-        // AC2, verbatim (or PB-2's whole-number sentence). No request was sent.
-        <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
-          {refusal}
-        </p>
-      )}
+        {editing && refusal && (
+          // AC2, verbatim (or PB-2's whole-number sentence). No request was sent.
+          <p role="alert" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
+            {refusal}
+          </p>
+        )}
 
-      <div style={{ marginTop: 16 }}>
-        <Button icon="check" onClick={requestSave} disabled={pending}>
-          {pending ? copy.nutrition.saving : copy.nutrition.saveTargets}
-        </Button>
-      </div>
-
-      {floorCalories !== null && (
-        <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--warn-ink)" }}>
-          {copy.nutrition.floorApplied(floorCalories)}
-        </p>
-      )}
-      {notice && (
-        <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>{notice}</p>
-      )}
-      {error && (
-        <p role="alert" style={{ margin: "10px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
-          {error}
-        </p>
-      )}
-
-      <p style={{ margin: "14px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
-        {copy.nutrition.floorStanding}
-      </p>
-
-      <Modal
-        dirty={false}
-        open={confirming}
-        onClose={() => !pending && setConfirming(false)}
-        title={copy.nutrition.saveTargetsTitle}
-        icon="apple"
-        width={420}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirming(false)} disabled={pending}>
+        {editing ? (
+          <div className="nut-targets-actions">
+            <Button icon="check" onClick={requestSave} disabled={pending}>
+              {pending ? copy.nutrition.saving : copy.nutrition.saveTargets}
+            </Button>
+            <Button variant="secondary" onClick={cancel} disabled={pending}>
               {copy.nutrition.cancel}
             </Button>
-            <Button onClick={save} disabled={pending}>
-              {copy.nutrition.saveTargets}
+          </div>
+        ) : (
+          <div className="nut-targets-actions" ref={editButtonWrap}>
+            <Button variant="secondary" onClick={open}>
+              {copy.nutrition.editTargets}
             </Button>
-          </>
-        }
-      >
-        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-          {/* Slice 1 has no draft: the write is immediate, and the dialog says so. */}
-          {copy.nutrition.seesStraightAway(truncateName(fullNameOf(traineeDisplayName, copy)))}
+          </div>
+        )}
+
+        {floorCalories !== null && (
+          <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--warn-ink)" }}>
+            {copy.nutrition.floorApplied(floorCalories)}
+          </p>
+        )}
+        {notice && (
+          <p style={{ margin: "10px 0 0", fontSize: 13, color: "var(--ok-ink)" }}>{notice}</p>
+        )}
+        {error && (
+          <p role="alert" style={{ margin: "10px 0 0", fontSize: 13, color: "var(--err-ink)" }}>
+            {error}
+          </p>
+        )}
+
+        <p style={{ margin: "14px 0 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
+          {copy.nutrition.floorStanding}
         </p>
-      </Modal>
-      {form.guard}
-    </Card>
+
+        <Modal
+          dirty={false}
+          open={confirming}
+          onClose={() => !pending && setConfirming(false)}
+          title={copy.nutrition.saveTargetsTitle}
+          icon="apple"
+          width={420}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setConfirming(false)} disabled={pending}>
+                {copy.nutrition.cancel}
+              </Button>
+              <Button onClick={save} disabled={pending}>
+                {copy.nutrition.saveTargets}
+              </Button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
+            {/* Slice 1 has no draft: the write is immediate, and the dialog says so. */}
+            {copy.nutrition.seesStraightAway(truncateName(fullNameOf(traineeDisplayName, copy)))}
+          </p>
+        </Modal>
+        {form.guard}
+      </Card>
+    </section>
   );
 }

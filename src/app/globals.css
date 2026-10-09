@@ -1728,3 +1728,31 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
   .prog-doc .doc-day-hint { margin-bottom: 6px; }
 }
 @media (min-width: 1280px) { .plan-settings-line { display: none; } }
+
+/* ── EV-337g1: the client's nutrition page (plan §5.4) ────────────────────────────────────
+   The programme tab's frame (EV-337f1), copied: the tab's own `h2` (ruling 16), then from a
+   1280 px viewport the main column (the meal week, the food log) on the left and the aside
+   (the targets card, the diet profile) beside it. Below 1280 one column, the aside first:
+   targets, diet profile, meal week, food log (G1.1), which is also the DOM order. */
+.nut-title { margin: 0 0 14px; font: 600 var(--fs-h2)/26px var(--font-display); color: var(--ink); }
+/* The cards carry their own bottom margins, so one column adds no row gap on top of them. */
+.layout-split.nut-split { row-gap: 0; }
+.nut-split > .nut-aside, .nut-split > .nut-main { min-width: 0; }
+@media (min-width: 1280px) {
+  .nut-split > .nut-main { grid-column: 1; grid-row: 1; }
+  .nut-split > .nut-aside { grid-column: 2; grid-row: 1; }
+}
+/* G1.2 — the four targets as tiles (plan §5.4, the design's « Objectifs journaliers »): two by
+   two in a narrow card, one row of four once the card is wide enough to hold « 2 150 kcal »
+   in each. A number and its unit never part (`nowrap`, BUG-270/300). */
+.nut-tiles-box { container-type: inline-size; }
+.nut-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+@container (min-width: 520px) { .nut-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.nut-tile { min-width: 0; padding: 12px 14px; border-radius: var(--r-16); background: var(--surface-2); }
+.nut-tile dt { font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
+.nut-tile dd {
+  margin: 2px 0 0; font: 700 20px/28px var(--font-display); color: var(--ink);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.nut-tile-unit { font: 500 var(--fs-meta)/18px var(--font-body); color: var(--ink-2); }
+.nut-targets-actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }

@@ -707,6 +707,8 @@ export const fr = {
     },
     noRestrictions: "Aucune restriction alimentaire enregistrée.",
     saveTargets: "Enregistrer les objectifs",
+    editTargets: "Modifier les objectifs",
+    noTargets: "Aucun objectif défini.",
     saving: "Enregistrement…",
     invalidNumber: "Saisissez un nombre supérieur à 0.",
     /** PB-2: "1800,5" is a decimal to a French coach, and "1,000" reads the same way. */
