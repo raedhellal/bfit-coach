@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import { fullNameOf } from "@/lib/traineeName";
-import { formatInstant, formatKcal, truncateName } from "@/lib/format";
+import { formatGrams, formatInstant, formatKcal, truncateName } from "@/lib/format";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { saveTargetsAction } from "@/lib/nutritionActions";
 import { parseTarget, targetRefusal } from "@/lib/numberInput";
@@ -305,10 +305,12 @@ export function NutritionTargetsCard({
   /** G1.2 — the four values the server holds, in the field order of the form. */
   const tiles = targets
     ? [
-        { key: "calories", label: copy.nutrition.calories, value: targets.calories, unit: copy.nutrition.kcal },
-        { key: "protein", label: copy.nutrition.protein, value: targets.proteinG, unit: copy.nutrition.grams },
-        { key: "carbs", label: copy.nutrition.carbs, value: targets.carbsG, unit: copy.nutrition.grams },
-        { key: "fat", label: copy.nutrition.fat, value: targets.fatG, unit: copy.nutrition.grams },
+        // Each value through its own unit's formatter (staff N4): grams keep a decimal the api
+        // might one day store, where the kcal formatter would round it away.
+        { key: "calories", label: copy.nutrition.calories, text: formatKcal(targets.calories, copy.locale), unit: copy.nutrition.kcal },
+        { key: "protein", label: copy.nutrition.protein, text: formatGrams(targets.proteinG, copy.locale), unit: copy.nutrition.grams },
+        { key: "carbs", label: copy.nutrition.carbs, text: formatGrams(targets.carbsG, copy.locale), unit: copy.nutrition.grams },
+        { key: "fat", label: copy.nutrition.fat, text: formatGrams(targets.fatG, copy.locale), unit: copy.nutrition.grams },
       ]
     : null;
 
@@ -383,7 +385,7 @@ export function NutritionTargetsCard({
                 <div key={tile.key} className="nut-tile">
                   <dt>{tile.label}</dt>
                   <dd>
-                    {formatKcal(tile.value, copy.locale)}
+                    {tile.text}
                     {"\u00a0"}
                     <span className="nut-tile-unit">{tile.unit}</span>
                   </dd>
