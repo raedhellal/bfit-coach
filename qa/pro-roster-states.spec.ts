@@ -143,7 +143,8 @@ for (const lang of ["fr", "en"] as const) {
      * BUG-667 (roster half) — the navigation stays on screen and in place while the roster
      * loads. With no loading state the two ways in are:
      *   · a click from another section: the page left is held, shell and all, and the
-     *     roster's shell lands in the same boxes;
+     *     roster's shell lands with the same banners and the same side navigation (the
+     *     narrow tab bar keeps its sections; its y follows the page's length, by design);
      *   · a document load of `/`: the response's first byte waits for the reads, so the
      *     document never holds a frame of shell without content — the served HTML has no
      *     skeleton in it (until d717e57 the streamed fallback was in the HTML).
@@ -163,8 +164,21 @@ for (const lang of ["fr", "en"] as const) {
         await expect(page.getByText(l.empty, { exact: true })).toBeVisible({ timeout: 15_000 });
         const loaded = await frameFacts(page, l.nav);
         expect(await skeleton(), `${label}: no skeleton at any point`).toBe(false);
-        expect(loaded.navs, `${label}: the navigation did not move when the content landed`).toEqual(loading.navs);
         expect(loaded.banners, `${label}: the banners did not move when the content landed`).toEqual(loading.banners);
+        if (width >= 1024) {
+          expect(loaded.navs, `${label}: the side navigation did not move when the content landed`).toEqual(loading.navs);
+        } else {
+          // The tab bar is sticky as the shell column's last child: it settles above the legal
+          // footer at the end of a SHORT page (globals.css, `.shell-tabbar`), so its y follows
+          // the length of the page on screen, which is now a different page. Its sections and
+          // their sizes are what must hold; its y only has to stay in the viewport.
+          const shape = (n: { links: string[] }) => n.links.map((a) => a.replace(/@\d+,\d+,/, "@"));
+          expect(loaded.navs.map(shape), `${label}: the same tab bar, the same sections`).toEqual(loading.navs.map(shape));
+          for (const f of [loading, loaded]) {
+            const [, y, , h] = f.navs[0].box.split(",").map(Number);
+            expect(y + h, `${label}: the tab bar is on screen`).toBeLessThanOrEqual(900);
+          }
+        }
         await context.clearCookies({ name: "evoli_fixture_api_latency" });
       }
 
@@ -210,10 +224,13 @@ for (const lang of ["fr", "en"] as const) {
           if (document.querySelector('[style*="shimmer"]')) report(`skeleton on ${location.pathname}`);
         };
         new MutationObserver(scan).observe(document, { subtree: true, childList: true, attributes: true });
-        addEventListener("pagehide", () => {
-          const submit = document.querySelector("form button[type=submit]");
-          if (submit) report(`left ${location.pathname} reading ${submit.textContent?.trim()}`);
-        });
+        // The sign-in button's label, each time it changes (a `pagehide` report is lost with
+        // the document, measured).
+        let last: string | undefined;
+        new MutationObserver(() => {
+          const text = document.querySelector("form button[type=submit]")?.textContent?.trim();
+          if (text && text !== last) report(`${location.pathname} button: ${(last = text)}`);
+        }).observe(document, { subtree: true, childList: true, characterData: true });
       });
       // Every fixture read held 1 s (under the identity race's 1.5 s), so the roster's
       // document is slow enough that a streamed skeleton would have been painted first.
@@ -223,7 +240,10 @@ for (const lang of ["fr", "en"] as const) {
       await expect(page.getByText(l.empty, { exact: true })).toBeVisible({ timeout: 15_000 });
       await context.clearCookies({ name: "evoli_fixture_api_latency" });
       expect(seen.filter((w) => w.startsWith("skeleton")), `${lang}: no skeleton between sign-in and the roster`).toEqual([]);
-      expect(seen, `${lang}: the sign-in page was left still saying it was signing in`).toContain(`left /login reading ${l.signingIn}`);
+      const labels = seen.filter((w) => w.startsWith("/login button: "));
+      expect(labels.at(-1), `${lang}: the sign-in page was left still saying it was signing in (${labels.join(" → ")})`).toBe(
+        `/login button: ${l.signingIn}`
+      );
     });
   });
 }
