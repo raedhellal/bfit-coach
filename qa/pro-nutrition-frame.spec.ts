@@ -387,7 +387,10 @@ for (const lang of ["en", "fr"] as const) {
     test("G1.3: at 320–390 the whole activity pill shows, wrapped if need be, and nothing scrolls sideways", async ({ page }) => {
       await signIn(page, lang);
       await page.goto(`/clients/${LINA}/nutrition`);
-      const pill = targetsRegion(page, lang).getByText(L[lang].pill, { exact: true });
+      // Found on the page, not through the card's region: G1.3 is "as at a862698", so this
+      // test must hold on the base too (it is green there), and a region the base lacks
+      // would make it red for the wrong reason.
+      const pill = page.getByText(L[lang].pill, { exact: true });
       await expect(pill, "Lina is MODERATE: the pill names it").toBeVisible();
       for (const width of PHONES) {
         await page.setViewportSize({ width, height: 900 });
@@ -493,7 +496,8 @@ for (const lang of ["en", "fr"] as const) {
     test("G1.5: no rest-day target anywhere on the page", async ({ page }) => {
       await signIn(page, lang);
       await page.goto(`/clients/${LINA}/nutrition`);
-      await expect(targetsRegion(page, lang)).toHaveCount(1);
+      // The card's title as the sentinel that the page rendered (present on the base too).
+      await expect(page.getByText(L[lang].targets, { exact: true })).toBeVisible();
       await expect(page.getByText(L[lang].restDay)).toHaveCount(0);
     });
   });
