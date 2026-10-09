@@ -683,6 +683,22 @@ async function g23cRetry(page: Page, context: BrowserContext, baseURL: string, l
   await expect(outcome(page)).toHaveCount(1);
   expect(plain(await outcome(page).innerText()), "cancel leaves the sentence as it was").toBe(sentence);
 
+  // G2.3d, R2's reading (staff SF1): ANY answer to the next apply attempt clears the slot, a
+  // failure included. The week card then draws that answer's own line, so the template sentence
+  // above it would describe an older attempt.
+  const applyFailed = page.locator('[data-nut-block="week"]').getByRole("alert").filter({ hasText: t.applyFailedLine });
+  await setSwitch(context, baseURL, "evoli_fixture_week", "fail");
+  await pressApply(page, lang, t.applyLina, weekDialog);
+  await weekDialog.getByRole("button", { name: t.weekConfirm, exact: true }).click();
+  await expect(weekDialog).toHaveCount(0);
+  await expect(applyFailed, `the failed retry's own line (${tag})`).toHaveCount(1);
+  await expect(outcome(page), `a failed attempt clears the sentence too (${tag})`).toHaveCount(0);
+  await clearSwitch(context, "evoli_fixture_week");
+
+  // A fresh template WEEK_FAILED, so the successful retry below has a sentence to clear.
+  await templateOutcome(page, context, baseURL, lang, "Cut 1800", [["evoli_fixture_week", "fail"]]);
+  await expect(outcome(page).locator("p").first()).toHaveText(t.outcomes.WEEK_FAILED);
+
   // G2.3c (2): the retry is today's apply: one POST week/apply and no PUT targets.
   const from = (await calls(page)).length;
   await markDocument(page);
