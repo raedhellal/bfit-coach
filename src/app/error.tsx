@@ -32,8 +32,9 @@ import { useCopy, useLocale } from "@/lib/i18n/client";
  * BUG-672 — the sentence is the page's one `h1` (EV-337 X4: exactly one `h1` in the
  * loaded, empty and error states), drawn at the size and colour the `div` had.
  *
- * BUG-629 — one error is not a crash: `/clients/[id]` THROWS when the trainee overview could
- * not be read, so that the response is a 500 a monitor can see (`src/lib/clientLoadError.ts`).
+ * BUG-629 — one error is not a crash: `/clients/[id]` THROWS when the trainee overview read
+ * failed with anything but a 403, so that the response is a 500 a monitor can see
+ * (`src/lib/clientLoadError.ts`).
  * Recognised by its digest, it gets the page that branch always drew — `ClientNoticeCard`
  * with `copy.client.loadError` as the one h1 and the way back to the roster, in the shell
  * under « Clients » — not the generic sentence and its retry.

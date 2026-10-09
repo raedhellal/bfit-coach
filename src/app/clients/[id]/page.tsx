@@ -92,11 +92,13 @@ export default async function ClientPage({ params }: { params: { id: string } })
 
   if (!overview) {
     /**
-     * BUG-629 — the overview read failed and it was not a 403 (the api answered 5xx, or did
-     * not answer). Rendering the notice here served it with a 200, so a status-based monitor
-     * could not see an api outage through the portal. Thrown instead, before the first byte,
-     * so the response is a 500; the root error boundary recognises the digest and draws the
-     * same notice (`ClientNoticeCard`, the sentence as the one h1, the way back), in the shell.
+     * BUG-629 — the overview read failed with anything but a 403: an api 5xx, no answer or a
+     * timeout, and equally a 401 after a failed refresh, a 429 or a 400 (`readClientOverview`
+     * only tells a 403 apart). Rendering the notice here served it with a 200, so a
+     * status-based monitor could not see an api outage through the portal. Thrown instead,
+     * before the first byte, so the response is a 500; the root error boundary recognises
+     * the digest and draws the same notice (`ClientNoticeCard`, the sentence as the one h1,
+     * the way back), in the shell.
      */
     throw clientLoadError();
   }

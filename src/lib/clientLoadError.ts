@@ -1,6 +1,9 @@
 /**
- * BUG-629 — the trainee overview could not be read (an api 5xx, or no answer at all), and
- * the page must SAY so with a 5xx status, not a 200.
+ * BUG-629 — the trainee overview read failed with anything but a 403, and the page must SAY
+ * so with a 5xx status, not a 200. "Anything but a 403" is wider than an api outage: an api
+ * 5xx, no answer or a timeout, but also a 401 after a failed token refresh, a 429 or a 400
+ * all land here and are served 500 (a 403 is the layout's denial page; a malformed id never
+ * reaches the api, BUG-600).
  *
  * A Next 14 page cannot set its status; the only way a render answers 500 is to throw
  * before the first byte (no `loading.tsx` sits above `/clients/[id]`). So the overview page
