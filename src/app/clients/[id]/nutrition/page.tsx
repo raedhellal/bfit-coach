@@ -159,7 +159,10 @@ export default async function NutritionPage({ params }: { params: { id: string }
               {/* `data-nut-block`: a named place for a spec to find each block of the frame. */}
               <div data-nut-block="diet">
                 <ProfileFacts
-                  title={copy.nutrition.title}
+                  // EV-337g1-R4 (G1.4a): the tab's h2 is « Nutrition », so the card takes the name the
+                  // routine tab's profile card took for the same reason (EV-337f1): the same key, so the
+                  // two tabs cannot drift apart.
+                  title={copy.routine.profileTitle}
                   icon="shield"
                   groups={[
                     // BUG-694: the app stores its presets' English labels; show them in the page's language.
