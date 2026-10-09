@@ -336,7 +336,8 @@ for (const lang of ["en", "fr"] as const) {
       const rows = ROWS[lang]();
       expect(rows.map((r) => r.key)).toHaveLength(KEYS);
       expect(new Set(rows.map((r) => r.key)).size, "no key twice").toBe(KEYS);
-      for (const row of rows) expect(plain(row.text), row.key).toBe(plain(row.expected));
+      // Soft, so a red run lists EVERY sentence that is wrong, not the first.
+      for (const row of rows) expect.soft(plain(row.text), row.key).toBe(plain(row.expected));
     });
 
     test("the capital only ever starts a sentence; the lower case never does", () => {
@@ -345,9 +346,9 @@ for (const lang of ["en", "fr"] as const) {
         const text = plain(row.text);
         // A sentence starts at the beginning, or after ". " / "? " / "! ".
         for (let at = text.indexOf(lead); at >= 0; at = text.indexOf(lead, at + 1)) {
-          expect(at === 0 || /[.?!] $/.test(text.slice(0, at)), `${row.key}: "${lead}" mid-sentence at ${at}`).toBe(true);
+          expect.soft(at === 0 || /[.?!] $/.test(text.slice(0, at)), `${row.key}: "${lead}" mid-sentence at ${at}`).toBe(true);
         }
-        expect(new RegExp(`(^|[.?!] )${inside}`).test(text), `${row.key}: "${inside}" starts a sentence`).toBe(false);
+        expect.soft(new RegExp(`(^|[.?!] )${inside}`).test(text), `${row.key}: "${inside}" starts a sentence`).toBe(false);
       }
     });
   });
