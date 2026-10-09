@@ -129,14 +129,53 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 
 `main` auto-deploys to Vercel, and **a 200 from the site is evidence of nothing** —
 the previous build answers 200 too. After a push, poll the deploy marker until it
-reports the commit you pushed, exactly as `b-fit-api` is verified by polling
-`/actuator/info` for `build.commit`:
+reports the **merge commit on `main`**, exactly as `b-fit-api` is verified by polling
+`/actuator/info` for `build.commit`. The poll is **bounded** (BUG-712): it ends with
+`DEPLOYED <sha>` and exit `0`, or `NOT DEPLOYED within <N>s (serving <what it saw>)` and
+exit `1`. Paste the function into the shell once:
 
 ```sh
-EXPECTED=$(git rev-parse HEAD)
-until [ "$(curl -s https://bfit-coach-seven.vercel.app/api/version | \
-  sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')" = "$EXPECTED" ]; do sleep 5; done
+# witness <url> <key: build.commit | commit> <expected full sha> <window seconds> [interval seconds]
+witness() {
+  local w_url="$1" w_key="$2" w_want="$3" w_window="$4" w_every="${5:-30}" w_got w_end
+  w_end=$(( $(date +%s) + w_window ))
+  while :; do
+    w_got=$(curl -s --max-time 10 "$w_url" | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for k in sys.argv[1].split("."):
+        d = d[k]
+    print(d)
+except Exception:
+    pass' "$w_key")
+    echo "$(date -u +%H:%M:%SZ) $w_url $w_key=${w_got:-<no answer>}"
+    if [ "$w_got" = "$w_want" ]; then echo "DEPLOYED $w_want"; return 0; fi
+    if [ "$(date +%s)" -ge "$w_end" ]; then echo "NOT DEPLOYED within ${w_window}s (serving ${w_got:-<no answer>})"; return 1; fi
+    sleep "$w_every"
+  done
+}
 ```
+
+```sh
+# after the merge and the push, on main, in b-fit-coach (explicit cd, every time):
+cd /Users/raedhelal/Desktop/b-fit/b-fit-coach && WANT=$(git rev-parse main)
+witness https://bfit-coach-seven.vercel.app/api/version commit "$WANT" 300
+```
+
+- **Source.** `witness()` is copied verbatim from the hub's `docs/qa/DEPLOY-CHECKLIST.md`
+  §1 (BUG-709, hub `main` merge `8ba5cf8a`), which polls this portal the same way in §1b.
+  The checklist is the reference copy: if the two ever differ, fix this one. It runs
+  under zsh and macOS `/bin/bash` 3.2 and needs only `curl` and `python3`. Its variables all
+  start with `w_` (in zsh, `path` is tied to `$PATH`).
+- **Wait for the merge commit, `git rev-parse main` after the merge, never `HEAD`.** Merges
+  are `--no-ff`, so Vercel builds the merge commit. From a branch or a train worktree `HEAD`
+  is a tip production never serves, and a healthy deploy times out. Run it after the push:
+  a `main` with unpushed merges is not what Vercel is building either.
+- **The window is 300 s** (the hub checklist's: the portal flipped in about 2 min on
+  2026-10-07). When it ends, the deploy has **failed**: read the Vercel build log.
+- A body that is not JSON (an error page, a redirect to `/login`) prints `commit=<no answer>`
+  and never matches: it is not a deploy.
 
 The SHA comes from Vercel's system environment variable `VERCEL_GIT_COMMIT_SHA`
 (with `VERCEL_ENV` for `environment`), read in `next.config.mjs` at build time and
