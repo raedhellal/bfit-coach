@@ -3,6 +3,7 @@ import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { expectNoEnglish, signInFrench } from "./french";
 import { atEachWidth, expectNoSidewaysScroll, expectUnoccluded } from "./layout";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * EV-273b AC3, AC4, AC5 and AC7 — "Use on a trainee", in fixture mode on the POPULATED
@@ -261,6 +262,7 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
       `POST /coach-portal/clients/${PETRA}/nutrition/week/apply {weekStart}`,
     ]);
     // The new targets are rendered from the server's read.
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toHaveValue("1800");
     await expect(page.getByLabel("Protein", { exact: true })).toHaveValue("150");
   });
@@ -273,6 +275,7 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
     await page.waitForURL(`/clients/${PETRA}/nutrition`);
     await expect(outcome(page)).toContainText(applied(RESET, "Petra"));
     await expect(outcome(page)).toContainText(floorRaised(1200));
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toHaveValue("1200");
 
     dialog = await openConfirm(page, LEAN, "Tobias R.", "Tobias");
@@ -294,6 +297,7 @@ test.describe("AC5 — targets, then the week, one server action each", () => {
     await dialog.getByRole("button", { name: "Confirm" }).click();
     await page.waitForURL(`/clients/${PETRA}/nutrition`);
     await expect(outcome(page)).toHaveText(weekRateLimited("Petra"));
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toHaveValue("1800");
     const after = await page.locator("[data-meal-id]").evaluateAll((els) => els.map((e) => e.getAttribute("data-meal-id")));
     expect(after, "the week is unchanged").toEqual(before);
@@ -581,6 +585,7 @@ test.describe("staff review blocker 1 — the hand-off never outlives its landin
     await context.clearCookies({ name: "evoli_fixture_link" });
     await context.clearCookies({ name: "evoli_fixture_week" });
     await page.goto(`/clients/${PETRA}/nutrition`);
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toBeVisible();
     await quietMs(page);
     await expect(outcome(page)).toHaveCount(0);
@@ -599,6 +604,7 @@ test.describe("staff review blocker 1 — the hand-off never outlives its landin
       [PETRA, CUT]
     );
     await page.goto(`/clients/${TOBIAS}/nutrition`);
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toBeVisible();
     await quietMs(page);
     await expect(outcome(page)).toHaveCount(0);
@@ -618,6 +624,7 @@ test.describe("staff review blocker 1 — the hand-off never outlives its landin
       [PETRA, CUT]
     );
     await page.goto(`/clients/${PETRA}/nutrition`);
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toBeVisible();
     await quietMs(page);
     await expect(outcome(page)).toHaveCount(0);
@@ -648,6 +655,7 @@ test.describe("AC7 — a snapshot", () => {
     await expect(row(page, CUT)).toHaveCount(0);
 
     await page.goto(`/clients/${PETRA}/nutrition`);
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toHaveValue("1800");
     expect(await meals()).toEqual(weekBefore);
     // The outcome is a one-time hand-off, not a URL anyone can replay.
@@ -754,6 +762,7 @@ test.describe("EV-324 — use on a client, in a French browser (fr-FR)", () => {
     await expect(outcome(page)).toHaveText(
       "Les objectifs de Tobias sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain."
     );
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toHaveValue("1800");
     expect(traineeWrites(await calls(page))).toEqual([
       `PUT /coach-portal/clients/${TOBIAS}/nutrition/targets {calories,carbsG,fatG,proteinG}`,
@@ -894,6 +903,7 @@ test.describe("ADR-0030 — use on a trainee while their week is still generatin
     await expect(outcome(page)).toHaveAttribute("role", "alert");
     await expect(page.locator("body")).not.toContainText("couldn't be rebuilt");
     await expect(page.locator("body")).not.toContainText(IN_PROGRESS_API_MESSAGE);
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories", { exact: true })).toHaveValue("1800");
     const after = await page.locator("[data-meal-id]").evaluateAll((els) => els.map((e) => e.getAttribute("data-meal-id")));
     expect(after, "the week is unchanged").toEqual(before);

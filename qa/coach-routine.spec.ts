@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { openEveryDay } from "./day-accordion";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * EV-184b — the coach's Routine tab, in **fixture mode** (see playwright.config.ts).
@@ -1148,6 +1149,7 @@ test.describe("ADR-0012 AC6 — a revoke ends the session's access mid-edit", ()
     await expect(week.getByRole("button", { name: "Apply to Lina M." })).toBeVisible();
     const targets = await context.newPage();
     await targets.goto(`/clients/${LINA}/nutrition`);
+    await openTargetsForm(targets);
     await expect(targets.getByLabel("Calories")).toBeVisible();
 
     // Tab B: the same coach revokes (standing in for the trainee revoking in their

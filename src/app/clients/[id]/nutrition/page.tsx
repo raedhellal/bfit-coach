@@ -38,6 +38,15 @@ import { recipePlacementOn } from "@/lib/recipePlacement";
  * The dietary block is read-only and outside both client components, so no state in
  * this tab can submit an allergy, HALAL/KOSHER or a dislike — EV-185's non-negotiable,
  * made structural rather than promised.
+ *
+ * EV-337g1 — the frame (plan §5.4), the programme tab's (EV-337f1) copied. One `h1`, the
+ * client's name, from `ClientHeader`; the tab's own title is the `h2` « Nutrition » below it
+ * in EVERY state, the notices included (ruling 16, G1.4). The template-use outcome and the
+ * empty-state card sit above both columns (G1.1). Then the aside (the targets card, the
+ * diet profile) and the main column (the meal week, the food log): one column below a
+ * 1280 px viewport in that order, targets first; from 1280 the main column on the left and
+ * the aside beside it (`.nut-split`, globals.css). The aside comes first in the DOM, so the
+ * one-column order is the reading order.
  */
 export const dynamic = "force-dynamic";
 
@@ -109,6 +118,8 @@ export default async function NutritionPage({ params }: { params: { id: string }
         since={overview?.since}
         active="nutrition"
       />
+      {/* Ruling 16 / G1.4: the tab's title, in every state below. */}
+      <h2 className="nut-title">{copy.nutrition.title}</h2>
 
       {/*
         EV-273b AC5 — what "Use on a trainee" observed, above what the api holds. ABOVE
@@ -121,7 +132,8 @@ export default async function NutritionPage({ params }: { params: { id: string }
         <ClientNotice
           message={message ?? copy.nutrition.loadError}
           // BUG-713: with no overview the header draws no name and no h1 (no avatar either), so
-          // the sentence is the page's one h1. Same predicate as the header's.
+          // the sentence is the page's one h1. Same predicate as the header's. The tab's h2
+          // above it stays (G1.4): the h2 then precedes the h1, accepted by the BUG-713 pointer.
           asHeading={!headerHasName(trainee)}
         />
       ) : (
@@ -136,45 +148,58 @@ export default async function NutritionPage({ params }: { params: { id: string }
             </Card>
           )}
 
-          <ProfileFacts
-            title={copy.nutrition.title}
-            icon="shield"
-            groups={[
-              // BUG-694: the app stores its presets' English labels; show them in the page's language.
-              // BUG-706: the rules are the api's enum, labelled as the app labels them.
-              {
-                label: copy.nutrition.allergies,
-                values: nutrition.dietProfile.allergies.map((v) => dietValueLabel(copy.nutrition.allergyPresetLabels, v)),
-              },
-              {
-                label: copy.nutrition.rules,
-                values: nutrition.dietProfile.rules.map((rule) => dietValueLabel(copy.nutrition.ruleLabels, rule)),
-              },
-              {
-                label: copy.nutrition.dislikes,
-                values: nutrition.dietProfile.dislikes.map((v) => dietValueLabel(copy.nutrition.dislikePresetLabels, v)),
-              },
-            ]}
-            emptyAll={copy.nutrition.noRestrictions}
-          />
+          <div className="layout-split nut-split">
+            <div className="nut-aside" data-nut-column="aside">
+              <NutritionTargetsCard
+                clientId={params.id}
+                traineeDisplayName={trainee?.traineeDisplayName ?? null}
+                targets={nutrition.targets}
+              />
 
-          <NutritionTargetsCard
-            clientId={params.id}
-            traineeDisplayName={trainee?.traineeDisplayName ?? null}
-            targets={nutrition.targets}
-          />
+              {/* `data-nut-block`: a named place for a spec to find each block of the frame. */}
+              <div data-nut-block="diet">
+                <ProfileFacts
+                  // EV-337g1-R4 (G1.4a): the tab's h2 is « Nutrition », so the card takes the name the
+                  // routine tab's profile card took for the same reason (EV-337f1): the same key, so the
+                  // two tabs cannot drift apart.
+                  title={copy.routine.profileTitle}
+                  icon="shield"
+                  groups={[
+                    // BUG-694: the app stores its presets' English labels; show them in the page's language.
+                    // BUG-706: the rules are the api's enum, labelled as the app labels them.
+                    {
+                      label: copy.nutrition.allergies,
+                      values: nutrition.dietProfile.allergies.map((v) => dietValueLabel(copy.nutrition.allergyPresetLabels, v)),
+                    },
+                    {
+                      label: copy.nutrition.rules,
+                      values: nutrition.dietProfile.rules.map((rule) => dietValueLabel(copy.nutrition.ruleLabels, rule)),
+                    },
+                    {
+                      label: copy.nutrition.dislikes,
+                      values: nutrition.dietProfile.dislikes.map((v) => dietValueLabel(copy.nutrition.dislikePresetLabels, v)),
+                    },
+                  ]}
+                  emptyAll={copy.nutrition.noRestrictions}
+                />
+              </div>
+            </div>
+            <div className="nut-main" data-nut-column="main">
+              <div data-nut-block="week">
+                <NutritionWeekCard
+                  clientId={params.id}
+                  traineeDisplayName={trainee?.traineeDisplayName ?? null}
+                  week={nutrition.week}
+                  currentWeekStart={nutrition.currentWeekStart}
+                  // EV-256e AC1: only a literal `true` — an api that predates the field, or
+                  // sends anything else, hides the action (the production default).
+                  recipePlacementEnabled={recipePlacementOn(nutrition)}
+                />
+              </div>
 
-          <NutritionWeekCard
-            clientId={params.id}
-            traineeDisplayName={trainee?.traineeDisplayName ?? null}
-            week={nutrition.week}
-            currentWeekStart={nutrition.currentWeekStart}
-            // EV-256e AC1: only a literal `true` — an api that predates the field, or
-            // sends anything else, hides the action (the production default).
-            recipePlacementEnabled={recipePlacementOn(nutrition)}
-          />
-
-          <FoodLogCard log={foodLog} failed={foodLogFailed || !foodLog} />
+              <FoodLogCard log={foodLog} failed={foodLogFailed || !foodLog} />
+            </div>
+          </div>
         </>
       )}
     </CoachShell>

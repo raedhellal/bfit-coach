@@ -13,6 +13,7 @@ import {
   readQuantity,
   type RecipeDraft,
 } from "../src/lib/recipeDocument";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * The French polish pass before the 2026-10-03 demo (EV-273b gate, PB-2 / PB-4 / PB-5;
@@ -394,6 +395,7 @@ test.describe("a French browser (fr-FR)", () => {
   }) => {
     await signInFrench(page);
     await page.goto(`/clients/${OMAR}/nutrition`);
+    await openTargetsForm(page);
     const calories = page.getByLabel("Calories", { exact: true });
     const save = page.getByRole("button", { name: "Enregistrer les objectifs", exact: true });
     // `p`: Next's route announcer is an empty role=alert of its own.
@@ -429,6 +431,7 @@ test.describe("a French browser (fr-FR)", () => {
     const dialog = page.getByRole("dialog", { name: "Enregistrer les objectifs ?" });
     await dialog.getByRole("button", { name: "Enregistrer les objectifs" }).click();
     await expect(page.getByText("Objectifs enregistrés.", { exact: true })).toBeVisible();
+    await openTargetsForm(page);
     // What was STORED, as the card re-reads it: 1800, not 1 and not 18.
     await expect(calories).toHaveValue("1800");
   });
@@ -438,6 +441,7 @@ test.describe("a French browser (fr-FR)", () => {
   }) => {
     await signInFrench(page);
     await page.goto(`/clients/${OMAR}/nutrition`);
+    await openTargetsForm(page);
     const calories = page.getByLabel("Calories", { exact: true });
     const protein = page.getByLabel("Protéines", { exact: true });
     const save = page.getByRole("button", { name: "Enregistrer les objectifs", exact: true });
@@ -594,6 +598,7 @@ test("PB-2 — in English, '1,000' kcal is refused with the whole-number sentenc
   await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
   await page.goto(`/clients/${OMAR}/nutrition`);
   const sent = posts(page);
+  await openTargetsForm(page);
   await page.getByLabel("Calories", { exact: true }).fill("1,000");
   await page.getByRole("button", { name: "Save targets" }).click();
   await expect(page.locator('p[role="alert"]')).toHaveText("Enter a whole number, without a decimal point or comma.");

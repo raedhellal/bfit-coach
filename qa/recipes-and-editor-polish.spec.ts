@@ -7,6 +7,7 @@ import { fr } from "../src/lib/copy.fr";
 import { parseTarget, readNumber, targetRefusal } from "../src/lib/numberInput";
 import { localProblems, parseQuantity, readQuantity, type RecipeDraft } from "../src/lib/recipeDocument";
 import { matchesMealContent, matchesQuery, recipesFor, type MealContent } from "../src/lib/recipeSearch";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * `fix/recipes-and-editor-polish` — five small rows before the 2026-10-03 demo, each with a
@@ -443,6 +444,7 @@ test.describe("BUG-573 — digits of another script are told the format, and sti
   }) => {
     await signInFrench(page);
     await page.goto(`/clients/${OMAR}/nutrition`);
+    await openTargetsForm(page);
     const calories = page.getByLabel("Calories", { exact: true });
     const save = page.getByRole("button", { name: "Enregistrer les objectifs", exact: true });
     const alert = page.locator('p[role="alert"]');

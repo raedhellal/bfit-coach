@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * BUG-714 (ruling 714-R1) — a trainee whose name is NULL, or blank.
@@ -242,6 +243,7 @@ for (const lang of ["en", "fr"] as const) {
           await nameless(page, LINA, sentinel.value);
           await openHydrated(page, `/clients/${LINA}/nutrition`);
           await expect(page.getByRole("button", { name: t.apply, exact: true })).toBeVisible();
+          await openTargetsForm(page);
           await page.getByRole("button", { name: t.saveTargets, exact: true }).click();
           const confirm = page.getByRole("dialog");
           await expect(confirm.getByText(t.seesStraightAway, { exact: true })).toBeVisible();
