@@ -22,13 +22,17 @@ import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
  */
 export function TemplateUseOutcome({
   clientId,
-  traineeDisplayName,
+  trainee,
 }: {
   clientId: string;
-  traineeDisplayName: string;
+  /** The read that carries the name, or null when it failed (`ClientHeader`'s input). */
+  trainee: { traineeDisplayName: string | null } | null;
 }) {
   const copy = useCopy();
-  const first = firstName(traineeDisplayName, copy.locale);
+  const first = firstName(trainee?.traineeDisplayName, copy.locale);
+  // BUG-714: "Unnamed client" only when the read succeeded with no name. A failed read keeps
+  // the label it always had (the name unknown, BUG-713), never the label.
+  const applyLabel = trainee ? weekApplyLabel(copy, trainee.traineeDisplayName) : copy.nutrition.apply("");
   const [outcome, setOutcome] = useState<UseOutcome | null>(null);
 
   useEffect(() => {
@@ -49,7 +53,7 @@ export function TemplateUseOutcome({
     // step 1 was RECEIVED as a 200, so the targets did change (as every WEEK_* lead says).
     WEEK_GENERATING: `${t.targetsUpdated(first)} ${copy.nutrition.weekGenerating(first)}`,
     // PB-5: the week card's button by its own label (the full name), never "Apply to {first}".
-    WEEK_FAILED: t.weekFailed(first, weekApplyLabel(copy, traineeDisplayName)),
+    WEEK_FAILED: t.weekFailed(first, applyLabel),
     WEEK_UNKNOWN: t.weekUnknown(first),
     TARGETS_FAILED: t.targetsFailed(first),
     TARGETS_UNKNOWN: t.targetsUnknown(first),

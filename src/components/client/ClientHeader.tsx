@@ -5,6 +5,7 @@ import { ClientTabs, type ClientTab } from "./ClientTabs";
 import { RosterBackLink } from "./RosterBackLink";
 import { getCopy } from "@/lib/i18n/server";
 import { formatInstant, truncateName } from "@/lib/format";
+import { fullNameOf, isUnnamed } from "@/lib/traineeName";
 
 /**
  * The header every trainee tab shares: back to the roster, who this is, since when,
@@ -27,21 +28,35 @@ import { formatInstant, truncateName } from "@/lib/format";
  * every client page and a new section is one entry of `CLIENT_SECTIONS`. The revoke menu
  * stays in the header. Every control in the header is a 44 px target; the layout is in
  * classes (`.client-head`, globals.css).
+ *
+ * BUG-713: when the read that carries the name FAILED (the routine and nutrition tabs when the
+ * overview read failed, which pass `trainee={null}`) the name is unknown and the header draws
+ * NO identity block: no avatar, and no `h1`. The page's one `h1` is then the tab's load-error
+ * sentence (`ClientNotice asHeading`), on the same predicate, `headerHasName`. The way back and
+ * the tab bar are drawn in every state.
+ *
+ * BUG-714: when the read SUCCEEDED and the name is null or blank (a trainee registered with no
+ * name), the name is absent, not unknown: the `h1` and its `title` are "Unnamed client" /
+ * « Client sans nom » and the avatar is a person glyph. Two cases, two inputs: a failed read is
+ * `null` here, never an empty name, because both used to arrive as "".
  */
 export function ClientHeader({
   clientId,
-  traineeDisplayName,
+  trainee,
   since,
   active,
   action,
 }: {
   clientId: string;
-  traineeDisplayName: string;
+  /** The read that carries the name (the overview, or the nutrition read), or null when it failed. */
+  trainee: { traineeDisplayName: string | null } | null;
   since?: string | null;
   active: ClientTab;
   action?: ReactNode;
 }) {
   const copy = getCopy();
+  const named = headerHasName(trainee);
+  const name = trainee ? fullNameOf(trainee.traineeDisplayName, copy) : "";
   return (
     <div className="client-head-wrap">
       <div style={{ marginBottom: 6 }}>
@@ -49,44 +64,61 @@ export function ClientHeader({
         <RosterBackLink label={copy.shell.backToRoster} />
       </div>
 
-      <div className="client-head">
-        <div className="client-head-id">
-          <Avatar name={traineeDisplayName} size={48} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h1
-              className="dt"
-              // EV-185 edge case 7: a 40+ character name truncates rather than pushing
-              // the revoke control off a 390 px viewport. `title` keeps the whole name.
-              title={traineeDisplayName}
-              style={{
-                margin: 0,
-                fontWeight: 700,
-                fontSize: "var(--fs-h1)",
-                letterSpacing: -0.6,
-                color: "var(--ink)",
-                overflowWrap: "anywhere",
-              }}
-            >
-              {truncateName(traineeDisplayName)}
-            </h1>
-            {/*
-              No plan badge: `TraineeOverviewResponse` carries no plan name — the plan is
-              a roster-row field only. Rendering "No plan" here would state something about
-              the trainee that this response does not say.
-            */}
-            {since && (
-              <div className="client-head-chips">
-                <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
+      {(named || Boolean(action)) && (
+        <div className="client-head">
+          {named && (
+            <div className="client-head-id">
+              <Avatar name={name} unnamed={isUnnamed(trainee?.traineeDisplayName)} size={48} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h1
+                  className="dt"
+                  // EV-185 edge case 7: a 40+ character name truncates rather than pushing
+                  // the revoke control off a 390 px viewport. `title` keeps the whole name.
+                  title={name}
+                  style={{
+                    margin: 0,
+                    fontWeight: 700,
+                    fontSize: "var(--fs-h1)",
+                    letterSpacing: -0.6,
+                    color: "var(--ink)",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {truncateName(name)}
+                </h1>
+                {/*
+                  No plan badge: `TraineeOverviewResponse` carries no plan name — the plan is
+                  a roster-row field only. Rendering "No plan" here would state something about
+                  the trainee that this response does not say.
+                */}
+                {since && (
+                  <div className="client-head-chips">
+                    <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+          {action}
         </div>
-        {action}
-      </div>
+      )}
 
       <ClientTabs clientId={clientId} active={active} />
     </div>
   );
+}
+
+/**
+ * BUG-713 — whether `ClientHeader` draws the name as the page's `h1`. A page whose header
+ * has no name must give the page its `h1` itself, and asks this same function, so the page
+ * has exactly one `h1` either way.
+ *
+ * BUG-714: it does whenever the read that carries the name succeeded. A trainee with no name
+ * still gets an `h1`, the label; only a FAILED read (`null`; `undefined` too, failing closed)
+ * leaves the page to its notice.
+ */
+export function headerHasName(trainee: { traineeDisplayName: string | null } | null): boolean {
+  return trainee != null;
 }
 
 /**

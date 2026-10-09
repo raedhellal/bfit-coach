@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
-import { ClientHeader } from "@/components/client/ClientHeader";
+import { ClientHeader, headerHasName } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { ProfileLine } from "@/components/routine/ProfileLine";
@@ -17,6 +17,7 @@ import { editableDocument } from "@/lib/routineDocument";
 import { traineeChangeNotice } from "@/lib/routineChange";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
+import { fullNameOf } from "@/lib/traineeName";
 
 /**
  * /clients/[id]/routine — EV-184b.
@@ -49,6 +50,10 @@ import { getCopy } from "@/lib/i18n/server";
  * trainee-changed banner sits above both columns; the aside (profile, « Enregistrer comme
  * modèle ») is beside the editor from 1280 px (F1.4). EV-342f: below 1280 px the profile is
  * one line above the editor and « Enregistrer comme modèle » comes after it.
+ *
+ * BUG-713: with no overview there is no name, and `ClientHeader` draws no avatar and no `h1`;
+ * the page's one `h1` is then the load-error sentence (`ClientNotice asHeading`). BUG-714: an
+ * overview whose name is null or blank still draws the `h1`, as "Unnamed client".
  */
 export const dynamic = "force-dynamic";
 
@@ -177,7 +182,12 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   // there is none now.)
   if (denied) redirect("/clients/denied");
 
-  const displayName = overview?.traineeDisplayName ?? "";
+  /**
+   * BUG-714: the overview is the read that carries the name. Null means it FAILED and the name
+   * is unknown (BUG-713's state); a null or blank name in a read that succeeded is a trainee
+   * with no name, printed as the label. The editor is reached only with an overview.
+   */
+  const fullName = overview ? fullNameOf(overview.traineeDisplayName, copy) : "";
   /**
    * The live plan as the editor holds it: the WHOLE document (BUG-195c), named by the
    * `plans` row. Null when there is no routine document, whatever `planId` says — a plan
@@ -204,7 +214,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    * EV-283b — the trainee changed the live plan. Null (no banner) unless the api says
    * `TRAINEE` in so many words; see `src/lib/routineChange.ts` for why it fails closed.
    */
-  const changedByTrainee = traineeChangeNotice(routine, displayName, copy);
+  const changedByTrainee = traineeChangeNotice(routine, overview?.traineeDisplayName, copy);
 
   /**
    * EV-337f1 F1.4 — the trainee's profile card, and (EV-342f) the one line it folds into
@@ -261,13 +271,14 @@ export default async function RoutinePage({ params }: { params: { id: string } }
 
   /*
    * EV-337f1 — what sits above the frame in every state: one `h1` (the client's name, in
-   * `ClientHeader`) and the tab's `h2` (ruling 16, F1.6).
+   * `ClientHeader`; BUG-713: the notice's sentence when there is no name) and the tab's `h2`
+   * (ruling 16, F1.6).
    */
   const head = (
     <>
       <ClientHeader
         clientId={params.id}
-        traineeDisplayName={displayName}
+        trainee={overview}
         since={overview?.since}
         active="routine"
       />
@@ -280,12 +291,16 @@ export default async function RoutinePage({ params }: { params: { id: string } }
       {message || !routine ? (
         <>
           {head}
-          <ClientNotice message={message ?? copy.routine.loadError} />
+          <ClientNotice
+            message={message ?? copy.routine.loadError}
+            // BUG-713: the header drew no name, so the sentence is the page's one h1.
+            asHeading={!headerHasName(overview)}
+          />
         </>
       ) : (
         <RoutineEditor
           clientId={params.id}
-          traineeName={displayName}
+          traineeName={fullName}
           activePlan={activePlan}
           initialDraft={draft}
           sourceTemplateName={sourceTemplateName}

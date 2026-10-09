@@ -10,6 +10,7 @@ import {
   type SwapSheetTarget,
 } from "@/components/nutrition/SwapSheet";
 import { useCopy } from "@/lib/i18n/client";
+import { fullNameOf } from "@/lib/traineeName";
 import { firstName, formatDate, formatWeekday, truncateName } from "@/lib/format";
 import {
   applySwapAction,
@@ -28,8 +29,9 @@ import type { Copy } from "@/lib/copy";
  * elsewhere on the page sends the coach to this button by name (`TemplateUseOutcome`,
  * PB-5), and must quote it exactly as it is labelled here.
  */
-export function weekApplyLabel(copy: Copy, traineeDisplayName: string): string {
-  return copy.nutrition.apply(truncateName(traineeDisplayName));
+export function weekApplyLabel(copy: Copy, traineeDisplayName: string | null): string {
+  // BUG-714: a trainee with no name is "Apply to Unnamed client".
+  return copy.nutrition.apply(truncateName(fullNameOf(traineeDisplayName, copy)));
 }
 
 /**
@@ -122,7 +124,7 @@ export function NutritionWeekCard({
   recipePlacementEnabled,
 }: {
   clientId: string;
-  traineeDisplayName: string;
+  traineeDisplayName: string | null;
   week: MealWeekView | null;
   currentWeekStart: string;
   /**
@@ -196,7 +198,9 @@ export function NutritionWeekCard({
     setWeekGenerating(false);
   }
 
-  const trainee = truncateName(traineeDisplayName);
+  // The full name (or "Unnamed client", BUG-714) for the sentences that name the trainee in
+  // full; `first` takes the wire value, so a nameless trainee is "This trainee" there.
+  const trainee = truncateName(fullNameOf(traineeDisplayName, copy));
   const first = firstName(traineeDisplayName, copy.locale);
   const recipeMeals = replaceableRecipeMeals(week);
   const share = recipeShare(week);
