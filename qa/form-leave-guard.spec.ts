@@ -537,6 +537,40 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await page.waitForURL("/");
   });
 
+  test("the progress goal: typed back to the stored value, then again before that step lands: no question, Back still asks", async ({
+    page,
+  }) => {
+    // The guard's OTHER own step: a form that is clean again without a save takes its entry
+    // back out from the effect's cleanup, and a keystroke can land inside that step too.
+    await holdHistoryBack(page, 400);
+    await signIn(page, "en");
+    await progressGoal.open(page, w);
+    const field = progressGoal.field(page, w);
+    const stored = await field.inputValue();
+    const start = await historyIndex(page);
+
+    await field.fill("71");
+    await armed(page);
+    await field.fill(stored);
+    await field.fill("69");
+    await heldStepsLanded(page, 1);
+
+    await expect(leaveDialog(page, w)).toHaveCount(0);
+    await armed(page);
+    await pressBack(page);
+    await expect(leaveDialog(page, w)).toBeVisible();
+    await leaveDialog(page, w).getByRole("button", { name: w.stay, exact: true }).click();
+    await expect(field).toHaveValue("69");
+
+    // Typed back once more: the entry goes, and the page stands where it was loaded.
+    await field.fill(stored);
+    await heldStepsLanded(page, 2);
+    await disarmed(page);
+    expect(await historyIndex(page), "a stray guard entry is left in the history").toBe(start);
+    await page.goBack();
+    await page.waitForURL("/");
+  });
+
   test("a new nutrition template: a keystroke while the create's step is in flight neither asks nor leaves /new behind", async ({
     page,
   }) => {
