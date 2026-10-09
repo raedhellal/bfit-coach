@@ -533,6 +533,9 @@ export const fr = {
     profileNoInjury: "aucune",
     profileUnanswered: "pas encore renseigné",
     profileDetails: "Détails",
+    settingsLine: (goal: string, level: string, minutes: number) => `${goal} · ${level} · ${minutes}\u00a0min`,
+    settingsLinePending: (sentence: string, minutes: number) => `${sentence} · ${minutes}\u00a0min`,
+    editSettings: "Modifier les réglages",
     emptyTitle: "Aucun plan actif",
     emptyBody: "Rien n'est encore programmé pour ce client.",
     build: "Créer un plan",
@@ -627,6 +630,8 @@ export const fr = {
     notSaveableYet: "Ce plan n'est pas encore prêt à être enregistré :",
     summaryHint: "Fait partie du plan que vous publiez. Laissez vide si vous n'avez rien à ajouter.",
     minutesRequired: "Indiquez la durée d'une séance en minutes.",
+    // U+00A0 before the colon, as `common.labelled` writes it (BUG-462's rule).
+    minutesOutOfRange: "Minutes par séance\u00a0: indiquez une valeur entre 20 et 90.",
     setsBound: (day: number, exercise: string) =>
       `Jour ${day} : ${exercise} doit compter entre 1 et 20 séries.`,
     restRequired: (day: number, exercise: string) =>
@@ -719,6 +724,8 @@ export const fr = {
       `Vos macros totalisent ${macroKcal} kcal — cela correspond à l'objectif calorique.`,
     targetsSaved: "Objectifs enregistrés.",
     targetsFailed: "Les objectifs n'ont pas pu être enregistrés.",
+    targetsNoAnswer:
+      "Nous n'avons pas pu confirmer si les objectifs ont été enregistrés. Rechargez la page avant de réessayer.",
     saveTargetsTitle: "Enregistrer les objectifs ?",
     weekTitle: "Semaine de repas",
     weekOf: (date: string) => `Semaine du ${date}`,
@@ -731,6 +738,8 @@ export const fr = {
     applyConfirm: "Appliquer",
     cancel: "Annuler",
     applyFailed: "La semaine de repas n'a pas pu être appliquée.",
+    applyNoAnswer:
+      "Nous n'avons pas pu confirmer si la semaine de repas a été appliquée. Rechargez la page avant de réessayer.",
     weekOutOfRange: "Seule la semaine en cours peut être appliquée.",
     weekRateLimited:
       "Une semaine de repas peut être appliquée une fois par jour pour chaque client. Réessayez demain.",
@@ -753,6 +762,8 @@ export const fr = {
       `Remplacer un repas n'utilise pas les régénérations quotidiennes ${de(endSentence(trainee))}`,
     regenerating: "Régénération…",
     regenerateFailed: "Le jour n'a pas pu être régénéré.",
+    regenerateNoAnswer:
+      "Nous n'avons pas pu confirmer si le jour a été régénéré. Rechargez la page avant de réessayer.",
     /** The weekday mid-sentence is lower-cased ("le lundi"), the house style. */
     dayRefusedTitle: (day: string, first: string) =>
       `Nous n'avons pas pu reconstruire le ${day.toLowerCase()} pour ${first}.`,
@@ -769,6 +780,8 @@ export const fr = {
     swapLoading: "Chargement des options…",
     swapNone: "Aucune option de remplacement n'est disponible pour ce repas.",
     swapFailed: "Le repas n'a pas pu être remplacé.",
+    swapNoAnswer:
+      "Nous n'avons pas pu confirmer si le repas a été remplacé. Rechargez la page avant de réessayer.",
     swapOptionsChanged: "Ces options ont changé. Voici les options actuelles.",
     noMeals: "Aucun repas prévu ce jour-là.",
     mealKept: "Conservé",
@@ -851,6 +864,8 @@ export const fr = {
     accessDenied: (first: string) => `Cette recette n'a pas pu être utilisée pour ${endSentence(first)}`,
     placementOff: "Les recettes ne peuvent pas être placées sur les repas pour le moment.",
     failed: "La recette n'a pas pu être utilisée. Réessayez.",
+    noAnswer:
+      "Nous n'avons pas pu confirmer si la recette a été utilisée. Rechargez la page avant de réessayer.",
     applyWarning: (count: number, first: string) =>
       `Cela remplace jusqu'à ${count} ${count < 2 ? "repas placé" : "repas placés"} à partir de recettes de coach. Les repas ${que(first)} a mangés sont conservés.`,
   },

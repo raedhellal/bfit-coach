@@ -15,6 +15,7 @@ import {
   documentReasons,
   editableDocument,
   forDraftSave,
+  sessionMinutesOutOfRange,
   withServerFields,
 } from "@/lib/routineDocument";
 import { failureSentence, type RoutineFailure, type RoutineWrite } from "@/lib/routineFailure";
@@ -202,6 +203,17 @@ export function RoutineEditor({
       new Set(unbindableExercises.map((name) => name.toLowerCase()))
     )
   );
+  /**
+   * EV-344 — whether the folded plan settings (below 1280 px) are open. Held here for the
+   * same reason as `openDays`: the remount above must not fold the card the coach is in.
+   * Closed on every page load (EV-344 scope 1; a remembered state is out of scope), unless
+   * the plan loads with its minutes outside the published range (EV-344.5A item 3): then the
+   * card opens on load, so the field the reason names is in sight. The toggle still folds it.
+   */
+  const [settingsOpen, setSettingsOpen] = useState(() => {
+    const loaded = initialDraft?.document ?? activePlan?.document ?? null;
+    return loaded !== null && sessionMinutesOutOfRange(loaded.constraints.minutesPerSession);
+  });
 
   /*
    * U6 — the notice and the error are where the coach is looking. They used to render in
@@ -289,7 +301,7 @@ export function RoutineEditor({
   }
 
   const reasons = document
-    ? documentReasons(document, copy, { dayCountBound: copy.routine.dayCountBound })
+    ? documentReasons(document, copy, { dayCountBound: copy.routine.dayCountBound, sessionMinutesRange: true })
     : [];
   const writable = document !== null && reasons.length === 0;
 
@@ -601,6 +613,8 @@ export function RoutineEditor({
           replaceHint
           openDays={openDays}
           onOpenDaysChange={setOpenDays}
+          settingsOpen={settingsOpen}
+          onSettingsOpenChange={setSettingsOpen}
         />
       </ProgrammeFrame>
 

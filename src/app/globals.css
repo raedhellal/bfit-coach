@@ -1376,12 +1376,12 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
   border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
 }
 .prog-profile-text { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); line-height: 20px; color: var(--ink-2); overflow-wrap: anywhere; }
-.prog-profile-toggle {
+.prog-profile-toggle, .plan-settings-toggle {
   min-height: 44px; padding: 0 14px; border: 0; border-radius: var(--r-md); background: transparent;
   font: inherit; font-size: var(--fs-body); font-weight: 600; color: var(--blue-600); cursor: pointer;
 }
-.prog-profile-toggle:hover { background: var(--surface-2); }
-.prog-profile-toggle:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+.prog-profile-toggle:hover, .plan-settings-toggle:hover { background: var(--surface-2); }
+.prog-profile-toggle:focus-visible, .plan-settings-toggle:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
 @media (max-width: 1279px) {
   .prog-profile-box:not([data-open]) > .prog-profile-card { display: none; }
   /* F.3: the plan name takes the whole row, and the status pills wrap under it. */
@@ -1699,3 +1699,32 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .invited-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 24px; margin: 0; }
 .invited-facts dt { font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
 .invited-facts dd { margin: 2px 0 0; font-size: var(--fs-body); line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* ── EV-344 (audit A6 remainder, `D-FOLD-1` (A)): Day 1 on the first screen at 1024–1279 ────
+   The shared routine editor's spacing, as classes so a media query can reach it (an inline
+   declaration cannot be overridden, BUG-380). The base values are the inline ones they
+   replace, so the template editor and every width from 1280 px are unchanged (EV-344.7).
+   Below 1280 px, on a TRAINEE's plan only (`.prog-doc`): the plan settings fold into one line
+   (`PlanSettingsFold`) and the space between « Jours d'entraînement » and Day 1's first
+   exercise shrinks. Nothing is hidden but the closed card, and every control stays ≥ 44 px
+   (EV-344.6). Measured at 1024×800 (Lina) on the prototype `c736eb9`, the same CSS: Day 1's
+   header 636→682 under a bar at 700, the first row's top at 779. */
+.doc-days-head { margin: 0 0 12px; }
+.doc-days-note { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.55; }
+.doc-day-fields { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.doc-day-hint { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-3); }
+.plan-settings-line {
+  display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 6px 6px 6px 16px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+}
+.plan-settings-text { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); line-height: 20px; color: var(--ink-2); overflow-wrap: anywhere; }
+@media (max-width: 1279px) {
+  .plan-settings-box:not([data-open]) > .plan-settings-card { display: none; }
+  .prog-doc .doc-days-head { margin-bottom: 8px; }
+  .prog-doc .doc-days-note { margin-top: 2px; }
+  .prog-doc .day-acc-body { margin-top: 6px; }
+  .prog-doc .doc-day-fields { margin-bottom: 6px; gap: 8px; }
+  .prog-doc .doc-day-hint { margin-bottom: 6px; }
+}
+@media (min-width: 1280px) { .plan-settings-line { display: none; } }

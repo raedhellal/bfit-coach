@@ -246,3 +246,47 @@ for (const c of CASES) {
     }
   });
 }
+
+/**
+ * EV-344.4 — "a value typed into the card before hydration is kept". The plan-settings card
+ * is folded below 1280 px (`display: none` until the coach opens it, which needs React), so
+ * before hydration it can only be typed into from 1280 px. Typed there, saved, read back; then
+ * at 1024 px the FOLDED line prints what was typed, so an edit made in the card is never
+ * invisible behind the fold.
+ */
+const ROUTINE_SETTINGS: EditorCase = {
+  name: "routine plan settings, EV-344.4 (/clients/[id]/routine)",
+  path: `/clients/${LINA}/routine`,
+  async type(page, t) {
+    const field = page.getByLabel(t.templates.minutesLabel, { exact: true });
+    await field.fill("52");
+    return { field, value: "52" };
+  },
+  async holdsTheEdit(page, t) {
+    await expect(page.getByText(t.routine.unsavedBadge, { exact: true }).first()).toBeVisible();
+  },
+  async save(page, t) {
+    await page.getByRole("button", { name: t.routine.saveDraft, exact: true }).click({ timeout: CLICK_TIMEOUT });
+    await expect(page.getByText(t.routine.unsavedBadge, { exact: true })).toHaveCount(0);
+  },
+  async readBack(page, t, typed) {
+    await page.reload();
+    await expect(page.getByLabel(t.templates.minutesLabel, { exact: true })).toHaveValue(typed);
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const line = page.locator(".plan-settings-text");
+    await expect(line).toBeVisible();
+    await expect(line).toHaveText(new RegExp(`· ${typed}\u00a0min$`));
+  },
+};
+
+test.describe(ROUTINE_SETTINGS.name, () => {
+  for (const engine of Object.keys(ENGINES) as Engine[]) {
+    for (const lang of LANGS) {
+      test(`${engine} · ${lang} · 1440 px: typed before hydration, saved as typed, shown on the folded line at 1024`, async ({
+        baseURL,
+      }) => {
+        await run(ROUTINE_SETTINGS, engine, lang, 1440, baseURL);
+      });
+    }
+  }
+});

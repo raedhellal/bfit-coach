@@ -228,10 +228,11 @@ export function NutritionWeekCard({
     startTransition(async () => {
       // `settled` on every action in this card: a failed request resolves with
       // `undefined`, and an unguarded `result.ok` replaces the whole tab with the
-      // error boundary instead of showing the sentence written for the failure.
+      // error boundary instead of showing the sentence written for the failure. A
+      // request that failed has no answer: each WRITE's fallback is `NO_ANSWER` (BUG-711).
       const result = await settled(applyWeekAction(clientId, currentWeekStart), {
         ok: false,
-        code: "FAILED",
+        code: "NO_ANSWER",
       } as const);
       setConfirming(false);
       // Each apply's answer replaces the last one's: only the branch below sets it again.
@@ -259,7 +260,9 @@ export function NutritionWeekCard({
             ? copy.nutrition.weekOutOfRange
             : result.code === "WEEK_RATE_LIMITED"
               ? copy.nutrition.weekRateLimited
-              : copy.nutrition.applyFailed
+              : result.code === "NO_ANSWER"
+                ? copy.nutrition.applyNoAnswer
+                : copy.nutrition.applyFailed
         );
         return;
       }
@@ -280,7 +283,7 @@ export function NutritionWeekCard({
     startTransition(async () => {
       const result = await settled(regenerateDayAction(clientId, index), {
         ok: false,
-        code: "FAILED",
+        code: "NO_ANSWER",
       } as const);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
@@ -296,7 +299,11 @@ export function NutritionWeekCard({
           logPortalEvent({ event: "coach_day_regen_capped" });
           return;
         }
-        setError(copy.nutrition.regenerateFailed);
+        setError(
+          result.code === "NO_ANSWER"
+            ? copy.nutrition.regenerateNoAnswer
+            : copy.nutrition.regenerateFailed
+        );
         return;
       }
       setError(null);
@@ -346,7 +353,7 @@ export function NutritionWeekCard({
     startTransition(async () => {
       const result = await settled(
         applySwapAction(clientId, target.mealId, candidateIndex),
-        { ok: false, code: "FAILED" } as const
+        { ok: false, code: "NO_ANSWER" } as const
       );
       if (!result.ok && result.code === "SWAP_OPTIONS_STALE") {
         /**
@@ -389,7 +396,9 @@ export function NutritionWeekCard({
       setCandidates(null);
       if (!result.ok) {
         if (result.code === "ACCESS_DENIED") return void handleAccessEnded();
-        setError(copy.nutrition.swapFailed);
+        setError(
+          result.code === "NO_ANSWER" ? copy.nutrition.swapNoAnswer : copy.nutrition.swapFailed
+        );
         return;
       }
       setError(null);
@@ -821,9 +830,9 @@ export function NutritionWeekCard({
             setRecipeSwap(null);
             handleAccessEnded();
           }}
-          onSwapFailed={() => {
+          onSwapFailed={(noAnswer) => {
             setRecipeSwap(null);
-            setError(copy.nutrition.swapFailed);
+            setError(noAnswer ? copy.nutrition.swapNoAnswer : copy.nutrition.swapFailed);
           }}
           onRefresh={() => router.refresh()}
         />

@@ -29,3 +29,11 @@ reads as verified and usually is not. Report "I verified X by running Y" per fac
 which ones could not be verified (e.g. deployed env-var values that live outside the repo).
 
 Related: [[defect-pattern-bound-that-does-not-bound]]
+
+**Variant — the seam exists on the TRAIN, not on the branch's base (BUG-711, 2026-10-09).** Coach
+bug branches are cut from production (`6caecb8`) while their sibling fix rides an unmerged train.
+`c906267:src/lib/nutritionActions.ts:93` says "BUG-523's gateway statuses, as
+`nutritionTemplateActions.ts` reads them" — at `c906267` that file has no `GATEWAY_STATUSES`; it
+exists only on `train/coach-s3b` (`fa23b84`). True or false depends on merge order. Check every
+"as X does" against `git show <branch-tip>:<path>`, not the train; if it only holds on the train,
+the merge note must pin the order.

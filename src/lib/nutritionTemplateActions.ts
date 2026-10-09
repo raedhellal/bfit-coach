@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  ApiError,
   coachApi,
   isForbidden,
   isNutritionTemplateLimitReached,
@@ -14,6 +13,7 @@ import {
   type NutritionTemplate,
   type NutritionTemplateTargetsRequest,
 } from "./coachApi";
+import { isLostAnswer } from "./lostAnswer";
 
 /**
  * EV-273b's write path. Same shape and reasoning as `templateActions.ts`: every action
@@ -179,12 +179,10 @@ export async function deleteNutritionTemplateAction(
 
 export type UseFailure = "ACCESS_DENIED" | "REFUSED" | "NO_ANSWER";
 
-/** BUG-523 — the gateway statuses: received, but not an answer from the api. */
-const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
-
 function classifyUse(err: unknown): UseFailure {
-  if (!(err instanceof ApiError)) return "NO_ANSWER";
-  if (GATEWAY_STATUSES.has(err.status)) return "NO_ANSWER";
+  // BUG-523: not an `ApiError`, or a gateway 502/503/504 — the policy in `lostAnswer.ts`,
+  // shared with the client nutrition page's writes (BUG-711).
+  if (isLostAnswer(err)) return "NO_ANSWER";
   if (isForbidden(err)) return "ACCESS_DENIED";
   return "REFUSED";
 }
