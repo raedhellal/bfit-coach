@@ -20,7 +20,8 @@ import { signInThroughForm } from "./sign-in";
  *     status, or throws `TypeError("fetch failed")` (the connection to b-fit-api lost).
  *   · `aborted` — the BROWSER's server-action POST is aborted (`route.abort()`), so the
  *     action never reaches the server and the island's `settled()` fallback answers.
- *   · `403` — `evoli_fixture_link=ended`, set after everything before the write was read.
+ *   · `403` — `evoli_fixture_link=ended`, set after everything before the write was read;
+ *     the page leaves for /clients/denied, asserted by URL AND by that page's heading.
  *
  * Six surfaces, because the swap is reached two ways: from the recipes-first sheet's
  * suggestions (placement flag on, Lina) and from the flag-off sheet (Pia), and the two
@@ -76,6 +77,12 @@ const FAILED: Record<Write, Record<Lang, string>> = {
   day: { en: "The day could not be regenerated.", fr: "Le jour n'a pas pu être régénéré." },
   swap: { en: "The meal could not be swapped.", fr: "Le repas n'a pas pu être remplacé." },
   place: { en: "The recipe could not be used. Try again.", fr: "La recette n'a pas pu être utilisée. Réessayez." },
+};
+
+/** The access-lost page's heading (`/clients/denied`), the 403 outcome's own sentence. */
+const DENIED: Record<Lang, string> = {
+  en: "This trainee is not on your roster. They may have revoked access.",
+  fr: "Ce client ne fait pas partie de votre liste. Il a peut-être révoqué l'accès.",
 };
 
 /* ── control names (the page's own labels, per language) ───────────────────── */
@@ -276,6 +283,7 @@ async function run(page: Page, surface: Surface, lang: Lang, outcome: Outcome) {
   if (outcome === "403") {
     // (d) the access outcome, unchanged: the link ended, the page leaves.
     await page.waitForURL("**/clients/denied");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(DENIED[lang]);
     expect(seen.join(" | "), "a 403 is never called a lost answer").not.toContain(noAnswer);
     return;
   }
@@ -299,7 +307,7 @@ async function run(page: Page, surface: Surface, lang: Lang, outcome: Outcome) {
 }
 
 const EN_OUTCOMES: Outcome[] = ["502", "503", "504", "thrown", "aborted", "500", "403"];
-const FR_OUTCOMES: Outcome[] = ["502", "503", "504", "thrown", "500"];
+const FR_OUTCOMES: Outcome[] = ["502", "503", "504", "thrown", "500", "403"];
 
 for (const surface of SURFACES) {
   test.describe(`BUG-711 — ${surface.name}`, () => {
