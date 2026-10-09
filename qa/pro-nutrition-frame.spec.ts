@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { expect, webkit, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll } from "./layout";
@@ -505,6 +505,87 @@ for (const lang of ["en", "fr"] as const) {
     });
   });
 }
+
+/* ═══ G1.1 + G1.2 + G1.3 in real WebKit (X1–X8: Chromium and WebKit) ═════════════════════ */
+
+test.describe("G1.1 + G1.2 + G1.3 WebKit", () => {
+  let browser: Browser;
+  test.beforeAll(async () => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    browser = await webkit.launch();
+  });
+  test.afterAll(async () => {
+    await browser?.close();
+  });
+
+  for (const lang of ["en", "fr"] as const) {
+    test(`WebKit (${lang}): two columns at 1440 and 1280, one below in order; the tiles whole; the pill whole at 320–390`, async ({
+      baseURL,
+    }) => {
+      // The runner hands its own en-US Accept-Language to contexts it did not create: say it.
+      const context = await browser.newContext({
+        baseURL,
+        locale: LOCALE[lang],
+        extraHTTPHeaders: { "Accept-Language": LOCALE[lang] },
+      });
+      const page = await context.newPage();
+      await signInThroughForm(page, { lang, landing: `${baseURL}/` });
+      await page.goto(`/clients/${LINA}/nutrition`);
+      const b = blocks(page, lang);
+      const region = targetsRegion(page, lang);
+      await expect(region).toHaveCount(1);
+      for (const width of [1440, 1280, 1279, 1024, 768, 390, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        const where = `WebKit ${width} (${lang})`;
+        await expectNoSidewaysScroll(page, where);
+        const t = await box(b.targets, `targets at ${where}`);
+        const d = await box(b.diet, `diet at ${where}`);
+        const w = await box(b.week, `week at ${where}`);
+        const f = await box(b.foodLog, `food log at ${where}`);
+        if (width >= 1280) {
+          expect(t.x, `${where}: the aside is right of the main column`).toBeGreaterThanOrEqual(w.x + w.width);
+          expect(Math.abs(t.y - w.y), `${where}: the columns start on one line`).toBeLessThanOrEqual(1);
+          expect(w.y + w.height, `${where}: week above food log`).toBeLessThanOrEqual(f.y + 0.5);
+          expect(t.y + t.height, `${where}: targets above diet`).toBeLessThanOrEqual(d.y + 0.5);
+        } else {
+          expect(t.y + t.height, `${where}: targets above diet`).toBeLessThanOrEqual(d.y + 0.5);
+          expect(d.y + d.height, `${where}: diet above week`).toBeLessThanOrEqual(w.y + 0.5);
+          expect(w.y + w.height, `${where}: week above food log`).toBeLessThanOrEqual(f.y + 0.5);
+          expect(Math.abs(w.x - t.x), `${where}: one column`).toBeLessThanOrEqual(1);
+        }
+        expect(await tilesWhole(region), `${where}: each value whole, on one line, in its tile`).toEqual([]);
+        if (width <= 390) {
+          const e = await box(region.getByRole("button", { name: L[lang].edit, exact: true }), `edit at ${where}`);
+          expect(e.height, `${where}: « ${L[lang].edit} » ≥ 44 px tall`).toBeGreaterThanOrEqual(44);
+        }
+      }
+      const pill = page.getByText(L[lang].pill, { exact: true });
+      for (const width of PHONES) {
+        await page.setViewportSize({ width, height: 900 });
+        const where = `WebKit ${width} (${lang})`;
+        await expectNoSidewaysScroll(page, where);
+        const seen = await pill.evaluate((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const text = range.getBoundingClientRect();
+          const own = el.getBoundingClientRect();
+          return {
+            ellipsis: getComputedStyle(el).textOverflow === "ellipsis",
+            clipped: el.scrollWidth - el.clientWidth,
+            inside: text.left >= own.left - 0.5 && text.right <= own.right + 0.5,
+            right: text.right,
+            vw: document.documentElement.clientWidth,
+          };
+        });
+        expect(seen.ellipsis, `${where}: no ellipsis`).toBe(false);
+        expect(seen.clipped, `${where}: the pill's text is not cut`).toBeLessThanOrEqual(1);
+        expect(seen.inside, `${where}: the text is inside the pill`).toBe(true);
+        expect(seen.right, `${where}: the pill ends inside the viewport`).toBeLessThanOrEqual(seen.vw + 0.5);
+      }
+      await context.close();
+    });
+  }
+});
 
 /** EV-273b's hand-off, as `handOffOutcome` writes it, for Lina and a template named "Cut". */
 async function addOutcome(context: BrowserContext) {
