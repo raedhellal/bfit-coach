@@ -269,7 +269,7 @@ export function RoutineEditor({
     setDirty(false);
     setPreview(null);
     setConflict(null);
-    leaving.release(() => router.refresh());
+    leaving.release(() => router.refresh(), "leaves");
   }
 
   /** Every refusal of every write lands here, so none of them can be handled two ways. */

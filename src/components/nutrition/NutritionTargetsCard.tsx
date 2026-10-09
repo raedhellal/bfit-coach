@@ -237,7 +237,7 @@ export function NutritionTargetsCard({
           // sentence beneath it. `endAccess` first: nothing typed can be saved now, so the
           // leave guard stands down and hands the history back clean, or the refresh
           // would never reach the layout's redirect (`useUnsavedChanges.release`).
-          form.endAccess(() => router.refresh());
+          form.endAccess(() => router.refresh(), "leaves");
           return;
         }
         setError(

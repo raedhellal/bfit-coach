@@ -423,3 +423,33 @@ for (const lang of ["en", "fr"] as const) {
     });
   });
 }
+
+/**
+ * EV-337j2 J2.5 (ruling EV-337j2-R1): the shared `searchKey` folds « æ » to "ae", so a client
+ * whose name has the ligature is found by what a keyboard types. Lina's link is served as
+ * « L\u00e6titia Moreau » through `evoli_fixture_display_name` (one context), so no roster row
+ * is added and no count of the specs above moves.
+ */
+test.describe("EV-337j2 J2.5: the roster search folds « æ »", () => {
+  test.use({ locale: LANG.fr.locale });
+
+  test("« laetitia » lists « L\u00e6titia »", async ({ page, context, baseURL }) => {
+    await context.addCookies([
+      { name: "evoli_fixture_display_name", value: `${LINA}:${encodeURIComponent("L\u00e6titia Moreau")}`, url: baseURL! },
+    ]);
+    await signIn(page, "fr");
+    const names = page.locator(".roster-row .roster-name");
+    await expect(names).toHaveCount(6);
+    await expect(names.filter({ hasText: /^L\u00e6titia/ })).toHaveCount(1);
+    const search = page.getByRole("searchbox", { name: LANG.fr.search });
+    // Retried: a value typed before hydration reaches no state.
+    await expect(async () => {
+      await search.fill("laetitia");
+      await expect(page.locator(".roster-row")).toHaveCount(1, { timeout: 1_000 });
+    }).toPass();
+    await expect(names).toHaveText([/^L\u00e6titia/]);
+    await search.fill("L\u00c6TITIA");
+    await expect(names).toHaveText([/^L\u00e6titia/]);
+  });
+});
+

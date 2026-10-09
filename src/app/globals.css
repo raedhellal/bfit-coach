@@ -992,8 +992,15 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
   font: 400 var(--fs-body) var(--font-body);
   color: var(--ink);
 }
-/* The field's own 2 px focus outline is on the label (focus-within); the ring is extra. */
-.roster-search:has(input:focus-visible) { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+/* The field's own 2 px focus outline is on the label (focus-within); the ring is extra.
+   BUG-724: the `--ring` halo gives way to it, as the kit Input's does (BUG-663). Under the
+   halo the 2 px offset read #D7E0FA (Chromium) / #D8E0FA (WebKit), 2.82:1 against the ring;
+   without it the offset shows the page and the ring reads 3.46:1 on --bg (qa/field-focus-ring
+   measures the roster's, /templates' and /recipes' searches). A mouse click into a text field
+   matches :focus-visible too in both engines (EV-337j2 N1), so a click shows the ring and no
+   halo; the border still turns --blue-500 on any focus. A browser without :has() drops this
+   rule and keeps the halo above. */
+.roster-search:has(input:focus-visible) { outline: 2px solid var(--blue-500); outline-offset: 2px; box-shadow: none; }
 .roster-filters { display: flex; gap: 6px; flex-wrap: wrap; }
 .roster-chip {
   min-height: 44px;
@@ -1293,6 +1300,17 @@ main#main:focus { outline: none; }
   .tpl-row-id { flex-basis: 100%; }
   .tpl-row-more { justify-content: flex-start; }
 }
+
+/* ── EV-337j2: the recipe library (plan §5.9, story J2.1–J2.3) ───────────────────────────
+   EV-337i's list, reused as is: `.tpl-list` is ONE card of rows from 768 px and one card PER
+   recipe below it, `.tpl-row` puts the actions beside the name (≥ 768) or under it (< 768).
+   What is the library's own: the line holding « Nouvelle recette » and the count, the search
+   field's 44 px input (X3 measures the field itself, not only its frame), the two-span meta
+   line, and the no-match sentence (a recipe query can be long: it wraps, never widens). */
+.rcp-head-line { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.rcp-search input { height: 44px; }
+.rcp-row-meta { display: flex; gap: 2px 10px; flex-wrap: wrap; }
+.rcp-nomatch-text { margin: 0; min-width: 0; font-size: var(--fs-body); color: var(--ink-2); overflow-wrap: anywhere; }
 
 /* ── the editor ── */
 .tpl-dirty-slot { display: inline-flex; align-items: center; min-height: 26px; }

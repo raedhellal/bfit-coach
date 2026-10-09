@@ -1,25 +1,27 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { UiIcon } from "@/components/ui/icons";
 import { useCopy } from "@/lib/i18n/client";
 import { truncateName } from "@/lib/format";
 import { deleteRecipeAction } from "@/lib/recipeActions";
 import { settled } from "@/lib/settled";
 import { MEAL_SLOTS, effectiveSlots } from "@/lib/recipeDocument";
+import { matchesSearch, searchKey } from "@/lib/rosterView";
 import type { CoachRecipeList, CoachRecipeSummary, MealSlot } from "@/lib/coachApi";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
  * EV-256b AC1 and AC5 — the coach's recipe library and its delete.
  *
- * A client island only because Delete is a dialog; nothing is fetched here. The list
- * arrives from the server component above and the one write goes back through a server
- * action. Edit is a LINK to the editor route (middle-clickable, in the browser's own
- * history), the same split as the template library.
+ * A client island only because Delete is a dialog and the list is narrowed in the browser;
+ * nothing is fetched here. The list arrives from the server component above and the one
+ * write goes back through a server action. Edit is a LINK to the editor route
+ * (middle-clickable, in the browser's own history), the same split as the template library.
  *
  * WHAT A ROW SHOWS: name, kcal, P/C/F and the ingredient count — AC1's list, and what
  * `CoachRecipeSummaryResponse` carries. There is no date on the row because the api
@@ -28,20 +30,37 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  * EV-320c: each row also carries its meal times, and the list can be filtered by one. Both
  * read `mealSlots` through `effectiveSlots`, so an UNTAGGED recipe (`null`) shows and
  * filters as Lunch + Dinner — what the week fill does with it — marked as the default.
+ *
+ * EV-337j2 (plan §5.9, story J2.1–J2.3) — the redesign of this list, EV-337i's pattern:
+ *   · one card of rows from 768 px, one card per recipe below it (CSS decides; the
+ *     `.tpl-*` list classes are shared with the training-template library);
+ *   · a search over the names the api listed, in the browser, case- and accent-insensitive
+ *     (the roster's `searchKey`), AND-ed with the meal-time filter. Typing sends nothing:
+ *     the list is already here, and the api has no name query to send it to;
+ *   · when the search leaves nothing, J2.2's sentence quoting the query, and a control that
+ *     clears it. A meal time with no recipe keeps its own sentence (`filterEmpty`) even
+ *     while a search is typed: that is the true reason the list is empty.
+ * Not drawn (R8, plan §7 G16/G17): a photo or its placeholder, tags and a tag filter,
+ * portions, prep time, a usage count. The api serves none of them.
  */
 export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
   const copy = useCopy();
   const router = useRouter();
   const [deleting, setDeleting] = useState<CoachRecipeSummary | null>(null);
   const [slot, setSlot] = useState<MealSlot | "ALL">("ALL");
+  const [query, setQuery] = useState("");
+  const searchId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
   // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
   const scope = useAdoptPrehydrationInput<HTMLDivElement>();
 
   const count = library.recipes.length;
-  const shown =
+  const forSlot =
     slot === "ALL"
       ? library.recipes
       : library.recipes.filter((recipe) => effectiveSlots(recipe.mealSlots).includes(slot));
+  const shown = forSlot.filter((recipe) => matchesSearch(searchKey(recipe.name), query));
+  const searching = query.trim() !== "";
   const newRecipe = (
     <Button
       icon="plus"
@@ -73,27 +92,53 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
         </Card>
       ) : (
         <>
-          <div
-            style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}
-          >
+          <div className="rcp-head-line">
             {newRecipe}
             {/*
               AC1 — "{n} of 100 recipes", with the cap the api SERVES. At the cap the
               refusal sentence is shown beside it, BEFORE a 409 rather than only after.
+              The count is the LIBRARY's, never what a filter or a search left.
             */}
-            <span data-testid="recipe-count" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
+            <span data-testid="recipe-count" className="tpl-count">
               {copy.recipes.count(count, library.limit)}
             </span>
             {library.remaining === 0 && (
-              <span style={{ fontSize: 12.5, color: "var(--err-ink)" }}>
+              <span className="tpl-count" data-full="">
                 {copy.recipes.limitReached(library.limit)}
               </span>
             )}
+          </div>
+          {/*
+            J2.6 (ruling EV-337j2-R2) — what a search left, announced, as on /templates: ONE
+            node, rendered from the first paint, empty until the query is not blank. It
+            follows the meal-time filter while a query is typed, and stays empty with a blank
+            field, so the filter alone announces nothing (as before).
+          */}
+          <p className="sr-only" role="status" aria-live="polite">
+            {searching ? copy.recipes.shown(shown.length) : ""}
+          </p>
+          <div className="tpl-toolbar">
+            <label className="roster-search rcp-search" htmlFor={searchId}>
+              <span aria-hidden="true" style={{ display: "inline-flex", color: "var(--ink-3)" }}>
+                <UiIcon name="search" size={17} />
+              </span>
+              <span className="sr-only">{copy.recipes.librarySearch}</span>
+              <input
+                ref={searchRef}
+                id={searchId}
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={copy.recipes.librarySearch}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
             {/*
               A separate <label for>, not a wrapping one: a wrapping label folds the
               selected option's text into the select's accessible name.
             */}
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, maxWidth: "100%" }}>
               <label
                 htmlFor="recipe-slot-filter"
                 style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}
@@ -126,38 +171,49 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
               </select>
             </span>
           </div>
-          {shown.length === 0 && (
+
+          {forSlot.length === 0 ? (
             // A filter that matches nothing is not an empty LIBRARY: the count above still
             // says how many recipes there are, and this says why none is listed.
-            <Card>
-              <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--ink-2)" }}>
-                {copy.recipes.filterEmpty}
-              </p>
-            </Card>
+            <div className="tpl-list">
+              <div className="tpl-nomatch tpl-nomatch-card">
+                <p role="status" className="rcp-nomatch-text">
+                  {copy.recipes.filterEmpty}
+                </p>
+              </div>
+            </div>
+          ) : shown.length === 0 ? (
+            // J2.2 — the search left nothing: say so, quoting what was typed (trimmed).
+            <div className="tpl-list">
+              <div className="tpl-nomatch tpl-nomatch-card">
+                <p role="status" className="rcp-nomatch-text">
+                  {copy.recipes.noMatch(query.trim())}
+                </p>
+                {/* This button unmounts itself; focus goes back to the field, not to <body>. */}
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setQuery("");
+                    searchRef.current?.focus();
+                  }}
+                >
+                  {copy.recipes.clearSearch}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /*
+              BUG-244: every track and flex item that holds a name has a 0 minimum (`min-width:
+              0` in `.tpl-*`), so a 64-character title ellipsises instead of widening the page.
+            */
+            <ul className="tpl-list">
+              {shown.map((recipe) => (
+                <li key={recipe.id} className="tpl-item">
+                  <RecipeRow recipe={recipe} onDelete={() => setDeleting(recipe)} />
+                </li>
+              ))}
+            </ul>
           )}
-          {/*
-            BUG-244: `minmax(0, 1fr)`, not the implicit `auto` track. An auto track sizes to
-            its widest item's min-content, which for a `nowrap` title is the WHOLE title:
-            a 64-character name pushed the track 64 px past a 320 px viewport and clipped
-            every card. A 0 minimum lets the track follow the viewport and the title
-            ellipsise inside it.
-          */}
-          <ul
-            style={{
-              listStyle: "none",
-              margin: 0,
-              padding: 0,
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr)",
-              gap: 12,
-            }}
-          >
-            {shown.map((recipe) => (
-              <li key={recipe.id}>
-                <RecipeRow recipe={recipe} onDelete={() => setDeleting(recipe)} />
-              </li>
-            ))}
-          </ul>
         </>
       )}
 
@@ -174,71 +230,31 @@ export function RecipeLibrary({ library }: { library: CoachRecipeList }) {
 function RecipeRow({ recipe, onDelete }: { recipe: CoachRecipeSummary; onDelete: () => void }) {
   const copy = useCopy();
   return (
-    <Card>
-      {/*
-        A named group per row: the two controls are otherwise two identical labels with
-        nothing tying them to the recipe they act on — for a screen reader and for a
-        test asserting "the Delete on THIS row".
-      */}
-      <div
-        role="group"
-        aria-label={recipe.name}
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ minWidth: 0, flex: "1 1 200px" }}>
-          <div
-            title={recipe.name}
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 16,
-              fontWeight: 700,
-              color: "var(--ink)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {truncateName(recipe.name)}
-          </div>
-          <div
-            style={{ marginTop: 6, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12.5, color: "var(--ink-3)" }}
-          >
-            <span>{copy.recipes.macroLine(recipe.kcal, recipe.proteinG, recipe.carbsG, recipe.fatG)}</span>
-            <span>{copy.recipes.ingredientCount(recipe.ingredientCount)}</span>
-          </div>
-          <SlotBadges mealSlots={recipe.mealSlots} />
+    /*
+      A named group per row: the two controls are otherwise two identical labels with
+      nothing tying them to the recipe they act on — for a screen reader and for a
+      test asserting "the Delete on THIS row".
+    */
+    <div role="group" aria-label={recipe.name} className="tpl-row">
+      <div className="tpl-row-id">
+        <div className="tpl-row-name" title={recipe.name}>
+          {truncateName(recipe.name)}
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link
-            href={`/recipes/${recipe.id}`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: MIN_TOUCH_TARGET,
-              padding: "0 14px",
-              borderRadius: "var(--r-md)",
-              border: "1px solid var(--border-2)",
-              background: "var(--surface)",
-              color: "var(--ink)",
-              fontSize: 13,
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
-            {copy.recipes.edit}
-          </Link>
-          <Button variant="ghost" size="sm" icon="trash" onClick={onDelete}>
-            {copy.recipes.remove}
-          </Button>
-        </div>
+        <p className="tpl-row-meta rcp-row-meta">
+          <span>{copy.recipes.macroLine(recipe.kcal, recipe.proteinG, recipe.carbsG, recipe.fatG)}</span>
+          <span>{copy.recipes.ingredientCount(recipe.ingredientCount)}</span>
+        </p>
+        <SlotBadges mealSlots={recipe.mealSlots} />
       </div>
-    </Card>
+      <div className="tpl-row-actions">
+        <Link href={`/recipes/${recipe.id}`} className="link-button" data-variant="secondary">
+          {copy.recipes.edit}
+        </Link>
+        <Button variant="dangerSoft" size="sm" icon="trash" onClick={onDelete}>
+          {copy.recipes.remove}
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -1864,6 +1864,32 @@ function seedCapRecipes(): StoredRecipe[] {
 }
 
 /**
+ * EV-337j2 J2.5 (ruling EV-337j2-R1) — the four names the ligature / apostrophe fold is
+ * tried on, and nothing else, so each J2.5 query can match only its own recipe:
+ * « Canard à l\u2019orange » holds U+2019 and « Salade d'été » the ASCII U+0027. Signed in as
+ * `coach.fold@evoli.fit` (see `COACH_LIBRARIES`).
+ */
+function seedFoldRecipes(): StoredRecipe[] {
+  const rows: Array<[string, RecipeUnit, string]> = [
+    ["B\u0153uf bourguignon", "g", "lean_beef"],
+    ["\u0152ufs brouill\u00e9s", "piece", "egg"],
+    ["Canard \u00e0 l\u2019orange", "g", "chicken_breast"],
+    ["Salade d'\u00e9t\u00e9", "g", "spinach"],
+  ];
+  return rows.map(([name, unit, key], i) => ({
+    id: `8e3f1b22-0000-4000-8000-0000003370f${i}`,
+    name,
+    kcal: 500,
+    proteinG: 40,
+    carbsG: 50,
+    fatG: 16,
+    ingredients: [{ key, quantity: unit === "piece" ? 3 : 150, unit }],
+    steps: ["Cook and serve."],
+    mealSlots: null,
+  }));
+}
+
+/**
  * EV-272 — ⚠ a FIXTURE AFFORDANCE, not an api shape. The api keys a library by the
  * signed-in coach's user id (`listByCoachId`). The fixture has one coach identity for
  * everything else (one roster, one link per trainee), so a second and third LIBRARY are
@@ -1877,6 +1903,7 @@ const COACH_LIBRARIES: Record<string, () => StoredRecipe[]> = {
   "coach.c1@evoli.fit": seedC1Recipes,
   "coach.c0@evoli.fit": () => [],
   "coach.c100@evoli.fit": seedCapRecipes,
+  "coach.fold@evoli.fit": seedFoldRecipes,
 };
 
 function seedLibraries(): Map<string, Map<string, StoredRecipe>> {
@@ -3320,6 +3347,17 @@ async function withServedWeekStatus(state: NutritionState): Promise<NutritionSta
  */
 async function heldDetailRead(): Promise<void> {
   const ms = Number(await fixtureSwitch("evoli_fixture_read_delay"));
+  if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 5_000)));
+}
+/**
+ * EV-337j2 (J2.4, J1.5's loading rule) — ⚠ fixture affordance: the same hold for a LIBRARY
+ * read, under its own cookie (`evoli_fixture_recipes_delay=<ms>` for the recipe list), capped
+ * at 5 s, one browser context. Kept apart from `evoli_fixture_read_delay` on purpose: that
+ * one is BUG-597's "the list stays on screen while the DETAIL loads", which needs the list
+ * itself to answer at once.
+ */
+async function heldListRead(cookie: string): Promise<void> {
+  const ms = Number(await fixtureSwitch(cookie));
   if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 5_000)));
 }
 /**
@@ -6511,6 +6549,8 @@ export const fixtureCoachApi: CoachApi = {
 
   async listRecipes(): Promise<CoachRecipeList> {
     recordCall("GET /coach-portal/recipes");
+    // EV-337j2 J2.4 — `evoli_fixture_recipes_delay=<ms>` holds this read (see heldListRead).
+    await heldListRead("evoli_fixture_recipes_delay");
     // EV-272 AC7 — the library read fails (this browser context only).
     if ((await fixtureSwitch("evoli_fixture_recipes")) === "fail") {
       await fail(500, "INTERNAL_ERROR", "Internal error");

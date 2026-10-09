@@ -36,7 +36,7 @@
 - [A mutant can fail the gate through the dev overlay](a-mutant-can-fail-the-gate-through-the-dev-overlay.md) — `<style>{css}</style>` breaks hydration; the overlay fails layout tests; count console errors
 - [The error boundary is a client component (BUG-689)](the-error-boundary-is-a-client-component.md) — ShellFrame not CoachShell; refresh+reset; render-error switch Proxy needs `then`
 - [Re-rooting a scan can narrow it](re-rooting-a-scan-can-narrow-it.md) — list root lost an `li` after `</ul>`; pin block-li == list-li; `content on ::after` caught BUG-218
-- [Recipe library (EV-256b)](recipe-library-portal-facts.md) — two 400 shapes (details.field vs field-leading message); a retired key is the only reachable unknown-ingredient
+- [Recipe library (EV-256b, EV-337j2)](recipe-library-portal-facts.md) — two 400 shapes; retired key = only unknown-ingredient path; j2 search + list-delay switch
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
 - [Recipe placement (EV-256e)](recipe-placement-portal-facts.md) — no `eaten` on the coach wire; flag server-wide, per-trainee in fixture; fail-open read is fixture-blind; button gone since EV-272
@@ -76,6 +76,7 @@
 - [Pre-hydration adoption hook](prehydration-adoption-hook-facts.md) — every SSR field raced (2026-10-03); snapshot then replay from a task; consent NEVER adopted (Back restores ticks); Modal forms immune
 - [Day accordions (EV-337f2)](day-accordions-337f2-facts.md) — hidden not unmounted; open days held by RoutineEditor across the loads remount; role locators skip hidden fields
 - [Form hooks (EV-342o)](coach-form-hooks-342o-facts.md) — useCoachForm/useAutosave; a navigating save is saved(stored, then); a dismissed beforeunload = ERR_ABORTED reload; two "Portal" navs
+- [The guard's own step is not a Back (BUG-730)](the-guards-own-history-step-is-not-the-coachs-back.md) — re-arm inside history.back() raised the question; a then may STAY (B1); grep every caller first
 - [EV-342k/j/m (2026-10-07)](ev342-kjm-portal-facts.md) — evoli_pro_coach cookie bound to sub; one session list, weigh-ins dropped, J.3 unmet; import() per-locale dict, route table hides the async chunk; zsh `$T:q` trap
 - [Free-text label lookup hits the prototype](a-label-map-lookup-of-free-text-hits-the-prototype.md) — BUG-694: labels["constructor"] is a function; own-property check, literal keys, key by index
 - [A nested button was a spec's discriminator](removing-a-nested-button-can-break-a-spec-that-used-it.md) — BUG-616 broke pro-back-link by count; exclude by an owned data-* marker (EV-352), never a shared class
@@ -93,3 +94,8 @@
 - [Verify the base the brief names](verify-the-base-the-brief-names.md) — merge-base --is-ancestor every fix the brief says is in; 198a293 lacked BUG-713
 - [Every branch of a save callback needs a test](every-branch-of-a-save-callback-needs-a-test.md) — EV-337g1 S1: hold the action POST with page.route, fill during the hold; list branch → test before handback
 - [First-name fallback is lower case mid-sentence](first-name-fallback-is-mid-sentence-lower-case.md) — BUG-720: mid(first) via midSentence(); 6 firstName() calls -> 31 keys; table spec pins KEYS=31
+- [toHaveText hides a trim defect in French](tohavetext-hides-a-trim-defect-in-french.md) — EV-337j2 M5: «\u00a0  q \u00a0» reads « q »; assert textContent exactly
+- [A photo placeholder passes a text/img scan](a-photo-placeholder-passes-a-text-and-img-scan.md) — EV-337j2 M7b: probe blank leaf boxes + url() backgrounds for R8
+- [Mutants against one hand-started dev server](mutants-against-a-hand-started-dev-server.md) — untracked config, webServer undefined, HMR per mutant, git checkout to revert
+- [.roster-search ring (BUG-724)](roster-search-ring-fails-inside-contrast.md) — halo dropped under the keyboard ring; sweep in qa/focus-ring-sweep.ts, roster half in its own file
+- [Text fields match :focus-visible on click](text-fields-match-focus-visible-on-click.md) — EV-337j2 N1: :has(input:focus-visible) does not separate pointer from keyboard

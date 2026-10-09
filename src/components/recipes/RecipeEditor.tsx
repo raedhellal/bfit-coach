@@ -247,10 +247,11 @@ export function RecipeEditor({
          * lands on `/recipes/{id}` and cannot create a second recipe.
          */
         const id = result.recipe.id;
+        // "stays": the coach is still on this page, so work typed meanwhile stays guarded (BUG-730).
         leaving.release(() => {
           setRecipeId(id);
           window.history.replaceState(window.history.state, "", `/recipes/${id}`);
-        });
+        }, "stays");
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateRecipeAction` revalidates.
