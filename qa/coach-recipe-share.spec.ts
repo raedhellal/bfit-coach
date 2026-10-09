@@ -254,18 +254,32 @@ test.describe("in French", () => {
   });
 });
 
-/* ── EV-320b follow-up: the English-only note (Raed, 2026-09-30) ─────────────
- * "Meal plans are generated in English…" is about the ENGINE's meal text. It is shown
- * while the week holds at least one engine meal, and hidden when every meal is a coach
- * recipe (any coach's: the words are a coach's own, whoever placed them).
+/* ── EV-320b follow-up: the English-only note (Raed, 2026-09-30), split by BUG-536 ──
+ * EV-185 AC3's note holds two claims with two rules:
+ *   · "Meal plans are generated in English." is about the ENGINE's meal text. It is shown
+ *     while the week holds at least one engine meal, and hidden when every meal is a coach
+ *     recipe (any coach's: the words are a coach's own, whoever placed them).
+ *   · "Ingredient checks run on the English names." is about the allergy and diet checks,
+ *     which read the English ingredient names on EVERY week (BUG-536). Before the split it
+ *     was hidden with the first sentence on an all-recipe week, though still true.
+ * On an engine or mixed week the paragraph reads AC3's two sentences exactly as before.
  */
 
-const NOTE_EN = "Meal plans are generated in English. Ingredient checks run on the English names.";
-const NOTE_FR =
-  "Les plans de repas sont générés en anglais. Les vérifications d'ingrédients portent sur les noms anglais.";
+const GENERATED_EN = "Meal plans are generated in English.";
+const CHECKS_EN = "Ingredient checks run on the English names.";
+const NOTE_EN = `${GENERATED_EN} ${CHECKS_EN}`;
+const GENERATED_FR = "Les plans de repas sont générés en anglais.";
+const CHECKS_FR = "Les vérifications d'ingrédients portent sur les noms anglais.";
+const NOTE_FR = `${GENERATED_FR} ${CHECKS_FR}`;
 
-function note(page: Page) {
-  return page.getByTestId("english-only-note");
+/**
+ * Read by TEXT, not by a test id, so the same assertions run on the code before the split
+ * (6caecb8): there the engine-week checks pass and only the all-recipe ones fail, on the
+ * behaviour BUG-536 is about. `exact` matches the paragraph (both sentences) or, alone on
+ * a week of coach recipes, the checks sentence.
+ */
+function sentence(page: Page, text: string) {
+  return page.getByText(text, { exact: true });
 }
 
 test.describe("the English-only note follows the engine's meals", () => {
@@ -282,48 +296,50 @@ test.describe("the English-only note follows the engine's meals", () => {
     expect(hasEngineMeal(null)).toBe(true);
   });
 
-  test("an engine-only week shows the note", async ({ page }) => {
+  test("an engine-only week shows both sentences, as AC3 words them", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${DANA}/nutrition`);
-    await expect(note(page)).toHaveText(NOTE_EN);
+    await expect(sentence(page, NOTE_EN)).toBeVisible();
+    await expect(page.getByText(NOTE_EN)).toHaveCount(1);
   });
 
-  test("a mixed week shows the note", async ({ page }) => {
+  test("a mixed week shows both sentences", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${VERA}/nutrition`);
     await expect(page.getByText("Your recipe", { exact: true })).toHaveCount(1);
-    await expect(note(page)).toHaveText(NOTE_EN);
+    await expect(sentence(page, NOTE_EN)).toBeVisible();
   });
 
-  test("a week that is all coach recipes hides it, and the footer lines stay", async ({ page, context }) => {
+  test("a week that is all coach recipes drops « generated in English », keeps the ingredient checks (BUG-536), and the footer lines stay", async ({ page, context }) => {
     await signIn(page, "coach.fill@evoli.fit");
     await fillOn(context, page);
     await page.goto(`/clients/${DANA}/nutrition`);
-    await expect(note(page)).toHaveText(NOTE_EN);
+    await expect(sentence(page, NOTE_EN)).toBeVisible();
 
     await applyWeek(page);
     await expect(line(page)).toHaveText("The whole week comes from your recipes");
-    await expect(note(page)).toHaveCount(0);
-    await expect(page.getByText(NOTE_EN)).toHaveCount(0);
+    await expect(page.getByText(GENERATED_EN)).toHaveCount(0);
+    await expect(sentence(page, CHECKS_EN)).toBeVisible();
     await expect(page.getByText(/^Swapping a meal doesn.t use /)).toBeVisible();
 
     await page.reload();
     await expect(line(page)).toHaveText("The whole week comes from your recipes");
-    await expect(note(page)).toHaveCount(0);
+    await expect(page.getByText(GENERATED_EN)).toHaveCount(0);
+    await expect(sentence(page, CHECKS_EN)).toBeVisible();
   });
 });
 
 test.describe("the English-only note, in French", () => {
   test.use({ locale: "fr-FR" });
 
-  test("shown in French over an engine week, gone over a week of coach recipes", async ({ page, context }) => {
+  test("both sentences over an engine week; over a week of coach recipes only the ingredient checks (BUG-536)", async ({ page, context }) => {
     await signIn(page, "coach.fill@evoli.fit", true);
     await page.goto(`/clients/${DANA}/nutrition`);
-    await expect(note(page)).toHaveText(NOTE_FR);
+    await expect(sentence(page, NOTE_FR)).toBeVisible();
     await fillOn(context, page);
     await applyWeek(page, true);
     await expect(line(page)).toHaveText("Toute la semaine vient de vos recettes");
-    await expect(note(page)).toHaveCount(0);
-    await expect(page.getByText(NOTE_FR)).toHaveCount(0);
+    await expect(page.getByText(GENERATED_FR)).toHaveCount(0);
+    await expect(sentence(page, CHECKS_FR)).toBeVisible();
   });
 });
