@@ -561,7 +561,8 @@ const ROUTES: Route[] = [
       await settled(page, page.locator("#recipe-slot-filter"));
       return null;
     },
-    expectNames: [],
+    // EV-337j2 (staff N2): the library's search is a text field Tab must reach, by name.
+    expectNames: ["Search recipes"],
   },
   {
     name: "recipes: new",
