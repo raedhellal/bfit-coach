@@ -3962,6 +3962,13 @@ async function nutritionCopyName(original: string): Promise<string> {
  *                                      with no status: `fetch` throws `TypeError("fetch
  *                                      failed")`, exactly what `apiFetch` sees when the
  *                                      connection to b-fit-api is lost (staff review, M4).
+ *   `evoli_fixture_targets=gateway_502|gateway_503|gateway_504` (and the same on
+ *   `evoli_fixture_week`) — BUG-523: the write answers that status as an `ApiError` with
+ *                                      no string `code` (message "Request failed (502)").
+ *                                      The portal classifies it by status alone, whatever a
+ *                                      gateway's body holds. Nothing is written here, but the
+ *                                      portal cannot know that: the write may have landed
+ *                                      behind the gateway.
  *   `evoli_fixture_week_start=YYYY-MM-DD` — the week the API considers current, served as
  *                                      `currentWeekStart` and the only one apply accepts.
  *                                      A date that is NOT the UTC Monday pins "the apply sends
@@ -3969,6 +3976,13 @@ async function nutritionCopyName(original: string): Promise<string> {
  *
  * The browser-side "no answer" needs no switch: the gate aborts the browser's request.
  */
+/** BUG-523 — `gateway_502` → the `ApiError` `apiFetch` builds from a bare gateway 502. */
+async function failAsGateway(forced: string | null): Promise<void> {
+  const status = forced?.match(/^gateway_(50[234])$/)?.[1];
+  if (!status) return;
+  const { ApiError } = await import("./apiFetch");
+  throw new ApiError(Number(status), `Request failed (${status})`);
+}
 async function targetsSwitch(): Promise<string | null> {
   return fixtureSwitch("evoli_fixture_targets");
 }
@@ -6662,6 +6676,7 @@ export const fixtureCoachApi: CoachApi = {
     const forcedTargets = await targetsSwitch();
     if (forcedTargets === "refused") await fail(500, "INTERNAL_ERROR", "Targets write failed");
     if (forcedTargets === "no_answer") throw new TypeError("fetch failed");
+    await failAsGateway(forcedTargets);
     const state = nutritionState(id);
     // `NutritionService.setManual` clamps CALORIES ONLY — protein and fat are
     // untouched, which is exactly what the standing sentence on the page says.
@@ -6701,6 +6716,7 @@ export const fixtureCoachApi: CoachApi = {
     // `RestExceptionHandler.handleUnexpected`'s body.
     if (forced === "fail") await fail(500, "INTERNAL_ERROR", "Something went wrong. Please try again.");
     if (forced === "no_answer") throw new TypeError("fetch failed");
+    await failAsGateway(forced);
     if (weekStart !== (await servedWeekStart())) {
       // Edge case 3: slice 1 applies the current week only.
       await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");

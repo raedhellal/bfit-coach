@@ -46,6 +46,19 @@ import {
  * landed, so it is `NO_ANSWER` — never folded into a refusal. The browser-side twin of
  * the same case is the `settled()` fallback at the call site: a server action whose
  * REQUEST fails resolves `undefined`, and the island maps that to `NO_ANSWER` too.
+ *
+ * One exception to "a status is a refusal" (BUG-523, senior-po's ruling of 2026-09-30,
+ * extending BUG-248's rule for a lost answer): a `502`, `503` or `504` is a status the
+ * portal received, but from whatever stands between it and b-fit-api, which may have
+ * written behind it. It does not prove nothing changed, so it is `NO_ANSWER`.
+ *
+ * None of the three is a refusal b-fit-api itself sends on the two writes used here (trace
+ * on b-fit-api origin/main, 2026-10-09): `RestExceptionHandler` answers 503 only for
+ * `ACCOUNT_INITIALISATION_UNAVAILABLE`, `CATALOG_UNAVAILABLE` and the exercise provider's
+ * unavailability, and 502 only for `ROUTINE_GENERATION_FAILED`; on the week apply, a
+ * failing model is caught in `WeeklyMealPlanService.generateValidated`'s model arm
+ * (`catch (RuntimeException ex)`, "falling back to stub"), so no generation failure
+ * reaches the handler as a 502. A 5xx here can only come from in front of the api.
  */
 
 export type NutritionTemplateFailure =
@@ -166,8 +179,12 @@ export async function deleteNutritionTemplateAction(
 
 export type UseFailure = "ACCESS_DENIED" | "REFUSED" | "NO_ANSWER";
 
+/** BUG-523 — the gateway statuses: received, but not an answer from the api. */
+const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
 function classifyUse(err: unknown): UseFailure {
   if (!(err instanceof ApiError)) return "NO_ANSWER";
+  if (GATEWAY_STATUSES.has(err.status)) return "NO_ANSWER";
   if (isForbidden(err)) return "ACCESS_DENIED";
   return "REFUSED";
 }
