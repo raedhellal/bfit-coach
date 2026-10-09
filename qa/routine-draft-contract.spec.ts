@@ -13,7 +13,7 @@ import {
   withTrackingType,
   withoutDurationReps,
 } from "../src/lib/routineDocument";
-import { forSave as forTemplateSave } from "../src/lib/templateDocument";
+import { forSave as forTemplateSave, publishabilityReasons } from "../src/lib/templateDocument";
 import { failureSentence, routineFailure } from "../src/lib/routineFailure";
 
 /**
@@ -343,6 +343,41 @@ test.describe("the document the editor holds", () => {
     expect(documentReasons(one, en, { dayCountBound: en.routine.dayCountBound })).toEqual([
       "A plan has between 2 and 6 training days.",
     ]);
+  });
+
+  /*
+   * EV-344-R2 / EV-344.5A — a trainee's minutes per session outside 20–90 (b-fit-api V11
+   * `chk_plans_session_minutes`) is a reason, so neither Save nor Publish is sent. Literals,
+   * never read back from the dictionaries. A template has no such reason at any value.
+   */
+  test("EV-344.5A: minutes outside 20–90 is a trainee reason, alone; never a template's", () => {
+    const OUT = {
+      en: "Minutes per session: enter a value between 20 and 90.",
+      fr: "Minutes par séance\u00a0: indiquez une valeur entre 20 et 90.",
+    } as const;
+    const at = (minutes: number): Routine => {
+      const doc = published();
+      return { ...doc, constraints: { ...doc.constraints, minutesPerSession: minutes } };
+    };
+    for (const [copy, lang] of [
+      [en, "en"],
+      [fr, "fr"],
+    ] as const) {
+      const trainee = { dayCountBound: copy.routine.dayCountBound, sessionMinutesRange: true };
+      for (const minutes of [19, 91, 15, 120]) {
+        expect(documentReasons(at(minutes), copy, trainee), `${lang} ${minutes}`).toEqual([OUT[lang]]);
+      }
+      for (const minutes of [20, 90, 45]) {
+        expect(documentReasons(at(minutes), copy, trainee), `${lang} ${minutes}`).toEqual([]);
+      }
+      // Not > 0: `minutesRequired` alone, never both.
+      const REQUIRED = { en: "Set how many minutes a session lasts.", fr: "Indiquez la durée d'une séance en minutes." } as const;
+      expect(documentReasons(at(0), copy, trainee), `${lang} 0`).toEqual([REQUIRED[lang]]);
+      // The template's own rules (`publishabilityReasons`): no range reason at any value.
+      for (const minutes of [19, 20, 90, 91, 15, 120]) {
+        expect(publishabilityReasons({ name: "Upper / Lower split", document: at(minutes) }, copy), `template ${lang} ${minutes}`).toEqual([]);
+      }
+    }
   });
 });
 
