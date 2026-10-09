@@ -90,6 +90,8 @@ export function useUnsavedChanges(dirty: boolean) {
    */
   const releasing = useRef(false);
   const rearm = useRef(false);
+  /** What a release asked for while our step was already in flight: run when it lands. */
+  const afterStep = useRef<(() => void)[]>([]);
 
   /**
    * One extra entry for the SAME url, carrying Next's own router state so the router is not
@@ -131,6 +133,15 @@ export function useUnsavedChanges(dirty: boolean) {
   const withCleanHistory = useCallback(
     (then?: () => void) => {
       bypass.current = true;
+      if (releasing.current) {
+        // BUG-730: our step back is already in flight, and it takes out the only entry this
+        // guard holds (a re-arm since then was deferred, not pushed). A second
+        // `history.back()` would step off the page. What re-armed is handed back with that
+        // step, and `then` waits for it to land.
+        rearm.current = false;
+        if (then) afterStep.current.push(then);
+        return;
+      }
       if (!sentinel.current) {
         bypass.current = false;
         then?.();
@@ -141,19 +152,20 @@ export function useUnsavedChanges(dirty: boolean) {
         window.removeEventListener("popstate", onPop);
         releasing.current = false;
         sentinel.current = false;
+        const thens = then ? [then, ...afterStep.current.splice(0)] : afterStep.current.splice(0);
         if (rearm.current) {
           rearm.current = false;
           // The guard re-armed while this step was in flight (BUG-730). Its listener was added
           // after this one and runs next, for this same event: `bypass` stands until it has.
-          // The new sentinel is pushed now, unless `then` leaves the page anyway.
-          if (!then) push();
+          // The new sentinel is pushed now, unless a `then` leaves the page anyway.
+          if (thens.length === 0) push();
           window.setTimeout(() => {
             bypass.current = false;
           }, 0);
         } else {
           bypass.current = false;
         }
-        then?.();
+        for (const next of thens) next();
       };
       window.addEventListener("popstate", onPop);
       window.history.back();
