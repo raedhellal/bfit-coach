@@ -254,16 +254,11 @@ export function useUnsavedChanges(dirty: boolean) {
       // The work was saved (or the editor unmounted): take the sentinel back out, or
       // the coach's next Back press would appear to do nothing.
       // `bypass` means a confirmed navigation is already removing it.
-      if (!bypass.current && sentinel.current) {
-        sentinel.current = false;
-        bypass.current = true;
-        window.history.back();
-        window.setTimeout(() => {
-          bypass.current = false;
-        }, 0);
-      }
+      // Through `withCleanHistory`, like every other step of ours: a keystroke that re-arms
+      // while this step is in flight is the same race as after a save (BUG-730).
+      if (!bypass.current && sentinel.current) withCleanHistory();
     };
-  }, [dirty, push]);
+  }, [dirty, push, withCleanHistory]);
 
   const stay = useCallback(() => {
     if (pending) {
