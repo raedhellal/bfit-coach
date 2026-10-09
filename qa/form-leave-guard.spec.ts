@@ -373,6 +373,102 @@ test.describe("BUG-665 — what the hook owns by construction (EN)", () => {
 });
 
 /**
+ * BUG-730 — a keystroke that lands while a save's own history step is in flight.
+ *
+ * A save the server accepts hands the guard's entry back with `history.back()`, and the
+ * traversal answers a few milliseconds later (2–14 ms, median 4, measured over 280 saves in
+ * `coach-progress-goal.spec.ts`). The form is already clean, so a keystroke in that window
+ * re-arms the guard. Before the fix the re-arm pushed a NEW sentinel while the step was still
+ * in flight, and the step's `popstate` then reached the re-armed guard's own listener after
+ * the release's listener had stood down: the guard read it as the coach pressing Back and
+ * opened « Leave with unsaved changes? » over the form. A coach on a loaded machine could see
+ * it; the test saw it as a Save button under a modal backdrop for 60 s (`coach-progress-goal`
+ * :952, 6 runs in 20 on a loaded gate).
+ *
+ * The window is a few milliseconds on an idle machine, so it is HELD open here: the page's own
+ * `history.back()` runs 400 ms after it is called, which is what a loaded browser does to it.
+ * Nothing else is changed. `__bug730Landed` counts the held steps that have landed (its
+ * listener is added last, so the guard's own listeners have run when it counts).
+ */
+async function holdHistoryBack(page: Page, ms: number) {
+  await page.addInitScript((delay) => {
+    const w = window as unknown as { __bug730Landed: number };
+    w.__bug730Landed = 0;
+    const back = window.history.back.bind(window.history);
+    window.history.back = () => {
+      window.setTimeout(() => {
+        window.addEventListener("popstate", () => (w.__bug730Landed += 1), { once: true });
+        back();
+      }, delay);
+    };
+  }, ms);
+}
+
+async function heldStepsLanded(page: Page, count: number) {
+  await page.waitForFunction(
+    (n) => (window as unknown as { __bug730Landed: number }).__bug730Landed >= n,
+    count
+  );
+}
+
+/** Chromium's Navigation API: where in the session history the page stands. */
+async function historyIndex(page: Page): Promise<number> {
+  return page.evaluate(
+    () => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index
+  );
+}
+
+test.describe("BUG-730 — typing while a save's history step is in flight (EN)", () => {
+  test.use({ locale: "en-US" });
+  const w = L.en;
+
+  test("the progress goal: no question appears, Back still asks, and the next save leaves one entry", async ({
+    page,
+  }) => {
+    await holdHistoryBack(page, 400);
+    await signIn(page, "en");
+    await progressGoal.open(page, w);
+    const block = page.getByRole("region", { name: w.block });
+    const field = progressGoal.field(page, w);
+    const start = await historyIndex(page);
+
+    await field.fill("71");
+    await armed(page);
+    await block.getByRole("button", { name: w.save, exact: true }).click();
+    // The first save's notice is new, so it is a sync point: `saved()` has run, and its
+    // `history.back()` is now held.
+    await expect(block.getByText(w.saved, { exact: true })).toBeVisible();
+    await field.fill("69");
+    await heldStepsLanded(page, 1);
+
+    // The step was the save's, not the coach's: nothing asks.
+    await expect(leaveDialog(page, w)).toHaveCount(0);
+    await expect(block.getByRole("button", { name: w.save, exact: true })).toBeEnabled();
+    await expect(field).toHaveValue("69");
+
+    // The re-edit is still guarded: one Back asks, and Stay keeps it.
+    await armed(page);
+    await pressBack(page);
+    await expect(leaveDialog(page, w)).toBeVisible();
+    await leaveDialog(page, w).getByRole("button", { name: w.stay, exact: true }).click();
+    await expect(field).toHaveValue("69");
+
+    // Its save hands the history back clean: the page stands where it was loaded, and one
+    // Back press leaves.
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    await block.getByRole("button", { name: w.save, exact: true }).click();
+    await answered;
+    await heldStepsLanded(page, 2);
+    await disarmed(page);
+    expect(await historyIndex(page), "a stray guard entry is left in the history").toBe(start);
+    await page.goBack();
+    await page.waitForURL("/");
+  });
+});
+
+/**
  * The epic's common bar (EV-342: widths 1440 / 1024 / 768 / 390, Chromium and WebKit) for the
  * guard itself: at each width the question is asked, its two buttons are on screen and
  * answerable (not under the tab bar at 390), Stay keeps the edit, and after a save one Back
