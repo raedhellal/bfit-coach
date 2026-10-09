@@ -32,8 +32,9 @@ export default defineConfig({
    * roster-not-shown.spec.ts (BUG-692) needs the six seeded rows: `evoli_fixture_roster_extra`
    * appends to a populated roster only.
    * template-use-no-week-card.spec.ts (BUG-718) drives "Use on a trainee", so the picker again.
+   * field-focus-ring-roster.spec.ts (BUG-724) sweeps the roster's search box: no rows, no box.
    */
-  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card)\.spec\.ts/,
+  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249) — see
   // playwright.config.ts's `workers` note.

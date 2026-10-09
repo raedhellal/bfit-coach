@@ -43,7 +43,8 @@ export default defineConfig({
   // roster-search-prehydration.spec.ts (BUG-686 follow-up) types into the roster's search box,
   // which only a populated roster has. pro-roster-unnamed-client.spec.ts (BUG-714) serves one
   // roster client with no name, and its pickers are built from the roster.
-  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card)\.spec\.ts/,
+  // field-focus-ring-roster.spec.ts (BUG-724) sweeps the roster's search box, populated only.
+  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

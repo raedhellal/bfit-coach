@@ -96,5 +96,5 @@
 - [toHaveText hides a trim defect in French](tohavetext-hides-a-trim-defect-in-french.md) — EV-337j2 M5: «\u00a0  q \u00a0» reads « q »; assert textContent exactly
 - [A photo placeholder passes a text/img scan](a-photo-placeholder-passes-a-text-and-img-scan.md) — EV-337j2 M7b: probe blank leaf boxes + url() backgrounds for R8
 - [Mutants against one hand-started dev server](mutants-against-a-hand-started-dev-server.md) — untracked config, webServer undefined, HMR per mutant, git checkout to revert
-- [.roster-search ring fails inside contrast](roster-search-ring-fails-inside-contrast.md) — halo fills the outline gap: 2.82:1; /templates search fails the BUG-663 sweep too
+- [.roster-search ring (BUG-724)](roster-search-ring-fails-inside-contrast.md) — halo dropped under the keyboard ring; sweep in qa/focus-ring-sweep.ts, roster half in its own file
 - [Text fields match :focus-visible on click](text-fields-match-focus-visible-on-click.md) — EV-337j2 N1: :has(input:focus-visible) does not separate pointer from keyboard
