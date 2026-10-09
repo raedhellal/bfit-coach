@@ -9,7 +9,8 @@ import { useCopy } from "@/lib/i18n/client";
  *
  * Why it exists (perf/coach-fast-routes-no-skeleton): the client tabs and the challenge
  * page lost their `loading.tsx` (and, with EV-342a, the challenge list and the three
- * libraries, list and detail; only the roster keeps one). A committed `loading.tsx` fallback holds the page for
+ * libraries, list and detail; and with fluidity batch 1, F2, the roster: no route has one
+ * now). A committed `loading.tsx` fallback holds the page for
  * React's ~300 ms reveal throttle, so every first visit took ~310 ms even when the server
  * answered in 70 ms. Without a fallback, React keeps the OLD page on screen until the new
  * one is ready. That is what makes fast routes fast, but on a slow response nothing would

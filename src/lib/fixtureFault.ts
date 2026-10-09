@@ -18,8 +18,8 @@ export const RENDER_ERROR_COOKIE = "evoli_fixture_render_error";
  * called by nothing that does, so a page dropping a read cannot silence it. NOT from the
  * root `not-found.tsx`, which also draws `CoachShell` but is built into every page's
  * payload: it opts out (`CoachShell`'s `faultSeam={false}`) so it can neither throw on a
- * healthy page nor spend a `once`. Nor from the roster's `loading.tsx` (BUG-667), which
- * draws the shell as a fallback: the page behind it carries the seam.
+ * healthy page nor spend a `once`. (The roster's `loading.tsx` opted out too, until fluidity
+ * batch 1 deleted it: no route has a loading state now.)
  */
 export function throwIfFixtureRenderError(): void {
   if (COACH_API_MODE !== "fixture") return;
