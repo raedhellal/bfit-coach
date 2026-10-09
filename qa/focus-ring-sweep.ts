@@ -479,3 +479,85 @@ export async function sweepRoute(engine: Engine, route: Route, chromiumPage: Pag
     if (engine === "webkit") await page.context().close();
   }
 }
+
+// ─────────────────────────── BUG-724: pointer focus on a search ───────────────────────────
+
+/** A `.roster-search` field, reached by its accessible name once `open` has drawn it. */
+export type PointerSearch = { name: string; open: (page: Page) => Promise<void>; label: string };
+
+type Box = { left: number; top: number; width: number; height: number };
+
+/**
+ * BUG-724 Expected (4): a MOUSE click into a search that uses `.roster-search` still turns
+ * its border to `--blue-500`, and nothing on the page moves.
+ *
+ * What it does not claim: that a click keeps the blue halo while the keyboard drops it. A
+ * click into a text field matches `:focus-visible` in Chromium and WebKit (staff, EV-337j2
+ * N1), so the halo and the keyboard ring are one moment for a text field; the reading is
+ * attached, not asserted.
+ */
+export async function pointerFocusRoute(
+  engine: Engine,
+  search: PointerSearch,
+  chromiumPage: Page,
+  baseURL: string | undefined
+) {
+  const page = await pageFor(engine, chromiumPage, baseURL);
+  try {
+    await search.open(page);
+    const field = page.getByRole("searchbox", { name: search.label, exact: true });
+    await expect(field).toBeVisible();
+    await page.waitForLoadState("load");
+
+    const read = () =>
+      field.evaluate((input) => {
+        const box = input.closest("label.roster-search");
+        if (!box) throw new Error("the search is not inside label.roster-search");
+        const cs = getComputedStyle(box);
+        const main = input.closest("main") ?? document.body;
+        const rect = (el: Element) => {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, top: r.top, width: r.width, height: r.height };
+        };
+        return {
+          border: [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor],
+          borderWidth: cs.borderTopWidth,
+          boxShadow: cs.boxShadow,
+          outline: `${cs.outlineStyle} ${cs.outlineWidth} ${cs.outlineColor} offset ${cs.outlineOffset}`,
+          blue: getComputedStyle(document.documentElement).getPropertyValue("--blue-500").trim(),
+          rects: Array.from(main.querySelectorAll("input, button, a, select, textarea, label, li, h1, h2, p")).map(rect),
+          scroll: [window.scrollX, window.scrollY],
+        };
+      });
+
+    const before = await read();
+    await field.click();
+    await expect(field).toBeFocused();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const after = await read();
+
+    await test.info().attach(`${engine}-${search.name}-pointer.txt`, {
+      body: `before: border ${before.border.join(" / ")} | shadow ${before.boxShadow} | outline ${before.outline}\n` +
+        `after:  border ${after.border.join(" / ")} | shadow ${after.boxShadow} | outline ${after.outline}\n`,
+      contentType: "text/plain",
+    });
+
+    const hexToRgb = (h: string) => {
+      const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h);
+      if (!m) throw new Error(`--blue-500 is not a #rrggbb colour: "${h}"`);
+      return `rgb(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)})`;
+    };
+    const blue = hexToRgb(before.blue);
+    expect(before.border, `${search.name}: the border is already ${blue} before the click`).not.toContain(blue);
+    expect(after.border, `${search.name}: a click does not turn the border to --blue-500`).toEqual([blue, blue, blue, blue]);
+    expect(after.borderWidth, `${search.name}: the border's width changes on focus`).toBe(before.borderWidth);
+    expect(after.scroll, `${search.name}: the click scrolled the page`).toEqual(before.scroll);
+    expect(after.rects.length, `${search.name}: focus added or removed an element`).toBe(before.rects.length);
+    const moved = after.rects
+      .map((r: Box, i: number) => ({ i, r, was: before.rects[i] }))
+      .filter(({ r, was }) => (["left", "top", "width", "height"] as const).some((k) => Math.abs(r[k] - was[k]) >= 0.5));
+    expect(moved, `${search.name}: elements in <main> moved when the search took pointer focus`).toEqual([]);
+  } finally {
+    if (engine === "webkit") await page.context().close();
+  }
+}

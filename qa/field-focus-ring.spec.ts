@@ -1,6 +1,15 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
-import { closeSweepBrowser, openDialog, settled, signIn, sweepRoute, type Route } from "./focus-ring-sweep";
+import {
+  closeSweepBrowser,
+  openDialog,
+  pointerFocusRoute,
+  settled,
+  signIn,
+  sweepRoute,
+  type PointerSearch,
+  type Route,
+} from "./focus-ring-sweep";
 import { openTargetsForm } from "./targets-card";
 
 /**
@@ -169,6 +178,18 @@ const ROUTES: Route[] = [
     expectNames: [],
   },
   {
+    // BUG-724: EV-337i's library search shares `.roster-search`'s ring with the roster and
+    // /recipes, and was not swept; its ring read 2.82:1 against the pixel inside it.
+    name: "templates: library search",
+    open: async (page) => {
+      await signIn(page);
+      await page.goto("/templates");
+      await settled(page, page.getByRole("searchbox", { name: "Search templates", exact: true }));
+      return null;
+    },
+    expectNames: ["Search templates"],
+  },
+  {
     name: "recipes: library filter",
     open: async (page) => {
       await signIn(page);
@@ -312,6 +333,34 @@ for (const engine of ["chromium", "webkit"] as const) {
   test.describe(`BUG-663 — keyboard focus ring on every text field (${engine})`, () => {
     for (const route of ROUTES) {
       test(`${route.name}`, async ({ page, baseURL }) => sweepRoute(engine, route, page, baseURL));
+    }
+  });
+}
+
+/** BUG-724 Expected (4), for the `.roster-search` fields this config serves (the roster's is in the roster file). */
+const POINTER_SEARCHES: PointerSearch[] = [
+  {
+    name: "templates: library search",
+    open: async (page) => {
+      await signIn(page);
+      await page.goto("/templates");
+    },
+    label: "Search templates",
+  },
+  {
+    name: "recipes: library search",
+    open: async (page) => {
+      await signIn(page);
+      await page.goto("/recipes");
+    },
+    label: "Search recipes",
+  },
+];
+
+for (const engine of ["chromium", "webkit"] as const) {
+  test.describe(`BUG-724 — a click into a search turns its border blue and moves nothing (${engine})`, () => {
+    for (const search of POINTER_SEARCHES) {
+      test(`${search.name}`, async ({ page, baseURL }) => pointerFocusRoute(engine, search, page, baseURL));
     }
   });
 }
