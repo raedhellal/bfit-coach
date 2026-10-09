@@ -62,3 +62,11 @@ role and the filter's position against it). Fixture switch `evoli_fixture_recipe
 holds the LIST read (J1.5's loading detector); `evoli_fixture_read_delay` is detail-only.
 Accented seed: C1's « Crêpes aux épinards ». Spec: `qa/pro-recipes-library.spec.ts`.
 
+**EV-337j2 round 2:** `searchKey` (roster, /templates, /recipes) now folds oe/ae ligatures and
+U+2018/U+2019 to U+0027 and nothing else (J2.5's closed list; the swap sheet's own
+`foldForSearch` in `recipeSearch.ts` is wider: it also folds U+02BC and the backtick). The
+fixture library `coach.fold@evoli.fit` holds exactly the four J2.5 names. A roster name
+with a ligature comes from `evoli_fixture_display_name=<id>:<encoded name>` (no row added,
+so no roster count moves). `/recipes` has a sr-only polite status (`recipes.shown`), one
+node from first paint, empty while the trimmed query is blank.
+
