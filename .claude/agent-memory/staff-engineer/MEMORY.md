@@ -16,3 +16,4 @@
 - [A source pin binds the literal, not its effect](source-pin-binds-the-literal-not-its-effect.md) — break the override mechanism + Monday: gate 263 green; a ratchet in a WORLDS loop cannot hold WORLDS
 - [Invariant cited from an unvalidated write path](invariant-cited-from-code-that-does-not-validate-its-input.md) — `done − plannedSoFar ≤ 1` never held (future-dated completions); open the writer
 - [Guard on the request field, not the stored value](guard-on-the-request-field-not-the-stored-value.md) — EV-248 bounded `date`; stored date = date + durationSeconds; open the mapper
+- [Collapsible form: the stay-open branch is unwitnessed](collapsible-form-close-branch-unwitnessed.md) — always-close mutant passed 54 specs at EV-337g1; hold the action POST and type

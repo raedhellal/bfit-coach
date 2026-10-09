@@ -3,6 +3,7 @@ import { expect, webkit, type Browser, type BrowserContext, type Locator, type P
 import { test } from "./fixture-test";
 import { signInThroughForm, type SignInLang } from "./sign-in";
 import { expectUnoccluded } from "./layout";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * BUG-665 (restated 2026-10-07, audit A14) and EV-342o O.3 / O.4 — the three server-rendered
@@ -151,6 +152,7 @@ const targets: FormCase = {
   async open(page) {
     await page.goto(`/clients/${LINA}`);
     await page.goto(`/clients/${LINA}/nutrition`);
+    await openTargetsForm(page);
     return `/clients/${LINA}`;
   },
   field: (page, w) => page.getByLabel(w.calories, { exact: true }),
@@ -160,6 +162,8 @@ const targets: FormCase = {
     const confirm = page.getByRole("dialog", { name: w.saveTargetsTitle });
     await confirm.getByRole("button", { name: w.saveTargets, exact: true }).click();
     await expect(page.getByText(w.targetsSaved, { exact: true })).toBeVisible();
+    // EV-337g1: a save that lands closes the card's form; the next edit opens it again.
+    await openTargetsForm(page);
   },
 };
 

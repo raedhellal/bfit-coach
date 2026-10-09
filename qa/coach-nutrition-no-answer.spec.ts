@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * BUG-711 — the client nutrition page's five writes: a write whose answer was LOST is
@@ -148,6 +149,7 @@ const SURFACES: Surface[] = [
     coach: COACH,
     trainee: LINA,
     open: async (page, lang) => {
+      await openTargetsForm(page);
       await page.getByLabel("Calories").fill("2300");
       const dialog = await openDialog(page, page.getByRole("button", { name: L[lang].saveTargets, exact: true }));
       return dialog.getByRole("button", { name: L[lang].saveTargets, exact: true });

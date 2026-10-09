@@ -1297,6 +1297,16 @@ export const en = {
     // Edge case 1, verbatim: no preferences row is not the same as an empty checked list.
     noRestrictions: "No dietary restrictions recorded.",
     saveTargets: "Save targets", // AC2, verbatim
+    /**
+     * EV-337g1 G1.2 — the targets card shows the four values; this button opens the form in
+     * the card. Story wording, verbatim (« Modifier les objectifs » / "Edit targets").
+     */
+    editTargets: "Edit targets",
+    /**
+     * EV-337g1 — the card with no targets stored (`targets: null`): no value is drawn, and this
+     * says so. The words are the overview card's own for the same fact (`client.nutritionCard.noTargets`).
+     */
+    noTargets: "No targets set.",
     saving: "Saving…",
     // AC2, verbatim — client-side, and no request is sent.
     invalidNumber: "Enter a number above 0.",

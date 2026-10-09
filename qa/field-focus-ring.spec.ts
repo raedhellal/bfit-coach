@@ -3,6 +3,7 @@ import { inflateSync } from "node:zlib";
 import { expect, webkit, type Browser, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * BUG-663 (P2, WCAG 2.2 SC 2.4.7 Focus Visible) — every text field in the portal, reached
@@ -658,6 +659,7 @@ const ROUTES: Route[] = [
     open: async (page) => {
       await signIn(page);
       await page.goto(`/clients/${LINA}/nutrition`);
+      await openTargetsForm(page);
       await settled(page, page.getByLabel("Calories", { exact: true }));
       return null;
     },

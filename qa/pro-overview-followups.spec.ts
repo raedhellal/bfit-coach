@@ -7,6 +7,7 @@ import { signInFrench } from "./french";
 import { en, type Copy } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
 import { codedInjuryLabels, injuryLabels } from "../src/lib/guardrailLabels";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * EV-337m — the client overview's follow-ups to EV-337e (story EV-337, rulings 2–5; M1–M9).
@@ -491,6 +492,7 @@ test("M8 — save targets, then the Overview tab within 30 s shows them, with no
 
   await page.getByRole("main").getByRole("link", { name: "Nutrition", exact: true }).click();
   await page.waitForURL(`/clients/${LINA}/nutrition`);
+  await openTargetsForm(page);
   await page.getByLabel("Calories").fill("2345");
   await page.getByLabel("Protein").fill("161");
   await page.getByRole("button", { name: "Save targets" }).click();
