@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -49,6 +50,12 @@ export function weekApplyLabel(copy: Copy, traineeDisplayName: string | null): s
  * to `sessionStorage`: a hand-off written now would be taken AGAIN by the next render of this
  * page within its two minutes and shown twice.
  *
+ * ONE SLOT (EV-337g2-R2, G2.3d). The library's landing sentence is put in the same `outcome`
+ * when `TemplateUseOutcome` takes it, so there is one sentence at a time: a template apply
+ * here replaces it, and the next apply attempt that answers clears it (`clearOutcome`, called
+ * by the week card's `applyWeek` once its answer is in). Cancelling a dialog is no attempt.
+ * Once cleared, nothing puts it back: the hand-off was consumed when it was taken.
+ *
  * `weekApplied` counts the template applies whose WEEK step landed on this page, so the week
  * card can do what its own successful apply does to its state (no refusal, no error, no cap
  * line: an apply writes the plan row with the day-regen counter at zero).
@@ -60,6 +67,7 @@ interface ApplyScope {
   setWeekConfirming: (open: boolean) => void;
   outcome: UseOutcome | null;
   showOutcome: (outcome: UseOutcome, weekApplied: boolean) => void;
+  clearOutcome: () => void;
   weekApplied: number;
 }
 
@@ -71,16 +79,21 @@ export function NutritionApplyScope({ children }: { children: ReactNode }) {
   const [weekConfirming, setWeekConfirming] = useState(false);
   const [outcome, setOutcome] = useState<UseOutcome | null>(null);
   const [weekApplied, setWeekApplied] = useState(0);
+  // Stable, so `TemplateUseOutcome`'s mount effect (which takes the library's hand-off once)
+  // can name it as a dependency without running again on every render of the scope.
+  const showOutcome = useCallback((next: UseOutcome, applied: boolean) => {
+    setOutcome(next);
+    if (applied) setWeekApplied((n) => n + 1);
+  }, []);
+  const clearOutcome = useCallback(() => setOutcome(null), []);
   const scope: ApplyScope = {
     weekPending,
     startWeekTransition,
     weekConfirming,
     setWeekConfirming,
     outcome,
-    showOutcome: (next, applied) => {
-      setOutcome(next);
-      if (applied) setWeekApplied((n) => n + 1);
-    },
+    showOutcome,
+    clearOutcome,
     weekApplied,
   };
   return <ApplyScopeContext.Provider value={scope}>{children}</ApplyScopeContext.Provider>;
@@ -93,9 +106,15 @@ export function useApplyScope(): ApplyScope {
   return scope;
 }
 
-/** For `TemplateUseOutcome`: the in-page outcome, or null outside the scope. */
-export function useInPageOutcome(): UseOutcome | null {
-  return useContext(ApplyScopeContext)?.outcome ?? null;
+/**
+ * The selection after an outcome (EV-337g2-R1, G2.3c). When the targets step LANDED (APPLIED and
+ * every WEEK_* kind), the template's targets are now the current targets, and a template's week
+ * step is the same week apply as today's (it carries no template), so what is left to do is
+ * today's apply: back to the first option. When the targets step was refused or its answer was
+ * lost (TARGETS_*), nothing known changed, and the selection still says what the coach asked for.
+ */
+export function targetsLanded(kind: UseOutcome["kind"]): boolean {
+  return kind !== "TARGETS_FAILED" && kind !== "TARGETS_UNKNOWN";
 }
 
 /** The first option's value. A template's id is a UUID, so it can never collide. */
@@ -233,6 +252,7 @@ export function NutritionApplyCard({
               { clientId, template: using.name, kind, floorCalories, at: Date.now() },
               kind === "APPLIED"
             );
+            if (targetsLanded(kind)) setSource(CURRENT_TARGETS);
             setUsing(null);
           }}
         />

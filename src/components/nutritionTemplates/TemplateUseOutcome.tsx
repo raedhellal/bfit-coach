@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useInPageOutcome, weekApplyLabel } from "@/components/nutrition/NutritionApplyCard";
+import { useEffect } from "react";
+import { useApplyScope, weekApplyLabel } from "@/components/nutrition/NutritionApplyCard";
 import { firstName } from "@/lib/format";
 import { useCopy } from "@/lib/i18n/client";
-import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
+import { takeOutcome } from "@/lib/nutritionTemplateUse";
 
 /**
  * EV-273b AC5 — the outcome of "Use on a trainee", shown on the trainee's nutrition page
@@ -21,9 +21,10 @@ import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
  * them asks the coach to do something (check, retry, wait until tomorrow).
  *
  * EV-337g2 G2.3: the same outcomes, when the coach applied a template from THIS page's apply
- * card, arrive through `useInPageOutcome()` instead (no navigation, no hand-off). The newer of
- * the two is shown: an in-page apply is always later than the landing that brought the coach
- * here, so it replaces the landing's sentence.
+ * card, arrive through the page's `ApplyScope` instead (no navigation, no hand-off). The landing's
+ * sentence is put in that same slot when it is taken (EV-337g2-R2, G2.3d): one sentence at a
+ * time, replaced by the next template apply and cleared by the next apply attempt, and never
+ * shown again once cleared.
  */
 export function TemplateUseOutcome({
   clientId,
@@ -47,17 +48,16 @@ export function TemplateUseOutcome({
   // "Unnamed client" for a read that succeeded with no name); null when there is no button.
   // G2.4: the one function both use, so the quote and the button cannot differ.
   const applyLabel = applyButtonDrawn ? weekApplyLabel(copy, trainee?.traineeDisplayName ?? null) : null;
-  const [landed, setOutcome] = useState<UseOutcome | null>(null);
-  const inPage = useInPageOutcome();
-  const outcome = inPage ?? landed;
+  const { outcome, showOutcome } = useApplyScope();
 
   useEffect(() => {
     // Only ever SET: the read removes the hand-off, so a second run of this effect
     // (React's dev double-mount, a re-render) finds nothing — and must not erase the
     // sentence the first run found.
     const taken = takeOutcome(clientId);
-    if (taken) setOutcome(taken);
-  }, [clientId]);
+    // A landing, not a write made here: the week card's state is the fresh page's already.
+    if (taken) showOutcome(taken, false);
+  }, [clientId, showOutcome]);
 
   if (!outcome) return null;
 

@@ -152,6 +152,7 @@ export function NutritionWeekCard({
     weekPending: pending,
     startWeekTransition: startTransition,
     weekApplied,
+    clearOutcome,
   } = useApplyScope();
   const [swapping, setSwapping] = useState<{ mealId: string; mealName: string } | null>(null);
   /**
@@ -258,6 +259,10 @@ export function NutritionWeekCard({
         code: "NO_ANSWER",
       } as const);
       setConfirming(false);
+      // EV-337g2-R2 (G2.3d): an apply attempt answered, so a template outcome above the page
+      // (in-page or the library's landing) no longer describes the week. Whatever this answer
+      // says is drawn here, in the week card.
+      clearOutcome();
       // Each apply's answer replaces the last one's: only the branch below sets it again.
       setWeekGenerating(false);
       if (!result.ok) {
