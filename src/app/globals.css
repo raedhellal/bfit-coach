@@ -1294,6 +1294,17 @@ main#main:focus { outline: none; }
   .tpl-row-more { justify-content: flex-start; }
 }
 
+/* ── EV-337j2: the recipe library (plan §5.9, story J2.1–J2.3) ───────────────────────────
+   EV-337i's list, reused as is: `.tpl-list` is ONE card of rows from 768 px and one card PER
+   recipe below it, `.tpl-row` puts the actions beside the name (≥ 768) or under it (< 768).
+   What is the library's own: the line holding « Nouvelle recette » and the count, the search
+   field's 44 px input (X3 measures the field itself, not only its frame), the two-span meta
+   line, and the no-match sentence (a recipe query can be long: it wraps, never widens). */
+.rcp-head-line { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.rcp-search input { height: 44px; }
+.rcp-row-meta { display: flex; gap: 2px 10px; flex-wrap: wrap; }
+.rcp-nomatch-text { margin: 0; min-width: 0; font-size: var(--fs-body); color: var(--ink-2); overflow-wrap: anywhere; }
+
 /* ── the editor ── */
 .tpl-dirty-slot { display: inline-flex; align-items: center; min-height: 26px; }
 .tpl-editor-split > .tpl-editor-aside, .tpl-editor-split > .tpl-editor-main { min-width: 0; }

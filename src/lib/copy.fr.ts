@@ -1060,6 +1060,8 @@ export const fr = {
     filterLabel: "Moment du repas",
     filterAll: "Tous les moments",
     filterEmpty: "Aucune recette pour ce moment du repas.",
+    librarySearch: "Rechercher une recette",
+    noMatch: (text: string) => `Aucune recette ne correspond à ${q(text)}.`,
     edit: "Modifier",
     remove: "Supprimer",
     deleteTitle: "Supprimer la recette ?",

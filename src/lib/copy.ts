@@ -2050,6 +2050,13 @@ export const en = {
     filterLabel: "Meal time",
     filterAll: "All meal times",
     filterEmpty: "No recipe for this meal time yet.",
+    /**
+     * EV-337j2 J2.2, verbatim — the library's name search (in the browser: nothing is sent).
+     * Also its placeholder. Not `searchLabel`, which is the editor's ingredient search.
+     */
+    librarySearch: "Search recipes",
+    /** J2.2, verbatim. The query as the coach typed it, trimmed. */
+    noMatch: (text: string) => `No recipe matches “${text}”.`,
     edit: "Edit",
     remove: "Delete",
 
