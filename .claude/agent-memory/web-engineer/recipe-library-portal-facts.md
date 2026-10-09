@@ -51,3 +51,14 @@ Placement on a trainee is EV-256e, not here.
 
 See [[template-library-portal-facts]] for the create-without-remount rule this editor
 reuses, and [[unicode-escapes-in-written-source]].
+
+**EV-337j2 (2026-10-09, `feat/ev337j2-recipes-library`):** the library reuses EV-337i's
+`.tpl-list/.tpl-item/.tpl-row*` classes (rows ≥ 768, a card per recipe below) and adds a
+name search (`recipes.librarySearch`, `recipes.noMatch`; the editor's ingredient search
+already owns `recipes.searchLabel`). Search = `matchesSearch(searchKey(name), q)` AND the
+meal-time filter; a slot with no recipe shows `filterEmpty`, never the no-match sentence.
+"New recipe" stays a BUTTON in the list (coach-recipes / coach-recipe-slots assert the
+role and the filter's position against it). Fixture switch `evoli_fixture_recipes_delay=<ms>`
+holds the LIST read (J1.5's loading detector); `evoli_fixture_read_delay` is detail-only.
+Accented seed: C1's « Crêpes aux épinards ». Spec: `qa/pro-recipes-library.spec.ts`.
+

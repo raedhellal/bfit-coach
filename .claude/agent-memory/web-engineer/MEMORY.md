@@ -36,7 +36,7 @@
 - [A mutant can fail the gate through the dev overlay](a-mutant-can-fail-the-gate-through-the-dev-overlay.md) — `<style>{css}</style>` breaks hydration; the overlay fails layout tests; count console errors
 - [The error boundary is a client component (BUG-689)](the-error-boundary-is-a-client-component.md) — ShellFrame not CoachShell; refresh+reset; render-error switch Proxy needs `then`
 - [Re-rooting a scan can narrow it](re-rooting-a-scan-can-narrow-it.md) — list root lost an `li` after `</ul>`; pin block-li == list-li; `content on ::after` caught BUG-218
-- [Recipe library (EV-256b)](recipe-library-portal-facts.md) — two 400 shapes (details.field vs field-leading message); a retired key is the only reachable unknown-ingredient
+- [Recipe library (EV-256b, EV-337j2)](recipe-library-portal-facts.md) — two 400 shapes; retired key = only unknown-ingredient path; j2 search + list-delay switch
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
 - [Recipe placement (EV-256e)](recipe-placement-portal-facts.md) — no `eaten` on the coach wire; flag server-wide, per-trainee in fixture; fail-open read is fixture-blind; button gone since EV-272
@@ -85,3 +85,7 @@
 - [Overview at 768–1279 (EV-345)](overview-768-band-ev345-facts.md) — `.ov-pair` display:contents outside the band; probe by addStyleTag on next start; inline margins, :scope locators
 - [A first-viewport AC is about the bottom (EV-344)](a-first-viewport-ac-is-about-the-bottom.md) — row is 319 px at 1024, do floor arithmetic first; settings fold gated by `.prog-doc`; screenshot-pair method
 - [An N/A needs the whole write path](a-not-applicable-needs-the-whole-write-path.md) — EV-344 B1: a DB CHECK (session_minutes 20–90) refuses Publish; a 'known flake' needs the list entry or a base --repeat-each
+- [toHaveText hides a trim defect in French](tohavetext-hides-a-trim-defect-in-french.md) — EV-337j2 M5: «\u00a0  q \u00a0» reads « q »; assert textContent exactly
+- [A photo placeholder passes a text/img scan](a-photo-placeholder-passes-a-text-and-img-scan.md) — EV-337j2 M7b: probe blank leaf boxes + url() backgrounds for R8
+- [Mutants against one hand-started dev server](mutants-against-a-hand-started-dev-server.md) — untracked config, webServer undefined, HMR per mutant, git checkout to revert
+
