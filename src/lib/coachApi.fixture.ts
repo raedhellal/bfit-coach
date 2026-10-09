@@ -3262,8 +3262,8 @@ async function loseNutritionAnswer(write: NutritionWrite): Promise<void> {
   if (!outcome) return;
   if (outcome === "thrown") throw new TypeError("fetch failed");
   if (outcome === "500") await fail(500, "INTERNAL_ERROR", "Something went wrong. Please try again.");
-  const { ApiError } = await import("./apiFetch");
-  throw new ApiError(Number(outcome), `Request failed (${outcome})`);
+  // The 50x: BUG-523's own gateway answer, so both switches throw the same ApiError.
+  await failAsGateway(`gateway_${outcome}`);
 }
 /**
  * BUG-689 / BUG-704 — ⚠ fixture affordance: `evoli_fixture_render_error=<once|always>` (one

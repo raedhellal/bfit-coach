@@ -26,6 +26,7 @@ import {
   type MealWeekView,
   type SwapOptions,
 } from "./coachApi";
+import { isLostAnswer } from "./lostAnswer";
 
 /**
  * EV-185b's write path. Same shape and same reasoning as `routineActions.ts`.
@@ -80,27 +81,13 @@ export type NutritionFailure =
   | "DAY_REGEN_CAPPED"
   | "INVALID"
   /**
-   * BUG-711 — the WRITE's answer was lost, so nothing is known about whether it landed:
-   * an error that is not an `ApiError` (the connection to b-fit-api failed, `fetch`
-   * threw), or a received `502`, `503` or `504`. Never a refusal: BUG-248's rule, as
-   * BUG-523 applied it to the template apply. Only the five writes produce it (see
-   * `classifyWrite`); a read that is lost claims nothing and stays `FAILED`.
+   * BUG-711 — the WRITE's answer was lost, so nothing is known about whether it landed
+   * (`isLostAnswer`, `lostAnswer.ts`: not an `ApiError`, or a gateway 502/503/504). Never
+   * a refusal: BUG-248's rule, as BUG-523 applied it to the template apply. Only the five
+   * writes produce it (see `classifyWrite`); a lost read claims nothing and stays `FAILED`.
    */
   | "NO_ANSWER"
   | "FAILED";
-
-/**
- * BUG-523's gateway statuses, as `nutritionTemplateActions.ts` reads them: a status the
- * portal RECEIVED, but from whatever stands in front of b-fit-api, which may have written
- * behind it. A plain `500` is not here: it is b-fit-api's own answer
- * (`RestExceptionHandler.handleUnexpected`) and keeps the failure sentence.
- */
-const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
-
-/** BUG-711 — the write may or may not have landed: no answer, not a refusal. */
-function isLostAnswer(err: unknown): boolean {
-  return !(err instanceof ApiError) || GATEWAY_STATUSES.has(err.status);
-}
 
 function classify(err: unknown): NutritionFailure {
   if (isMealEaten(err)) return "MEAL_EATEN";
@@ -286,9 +273,10 @@ function detail(err: ApiError, name: string): unknown {
 }
 
 function classifyPlacement(err: unknown): PlacementFailure {
-  // BUG-711: a lost answer is not a refusal. Before it, both of these read "FAILED".
-  if (!(err instanceof ApiError)) return { code: "NO_ANSWER" };
+  // BUG-711: a lost answer is not a refusal (before it, both cases read "FAILED").
   if (isLostAnswer(err)) return { code: "NO_ANSWER" };
+  // Unreachable after `isLostAnswer` (a non-ApiError is lost); kept for type narrowing.
+  if (!(err instanceof ApiError)) return { code: "NO_ANSWER" };
   if (isMealEaten(err)) return { code: "MEAL_EATEN" };
   if (isMealLocked(err)) return { code: "MEAL_LOCKED" };
   if (isRecipeAllergiesUncheckable(err)) return { code: "ALLERGIES_UNCHECKABLE" };
