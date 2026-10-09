@@ -19,3 +19,4 @@
 - [EV-342 sprint-1b v2 gate](project_ev342-sprint1b-v2-gate.md) — 2026-10-07 train 711f4c2: all 6 units PASS, mergeable; rebuilt-train SHA-identity checks, BUG-701 mutant
 - [EV-342 perf k/j/m gate](project_ev342-perf-kjm-gate.md) — 2026-10-07 d4f924a: k FAIL (getMe removal killed BUG-689 fixture switch), j partial, m PASS + BUG-703
 - [coach-s3b gate](project_coach-s3b-gate.md) — 2026-10-09 fa23b84 ten bugs; forged-token live stub rig, 629-alone merge-order witness, pro-roster-states in default config, WebKit/DPR traps
+- [coach-s3c gate](project_coach-s3c-gate.md) — 2026-10-09 794bc91 PASS; EV-344 2A holds on Lina only (content-dependent); hidden-field locator trap; inventory diff
