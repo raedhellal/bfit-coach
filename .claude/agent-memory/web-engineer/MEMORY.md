@@ -91,3 +91,4 @@
 - [One-line probe vs mixed font sizes](a-one-line-probe-must-survive-mixed-font-sizes.md) — overlap not tops; NBSP holds the pair, mutate it too
 - [Screenshot pairs differ by sub-pixel](screenshot-pairs-differ-by-subpixel.md) — ±2 px shift-tolerant compare, count >64 deltas, look at the rest
 - [Verify the base the brief names](verify-the-base-the-brief-names.md) — merge-base --is-ancestor every fix the brief says is in; 198a293 lacked BUG-713
+- [Every branch of a save callback needs a test](every-branch-of-a-save-callback-needs-a-test.md) — EV-337g1 S1: hold the action POST with page.route, fill during the hold; list branch → test before handback
