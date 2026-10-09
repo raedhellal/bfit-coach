@@ -21,3 +21,4 @@
 - [coach-s3b gate](project_coach-s3b-gate.md) — 2026-10-09 fa23b84 ten bugs; forged-token live stub rig, 629-alone merge-order witness, pro-roster-states in default config, WebKit/DPR traps
 - [coach-s3c gate](project_coach-s3c-gate.md) — 2026-10-09 794bc91 PASS; EV-344 2A holds on Lina only (content-dependent); hidden-field locator trap; inventory diff
 - [coach-s3d gate](project_coach-s3d-gate.md) — 2026-10-09 75d9688 PASS (BUG-713/714); live null-name stub when Docker is down; nav-progress-ready/actionTimeout probe traps
+- [coach-s3e gate](project_coach-s3e-gate.md) — 2026-10-09 e4e3a5f PASS (EV-337g1); branch-only locator = wrong-reason base red; timed-out jobs keep running; dblclick reachability

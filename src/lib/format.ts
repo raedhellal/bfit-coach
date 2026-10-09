@@ -252,6 +252,9 @@ export function formatPtsDelta(delta: number, locale: Locale): string {
   return `${rounded > 0 ? "+" : "−"}${decimal(Math.abs(rounded).toFixed(1), locale)}\u00a0pts`;
 }
 
+/** `firstName`'s fallback, as it reads at the START of a sentence. */
+const NO_FIRST_NAME: Record<Locale, string> = { en: "This trainee", fr: "Ce client" };
+
 /**
  * "Lina M." → "Lina".
  *
@@ -263,8 +266,19 @@ export function formatPtsDelta(delta: number, locale: Locale): string {
  */
 export function firstName(displayName: string | null | undefined, locale: Locale): string {
   const trimmed = (displayName ?? "").trim();
-  if (trimmed === "") return locale === "fr" ? "Ce client" : "This trainee";
+  if (trimmed === "") return NO_FIRST_NAME[locale];
   return trimmed.split(/\s+/)[0];
+}
+
+/**
+ * BUG-720 (ruling 720-R1) — a `firstName` result where it is NOT a sentence's first word: the
+ * fallback in lower case, "this trainee" / « ce client » (so « de ce client », never « de Ce
+ * client »), and a real first name exactly as given. A real first name is one token with no
+ * whitespace (`firstName` splits on it), so it can never equal the two-word fallback, and no
+ * name is ever lower-cased. Sentence-initial uses keep `first` as it is.
+ */
+export function midSentence(first: string, locale: Locale): string {
+  return first === NO_FIRST_NAME[locale] ? NO_FIRST_NAME[locale].toLowerCase() : first;
 }
 
 /* ── EV-284b: the food log ──────────────────────────────────────────────────── */

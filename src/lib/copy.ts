@@ -17,6 +17,10 @@
  */
 import type { Locale } from "./i18n/locale";
 import { endSentence } from "./endSentence";
+import { midSentence } from "./format";
+
+/** BUG-720: a first name inside a sentence ("for this trainee", see `midSentence`). */
+const mid = (first: string) => midSentence(first, "en");
 
 /**
  * Re-exported for the callers that always found it here. It LIVES in its own module
@@ -1396,12 +1400,12 @@ export const en = {
      * can change the outcome (EV-185 forbids a coach editing their food preferences), so
      * the block ends by saying so. One block, two slots: placement and quota.
      */
-    weekRefusedTitle: (first: string) => `We couldn't build a meal week for ${first}.`,
+    weekRefusedTitle: (first: string) => `We couldn't build a meal week for ${mid(first)}.`,
     weekRefusedBody:
       "Their recorded allergies and food rules rule out every recipe we're able to check. Nothing was changed.",
     /** P1 — a week is on screen and stays fully rendered under the block (ruling 2.2). */
     weekRefusedKept: (first: string) =>
-      `The week below is still ${first}'s current week — it hasn't been touched.`,
+      `The week below is still ${mid(first)}'s current week — it hasn't been touched.`,
     /** P2 — no week on screen: the block renders instead of one. */
     weekRefusedNoWeek: (first: string) => `${first} has no meal week right now.`,
     /*
@@ -1412,7 +1416,7 @@ export const en = {
      * and Q1 needs the api to say so (EV-196). Do not add one back without that witness.
      */
     refusedAskThem: (first: string) =>
-      `You can't change ${first}'s food preferences from here. Ask them to review them in the app.`,
+      `You can't change ${mid(first)}'s food preferences from here. Ask them to review them in the app.`,
     /**
      * ADR-0015 D6.7: applying a week reuses the plan row and CARRIES LOCKED MEALS
      * FORWARD, so "replaces the week" is true of the row and not of every meal in it.
@@ -1463,7 +1467,7 @@ export const en = {
      * shown in that day's card, followed by `refusedAskThem`. No quota sentence, ever:
      * this path never holds the apply reservation. `day` is the weekday's name.
      */
-    dayRefusedTitle: (day: string, first: string) => `We couldn't rebuild ${day} for ${first}.`,
+    dayRefusedTitle: (day: string, first: string) => `We couldn't rebuild ${day} for ${mid(first)}.`,
     dayRefusedBody:
       "Their recorded allergies and food rules rule out every recipe we're able to check for that day.",
     dayRefusedKept: (day: string) => `${day} is unchanged — nothing was replaced.`,
@@ -1611,15 +1615,15 @@ export const en = {
 
     /* ── AC3, verbatim — the refusals, shown with the dialog left open ───────── */
     excludedIngredient: (recipe: string, first: string, value: string) =>
-      `“${recipe}” can't be used for ${first}: ${value} conflicts with their dietary settings.`,
+      `“${recipe}” can't be used for ${mid(first)}: ${value} conflicts with their dietary settings.`,
     excludedName: (recipe: string, first: string) =>
-      `“${recipe}” can't be used for ${first}: its name contains a word that conflicts with their dietary settings. Rename the recipe and try again.`,
+      `“${recipe}” can't be used for ${mid(first)}: its name contains a word that conflicts with their dietary settings. Rename the recipe and try again.`,
     ruleUncheckable: (first: string) =>
-      `Recipes can't be used for ${first} yet: Evoli can't check a hand-written recipe for kosher meat-and-dairy combinations. Their generated meals are not affected.`,
+      `Recipes can't be used for ${mid(first)} yet: Evoli can't check a hand-written recipe for kosher meat-and-dairy combinations. Their generated meals are not affected.`,
     allergiesUncheckable: (first: string) =>
-      `Recipes can't be used for ${first} yet: Evoli can't safety-check a hand-written recipe against their dietary settings. Their generated meals are not affected.`,
+      `Recipes can't be used for ${mid(first)} yet: Evoli can't safety-check a hand-written recipe against their dietary settings. Their generated meals are not affected.`,
     belowFloor: (first: string, weekday: string, dayKcalAfter: number, floorKcal: number) =>
-      `This would bring ${first}'s ${weekday} to ${dayKcalAfter} kcal, below their minimum of ${floorKcal} kcal. Choose a recipe with more calories.`,
+      `This would bring ${mid(first)}'s ${weekday} to ${dayKcalAfter} kcal, below their minimum of ${floorKcal} kcal. Choose a recipe with more calories.`,
     /** AC3 + AC7, verbatim — shared by the placement dialog and the Swap dialog. */
     mealEaten: (first: string) => `${first} has already eaten this meal, so it can't be replaced.`,
     mealLocked: (first: string) => `${first} has already locked this meal, so it can't be replaced.`,
@@ -1643,7 +1647,7 @@ export const en = {
      * most often the trainee ended the link, and the page refresh that runs beside it
      * redirects to /clients/denied. It claims neither cause.
      */
-    accessDenied: (first: string) => `This recipe could not be used for ${first}.`,
+    accessDenied: (first: string) => `This recipe could not be used for ${mid(first)}.`,
     /** 404 `NOT_FOUND`: the flag was switched off after the page loaded (edge case 14). */
     placementOff: "Recipes can't be put on meals right now.",
     failed: "The recipe could not be used. Try again.",
@@ -1656,7 +1660,7 @@ export const en = {
      * portal renders the correct singular or plural.
      */
     applyWarning: (n: number, first: string) =>
-      `This replaces up to ${n} ${n === 1 ? "meal" : "meals"} placed from coach recipes. Meals ${first} has eaten are kept.`,
+      `This replaces up to ${n} ${n === 1 ? "meal" : "meals"} placed from coach recipes. Meals ${mid(first)} has eaten are kept.`,
   },
 
   /**
@@ -2277,7 +2281,7 @@ export const en = {
     /** The roster read failed: nobody is offered, and "no trainees" would be false. */
     traineesLoadError: "Your trainees could not be loaded. Close this and try again.",
     /** AC4, verbatim. */
-    confirmTitle: (template: string, first: string) => `Use “${template}” on ${first}?`,
+    confirmTitle: (template: string, first: string) => `Use “${template}” on ${mid(first)}?`,
     now: "Now",
     after: "After",
     /** A cell of the Now | After table. English prints the raw number, as the rows do. */
@@ -2288,15 +2292,15 @@ export const en = {
       `${first}'s meals for this week (from ${weekStart}) are rebuilt to these targets straight away, with their own number of meals a day. Their allergies and dietary rules still apply. Meals they have locked or already eaten are kept.`,
     /** AC4, verbatim — when the template's calories are below 1500, the higher floor. */
     floorWarning: (first: string) =>
-      `If this is below ${first}'s safe minimum, Evoli raises it to the minimum and tells you.`,
-    reading: (first: string) => `Reading ${first}'s current targets…`,
+      `If this is below ${mid(first)}'s safe minimum, Evoli raises it to the minimum and tells you.`,
+    reading: (first: string) => `Reading ${mid(first)}'s current targets…`,
     readFailed: (first: string) =>
       `${first}'s current targets could not be read, so nothing was sent. Close this and try again.`,
     confirm: "Confirm",
     applying: "Applying…",
 
     /* ── AC5's outcomes, shown on the trainee's nutrition page ────────────── */
-    applied: (template: string, first: string) => `“${template}” is now ${first}'s plan.`,
+    applied: (template: string, first: string) => `“${template}” is now ${mid(first)}'s plan.`,
     weekRateLimited: (first: string) =>
       `${first}'s targets are updated. Their meals weren't rebuilt: a week has already been applied for them today. Try again tomorrow.`,
     /**
@@ -2310,14 +2314,17 @@ export const en = {
      * built by the caller from the same display name the week card uses. PB-5
      * (2026-09-30): this quoted "Apply to {first name}" while the button reads the FULL
      * name, so the coach was sent to a button that is not on the page.
+     * `null` when the page draws no week card, so no such button (BUG-718, ruling 718-R1): the
+     * two lead sentences alone, and no instruction. No other wording replaces it.
      */
-    weekFailed: (first: string, applyLabel: string) =>
-      `${first}'s targets are updated. Their meals couldn't be rebuilt. Use “${applyLabel}” to try again.`,
+    weekFailed: (first: string, applyLabel: string | null) =>
+      `${first}'s targets are updated. Their meals couldn't be rebuilt.` +
+      (applyLabel === null ? "" : ` Use “${applyLabel}” to try again.`),
     weekUnknown: (first: string) =>
       `${first}'s targets are updated. We couldn't confirm whether their meals were rebuilt. Check their nutrition page before you try again.`,
-    targetsFailed: (first: string) => `Nothing was changed for ${first}. Try again.`,
+    targetsFailed: (first: string) => `Nothing was changed for ${mid(first)}. Try again.`,
     targetsUnknown: (first: string) =>
-      `We couldn't confirm whether ${first}'s targets changed. Check their nutrition page before you try again.`,
+      `We couldn't confirm whether ${mid(first)}'s targets changed. Check their nutrition page before you try again.`,
   },
 
 
