@@ -64,7 +64,7 @@ export function ProgressGoalBlock({
    * must not cost the measurement either. The event still fires.
    */
   coachId: string | null;
-  traineeDisplayName: string;
+  traineeDisplayName: string | null;
   goal: TraineeProgressGoal;
 }) {
   const copy = useCopy();

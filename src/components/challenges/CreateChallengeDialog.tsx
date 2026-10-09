@@ -6,6 +6,7 @@ import { Button, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
 import { formatDate, formatSteps } from "@/lib/format";
+import { fullNameOf } from "@/lib/traineeName";
 import { createChallengeAction } from "@/lib/challengeActions";
 import {
   DAILY_TARGET_MAX,
@@ -27,7 +28,8 @@ import { useCoachForm } from "@/lib/useCoachForm";
 /** A trainee the coach may invite: an ACTIVE roster row. STEPS needs no data scope. */
 export interface InviteTarget {
   id: string;
-  traineeDisplayName: string;
+  /** BUG-714: null or blank for a trainee with no name; printed through `fullNameOf`. */
+  traineeDisplayName: string | null;
 }
 
 /**
@@ -288,7 +290,7 @@ export function CreateChallengeDialog({
                           onChange={() => toggle(t.id)}
                           style={{ width: 18, height: 18, flexShrink: 0 }}
                         />
-                        <span style={{ overflowWrap: "anywhere" }}>{t.traineeDisplayName}</span>
+                        <span style={{ overflowWrap: "anywhere" }}>{fullNameOf(t.traineeDisplayName, copy)}</span>
                       </label>
                     </li>
                   ))}

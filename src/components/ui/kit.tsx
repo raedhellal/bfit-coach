@@ -438,8 +438,29 @@ const GRADS = [
   "linear-gradient(135deg,#F59E0B,#FF6A55)",
   "linear-gradient(135deg,#22C7D6,#4F7CFF)",
 ];
-export function Avatar({ name = "AR", size = 36, idx = 0, ring, style = {} }: { name?: string; size?: number; idx?: number; ring?: boolean; style?: Sx }) {
-  const initials = name
+/**
+ * BUG-714: `unnamed` draws a person glyph and no letters, for a trainee the api sent no name
+ * for (`isUnnamed`; the challenge table's `ParticipantAvatar` precedent). The caller decides,
+ * with the same predicate it uses to print the label, so the avatar and the name never
+ * disagree. A `null` name is a type error; at runtime it draws no letters rather than throwing,
+ * because one nameless trainee took the whole roster down with `null.split`.
+ */
+export function Avatar({
+  name = "AR",
+  size = 36,
+  idx = 0,
+  ring,
+  unnamed = false,
+  style = {},
+}: {
+  name?: string;
+  size?: number;
+  idx?: number;
+  ring?: boolean;
+  unnamed?: boolean;
+  style?: Sx;
+}) {
+  const initials = (unnamed ? "" : name ?? "")
     .split(" ")
     .map((w) => w[0])
     .slice(0, 2)
@@ -464,7 +485,13 @@ export function Avatar({ name = "AR", size = 36, idx = 0, ring, style = {} }: { 
         ...style,
       }}
     >
-      {initials}
+      {unnamed ? (
+        <span aria-hidden="true" style={{ display: "inline-flex" }}>
+          <UiIcon name="user" size={Math.round(size * 0.5)} />
+        </span>
+      ) : (
+        initials
+      )}
     </div>
   );
 }

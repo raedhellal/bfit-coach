@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, IconButton, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
+import { fullNameOf } from "@/lib/traineeName";
 import { revokeClientAction } from "@/lib/actions";
 import { settled } from "@/lib/settled";
 
@@ -15,7 +16,7 @@ import { settled } from "@/lib/settled";
  * button and no publish action, and QA asserts that by inspection. Adding a second
  * interactive element to this page is a story change, not a tweak.
  */
-export function RevokeMenu({ clientId, displayName }: { clientId: string; displayName: string }) {
+export function RevokeMenu({ clientId, displayName }: { clientId: string; displayName: string | null }) {
   const copy = useCopy();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -125,7 +126,7 @@ export function RevokeMenu({ clientId, displayName }: { clientId: string; displa
         }
       >
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-          {copy.client.revokeBody(displayName)}
+          {copy.client.revokeBody(fullNameOf(displayName, copy))}
         </p>
         {error && (
           <p role="alert" style={{ marginTop: 12, fontSize: 13, color: "var(--err-ink)" }}>

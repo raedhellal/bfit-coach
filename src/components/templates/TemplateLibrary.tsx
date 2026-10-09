@@ -8,6 +8,7 @@ import { UiIcon } from "@/components/ui/icons";
 import type { Copy } from "@/lib/copy";
 import { useCopy } from "@/lib/i18n/client";
 import { formatInstant, truncateName } from "@/lib/format";
+import { fullNameOf } from "@/lib/traineeName";
 import { settled } from "@/lib/settled";
 import {
   applyTemplateAction,
@@ -50,7 +51,8 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 /** A trainee this coach may WRITE to: ACTIVE, and the link carries WORKOUTS. */
 export interface ApplyTarget {
   id: string;
-  traineeDisplayName: string;
+  /** BUG-714: null or blank for a trainee with no name; printed through `fullNameOf`. */
+  traineeDisplayName: string | null;
 }
 
 const failureCopy = (copy: Copy): Record<TemplateFailure, string> => ({
@@ -689,7 +691,7 @@ function UseDialog({
             >
               {trainees.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.traineeDisplayName}
+                  {fullNameOf(t.traineeDisplayName, copy)}
                 </option>
               ))}
             </select>
@@ -697,13 +699,13 @@ function UseDialog({
 
           {template && trainee && (
             <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-              {copy.templates.useConfirm(template.name, trainee.traineeDisplayName)}
+              {copy.templates.useConfirm(template.name, fullNameOf(trainee.traineeDisplayName, copy))}
             </p>
           )}
           {trainee && (
             // AC3, verbatim.
             <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
-              {copy.templates.guardrailsAtPublish(trainee.traineeDisplayName)}
+              {copy.templates.guardrailsAtPublish(fullNameOf(trainee.traineeDisplayName, copy))}
             </p>
           )}
           {/*
@@ -730,7 +732,7 @@ function UseDialog({
                 lineHeight: 1.5,
               }}
             >
-              {copy.templates.replacesDraft(trainee.traineeDisplayName)}
+              {copy.templates.replacesDraft(fullNameOf(trainee.traineeDisplayName, copy))}
             </p>
           )}
           {conflict && trainee && refusedAgain && (
@@ -739,7 +741,7 @@ function UseDialog({
               data-testid="replace-refused-again"
               style={{ margin: 0, fontSize: 13, color: "var(--err-ink)", lineHeight: 1.5 }}
             >
-              {copy.templates.replaceRefusedAgain(trainee.traineeDisplayName)}
+              {copy.templates.replaceRefusedAgain(fullNameOf(trainee.traineeDisplayName, copy))}
             </p>
           )}
           {error && (

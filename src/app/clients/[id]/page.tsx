@@ -29,6 +29,7 @@ import { readClientOverview, readClientProgress, readCoachMe } from "@/lib/clien
 import { getCopy } from "@/lib/i18n/server";
 import { clientLoadError } from "@/lib/clientLoadError";
 import { firstName, formatDate, formatKg, formatShortDate } from "@/lib/format";
+import { fullNameOf } from "@/lib/traineeName";
 import { codedInjuryLabels } from "@/lib/guardrailLabels";
 import { weightCaption } from "@/lib/weight";
 
@@ -228,7 +229,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
     <CoachShell coachName={me?.displayName} section="roster">
       <ClientHeader
         clientId={overview.clientId}
-        traineeDisplayName={overview.traineeDisplayName}
+        trainee={overview}
         since={overview.since}
         active="overview"
         action={<RevokeMenu clientId={overview.clientId} displayName={overview.traineeDisplayName} />}
@@ -243,7 +244,7 @@ export default async function ClientPage({ params }: { params: { id: string } })
         // front, in words — every block below still says "not shared" in its own place.
         <div className="ov-section">
           <OverviewCard id="ov-nodata" title={copy.client.noData.title}>
-            <OverviewNote>{copy.client.noData.body(overview.traineeDisplayName)}</OverviewNote>
+            <OverviewNote>{copy.client.noData.body(fullNameOf(overview.traineeDisplayName, copy))}</OverviewNote>
           </OverviewCard>
         </div>
       )}

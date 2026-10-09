@@ -6,6 +6,7 @@ import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import { hasScope, type RosterClient } from "@/lib/coachApi";
 import { rosterPlanChanged } from "@/lib/routineChange";
+import { fullNameOf, isUnnamed } from "@/lib/traineeName";
 import type { RosterRowView } from "@/lib/rosterView";
 import type { Copy } from "@/lib/copy";
 
@@ -109,6 +110,8 @@ function PlanChangedMarker({ client, copy }: { client: RosterClient; copy: Copy 
 export function RosterRow({ client: c, view, idx }: { client: RosterClient; view: RosterRowView; idx: number }) {
   const copy = getCopy();
   const base = `roster-${c.id}`;
+  // BUG-714: a trainee with no name is "Unnamed client" here and a glyph in the avatar.
+  const name = fullNameOf(c.traineeDisplayName, copy);
   const notes: string[] = [];
   // A flagged client who is also inactive is listed under "To review" (one row, one
   // place); R6's fact still shows, on the row.
@@ -129,10 +132,10 @@ export function RosterRow({ client: c, view, idx }: { client: RosterClient; view
       aria-describedby={`${base}-plan ${base}-streak ${base}-last ${base}-status`}
     >
       <span className="roster-id">
-        <Avatar name={c.traineeDisplayName} size={40} idx={idx} />
+        <Avatar name={name} unnamed={isUnnamed(c.traineeDisplayName)} size={40} idx={idx} />
         <span style={{ minWidth: 0, display: "block" }}>
-          <span id={`${base}-name`} className="roster-name" title={c.traineeDisplayName}>
-            {c.traineeDisplayName}
+          <span id={`${base}-name`} className="roster-name" title={name}>
+            {name}
           </span>
           <span id={`${base}-plan`} className="roster-plan" title={c.currentPlanName || undefined}>
             {c.currentPlanName || (
