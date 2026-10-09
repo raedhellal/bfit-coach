@@ -482,12 +482,15 @@ for (const lang of ["en", "fr"] as const) {
       }
     });
 
-    test("G1.4: the overview read fails too: the tab still draws its h2 « Nutrition », and one h1", async ({ page, context, baseURL }) => {
+    test("G1.4 + BUG-713: the overview read fails too: the one h1 is the load-error sentence, and the h2 « Nutrition » is drawn", async ({ page, context, baseURL }) => {
       await signIn(page, lang);
       await context.addCookies([{ name: "evoli_fixture_overview", value: "fail", url: baseURL! }]);
       await page.goto(`/clients/${LINA}/nutrition`);
       await expect(page.getByText(L[lang].loadError, { exact: true })).toBeVisible();
+      // BUG-713: no name to show, so the one h1 is the tab's load-error sentence; the h2 comes
+      // before it (accepted: X4 counts h1s only, the story's pointer at G1.4 / F1.6).
       await expect(page.locator("h1")).toHaveCount(1);
+      await expect(page.locator("h1")).toHaveText(L[lang].loadError);
       await expect(page.getByRole("heading", { level: 2, name: L[lang].title, exact: true })).toHaveCount(1);
     });
 
