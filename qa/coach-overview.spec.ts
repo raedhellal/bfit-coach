@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { signInFrench } from "./french";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * The trainee overview: the status a denied read is served with (BUG-139) and block
@@ -263,6 +264,7 @@ test.describe("ADR-0015 D5 — the overview blanks per block, from `scopes`", ()
     // The tab is still there (EV-184b's decision), and it leads somewhere that works.
     await page.getByRole("link", { name: "Nutrition", exact: true }).click();
     await page.waitForURL(`/clients/${PETRA}/nutrition`);
+    await openTargetsForm(page);
     await expect(page.getByRole("button", { name: "Save targets" })).toBeVisible();
     await expect(page.locator("body")).not.toContainText(
       "This trainee has not shared their nutrition with you."
