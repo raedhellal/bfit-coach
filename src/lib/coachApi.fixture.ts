@@ -3323,6 +3323,17 @@ async function heldDetailRead(): Promise<void> {
   if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 5_000)));
 }
 /**
+ * EV-337j2 (J2.4, J1.5's loading rule) — ⚠ fixture affordance: the same hold for a LIBRARY
+ * read, under its own cookie (`evoli_fixture_recipes_delay=<ms>` for the recipe list), capped
+ * at 5 s, one browser context. Kept apart from `evoli_fixture_read_delay` on purpose: that
+ * one is BUG-597's "the list stays on screen while the DETAIL loads", which needs the list
+ * itself to answer at once.
+ */
+async function heldListRead(cookie: string): Promise<void> {
+  const ms = Number(await fixtureSwitch(cookie));
+  if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 5_000)));
+}
+/**
  * EV-337f1 — ⚠ fixture affordance: `evoli_fixture_long_plan=<clientId>` (one browser
  * context) swaps that client's SEEDED published plan for `longPlan()` (6 days × 6
  * exercises) on the routine read, so « Publier » can be measured at day 1, 3 and 6 of the
@@ -6511,6 +6522,8 @@ export const fixtureCoachApi: CoachApi = {
 
   async listRecipes(): Promise<CoachRecipeList> {
     recordCall("GET /coach-portal/recipes");
+    // EV-337j2 J2.4 — `evoli_fixture_recipes_delay=<ms>` holds this read (see heldListRead).
+    await heldListRead("evoli_fixture_recipes_delay");
     // EV-272 AC7 — the library read fails (this browser context only).
     if ((await fixtureSwitch("evoli_fixture_recipes")) === "fail") {
       await fail(500, "INTERNAL_ERROR", "Internal error");
