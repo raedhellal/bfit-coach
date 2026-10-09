@@ -65,6 +65,8 @@ const T = {
     untagged: "Lunch, Dinner (default)",
     oats: ["Breakfast", "Snack"],
     noMatch: (text: string) => `No recipe matches “${text}”.`,
+    /** The same sentence, character for character (no whitespace normalisation). */
+    noMatchExact: (text: string) => `No recipe matches “${text}”.`,
     filterEmpty: "No recipe for this meal time yet.",
     empty: "No recipes yet.",
     loadError: "Your recipes could not be loaded.",
@@ -84,6 +86,8 @@ const T = {
     oats: ["Petit-déjeuner", "Collation"],
     // `toHaveText` normalises U+00A0 to a space, so the guillemets' no-break spaces read as spaces.
     noMatch: (text: string) => `Aucune recette ne correspond à « ${text} ».`,
+    /** Character for character: the guillemets hold the query with U+00A0 on each side. */
+    noMatchExact: (text: string) => `Aucune recette ne correspond à «\u00a0${text}\u00a0».`,
     filterEmpty: "Aucune recette pour ce moment du repas.",
     empty: "Aucune recette pour l'instant.",
     loadError: "Vos recettes n'ont pas pu être chargées.",
@@ -329,6 +333,9 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
           await expect.poll(() => listed(page)).toEqual([]);
           const status = main(page).getByRole("status").filter({ hasText: t.noMatch("zzz") });
           await expect(status).toHaveText(t.noMatch("zzz"));
+          // `toHaveText` collapses whitespace, so an untrimmed « {texte} » would pass it: read
+          // the text as it is (found by the staff-style mutant M5, FR green under it).
+          expect(await status.evaluate((el) => el.textContent), "the sentence, exactly").toBe(t.noMatchExact("zzz"));
           await expect(page.getByText(t.empty, { exact: true }), "a search is not the empty library").toHaveCount(0);
           await expect(page.getByTestId("recipe-count"), "the count is the library's").toHaveText(t.count(6, 100));
 
@@ -437,6 +444,26 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
             await expect(scope.locator("img, picture, video, canvas"), "no image").toHaveCount(0);
             await expect(scope.locator('[role="img"]:not([aria-hidden="true"])'), "no image role").toHaveCount(0);
             await expect(scope.locator('input[type="file"]'), "no upload").toHaveCount(0);
+            // No photo PLACEHOLDER either (plan §5.4/§5.9): no blank box in a row. A leaf
+            // element with no text, outside an icon's <svg>, at least 16 × 16 — the grey square
+            // a "no photo yet" slot is drawn with (mutant M7b) — and no background image.
+            const blanks = await scope.getByRole("group").evaluateAll((groups) =>
+              groups.flatMap((g) =>
+                Array.from(g.querySelectorAll("*"))
+                  .filter((el): el is HTMLElement => el instanceof HTMLElement && el.children.length === 0)
+                  .filter((el) => !el.closest("svg") && el.innerText.trim() === "")
+                  .map((el) => ({ in: g.getAttribute("aria-label"), tag: el.tagName, ...el.getBoundingClientRect().toJSON() }))
+                  .filter((b) => b.width >= 16 && b.height >= 16)
+                  .map((b) => `${b.in}: ${b.tag} ${Math.round(b.width)}x${Math.round(b.height)}`)
+              )
+            );
+            expect(blanks, `a blank box in a row at ${width}`).toEqual([]);
+            const backgrounds = await scope.evaluate((root) =>
+              [root, ...Array.from(root.querySelectorAll("*"))]
+                .flatMap((el) => ["", "::before", "::after"].map((p) => getComputedStyle(el, p || null).backgroundImage))
+                .filter((v) => v.includes("url("))
+            );
+            expect(backgrounds, `a background image at ${width}`).toEqual([]);
             // One filter, the meal time: no tag filter beside it (J2.2's search is asserted there).
             await expect(scope.locator("select")).toHaveCount(1);
             await expect(scope.locator('[role="checkbox"], [role="switch"], [aria-pressed]'), "no filter chips").toHaveCount(0);
