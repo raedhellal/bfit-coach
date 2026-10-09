@@ -536,11 +536,12 @@ export async function pointerFocusRoute(
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const after = await read();
 
-    await test.info().attach(`${engine}-${search.name}-pointer.txt`, {
-      body: `before: border ${before.border.join(" / ")} | shadow ${before.boxShadow} | outline ${before.outline}\n` +
-        `after:  border ${after.border.join(" / ")} | shadow ${after.boxShadow} | outline ${after.outline}\n`,
-      contentType: "text/plain",
-    });
+    const body =
+      `[BUG-724 ${engine}] ${search.name}: pointer focus\n` +
+      `  before: border ${before.border.join(" / ")} | shadow ${before.boxShadow} | outline ${before.outline}\n` +
+      `  after:  border ${after.border.join(" / ")} | shadow ${after.boxShadow} | outline ${after.outline}\n`;
+    await test.info().attach(`${engine}-${search.name}-pointer.txt`, { body, contentType: "text/plain" });
+    if (process.env.BUG663_EVIDENCE) appendFileSync(process.env.BUG663_EVIDENCE, body);
 
     const hexToRgb = (h: string) => {
       const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h);
