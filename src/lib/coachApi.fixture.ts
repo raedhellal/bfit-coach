@@ -3235,6 +3235,37 @@ async function fixtureSwitch(name: string): Promise<string | null> {
   }
 }
 /**
+ * BUG-711 — ⚠ fixture affordance: `evoli_fixture_nutrition_lost=<write>_<outcome>` (one
+ * browser context) makes ONE of the client nutrition page's five writes lose its answer,
+ * before it checks or writes anything:
+ *
+ *   <write>   `targets` (PUT …/nutrition/targets), `week` (POST …/week/apply), `day`
+ *             (POST …/week/days/{i}/regenerate), `swap` (POST …/meals/{id}/swap),
+ *             `place` (POST …/meals/{id}/recipe).
+ *   <outcome> `502` | `503` | `504` — an `ApiError` with that status and NO string `code`
+ *             (message "Request failed (502)"): what `apiFetch` builds from a bare gateway
+ *             answer. The portal reads the status alone, whatever a gateway's body holds.
+ *             `thrown` — `TypeError("fetch failed")`, what `apiFetch` sees when the
+ *             connection to b-fit-api is lost. `500` — b-fit-api's own
+ *             `RestExceptionHandler.handleUnexpected` answer, `INTERNAL_ERROR`: the
+ *             control that still reads as a failure.
+ *
+ * Nothing is written here, but the portal cannot know that: behind a gateway, the write
+ * may have landed. Its own name, not BUG-523's `gateway_50x` values on
+ * `evoli_fixture_targets` / `evoli_fixture_week`, because it covers writes those two
+ * switches never reach (day, swap, placement) and must not change what they mean.
+ */
+type NutritionWrite = "targets" | "week" | "day" | "swap" | "place";
+async function loseNutritionAnswer(write: NutritionWrite): Promise<void> {
+  const forced = await fixtureSwitch("evoli_fixture_nutrition_lost");
+  const outcome = forced?.match(new RegExp(`^${write}_(50[0234]|thrown)$`))?.[1];
+  if (!outcome) return;
+  if (outcome === "thrown") throw new TypeError("fetch failed");
+  if (outcome === "500") await fail(500, "INTERNAL_ERROR", "Something went wrong. Please try again.");
+  const { ApiError } = await import("./apiFetch");
+  throw new ApiError(Number(outcome), `Request failed (${outcome})`);
+}
+/**
  * BUG-689 / BUG-704 — ⚠ fixture affordance: `evoli_fixture_render_error=<once|always>` (one
  * browser context) makes a page's SERVER RENDER throw, which is the only way to reach the
  * root error boundary (`src/app/error.tsx`): every read a page makes is caught and turned
@@ -6672,6 +6703,7 @@ export const fixtureCoachApi: CoachApi = {
     body: CoachTargetsRequest
   ): Promise<CoachTargetsResult> {
     recordCall(`PUT /coach-portal/clients/${id}/nutrition/targets ${wireKeys(body)}`);
+    await loseNutritionAnswer("targets"); // BUG-711
     await assertScope(id, "NUTRITION");
     const forcedTargets = await targetsSwitch();
     if (forcedTargets === "refused") await fail(500, "INTERNAL_ERROR", "Targets write failed");
@@ -6699,6 +6731,7 @@ export const fixtureCoachApi: CoachApi = {
 
   async applyMealWeek(id: string, body: CoachApplyWeekRequest): Promise<MealWeekView> {
     recordCall(`POST /coach-portal/clients/${id}/nutrition/week/apply ${wireKeys(body)}`);
+    await loseNutritionAnswer("week"); // BUG-711
     await assertScope(id, "NUTRITION");
     const { weekStart } = body;
     const state = nutritionState(id);
@@ -6745,6 +6778,7 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async regenerateDay(id: string, index: number): Promise<MealWeekView> {
+    await loseNutritionAnswer("day"); // BUG-711
     await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     if (!state.week) await fail(400, "COACH_WEEK_OUT_OF_RANGE", "No week");
@@ -6805,6 +6839,7 @@ export const fixtureCoachApi: CoachApi = {
 
   async applySwap(id: string, mealId: string, candidateIndex: number): Promise<MealWeekView> {
     recordCall(`POST /coach-portal/clients/${id}/nutrition/week/meals/${mealId}/swap`);
+    await loseNutritionAnswer("swap"); // BUG-711
     await assertScope(id, "NUTRITION");
     const state = nutritionState(id);
     const week = state.week;
@@ -6880,6 +6915,7 @@ export const fixtureCoachApi: CoachApi = {
    */
   async placeRecipe(id: string, mealId: string, recipeId: string): Promise<MealWeekView> {
     recordCall(`POST /coach-portal/clients/${id}/nutrition/week/meals/${mealId}/recipe ${recipeId}`);
+    await loseNutritionAnswer("place"); // BUG-711
     if (await placementOff(id)) await fail(404, "NOT_FOUND", "Not found");
     await assertScope(id, "NUTRITION");
     const recipe = await ownedRecipe(recipeId);
