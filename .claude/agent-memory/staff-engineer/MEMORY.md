@@ -19,3 +19,4 @@
 - [Collapsible form: the stay-open branch is unwitnessed](collapsible-form-close-branch-unwitnessed.md) — always-close mutant passed 54 specs at EV-337g1; hold the action POST and type
 - [Check shaped to its mutant](defect-class-check-shaped-to-its-mutant.md) — a check added for one survivor kills only that shape; probe the realistic variant (EV-337j2)
 - [Text inputs match :focus-visible on click](text-inputs-match-focus-visible-on-click.md) — no keyboard/pointer split on text fields; probe before a selector nit (EV-337j2 N1)
+- [Continuation presence is not intent](continuation-presence-is-not-intent.md) — BUG-730: `thens.length===0` assumed every then leaves; template/recipe creates stay → Back unguarded; a Back press heals a forgotten sentinel

@@ -172,10 +172,11 @@ export function TemplateEditor({
          * leave the guard holding a history entry that no longer points where it thinks.
          */
         const id = result.template.id;
+        // "stays": the coach is still on this page, so work typed meanwhile stays guarded (BUG-730).
         leaving.release(() => {
           setTemplateId(id);
           window.history.replaceState(window.history.state, "", `/templates/${id}`);
-        });
+        }, "stays");
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateTemplateAction` revalidates.

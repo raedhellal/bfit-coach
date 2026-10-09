@@ -130,7 +130,7 @@ export function NutritionTemplateEditor({
         form.saved(undefined, () => {
           startNavigationProgress("/nutrition-templates");
           router.replace("/nutrition-templates");
-        });
+        }, "leaves");
         return;
       }
       form.saved();

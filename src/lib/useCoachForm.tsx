@@ -16,7 +16,7 @@ import {
   type FormShape,
 } from "./coachFormState";
 import { useAdoptPrehydrationInput } from "./useAdoptPrehydrationInput";
-import { useUnsavedChanges } from "./useUnsavedChanges";
+import { useUnsavedChanges, type AfterStep } from "./useUnsavedChanges";
 
 /**
  * EV-342o (B2) — one way to build a coach-portal form.
@@ -46,11 +46,11 @@ import { useUnsavedChanges } from "./useUnsavedChanges";
  *   form.markSent();                     // before the request: what is shown is what is sent
  *   const result = await settled(...);
  *   if (result.ok) form.saved(stored?);  // the server's answer, in the form's terms
- *   else if (access ended) form.endAccess(() => router.refresh());
+ *   else if (access ended) form.endAccess(() => router.refresh(), "leaves");
  *   else form.setErrors({...});          // and the work stays unsaved
  *
  * A save that NAVIGATES (a create that goes to a list, a dialog that opens what it made)
- * passes the navigation as `saved(stored, then)`: the guard holds a sentinel history entry
+ * passes the navigation as `saved(stored, then, "leaves")`: the guard holds a sentinel history entry
  * while the form is dirty, and a `router.push` over it leaves a dead Back press, after which
  * the guard's cleanup would step the coach back off the page they were sent to.
  *
@@ -73,11 +73,17 @@ export interface CoachForm<V extends FormShape<V>> {
   touched(key: keyof V): boolean;
   setErrors(errors: FieldErrors<V>): void;
   markSent(): void;
-  /** The server accepted the save; `then`: a navigation it leads to (see the protocol). */
-  saved(stored?: V, then?: () => void): void;
+  /** The server accepted the save. */
+  saved(stored?: V): void;
+  /**
+   * The server accepted the save, and `then` follows it once the guard's entry is gone. `after`
+   * says whether `then` leaves the page (a create that opens the list) or stays on it (BUG-730:
+   * work typed during the guard's step is guarded again only if the coach stays).
+   */
+  saved(stored: V | undefined, then: () => void, after: AfterStep): void;
   reset(values: V): void;
-  /** A 403 on a write: stop guarding (nothing can be saved), then `then` (a refresh). */
-  endAccess(then: () => void): void;
+  /** A 403 on a write: stop guarding (nothing can be saved), then `then` (a refresh: "leaves"). */
+  endAccess(then: () => void, after: AfterStep): void;
   scope: RefObject<HTMLDivElement>;
   guard: ReactElement;
 }
@@ -130,9 +136,10 @@ export function useCoachForm<V extends FormShape<V>>({
    * save, since a second call before the first's popstate would step back twice.
    */
   const saved = useCallback(
-    (stored?: V, then?: () => void) => {
+    (stored?: V, then?: () => void, after?: AfterStep) => {
       const next = markSaved(latest.current, stored);
-      if (then) release(then);
+      // `after` comes with every `then`: the overload above requires it (BUG-730 N1).
+      if (then) release(then, after as AfterStep);
       else if (!isDirty(next)) release();
       setState((s) => markSaved(s, stored));
     },
@@ -140,9 +147,9 @@ export function useCoachForm<V extends FormShape<V>>({
   );
 
   const endAccess = useCallback(
-    (then: () => void) => {
+    (then: () => void, after: AfterStep) => {
       setState((s) => ({ ...s, abandoned: true }));
-      release(then);
+      release(then, after);
     },
     [release]
   );
