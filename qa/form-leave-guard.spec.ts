@@ -466,6 +466,72 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await page.goBack();
     await page.waitForURL("/");
   });
+
+  test("the progress goal: a re-edit typed back to the saved value before the step lands leaves no guard entry", async ({
+    page,
+  }) => {
+    await holdHistoryBack(page, 400);
+    await signIn(page, "en");
+    await progressGoal.open(page, w);
+    const block = page.getByRole("region", { name: w.block });
+    const field = progressGoal.field(page, w);
+    const start = await historyIndex(page);
+
+    await field.fill("71");
+    await armed(page);
+    await block.getByRole("button", { name: w.save, exact: true }).click();
+    await expect(block.getByText(w.saved, { exact: true })).toBeVisible();
+    // Dirty, then clean again, both before the save's step lands: nothing is left to guard.
+    await field.fill("69");
+    await field.fill("71");
+    await heldStepsLanded(page, 1);
+
+    await expect(leaveDialog(page, w)).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => window.history.state?.evoliUnsavedGuard === true), {
+        message: "a guard entry was pushed for a form with nothing unsaved",
+      })
+      .toBe(false);
+    expect(await historyIndex(page), "a stray guard entry is left in the history").toBe(start);
+    await page.goBack();
+    await page.waitForURL("/");
+  });
+
+  test("a new nutrition template: a keystroke while the create's step is in flight neither asks nor leaves /new behind", async ({
+    page,
+  }) => {
+    await holdHistoryBack(page, 400);
+    await signIn(page, "en");
+    await page.goto("/nutrition-templates");
+    await page.goto("/nutrition-templates/new");
+    const name = page.getByLabel(w.templateName);
+    await name.fill("Created once");
+    await page.getByLabel(w.calories, { exact: true }).fill("1800");
+    await page.getByLabel(w.protein, { exact: true }).fill("150");
+    await page.getByLabel(w.carbs, { exact: true }).fill("170");
+    await page.getByLabel(w.fat, { exact: true }).fill("60");
+    await armed(page);
+    const save = page.getByRole("button", { name: w.saveTemplate });
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    await save.click();
+    await answered;
+    // Back from « Saving… »: the action's callback has run, so `saved(…, then)` has called
+    // `history.back()` (held) and the navigation to the library waits for that step.
+    await expect(save).toBeEnabled();
+    await expect(page).toHaveURL(/\/nutrition-templates\/new$/);
+    await name.fill("Created once, renamed late");
+    await heldStepsLanded(page, 1);
+
+    // The save leaves for the library as it would have: the late keystroke neither asks nor
+    // leaves a guard entry for /new behind.
+    await page.waitForURL("/nutrition-templates");
+    await expect(page.getByRole("group", { name: "Created once", exact: true })).toBeVisible();
+    await expect(leaveDialog(page, w)).toHaveCount(0);
+    await page.goBack();
+    await expect(page).not.toHaveURL(/\/nutrition-templates\/new$/);
+  });
 });
 
 /**
