@@ -54,9 +54,10 @@ export default async function ClientLayout({
   /**
    * BUG-600 — a path segment that is not a UUID is not the id of any trainee, so it gets
    * the answer an unknown id gets (the 403 denial page: no existence oracle either way),
-   * WITHOUT an api call. Sent on, the live api's UUID conversion answers
+   * WITHOUT an api call. Sent on, the live api's UUID conversion answers most of them
    * `400 INVALID_REQUEST`, which is not a 403, and the coach read « This trainee could not
-   * be loaded. » under a 200 for a URL that was never a client's.
+   * be loaded. » under a 200 for a URL that was never a client's. (`isClientId` is
+   * stricter than the api, which also parses some non-canonical forms: see its comment.)
    */
   if (!isClientId(params.id)) redirect("/clients/denied");
 

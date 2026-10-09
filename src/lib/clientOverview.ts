@@ -10,8 +10,13 @@ import { readCoachIdentity, type CoachIdentity } from "./session";
 
 /**
  * BUG-600 — the api's `{id}` is a `UUID` path variable (the shape `recipes/[id]` checks too).
- * A segment that is not one is not the id of any trainee: the live api answers it
- * `400 INVALID_REQUEST`, which is not a 403, so the portal must not send it at all.
+ * Only the CANONICAL form passes here (8-4-4-4-12 hex). Most segments that fail it are
+ * answered `400 INVALID_REQUEST` by the live api, which is not a 403, so the portal must not
+ * send them. Not all: Java's `UUID.fromString` is lenient, so a non-canonical id such as
+ * `1-1-1-1-1` parses (staff's jshell witness: `00000001-…`) and the api would answer it like
+ * any UUID. This check is therefore STRICTER than the api: the portal denies those ids too
+ * (the 403 page, the same answer as an unknown id). Its own links carry the ids the api
+ * sends, which Java writes in the canonical form.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
