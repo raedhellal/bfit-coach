@@ -62,6 +62,8 @@ export function refusalSentence(
     case "ACCESS_DENIED":
       // Never `recipeGone` from the 403 alone — see `SwapSheet`'s `place()`.
       return t.accessDenied(first);
+    case "NO_ANSWER":
+      return t.noAnswer;
     case "FAILED":
       return t.failed;
   }

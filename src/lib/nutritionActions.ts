@@ -79,7 +79,28 @@ export type NutritionFailure =
   /** EV-242b — 429 `COACH_DAY_REGEN_LIMIT`: today's day regenerations are used up. */
   | "DAY_REGEN_CAPPED"
   | "INVALID"
+  /**
+   * BUG-711 — the WRITE's answer was lost, so nothing is known about whether it landed:
+   * an error that is not an `ApiError` (the connection to b-fit-api failed, `fetch`
+   * threw), or a received `502`, `503` or `504`. Never a refusal: BUG-248's rule, as
+   * BUG-523 applied it to the template apply. Only the five writes produce it (see
+   * `classifyWrite`); a read that is lost claims nothing and stays `FAILED`.
+   */
+  | "NO_ANSWER"
   | "FAILED";
+
+/**
+ * BUG-523's gateway statuses, as `nutritionTemplateActions.ts` reads them: a status the
+ * portal RECEIVED, but from whatever stands in front of b-fit-api, which may have written
+ * behind it. A plain `500` is not here: it is b-fit-api's own answer
+ * (`RestExceptionHandler.handleUnexpected`) and keeps the failure sentence.
+ */
+const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+/** BUG-711 — the write may or may not have landed: no answer, not a refusal. */
+function isLostAnswer(err: unknown): boolean {
+  return !(err instanceof ApiError) || GATEWAY_STATUSES.has(err.status);
+}
 
 function classify(err: unknown): NutritionFailure {
   if (isMealEaten(err)) return "MEAL_EATEN";
@@ -94,6 +115,16 @@ function classify(err: unknown): NutritionFailure {
   if (isWeekGenerationInProgress(err)) return "WEEK_GENERATING";
   if (isForbidden(err)) return "ACCESS_DENIED";
   return "FAILED";
+}
+
+/**
+ * BUG-711 (senior-po's ruling, 2026-10-09) — the four writes that return a
+ * `NutritionFailure`: a lost answer first, then every named refusal exactly as before.
+ * `swapOptionsAction` is a read and keeps `classify`.
+ */
+function classifyWrite(err: unknown): NutritionFailure {
+  if (isLostAnswer(err)) return "NO_ANSWER";
+  return classify(err);
 }
 
 /**
@@ -134,7 +165,7 @@ export async function saveTargetsAction(
     revalidateNutrition(clientId);
     return { ok: true, result };
   } catch (err) {
-    return { ok: false, code: classify(err) };
+    return { ok: false, code: classifyWrite(err) };
   }
 }
 
@@ -157,7 +188,7 @@ export async function applyWeekAction(
     revalidateNutrition(clientId);
     return { ok: true, week };
   } catch (err) {
-    return { ok: false, code: classify(err) };
+    return { ok: false, code: classifyWrite(err) };
   }
 }
 
@@ -170,7 +201,7 @@ export async function regenerateDayAction(
     revalidateNutrition(clientId);
     return { ok: true, week };
   } catch (err) {
-    return { ok: false, code: classify(err) };
+    return { ok: false, code: classifyWrite(err) };
   }
 }
 
@@ -199,7 +230,7 @@ export async function applySwapAction(
     revalidateNutrition(clientId);
     return { ok: true, week };
   } catch (err) {
-    return { ok: false, code: classify(err) };
+    return { ok: false, code: classifyWrite(err) };
   }
 }
 
@@ -246,6 +277,8 @@ export type PlacementFailure =
   | { code: "MEAL_CHANGED" }
   | { code: "PLACEMENT_OFF" }
   | { code: "ACCESS_DENIED" }
+  /** BUG-711 — see `NutritionFailure`'s `NO_ANSWER`. */
+  | { code: "NO_ANSWER" }
   | { code: "FAILED" };
 
 function detail(err: ApiError, name: string): unknown {
@@ -253,7 +286,9 @@ function detail(err: ApiError, name: string): unknown {
 }
 
 function classifyPlacement(err: unknown): PlacementFailure {
-  if (!(err instanceof ApiError)) return { code: "FAILED" };
+  // BUG-711: a lost answer is not a refusal. Before it, both of these read "FAILED".
+  if (!(err instanceof ApiError)) return { code: "NO_ANSWER" };
+  if (isLostAnswer(err)) return { code: "NO_ANSWER" };
   if (isMealEaten(err)) return { code: "MEAL_EATEN" };
   if (isMealLocked(err)) return { code: "MEAL_LOCKED" };
   if (isRecipeAllergiesUncheckable(err)) return { code: "ALLERGIES_UNCHECKABLE" };

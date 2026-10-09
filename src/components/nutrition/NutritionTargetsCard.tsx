@@ -162,10 +162,11 @@ export function NutritionTargetsCard({
     form.markSent();
     startTransition(async () => {
       // `settled`: a failed request resolves with `undefined`, and without this the
-      // four numbers the coach just typed go down with the error boundary.
+      // four numbers the coach just typed go down with the error boundary. A request
+      // that failed has no answer, so the fallback is `NO_ANSWER` (BUG-711), not FAILED.
       const result = await settled(
         saveTargetsAction(clientId, { calories: kcal, proteinG, carbsG, fatG }),
-        { ok: false, code: "FAILED" } as const
+        { ok: false, code: "NO_ANSWER" } as const
       );
       setConfirming(false);
       if (!result.ok) {
@@ -179,7 +180,9 @@ export function NutritionTargetsCard({
           form.endAccess(() => router.refresh());
           return;
         }
-        setError(copy.nutrition.targetsFailed);
+        setError(
+          result.code === "NO_ANSWER" ? copy.nutrition.targetsNoAnswer : copy.nutrition.targetsFailed
+        );
         return;
       }
       setError(null);

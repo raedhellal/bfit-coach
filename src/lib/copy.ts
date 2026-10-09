@@ -1323,6 +1323,12 @@ export const en = {
       `Your macros add up to ${macroKcal} kcal — this matches the calorie target.`,
     targetsSaved: "Targets saved.",
     targetsFailed: "The targets could not be saved.",
+    /**
+     * BUG-711, verbatim (senior-po's ruling, 2026-10-09) — the write's answer was lost (no
+     * answer, or a gateway 502/503/504), so it may have landed. Shown INSTEAD of the
+     * failure sentence beside it, which invites a retry the api may already have done.
+     */
+    targetsNoAnswer: "We couldn't confirm whether the targets were saved. Reload the page before you try again.",
     saveTargetsTitle: "Save targets?",
     weekTitle: "Meal week",
     weekOf: (date: string) => `Week of ${date}`,
@@ -1338,6 +1344,8 @@ export const en = {
     applyConfirm: "Apply",
     cancel: "Cancel",
     applyFailed: "The meal week could not be applied.",
+    /** BUG-711, verbatim — see `targetsNoAnswer`. */
+    applyNoAnswer: "We couldn't confirm whether the meal week was applied. Reload the page before you try again.",
     // Edge case 3: the portal only ever sends `currentWeekStart`, so this is the
     // sentence for the race where the server's week rolled over mid-session.
     weekOutOfRange: "Only the current week can be applied.",
@@ -1422,6 +1430,8 @@ export const en = {
       `Swapping a meal doesn't use ${trainee}'s daily regenerations.`,
     regenerating: "Regenerating…",
     regenerateFailed: "The day could not be regenerated.",
+    /** BUG-711, verbatim — see `targetsNoAnswer`. */
+    regenerateNoAnswer: "We couldn't confirm whether the day was regenerated. Reload the page before you try again.",
     /**
      * EV-071b ruling 2.4, verbatim — the 422 `NO_SAFE_MEAL_PLAN` on a day regenerate,
      * shown in that day's card, followed by `refusedAskThem`. No quota sentence, ever:
@@ -1446,6 +1456,8 @@ export const en = {
     swapLoading: "Loading options…",
     swapNone: "No swap options are available for this meal.",
     swapFailed: "The meal could not be swapped.",
+    /** BUG-711, verbatim — see `targetsNoAnswer`. Both Swap sheets (flag off and on). */
+    swapNoAnswer: "We couldn't confirm whether the meal was swapped. Reload the page before you try again.",
     /**
      * EV-288, verbatim — the apply answered 409 `SWAP_OPTIONS_STALE` (BUG-271): the list
      * on screen was re-read and replaced. Shared by both Swap sheets (flag off and on).
@@ -1609,6 +1621,8 @@ export const en = {
     /** 404 `NOT_FOUND`: the flag was switched off after the page loaded (edge case 14). */
     placementOff: "Recipes can't be put on meals right now.",
     failed: "The recipe could not be used. Try again.",
+    /** BUG-711, verbatim — see `nutrition.targetsNoAnswer`. */
+    noAnswer: "We couldn't confirm whether the recipe was used. Reload the page before you try again.",
 
     /**
      * AC5, verbatim, inside the existing apply-week confirm, only when n ≥ 1 (n = this
