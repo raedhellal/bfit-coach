@@ -109,7 +109,10 @@ export default async function RosterPage() {
             }}
           >
             <UiIcon name="ban" size={26} color="var(--err-ink)" />
-            <div style={{ fontSize: 14.5, color: "var(--ink-2)" }}>{copy.roster.loadError}</div>
+            {/* BUG-683: the failure is this page's only content, so it is announced. */}
+            <div role="alert" style={{ fontSize: 14.5, color: "var(--ink-2)" }}>
+              {copy.roster.loadError}
+            </div>
             {/* BUG-616: one control, a link drawn as the secondary button (was a <button>
                 inside the <a>). Still a plain <a>: the retry is a full document load. */}
             <a href="/" className="link-button" data-variant="secondary">

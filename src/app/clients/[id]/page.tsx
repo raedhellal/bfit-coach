@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
-import { ClientNotice } from "@/components/client/ClientNotice";
 import { ClientHeader, ClientInjuryChips } from "@/components/client/ClientHeader";
 import { RevokeMenu } from "@/components/client/RevokeMenu";
 import { StatTile } from "@/components/client/StatTile";
@@ -28,6 +27,7 @@ import {
 } from "@/lib/coachApi";
 import { readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
+import { clientLoadError } from "@/lib/clientLoadError";
 import { firstName, formatDate, formatKg, formatShortDate } from "@/lib/format";
 import { codedInjuryLabels } from "@/lib/guardrailLabels";
 import { weightCaption } from "@/lib/weight";
@@ -83,22 +83,37 @@ export default async function ClientPage({ params }: { params: { id: string } })
    * ADR-0015 D5 / C4 forbids (`routine/page.tsx` waits the same way), so these cost one
    * more round trip and never a request for withheld data.
    *
-   * The 403 case for the overview never reaches here: `layout.tsx` has already redirected
-   * to /clients/denied, which middleware serves with the status AC5 asks for.
+   * On a document load the 403 case for the overview never reaches here: `layout.tsx` has
+   * already redirected to /clients/denied, which middleware serves with the status AC5 asks
+   * for. On a tab change that renders on the server it does (the layout is not rendered
+   * again): BUG-671, below, with its router-cache limit.
    */
   const progressRead = readClientProgress(params.id);
   const meRead = readCoachMe();
-  const { overview } = await readClientOverview(params.id);
+  const { overview, forbidden } = await readClientOverview(params.id);
+  // BUG-671 — a TAB CHANGE does not render `layout.tsx` again (its segment is unchanged), so
+  // the layout's 403 decision never runs on one; when the tab change renders this page on the
+  // server, its own read is the only witness that the link ended. Same answer as the layout:
+  // the denial page.
+  // LIMIT (staff S1, witnessed on a production build): this runs only when the tab change
+  // reaches the server. Next's client router cache keeps a dynamic page for 30 s
+  // (`staleTimes.dynamic`, next.config.mjs, ADR-0033), so a tab visited in the last 30 s is
+  // shown from the cache with NO server render, and still shows the stale page after the
+  // link ended, until the cache entry expires or the page is reloaded. Changing the cache is
+  // the architect's call against ADR-0012 D3, not this fix's.
+  if (forbidden) redirect("/clients/denied");
 
   if (!overview) {
-    // The notice is this page's only content, so its sentence is the h1. Without
-    // `asHeading` the load error had no heading at all, the same gap /clients/denied had.
-    const me = await meRead;
-    return (
-      <CoachShell coachName={me?.displayName} section="roster">
-        <ClientNotice message={copy.client.loadError} asHeading />
-      </CoachShell>
-    );
+    /**
+     * BUG-629 — the overview read failed with anything but a 403: an api 5xx, no answer or a
+     * timeout, and equally a 401 after a failed refresh, a 429 or a 400 (`readClientOverview`
+     * only tells a 403 apart). Rendering the notice here served it with a 200, so a
+     * status-based monitor could not see an api outage through the portal. Thrown instead,
+     * before the first byte, so the response is a 500; the root error boundary recognises
+     * the digest and draws the same notice (`ClientNoticeCard`, the sentence as the one h1,
+     * the way back), in the shell.
+     */
+    throw clientLoadError();
   }
 
   /**

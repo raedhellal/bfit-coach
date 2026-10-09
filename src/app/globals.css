@@ -1461,6 +1461,19 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .ov-note + .ov-note, .activity-list + .ov-note { margin-top: 6px; }
 .ov-card-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* BUG-707 — the client overview's adherence series (AdherenceSeries.tsx). Each week is a
+   three-column row: its date (as wide as the date: FR « 28 sept. 2026 » is 82.5 px, so no
+   fixed width), the bar (the rest, never below 0), the figure (as wide as itself). With
+   subgrid every row shares the LIST's columns, so dates, bars and figures line up down the
+   card; without it (Chrome < 117, Safari < 16) each row sizes its own columns: nothing
+   spills into the gap before the bar, only the cross-row alignment is lost. */
+.adherence-series { display: grid; row-gap: 10px; }
+.adherence-week { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 10px; align-items: center; }
+@supports (grid-template-columns: subgrid) {
+  .adherence-series { grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 10px; }
+  .adherence-week { grid-column: 1 / -1; grid-template-columns: subgrid; }
+}
+
 .count-chip {
   display: inline-flex;
   padding: 2px 8px;

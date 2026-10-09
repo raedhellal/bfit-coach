@@ -1507,6 +1507,7 @@ async function failWithDetails(
  * refuses to be.
  */
 async function assertScope(id: string, required: CoachAccessScope): Promise<void> {
+  await failIfMalformedId(id); // BUG-600: the api's 400 comes before its guard.
   const overview = OVERVIEWS[id];
   if (state().revoked || (await linkEnded()) || !overview || !overview().scopes.includes(required)) {
     await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
@@ -1906,14 +1907,22 @@ async function recipesByName(): Promise<StoredRecipe[]> {
   );
 }
 
-async function ownedRecipe(id: string): Promise<StoredRecipe> {
-  // The api's `{id}` is a `UUID` path variable: a malformed one never reaches the guard,
-  // it is `MethodArgumentTypeMismatchException` → 400 INVALID_REQUEST
-  // (`RestExceptionHandler.handleTypeMismatch`). Reproduced so the portal's own guard
-  // for it is under test and not flattered by the fixture's map lookup.
+/**
+ * The api's `{id}` is a `UUID` path variable: a malformed one never reaches the guard,
+ * it is `MethodArgumentTypeMismatchException` → 400 INVALID_REQUEST
+ * (`RestExceptionHandler.handleTypeMismatch`). Reproduced so the portal's own guard
+ * for it is under test and not flattered by the fixture's map lookup (a recipe id, and
+ * since BUG-600 a trainee id: the fixture used to answer 403 for any id, so the portal's
+ * 200 « could not be loaded » for `/clients/<not-a-UUID>` was invisible here).
+ */
+async function failIfMalformedId(id: string): Promise<void> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     await fail(400, "INVALID_REQUEST", "Invalid value for 'id'.");
   }
+}
+
+async function ownedRecipe(id: string): Promise<StoredRecipe> {
+  await failIfMalformedId(id);
   const found = (await library()).get(id);
   // AC6 — one body for foreign, unknown and deleted.
   if (!found) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
@@ -3953,6 +3962,13 @@ async function nutritionCopyName(original: string): Promise<string> {
  *                                      with no status: `fetch` throws `TypeError("fetch
  *                                      failed")`, exactly what `apiFetch` sees when the
  *                                      connection to b-fit-api is lost (staff review, M4).
+ *   `evoli_fixture_targets=gateway_502|gateway_503|gateway_504` (and the same on
+ *   `evoli_fixture_week`) — BUG-523: the write answers that status as an `ApiError` with
+ *                                      no string `code` (message "Request failed (502)").
+ *                                      The portal classifies it by status alone, whatever a
+ *                                      gateway's body holds. Nothing is written here, but the
+ *                                      portal cannot know that: the write may have landed
+ *                                      behind the gateway.
  *   `evoli_fixture_week_start=YYYY-MM-DD` — the week the API considers current, served as
  *                                      `currentWeekStart` and the only one apply accepts.
  *                                      A date that is NOT the UTC Monday pins "the apply sends
@@ -3960,6 +3976,13 @@ async function nutritionCopyName(original: string): Promise<string> {
  *
  * The browser-side "no answer" needs no switch: the gate aborts the browser's request.
  */
+/** BUG-523 — `gateway_502` → the `ApiError` `apiFetch` builds from a bare gateway 502. */
+async function failAsGateway(forced: string | null): Promise<void> {
+  const status = forced?.match(/^gateway_(50[234])$/)?.[1];
+  if (!status) return;
+  const { ApiError } = await import("./apiFetch");
+  throw new ApiError(Number(status), `Request failed (${status})`);
+}
 async function targetsSwitch(): Promise<string | null> {
   return fixtureSwitch("evoli_fixture_targets");
 }
@@ -5864,6 +5887,8 @@ export const fixtureCoachApi: CoachApi = {
      * `coachApi.ts` picks the live client otherwise, and that client never reads the
      * cookie (`coach-legacy-api.spec.ts` sets it in live mode and the page still renders).
      */
+    // BUG-600: the api's 400 comes before its handler runs, so before the 500 switch too.
+    await failIfMalformedId(id);
     if ((await fixtureSwitch("evoli_fixture_overview")) === "fail") {
       await fail(500, "INTERNAL_ERROR", "Internal error");
     }
@@ -6651,6 +6676,7 @@ export const fixtureCoachApi: CoachApi = {
     const forcedTargets = await targetsSwitch();
     if (forcedTargets === "refused") await fail(500, "INTERNAL_ERROR", "Targets write failed");
     if (forcedTargets === "no_answer") throw new TypeError("fetch failed");
+    await failAsGateway(forcedTargets);
     const state = nutritionState(id);
     // `NutritionService.setManual` clamps CALORIES ONLY — protein and fat are
     // untouched, which is exactly what the standing sentence on the page says.
@@ -6690,6 +6716,7 @@ export const fixtureCoachApi: CoachApi = {
     // `RestExceptionHandler.handleUnexpected`'s body.
     if (forced === "fail") await fail(500, "INTERNAL_ERROR", "Something went wrong. Please try again.");
     if (forced === "no_answer") throw new TypeError("fetch failed");
+    await failAsGateway(forced);
     if (weekStart !== (await servedWeekStart())) {
       // Edge case 3: slice 1 applies the current week only.
       await fail(400, "COACH_WEEK_OUT_OF_RANGE", "Week out of range");

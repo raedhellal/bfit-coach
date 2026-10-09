@@ -1472,9 +1472,20 @@ export const en = {
       `${count} of ${total} meals ${count === 1 ? "comes" : "come"} from your recipes`,
     /** AC17, verbatim — when n = m. */
     recipeShareAll: "The whole week comes from your recipes",
-    // AC3, verbatim — EV-015's locale lock, removed by EV-073 and not before.
-    englishOnly:
-      "Meal plans are generated in English. Ingredient checks run on the English names.",
+    /**
+     * EV-185 AC3, verbatim, as TWO claims (BUG-536): read together they are AC3's one
+     * sentence pair, word for word. They follow different rules. EV-015's locale lock,
+     * removed by EV-073 and not before.
+     *   · `generatedInEnglish` is about the ENGINE's meal text: shown only while the week
+     *     holds an engine meal (Raed, 2026-09-30, BUG-535).
+     *   · `ingredientChecksEnglish` is about the allergy and diet checks, which read the
+     *     English ingredient names on EVERY week, a week of coach recipes included. Witness:
+     *     b-fit-api `CoachRecipeFill.java:32` (origin/main, last changed d640e33): "Recipes
+     *     are checked by their declared ingredient keys; the recipe name is matched only
+     *     against English terms."
+     */
+    generatedInEnglish: "Meal plans are generated in English.",
+    ingredientChecksEnglish: "Ingredient checks run on the English names.",
     mealSlots: {
       BREAKFAST: "Breakfast",
       LUNCH: "Lunch",

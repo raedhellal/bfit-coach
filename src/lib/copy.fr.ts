@@ -777,9 +777,12 @@ export const fr = {
     recipeShare: (count: number, total: number) =>
       `${n(count)} repas sur ${n(total)} ${count < 2 ? "vient" : "viennent"} de vos recettes`,
     recipeShareAll: "Toute la semaine vient de vos recettes",
-    /** Still true in French, and more so: the generated meal names are English (EV-015). */
-    englishOnly:
-      "Les plans de repas sont générés en anglais. Les vérifications d'ingrédients portent sur les noms anglais.",
+    /**
+     * Still true in French, and more so: the generated meal names are English (EV-015).
+     * Two claims with two rules (BUG-536): see `nutrition.generatedInEnglish` in copy.ts.
+     */
+    generatedInEnglish: "Les plans de repas sont générés en anglais.",
+    ingredientChecksEnglish: "Les vérifications d'ingrédients portent sur les noms anglais.",
     mealSlots: {
       BREAKFAST: "Petit-déjeuner",
       LUNCH: "Déjeuner",
@@ -1059,7 +1062,7 @@ export const fr = {
     searchLabel: "Trouver un ingrédient",
     /**
      * Evoli's ingredient list is searched by its ENGLISH names (the same vocabulary the
-     * exclusion checks run on — see `nutrition.englishOnly`), so the example words stay
+     * exclusion checks run on — see `nutrition.ingredientChecksEnglish`), so the example words stay
      * English and the placeholder says so. A French example would send the coach typing
      * "poulet" into a search that cannot find it.
      */

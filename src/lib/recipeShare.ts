@@ -24,8 +24,10 @@ export function recipeShare(week: MealWeekView | null): { recipeMeals: number; t
 
 /**
  * EV-320b follow-up (Raed's ruling, 2026-09-30) — does the week hold ANY meal whose text the
- * meal ENGINE wrote? The English-only note ("Meal plans are generated in English…") is
- * about that text, so it is shown only when at least one meal is not a coach recipe.
+ * meal ENGINE wrote? The « generated in English » sentence ("Meal plans are generated in
+ * English.", `nutrition.generatedInEnglish`) is about that text, so it is shown only when
+ * at least one meal is not a coach recipe. The ingredient-check sentence beside it
+ * (`nutrition.ingredientChecksEnglish`) does not read this: it shows on every week (BUG-536).
  *
  * "Coach recipe" is ANY coach's (`provenance === "COACH_RECIPE"`), not only `placedByYou`:
  * the note is about who WROTE the meal's words, and a recipe a previous coach placed was

@@ -1,6 +1,4 @@
-import Link from "next/link";
-import { Card } from "@/components/ui/kit";
-import { UiIcon } from "@/components/ui/icons";
+import { ClientNoticeCard } from "@/components/client/ClientNoticeCard";
 import { getCopy } from "@/lib/i18n/server";
 
 /**
@@ -18,6 +16,8 @@ import { getCopy } from "@/lib/i18n/server";
  * heading, and a second h1 there would be wrong. `margin` and `fontWeight` pin the two h1
  * defaults the sentence's style did not already set, so the card renders as it did
  * (screenshots of /clients/denied before and after, EN and FR, are byte-identical).
+ *
+ * BUG-629: the markup is `ClientNoticeCard`, which the client error boundary draws too.
  */
 export function ClientNotice({
   message,
@@ -31,35 +31,12 @@ export function ClientNotice({
   asHeading?: boolean;
 }) {
   const copy = getCopy();
-  const Message = asHeading ? "h1" : "div";
   return (
-    <Card>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 14,
-          padding: "32px 16px",
-          textAlign: "center",
-        }}
-      >
-        <UiIcon name="ban" size={26} color="var(--err-ink)" />
-        <Message
-          style={{ margin: 0, fontSize: 14.5, fontWeight: 400, color: "var(--ink-2)", maxWidth: 380, lineHeight: 1.5 }}
-        >
-          {message}
-        </Message>
-        {/* BUG-616: one control, a link drawn as the secondary button. It was a <button>
-            inside the link: two Tab stops and two announced controls for one action.
-            EV-352: `data-notice-back` is this link's own marker. On the "not yours" pages it
-            has the same name as the page's BackLink, and qa/pro-back-link.spec.ts tells the
-            two apart by it; `.link-button` is shared by every button-styled link. */}
-        <Link href={back?.href ?? "/"} className="link-button" data-variant="secondary" data-notice-back="">
-          <UiIcon name="arrowL" size={16.5} />
-          {back?.label ?? copy.shell.backToRoster}
-        </Link>
-      </div>
-    </Card>
+    <ClientNoticeCard
+      message={message}
+      backHref={back?.href ?? "/"}
+      backLabel={back?.label ?? copy.shell.backToRoster}
+      asHeading={asHeading}
+    />
   );
 }
