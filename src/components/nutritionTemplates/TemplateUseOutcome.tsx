@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { weekApplyLabel } from "@/components/nutrition/NutritionWeekCard";
+import { useInPageOutcome, weekApplyLabel } from "@/components/nutrition/NutritionApplyCard";
 import { firstName } from "@/lib/format";
 import { useCopy } from "@/lib/i18n/client";
 import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
@@ -19,28 +19,37 @@ import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
  *
  * A success is a `status`; every partial and failure is an `alert`, because each of
  * them asks the coach to do something (check, retry, wait until tomorrow).
+ *
+ * EV-337g2 G2.3: the same outcomes, when the coach applied a template from THIS page's apply
+ * card, arrive through `useInPageOutcome()` instead (no navigation, no hand-off). The newer of
+ * the two is shown: an in-page apply is always later than the landing that brought the coach
+ * here, so it replaces the landing's sentence.
  */
 export function TemplateUseOutcome({
   clientId,
   trainee,
-  weekCardDrawn,
+  applyButtonDrawn,
 }: {
   clientId: string;
   /** The read that carries the name, or null when it failed (`ClientHeader`'s input). */
   trainee: { traineeDisplayName: string | null } | null;
   /**
-   * Whether the page under this draws `NutritionWeekCard`, the only « Apply to … » button.
+   * Whether the page under this draws `NutritionApplyCard`, whose button is the page's only
+   * « Apply to … » control (EV-337g2 G2.1; before g2 it was in `NutritionWeekCard`'s head).
    * BUG-718 (ruling 718-R1): when it does not (the overview read failed, the NUTRITION scope
    * is not shared, or the nutrition read failed), WEEK_FAILED names no button at all.
    */
-  weekCardDrawn: boolean;
+  applyButtonDrawn: boolean;
 }) {
   const copy = useCopy();
   const first = firstName(trainee?.traineeDisplayName, copy.locale);
   // The button's own label, built exactly as the card builds it from the same name (BUG-714:
   // "Unnamed client" for a read that succeeded with no name); null when there is no button.
-  const applyLabel = weekCardDrawn ? weekApplyLabel(copy, trainee?.traineeDisplayName ?? null) : null;
-  const [outcome, setOutcome] = useState<UseOutcome | null>(null);
+  // G2.4: the one function both use, so the quote and the button cannot differ.
+  const applyLabel = applyButtonDrawn ? weekApplyLabel(copy, trainee?.traineeDisplayName ?? null) : null;
+  const [landed, setOutcome] = useState<UseOutcome | null>(null);
+  const inPage = useInPageOutcome();
+  const outcome = inPage ?? landed;
 
   useEffect(() => {
     // Only ever SET: the read removes the hand-off, so a second run of this effect
@@ -59,8 +68,8 @@ export function TemplateUseOutcome({
     // ADR-0030 — the week card's own in-progress sentence, after the fact this flow adds:
     // step 1 was RECEIVED as a 200, so the targets did change (as every WEEK_* lead says).
     WEEK_GENERATING: `${t.targetsUpdated(first)} ${copy.nutrition.weekGenerating(first)}`,
-    // PB-5: the week card's button by its own label (the full name), never "Apply to {first}";
-    // BUG-718: and only when the card is on the page.
+    // PB-5: the apply button by its own label (the full name), never "Apply to {first}";
+    // BUG-718: and only when the button is on the page (G2.4: its label as G2.1 renders it).
     WEEK_FAILED: t.weekFailed(first, applyLabel),
     WEEK_UNKNOWN: t.weekUnknown(first),
     TARGETS_FAILED: t.targetsFailed(first),

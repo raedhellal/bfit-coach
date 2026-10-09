@@ -418,6 +418,7 @@ async function g23LibraryComposition(page: Page, lang: Lang, tag: string) {
     const dialog = await openTemplateDialog(page, lang, template);
     await expect(page.getByRole("dialog", { name: t.use }), "no client picker").toHaveCount(0);
     expect(await dialogText(dialog), `« ${template} »: the library's dialog, word for word`).toBe(reference[template]);
+    await shot(page, `g2.3-dialog-${template.replace(" ", "")}-${tag}`);
     await expect(dialog.getByRole("table")).toHaveCount(1);
     await dialog.getByRole("button", { name: t.cancel, exact: true }).click();
     await expect(dialog).toHaveCount(0);
@@ -609,6 +610,7 @@ async function keyboard(page: Page, lang: Lang, tag: string) {
   const button = card(page, lang).getByRole("button", { name: t.applyLina, exact: true });
   await expect(button).toBeFocused();
   expect(await ring(button), "the button shows a focus ring").not.toBe("none");
+  await shot(page, `keyboard-button-focused-${tag}`);
 
   // Enter opens today's dialog; leaving it puts the focus back on the button.
   await page.keyboard.press("Enter");

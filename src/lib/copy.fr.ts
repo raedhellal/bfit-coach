@@ -738,6 +738,11 @@ export const fr = {
     weekOf: (date: string) => `Semaine du ${date}`,
     apply: (trainee: string) => `Appliquer à ${trainee}`,
     applying: "Application…",
+    // EV-337g2 G2.1, mot pour mot.
+    applyCardTitle: "Appliquer à la semaine",
+    applyFrom: "Construire la semaine à partir de",
+    applyFromTargets: "Ses objectifs actuels",
+    applyCost: "1 application par jour et par client.",
     applyTitle: "Appliquer cette semaine de repas ?",
     applyBody: (trainee: string, weekStart: string) =>
       `Cela remplace la semaine de repas ${de(trainee)} qui commence le ${weekStart}.`,
