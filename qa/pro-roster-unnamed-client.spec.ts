@@ -336,7 +336,7 @@ const MID = {
   en: {
     use: "Use on a trainee",
     confirm: "Confirm",
-    title: (template: string) => `Use “${template}” on this trainee?`,
+    title: (template: string) => new RegExp(`^Use “${template}” on this trainee\\?$`),
     body: /^This trainee's meals for this week \(from [^)]+\) are rebuilt to these targets straight away/,
     floor: "If this is below this trainee's safe minimum, Evoli raises it to the minimum and tells you.",
     refused: "Nothing was changed for this trainee. Try again.",
@@ -370,7 +370,9 @@ async function openNamelessConfirm(page: Page, lang: Lang, template: string) {
     await expect(picker).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 20_000 });
   await picker.getByRole("button", { name: T[lang].label, exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: m.title(template) });
+  // Found whatever the fallback's case, so a wrong case fails on the sentence under test, not
+  // here; the title's own case is asserted by the dialog test.
+  const dialog = page.getByRole("dialog", { name: new RegExp(m.title(template).source, "i") });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: m.confirm })).toBeEnabled();
   return dialog;
@@ -429,6 +431,7 @@ for (const lang of ["en", "fr"] as const) {
       await nameless(page, PETRA, "__null__");
       // Reset 1100 is below Petra's floor (1200), so the floor sentence is on the dialog.
       const dialog = await openNamelessConfirm(page, lang, "Reset 1100");
+      await expect(dialog).toHaveAccessibleName(MID[lang].title("Reset 1100"));
       await expect(dialog.getByText(MID[lang].body)).toHaveCount(1);
       await expect(dialog.getByText(MID[lang].floor, { exact: true })).toBeVisible();
       await expect(await confirmNameless(page, lang, dialog)).toHaveText(MID[lang].applied);
