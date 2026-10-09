@@ -76,6 +76,35 @@ export function useUnsavedChanges(dirty: boolean) {
    */
   const sentinel = useRef(false);
   /**
+   * BUG-730 — our own `history.back()` has been called and its `popstate` has not arrived yet
+   * (`releasing`), and the guard re-armed in that window (`rearm`).
+   *
+   * A save hands the sentinel back with `history.back()`; the traversal answers a few
+   * milliseconds later (2–14 ms over 280 saves, measured 2026-10-09). The form is clean by
+   * then, so a keystroke in that window re-arms the guard. Pushing the new sentinel at once put
+   * a `pushState` under a traversal still in flight, and the traversal's `popstate` then
+   * reached the re-armed guard's listener AFTER `withCleanHistory`'s listener had cleared
+   * `bypass`: it read as the coach pressing Back and opened the question over the form
+   * (`qa/form-leave-guard.spec.ts`, BUG-730). So the re-arm waits for the step to land, and
+   * that step's `popstate` is still ours for every listener it reaches.
+   */
+  const releasing = useRef(false);
+  const rearm = useRef(false);
+
+  /**
+   * One extra entry for the SAME url, carrying Next's own router state so the router is not
+   * confused when it is popped. While our own step back is in flight it is pushed when that
+   * step lands instead (BUG-730, above).
+   */
+  const push = useCallback(() => {
+    if (releasing.current) {
+      rearm.current = true;
+      return;
+    }
+    window.history.pushState({ ...window.history.state, evoliUnsavedGuard: true }, "", window.location.href);
+    sentinel.current = true;
+  }, []);
+  /**
    * EV-342o — `dirty` as of the last COMMIT, set before the browser paints it.
    *
    * The listeners below are removed by passive-effect cleanups, which run some time after
@@ -99,22 +128,38 @@ export function useUnsavedChanges(dirty: boolean) {
    * reaches the layout's redirect to /clients/denied, which is EV-190 edge case 4
    * failing silently.
    */
-  const withCleanHistory = useCallback((then: () => void = () => {}) => {
-    bypass.current = true;
-    if (!sentinel.current) {
-      bypass.current = false;
-      then();
-      return;
-    }
-    const onPop = () => {
-      window.removeEventListener("popstate", onPop);
-      sentinel.current = false;
-      bypass.current = false;
-      then();
-    };
-    window.addEventListener("popstate", onPop);
-    window.history.back();
-  }, []);
+  const withCleanHistory = useCallback(
+    (then?: () => void) => {
+      bypass.current = true;
+      if (!sentinel.current) {
+        bypass.current = false;
+        then?.();
+        return;
+      }
+      releasing.current = true;
+      const onPop = () => {
+        window.removeEventListener("popstate", onPop);
+        releasing.current = false;
+        sentinel.current = false;
+        if (rearm.current) {
+          rearm.current = false;
+          // The guard re-armed while this step was in flight (BUG-730). Its listener was added
+          // after this one and runs next, for this same event: `bypass` stands until it has.
+          // The new sentinel is pushed now, unless `then` leaves the page anyway.
+          if (!then) push();
+          window.setTimeout(() => {
+            bypass.current = false;
+          }, 0);
+        } else {
+          bypass.current = false;
+        }
+        then?.();
+      };
+      window.addEventListener("popstate", onPop);
+      window.history.back();
+    },
+    [push]
+  );
 
   // ── Closing the tab or reloading ────────────────────────────────────────────
   useEffect(() => {
@@ -177,19 +222,9 @@ export function useUnsavedChanges(dirty: boolean) {
   useEffect(() => {
     if (!dirty) return;
     /**
-     * One extra entry for the SAME url, carrying Next's own router state so the
-     * router is not confused when it is popped. Back then lands on it, `popstate`
-     * fires, we push it again, and the coach is asked while still on the page with
-     * every edit intact.
+     * The sentinel (`push`, above). Back then lands on it, `popstate` fires, we push it
+     * again, and the coach is asked while still on the page with every edit intact.
      */
-    const push = () => {
-      window.history.pushState(
-        { ...window.history.state, evoliUnsavedGuard: true },
-        "",
-        window.location.href
-      );
-      sentinel.current = true;
-    };
     push();
     const onPop = () => {
       if (bypass.current) return;
@@ -202,6 +237,8 @@ export function useUnsavedChanges(dirty: boolean) {
     window.addEventListener("popstate", onPop);
     return () => {
       window.removeEventListener("popstate", onPop);
+      // Clean again before our step landed: nothing to re-arm when it does (BUG-730).
+      rearm.current = false;
       // The work was saved (or the editor unmounted): take the sentinel back out, or
       // the coach's next Back press would appear to do nothing.
       // `bypass` means a confirmed navigation is already removing it.
@@ -214,7 +251,7 @@ export function useUnsavedChanges(dirty: boolean) {
         }, 0);
       }
     };
-  }, [dirty]);
+  }, [dirty, push]);
 
   const stay = useCallback(() => {
     if (pending) {
