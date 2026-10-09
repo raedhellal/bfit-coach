@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * EV-185b — the coach's Nutrition tab, in **fixture mode** (see playwright.config.ts).
@@ -66,6 +67,7 @@ test.describe("AC1 — the coach opens Nutrition and sees the live targets and w
     const res = await page.goto(`/clients/${LINA}/nutrition`);
     expect(res?.status()).toBe(200);
 
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories")).toHaveValue("2150");
     await expect(page.getByLabel("Protein")).toHaveValue("150");
     await expect(page.getByLabel("Carbs")).toHaveValue("215");
@@ -153,6 +155,7 @@ test.describe("AC1 — the coach opens Nutrition and sees the live targets and w
     await expect(page.getByText("No nutrition set up yet")).toBeVisible();
     // AC1: "plus the two controls from AC2 and AC3" — not instead of them. Edge case 9
     // (the first ever write) is unreachable if the form hides behind the empty state.
+    await openTargetsForm(page);
     await expect(page.getByRole("button", { name: "Save targets" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Apply to Nils K." })).toBeVisible();
     await expect(page.locator("body")).not.toContainText("NaN");
@@ -207,6 +210,7 @@ test.describe("AC2 — the coach sets macro targets, and the safety floor holds"
       if (req.method() === "POST") posts.push(req.url());
     });
 
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("abc");
     await page.getByRole("button", { name: "Save targets" }).click();
 
@@ -226,6 +230,7 @@ test.describe("AC2 — the coach sets macro targets, and the safety floor holds"
       if (req.method() === "POST") posts.push(req.url());
     });
 
+    await openTargetsForm(page);
     await page.getByLabel("Protein").fill("-5");
     await page.getByRole("button", { name: "Save targets" }).click();
 
@@ -239,6 +244,7 @@ test.describe("AC2 — the coach sets macro targets, and the safety floor holds"
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);
 
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("800");
     await page.getByRole("button", { name: "Save targets" }).click();
 
@@ -251,9 +257,11 @@ test.describe("AC2 — the coach sets macro targets, and the safety floor holds"
     await expect(page.getByText("Calories raised to a safe minimum of 1200 kcal.")).toBeVisible();
     await expect(page.getByText("Targets saved.")).toBeVisible();
     // What is shown is what was STORED, not what was typed.
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories")).toHaveValue("1200");
 
     await page.reload();
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories")).toHaveValue("1200");
     // The write is attributed to the coach from now on.
     await expect(page.getByText(/^Set by you on /)).toBeVisible();
@@ -265,11 +273,13 @@ test.describe("AC2 — the coach sets macro targets, and the safety floor holds"
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);
 
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("2300");
     await page.getByRole("button", { name: "Save targets" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Save targets" }).click();
 
     await expect(page.getByText("Targets saved.")).toBeVisible();
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories")).toHaveValue("2300");
     await expect(page.getByText(/^Calories raised to a safe minimum/)).toHaveCount(0);
     // The standing sentence stands whether or not a floor fired.
@@ -426,6 +436,7 @@ test.describe("ADR-0015 D5/D6 — scope-derived states, and what the dialog prom
     await signIn(page);
     await page.goto(`/clients/${PETRA}/nutrition`);
 
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories")).toHaveValue("1850");
     await expect(page.getByRole("button", { name: "Apply to Petra L." })).toBeVisible();
     await expect(page.locator("body")).not.toContainText(
@@ -523,6 +534,7 @@ test.describe("ADR-0015 — the contract additions the review asked for", () => 
     await signIn(page);
     await page.goto(`/clients/${PETRA}/nutrition`);
 
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("2000");
     await page.getByRole("button", { name: "Save targets" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Save targets" }).click();
@@ -576,6 +588,7 @@ test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);
 
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("2200");
     await page.getByLabel("Protein").fill("180");
     await page.getByLabel("Carbs").fill("200");
@@ -595,6 +608,7 @@ test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);
 
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("2200");
     await page.getByLabel("Protein").fill("100");
     await page.getByLabel("Carbs").fill("100");
@@ -627,6 +641,7 @@ test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);
 
+    await openTargetsForm(page);
     await page.getByLabel("Protein").fill("100");
     await page.getByLabel("Carbs").fill("200");
     await page.getByLabel("Fat").fill("75");
@@ -656,6 +671,7 @@ test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);
 
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("2200");
     await page.getByLabel("Protein").fill("180");
     await page.getByLabel("Carbs").fill("200");
@@ -677,6 +693,7 @@ test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);
 
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("2200");
     await page.getByLabel("Protein").fill("180");
     await page.getByLabel("Carbs").fill("200");
@@ -687,6 +704,7 @@ test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily
     await expect(page.getByText("Targets saved.")).toBeVisible();
     // The persisted row is what the coach entered — the line overruled nothing.
     await page.reload();
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories")).toHaveValue("2200");
     await expect(page.getByLabel("Protein")).toHaveValue("180");
     await expect(page.getByLabel("Carbs")).toHaveValue("200");
@@ -707,6 +725,7 @@ test.describe("EV-190 AC3 — macros are reconciled against calories, advisorily
     await page.getByRole("button", { name: "Save targets" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Save targets" }).click();
     await expect(page.getByText("Calories raised to a safe minimum of 1200 kcal.")).toBeVisible();
+    await openTargetsForm(page);
     await expect(page.getByLabel("Calories")).toHaveValue("1200");
     await expect(
       page.getByText("Your macros add up to 2,240 kcal — 1,040 above the calorie target.")

@@ -1,5 +1,6 @@
 import { expect, type Page, type Request } from "@playwright/test";
 import { test } from "./fixture-test";
+import { openTargetsForm } from "./targets-card";
 
 /**
  * perf/coach-parallel-page-reads — what each main route costs b-fit-api, and how many
@@ -330,6 +331,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
   test("Save targets: one action, one render, no refresh", async ({ page }) => {
     await signIn(page);
     await page.goto(`/clients/${LINA}/nutrition`);
+    await openTargetsForm(page);
     await page.getByLabel("Calories").fill("2300");
     await page.getByRole("button", { name: "Save targets" }).click();
     const cost = await writeCost(
