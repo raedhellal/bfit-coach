@@ -51,6 +51,16 @@ const L = {
     source: "Calculated automatically",
     pill: "Activity level: Moderately active",
     macros: "Your macros add up to 2,072 kcal — 78 below the calorie target.",
+    // G1.2f: 2300 typed against the stored macros' 2,072; the floor's stored 1200 against them.
+    macros2300: "Your macros add up to 2,072 kcal — 228 below the calorie target.",
+    macros1200: "Your macros add up to 2,072 kcal — 872 above the calorie target.",
+    refused: "Enter a number above 0.",
+    failed: "The targets could not be saved.",
+    noAnswer: "We couldn't confirm whether the targets were saved. Reload the page before you try again.",
+    profile: "Trainee profile",
+    profileNote: "From the trainee's profile — you cannot change these here.",
+    routineTab: "Routine",
+    leave: "Leave with unsaved changes?",
     noTargets: "No targets set.",
     empty: "No nutrition set up yet",
     scope: "This trainee has not shared their nutrition with you.",
@@ -74,6 +84,15 @@ const L = {
     source: "Calculés automatiquement",
     pill: "Niveau d'activité : Modérément actif",
     macros: "Vos macros totalisent 2 072 kcal — 78 en dessous de l'objectif calorique.",
+    macros2300: "Vos macros totalisent 2 072 kcal — 228 en dessous de l'objectif calorique.",
+    macros1200: "Vos macros totalisent 2 072 kcal — 872 au-dessus de l'objectif calorique.",
+    refused: "Saisissez un nombre supérieur à 0.",
+    failed: "Les objectifs n'ont pas pu être enregistrés.",
+    noAnswer: "Nous n'avons pas pu confirmer si les objectifs ont été enregistrés. Rechargez la page avant de réessayer.",
+    profile: "Profil du client",
+    profileNote: "Issu du profil du client — vous ne pouvez pas le modifier ici.",
+    routineTab: "Programme",
+    leave: "Quitter sans enregistrer ?",
     noTargets: "Aucun objectif défini.",
     empty: "Aucune nutrition configurée pour l'instant",
     scope: "Ce client n'a pas partagé sa nutrition avec vous.",
@@ -321,9 +340,13 @@ for (const lang of ["en", "fr"] as const) {
         await expect(region.locator("dl"), "open, the inputs replace the values").toHaveCount(0);
         await shot(page, `g1.2-open-${lang}-${width}`);
 
+        // G1.2f: open, the line follows what is typed (EV-190, unchanged)…
         await calories.fill("2300");
+        await expect(region.getByRole("status")).toHaveText(L[lang].macros2300);
         await region.getByRole("button", { name: L[lang].cancel, exact: true }).click();
         await expect(region.getByRole("textbox")).toHaveCount(0);
+        // …and after « Annuler » it is the stored values' line again, exactly.
+        await expect(region.getByRole("status")).toHaveText(L[lang].macros);
         const read = await tiles(region);
         expect(read.values.map(plain), `${width}: unchanged after « ${L[lang].cancel} »`).toEqual(L[lang].lina);
         await expect(region.getByRole("button", { name: L[lang].edit, exact: true })).toBeFocused();
@@ -357,7 +380,7 @@ for (const lang of ["en", "fr"] as const) {
       expect((await tiles(targetsRegion(page, lang))).values.map(plain)[0], "the server holds it").toBe(L[lang].lina2300);
     });
 
-    test("G1.2: the floor message is unchanged, under the stored value", async ({ page }) => {
+    test("G1.2c: a save raised to the floor closes the form on the STORED 1 200, not the typed 800; G1.2f's line follows it", async ({ page }) => {
       await signIn(page, lang);
       await page.goto(`/clients/${LINA}/nutrition`);
       await hydrated(page);
@@ -367,19 +390,159 @@ for (const lang of ["en", "fr"] as const) {
       await region.getByRole("button", { name: L[lang].save, exact: true }).click();
       await page.getByRole("dialog", { name: L[lang].dialog, exact: true }).getByRole("button", { name: L[lang].save, exact: true }).click();
       await expect(region.getByText(L[lang].floor, { exact: true })).toBeVisible();
-      expect((await tiles(region)).values.map(plain)[0]).toBe(L[lang].lina1200);
+      await expect(region.getByText(L[lang].saved, { exact: true })).toBeVisible();
+      await expect(region.getByRole("textbox"), "the save landed: the form is closed").toHaveCount(0);
+      const values = (await tiles(region)).values.map(plain);
+      expect(values[0], "the <dl> shows what was stored").toBe(L[lang].lina1200);
+      expect(values.join(" | "), "never the typed 800").not.toMatch(/\b800\b/);
+      await expect(region.getByRole("status"), "G1.2f: the line against the stored 1 200").toHaveText(L[lang].macros1200);
       await shot(page, `g1.2-floor-${lang}`);
     });
 
-    test("G1.2: with no targets stored, no value is drawn and the button opens empty fields", async ({ page }) => {
+    test("G1.2a: with no targets stored (Nils), the card is closed on the sentence alone; open shows four empty fields; « Annuler » returns, nothing sent", async ({
+      page,
+    }) => {
       await signIn(page, lang);
       await page.goto(`/clients/${NILS}/nutrition`);
       await hydrated(page);
       const region = targetsRegion(page, lang);
-      await expect(region.getByText(L[lang].noTargets, { exact: true })).toBeVisible();
-      await expect(region.locator("dl")).toHaveCount(0);
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        const where = `${width} (${lang})`;
+        await expect(region.locator("dl"), `${where}: no <dl>`).toHaveCount(0);
+        await expect(region.getByRole("textbox"), `${where}: no field`).toHaveCount(0);
+        await expect(region.getByText(L[lang].noTargets, { exact: true }), where).toBeVisible();
+        // No source line, no activity pill, no macro line: nothing the api did not return (X7).
+        await expect(region.getByText(L[lang].source, { exact: true }), `${where}: no source line`).toHaveCount(0);
+        await expect(region.getByText(/^(Activity level: |Niveau d.activité)/), `${where}: no pill`).toHaveCount(0);
+        await expect(region.getByRole("status"), `${where}: no macro line`).toHaveCount(0);
+        // The empty-state card above both columns (G1.1) stays: two sentences for one fact, accepted.
+        await expect(page.getByText(L[lang].empty, { exact: true }), `${where}: the empty state`).toBeVisible();
+        const e = await box(region.getByRole("button", { name: L[lang].edit, exact: true }), `« ${L[lang].edit} » at ${where}`);
+        if (width === 390) {
+          expect(e.width, `${where}: ≥ 44 wide`).toBeGreaterThanOrEqual(44);
+          expect(e.height, `${where}: ≥ 44 tall`).toBeGreaterThanOrEqual(44);
+        }
+        await shot(page, `g1.2a-nils-${lang}-${width}`);
+
+        await region.getByRole("button", { name: L[lang].edit, exact: true }).click();
+        const fields = region.getByRole("textbox");
+        await expect(fields).toHaveCount(4);
+        for (const field of await fields.all()) await expect(field).toHaveValue("");
+        await region.getByRole("button", { name: L[lang].cancel, exact: true }).click();
+        await expect(region.getByRole("textbox")).toHaveCount(0);
+        await expect(region.getByText(L[lang].noTargets, { exact: true }), `${where}: back to the sentence`).toBeVisible();
+      }
+      const res = await page.request.get("/api/fixture/calls");
+      const calls = ((await res.json()) as { calls: string[] }).calls;
+      expect(calls.filter((c) => c.startsWith(`PUT /coach-portal/clients/${NILS}/nutrition/targets`)), "no targets write").toEqual([]);
+    });
+
+    test("G1.2d: refused client-side, failed, lost answer: the form stays open with the coach's text, no « saved »", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await signIn(page, lang);
+      await page.goto(`/clients/${LINA}/nutrition`);
+      await hydrated(page);
+      const region = targetsRegion(page, lang);
+      const fields = region.getByRole("textbox");
+      const typed = ["2300", "155", "220", "70"];
       await openTargetsForm(page);
-      for (const field of await region.getByRole("textbox").all()) await expect(field).toHaveValue("");
+
+      // (i) refused client-side: AC2's sentence, nothing sent, every field kept.
+      await fields.nth(0).fill("0");
+      await region.getByRole("button", { name: L[lang].save, exact: true }).click();
+      await expect(region.locator('p[role="alert"]')).toHaveText(L[lang].refused);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(fields).toHaveCount(4);
+      await expect(fields.nth(0)).toHaveValue("0");
+      expect(await targetPuts(page), "(i) a refused value sends no PUT").toBe(0);
+      await expect(region.getByText(L[lang].saved, { exact: true })).toHaveCount(0);
+
+      // (ii) a failed save (b-fit-api's 500) and (iii) a lost answer (a gateway 502, BUG-711).
+      for (const [outcome, sentence] of [
+        ["500", L[lang].failed],
+        ["502", L[lang].noAnswer],
+      ] as const) {
+        await context.addCookies([{ name: "evoli_fixture_nutrition_lost", value: `targets_${outcome}`, url: baseURL! }]);
+        for (const [i, value] of typed.entries()) await fields.nth(i).fill(value);
+        await region.getByRole("button", { name: L[lang].save, exact: true }).click();
+        await page.getByRole("dialog", { name: L[lang].dialog, exact: true }).getByRole("button", { name: L[lang].save, exact: true }).click();
+        await expect(region.getByText(sentence, { exact: true }), outcome).toBeVisible();
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await expect(fields, `${outcome}: the form stays open`).toHaveCount(4);
+        for (const [i, value] of typed.entries()) await expect(fields.nth(i), `${outcome}: field ${i} keeps its text`).toHaveValue(value);
+        await expect(region.locator("dl"), `${outcome}: no <dl>`).toHaveCount(0);
+        await expect(region.getByText(L[lang].saved, { exact: true }), `${outcome}: no « saved »`).toHaveCount(0);
+      }
+    });
+
+    test("G1.2e: a field typed while the save is in flight keeps the form open on it, and the leave guard asks", async ({ page }) => {
+      await signIn(page, lang);
+      await page.goto(`/clients/${LINA}/nutrition`);
+      await hydrated(page);
+      const region = targetsRegion(page, lang);
+      // The server action is a POST to the page's own URL: hold each one 2.5 s.
+      let held = 0;
+      await page.route(`**/clients/${LINA}/nutrition`, async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        held += 1;
+        await new Promise((r) => setTimeout(r, 2_500));
+        await route.continue().catch(() => {});
+      });
+      await openTargetsForm(page);
+      await region.getByRole("textbox", { name: "Calories", exact: true }).fill("2300");
+      await region.getByRole("button", { name: L[lang].save, exact: true }).click();
+      await page.getByRole("dialog", { name: L[lang].dialog, exact: true }).getByRole("button", { name: L[lang].save, exact: true }).click();
+      // During the hold (fill needs no pointer, so the dialog's overlay does not stop it).
+      const protein = region.getByRole("textbox").nth(1);
+      await protein.fill("160");
+      await expect(region.getByText(L[lang].saved, { exact: true }), "the save landed").toBeVisible({ timeout: 15_000 });
+      expect(held, "the save went through the held route").toBeGreaterThanOrEqual(1);
+      await expect(region.getByRole("textbox"), "the form stays open on unsaved text").toHaveCount(4);
+      await expect(protein).toHaveValue("160");
+      await expect(region.locator("dl")).toHaveCount(0);
+      await page.unroute(`**/clients/${LINA}/nutrition`);
+      // BUG-665: the typed text is unsaved, so leaving by the Programme tab asks first.
+      await page.getByRole("main").getByRole("link", { name: L[lang].routineTab, exact: true }).click();
+      await expect(page.getByRole("dialog", { name: L[lang].leave, exact: true })).toBeVisible();
+      expect(new URL(page.url()).pathname).toBe(`/clients/${LINA}/nutrition`);
+    });
+
+    /* ═══ G1.4a (337g1-R4) — one « Nutrition » title ══════════════════════════════════════ */
+
+    test("G1.4a: the diet card is « Profil du client », and below the tab bar only the h2 reads « Nutrition »", async ({ page }) => {
+      await signIn(page, lang);
+      for (const client of [LINA, NILS]) {
+        await page.goto(`/clients/${client}/nutrition`);
+        for (const width of [1440, 390]) {
+          await page.setViewportSize({ width, height: 900 });
+          const where = `${client === LINA ? "Lina" : "Nils"} at ${width} (${lang})`;
+          const diet = page.locator('[data-nut-block="diet"]');
+          await expect(diet.locator(".dt").first(), `${where}: the card's title`).toHaveText(L[lang].profile, { useInnerText: true });
+          // The groups, the empty sentence and the footnote, unchanged.
+          if (client === LINA) {
+            await expect(diet.locator("[data-profile-group]"), where).toHaveCount(3);
+          } else {
+            await expect(diet.getByText(lang === "en" ? "No dietary restrictions recorded." : "Aucune restriction alimentaire enregistrée.", { exact: true }), where).toBeVisible();
+          }
+          await expect(diet.getByText(L[lang].profileNote, { exact: true }), where).toBeVisible();
+          const exact = await page.evaluate(() => {
+            const tabs = document.querySelector('main a[href$="/nutrition"]')?.closest("nav");
+            if (!tabs) return ["(no client tab bar)"];
+            return Array.from(document.querySelectorAll("body *"))
+              .filter((el) => tabs.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING && !tabs.contains(el))
+              .filter((el) => (el.textContent ?? "").trim() === "Nutrition")
+              // the innermost element holding the whole text
+              .filter((el) => !Array.from(el.children).some((c) => (c.textContent ?? "").trim() === "Nutrition"))
+              .map((el) => el.tagName);
+          });
+          expect(exact, `${where}: the only element whose whole text is « Nutrition »`).toEqual(["H2"]);
+          if (client === LINA) await shot(page, `g1.4a-${lang}-${width}`);
+        }
+      }
     });
 
     /* ═══ G1.3 — BUG-252 stays fixed ═══════════════════════════════════════════════════════ */
