@@ -2300,9 +2300,12 @@ export const en = {
      * built by the caller from the same display name the week card uses. PB-5
      * (2026-09-30): this quoted "Apply to {first name}" while the button reads the FULL
      * name, so the coach was sent to a button that is not on the page.
+     * `null` when the page draws no week card, so no such button (BUG-718, ruling 718-R1): the
+     * two lead sentences alone, and no instruction. No other wording replaces it.
      */
-    weekFailed: (first: string, applyLabel: string) =>
-      `${first}'s targets are updated. Their meals couldn't be rebuilt. Use “${applyLabel}” to try again.`,
+    weekFailed: (first: string, applyLabel: string | null) =>
+      `${first}'s targets are updated. Their meals couldn't be rebuilt.` +
+      (applyLabel === null ? "" : ` Use “${applyLabel}” to try again.`),
     weekUnknown: (first: string) =>
       `${first}'s targets are updated. We couldn't confirm whether their meals were rebuilt. Check their nutrition page before you try again.`,
     targetsFailed: (first: string) => `Nothing was changed for ${first}. Try again.`,
