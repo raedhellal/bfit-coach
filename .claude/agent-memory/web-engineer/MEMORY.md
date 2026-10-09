@@ -93,3 +93,6 @@
 - [Verify the base the brief names](verify-the-base-the-brief-names.md) — merge-base --is-ancestor every fix the brief says is in; 198a293 lacked BUG-713
 - [Every branch of a save callback needs a test](every-branch-of-a-save-callback-needs-a-test.md) — EV-337g1 S1: hold the action POST with page.route, fill during the hold; list branch → test before handback
 - [First-name fallback is lower case mid-sentence](first-name-fallback-is-mid-sentence-lower-case.md) — BUG-720: mid(first) via midSentence(); 6 firstName() calls -> 31 keys; table spec pins KEYS=31
+- [Apply card (EV-337g2)](apply-card-portal-facts.md) — one apply button in NutritionApplyCard; BUG-718 prop is applyButtonDrawn; nutrition page = 4 reads; roster config
+- [Playwright -g joins titles with spaces](playwright-grep-joins-titles-with-spaces.md) — "›" never matches; use .*; "No tests found" exits 1 like a red mutant
+- [Check swap in its own call](check-swap-in-its-own-call.md) — a chained check does not gate; under 1 GB sample swapouts twice before starting
