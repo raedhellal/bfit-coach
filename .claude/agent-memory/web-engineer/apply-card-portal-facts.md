@@ -27,5 +27,14 @@ button out of the meal week's head into `NutritionApplyCard` (aside, under the t
   component (both sides change). The meaningful mutant mutates what the client page passes in
   (template/trainee props) — see [[a-witness-does-not-choose-between-two-checks]].
 
+- Round 2 (rulings EV-337g2-R1..R6, hub c2ca7092): after an outcome whose TARGETS step landed
+  (APPLIED, WEEK_*) the select returns to "Their current targets" (`targetsLanded`); TARGETS_* keep
+  the template. The library's landing sentence and the in-page one are ONE slot in the scope
+  (`TemplateUseOutcome` puts the taken hand-off there); a template apply replaces it, and
+  `applyWeek` calls `clearOutcome()` once its answer is in (any answer: my reading of "the next
+  attempt"). A `?? landed` fallback would bring a cleared landing back (mutant R2b).
+- Several ruled clauses (G2.3b, G2.3c(3), G2.3d(2), G2.1b focus) were already true at 91b60a2:
+  they are pins, green before and after; their mutants are the evidence, not a red-first run.
+
 **Why:** g3/g4/j1 all touch this page or the dialog next; each needs these facts first.
 **How to apply:** read this before changing NutritionWeekCard, TemplateUseOutcome or the template dialog.
