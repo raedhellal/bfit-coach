@@ -16,6 +16,11 @@ import { signInThroughForm } from "./sign-in";
  * the guard's 403, mid-session: the page is opened linked, the link ends, a tab is clicked.
  * The click is made on a HYDRATED page (`[data-nav-progress-ready]`): before hydration the
  * tab is a plain `<a>`, a document load, and the layout would decide, which proves nothing.
+ *
+ * NOT covered, and not fixed (staff S1, witnessed on a production build): a tab the coach
+ * visited in the last 30 s is served from Next's client router cache (`staleTimes.dynamic`,
+ * ADR-0033) with no server render, so it still shows the stale page after the link ended.
+ * Each test here visits the target tab for the first time.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
