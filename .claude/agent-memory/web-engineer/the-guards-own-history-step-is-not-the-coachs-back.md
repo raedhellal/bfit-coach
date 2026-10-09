@@ -1,6 +1,6 @@
 ---
 name: the-guards-own-history-step-is-not-the-coachs-back
-description: BUG-730 — the leave guard misread its own in-flight history.back() as the coach's Back when a keystroke re-armed it inside that step; how it was found (held history.back), the four branches of the fix, and why idle-machine repeat runs prove nothing
+description: BUG-730 — the leave guard misread its own in-flight history.back() as the coach's Back when a keystroke re-armed it inside that step; held history.back to see it; release(then, stays|leaves) after staff B1; idle-machine repeat runs prove nothing
 metadata:
   type: project
 ---
@@ -25,12 +25,21 @@ Count `history.back()` CALLS too: a bounce caused by an unmount cleanup is invis
 own `goBack` lands elsewhere (mutant M2 survived until the count was asserted). Read page counters
 before a `goBack` that loads another document (the init script resets them).
 
-**The fix (four branches, one test each, all in the BUG-730 describe):** a push while our step is in
-flight is deferred to the landing (`releasing`/`rearm`); the landing keeps `bypass` up for that
-event's later listeners; a landing with a `then` (navigating save, Leave, 403) pushes nothing; a
-release inside the step does not call `back()` again (a 300 ms hold fits a whole save, so :952 hit it);
-the effect cleanup goes through `withCleanHistory` too. Mutant M7 (keep `rearm` on a second release)
-survives: the effect cleanup clears it first in every path I could construct.
+**The fix:** a push while our step is in flight is deferred to the landing (`releasing`/`rearm`);
+the landing marks its own `popstate` (`ours.current = event`; every window listener gets the same
+event object, so the Back listener skips it without a timer); a release inside the step does not
+call `back()` again and queues its `then`; the effect cleanup goes through `withCleanHistory` too.
+
+**Staff REQUEST CHANGES (B1), the lesson:** I first assumed every `then` leaves the page and skipped
+the re-push whenever one was queued. TemplateEditor/RecipeEditor creates pass a `then` that STAYS
+(`setId` + `replaceState`), so typed work went unguarded for the rest of the session: worse than
+base. Now `release(then, "stays" | "leaves")` is REQUIRED by an overload (bare `then` = TS2575);
+stays-thens run first, then the re-push (so it carries the replaced URL). **Before encoding an
+assumption about a callback, `git grep` every caller and classify it.** Also: a mutant I "rewrote"
+for new code (deleted a line instead of moving it) was not staff's mutant; run the faithful diff.
+Mutants that survived the first round: S6 (sentinel forgotten after the re-push, healed by a Back in
+the test) and S4 (queued `then` dropped, untested) — a test that presses Back can hide bookkeeping.
+M7 (rearm clear on a release inside the step) stays unwitnessed, commented so.
 
 See [[coach-form-hooks-342o-facts]], [[a-back-after-a-guarded-leave-can-hard-reload]],
 [[a-notice-already-on-screen-is-not-a-sync-point]].
