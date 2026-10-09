@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { webkit, type Browser } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { openTargetsForm } from "./targets-card";
@@ -318,3 +320,161 @@ for (const lang of ["en", "fr"] as const) {
     });
   });
 }
+
+/* ── BUG-720 (ruling 720-R1) — the first-name fallback's case, in the browser ──────────────────
+ *
+ * Where a sentence speaks of a nameless trainee by FIRST name, `firstName()` gives "This trainee" /
+ * « Ce client ». That capital is right as a sentence's first word only: inside a sentence it is
+ * "this trainee" / « ce client » (« de ce client », never « de Ce client »). Petra (NUTRITION only)
+ * is served nameless for the "Use on a trainee" flow on « Cut 1800 » / « Reset 1100 », and Yusuf
+ * (a TRAINEE-changed routine) for the routine banner, which keeps its capital (Expected (3)).
+ * Expected (1), (2) and (3) also run in WebKit. Every copy function the fallback reaches is pinned,
+ * sentence by sentence, in `first-name-fallback-case.spec.ts`.
+ */
+const PETRA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006";
+const YUSUF = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0007";
+
+const MID = {
+  en: {
+    use: "Use on a trainee",
+    confirm: "Confirm",
+    title: (template: string) => new RegExp(`^Use “${template}” on this trainee\\?$`),
+    body: /^This trainee's meals for this week \(from [^)]+\) are rebuilt to these targets straight away/,
+    floor: "If this is below this trainee's safe minimum, Evoli raises it to the minimum and tells you.",
+    refused: "Nothing was changed for this trainee. Try again.",
+    weekFailed:
+      "This trainee's targets are updated. Their meals couldn't be rebuilt. Use “Apply to Unnamed client” to try again.",
+    applied: "“Reset 1100” is now this trainee's plan.",
+    banner: /^This trainee changed this plan on \d{1,2} [A-Z][a-z]{2} \d{4} \(UTC\)\. You're seeing their version\.$/,
+  },
+  fr: {
+    use: "Utiliser pour un client",
+    confirm: "Confirmer",
+    // The guillemets' inner spaces are U+00A0, the space before « ? » too in some builds: `\s`.
+    title: (template: string) => new RegExp(`^Utiliser «\\s${template}\\s» pour ce client\\s\\?$`),
+    body: /^Les repas de ce client pour cette semaine \(à partir du [^)]+\) sont reconstruits immédiatement/,
+    floor: "Si c'est en dessous du minimum sûr de ce client, Evoli le relève à ce minimum et vous le signale.",
+    refused: "Rien n'a été modifié pour ce client. Réessayez.",
+    weekFailed:
+      "Les objectifs de ce client sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez « Appliquer à Client sans nom » pour réessayer.",
+    applied: "« Reset 1100 » est désormais le plan de ce client.",
+    banner: /^Ce client a modifié ce plan le \d{1,2}(er)? [a-zéû]+\.? \d{4} \(UTC\)\. Vous voyez sa version\.$/,
+  },
+} as const;
+
+/** Library → "Use on a trainee" on `template` → the label. Returns the open confirm dialog. */
+async function openNamelessConfirm(page: Page, lang: Lang, template: string) {
+  const m = MID[lang];
+  await openHydrated(page, "/nutrition-templates");
+  const picker = page.getByRole("dialog", { name: m.use });
+  await expect(async () => {
+    await page.getByRole("group", { name: template, exact: true }).getByRole("button", { name: m.use }).click();
+    await expect(picker).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 20_000 });
+  await picker.getByRole("button", { name: T[lang].label, exact: true }).click();
+  // Found whatever the fallback's case, so a wrong case fails on the sentence under test, not
+  // here; the title's own case is asserted by the dialog test.
+  const dialog = page.getByRole("dialog", { name: new RegExp(m.title(template).source, "i") });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: m.confirm })).toBeEnabled();
+  return dialog;
+}
+
+/** Confirm, land on Petra's nutrition page, and return the outcome's sentence. */
+async function confirmNameless(page: Page, lang: Lang, dialog: Locator) {
+  await dialog.getByRole("button", { name: MID[lang].confirm }).click();
+  await page.waitForURL(`/clients/${PETRA}/nutrition`);
+  const outcome = page.getByTestId("template-use-outcome");
+  await expect(outcome).toBeVisible();
+  return outcome.locator("p").first();
+}
+
+/** Expected (1): the targets write refused, for a nameless trainee. */
+async function namelessTargetsRefused(page: Page, lang: Lang) {
+  await nameless(page, PETRA, "__null__");
+  const dialog = await openNamelessConfirm(page, lang, "Cut 1800");
+  await setSwitch(page, "evoli_fixture_targets", "refused");
+  await expect(await confirmNameless(page, lang, dialog)).toHaveText(MID[lang].refused);
+}
+
+/** Expected (2): the week write failed, for a nameless trainee. */
+async function namelessWeekFailed(page: Page, lang: Lang) {
+  await nameless(page, PETRA, "__null__");
+  const dialog = await openNamelessConfirm(page, lang, "Cut 1800");
+  await setSwitch(page, "evoli_fixture_week", "fail");
+  await expect(await confirmNameless(page, lang, dialog)).toHaveText(MID[lang].weekFailed);
+}
+
+/** Expected (3): the routine's trainee-changed banner opens with the fallback, capital kept. */
+async function namelessBanner(page: Page, lang: Lang) {
+  await nameless(page, YUSUF, "__null__");
+  await openHydrated(page, `/clients/${YUSUF}/routine`);
+  await expect(page.getByRole("note").filter({ hasText: lang === "en" ? "changed this plan on" : "a modifié ce plan le" })).toHaveText(
+    MID[lang].banner
+  );
+}
+
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`BUG-720 — "this trainee" / « ce client » inside a sentence (${lang}, Chromium)`, () => {
+    test.use({ locale: T[lang].locale });
+
+    test("(1) targets refused: nothing was changed for this trainee", async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await namelessTargetsRefused(page, lang);
+    });
+
+    test("(2) the week failed: the lead keeps its capital, the quoted button is the label", async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await namelessWeekFailed(page, lang);
+    });
+
+    test("the confirm dialog and the applied outcome: lower case inside, capital at the start", async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await nameless(page, PETRA, "__null__");
+      // Reset 1100 is below Petra's floor (1200), so the floor sentence is on the dialog.
+      const dialog = await openNamelessConfirm(page, lang, "Reset 1100");
+      await expect(dialog).toHaveAccessibleName(MID[lang].title("Reset 1100"));
+      await expect(dialog.getByText(MID[lang].body)).toHaveCount(1);
+      await expect(dialog.getByText(MID[lang].floor, { exact: true })).toBeVisible();
+      await expect(await confirmNameless(page, lang, dialog)).toHaveText(MID[lang].applied);
+    });
+
+    test("(3) the routine banner opens with the fallback, capital kept", async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await namelessBanner(page, lang);
+    });
+  });
+}
+
+/* The roster config's project is Chromium; WebKit is launched here, like client-tab-bar.spec.ts. */
+test.describe("BUG-720 in WebKit — Expected (1), (2) and (3), EN and FR", () => {
+  let browser: Browser;
+  test.beforeAll(async () => {
+    expect(existsSync(webkit.executablePath()), "WebKit is not installed: npx playwright install webkit").toBe(true);
+    browser = await webkit.launch();
+  });
+  test.afterAll(async () => {
+    await browser?.close();
+  });
+
+  const cases = [
+    ["(1) targets refused", namelessTargetsRefused],
+    ["(2) the week failed", namelessWeekFailed],
+    ["(3) the routine banner", namelessBanner],
+  ] as const;
+  for (const lang of ["en", "fr"] as const) {
+    for (const [name, run] of cases) {
+      test(`${name}, WebKit, ${lang}`, async ({ baseURL }) => {
+        const context = await browser.newContext({ baseURL, locale: T[lang].locale });
+        await context.addCookies([{ name: "evoli_pro_locale", value: lang, url: baseURL as string }]);
+        const page = await context.newPage();
+        try {
+          await signInThroughForm(page, { lang });
+          await run(page, lang);
+        } finally {
+          await context.close();
+        }
+      });
+    }
+  }
+});
