@@ -4,6 +4,7 @@ import { test } from "./fixture-test";
 import { signInThroughForm, type SignInLang } from "./sign-in";
 import { expectUnoccluded } from "./layout";
 import { openTargetsForm } from "./targets-card";
+import { openEveryDay } from "./day-accordion";
 
 /**
  * BUG-665 (restated 2026-10-07, audit A14) and EV-342o O.3 / O.4 — the three server-rendered
@@ -571,6 +572,71 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await page.waitForURL("/");
   });
 
+  test("the progress goal: re-armed inside the step, then saved with no Back between: the history ends where it was loaded", async ({
+    page,
+  }) => {
+    // The re-pushed entry must be the guard's own: the next save takes it back out. (A Back
+    // in between, as in the first test, would re-push and hide a forgotten one.)
+    await holdHistoryBack(page, 400);
+    await signIn(page, "en");
+    await progressGoal.open(page, w);
+    const block = page.getByRole("region", { name: w.block });
+    const field = progressGoal.field(page, w);
+    const save = block.getByRole("button", { name: w.save, exact: true });
+    const start = await historyIndex(page);
+
+    await field.fill("71");
+    await armed(page);
+    await save.click();
+    await expect(block.getByText(w.saved, { exact: true })).toBeVisible();
+    await field.fill("69");
+    await heldStepsLanded(page, 1);
+    await armed(page);
+
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    await save.click();
+    await answered;
+    await expect
+      .poll(() => historyIndex(page), { message: "the re-armed entry was not handed back by the next save" })
+      .toBe(start);
+    await disarmed(page);
+    await expect(leaveDialog(page, w)).toHaveCount(0);
+    await page.goBack();
+    await page.waitForURL("/");
+  });
+
+  test("the progress goal: a second save inside the held step that answers 403 still reaches the denied page", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    // The 403's `endAccess(then)` lands inside the first save's step: its `then` (the
+    // refresh that reaches the layout's redirect) waits for that step, and must not be lost.
+    await holdHistoryBack(page, 1500);
+    await signIn(page, "en");
+    await progressGoal.open(page, w);
+    const block = page.getByRole("region", { name: w.block });
+    const field = progressGoal.field(page, w);
+    const save = block.getByRole("button", { name: w.save, exact: true });
+
+    await field.fill("71");
+    await armed(page);
+    await save.click();
+    await expect(block.getByText(w.saved, { exact: true })).toBeVisible();
+    await field.fill("69");
+    await setSwitch(context, baseURL as string, "evoli_fixture_link", "ended");
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    await save.click();
+    await answered;
+    await heldStepsLanded(page, 1);
+    await page.waitForURL("/clients/denied");
+    await expect(leaveDialog(page, w)).toHaveCount(0);
+  });
+
   test("a new nutrition template: a keystroke while the create's step is in flight neither asks nor leaves /new behind", async ({
     page,
   }) => {
@@ -613,6 +679,112 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     ).toBe(1);
     await page.goBack();
     await expect(page).not.toHaveURL(/\/nutrition-templates\/new$/);
+  });
+
+  /**
+   * B1 (staff, BUG-730 review): the training-template and recipe CREATES hand the step a
+   * `then` that STAYS on the page (the id is set, the URL corrected with `replaceState`). A
+   * keystroke inside that step is unsaved work on the page the coach is still on, so the
+   * guard holds it: Back asks, Stay keeps it, and its save leaves the history where the
+   * page was loaded.
+   */
+  async function createStaysGuarded(
+    page: Page,
+    c: { list: string; fresh: string; name: Locator; save: Locator; late: string }
+  ) {
+    const answered = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    const start = await historyIndex(page);
+    await c.save.click();
+    await answered;
+    // The create's callback has asked for its step (held): type inside it.
+    await page.waitForFunction(() => (window as unknown as { __bug730Backs: number }).__bug730Backs >= 1);
+    await c.name.fill(c.late);
+    await heldStepsLanded(page, 1);
+
+    await expect(page).toHaveURL(new RegExp(`${c.fresh}/[0-9a-f-]{36}$`));
+    await expect(leaveDialog(page, w)).toHaveCount(0);
+    await expect(c.name).toHaveValue(c.late);
+    await expect
+      .poll(() => page.evaluate(() => window.history.state?.evoliUnsavedGuard === true), {
+        message: "the unsaved re-edit holds no guard entry: Back would leave without asking",
+      })
+      .toBe(true);
+    await pressBack(page);
+    await expect(leaveDialog(page, w), "Back with an unsaved re-edit did not ask").toBeVisible();
+    await leaveDialog(page, w).getByRole("button", { name: w.stay, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${c.fresh}/[0-9a-f-]{36}$`));
+    await expect(c.name).toHaveValue(c.late);
+
+    const again = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
+    );
+    await c.save.click();
+    await again;
+    await expect
+      .poll(() => historyIndex(page), { message: "the history is not where the page was loaded" })
+      .toBe(start);
+    await disarmed(page);
+    await page.goBack();
+    await page.waitForURL(c.list);
+  }
+
+  test("a new training template: a keystroke inside the create's step is guarded where the coach stays", async ({
+    page,
+  }) => {
+    await holdHistoryBack(page, 400);
+    await signIn(page, "en");
+    await page.goto("/templates");
+    await page.goto("/templates/new");
+    const name = page.getByLabel("Template name");
+    await name.fill("Held create");
+    for (const day of [0, 1]) {
+      await openEveryDay(page);
+      await page
+        .getByRole("group", { name: `Day ${day + 1}`, exact: true })
+        .getByRole("button", { name: "Add exercise" })
+        .click();
+      const picker = page.getByRole("dialog");
+      for (let i = 0; i < 2; i += 1) await picker.locator("button[title]").nth(i).click();
+      await picker.getByRole("button").first().click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+    await armed(page);
+    await createStaysGuarded(page, {
+      list: "/templates",
+      fresh: "/templates",
+      name,
+      save: page.getByRole("button", { name: "Save template" }),
+      late: "Held create, renamed late",
+    });
+  });
+
+  test("a new recipe: a keystroke inside the create's step is guarded where the coach stays", async ({ page }) => {
+    await holdHistoryBack(page, 400);
+    await signIn(page, "en");
+    await page.goto("/recipes");
+    await page.goto("/recipes/new");
+    const name = page.getByLabel("Recipe name");
+    await expect(async () => {
+      await name.fill("Held skyr");
+      await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await page.getByLabel("Find an ingredient").fill("greek");
+    await page.getByRole("button", { name: "Add greek yogurt", exact: true }).click();
+    await page.getByRole("group", { name: "greek yogurt", exact: true }).getByLabel("Quantity").fill("200");
+    await page.getByLabel("Calories (kcal)").fill("245");
+    await page.getByLabel("Protein (g)").fill("20");
+    await page.getByLabel("Carbs (g)").fill("30");
+    await page.getByLabel("Fat (g)").fill("5");
+    await armed(page);
+    await createStaysGuarded(page, {
+      list: "/recipes",
+      fresh: "/recipes",
+      name,
+      save: page.getByRole("button", { name: "Save recipe" }),
+      late: "Held skyr, renamed late",
+    });
   });
 });
 
