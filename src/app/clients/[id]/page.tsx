@@ -83,12 +83,25 @@ export default async function ClientPage({ params }: { params: { id: string } })
    * ADR-0015 D5 / C4 forbids (`routine/page.tsx` waits the same way), so these cost one
    * more round trip and never a request for withheld data.
    *
-   * The 403 case for the overview never reaches here: `layout.tsx` has already redirected
-   * to /clients/denied, which middleware serves with the status AC5 asks for.
+   * On a document load the 403 case for the overview never reaches here: `layout.tsx` has
+   * already redirected to /clients/denied, which middleware serves with the status AC5 asks
+   * for. On a tab change that renders on the server it does (the layout is not rendered
+   * again): BUG-671, below, with its router-cache limit.
    */
   const progressRead = readClientProgress(params.id);
   const meRead = readCoachMe();
-  const { overview } = await readClientOverview(params.id);
+  const { overview, forbidden } = await readClientOverview(params.id);
+  // BUG-671 — a TAB CHANGE does not render `layout.tsx` again (its segment is unchanged), so
+  // the layout's 403 decision never runs on one; when the tab change renders this page on the
+  // server, its own read is the only witness that the link ended. Same answer as the layout:
+  // the denial page.
+  // LIMIT (staff S1, witnessed on a production build): this runs only when the tab change
+  // reaches the server. Next's client router cache keeps a dynamic page for 30 s
+  // (`staleTimes.dynamic`, next.config.mjs, ADR-0033), so a tab visited in the last 30 s is
+  // shown from the cache with NO server render, and still shows the stale page after the
+  // link ended, until the cache entry expires or the page is reloaded. Changing the cache is
+  // the architect's call against ADR-0012 D3, not this fix's.
+  if (forbidden) redirect("/clients/denied");
 
   if (!overview) {
     /**
