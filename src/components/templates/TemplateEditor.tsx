@@ -194,7 +194,9 @@ export function TemplateEditor({
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateTemplateAction` revalidates.
-      // With a late edit the sentinel stays where it is: Back still asks (BUG-735).
+      // With a late edit the sentinel stays where it is: Back still asks (BUG-735). NOT on the
+      // first update after a create on this page: that answer re-mounts the editor (new/ and
+      // [id]/ are different segments), and the late edit is lost (BUG-739).
       // `stillUnsaved` is a no-op while that entry is current; it puts one back if a previous
       // save's step left the form dirty with none (BUG-736's end state; read from the code,
       // not constructed). Keyed on `late`.
