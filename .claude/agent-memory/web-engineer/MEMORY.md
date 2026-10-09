@@ -48,7 +48,7 @@
 - [A guard reads at a sample; say which](a-guard-reads-at-a-sample-say-which.md) — EV-217: settle wait from EVERY page animation (a sibling reaches via container query) + finished-check; diff vs origin/main...HEAD
 - [Swap sheet, recipes first (EV-272)](swap-sheet-portal-facts.md) — StrictMode doubles mount-effect reads in next dev; /api/fixture/calls is the no-request witness; C1/C0/c100 by email
 - [Recipes + editor polish (EV-276, BUG-537/490/573/574)](recipes-and-editor-polish-facts.md) — meal has no recipe id (mark by content, never hide); seconds stashed in the row, re-keyed on moves and on a document swap; sentences-only number fixes; next-start wrapper config
-- [Nutrition templates (EV-273b)](nutrition-templates-portal-facts.md) — targets only; two server actions, answered = `response` event; French port, `amount`, cap switch; an existing local branch
+- [Nutrition templates (EV-273b)](nutrition-templates-portal-facts.md) — targets only; two actions, answered = `response`; French port; BUG-718 weekCardDrawn + no-card switches
 - [Progress-goal absent-key semantics](progress-goal-absent-key-semantics.md) — EV-274: body fat absent=unchanged, null=clear; "touched" must outlive a refused save
 - [Fixture swap-candidate cache (EV-288)](fixture-swap-candidate-cache.md) — apply with nothing cached is 409 SWAP_OPTIONS_STALE; read options first; cache outside FixtureState, reset empties it
 - [Trainee app identity constant (EV-289)](trainee-app-identity-constant.md) — src/lib/traineeApps.ts holds both apps; lite = D-LITE-1 default; role names need exact:true
