@@ -690,12 +690,11 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
    */
   async function createStaysGuarded(
     page: Page,
-    c: { list: string; fresh: string; name: Locator; save: Locator; late: string }
+    c: { list: string; fresh: string; name: Locator; save: Locator; late: string; start: number }
   ) {
     const answered = page.waitForResponse(
       (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
     );
-    const start = await historyIndex(page);
     await c.save.click();
     await answered;
     // The create's callback has asked for its step (held): type inside it.
@@ -722,9 +721,11 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     );
     await c.save.click();
     await again;
+    // The update's own step is held too: the index means nothing until it has landed.
+    await heldStepsLanded(page, 2);
     await expect
       .poll(() => historyIndex(page), { message: "the history is not where the page was loaded" })
-      .toBe(start);
+      .toBe(c.start);
     await disarmed(page);
     await page.goBack();
     await page.waitForURL(c.list);
@@ -737,6 +738,8 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await signIn(page, "en");
     await page.goto("/templates");
     await page.goto("/templates/new");
+    // Where the page was loaded: read before the first keystroke arms the guard (staff SF1).
+    const start = await historyIndex(page);
     const name = page.getByLabel("Template name");
     await name.fill("Held create");
     for (const day of [0, 1]) {
@@ -757,6 +760,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
       name,
       save: page.getByRole("button", { name: "Save template" }),
       late: "Held create, renamed late",
+      start,
     });
   });
 
@@ -765,6 +769,8 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await signIn(page, "en");
     await page.goto("/recipes");
     await page.goto("/recipes/new");
+    // Where the page was loaded: read before the first keystroke arms the guard (staff SF1).
+    const start = await historyIndex(page);
     const name = page.getByLabel("Recipe name");
     await expect(async () => {
       await name.fill("Held skyr");
@@ -784,6 +790,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
       name,
       save: page.getByRole("button", { name: "Save recipe" }),
       late: "Held skyr, renamed late",
+      start,
     });
   });
 });
