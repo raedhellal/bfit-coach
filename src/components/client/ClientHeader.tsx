@@ -27,6 +27,12 @@ import { formatInstant, truncateName } from "@/lib/format";
  * every client page and a new section is one entry of `CLIENT_SECTIONS`. The revoke menu
  * stays in the header. Every control in the header is a 44 px target; the layout is in
  * classes (`.client-head`, globals.css).
+ *
+ * BUG-713: with no name (the routine and nutrition tabs when the overview read failed, which
+ * pass "") the header draws NO identity block: no avatar, whose initials would be empty, and
+ * no `h1`, which would be blank. The page's one `h1` is then the tab's load-error sentence
+ * (`ClientNotice asHeading`), on the same predicate, `headerHasName`. The way back and the
+ * tab bar are drawn in every state.
  */
 export function ClientHeader({
   clientId,
@@ -42,6 +48,7 @@ export function ClientHeader({
   action?: ReactNode;
 }) {
   const copy = getCopy();
+  const named = headerHasName(traineeDisplayName);
   return (
     <div className="client-head-wrap">
       <div style={{ marginBottom: 6 }}>
@@ -49,44 +56,57 @@ export function ClientHeader({
         <RosterBackLink label={copy.shell.backToRoster} />
       </div>
 
-      <div className="client-head">
-        <div className="client-head-id">
-          <Avatar name={traineeDisplayName} size={48} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h1
-              className="dt"
-              // EV-185 edge case 7: a 40+ character name truncates rather than pushing
-              // the revoke control off a 390 px viewport. `title` keeps the whole name.
-              title={traineeDisplayName}
-              style={{
-                margin: 0,
-                fontWeight: 700,
-                fontSize: "var(--fs-h1)",
-                letterSpacing: -0.6,
-                color: "var(--ink)",
-                overflowWrap: "anywhere",
-              }}
-            >
-              {truncateName(traineeDisplayName)}
-            </h1>
-            {/*
-              No plan badge: `TraineeOverviewResponse` carries no plan name — the plan is
-              a roster-row field only. Rendering "No plan" here would state something about
-              the trainee that this response does not say.
-            */}
-            {since && (
-              <div className="client-head-chips">
-                <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
+      {(named || Boolean(action)) && (
+        <div className="client-head">
+          {named && (
+            <div className="client-head-id">
+              <Avatar name={traineeDisplayName} size={48} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h1
+                  className="dt"
+                  // EV-185 edge case 7: a 40+ character name truncates rather than pushing
+                  // the revoke control off a 390 px viewport. `title` keeps the whole name.
+                  title={traineeDisplayName}
+                  style={{
+                    margin: 0,
+                    fontWeight: 700,
+                    fontSize: "var(--fs-h1)",
+                    letterSpacing: -0.6,
+                    color: "var(--ink)",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {truncateName(traineeDisplayName)}
+                </h1>
+                {/*
+                  No plan badge: `TraineeOverviewResponse` carries no plan name — the plan is
+                  a roster-row field only. Rendering "No plan" here would state something about
+                  the trainee that this response does not say.
+                */}
+                {since && (
+                  <div className="client-head-chips">
+                    <Badge tone="neutral">{copy.client.coachedSince(formatInstant(since, copy.locale))}</Badge>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+          {action}
         </div>
-        {action}
-      </div>
+      )}
 
       <ClientTabs clientId={clientId} active={active} />
     </div>
   );
+}
+
+/**
+ * BUG-713 — whether `ClientHeader` draws the name as the page's `h1`. A page whose header
+ * has no name must give the page its `h1` itself, and asks this same function, so the page
+ * has exactly one `h1` either way.
+ */
+export function headerHasName(traineeDisplayName: string): boolean {
+  return traineeDisplayName.trim() !== "";
 }
 
 /**

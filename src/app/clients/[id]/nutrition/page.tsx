@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
-import { ClientHeader } from "@/components/client/ClientHeader";
+import { ClientHeader, headerHasName } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { NutritionTargetsCard } from "@/components/nutrition/NutritionTargetsCard";
@@ -110,7 +110,12 @@ export default async function NutritionPage({ params }: { params: { id: string }
       <TemplateUseOutcome clientId={params.id} traineeDisplayName={displayName} />
 
       {message || !nutrition ? (
-        <ClientNotice message={message ?? copy.nutrition.loadError} />
+        <ClientNotice
+          message={message ?? copy.nutrition.loadError}
+          // BUG-713: with no overview the header draws no name and no h1 (no avatar either), so
+          // the sentence is the page's one h1. Same predicate as the header's.
+          asHeading={!headerHasName(displayName)}
+        />
       ) : (
         <>
           {nothingSetUp && (

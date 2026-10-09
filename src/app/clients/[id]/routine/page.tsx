@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
-import { ClientHeader } from "@/components/client/ClientHeader";
+import { ClientHeader, headerHasName } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { ProfileLine } from "@/components/routine/ProfileLine";
@@ -49,6 +49,9 @@ import { getCopy } from "@/lib/i18n/server";
  * trainee-changed banner sits above both columns; the aside (profile, « Enregistrer comme
  * modèle ») is beside the editor from 1280 px (F1.4). EV-342f: below 1280 px the profile is
  * one line above the editor and « Enregistrer comme modèle » comes after it.
+ *
+ * BUG-713: with no overview there is no name, and `ClientHeader` draws no avatar and no `h1`;
+ * the page's one `h1` is then the load-error sentence (`ClientNotice asHeading`).
  */
 export const dynamic = "force-dynamic";
 
@@ -261,7 +264,8 @@ export default async function RoutinePage({ params }: { params: { id: string } }
 
   /*
    * EV-337f1 — what sits above the frame in every state: one `h1` (the client's name, in
-   * `ClientHeader`) and the tab's `h2` (ruling 16, F1.6).
+   * `ClientHeader`; BUG-713: the notice's sentence when there is no name) and the tab's `h2`
+   * (ruling 16, F1.6).
    */
   const head = (
     <>
@@ -280,7 +284,11 @@ export default async function RoutinePage({ params }: { params: { id: string } }
       {message || !routine ? (
         <>
           {head}
-          <ClientNotice message={message ?? copy.routine.loadError} />
+          <ClientNotice
+            message={message ?? copy.routine.loadError}
+            // BUG-713: the header drew no name, so the sentence is the page's one h1.
+            asHeading={!headerHasName(displayName)}
+          />
         </>
       ) : (
         <RoutineEditor
