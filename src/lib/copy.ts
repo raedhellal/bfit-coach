@@ -1893,6 +1893,12 @@ export const en = {
     replacesDraft: (trainee: string) =>
       `This replaces your unpublished draft for ${endSentence(trainee)} That draft cannot be recovered.`,
     useIt: "Use this template",
+    /**
+     * On the pressed button (« Use this template » or « Replace the draft ») while the apply
+     * runs: the wait is the write plus a render of this page and then of the trainee's
+     * editor, and a grey button alone did not say anything was happening (fluidity F1).
+     */
+    applying: "Applying…",
     replaceAndUse: "Replace the draft",
     cancel: "Cancel",
     noTrainees: "You have no trainees who have shared their workouts with you.",

@@ -95,6 +95,13 @@ function RefusalBlock({ testId, lines }: { testId: string; lines: [string, ...st
   );
 }
 
+/** What the card's one transition is running (see `running` in the card). */
+type RunningAction =
+  | { kind: "apply" }
+  | { kind: "regenerate"; index: number }
+  | { kind: "swapOptions" }
+  | { kind: "swap" };
+
 /**
  * EV-185b AC3 — the meal week.
  *
@@ -187,6 +194,20 @@ export function NutritionWeekCard({
    */
   const [weekGenerating, setWeekGenerating] = useState(false);
   const [pending, startTransition] = useTransition();
+  /**
+   * Which write (or read) the ONE transition above is running. `pending` alone cannot say:
+   * every action on this card shares it, so the Apply button used to read « Application… »
+   * during a day regenerate and a swap — a whole-week apply the coach had not started
+   * (fluidity batch 1, F1). Set in the click, before the transition starts, and read only
+   * together with `pending`, so it never needs clearing: a finished action's tag is inert.
+   *
+   * One transition, not one per kind: every control stays disabled while anything runs
+   * (router actions run one at a time, `action-queue.js`), and a single `pending` is what
+   * makes that true without four flags to keep in step.
+   */
+  const [running, setRunning] = useState<RunningAction | null>(null);
+  const applying = pending && running?.kind === "apply";
+  const regeneratingIndex = pending && running?.kind === "regenerate" ? running.index : null;
   // Below the refusal state on purpose: it clears them, so it must run after they exist.
   if (initialWeek !== seenInitial) {
     setSeenInitial(initialWeek);
@@ -229,6 +250,7 @@ export function NutritionWeekCard({
   }
 
   function applyWeek() {
+    setRunning({ kind: "apply" });
     startTransition(async () => {
       // `settled` on every action in this card: a failed request resolves with
       // `undefined`, and an unguarded `result.ok` replaces the whole tab with the
@@ -284,6 +306,7 @@ export function NutritionWeekCard({
   }
 
   function regenerate(index: number) {
+    setRunning({ kind: "regenerate", index });
     startTransition(async () => {
       const result = await settled(regenerateDayAction(clientId, index), {
         ok: false,
@@ -322,6 +345,7 @@ export function NutritionWeekCard({
     setCandidates(null);
     setSwapError(null);
     setSwapNotice(null);
+    setRunning({ kind: "swapOptions" });
     startTransition(async () => {
       const result = await settled(swapOptionsAction(clientId, mealId), {
         ok: false,
@@ -354,6 +378,7 @@ export function NutritionWeekCard({
   function chooseSwap(candidateIndex: number) {
     const target = swapping;
     if (!target) return;
+    setRunning({ kind: "swap" });
     startTransition(async () => {
       const result = await settled(
         applySwapAction(clientId, target.mealId, candidateIndex),
@@ -438,7 +463,7 @@ export function NutritionWeekCard({
               paddingBottom: 6,
             }}
           >
-            {pending ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
+            {applying ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
           </Button>
         }
       />
@@ -514,154 +539,165 @@ export function NutritionWeekCard({
         )
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
-          {week.days.map((day) => (
-            <div
-              key={day.index}
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: "var(--r-lg)",
-                padding: 12,
-              }}
-            >
+          {week.days.map((day) => {
+            const regenerating = regeneratingIndex === day.index;
+            const weekday = formatWeekday(day.date, copy.locale);
+            return (
               <div
+                key={day.index}
+                // F1: the day being regenerated says so, and only that day. `data-day-index`
+                // names the card for the specs (a card found by its text asserts nothing).
+                data-day-index={day.index}
+                aria-busy={regenerating || undefined}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  marginBottom: 10,
-                  flexWrap: "wrap",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--r-lg)",
+                  padding: 12,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                  <span
-                    className="dt"
-                    style={{ fontWeight: 700, fontSize: 14.5, color: "var(--ink)" }}
-                  >
-                    {formatWeekday(day.date, copy.locale)}
-                  </span>
-                  <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
-                    {formatDate(day.date, copy.locale)}
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon="refresh"
-                  ariaLabel={copy.common.labelled(copy.nutrition.regenerate, formatWeekday(day.date, copy.locale))}
-                  onClick={() => regenerate(day.index)}
-                  disabled={pending || regenCapped}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    marginBottom: 10,
+                    flexWrap: "wrap",
+                  }}
                 >
-                  {copy.nutrition.regenerate}
-                </Button>
-              </div>
-
-              {/* EV-071b ruling 2.4 — in the refused day's own card, its meals left under it. */}
-              {dayRefused === day.index && (
-                <RefusalBlock
-                  testId="day-refusal"
-                  lines={[
-                    copy.nutrition.dayRefusedTitle(formatWeekday(day.date, copy.locale), first),
-                    copy.nutrition.dayRefusedBody,
-                    copy.nutrition.dayRefusedKept(formatWeekday(day.date, copy.locale)),
-                    copy.nutrition.refusedAskThem(first),
-                  ]}
-                />
-              )}
-
-              {day.meals.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 13, color: "var(--ink-3)" }}>
-                  {copy.nutrition.noMeals}
-                </p>
-              ) : (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {day.meals.map((meal) => (
-                    <div
-                      key={meal.mealId}
-                      data-meal-id={meal.mealId}
-                      role="group"
-                      aria-label={`${formatWeekday(day.date, copy.locale)} ${
-                        copy.nutrition.mealSlots[meal.slot] ?? meal.slot
-                      }`}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        flexWrap: "wrap",
-                      }}
+                  <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                    <span
+                      className="dt"
+                      style={{ fontWeight: 700, fontSize: 14.5, color: "var(--ink)" }}
                     >
-                      <div style={{ minWidth: 0, flex: "1 1 200px" }}>
-                        {/* flex-wrap: a slot badge, a 40-character name and TWO markers
-                            do not fit one line at 320 px (BUG-243's shape). */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            flexWrap: "wrap",
-                            minWidth: 0,
-                          }}
-                        >
-                          <Badge tone="neutral">
-                            {copy.nutrition.mealSlots[meal.slot] ?? meal.slot}
-                          </Badge>
-                          <span
-                            title={meal.name}
+                      {formatWeekday(day.date, copy.locale)}
+                    </span>
+                    <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
+                      {formatDate(day.date, copy.locale)}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="refresh"
+                    ariaLabel={copy.common.labelled(
+                      regenerating ? copy.nutrition.regenerating : copy.nutrition.regenerate,
+                      weekday
+                    )}
+                    onClick={() => regenerate(day.index)}
+                    disabled={pending || regenCapped}
+                  >
+                    {regenerating ? copy.nutrition.regenerating : copy.nutrition.regenerate}
+                  </Button>
+                </div>
+
+                {/* EV-071b ruling 2.4 — in the refused day's own card, its meals left under it. */}
+                {dayRefused === day.index && (
+                  <RefusalBlock
+                    testId="day-refusal"
+                    lines={[
+                      copy.nutrition.dayRefusedTitle(formatWeekday(day.date, copy.locale), first),
+                      copy.nutrition.dayRefusedBody,
+                      copy.nutrition.dayRefusedKept(formatWeekday(day.date, copy.locale)),
+                      copy.nutrition.refusedAskThem(first),
+                    ]}
+                  />
+                )}
+
+                {day.meals.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--ink-3)" }}>
+                    {copy.nutrition.noMeals}
+                  </p>
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {day.meals.map((meal) => (
+                      <div
+                        key={meal.mealId}
+                        data-meal-id={meal.mealId}
+                        role="group"
+                        aria-label={`${formatWeekday(day.date, copy.locale)} ${
+                          copy.nutrition.mealSlots[meal.slot] ?? meal.slot
+                        }`}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: "1 1 200px" }}>
+                          {/* flex-wrap: a slot badge, a 40-character name and TWO markers
+                              do not fit one line at 320 px (BUG-243's shape). */}
+                          <div
                             style={{
-                              fontSize: 13.5,
-                              fontWeight: 600,
-                              color: "var(--ink)",
-                              overflowWrap: "anywhere",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              flexWrap: "wrap",
                               minWidth: 0,
                             }}
                           >
-                            {truncateName(meal.name)}
-                          </span>
-                          {/* D6.7: the trainee locked this one, so an apply kept it.
-                              The confirm dialog promises exactly this; the marker is
-                              what lets the coach check the promise against the week. */}
-                          {meal.locked && (
-                            <Badge tone="amber" title={copy.nutrition.mealKeptTitle}>
-                              {copy.nutrition.mealKept}
+                            <Badge tone="neutral">
+                              {copy.nutrition.mealSlots[meal.slot] ?? meal.slot}
                             </Badge>
-                          )}
-                          <RecipeMarker meal={meal} />
+                            <span
+                              title={meal.name}
+                              style={{
+                                fontSize: 13.5,
+                                fontWeight: 600,
+                                color: "var(--ink)",
+                                overflowWrap: "anywhere",
+                                minWidth: 0,
+                              }}
+                            >
+                              {truncateName(meal.name)}
+                            </span>
+                            {/* D6.7: the trainee locked this one, so an apply kept it.
+                                The confirm dialog promises exactly this; the marker is
+                                what lets the coach check the promise against the week. */}
+                            {meal.locked && (
+                              <Badge tone="amber" title={copy.nutrition.mealKeptTitle}>
+                                {copy.nutrition.mealKept}
+                              </Badge>
+                            )}
+                            <RecipeMarker meal={meal} />
+                          </div>
+                          <div
+                            className="tnum"
+                            style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 3 }}
+                          >
+                            {copy.nutrition.macros(
+                              meal.kcal,
+                              meal.proteinG,
+                              meal.carbsG,
+                              meal.fatG
+                            )}
+                          </div>
                         </div>
-                        <div
-                          className="tnum"
-                          style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 3 }}
-                        >
-                          {copy.nutrition.macros(
-                            meal.kcal,
-                            meal.proteinG,
-                            meal.carbsG,
-                            meal.fatG
-                          )}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon="refresh"
+                            ariaLabel={copy.common.labelled(copy.nutrition.swap, meal.name)}
+                            onClick={() =>
+                              recipePlacementEnabled
+                                ? openRecipeSwap(meal, formatWeekday(day.date, copy.locale))
+                                : openSwap(meal.mealId, meal.name)
+                            }
+                            disabled={pending}
+                          >
+                            {copy.nutrition.swap}
+                          </Button>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon="refresh"
-                          ariaLabel={copy.common.labelled(copy.nutrition.swap, meal.name)}
-                          onClick={() =>
-                            recipePlacementEnabled
-                              ? openRecipeSwap(meal, formatWeekday(day.date, copy.locale))
-                              : openSwap(meal.mealId, meal.name)
-                          }
-                          disabled={pending}
-                        >
-                          {copy.nutrition.swap}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

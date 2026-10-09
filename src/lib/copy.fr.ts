@@ -990,6 +990,7 @@ export const fr = {
       `Cela remplace votre brouillon non publié pour ${endSentence(trainee)} Ce brouillon ne pourra pas être récupéré.`,
     /** PO Ruling 11 (I1): the button repeats the question's verb (`useConfirm`, « Appliquer … ? »). */
     useIt: "Appliquer",
+    applying: "Application…",
     replaceAndUse: "Remplacer le brouillon",
     cancel: "Annuler",
     noTrainees: "Aucun de vos clients n'a partagé ses séances avec vous.",
