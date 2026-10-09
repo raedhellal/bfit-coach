@@ -605,17 +605,20 @@ async function g26NotBuilt(page: Page, lang: Lang, tag: string) {
 
 /* ═══ Keyboard ═══════════════════════════════════════════════════════════════════════════════ */
 
-async function keyboard(page: Page, lang: Lang, tag: string) {
+async function keyboard(page: Page, lang: Lang, tag: string, engine: Engine) {
   const t = L[lang];
+  // WebKit on macOS skips buttons on a plain Tab; Option+Tab is its keyboard user's Tab
+  // (field-focus-ring.spec.ts, focus-clear-of-bars.spec.ts).
+  const TAB = engine === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab";
   await page.setViewportSize({ width: 390, height: 900 });
   await open(page, lang);
   // Reading order: « Modifier les objectifs », then the select, then the button.
   await page.getByRole("region", { name: t.targets, exact: true }).getByRole("button", { name: t.edit, exact: true }).focus();
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(TAB);
   await expect(selector(page, lang)).toBeFocused();
   const ring = (l: Locator) => l.evaluate((el) => getComputedStyle(el).outlineStyle);
   expect(await ring(selector(page, lang)), "the select shows a focus ring").not.toBe("none");
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(TAB);
   const button = card(page, lang).getByRole("button", { name: t.applyLina, exact: true });
   await expect(button).toBeFocused();
   expect(await ring(button), "the button shows a focus ring").not.toBe("none");
@@ -634,7 +637,7 @@ async function keyboard(page: Page, lang: Lang, tag: string) {
   // from the keyboard returns the focus to the button.
   await selector(page, lang).focus();
   await selector(page, lang).selectOption({ label: "Cut 1800" });
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(TAB);
   await expect(button).toBeFocused();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: t.templateDialog("Cut 1800", "Lina") });
@@ -662,7 +665,8 @@ async function prehydration(page: Page, lang: Lang) {
 
 /* ═══ Registration: Chromium (the config's project), then WebKit ═══════════════════════════════ */
 
-type Ctx = { page: Page; context: BrowserContext; baseURL: string; lang: Lang; tag: string };
+type Engine = "chromium" | "webkit";
+type Ctx = { page: Page; context: BrowserContext; baseURL: string; lang: Lang; tag: string; engine: Engine };
 const SCENARIOS: [string, (c: Ctx) => Promise<void>][] = [
   ["G2.1: one card in the aside under the targets, one select (current targets, then the library's templates), the cost sentence before any click, one apply control; X1/X3/X4/X6", (c) => g21Structure(c.page, c.lang, c.tag)],
   ["G2.1: a 40-character name wraps inside the button, ≥ 44 px, no sideways scroll", (c) => g21LongName(c.page, c.context, c.baseURL, c.lang, c.tag)],
@@ -673,7 +677,7 @@ const SCENARIOS: [string, (c: Ctx) => Promise<void>][] = [
   ["G2.4: WEEK_FAILED quotes the card's button exactly as rendered (a name, a 40-character name, no name)", (c) => g24Label(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.5: the template list cannot be read: the first option, the sentence, the page and today's apply still work; zero templates: no sentence", (c) => g25ReadFails(c.page, c.context, c.baseURL, c.lang, c.tag)],
   ["G2.6: no « ou recettes », « Déjà appliqué aujourd'hui », « Disponible aujourd'hui » or reset time", (c) => g26NotBuilt(c.page, c.lang, c.tag)],
-  ["keyboard: Tab reaches the select then the button, each with a ring; Enter opens; leaving the dialog returns the focus", (c) => keyboard(c.page, c.lang, c.tag)],
+  ["keyboard: Tab reaches the select then the button, each with a ring; Enter opens; leaving the dialog returns the focus", (c) => keyboard(c.page, c.lang, c.tag, c.engine)],
   ["BUG-686's class: a template chosen before hydration is the one the button applies", (c) => prehydration(c.page, c.lang)],
 ];
 
@@ -685,7 +689,7 @@ for (const lang of ["en", "fr"] as const) {
     });
     for (const [name, run] of SCENARIOS) {
       test(name, async ({ page, context, baseURL }) => {
-        await run({ page, context, baseURL: baseURL as string, lang, tag: `${lang}-chromium` });
+        await run({ page, context, baseURL: baseURL as string, lang, tag: `${lang}-chromium`, engine: "chromium" });
       });
     }
   });
@@ -709,7 +713,7 @@ test.describe("EV-337g2 in WebKit, EN and FR", () => {
         const page = await context.newPage();
         try {
           await signInThroughForm(page, { lang });
-          await run({ page, context, baseURL: baseURL as string, lang, tag: `${lang}-webkit` });
+          await run({ page, context, baseURL: baseURL as string, lang, tag: `${lang}-webkit`, engine: "webkit" });
         } finally {
           await context.close();
         }
