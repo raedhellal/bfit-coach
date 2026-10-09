@@ -388,14 +388,17 @@ test.describe("BUG-665 — what the hook owns by construction (EN)", () => {
  * The window is a few milliseconds on an idle machine, so it is HELD open here: the page's own
  * `history.back()` runs 400 ms after it is called, which is what a loaded browser does to it.
  * Nothing else is changed. `__bug730Landed` counts the held steps that have landed (its
- * listener is added last, so the guard's own listeners have run when it counts).
+ * listener is added last, so the guard's own listeners have run when it counts), and
+ * `__bug730Backs` every `history.back()` the page asked for, at the moment it asked.
  */
 async function holdHistoryBack(page: Page, ms: number) {
   await page.addInitScript((delay) => {
-    const w = window as unknown as { __bug730Landed: number };
+    const w = window as unknown as { __bug730Landed: number; __bug730Backs: number };
     w.__bug730Landed = 0;
+    w.__bug730Backs = 0;
     const back = window.history.back.bind(window.history);
     window.history.back = () => {
+      w.__bug730Backs += 1;
       window.setTimeout(() => {
         window.addEventListener("popstate", () => (w.__bug730Landed += 1), { once: true });
         back();
@@ -529,6 +532,14 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await page.waitForURL("/nutrition-templates");
     await expect(page.getByRole("group", { name: "Created once", exact: true })).toBeVisible();
     await expect(leaveDialog(page, w)).toHaveCount(0);
+    // One step back was asked for, the save's own. A guard entry re-pushed for the late
+    // keystroke would have been taken back out when the editor unmounted: a second
+    // `history.back()`, which steps the coach off the library and onto /new again. Read
+    // before the Back below, which loads another document.
+    expect(
+      await page.evaluate(() => (window as unknown as { __bug730Backs: number }).__bug730Backs),
+      "the page stepped back again after the save's own step"
+    ).toBe(1);
     await page.goBack();
     await expect(page).not.toHaveURL(/\/nutrition-templates\/new$/);
   });
