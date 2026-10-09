@@ -1,6 +1,6 @@
 import type { Copy } from "./copy";
 import { endSentence } from "./endSentence";
-import { formatKcal } from "./format";
+import { formatKcal, midSentence } from "./format";
 
 /**
  * EV-324 — the FRENCH dictionary. Same keys, same argument lists, different words.
@@ -31,6 +31,11 @@ import { formatKcal } from "./format";
 
 /** « text » with no-break spaces inside the guillemets. */
 const q = (text: string) => `«\u00a0${text}\u00a0»`;
+/**
+ * BUG-720: a first name inside a sentence, « ce client » for the fallback (see `midSentence`).
+ * Before `de` / `que`, so the elision rule reads the word as printed: « de ce client ».
+ */
+const mid = (first: string) => midSentence(first, "fr");
 /** French plural suffix: 0 and 1 take the singular. */
 const s = (n: number) => (n < 2 ? "" : "s");
 /** A number inside a French sentence, grouped the French way. */
@@ -744,16 +749,16 @@ export const fr = {
     weekRateLimited:
       "Une semaine de repas peut être appliquée une fois par jour pour chaque client. Réessayez demain.",
     weekGenerating: (first: string) =>
-      `La semaine de repas ${de(first)} est encore en préparation. Réessayez dans quelques minutes.`,
+      `La semaine de repas ${de(mid(first))} est encore en préparation. Réessayez dans quelques minutes.`,
     weekRefusedTitle: (first: string) =>
-      `Nous n'avons pas pu construire de semaine de repas pour ${first}.`,
+      `Nous n'avons pas pu construire de semaine de repas pour ${mid(first)}.`,
     weekRefusedBody:
       "Ses allergies et règles alimentaires enregistrées excluent toutes les recettes que nous pouvons vérifier. Rien n'a été modifié.",
     weekRefusedKept: (first: string) =>
-      `La semaine ci-dessous reste la semaine en cours ${de(first)} — elle n'a pas été modifiée.`,
+      `La semaine ci-dessous reste la semaine en cours ${de(mid(first))} — elle n'a pas été modifiée.`,
     weekRefusedNoWeek: (first: string) => `${first} n'a pas de semaine de repas pour le moment.`,
     refusedAskThem: (first: string) =>
-      `Vous ne pouvez pas modifier les préférences alimentaires ${de(first)} ici. Demandez-lui de les vérifier dans l'app.`,
+      `Vous ne pouvez pas modifier les préférences alimentaires ${de(mid(first))} ici. Demandez-lui de les vérifier dans l'app.`,
     lockedMealsKept: "Les repas que le client a verrouillés sont conservés.",
     regenerate: "Régénérer le jour",
     regenerateSharesLimit: (trainee: string) =>
@@ -766,14 +771,14 @@ export const fr = {
       "Nous n'avons pas pu confirmer si le jour a été régénéré. Rechargez la page avant de réessayer.",
     /** The weekday mid-sentence is lower-cased ("le lundi"), the house style. */
     dayRefusedTitle: (day: string, first: string) =>
-      `Nous n'avons pas pu reconstruire le ${day.toLowerCase()} pour ${first}.`,
+      `Nous n'avons pas pu reconstruire le ${day.toLowerCase()} pour ${mid(first)}.`,
     dayRefusedBody:
       "Ses allergies et règles alimentaires enregistrées excluent toutes les recettes que nous pouvons vérifier pour ce jour.",
     dayRefusedKept: (day: string) =>
       `Le ${day.toLowerCase()} n'a pas changé — aucun repas n'a été remplacé.`,
     /** Staff ruling 2026-10-01: the trainee's counter, so it is stated about them, not "vous". */
     dayRegenCapped: (_trainee: string, first: string) =>
-      `Les régénérations de jour ${de(first)} sont épuisées pour aujourd'hui.`,
+      `Les régénérations de jour ${de(mid(first))} sont épuisées pour aujourd'hui.`,
     /** The demo script's word ("Remplacer"); the app says "Échanger" for the trainee's own swap. */
     swap: "Remplacer le repas",
     swapTitle: "Remplacer le repas",
@@ -845,15 +850,15 @@ export const fr = {
     yourRecipeTitle: "Vous avez placé une de vos recettes sur ce repas",
     coachRecipeTitle: "Un autre coach a placé une de ses recettes sur ce repas",
     excludedIngredient: (recipe: string, first: string, value: string) =>
-      `${q(recipe)} ne peut pas être utilisée pour ${first} : ${value} est incompatible avec ses préférences alimentaires.`,
+      `${q(recipe)} ne peut pas être utilisée pour ${mid(first)} : ${value} est incompatible avec ses préférences alimentaires.`,
     excludedName: (recipe: string, first: string) =>
-      `${q(recipe)} ne peut pas être utilisée pour ${first} : son nom contient un mot incompatible avec ses préférences alimentaires. Renommez la recette et réessayez.`,
+      `${q(recipe)} ne peut pas être utilisée pour ${mid(first)} : son nom contient un mot incompatible avec ses préférences alimentaires. Renommez la recette et réessayez.`,
     ruleUncheckable: (first: string) =>
-      `Les recettes ne peuvent pas encore être utilisées pour ${first} : Evoli ne sait pas vérifier une recette écrite à la main pour les associations viande-lait de la cacherout. Ses repas générés ne sont pas concernés.`,
+      `Les recettes ne peuvent pas encore être utilisées pour ${mid(first)} : Evoli ne sait pas vérifier une recette écrite à la main pour les associations viande-lait de la cacherout. Ses repas générés ne sont pas concernés.`,
     allergiesUncheckable: (first: string) =>
-      `Les recettes ne peuvent pas encore être utilisées pour ${first} : Evoli ne sait pas contrôler une recette écrite à la main au regard de ses préférences alimentaires. Ses repas générés ne sont pas concernés.`,
+      `Les recettes ne peuvent pas encore être utilisées pour ${mid(first)} : Evoli ne sait pas contrôler une recette écrite à la main au regard de ses préférences alimentaires. Ses repas générés ne sont pas concernés.`,
     belowFloor: (first: string, weekday: string, dayKcalAfter: number, floorKcal: number) =>
-      `Cela ramènerait le ${weekday.toLowerCase()} ${de(first)} à ${n(dayKcalAfter)} kcal, sous son minimum de ${n(floorKcal)} kcal. Choisissez une recette plus calorique.`,
+      `Cela ramènerait le ${weekday.toLowerCase()} ${de(mid(first))} à ${n(dayKcalAfter)} kcal, sous son minimum de ${n(floorKcal)} kcal. Choisissez une recette plus calorique.`,
     mealEaten: (first: string) => `${first} a déjà mangé ce repas, il ne peut donc pas être remplacé.`,
     mealLocked: (first: string) => `${first} a verrouillé ce repas, il ne peut donc pas être remplacé.`,
     retiredIngredient: (recipe: string) =>
@@ -861,13 +866,13 @@ export const fr = {
     openRecipe: "Ouvrir la recette",
     mealChanged: "Ce repas a changé. Sélectionnez-le à nouveau.",
     recipeGone: "Cette recette ne fait plus partie de votre bibliothèque.",
-    accessDenied: (first: string) => `Cette recette n'a pas pu être utilisée pour ${endSentence(first)}`,
+    accessDenied: (first: string) => `Cette recette n'a pas pu être utilisée pour ${endSentence(mid(first))}`,
     placementOff: "Les recettes ne peuvent pas être placées sur les repas pour le moment.",
     failed: "La recette n'a pas pu être utilisée. Réessayez.",
     noAnswer:
       "Nous n'avons pas pu confirmer si la recette a été utilisée. Rechargez la page avant de réessayer.",
     applyWarning: (count: number, first: string) =>
-      `Cela remplace jusqu'à ${count} ${count < 2 ? "repas placé" : "repas placés"} à partir de recettes de coach. Les repas ${que(first)} a mangés sont conservés.`,
+      `Cela remplace jusqu'à ${count} ${count < 2 ? "repas placé" : "repas placés"} à partir de recettes de coach. Les repas ${que(mid(first))} a mangés sont conservés.`,
   },
 
   /** Deliberately no word saying suggestions come from a model ("IA"), as in English (R4). */
@@ -1228,32 +1233,32 @@ export const fr = {
     pickSub: (template: string) => `Choisissez le client qui recevra ${q(template)}.`,
     noTrainees: "Aucun de vos clients n'a partagé sa nutrition avec vous.",
     traineesLoadError: "Vos clients n'ont pas pu être chargés. Fermez cette fenêtre et réessayez.",
-    confirmTitle: (template: string, first: string) => `Utiliser ${q(template)} pour ${first} ?`,
+    confirmTitle: (template: string, first: string) => `Utiliser ${q(template)} pour ${mid(first)} ?`,
     now: "Actuel",
     after: "Après",
     amount: (value: number, unit: string) => `${n(value)} ${unit}`,
     notSet: "Non défini",
     confirmBody: (first: string, weekStart: string) =>
-      `Les repas ${de(first)} pour cette semaine (à partir du ${weekStart}) sont reconstruits immédiatement selon ces objectifs, avec son propre nombre de repas par jour. Ses allergies et ses règles alimentaires s'appliquent toujours. Les repas verrouillés ou déjà mangés par ce client sont conservés.`,
+      `Les repas ${de(mid(first))} pour cette semaine (à partir du ${weekStart}) sont reconstruits immédiatement selon ces objectifs, avec son propre nombre de repas par jour. Ses allergies et ses règles alimentaires s'appliquent toujours. Les repas verrouillés ou déjà mangés par ce client sont conservés.`,
     floorWarning: (first: string) =>
-      `Si c'est en dessous du minimum sûr ${de(first)}, Evoli le relève à ce minimum et vous le signale.`,
-    reading: (first: string) => `Lecture des objectifs actuels ${de(first)}…`,
+      `Si c'est en dessous du minimum sûr ${de(mid(first))}, Evoli le relève à ce minimum et vous le signale.`,
+    reading: (first: string) => `Lecture des objectifs actuels ${de(mid(first))}…`,
     readFailed: (first: string) =>
-      `Les objectifs actuels ${de(first)} n'ont pas pu être lus, donc rien n'a été envoyé. Fermez cette fenêtre et réessayez.`,
+      `Les objectifs actuels ${de(mid(first))} n'ont pas pu être lus, donc rien n'a été envoyé. Fermez cette fenêtre et réessayez.`,
     confirm: "Confirmer",
     applying: "Application…",
 
-    applied: (template: string, first: string) => `${q(template)} est désormais le plan ${de(first)}.`,
+    applied: (template: string, first: string) => `${q(template)} est désormais le plan ${de(mid(first))}.`,
     weekRateLimited: (first: string) =>
-      `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain.`,
-    targetsUpdated: (first: string) => `Les objectifs ${de(first)} sont mis à jour.`,
+      `Les objectifs ${de(mid(first))} sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain.`,
+    targetsUpdated: (first: string) => `Les objectifs ${de(mid(first))} sont mis à jour.`,
     weekFailed: (first: string, applyLabel: string) =>
-      `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${q(applyLabel)} pour réessayer.`,
+      `Les objectifs ${de(mid(first))} sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${q(applyLabel)} pour réessayer.`,
     weekUnknown: (first: string) =>
-      `Les objectifs ${de(first)} sont mis à jour. Nous n'avons pas pu confirmer si ses repas ont été reconstruits. Vérifiez sa page nutrition avant de réessayer.`,
-    targetsFailed: (first: string) => `Rien n'a été modifié pour ${first}. Réessayez.`,
+      `Les objectifs ${de(mid(first))} sont mis à jour. Nous n'avons pas pu confirmer si ses repas ont été reconstruits. Vérifiez sa page nutrition avant de réessayer.`,
+    targetsFailed: (first: string) => `Rien n'a été modifié pour ${mid(first)}. Réessayez.`,
     targetsUnknown: (first: string) =>
-      `Nous n'avons pas pu confirmer si les objectifs ${de(first)} ont changé. Vérifiez sa page nutrition avant de réessayer.`,
+      `Nous n'avons pas pu confirmer si les objectifs ${de(mid(first))} ont changé. Vérifiez sa page nutrition avant de réessayer.`,
   },
 
   /** EV-321b — les défis de pas. Les nombres arrivent déjà formatés (`formatSteps`). */
