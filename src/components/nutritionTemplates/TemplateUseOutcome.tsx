@@ -23,16 +23,23 @@ import { takeOutcome, type UseOutcome } from "@/lib/nutritionTemplateUse";
 export function TemplateUseOutcome({
   clientId,
   trainee,
+  weekCardDrawn,
 }: {
   clientId: string;
   /** The read that carries the name, or null when it failed (`ClientHeader`'s input). */
   trainee: { traineeDisplayName: string | null } | null;
+  /**
+   * Whether the page under this draws `NutritionWeekCard`, the only « Apply to … » button.
+   * BUG-718 (ruling 718-R1): when it does not (the overview read failed, the NUTRITION scope
+   * is not shared, or the nutrition read failed), WEEK_FAILED names no button at all.
+   */
+  weekCardDrawn: boolean;
 }) {
   const copy = useCopy();
   const first = firstName(trainee?.traineeDisplayName, copy.locale);
-  // BUG-714: "Unnamed client" only when the read succeeded with no name. A failed read keeps
-  // the label it always had (the name unknown, BUG-713), never the label.
-  const applyLabel = trainee ? weekApplyLabel(copy, trainee.traineeDisplayName) : copy.nutrition.apply("");
+  // The button's own label, built exactly as the card builds it from the same name (BUG-714:
+  // "Unnamed client" for a read that succeeded with no name); null when there is no button.
+  const applyLabel = weekCardDrawn ? weekApplyLabel(copy, trainee?.traineeDisplayName ?? null) : null;
   const [outcome, setOutcome] = useState<UseOutcome | null>(null);
 
   useEffect(() => {
@@ -52,7 +59,8 @@ export function TemplateUseOutcome({
     // ADR-0030 — the week card's own in-progress sentence, after the fact this flow adds:
     // step 1 was RECEIVED as a 200, so the targets did change (as every WEEK_* lead says).
     WEEK_GENERATING: `${t.targetsUpdated(first)} ${copy.nutrition.weekGenerating(first)}`,
-    // PB-5: the week card's button by its own label (the full name), never "Apply to {first}".
+    // PB-5: the week card's button by its own label (the full name), never "Apply to {first}";
+    // BUG-718: and only when the card is on the page.
     WEEK_FAILED: t.weekFailed(first, applyLabel),
     WEEK_UNKNOWN: t.weekUnknown(first),
     TARGETS_FAILED: t.targetsFailed(first),

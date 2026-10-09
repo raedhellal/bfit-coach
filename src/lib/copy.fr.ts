@@ -1249,8 +1249,10 @@ export const fr = {
     weekRateLimited: (first: string) =>
       `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas été reconstruits : une semaine a déjà été appliquée pour ce client aujourd'hui. Réessayez demain.`,
     targetsUpdated: (first: string) => `Les objectifs ${de(first)} sont mis à jour.`,
-    weekFailed: (first: string, applyLabel: string) =>
-      `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas pu être reconstruits. Utilisez ${q(applyLabel)} pour réessayer.`,
+    // BUG-718: `null` (no week card on the page) drops the last sentence, as in English.
+    weekFailed: (first: string, applyLabel: string | null) =>
+      `Les objectifs ${de(first)} sont mis à jour. Ses repas n'ont pas pu être reconstruits.` +
+      (applyLabel === null ? "" : ` Utilisez ${q(applyLabel)} pour réessayer.`),
     weekUnknown: (first: string) =>
       `Les objectifs ${de(first)} sont mis à jour. Nous n'avons pas pu confirmer si ses repas ont été reconstruits. Vérifiez sa page nutrition avant de réessayer.`,
     targetsFailed: (first: string) => `Rien n'a été modifié pour ${first}. Réessayez.`,

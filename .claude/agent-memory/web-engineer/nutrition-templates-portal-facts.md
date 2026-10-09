@@ -83,3 +83,18 @@ attributes; `disabled={pending}` is no double-click guard within one JS task —
   against the mutant before trusting it.
 - "(copy)" stays English in French: the portal cannot tell the api's suffix from a name a
   coach typed, and the rename dialog would write a translated display back.
+
+**BUG-718 (2026-10-09, ruling 718-R1, branch `fix/bug-718-apply-to-no-name`):** `TemplateUseOutcome`
+takes `weekCardDrawn`. The nutrition page computes ONE value, `shown = message ? null : nutrition`,
+and both the notice/cards split and `weekCardDrawn={shown !== null}` read it, so the WEEK_FAILED
+instruction ("Use “Apply to …” to try again") and the only « Apply to … » button (in
+`NutritionWeekCard`'s head) cannot disagree. `copy.nutritionTemplates.weekFailed(first, null)`
+prints the two lead sentences only, in both languages. The no-card branches are three: overview
+failed (`evoli_fixture_overview=fail`), NUTRITION not shared (no fixture route to it after a
+template use: the picker only offers NUTRITION links; covered by code trace), nutrition read failed
+with the overview OK (`evoli_fixture_summary_read=nutrition:500:<id>`, set AFTER the confirm dialog
+opens, since the dialog-open read is a `getNutrition` too). Spec:
+`qa/template-use-no-week-card.spec.ts` (roster config). Its French lead leaves « [Cc]e client »
+open on purpose: BUG-720 lower-cases that fallback on its own branch. A mutant that follows the
+OVERVIEW instead of the card (`weekCardDrawn={trainee !== null}`) passes the outage case and fails
+only the nutrition-read-failed case, which is why that case is in the spec.
