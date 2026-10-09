@@ -171,22 +171,6 @@ const CASES: EditorCase[] = [
     },
   },
   {
-    name: "daily targets (/clients/[id]/nutrition)",
-    path: `/clients/${LINA}/nutrition`,
-    async type(page, t) {
-      const field = page.getByRole("textbox", { name: t.nutrition.calories, exact: true });
-      await field.fill("2100");
-      return { field, value: "2100" };
-    },
-    async holdsTheEdit() {},
-    async save(page, t) {
-      await page.getByRole("button", { name: t.nutrition.saveTargets, exact: true }).click({ timeout: CLICK_TIMEOUT });
-      const dialog = page.getByRole("dialog", { name: t.nutrition.saveTargetsTitle });
-      await dialog.getByRole("button", { name: t.nutrition.saveTargets, exact: true }).click({ timeout: CLICK_TIMEOUT });
-      await expect(page.getByText(t.nutrition.targetsSaved, { exact: true })).toBeVisible();
-    },
-  },
-  {
     name: "progress goal (/clients/[id])",
     path: `/clients/${LINA}`,
     async type(page, t) {
@@ -287,6 +271,58 @@ test.describe(ROUTINE_SETTINGS.name, () => {
       }) => {
         await run(ROUTINE_SETTINGS, engine, lang, 1440, baseURL);
       });
+    }
+  }
+});
+
+/**
+ * EV-337g1 G1.2 — the daily targets (`/clients/[id]/nutrition`) left `CASES`. Their form is
+ * closed on load and opened by « Modifier les objectifs », so its fields are not in the
+ * server HTML any more and there is nothing to type into before hydration: the answer the
+ * sweep records for the dialog forms (`prehydration-sweep.spec.ts`). This pins that answer
+ * instead, and keeps the case's last half: a value typed once the form is open is saved.
+ */
+test.describe("daily targets (/clients/[id]/nutrition), EV-337g1: no field before hydration", () => {
+  for (const engine of Object.keys(ENGINES) as Engine[]) {
+    for (const lang of LANGS) {
+      for (const width of WIDTHS) {
+        test(`${engine} · ${lang} · ${width} px: no targets field in the server HTML, the opener opens nothing early, typed after it opens is saved`, async ({
+          baseURL,
+        }) => {
+          const t = COPY[lang];
+          const page = await openPage(engine, lang, width, baseURL);
+          try {
+            const hold = await holdHydration(page);
+            await page.goto(`/clients/${LINA}/nutrition`, { waitUntil: "domcontentloaded" });
+            const region = page.getByRole("region", { name: t.nutrition.targetsTitle, exact: true });
+            const calories = region.getByRole("textbox", { name: t.nutrition.calories, exact: true });
+            const opener = region.getByRole("button", { name: t.nutrition.editTargets, exact: true });
+            await expect(opener, "the server HTML draws the opener").toBeVisible();
+            await expect(region.getByRole("textbox"), "no targets field in the server HTML").toHaveCount(0);
+            await opener.click();
+            await expect(region.getByRole("textbox"), "the opener opens nothing before hydration").toHaveCount(0);
+            expect(await hold.release(), "JS chunks held until the opener was pressed").toBeGreaterThan(0);
+
+            await expect(async () => {
+              if ((await calories.count()) === 0) await opener.click({ timeout: 2_000 });
+              await expect(calories).toBeVisible({ timeout: 1_000 });
+            }).toPass({ timeout: 30_000 });
+            await calories.fill("2100");
+            await region.getByRole("button", { name: t.nutrition.saveTargets, exact: true }).click({ timeout: CLICK_TIMEOUT });
+            const dialog = page.getByRole("dialog", { name: t.nutrition.saveTargetsTitle });
+            await dialog.getByRole("button", { name: t.nutrition.saveTargets, exact: true }).click({ timeout: CLICK_TIMEOUT });
+            await expect(page.getByText(t.nutrition.targetsSaved, { exact: true })).toBeVisible();
+            await page.reload();
+            await expect(async () => {
+              if ((await calories.count()) === 0) await opener.click({ timeout: 2_000 });
+              await expect(calories).toBeVisible({ timeout: 1_000 });
+            }).toPass({ timeout: 30_000 });
+            await expect(calories).toHaveValue("2100");
+          } finally {
+            await page.context().close();
+          }
+        });
+      }
     }
   }
 });
