@@ -371,7 +371,8 @@ test.describe("the document the editor holds", () => {
         expect(documentReasons(at(minutes), copy, trainee), `${lang} ${minutes}`).toEqual([]);
       }
       // Not > 0: `minutesRequired` alone, never both.
-      expect(documentReasons(at(0), copy, trainee), `${lang} 0`).toEqual([copy.routine.minutesRequired]);
+      const REQUIRED = { en: "Set how many minutes a session lasts.", fr: "Indiquez la durée d'une séance en minutes." } as const;
+      expect(documentReasons(at(0), copy, trainee), `${lang} 0`).toEqual([REQUIRED[lang]]);
       // The template's own rules (`publishabilityReasons`): no range reason at any value.
       for (const minutes of [19, 20, 90, 91, 15, 120]) {
         expect(publishabilityReasons({ name: "Upper / Lower split", document: at(minutes) }, copy), `template ${lang} ${minutes}`).toEqual([]);
