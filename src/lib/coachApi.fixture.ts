@@ -1864,6 +1864,32 @@ function seedCapRecipes(): StoredRecipe[] {
 }
 
 /**
+ * EV-337j2 J2.5 (ruling EV-337j2-R1) — the four names the ligature / apostrophe fold is
+ * tried on, and nothing else, so each J2.5 query can match only its own recipe:
+ * « Canard à l\u2019orange » holds U+2019 and « Salade d'été » the ASCII U+0027. Signed in as
+ * `coach.fold@evoli.fit` (see `COACH_LIBRARIES`).
+ */
+function seedFoldRecipes(): StoredRecipe[] {
+  const rows: Array<[string, RecipeUnit, string]> = [
+    ["B\u0153uf bourguignon", "g", "lean_beef"],
+    ["\u0152ufs brouill\u00e9s", "piece", "egg"],
+    ["Canard \u00e0 l\u2019orange", "g", "chicken_breast"],
+    ["Salade d'\u00e9t\u00e9", "g", "spinach"],
+  ];
+  return rows.map(([name, unit, key], i) => ({
+    id: `8e3f1b22-0000-4000-8000-0000003370f${i}`,
+    name,
+    kcal: 500,
+    proteinG: 40,
+    carbsG: 50,
+    fatG: 16,
+    ingredients: [{ key, quantity: unit === "piece" ? 3 : 150, unit }],
+    steps: ["Cook and serve."],
+    mealSlots: null,
+  }));
+}
+
+/**
  * EV-272 — ⚠ a FIXTURE AFFORDANCE, not an api shape. The api keys a library by the
  * signed-in coach's user id (`listByCoachId`). The fixture has one coach identity for
  * everything else (one roster, one link per trainee), so a second and third LIBRARY are
@@ -1877,6 +1903,7 @@ const COACH_LIBRARIES: Record<string, () => StoredRecipe[]> = {
   "coach.c1@evoli.fit": seedC1Recipes,
   "coach.c0@evoli.fit": () => [],
   "coach.c100@evoli.fit": seedCapRecipes,
+  "coach.fold@evoli.fit": seedFoldRecipes,
 };
 
 function seedLibraries(): Map<string, Map<string, StoredRecipe>> {

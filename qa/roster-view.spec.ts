@@ -136,6 +136,35 @@ test("filters read the row's facts; search is case- and accent-insensitive", () 
 });
 
 /**
+ * EV-337j2 J2.5 (ruling EV-337j2-R1): the shared `searchKey` also folds « œ » to "oe", « æ » to
+ * "ae", and ’ (U+2019) and ‘ (U+2018) to ' (U+0027), on both sides of every comparison — the
+ * roster, /templates and /recipes. Nothing else is folded (J2.5's "Not in" list).
+ */
+test("J2.5: œ, æ and the typographic apostrophes fold in searchKey; nothing else does", () => {
+  expect(searchKey("B\u0153uf bourguignon")).toBe("boeuf bourguignon");
+  expect(searchKey("\u0152UFS")).toBe("oeufs");
+  expect(searchKey("L\u00e6titia")).toBe("laetitia");
+  expect(searchKey("\u00c6THER")).toBe("aether");
+  expect(searchKey("l\u2019orange")).toBe("l'orange");
+  expect(searchKey("l\u2018orange")).toBe("l'orange");
+  expect(searchKey("l'orange")).toBe("l'orange");
+  // Both directions through the matcher the three searches use.
+  expect(matchesSearch(searchKey("B\u0153uf bourguignon"), "BOEUF")).toBe(true);
+  expect(matchesSearch(searchKey("Boeuf"), "b\u0153uf")).toBe(true);
+  expect(matchesSearch(searchKey("O'Brien"), "o\u2019brien")).toBe(true);
+  expect(matchesSearch(searchKey("O\u2019Brien"), "o'brien")).toBe(true);
+  // Not in J2.5: these stay as they are (after lower case).
+  expect(searchKey("Stra\u00dfe")).toBe("stra\u00dfe");
+  expect(searchKey("S\u00f8ren")).toBe("s\u00f8ren");
+  expect(searchKey("\u0142ukasz")).toBe("\u0142ukasz");
+  expect(searchKey("l\u02bcorange")).toBe("l\u02bcorange");
+  expect(searchKey("l\u00b4orange")).toBe("l\u00b4orange");
+  expect(searchKey("l`orange")).toBe("l`orange");
+  expect(matchesSearch(searchKey("pull-up"), "pull up")).toBe(false);
+  expect(matchesSearch(searchKey("«Bowl»"), '"bowl"')).toBe(false);
+});
+
+/**
  * D6 (PO ruling 3, 2026-10-02): a red flag is « alerte » in French. No UI string in
  * `copy.fr.ts` says « signalement » — it reads as something the client reported, which these
  * flags are not. Code comments do not count, so the DICTIONARY is read, not the file: every

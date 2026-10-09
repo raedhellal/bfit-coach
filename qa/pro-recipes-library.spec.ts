@@ -45,6 +45,8 @@ const COACH = "coach@evoli.fit";
 const C1 = "coach.c1@evoli.fit";
 const C0 = "coach.c0@evoli.fit";
 const C100 = "coach.c100@evoli.fit";
+/** J2.5's library: exactly « Bœuf bourguignon », « Œufs brouillés », « Canard à l’orange », « Salade d'été ». */
+const FOLD = "coach.fold@evoli.fit";
 
 const BOWL = "Chicken rice bowl";
 const OVEN = "Oven-baked sweet potato and chickpea traybake with spinach, lemon and garlic oil";
@@ -74,6 +76,7 @@ const T = {
     edit: "Edit",
     remove: "Delete",
     clear: "Clear the search",
+    shown: (n: number) => `${n} recipe${n === 1 ? "" : "s"} shown`,
   },
   fr: {
     heading: "Recettes",
@@ -95,6 +98,7 @@ const T = {
     edit: "Modifier",
     remove: "Supprimer",
     clear: "Effacer la recherche",
+    shown: (n: number) => `${n} recette${n < 2 ? "" : "s"} affichée${n < 2 ? "" : "s"}`,
   },
 } as const;
 
@@ -432,6 +436,70 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
         }
       });
 
+      /* ── J2.6 (ruling EV-337j2-R2) ────────────────────────────────────────── */
+
+      for (const width of [1440, 390] as const) {
+        test(`J2.6 — ${width} px: a polite, hidden status announces what the search left, and only while searching`, async ({
+          baseURL,
+        }) => {
+          const page = await open(engine, lang, width, baseURL);
+          try {
+            await page.goto("/recipes");
+            await expect(row(page, BOWL)).toBeVisible();
+            const live = main(page).locator('[role="status"][aria-live="polite"]');
+            // First paint (asserted before hydration is awaited): one such node, hidden, empty.
+            await expect(live, "one polite status in the library").toHaveCount(1);
+            await expect(live).toHaveText("");
+            const hidden = await live.evaluate((el) => {
+              const r = el.getBoundingClientRect();
+              const s = getComputedStyle(el);
+              return (r.width <= 1 && r.height <= 1 && s.overflow === "hidden") || s.clip === "rect(0px, 0px, 0px, 0px)";
+            });
+            expect(hidden, "the status is visually hidden (sr-only)").toBe(true);
+            await ready(page, lang);
+            // QA's own mark: the node must survive every update below.
+            await live.evaluate((el) => el.setAttribute("data-qa-j26", "same-node"));
+
+            const field = search(page, lang);
+            const filter = page.getByLabel(t.filter, { exact: true });
+            const says = async (n: number, what: string) => {
+              await expect.poll(() => listed(page), what).toHaveLength(n);
+              await expect(live, what).toHaveText(t.shown(n));
+            };
+            await field.fill("chicken");
+            await says(1, "one match");
+            await field.fill("en");
+            await says(3, "three matches"); // Chicken rice bowl, Oven-baked…, Wine-braised lentils
+            await filter.selectOption("LUNCH");
+            await says(2, "the filter changed mid-search");
+            await filter.selectOption("ALL");
+            await field.fill("zzz");
+            await says(0, "no match");
+            await expect(main(page).getByText(t.noMatch("zzz"))).toBeVisible();
+
+            // Cleared by its button, by deleting the text, or left as spaces: empty again.
+            await main(page).getByRole("button", { name: t.clear, exact: true }).click();
+            await expect(live, "cleared by the button").toHaveText("");
+            await field.fill("en");
+            await says(3, "typed again");
+            await field.fill("");
+            await expect(live, "cleared by deleting").toHaveText("");
+            await field.fill("   ");
+            await expect.poll(() => listed(page)).toEqual(SEEDED);
+            await expect(live, "spaces only").toHaveText("");
+            // A blank field: the filter behaves as before, nothing announced.
+            await field.fill("");
+            await filter.selectOption("BREAKFAST");
+            await expect.poll(() => listed(page)).toEqual([OATS, QUARK]);
+            await expect(live, "filter with a blank field").toHaveText("");
+
+            await expect(live, "the same node throughout").toHaveAttribute("data-qa-j26", "same-node");
+          } finally {
+            await page.context().close();
+          }
+        });
+      }
+
       /* ── J2.3 ─────────────────────────────────────────────────────────────── */
 
       test("J2.3 — no photo, tag, tag filter, portion, prep time or usage count (R8)", async ({ baseURL }) => {
@@ -444,13 +512,14 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
             await expect(scope.locator("img, picture, video, canvas"), "no image").toHaveCount(0);
             await expect(scope.locator('[role="img"]:not([aria-hidden="true"])'), "no image role").toHaveCount(0);
             await expect(scope.locator('input[type="file"]'), "no upload").toHaveCount(0);
-            // No photo PLACEHOLDER either (plan §5.4/§5.9): no blank box in a row. A leaf
-            // element with no text, outside an icon's <svg>, at least 16 × 16 — the grey square
-            // a "no photo yet" slot is drawn with (mutant M7b) — and no background image.
+            // No photo PLACEHOLDER either (plan §5.4/§5.9): no blank box in a row. Any element
+            // with no text, outside an icon's <svg>, at least 16 × 16 — the grey square a "no
+            // photo yet" slot is drawn with (mutant M7b), or a tinted tile HOLDING an aria-hidden
+            // icon (staff's S2, which a leaf-only scan let through) — and no background image.
             const blanks = await scope.getByRole("group").evaluateAll((groups) =>
               groups.flatMap((g) =>
                 Array.from(g.querySelectorAll("*"))
-                  .filter((el): el is HTMLElement => el instanceof HTMLElement && el.children.length === 0)
+                  .filter((el): el is HTMLElement => el instanceof HTMLElement)
                   .filter((el) => !el.closest("svg") && el.innerText.trim() === "")
                   .map((el) => ({ in: g.getAttribute("aria-label"), tag: el.tagName, ...el.getBoundingClientRect().toJSON() }))
                   .filter((b) => b.width >= 16 && b.height >= 16)
@@ -581,6 +650,41 @@ for (const engine of Object.keys(ENGINES) as Engine[]) {
   /* ── J2.2's own example, and J2.4 (FR, per the story) ──────────────────── */
 
   test.describe(`${engine}`, () => {
+    test("J2.5 — FR 1440: œ, æ and the typographic apostrophes fold; the no-match sentence quotes what was typed", async ({
+      baseURL,
+    }) => {
+      const page = await open(engine, "fr", 1440, baseURL, { email: FOLD });
+      try {
+        await page.goto("/recipes");
+        await ready(page, "fr");
+        const BOEUF = "B\u0153uf bourguignon";
+        const OEUFS = "\u0152ufs brouill\u00e9s";
+        const CANARD = "Canard \u00e0 l\u2019orange";
+        const SALADE = "Salade d'\u00e9t\u00e9";
+        // The library is these four and nothing else, so "exactly the named recipe" is a real test.
+        expect((await listed(page)).sort()).toEqual([BOEUF, CANARD, OEUFS, SALADE].sort());
+        const field = search(page, "fr");
+        for (const [query, want] of [
+          ["boeuf", BOEUF],
+          ["OEUFS", OEUFS],
+          ["\u0153ufs", OEUFS],
+          ["l'orange", CANARD], // typed with U+0027, stored with U+2019
+          ["d\u2019ete", SALADE], // typed with U+2019, stored with U+0027
+        ] as const) {
+          await field.fill(query);
+          await expect.poll(() => listed(page), `« ${query} »`).toEqual([want]);
+        }
+        await field.fill("b\u0153ufz");
+        await expect.poll(() => listed(page)).toEqual([]);
+        const status = main(page).getByRole("status").filter({ hasText: "Aucune recette ne correspond" });
+        expect(await status.evaluate((el) => el.textContent), "the typed text, not the folded one").toBe(
+          "Aucune recette ne correspond \u00e0 «\u00a0b\u0153ufz\u00a0»."
+        );
+      } finally {
+        await page.context().close();
+      }
+    });
+
     test("J2.2 — « creme » finds « Crème brûlée » (the story's example, a recipe written through the editor)", async ({
       baseURL,
     }) => {
