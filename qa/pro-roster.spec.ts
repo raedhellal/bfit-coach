@@ -3,6 +3,7 @@ import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { expectNoEnglish } from "./french";
+import { holdNextAction } from "./hold-action";
 
 /**
  * EV-337d — the redesigned roster (plan §5.1; Raed's rulings R6 « Inactif » = 7 days and R7
@@ -35,6 +36,7 @@ const LANG = {
     noMatch: "No client matches.",
     clear: "Show all clients",
     sort: ["Needs attention", "Recently active"],
+    sortFailed: "The order could not be changed. Try again.",
     inactiveFor: (d: number) => `Inactive for ${d}\u00a0days`,
     upToDate: "Up to date",
   },
@@ -53,6 +55,7 @@ const LANG = {
     noMatch: "Aucun client ne correspond.",
     clear: "Afficher tous les clients",
     sort: ["À surveiller", "Actifs récemment"],
+    sortFailed: "L'ordre n'a pas pu être changé. Réessayez.",
     inactiveFor: (d: number) => `Inactif depuis ${d}\u00a0j`,
     upToDate: "À jour",
   },
@@ -228,6 +231,62 @@ for (const lang of ["fr", "en"] as const) {
       await expect(page.getByRole("radio", { name: recent })).toBeChecked();
       // Most recent first, inside « to review »: Lina yesterday, Tobias 9 days ago, Sara never.
       await expect.poll(async () => (await groups(page)).attention).toEqual(["Lina M.", "Tobias R.", "Sara P."]);
+    });
+
+    /**
+     * Fluidity batch 1, F3 — the chosen order is checked AT ONCE (the language switch's
+     * `pending && chosen`), and until the server's order lands every group says it is being
+     * re-ordered (`aria-busy`, dimmed), so the checked option never sits above the old order
+     * looking settled. The sort action's POST is HELD (`qa/hold-action.ts`), so "at once" is
+     * read while the server has provably not answered. Until d717e57 the old option stayed
+     * checked for the whole round trip.
+     */
+    test("F3: the chosen order is checked at once, and the rows are busy until it lands", async ({ page }) => {
+      await signIn(page, lang);
+      const [needs, recent] = LANG[lang].sort;
+      await expect(page.getByRole("radio", { name: needs })).toBeChecked();
+      const hold = await holdNextAction(page);
+      await page.getByRole("radio", { name: recent }).click();
+      await hold.reached;
+
+      await expect(page.getByRole("radio", { name: recent })).toBeChecked();
+      await expect(page.getByRole("radio", { name: needs })).not.toBeChecked();
+      // Still the old order underneath, and every group says so.
+      expect((await groups(page)).attention).toEqual(["Tobias R.", "Sara P.", "Lina M."]);
+      const sections = page.locator("section[data-roster-group]");
+      const busy = page.locator('section[data-roster-group][aria-busy="true"]');
+      await expect(busy).toHaveCount(await sections.count());
+      expect(await sections.count()).toBeGreaterThan(0);
+      // Polled: the dimming is a 150 ms transition, so its first frame still reads 1.
+      await expect
+        .poll(() => busy.first().locator(".roster-list").evaluate((e) => Number(getComputedStyle(e).opacity)), {
+          message: "the busy rows are visibly dimmed",
+        })
+        .toBeLessThan(0.7);
+
+      hold.release();
+      await expect.poll(async () => (await groups(page)).attention).toEqual(["Lina M.", "Tobias R.", "Sara P."]);
+      await expect(busy).toHaveCount(0);
+      await expect(page.getByRole("radio", { name: recent })).toBeChecked();
+      await expect(page.getByRole("status").filter({ hasText: LANG[lang].sortFailed })).toHaveCount(0);
+    });
+
+    test("F3: a sort that does not reach the server falls back and says why", async ({ page }) => {
+      await signIn(page, lang);
+      const [needs, recent] = LANG[lang].sort;
+      await expect(page.getByRole("radio", { name: needs })).toBeChecked();
+      await page.route("**/*", async (route) => {
+        const request = route.request();
+        if (request.method() === "POST" && request.headers()["next-action"] !== undefined) await route.abort("connectionreset");
+        else await route.fallback();
+      });
+      await page.getByRole("radio", { name: recent }).click();
+
+      await expect(page.getByText(LANG[lang].sortFailed, { exact: true })).toBeVisible();
+      await expect(page.getByRole("radio", { name: needs })).toBeChecked();
+      await expect(page.getByRole("radio", { name: recent })).not.toBeChecked();
+      expect((await groups(page)).attention).toEqual(["Tobias R.", "Sara P.", "Lina M."]);
+      await expect(page.locator('section[data-roster-group][aria-busy="true"]')).toHaveCount(0);
     });
 
     /**

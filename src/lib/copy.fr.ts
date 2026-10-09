@@ -196,6 +196,7 @@ export const fr = {
     sortLabel: "Trier",
     sortNeedsAttention: "À surveiller",
     sortRecentActivity: "Actifs récemment",
+    sortFailed: "L'ordre n'a pas pu être changé. Réessayez.",
     flagsNotShared: "Non partagé",
     // EV-337d. The design's words where it has them (« à traiter », « Sur la bonne voie »,
     // « Inactif depuis 31 j », « Rechercher un client », « Aucun client ne correspond »);

@@ -258,6 +258,8 @@ export const en = {
     sortLabel: "Sort",
     sortNeedsAttention: "Needs attention",
     sortRecentActivity: "Recently active",
+    /** F3: the toggle showed the chosen order before the server answered, and the server did not take it. */
+    sortFailed: "The order could not be changed. Try again.",
     /**
      * What the flag column says for a link that shares neither workouts nor weigh-ins.
      * The SAME sentence as every other absence on this surface (`client.notShared`),
