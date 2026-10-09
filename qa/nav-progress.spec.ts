@@ -31,6 +31,12 @@ import { signInThroughForm } from "./sign-in";
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const BAR = '[data-nav-progress="visible"]';
 /**
+ * The nutrition page's content has arrived. It was the targets form's first numeric field until
+ * EV-337g1 closed that form behind « Modifier les objectifs » (G1.2); the card's server-rendered
+ * `<dl>` of Lina's four targets stands in its place, in the same card.
+ */
+const NUTRITION_CONTENT = 'section[aria-labelledby="nutrition-targets-title"] dl';
+/**
  * The element itself. Every NEGATIVE check reads its real visibility (staff review r2):
  * the bar is toggled by `hidden` and an attribute on one always-rendered element, so a
  * check on the attribute alone let "hidden never set" and "visible until hydration" pass.
@@ -95,7 +101,7 @@ test("a held response: the bar appears after 400 ms, says what it is, and leaves
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
 
   const clicked = page.evaluate(() => performance.now());
-  const seen = timedClick(page, `/clients/${LINA}/nutrition`, 'input[inputmode="numeric"]');
+  const seen = timedClick(page, `/clients/${LINA}/nutrition`, NUTRITION_CONTENT);
   await clicked;
   // While it shows: an indeterminate progressbar with a name, and the content region busy.
   const bar = page.getByRole("progressbar", { name: "Loading the page" });
@@ -118,7 +124,7 @@ test("fast page changes never show the bar: a first visit and a revisit", async 
   await page.goto(`/clients/${LINA}`);
   await expect(page.locator("section[aria-label]").first()).toBeVisible();
 
-  const first = await timedClick(page, `/clients/${LINA}/nutrition`, 'input[inputmode="numeric"]');
+  const first = await timedClick(page, `/clients/${LINA}/nutrition`, NUTRITION_CONTENT);
   expect(first.barAt, `a ${Math.round(first.contentAt!)} ms first visit showed no bar`).toBeNull();
   const revisit = await timedClick(page, `/clients/${LINA}`, "section[aria-label]");
   expect(revisit.barAt, "a router-cache revisit showed no bar").toBeNull();
@@ -243,7 +249,7 @@ test("« Leave without saving » to a slow tab: the bar after 400 ms, gone when 
   await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
   await expect(page.getByText("Leave with unsaved changes?")).toBeVisible();
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
-  const t = await timedButton(page, "Leave without saving", `/clients/${LINA}/nutrition`, 'input[inputmode="numeric"]');
+  const t = await timedButton(page, "Leave without saving", `/clients/${LINA}/nutrition`, NUTRITION_CONTENT);
   expect(t.barAt, "the bar appeared").not.toBeNull();
   expect(t.barAt!, "not before the threshold").toBeGreaterThanOrEqual(390);
   expect(t.barPath, "while the routine was still on screen").toBe(`/clients/${LINA}/routine`);
@@ -293,7 +299,7 @@ async function everShown(page: Page, ms: number) {
 test("a click on the tab you are already on never shows the bar", async ({ page, baseURL }) => {
   await signIn(page);
   await page.goto(`/clients/${LINA}/nutrition`);
-  await expect(page.locator('input[inputmode="numeric"]').first()).toBeVisible();
+  await expect(page.locator(NUTRITION_CONTENT).first()).toBeVisible();
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
   const watch = everShown(page, 1_500);
   await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
@@ -427,7 +433,7 @@ test("the server-rendered bar is hidden before any script runs", async ({ browse
  * commits fast (a router-cache revisit) still never shows it. */
 
 const ROUTINE = { href: `/clients/${LINA}/routine`, selector: "#plan-name" };
-const NUTRITION = { href: `/clients/${LINA}/nutrition`, selector: 'input[inputmode="numeric"]' };
+const NUTRITION = { href: `/clients/${LINA}/nutrition`, selector: NUTRITION_CONTENT };
 
 /**
  * Click `firstHref`, then `second.href` either `secondAfterMs` after the first click or,
