@@ -120,7 +120,7 @@ export function CreateChallengeDialog({
       draft.saved(undefined, () => {
         startNavigationProgress(href);
         router.push(href);
-      });
+      }, "leaves");
     });
   }
 
