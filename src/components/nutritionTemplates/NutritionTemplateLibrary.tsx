@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { firstName, formatDate, formatInstant } from "@/lib/format";
+import { fullNameOf } from "@/lib/traineeName";
 import { useCopy } from "@/lib/i18n/client";
 import {
   applyTemplateTargetsAction,
@@ -43,7 +44,8 @@ import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 /** A trainee this coach may write nutrition to: ACTIVE, and the link carries NUTRITION. */
 export interface NutritionTarget {
   id: string;
-  traineeDisplayName: string;
+  /** BUG-714: null or blank for a trainee with no name; printed through `fullNameOf`. */
+  traineeDisplayName: string | null;
 }
 
 type Dialog =
@@ -515,7 +517,7 @@ function PickDialog({
                   overflowWrap: "anywhere",
                 }}
               >
-                {trainee.traineeDisplayName}
+                {fullNameOf(trainee.traineeDisplayName, copy)}
               </button>
             </li>
           ))}

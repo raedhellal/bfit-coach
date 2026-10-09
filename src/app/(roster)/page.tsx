@@ -13,6 +13,7 @@ import { readRosterSort } from "@/lib/rosterSort";
 import { classifyRosterRow, dayIn, searchKey } from "@/lib/rosterView";
 import { getCopy } from "@/lib/i18n/server";
 import { tierLabel } from "@/lib/format";
+import { fullNameOf } from "@/lib/traineeName";
 import { readAllInvited } from "@/lib/invited";
 
 /**
@@ -139,7 +140,9 @@ export default async function RosterPage() {
       group: view.group,
       flagged: view.flagged,
       inactive: view.inactive,
-      search: searchKey(`${c.traineeDisplayName} ${c.currentPlanName ?? ""}`),
+      // BUG-714: searched by what the row SAYS, so "Unnamed client" is found by its label and
+      // a null name never puts the word "null" in the key.
+      search: searchKey(`${fullNameOf(c.traineeDisplayName, copy)} ${c.currentPlanName ?? ""}`),
       node: <RosterRow client={c} view={view} idx={i} />,
     };
   });

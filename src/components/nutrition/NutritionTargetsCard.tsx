@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
+import { fullNameOf } from "@/lib/traineeName";
 import { formatInstant, formatKcal, truncateName } from "@/lib/format";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { saveTargetsAction } from "@/lib/nutritionActions";
@@ -52,7 +53,7 @@ export function NutritionTargetsCard({
   targets,
 }: {
   clientId: string;
-  traineeDisplayName: string;
+  traineeDisplayName: string | null;
   targets: NutritionTargets | null;
 }) {
   const copy = useCopy();
@@ -350,7 +351,7 @@ export function NutritionTargetsCard({
       >
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
           {/* Slice 1 has no draft: the write is immediate, and the dialog says so. */}
-          {copy.nutrition.seesStraightAway(truncateName(traineeDisplayName))}
+          {copy.nutrition.seesStraightAway(truncateName(fullNameOf(traineeDisplayName, copy)))}
         </p>
       </Modal>
       {form.guard}

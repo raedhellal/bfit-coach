@@ -195,7 +195,11 @@ export interface CoachMe {
 export interface RosterClient {
   /** The `coach_clients` row id — the ONLY id the coach portal addresses. */
   id: string;
-  traineeDisplayName: string;
+  /**
+   * BUG-714: null for a trainee who registered with no name (`displayNameOf` passes
+   * `users.full_name` through), and possibly blank. Printed through `fullNameOf`.
+   */
+  traineeDisplayName: string | null;
   /**
    * What this link shares — the same `CoachAccessScope[]` the overview carries, per
    * row (staff-review contract item 4, ADR-0015 D5/S1).
@@ -460,7 +464,11 @@ export interface LastSession {
 export interface ClientOverview {
   /** The `coach_clients` row id. */
   clientId: string;
-  traineeDisplayName: string;
+  /**
+   * BUG-714: null for a trainee who registered with no name (`displayNameOf` passes
+   * `users.full_name` through), and possibly blank. Printed through `fullNameOf`.
+   */
+  traineeDisplayName: string | null;
   /** ISO-8601 instant — when the trainee accepted. */
   since: string;
   /**
@@ -1676,7 +1684,11 @@ export interface TraineeDietProfile {
  */
 export interface CoachNutritionResponse {
   clientId: string;
-  traineeDisplayName: string;
+  /**
+   * BUG-714: null for a trainee who registered with no name (`displayNameOf` passes
+   * `users.full_name` through), and possibly blank. Printed through `fullNameOf`.
+   */
+  traineeDisplayName: string | null;
   /** Null + a null week is AC1's "No nutrition set up yet". */
   targets: NutritionTargets | null;
   week: MealWeekView | null;

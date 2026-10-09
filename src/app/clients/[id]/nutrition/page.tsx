@@ -90,14 +90,22 @@ export default async function NutritionPage({ params }: { params: { id: string }
   }
   if (denied) redirect("/clients/denied");
 
-  const displayName = nutrition?.traineeDisplayName ?? overview?.traineeDisplayName ?? "";
+  /**
+   * The name as the reads that carry it returned it. Null when the overview read FAILED: the
+   * name is then unknown and the header draws BUG-713's state. Otherwise the nutrition read's
+   * name, or the overview's when that read was not made or failed; null or blank there is a
+   * trainee with no name (BUG-714), printed as the label.
+   */
+  const trainee = overview
+    ? { traineeDisplayName: nutrition?.traineeDisplayName ?? overview.traineeDisplayName }
+    : null;
   const nothingSetUp = !!nutrition && nutrition.targets === null && nutrition.week === null;
 
   return (
     <CoachShell coachName={me?.displayName} section="roster">
       <ClientHeader
         clientId={params.id}
-        traineeDisplayName={displayName}
+        trainee={trainee}
         since={overview?.since}
         active="nutrition"
       />
@@ -107,14 +115,14 @@ export default async function NutritionPage({ params }: { params: { id: string }
         the load-error split (staff review, blocker 1): a landing on the scope sentence or
         the load error still shows and consumes it, rather than leaving it for a later visit.
       */}
-      <TemplateUseOutcome clientId={params.id} traineeDisplayName={displayName} />
+      <TemplateUseOutcome clientId={params.id} trainee={trainee} />
 
       {message || !nutrition ? (
         <ClientNotice
           message={message ?? copy.nutrition.loadError}
           // BUG-713: with no overview the header draws no name and no h1 (no avatar either), so
           // the sentence is the page's one h1. Same predicate as the header's.
-          asHeading={!headerHasName(displayName)}
+          asHeading={!headerHasName(trainee)}
         />
       ) : (
         <>
@@ -152,13 +160,13 @@ export default async function NutritionPage({ params }: { params: { id: string }
 
           <NutritionTargetsCard
             clientId={params.id}
-            traineeDisplayName={displayName}
+            traineeDisplayName={trainee?.traineeDisplayName ?? null}
             targets={nutrition.targets}
           />
 
           <NutritionWeekCard
             clientId={params.id}
-            traineeDisplayName={displayName}
+            traineeDisplayName={trainee?.traineeDisplayName ?? null}
             week={nutrition.week}
             currentWeekStart={nutrition.currentWeekStart}
             // EV-256e AC1: only a literal `true` — an api that predates the field, or

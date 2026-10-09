@@ -261,7 +261,7 @@ export function formatPtsDelta(delta: number, locale: Locale): string {
  * with no space is returned whole rather than cut, and an empty one falls back to the
  * generic word so a sentence never begins with a space.
  */
-export function firstName(displayName: string, locale: Locale): string {
+export function firstName(displayName: string | null | undefined, locale: Locale): string {
   const trimmed = (displayName ?? "").trim();
   if (trimmed === "") return locale === "fr" ? "Ce client" : "This trainee";
   return trimmed.split(/\s+/)[0];

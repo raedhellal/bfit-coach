@@ -1376,7 +1376,7 @@ function sortRoster(items: RosterClient[], sort: RosterSort): RosterClient[] {
   // BUG-714: a served name can be null (`evoli_fixture_display_name=<id>:__null__`), and the
   // sort runs after it is served; `null.localeCompare` would fail the fixture, not the page.
   const byName = (a: RosterClient, b: RosterClient) =>
-    String(a.traineeDisplayName ?? "").localeCompare(String(b.traineeDisplayName ?? ""));
+    (a.traineeDisplayName ?? "").localeCompare(b.traineeDisplayName ?? "");
 
   return [...items].sort((a, b) => {
     if (sort === "recent_activity") {
@@ -3423,15 +3423,14 @@ const NULL_DISPLAY_NAME = "__null__";
  * BUG-714: `<clientId>:__null__` serves `null` instead (a trainee with no name), and
  * `<clientId>:%20%20` serves a blank one.
  */
-async function servedDisplayName(id: string, name: string): Promise<string> {
+async function servedDisplayName(id: string, name: string | null): Promise<string | null> {
   const raw = await fixtureSwitch("evoli_fixture_display_name");
   const colon = raw?.indexOf(":") ?? -1;
   if (!raw || colon < 0 || raw.slice(0, colon) !== id) return name;
   // BUG-714: `__null__` serves JSON null, what the api sends for a trainee registered with no
   // name (`displayNameOf` returns `users.full_name` as stored). The decode below cannot: an
   // empty value falls back to the seeded name. A blank name stays reachable as `%20%20`.
-  // The wire type still says `string` here; BUG-714's fix types it `string | null`.
-  if (raw.slice(colon + 1) === NULL_DISPLAY_NAME) return null as unknown as string;
+  if (raw.slice(colon + 1) === NULL_DISPLAY_NAME) return null;
   try {
     return decodeURIComponent(raw.slice(colon + 1)) || name;
   } catch {
