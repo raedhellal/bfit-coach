@@ -9,6 +9,10 @@ import { getCopy } from "@/lib/i18n/server";
 /**
  * /recipes/new — AC1's "New recipe".
  *
+ * Not served as a route since BUG-739 — rendered by `../editor/page.tsx` through the
+ * rewrites in `next.config.mjs`. A `loading.tsx`, `layout.tsx` or `error.tsx` added here is never
+ * used. Keep the editor at the same element position as the sibling module (`../[id]/page.tsx`).
+ *
  * A route, not a modal: it is a long form on a phone, and a reload or a shared URL
  * should land in the same place. Nothing is read from the api here — a blank recipe has
  * no server state. The first successful save POSTs and corrects the URL to

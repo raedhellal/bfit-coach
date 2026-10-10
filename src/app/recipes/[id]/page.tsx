@@ -11,6 +11,10 @@ import { getCopy } from "@/lib/i18n/server";
 /**
  * /recipes/[id] — the editor on an existing recipe (AC2, AC6).
  *
+ * Not served as a route since BUG-739 — rendered by `../editor/page.tsx` through the
+ * rewrites in `next.config.mjs`. A `loading.tsx`, `layout.tsx` or `error.tsx` added here is never
+ * used. Keep the editor at the same element position as the sibling module (`../new/page.tsx`).
+ *
  * Two failure states, NOT one sentence:
  *   · 403 → `notYours`. The api answers ONE body for a foreign recipe, an id that never
  *     existed and one deleted in another tab (EV-256a AC6), so the portal renders one

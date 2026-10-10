@@ -8,6 +8,10 @@ import { getCopy } from "@/lib/i18n/server";
 /**
  * /templates/new — AC1's "New template".
  *
+ * Not served as a route since BUG-739 — rendered by `../editor/page.tsx` through the
+ * rewrites in `next.config.mjs`. A `loading.tsx`, `layout.tsx` or `error.tsx` added here is never
+ * used. Keep the editor at the same element position as the sibling module (`../[id]/page.tsx`).
+ *
  * A route rather than a modal on the library: this is the full routine editor, it can
  * be a long screen, and a coach who reloads it or shares the URL should land in the
  * same place. The first successful save POSTs and then REPLACES the URL with
