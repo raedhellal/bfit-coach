@@ -1,6 +1,6 @@
 ---
 name: a-shared-transition-labels-every-action
-description: One useTransition shared by several actions makes a pending label lie (Apply said « Application… » during a regenerate); tag the running kind in the click; hold the action POST to test it
+description: One useTransition shared by several actions makes a pending label lie; tag the running kind in the click; hold the action POST to test it; an at-once control is no longer a spec sync point
 metadata:
   type: feedback
 ---
@@ -27,6 +27,13 @@ would label a button nobody pressed.
   no-element client provider above both (`RosterSortPending`).
 - Do not start `NavigationProgress` before a write's success: it has no cancel, a
   refused write leaves it up 20 s (staff, fluidity round 1).
+
+- Making a control show its choice at once (F3's `pending && chosen`) silently breaks every spec
+  that used that control's checked state as "the server answered": coach-roster-triage went red,
+  back-to-pro-roster went HOLLOW (green, asserting nothing). Grep the specs for the control and
+  re-sync them on `waitForResponse` of the `next-action` POST plus the busy marker clearing.
+- `playwright.roster.config.ts`'s testMatch is unanchored: `pro-roster` also matches
+  `back-to-pro-roster.spec.ts`. Check which config a file runs in before running it alone.
 
 Since fluidity batch 1 no route has a `loading.tsx`; a test's "navigation pending" sync
 point is `[data-nav-progress="visible"]`, and a skeleton is `[style*="shimmer"]`. See
