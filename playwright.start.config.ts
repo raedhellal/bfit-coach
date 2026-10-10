@@ -18,6 +18,8 @@ import { defineConfig, devices } from "@playwright/test";
  * COACH_START_PORT keeps it off :3300/:3301 and off the other configs' ports.
  *
  *   · `intent-prefetch.spec.ts` — EV-356d D.1-D.6; it FAILS (not skips) on a dev server;
+ *   · `client-load-reload.spec.ts` — D.6 / P5 (ADR-0033 D33.13 point 8), Chromium and WebKit;
+ *   · `no-auto-prefetch.spec.ts` — P4, invariant N (D33.13 point 2), Chromium and WebKit;
  *   · `page-read-budget.spec.ts` — its D.4 rows ("a roster load prefetches no client page",
  *     "hover = one render, re-hover = zero"), which the roster config can only half-run.
  */
@@ -27,7 +29,7 @@ const START = `npx next start -p ${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /(intent-prefetch|page-read-budget)\.spec\.ts/,
+  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249).
   workers: 1,

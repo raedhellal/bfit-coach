@@ -622,7 +622,14 @@ test("D.6 (P3): a failure at hover time is not replayed at the click", async ({ 
   const n = seen.length;
   await page.locator(LINA_ROW).click();
   await expect(page).toHaveURL(new RegExp(`${LINA_PATH}$`));
+  // ADR-0033 D33.13 point 8 (R1-H): a cached error reloads the document once, so the final
+  // h1 can take a document load to arrive. `client-load-reload.spec.ts` Q1 checks every frame.
+  await expect
+    .poll(() => page.getByRole("heading", { level: 1 }).allTextContents(), { timeout: 15_000 })
+    .not.toEqual([]);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/./, { timeout: 15_000 });
   await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(300);
   const h1 = await page.getByRole("heading", { level: 1 }).allTextContents();
   const how = seen.slice(n).filter((s) => s.path === LINA_PATH);
   const record = `hover-time prefetch ${status}; at the click: h1 ${JSON.stringify(h1)}, requests ${JSON.stringify(
