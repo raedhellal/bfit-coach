@@ -117,8 +117,14 @@ test("one control flips the order, and it is remembered for the session", async 
   const needsAttention = page.getByRole("radio", { name: "Needs attention" });
   await expect(needsAttention).toBeChecked();
 
+  // EV-356c (F3): the chosen option is checked AT ONCE now, before the server answers, so it
+  // is no longer the sign that the new order has landed. The sync point is the action's own
+  // response, then the rows no longer marked busy (`aria-busy` on each group while pending).
+  const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined);
   await page.getByRole("radio", { name: "Recently active" }).click();
   await expect(page.getByRole("radio", { name: "Recently active" })).toBeChecked();
+  await answered;
+  await expect(page.locator('section[data-roster-group][aria-busy="true"]')).toHaveCount(0);
 
   // Most recently active first: Lina trained yesterday, Tobias nine days ago, and every
   // trainee with no known activity is after them.

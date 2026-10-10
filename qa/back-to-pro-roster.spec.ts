@@ -156,8 +156,14 @@ test.describe("BUG-691, the other paths back", () => {
   test("the sort toggle (a server action) does not write the URL back to /", async ({ page }) => {
     await signInThroughForm(page);
     await narrowAndScroll(page, "en");
+    // EV-356c (F3): the radio is checked at once, before the action answers, so it cannot be
+    // the sync point: the URL must be read AFTER the action's response has been applied, or
+    // this asserts the URL before anything could have rewritten it.
+    const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined);
     await page.getByRole("radio", { name: "Recently active" }).click();
     await expect(page.getByRole("radio", { name: "Recently active" })).toHaveAttribute("aria-checked", "true");
+    await answered;
+    await expect(page.locator('section[data-roster-group][aria-busy="true"]')).toHaveCount(0);
     expect(rosterPath(page)).toBe("/?filter=alerts&q=lin");
     await expect(page.getByRole("searchbox", { name: "Search clients" })).toHaveValue("lin");
   });
