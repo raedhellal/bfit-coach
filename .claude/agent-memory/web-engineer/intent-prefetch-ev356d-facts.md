@@ -32,6 +32,14 @@ after an 80 ms dwell (mouse pointerenter, focus). `staleTimes.static` 300 -> 30,
   there "fails" for the same reason and none of them is a real red. Guard the read with `existsSync`.
 - `git restore --source=<parent> -- src` DELETES files the parent lacks, and `--source=HEAD` brings them back.
   Builds with a warm `.next/cache` take about 8 s, so a fast build is not a broken build.
+- **P4, witnessed 2026-10-10 in both browsers, is a regression caused by `static: 30`.** With `static == dynamic`, a plain
+  `<Link>` whose AUTO entry has expired re-prefetches on hover (tree only). The click then paints the OLD tree-cache
+  node with zero requests: at +35 s and +70 s after a revoke, the routine or overview tab showed her data. Under `static: 300`
+  the entry is `stale`, and the same click refetches the leaf and lands on `/clients/denied`. Playwright's `click()` hovers first.
+- **P5 is pre-existing on main.** An error node in the tree cache is replayed by Back + click (inside 30 s) and by
+  Forward, with zero requests. Only a reload escapes it.
+- WebKit fires `pointerover` under a stationary pointer after Back, so an IntentLink row under the cursor prefetches.
+  Chromium does not.
 - Scratch Playwright configs outside the repo cannot resolve `@playwright/test`. Put a probe under `qa/`, untracked,
   and give `webServer` a `cwd`.
 
