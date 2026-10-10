@@ -249,7 +249,13 @@ test.describe("EV-356d D.1 — pointer and keyboard intent", () => {
 
   test("keyboard: tabbing across 10 rows at 20 ms each renders nothing; focus resting on a row renders one", async ({
     page,
+    browserName,
   }) => {
+    // Safari's Tab skips links unless « Press Tab to highlight each item » is on; Option-Tab
+    // is how a Safari keyboard user moves between them (WebKit's default, witnessed: Tab
+    // focused no row). Chromium tabs to links.
+    const TAB = browserName === "webkit" ? "Alt+Tab" : "Tab";
+    const SHIFT_TAB = browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab";
     await signIn(page.context());
     await page.goto("/login");
     await setCookie(page, "evoli_fixture_roster_extra", "6");
@@ -272,7 +278,7 @@ test.describe("EV-356d D.1 — pointer and keyboard intent", () => {
     await rows.nth(0).focus();
     for (let i = 1; i < 10; i += 1) {
       await page.waitForTimeout(20);
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(TAB);
     }
     await page.waitForTimeout(20);
     const blurredAt = await page.evaluate(() => {
@@ -300,10 +306,10 @@ test.describe("EV-356d D.1 — pointer and keyboard intent", () => {
     const prefetched = nextFullRender(page, LINA_PATH);
     if (i > 0) {
       await rows.nth(i - 1).focus();
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(TAB);
     } else {
       await rows.nth(1).focus();
-      await page.keyboard.press("Shift+Tab");
+      await page.keyboard.press(SHIFT_TAB);
     }
     await expect(page.locator(LINA_ROW)).toBeFocused();
     await prefetched;
