@@ -1165,6 +1165,9 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
 }
 .roster-sort-option[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--e-card); }
 .roster-sort-option:not([aria-checked="true"]):hover { color: var(--ink); }
+/* F3: the failure line (the language switch's), and the rows while a new order is on its way. */
+.roster-sort-status { margin: 0; font-size: var(--fs-label); line-height: 16px; color: var(--err-ink); }
+.roster-group[aria-busy="true"] .roster-list { opacity: .55; transition: opacity .15s ease; }
 
 /* ── BUG-660 / redesign §4: BackLink ─────────────────────────────────────────────────
    The one "back to …" link of the ten detail routes. A standalone control, so the 44 px

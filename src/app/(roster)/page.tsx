@@ -6,6 +6,7 @@ import { InvitedSection, type InvitedRowData } from "@/components/roster/Invited
 import { RosterBrowser, type RosterEntry } from "@/components/roster/RosterBrowser";
 import { RosterRow } from "@/components/roster/RosterRows";
 import { RosterSortToggle } from "@/components/roster/RosterSortToggle";
+import { RosterSortPending } from "@/components/roster/RosterSortPending";
 import { Card, EmptyState, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { coachApi, type CoachMe, type RosterClient } from "@/lib/coachApi";
@@ -171,39 +172,42 @@ export default async function RosterPage() {
         }
       />
 
-      {/* The capacity meter moves to a compact line (plan §5.1), beside AC2's sort toggle. */}
-      <div className="roster-meta">
-        <CapacityMeter active={me.active} capacity={me.capacity} tier={me.tier} />
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", minWidth: 0 }}>
-          {full && <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{fullReason}</span>}
-          {/* AC2's one control (R7: kept, although the design does not draw it). Absent on
-              the empty roster: an order for zero rows is a control that can only mislead. */}
-          {clients.length > 0 && <RosterSortToggle sort={sort} />}
+      {/* F3: the sort toggle and the rows share one pending state (no element of its own). */}
+      <RosterSortPending>
+        {/* The capacity meter moves to a compact line (plan §5.1), beside AC2's sort toggle. */}
+        <div className="roster-meta">
+          <CapacityMeter active={me.active} capacity={me.capacity} tier={me.tier} />
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", minWidth: 0 }}>
+            {full && <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{fullReason}</span>}
+            {/* AC2's one control (R7: kept, although the design does not draw it). Absent on
+                the empty roster: an order for zero rows is a control that can only mislead. */}
+            {clients.length > 0 && <RosterSortToggle sort={sort} />}
+          </div>
         </div>
-      </div>
 
-      <InvitedSection rows={invited.rows} loadFailed={invited.failed} />
+        <InvitedSection rows={invited.rows} loadFailed={invited.failed} />
 
-      {clients.length === 0 ? (
-        <Card pad={0}>
-          <EmptyState
-            icon="users"
-            title={copy.roster.emptyTitle}
-            sub={copy.roster.emptyBody}
-            action={<InviteButton disabled={full} disabledReason={fullReason} />}
-          />
-        </Card>
-      ) : (
-        <>
-          {/* BUG-692: above the list, where a coach looking for a missing client reads first. */}
-          {hiddenCount > 0 && (
-            <p className="roster-not-shown" data-roster-not-shown="">
-              {copy.roster.notShown(hiddenCount)}
-            </p>
-          )}
-          <RosterBrowser entries={entries} />
-        </>
-      )}
+        {clients.length === 0 ? (
+          <Card pad={0}>
+            <EmptyState
+              icon="users"
+              title={copy.roster.emptyTitle}
+              sub={copy.roster.emptyBody}
+              action={<InviteButton disabled={full} disabledReason={fullReason} />}
+            />
+          </Card>
+        ) : (
+          <>
+            {/* BUG-692: above the list, where a coach looking for a missing client reads first. */}
+            {hiddenCount > 0 && (
+              <p className="roster-not-shown" data-roster-not-shown="">
+                {copy.roster.notShown(hiddenCount)}
+              </p>
+            )}
+            <RosterBrowser entries={entries} />
+          </>
+        )}
+      </RosterSortPending>
     </CoachShell>
   );
 }

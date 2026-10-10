@@ -196,6 +196,7 @@ export const fr = {
     sortLabel: "Trier",
     sortNeedsAttention: "À surveiller",
     sortRecentActivity: "Actifs récemment",
+    sortFailed: "Le tri n'a pas pu être modifié. Réessayez.", // EV-356c, verbatim
     flagsNotShared: "Non partagé",
     // EV-337d. The design's words where it has them (« à traiter », « Sur la bonne voie »,
     // « Inactif depuis 31 j », « Rechercher un client », « Aucun client ne correspond »);
@@ -990,6 +991,7 @@ export const fr = {
       `Cela remplace votre brouillon non publié pour ${endSentence(trainee)} Ce brouillon ne pourra pas être récupéré.`,
     /** PO Ruling 11 (I1): the button repeats the question's verb (`useConfirm`, « Appliquer … ? »). */
     useIt: "Appliquer",
+    applying: "Application…",
     replaceAndUse: "Remplacer le brouillon",
     cancel: "Annuler",
     noTrainees: "Aucun de vos clients n'a partagé ses séances avec vous.",
