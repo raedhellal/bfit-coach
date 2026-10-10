@@ -219,7 +219,12 @@ for (const e of [RECIPE, TEMPLATE]) {
       await rename(page, name, `BUG-739 ${e.kind} renamed`);
       const held = await saveHeld(page, e);
       await name.click();
-      await page.keyboard.press("End");
+      // The caret to the end. Not the End key: on macOS it does not move a text field's caret
+      // (Chromium and WebKit follow the platform), so a click mid-text typed " L1" mid-word.
+      await name.evaluate((el) => {
+        const input = el as HTMLInputElement;
+        input.setSelectionRange(input.value.length, input.value.length);
+      });
       await page.keyboard.type(LATE, { delay: 20 });
       const late = `BUG-739 ${e.kind} renamed${LATE}`;
       await expect(name).toHaveValue(late);
