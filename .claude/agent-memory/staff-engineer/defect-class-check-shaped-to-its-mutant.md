@@ -22,3 +22,11 @@ designer/engineer would produce (icon inside the box, wrapper element, pseudo-el
 property) and run it with the baseline first ([[review-sabotage-harness-must-self-check]]). Then
 probe the proposed loosening against the baseline so the fix you recommend is not brittle.
 Same family as [[defect-class-weak-controls]] and [[defect-class-assertion-on-the-wrong-node]].
+
+**Same shape in lint guards (EV-356d N3, 2026-10-10, f1fa4b0):** a `no-restricted-syntax` ban on
+`CallExpression[callee.property.name='prefetch']` catches `r.prefetch(` and `r?.prefetch(` but lints
+`const { prefetch } = useRouter(); prefetch(x)` and `r["prefetch"](x)` clean; `no-restricted-imports`
+misses `require("next/link")`. Probe name-based bans with destructuring, computed access and require
+via `npx eslint --stdin --stdin-filename src/x.tsx` (writes nothing). Over-match is fine (fails loud);
+under-match is the gap. Fix: add `ObjectPattern > Property[key.name='prefetch']` and
+`MemberExpression[computed=true][property.value='prefetch']`.
