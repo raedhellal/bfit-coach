@@ -29,6 +29,7 @@ import { openEveryDay } from "./day-accordion";
  * `evoliUnsavedGuard`, and disarms by stepping back off it. A Back pressed before the arm
  * would leave for real (no human is that fast; a test is), and a Back pressed before the
  * disarm's own step would go two entries back, so each Back waits for the state it is about.
+ * The arm is read from the flag; the disarm from the history index (BUG-741, see `disarmed`).
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
@@ -98,11 +99,32 @@ const navLink = (page: Page, w: Words) =>
     .and(page.getByRole("navigation", { name: w.portal }))
     .getByRole("link", { name: w.recipes, exact: true });
 
+/**
+ * The Navigation API (Chromium, and Playwright's WebKit): where in the session history the
+ * page stands. Read before the first edit, it is `start`, the index `disarmed` waits for.
+ */
+async function historyIndex(page: Page): Promise<number> {
+  return page.evaluate(
+    () => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index
+  );
+}
 async function armed(page: Page) {
   await page.waitForFunction(() => window.history.state?.evoliUnsavedGuard === true);
 }
-async function disarmed(page: Page) {
-  await page.waitForFunction(() => !window.history.state?.evoliUnsavedGuard);
+/**
+ * The guard has handed its entry back: the history stands at `start` again.
+ *
+ * BUG-741: not `!history.state.evoliUnsavedGuard`. After a save whose action revalidates,
+ * Next 14.2's HistoryUpdater `replaceState`s the CURRENT entry with `{ __NA, tree }` and
+ * drops the flag from the guard's own entry while it is still current, so the flag's
+ * absence passed under QA's mutant M-S2 (a save that never steps back): ":251 a saved form
+ * leaves by a link" was 6/6 green over a dead Back press.
+ */
+async function disarmed(page: Page, start: number) {
+  await page.waitForFunction(
+    (i) => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index === i,
+    start
+  );
 }
 /** Back, allowed to time out: while the guard holds, the document never changes. */
 async function pressBack(page: Page) {
@@ -225,12 +247,13 @@ for (const lang of ["en", "fr"] as const) {
       test(`${form.name}: never after a save, again after a re-edit, and one Back press leaves`, async ({ page }) => {
         await signIn(page, lang);
         const from = await form.open(page, w);
+        const start = await historyIndex(page);
         const here = new URL(page.url()).pathname;
 
         await form.field(page, w).fill(form.values[0]);
         await armed(page);
         await form.save(page, w);
-        await disarmed(page);
+        await disarmed(page, start);
 
         // A re-edit after the save asks again.
         await form.field(page, w).fill(form.values[1]);
@@ -242,7 +265,7 @@ for (const lang of ["en", "fr"] as const) {
 
         // Saved again: ONE Back press leaves, with no question.
         await form.save(page, w);
-        await disarmed(page);
+        await disarmed(page, start);
         await page.goBack();
         await expect(page).toHaveURL(new RegExp(`${from.replace(/\//g, "\\/")}$`));
         await expect(leaveDialog(page, w)).toHaveCount(0);
@@ -251,10 +274,11 @@ for (const lang of ["en", "fr"] as const) {
       test(`${form.name}: a saved form leaves by a link with no question`, async ({ page }) => {
         await signIn(page, lang);
         await form.open(page, w);
+        const start = await historyIndex(page);
         await form.field(page, w).fill(form.values[0]);
         await armed(page);
         await form.save(page, w);
-        await disarmed(page);
+        await disarmed(page, start);
         await navLink(page, w).click();
         await page.waitForURL("/recipes");
         await expect(leaveDialog(page, w)).toHaveCount(0);
@@ -324,12 +348,13 @@ test.describe("BUG-665 — what the hook owns by construction (EN)", () => {
   test("the progress goal: typing a field back to what is stored is not unsaved work", async ({ page }) => {
     await signIn(page, "en");
     await progressGoal.open(page, w);
+    const start = await historyIndex(page);
     const field = progressGoal.field(page, w);
     const stored = await field.inputValue();
     await field.fill("71");
     await armed(page);
     await field.fill(stored);
-    await disarmed(page);
+    await disarmed(page, start);
     await navLink(page, w).click();
     await page.waitForURL("/recipes");
     await expect(leaveDialog(page, w)).toHaveCount(0);
@@ -415,13 +440,6 @@ async function heldStepsLanded(page: Page, count: number) {
   );
 }
 
-/** Chromium's Navigation API: where in the session history the page stands. */
-async function historyIndex(page: Page): Promise<number> {
-  return page.evaluate(
-    () => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index
-  );
-}
-
 test.describe("BUG-730 — typing while a save's history step is in flight (EN)", () => {
   test.use({ locale: "en-US" });
   const w = L.en;
@@ -465,7 +483,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await block.getByRole("button", { name: w.save, exact: true }).click();
     await answered;
     await heldStepsLanded(page, 2);
-    await disarmed(page);
+    await disarmed(page, start);
     expect(await historyIndex(page), "a stray guard entry is left in the history").toBe(start);
     await page.goBack();
     await page.waitForURL("/");
@@ -532,7 +550,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
       await page.evaluate(() => (window as unknown as { __bug730Backs: number }).__bug730Backs),
       "the second save asked for a second step back: the guard had one entry to hand back"
     ).toBe(1);
-    await disarmed(page);
+    await disarmed(page, start);
     expect(await historyIndex(page), "the history is not where the page was loaded").toBe(start);
     await page.goBack();
     await page.waitForURL("/");
@@ -566,7 +584,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     // Typed back once more: the entry goes, and the page stands where it was loaded.
     await field.fill(stored);
     await heldStepsLanded(page, 2);
-    await disarmed(page);
+    await disarmed(page, start);
     expect(await historyIndex(page), "a stray guard entry is left in the history").toBe(start);
     await page.goBack();
     await page.waitForURL("/");
@@ -601,7 +619,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await expect
       .poll(() => historyIndex(page), { message: "the re-armed entry was not handed back by the next save" })
       .toBe(start);
-    await disarmed(page);
+    await disarmed(page, start);
     await expect(leaveDialog(page, w)).toHaveCount(0);
     await page.goBack();
     await page.waitForURL("/");
@@ -726,7 +744,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await expect
       .poll(() => historyIndex(page), { message: "the history is not where the page was loaded" })
       .toBe(c.start);
-    await disarmed(page);
+    await disarmed(page, c.start);
     await page.goBack();
     await page.waitForURL(c.list);
   }
@@ -809,6 +827,7 @@ async function guardAtWidth(page: Page, width: number, engine: string) {
   const label = `${engine} ${width}px`;
   await page.setViewportSize({ width, height: 900 });
   await progressGoal.open(page, w);
+  const start = await historyIndex(page);
   const field = progressGoal.field(page, w);
   await field.fill("71");
   await armed(page);
@@ -823,7 +842,7 @@ async function guardAtWidth(page: Page, width: number, engine: string) {
   await stay.click();
   await expect(field).toHaveValue("71");
   await progressGoal.save(page, w);
-  await disarmed(page);
+  await disarmed(page, start);
   await page.goBack();
   await expect(page, label).toHaveURL(/\/$/);
   await expect(leaveDialog(page, w)).toHaveCount(0);
