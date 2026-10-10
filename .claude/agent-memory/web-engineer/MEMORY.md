@@ -99,3 +99,4 @@
 - [Mutants against one hand-started dev server](mutants-against-a-hand-started-dev-server.md) — untracked config, webServer undefined, HMR per mutant, git checkout to revert
 - [.roster-search ring (BUG-724)](roster-search-ring-fails-inside-contrast.md) — halo dropped under the keyboard ring; sweep in qa/focus-ring-sweep.ts, roster half in its own file
 - [Text fields match :focus-visible on click](text-fields-match-focus-visible-on-click.md) — EV-337j2 N1: :has(input:focus-visible) does not separate pointer from keyboard
+- [Revalidating action wipes the guard flag](a-revalidating-action-wipes-the-guard-flag.md) — BUG-735: Next replaceStates without evoliUnsavedGuard; witness by history index; late edit + stays needs stillUnsaved()
