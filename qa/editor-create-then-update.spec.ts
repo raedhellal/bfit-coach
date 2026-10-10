@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
@@ -23,6 +25,18 @@ import { openEveryDay } from "./day-accordion";
  *       saved editor reaches the list.
  * (5), a direct-load update, is `qa/editor-late-edit.spec.ts`'s.
  *
+ * The fix makes `/x/new` and `/x/{id}` ONE route (`/x/editor?id=…`, `next.config.mjs`), so this
+ * file also holds what that costs and how it is paid for (staff's Q3–Q5, `bug739-staff.md`):
+ *   · the addresses: `/x/new?id=<A>` is still a NEW record (the rewrite pins `id=`), and
+ *     `/x/editor` / `/x/editor?id=<A>` serve what the canonical address serves;
+ *   · the identity rule (`src/lib/useEditorIdentity.ts`): a soft navigation from A's editor to
+ *     B's, or to New, gets a fresh editor, and its Save writes B (or creates), never A. Driven
+ *     by `window.next.router.push` (Next's own handle on the app router, dev and production):
+ *     no link in the portal goes from an editor to another, and none is added for the test;
+ *   · a direct load renders with no console error or warning (no hydration diff);
+ *   · `new/` and `[id]/` hold only their `page.tsx`: they are not served as routes, so a
+ *     `loading.tsx`, `layout.tsx` or `error.tsx` there would be silently dead.
+ *
  * Sample point, stated: a re-mount lands with the update's router state, a few ms around the
  * notice's own commit, so every "still the same" read is taken SETTLE_MS after the notice is
  * on screen. Staff saw the notice gone by then on the base (1.5 s; QA 1 s).
@@ -40,10 +54,17 @@ const LEAVE = "Leave with unsaved changes?";
 const STAY = "Stay on this page";
 const LATE = " L1";
 const SETTLE_MS = 1_500;
+const BOWL = { id: "8e3f1b22-0000-4000-8000-0000000000c1", name: "Chicken rice bowl" };
+const OATS = { id: "8e3f1b22-0000-4000-8000-0000000000c2", name: "Overnight oats" };
+const SPLIT = { id: "7c2d0a11-0000-4000-8000-0000000000b1", name: "Upper / Lower split" };
+const LEGACY = { id: "7c2d0a11-0000-4000-8000-0000000000b2", name: "Legacy strength" };
 const UUID_PATH = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 interface Editor {
   kind: "recipe" | "template";
+  newTitle: string;
+  a: { id: string; name: string };
+  b: { id: string; name: string };
   list: string;
   nameLabel: string;
   save: string;
@@ -53,6 +74,9 @@ interface Editor {
 
 const RECIPE: Editor = {
   kind: "recipe",
+  newTitle: "New recipe",
+  a: BOWL,
+  b: OATS,
   list: "/recipes",
   nameLabel: "Recipe name",
   save: "Save recipe",
@@ -61,6 +85,9 @@ const RECIPE: Editor = {
 };
 const TEMPLATE: Editor = {
   kind: "template",
+  newTitle: "New template",
+  a: SPLIT,
+  b: LEGACY,
   list: "/templates",
   nameLabel: "Template name",
   save: "Save template",
@@ -285,3 +312,112 @@ for (const e of [RECIPE, TEMPLATE]) {
     });
   });
 }
+
+/** A soft navigation through Next's own router, once the app router has mounted. */
+async function softPush(page: Page, href: string) {
+  await expect
+    .poll(() => page.evaluate(() => Boolean((window as unknown as { next?: { router?: unknown } }).next?.router)))
+    .toBe(true);
+  await page.evaluate((to) => {
+    (window as unknown as { next: { router: { push(href: string): void } } }).next.router.push(to);
+  }, href);
+}
+
+const heading = (page: Page) => page.getByRole("heading", { level: 1 });
+
+for (const e of [RECIPE, TEMPLATE]) {
+  test.describe(`BUG-739 — ${e.kind} editor: one route for /new and /{id}`, () => {
+    test.use({ locale: "en-US" });
+
+    test(`${e.kind}: /new?id=<existing> is still a new ${e.kind}; /editor and /editor?id= serve the canonical page`, async ({
+      page,
+    }) => {
+      await signIn(page);
+      const name = page.getByLabel(e.nameLabel);
+      // The rewrite pins `id=`: a request's own `id` must not turn /new into an existing record.
+      await page.goto(`${e.list}/new?id=${e.a.id}`);
+      await expect(heading(page)).toHaveText(e.newTitle);
+      await expect(name).toHaveValue("");
+      await page.goto(`${e.list}/editor`);
+      await expect(heading(page)).toHaveText(e.newTitle);
+      await expect(name).toHaveValue("");
+      await page.goto(`${e.list}/editor?id=${e.a.id}`);
+      await expect(heading(page)).toHaveText(e.a.name);
+      await expect(name).toHaveValue(e.a.name);
+    });
+
+    test(`${e.kind}: a direct load renders with no console error or warning`, async ({ page }) => {
+      const logged: string[] = [];
+      page.on("console", (m) => {
+        if (m.type() === "error" || m.type() === "warning") logged.push(`${m.type()}: ${m.text()}`);
+      });
+      page.on("pageerror", (err) => logged.push(`pageerror: ${err.message}`));
+      await signIn(page);
+      for (const path of [`${e.list}/${e.a.id}`, `${e.list}/new`]) {
+        logged.length = 0;
+        await page.goto(path);
+        await expect(page.getByLabel(e.nameLabel)).toHaveValue(path.endsWith("/new") ? "" : e.a.name);
+        // A hydration diff is reported once React has hydrated; the badge after a rename is the
+        // editor's own witness that it has.
+        await rename(page, page.getByLabel(e.nameLabel), "hydrated");
+        expect(new URL(page.url()).pathname).toBe(path);
+        expect(logged, `console on a direct load of ${path}`).toEqual([]);
+        await page.goto(e.list);
+      }
+    });
+
+    test(`${e.kind}: A's editor, then B's by a soft navigation, is B's editor and saves B`, async ({ page }) => {
+      await signIn(page);
+      const name = page.getByLabel(e.nameLabel);
+      await page.goto(e.list);
+      await page.goto(`${e.list}/${e.a.id}`);
+      await expect(name).toHaveValue(e.a.name);
+      await mark(name);
+
+      await softPush(page, `${e.list}/${e.b.id}`);
+      await expect(page).toHaveURL(new RegExp(`${e.list}/${e.b.id}$`));
+      await expect(heading(page)).toHaveText(e.b.name);
+      await expect(name, "B's page kept A's draft").toHaveValue(e.b.name);
+      expect(await marked(name), "B's page kept A's editor").toBe(false);
+
+      await rename(page, name, `${e.b.name} v2`);
+      await page.getByRole("button", { name: e.save, exact: true }).click();
+      await expect(notice(page, e)).toBeVisible();
+      await page.goto(`${e.list}/${e.b.id}`);
+      await expect(page.getByLabel(e.nameLabel)).toHaveValue(`${e.b.name} v2`);
+      await page.goto(`${e.list}/${e.a.id}`);
+      await expect(page.getByLabel(e.nameLabel), "the save went to A").toHaveValue(e.a.name);
+    });
+
+    test(`${e.kind}: A's editor, then New by a soft navigation, is a blank editor that creates`, async ({ page }) => {
+      await signIn(page);
+      const name = page.getByLabel(e.nameLabel);
+      await page.goto(e.list);
+      await page.goto(`${e.list}/${e.a.id}`);
+      await expect(name).toHaveValue(e.a.name);
+
+      await softPush(page, `${e.list}/new`);
+      await expect(page).toHaveURL(new RegExp(`${e.list}/new$`));
+      await expect(heading(page)).toHaveText(e.newTitle);
+      await expect(name, "New kept A's draft").toHaveValue("");
+
+      if (e.kind === "recipe") await fillNewRecipe(page, name, `BUG-739 soft new ${e.kind}`);
+      else await fillNewTemplate(page, name, `BUG-739 soft new ${e.kind}`);
+      await page.getByRole("button", { name: e.save, exact: true }).click();
+      await expect(notice(page, e)).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`${e.list}/${UUID_PATH}$`));
+      expect(new URL(page.url()).pathname, "New saved over A").not.toBe(`${e.list}/${e.a.id}`);
+      await page.goto(`${e.list}/${e.a.id}`);
+      await expect(page.getByLabel(e.nameLabel), "the create renamed A").toHaveValue(e.a.name);
+    });
+  });
+}
+
+test("the not-served route folders hold only their page.tsx", async () => {
+  // `new/` and `[id]/` are rendered by `editor/page.tsx` through the rewrites, never as routes:
+  // a `loading.tsx`, `layout.tsx` or `error.tsx` added beside them would never run.
+  const app = join(__dirname, "../src/app");
+  for (const dir of ["recipes/new", "recipes/[id]", "templates/new", "templates/[id]"]) {
+    expect(readdirSync(join(app, dir)).sort(), `src/app/${dir}`).toEqual(["page.tsx"]);
+  }
+});
