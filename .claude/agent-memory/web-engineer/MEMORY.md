@@ -100,3 +100,4 @@
 - [.roster-search ring (BUG-724)](roster-search-ring-fails-inside-contrast.md) — halo dropped under the keyboard ring; sweep in qa/focus-ring-sweep.ts, roster half in its own file
 - [Text fields match :focus-visible on click](text-fields-match-focus-visible-on-click.md) — EV-337j2 N1: :has(input:focus-visible) does not separate pointer from keyboard
 - [A shared transition labels every action](a-shared-transition-labels-every-action.md) — tag the running kind in the click; hold the action POST (qa/hold-action.ts) to test pending UI
+- [Intent prefetch (EV-356d)](intent-prefetch-ev356d-facts.md) — next-start-only tests; WebKit drops Secure cookies on http; a FULL prefetch caches a thrown page error (P3)
