@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { Button, Card, MIN_TOUCH_TARGET, Modal, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { StatusPill } from "@/components/ui/StatusPill";
