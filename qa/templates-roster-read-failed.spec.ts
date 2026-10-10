@@ -181,6 +181,13 @@ test.describe("BUG-738 WebKit", () => {
   for (const lang of ["en", "fr"] as const) {
     async function withPage(baseURL: string, body: (page: Page, context: BrowserContext) => Promise<void>) {
       const context = await browser.newContext({ baseURL, locale: T[lang].locale });
+      /**
+       * The language is stated as the switch's cookie, as every WebKit spec here does. The
+       * runner applies the project's `use` (and `fixture-test`'s Accept-Language: en-US) to
+       * this hand-made context too: witnessed, a `fr-FR` WebKit context got `<html lang="en">`
+       * and the English login form, so the French sign-in never found its labels.
+       */
+      await context.addCookies([{ name: "evoli_pro_locale", value: lang, url: baseURL }]);
       try {
         await body(await context.newPage(), context);
       } finally {
