@@ -49,8 +49,8 @@ export function CoachShell({
   /**
    * BUG-704 — the fixture's render-error seam (`throwIfFixtureRenderError`) runs here, for
    * every signed-in page. Two callers turn it off: the root `not-found.tsx`, which is built
-   * into every page's payload, so it must neither throw on a healthy page nor spend a `once`;
-   * and the roster's `loading.tsx` (BUG-667), a fallback whose page draws its own shell.
+   * into every page's payload, so it must neither throw on a healthy page nor spend a `once`.
+   * (The roster's `loading.tsx` was the second, until fluidity batch 1 deleted that file.)
    */
   faultSeam?: boolean;
   children: React.ReactNode;

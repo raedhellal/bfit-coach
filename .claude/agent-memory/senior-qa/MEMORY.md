@@ -24,3 +24,4 @@
 - [coach-s3e gate](project_coach-s3e-gate.md) — 2026-10-09 e4e3a5f PASS (EV-337g1); branch-only locator = wrong-reason base red; timed-out jobs keep running; dblclick reachability
 - [coach-s3f gate](project_coach-s3f-gate.md) — 2026-10-09 d1fed49 PASS (BUG-718/720); \b after « à » made a negative check vacuous; param-name copy sweep; facts-diff regressions
 - [coach-s3g gate](project_coach-s3g-gate.md) — 2026-10-09 83ff8e4 PASS (j2, BUG-724, BUG-730); natural-race keystroke rig, badge-at-keystroke witness, mid-flight save loss
+- [coach-s3h gate](project_coach-s3h-gate.md) — 2026-10-10 c378aea PASS (BUG-735, EV-356a/b/c); WebKit no sign-in on next start, streamed-frame recorder, HistoryUpdater-satisfied flag helpers

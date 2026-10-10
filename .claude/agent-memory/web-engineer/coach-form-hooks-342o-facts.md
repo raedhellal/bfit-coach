@@ -63,6 +63,8 @@ The old progress-goal form helpers (`editField`/`markSent`/`reseedPreservingEdit
 **Test traps:**
 - Sync on `history.state.evoliUnsavedGuard` (`armed`/`disarmed` in `qa/form-leave-guard.spec.ts`):
   a Back before the arm leaves for real, a Back before the disarm's own step goes two back.
+  NOT valid after a revalidating action answers: Next drops the flag; use the history index
+  ([[a-revalidating-action-wipes-the-guard-flag]]).
 - The shell renders TWO navs named "Portal"; one run had both in the a11y tree (strict-mode
   violation). Scope with `nav.shell-side-nav`.
 - On base, every guard test times out in `armed` (60 s each): a red run of the file takes ~25 min.

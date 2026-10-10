@@ -95,6 +95,13 @@ function RefusalBlock({ testId, lines }: { testId: string; lines: [string, ...st
   );
 }
 
+/** What the card's one transition is running (see `running` in the card). */
+type RunningAction =
+  | { kind: "apply" }
+  | { kind: "regenerate"; index: number }
+  | { kind: "swapOptions" }
+  | { kind: "swap" };
+
 /**
  * EV-185b AC3 — the meal week.
  *
@@ -187,6 +194,20 @@ export function NutritionWeekCard({
    */
   const [weekGenerating, setWeekGenerating] = useState(false);
   const [pending, startTransition] = useTransition();
+  /**
+   * Which write (or read) the ONE transition above is running. `pending` alone cannot say:
+   * every action on this card shares it, so the Apply button used to read « Application… »
+   * during a day regenerate and a swap — a whole-week apply the coach had not started
+   * (fluidity batch 1, F1). Set in the click, before the transition starts, and read only
+   * together with `pending`, so it never needs clearing: a finished action's tag is inert.
+   *
+   * One transition, not one per kind: every control stays disabled while anything runs
+   * (router actions run one at a time, `action-queue.js`), and a single `pending` is what
+   * makes that true without four flags to keep in step.
+   */
+  const [running, setRunning] = useState<RunningAction | null>(null);
+  const applying = pending && running?.kind === "apply";
+  const regeneratingIndex = pending && running?.kind === "regenerate" ? running.index : null;
   // Below the refusal state on purpose: it clears them, so it must run after they exist.
   if (initialWeek !== seenInitial) {
     setSeenInitial(initialWeek);
@@ -229,6 +250,7 @@ export function NutritionWeekCard({
   }
 
   function applyWeek() {
+    setRunning({ kind: "apply" });
     startTransition(async () => {
       // `settled` on every action in this card: a failed request resolves with
       // `undefined`, and an unguarded `result.ok` replaces the whole tab with the
@@ -284,6 +306,7 @@ export function NutritionWeekCard({
   }
 
   function regenerate(index: number) {
+    setRunning({ kind: "regenerate", index });
     startTransition(async () => {
       const result = await settled(regenerateDayAction(clientId, index), {
         ok: false,
@@ -322,6 +345,7 @@ export function NutritionWeekCard({
     setCandidates(null);
     setSwapError(null);
     setSwapNotice(null);
+    setRunning({ kind: "swapOptions" });
     startTransition(async () => {
       const result = await settled(swapOptionsAction(clientId, mealId), {
         ok: false,
@@ -354,6 +378,7 @@ export function NutritionWeekCard({
   function chooseSwap(candidateIndex: number) {
     const target = swapping;
     if (!target) return;
+    setRunning({ kind: "swap" });
     startTransition(async () => {
       const result = await settled(
         applySwapAction(clientId, target.mealId, candidateIndex),
@@ -438,7 +463,7 @@ export function NutritionWeekCard({
               paddingBottom: 6,
             }}
           >
-            {pending ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
+            {applying ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
           </Button>
         }
       />
@@ -517,6 +542,9 @@ export function NutritionWeekCard({
           {week.days.map((day) => (
             <div
               key={day.index}
+              // F1: the day being regenerated says so (`aria-busy`, the button's label), and
+              // only that day.
+              aria-busy={regeneratingIndex === day.index || undefined}
               style={{
                 border: "1px solid var(--border)",
                 borderRadius: "var(--r-lg)",
@@ -548,11 +576,14 @@ export function NutritionWeekCard({
                   variant="ghost"
                   size="sm"
                   icon="refresh"
-                  ariaLabel={copy.common.labelled(copy.nutrition.regenerate, formatWeekday(day.date, copy.locale))}
+                  ariaLabel={copy.common.labelled(
+                    regeneratingIndex === day.index ? copy.nutrition.regenerating : copy.nutrition.regenerate,
+                    formatWeekday(day.date, copy.locale)
+                  )}
                   onClick={() => regenerate(day.index)}
                   disabled={pending || regenCapped}
                 >
-                  {copy.nutrition.regenerate}
+                  {regeneratingIndex === day.index ? copy.nutrition.regenerating : copy.nutrition.regenerate}
                 </Button>
               </div>
 

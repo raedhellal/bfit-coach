@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { expectNoEnglish, signInFrench } from "./french";
+import { holdNextAction } from "./hold-action";
 
 /**
  * EV-188b AC3 and AC5 — putting a template on a trainee, and what the trainee's editor
@@ -436,5 +437,126 @@ test.describe("B1 — a legacy template with reps on a timed exercise", () => {
     await page.reload();
     await expect(page.getByText("Published plan")).toBeVisible();
     await expect(page.getByLabel("Plan name")).toHaveValue("Core circuit");
+  });
+});
+
+/**
+ * Fluidity batch 1, F1 — the pressed apply button says the apply is running. Until
+ * d717e57 it only went grey: the wait is the write plus a render of /templates, and then
+ * of the trainee's editor. The server-action POST is HELD (`qa/hold-action.ts`), so each
+ * label is read while the apply is provably in flight.
+ *
+ * The progress bar is NOT started at the click (staff, round 1): `NavigationProgress` has
+ * no cancel, so a refused apply would leave it above the "replace the draft?" question for
+ * up to 20 s. A refused apply must therefore show no bar, recorded by a MutationObserver
+ * from before the click.
+ */
+test.describe("F1 — « Use this template » while the apply runs", () => {
+  /** Records, from now on, whether the progress bar ever shows. */
+  async function watchBar(page: Page) {
+    await page.evaluate(() => {
+      const w = window as unknown as { __barEver?: boolean };
+      const check = () => {
+        if (document.querySelector('[data-nav-progress="visible"]')) w.__barEver = true;
+      };
+      w.__barEver = false;
+      check();
+      new MutationObserver(check).observe(document.body, { subtree: true, attributes: true, childList: true });
+    });
+    return () => page.evaluate(() => (window as unknown as { __barEver?: boolean }).__barEver === true);
+  }
+
+  /**
+   * Records, from now on, whether any frame shows the replace question AND a dialog button
+   * reading « Applying… » at once: before « Replace the draft » is pressed, that is a label on
+   * a button nobody pressed (`pressed` in TemplateLibrary's UseDialog).
+   */
+  async function watchQuestionWithApplying(page: Page) {
+    await page.evaluate(() => {
+      const w = window as unknown as { __earlyApplying?: boolean };
+      w.__earlyApplying = false;
+      new MutationObserver(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        if (!dialog?.textContent?.includes("This replaces your unpublished draft")) return;
+        if (Array.from(dialog.querySelectorAll("button")).some((b) => b.textContent?.trim() === "Applying…")) w.__earlyApplying = true;
+      }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    });
+    return () => page.evaluate(() => (window as unknown as { __earlyApplying?: boolean }).__earlyApplying === true);
+  }
+
+  test("« Use this template » reads « Applying… » until the editor arrives", async ({ page }) => {
+    await signIn(page);
+    const dialog = await openUseDialog(page, SEEDED_A);
+    await dialog.locator("select").selectOption({ label: "Yusuf A." });
+    const hold = await holdNextAction(page);
+    await dialog.getByRole("button", { name: "Use this template" }).click();
+    await hold.reached;
+
+    const busy = dialog.getByRole("button", { name: "Applying…", exact: true });
+    await expect(busy).toBeVisible();
+    await expect(busy).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Use this template" })).toHaveCount(0);
+
+    hold.release();
+    await page.waitForURL(`/clients/${YUSUF}/routine`);
+    await expect(page.getByText(`Started from ${SEEDED_A}`, { exact: true })).toBeVisible();
+  });
+
+  test("a refused apply: « Applying… » while it runs, then the question, with no progress bar", async ({ page }) => {
+    await signIn(page);
+    await applyToYusuf(page, SEEDED_A);
+    const dialog = await openUseDialog(page, SEEDED_B);
+    await dialog.locator("select").selectOption({ label: "Yusuf A." });
+    const bar = await watchBar(page);
+    const earlyLabel = await watchQuestionWithApplying(page);
+
+    const hold = await holdNextAction(page);
+    await dialog.getByRole("button", { name: "Use this template" }).click();
+    await hold.reached;
+    await expect(dialog.getByRole("button", { name: "Applying…", exact: true })).toBeDisabled();
+    hold.release();
+
+    // 409 COACH_DRAFT_EXISTS: the question, and its button under its own name.
+    await expect(
+      dialog.getByText("This replaces your unpublished draft for Yusuf A. That draft cannot be recovered.", { exact: true })
+    ).toBeVisible();
+    const replace = dialog.getByRole("button", { name: "Replace the draft", exact: true });
+    await expect(replace).toBeEnabled();
+    await expect(dialog.getByRole("button", { name: "Applying…", exact: true })).toHaveCount(0);
+    // EV-356a A.6: no bar from the click until 2 s after the question appears (staff B-n3).
+    // A fixed wait on purpose: the claim is about a window of time, not an event.
+    await page.waitForTimeout(2_000);
+    expect(await bar(), "a refused apply never started the progress bar").toBe(false);
+    // Staff B-n1: the question arrives while the refused apply's transition is still pending,
+    // so `pending ? « Applying… » : « Replace the draft »` would label a button nobody pressed.
+    expect(await earlyLabel(), "« Replace the draft » never read « Applying… » before it was pressed").toBe(false);
+
+    // The second press says it too, on the button that was pressed.
+    const again = await holdNextAction(page);
+    await replace.click();
+    await again.reached;
+    await expect(dialog.getByRole("button", { name: "Applying…", exact: true })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Replace the draft", exact: true })).toHaveCount(0);
+    again.release();
+    await page.waitForURL(`/clients/${YUSUF}/routine`);
+    await expect(page.getByText(`Started from ${SEEDED_B}`, { exact: true })).toBeVisible();
+  });
+
+  test.describe("in French", () => {
+    test.use({ locale: "fr-FR" });
+
+    test("« Appliquer » reads « Application… » while the apply runs", async ({ page }) => {
+      await signInFrench(page);
+      await page.goto("/templates");
+      await row(page, SEEDED_A).getByRole("button", { name: "Appliquer à un client" }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.locator("select").selectOption({ label: "Yusuf A." });
+      const hold = await holdNextAction(page);
+      await dialog.getByRole("button", { name: "Appliquer", exact: true }).click();
+      await hold.reached;
+      await expect(dialog.getByRole("button", { name: "Application…", exact: true })).toBeDisabled();
+      hold.release();
+      await page.waitForURL(`/clients/${YUSUF}/routine`);
+    });
   });
 });

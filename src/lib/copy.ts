@@ -258,6 +258,8 @@ export const en = {
     sortLabel: "Sort",
     sortNeedsAttention: "Needs attention",
     sortRecentActivity: "Recently active",
+    /** EV-356c (F3): the toggle showed the chosen order before the server answered, and the server did not take it. */
+    sortFailed: "The sort could not be changed. Try again.", // EV-356c, verbatim
     /**
      * What the flag column says for a link that shares neither workouts nor weigh-ins.
      * The SAME sentence as every other absence on this surface (`client.notShared`),
@@ -1893,6 +1895,12 @@ export const en = {
     replacesDraft: (trainee: string) =>
       `This replaces your unpublished draft for ${endSentence(trainee)} That draft cannot be recovered.`,
     useIt: "Use this template",
+    /**
+     * On the pressed button (« Use this template » or « Replace the draft ») while the apply
+     * runs: the wait is the write plus a render of this page and then of the trainee's
+     * editor, and a grey button alone did not say anything was happening (fluidity F1).
+     */
+    applying: "Applying…",
     replaceAndUse: "Replace the draft",
     cancel: "Cancel",
     noTrainees: "You have no trainees who have shared their workouts with you.",

@@ -323,5 +323,27 @@ export function useUnsavedChanges(dirty: boolean) {
    */
   const release: Release = withCleanHistory;
 
-  return { prompted: pending !== null, stay, leave, release };
+  /**
+   * BUG-735 — the page still holds unsaved work after a `release(then, "stays")`: the coach
+   * typed while the save's REQUEST was in flight, so the answer covers less than the screen
+   * shows. Call it right after that `release`.
+   *
+   * `dirty` never changed value (it was true when the request left and is true now), so the
+   * arming effect does not run again and nothing would put an entry back once the release's
+   * step has taken the sentinel out: Back would leave with no question. This asks for one,
+   * the way a re-arm inside the step does: pushed when the step lands, after the `then`s, so
+   * it carries the URL a `replaceState` gave the page. Not pushed if a step that leaves the
+   * page is queued with it, nor a second time over a sentinel that is still current.
+   *
+   * Also after an update whose answer leaves the form dirty: that save does not release at
+   * all, so its sentinel is normally still the current entry and this does nothing. It
+   * pushes only when the guard holds no entry while the form is dirty (BUG-736's end state:
+   * a keystroke batched with an earlier save's clean render), so the next late save re-arms.
+   * That healing is read from this code, not constructed in a test.
+   */
+  const stillUnsaved = useCallback(() => {
+    if (releasing.current || !sentinel.current) push();
+  }, [push]);
+
+  return { prompted: pending !== null, stay, leave, release, stillUnsaved };
 }

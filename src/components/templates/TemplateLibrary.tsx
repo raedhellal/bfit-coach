@@ -565,6 +565,12 @@ function UseDialog({
   /** BUG-196 — the last "Replace the draft" was refused because the draft moved again. */
   const [refusedAgain, setRefusedAgain] = useState(false);
   const [pending, startTransition] = useTransition();
+  /**
+   * Which of the two apply buttons started the transition. A refused « Use » arms
+   * « Replace the draft » while `pending` is still true, so `pending` alone would put
+   * « Applying… » on a button nobody has pressed yet.
+   */
+  const [pressed, setPressed] = useState<"use" | "replace" | null>(null);
   const [seeded, setSeeded] = useState(false);
   /** BUG-699 — the trainee the picker opened on, kept: a refresh may reorder `trainees`. */
   const [openingId, setOpeningId] = useState("");
@@ -583,6 +589,7 @@ function UseDialog({
 
   function run(replaces?: string) {
     if (!template || !trainee) return;
+    setPressed(replaces === undefined ? "use" : "replace");
     startTransition(async () => {
       const result = await settled(applyTemplateAction(template.id, trainee.id, replaces), {
         ok: false,
@@ -647,11 +654,14 @@ function UseDialog({
           </Button>
           {conflict ? (
             <Button variant="danger" onClick={() => run(conflict)} disabled={pending}>
-              {copy.templates.replaceAndUse}
+              {pending && pressed === "replace" ? copy.templates.applying : copy.templates.replaceAndUse}
             </Button>
           ) : (
+            // F1: the pressed button says the apply is running (`pressed`). The progress bar
+            // still starts only after success: it has no cancel, so a refused apply
+            // (`DRAFT_EXISTS`) would leave it up for 20 s.
             <Button onClick={() => run()} disabled={pending || noTrainees || !trainee}>
-              {copy.templates.useIt}
+              {pending && pressed === "use" ? copy.templates.applying : copy.templates.useIt}
             </Button>
           )}
         </>
