@@ -21,3 +21,4 @@
 - [Text inputs match :focus-visible on click](text-inputs-match-focus-visible-on-click.md) — no keyboard/pointer split on text fields; probe before a selector nit (EV-337j2 N1)
 - [Continuation presence is not intent](continuation-presence-is-not-intent.md) — BUG-730: `thens.length===0` assumed every then leaves; template/recipe creates stay → Back unguarded; a Back press heals a forgotten sentinel
 - [New-string test copies the code, not the PO ruling](new-string-test-copies-the-code-not-the-po-ruling.md) — EV-356c sort-failure sentence ≠ story Copy, spec pinned the code's words; "red on base" committed before any run
+- [Boot-commit reload flag needs a same-commit error](boot-commit-reload-flag-needs-same-commit-error.md) — EV-356d R1-H loops if a loading.tsx/Suspense streams the error; next/dist/client/link and `ref` slip past invariant N
