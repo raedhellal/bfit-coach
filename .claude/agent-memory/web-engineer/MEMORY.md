@@ -101,3 +101,4 @@
 - [Text fields match :focus-visible on click](text-fields-match-focus-visible-on-click.md) — EV-337j2 N1: :has(input:focus-visible) does not separate pointer from keyboard
 - [Revalidating action wipes the guard flag](a-revalidating-action-wipes-the-guard-flag.md) — BUG-735: Next replaceStates without evoliUnsavedGuard; witness by history index; late edit + stays needs stillUnsaved()
 - [A shared transition labels every action](a-shared-transition-labels-every-action.md) — tag the running kind in the click; hold the action POST (qa/hold-action.ts) to test pending UI
+- [A path-segment change always remounts](a-path-segment-change-always-remounts.md) — BUG-739: /new→[id] remounts whenever Next's tree switches; only search params keep the island; rewrites chain
