@@ -10,6 +10,10 @@ import { getCopy } from "@/lib/i18n/server";
 /**
  * /templates/[id] — AC2's Edit.
  *
+ * Not served as a route since BUG-739 — rendered by `../editor/page.tsx` through the
+ * rewrites in `next.config.mjs`. A `loading.tsx`, `layout.tsx` or `error.tsx` added here is never
+ * used. Keep the editor at the same element position as the sibling module (`../new/page.tsx`).
+ *
  * Two failure states and they are NOT the same sentence:
  *   · 403 → `notYours`. The api answers ONE body for a foreign template, an id that
  *     never existed and one deleted in another tab (ADR-0012 D4), so the portal renders

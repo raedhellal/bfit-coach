@@ -12,6 +12,7 @@ import type { Copy } from "@/lib/copy";
 import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { useEditorIdentity } from "@/lib/useEditorIdentity";
 import {
   MAX_EXERCISES_PER_DAY,
   TEMPLATE_NAME_MAX,
@@ -92,13 +93,7 @@ const failureCopy = (copy: Copy): Record<TemplateFailure, string> => ({
   FAILED: copy.templates.saveFailed,
 });
 
-export function TemplateEditor({
-  templateId: initialTemplateId,
-  initial,
-  title,
-  sub,
-  back,
-}: {
+interface TemplateEditorProps {
   /** Null for "New template": the first successful save is a POST, then a navigation. */
   templateId: string | null;
   initial: TemplateDraft;
@@ -107,7 +102,26 @@ export function TemplateEditor({
   sub?: ReactNode;
   /** The page's `BackLink`, rendered by the server page. */
   back: ReactNode;
-}) {
+}
+
+/**
+ * BUG-739 — the editor, re-keyed when the RECORD changes and only then (`useEditorIdentity`).
+ * `/templates/new` and `/templates/{id}` are one route now, so a create's own next update arrives
+ * as new props for this same instance; a navigation to another template gets a fresh one.
+ */
+export function TemplateEditor(props: TemplateEditorProps) {
+  const { gen, adopt } = useEditorIdentity(props.templateId);
+  return <TemplateEditorInner key={gen} {...props} adopt={adopt} />;
+}
+
+function TemplateEditorInner({
+  templateId: initialTemplateId,
+  initial,
+  title,
+  sub,
+  back,
+  adopt,
+}: TemplateEditorProps & { adopt: (id: string) => void }) {
   const copy = useCopy();
   /**
    * Null until the first save on a NEW template, and the id from then on.
@@ -171,32 +185,44 @@ export function TemplateEditor({
         /**
          * A create becomes an edit — WITHOUT a router navigation.
          *
-         * `router.replace("/templates/{id}")` is the obvious move and it is wrong here:
-         * it unmounts this island, so the "Template saved" confirmation the coach just
-         * earned is destroyed by the navigation that follows it, and they are left on a
-         * new URL with no sign that anything happened. Measured, not assumed — it is
-         * what the first cut of this did.
+         * `router.replace("/templates/{id}")` is the obvious move and it was wrong here:
+         * while `new/` and `[id]/` were two routes it unmounted this island, so the
+         * "Template saved" confirmation the coach just earned was destroyed by the navigation
+         * that followed it. Measured, not assumed — it is what the first cut of this did.
+         * Since BUG-739 they are one route, and it still is not used: it writes the history
+         * when its navigation COMMITS, after the guard's entry for a late edit is pushed
+         * (`stillUnsaved`, below): the commit replaces THAT entry with `/templates/{id}` and
+         * Next's own state (dropping `evoliUnsavedGuard`), and the page's entry underneath
+         * keeps `/templates/new` (staff's BUG-739 review probe, Chromium).
          *
          * `history.replaceState` corrects the URL without a remount, so a reload or a
          * shared link lands on `/templates/{id}` and cannot create a second template,
          * and the Back button still goes to the library. The unsaved-changes guard's
          * sentinel is released FIRST — a `replaceState` over the sentinel entry would
          * leave the guard holding a history entry that no longer points where it thinks.
+         *
+         * BUG-739: the correction goes THROUGH Next's router. `replaceState(null, …)` is what
+         * Next's patched `replaceState` acts on; passing `history.state` (which carries its
+         * `__NA`) went past it, Next still believed the page was `/templates/new`, and its next
+         * render wrote that URL back. `/templates/new` and `/templates/{id}` being one route
+         * (`next.config.mjs`) is the other half: the update's render then reaches this same
+         * instance. `adopt` tells the identity rule that `{id}` is the record it already has.
          */
         const id = result.template.id;
         // "stays": the coach is still on this page, so work typed meanwhile stays guarded (BUG-730).
         leaving.release(() => {
           setTemplateId(id);
-          window.history.replaceState(window.history.state, "", `/templates/${id}`);
+          adopt(id);
+          window.history.replaceState(null, "", `/templates/${id}`);
         }, "stays");
         // The step takes the sentinel out and `dirty` never changed: ask for it back (BUG-735).
         if (late) leaving.stillUnsaved();
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateTemplateAction` revalidates.
-      // With a late edit the sentinel stays where it is: Back still asks (BUG-735). NOT on the
-      // first update after a create on this page: that answer re-mounts the editor (new/ and
-      // [id]/ are different segments), and the late edit is lost (BUG-739).
+      // With a late edit the sentinel stays where it is: Back still asks (BUG-735). The first
+      // update after a create on this page included, since BUG-739: its answer no longer
+      // re-mounts the editor.
       // `stillUnsaved` is a no-op while that entry is current; it puts one back if a previous
       // save's step left the form dirty with none (BUG-736's end state; read from the code,
       // not constructed). Keyed on `late`.

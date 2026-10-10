@@ -135,6 +135,40 @@ const nextConfig = {
     staleTimes: { dynamic: 30, static: 300 },
   },
   webpack: preloadableCopyChunks,
+  /**
+   * BUG-739 — the recipe and training-template editors are ONE route each, whatever the URL.
+   *
+   * `/x/new` and `/x/{id}` are both served by `src/app/x/editor/page.tsx`, the id in the query.
+   * Next 14.2 keys a page by its path segments and drops the search params from that key
+   * (`layout-router.js`), so an editor whose id changes is NOT re-mounted. Before, `new/` and
+   * `[id]/` were two segments: a create corrected the URL to `/x/{id}`, and the next update's
+   * revalidating render swapped the segment and re-mounted the editor, losing a rename typed
+   * during « Saving… », the saved notice and the leave guard. The addresses do not change; the
+   * `new/` and `[id]/` page modules are what `editor/page.tsx` renders, and are not served as
+   * routes themselves.
+   *
+   * Two pitfalls, both measured, both load-bearing:
+   *   · `beforeFiles` rewrites CHAIN. Without the `(?!new$|editor$)` lookahead, `/recipes/new`
+   *     became `/recipes/editor` and was then matched again as an id (`?id=editor`), and
+   *     « New recipe » rendered the not-yours notice.
+   *   · the REQUEST's query merges into the destination's, and only a key the destination names
+   *     wins (`prepare-destination.js`). With `/recipes/new → /recipes/editor`, a request for
+   *     `/recipes/new?id=<A>` served recipe A's editor under `/new` (staff's probe P1). The `new`
+   *     rules therefore pin `id=` (empty: a new record).
+   *
+   * `beforeFiles`, so the rules run before the filesystem: `new/` and `[id]/` still exist.
+   * Middleware runs on the ORIGINAL path, before these rules, so its matcher is unchanged.
+   */
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: "/recipes/new", destination: "/recipes/editor?id=" },
+        { source: "/recipes/:id((?!new$|editor$)[^/]+)", destination: "/recipes/editor?id=:id" },
+        { source: "/templates/new", destination: "/templates/editor?id=" },
+        { source: "/templates/:id((?!new$|editor$)[^/]+)", destination: "/templates/editor?id=:id" },
+      ],
+    };
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
