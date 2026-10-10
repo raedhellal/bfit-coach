@@ -22,7 +22,9 @@ import type { ComponentProps } from "react";
  * The `prefetch` prop is not accepted. `qa/no-auto-prefetch.spec.ts` asserts at runtime that no
  * request carries `Next-Router-Prefetch: 1`.
  */
-export type LinkProps = Omit<ComponentProps<typeof NextLink>, "prefetch">;
+// No `ref` either: this is a plain function component, and a ref passed to it would be
+// dropped without a word. A caller that needs one is a reason to add `forwardRef` here.
+export type LinkProps = Omit<ComponentProps<typeof NextLink>, "prefetch" | "ref">;
 
 export default function Link(props: LinkProps) {
   return <NextLink {...props} prefetch={false} />;

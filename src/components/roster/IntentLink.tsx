@@ -20,8 +20,10 @@ import { useCallback, useEffect, useRef, type ComponentProps, type MouseEvent } 
  *   · no `touchstart`, and a `pointerenter` from a finger or a pen is ignored: a touch that
  *     starts a scroll on a row would otherwise render that client's page (≈ 4 api reads)
  *     per scroll. Mouse and trackpad only;
- *   · roster rows only. The client tab bar (the routine editor, the nutrition week) and the
- *     side menu keep a plain `<Link>`: editor documents are out of cache speed-ups (D33.3);
+ *   · roster rows only. Every other link, the client tab bar (the routine editor, the
+ *     nutrition week) and the side menu included, is `@/components/ui/Link`, which makes no
+ *     prefetch of any kind (ADR-0033 D33.13 invariant N): editor documents are out of cache
+ *     speed-ups (D33.3), and an AUTO entry under `staleTimes.static: 30` replayed old pages (P4);
  *   · a pass-through costs nothing: the timer is cancelled when the pointer leaves, when the
  *     focus moves on, and at the click (the navigation does its own fetch, and a prefetch
  *     fired after it would be a second render).

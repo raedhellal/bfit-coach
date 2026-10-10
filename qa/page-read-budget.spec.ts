@@ -246,10 +246,11 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
    * none anyway). "Settled" is the journal quiet for 500 ms, never `networkidle`
    * (ADR-0033 D33.11).
    *
-   * The page's OWN prefetches are settled first. On a `next start` build the client
-   * tabs prefetch the overview in full after hydration, and a write clicked straight
-   * after the load counted that render as the write's (measured: 2 renders, the second
-   * `getClient + getClientProgress + getMe`).
+   * The page's OWN background requests are settled first. Before EV-356d, on a `next start`
+   * build the client tabs prefetched the overview in full after hydration, and a write
+   * clicked straight after the load counted that render as the write's (measured: 2
+   * renders, the second `getClient + getClientProgress + getMe`). No link prefetches any
+   * more (ADR-0033 D33.13 invariant N); the settle stays as a guard.
    */
   async function journalQuiet(page: Page) {
     let seen = -1;

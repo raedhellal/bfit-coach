@@ -138,12 +138,15 @@ const nextConfig = {
      * client after the trainee ended the link, if the row was hovered before. The api side
      * is unchanged: it caches nothing and refuses every request after the revoke.
      *
-     * Side effects of `static == dynamic`, read in 14.2.35 (staff round 1 §1b): the AUTO
-     * "stale" band is gone, so an unused AUTO entry goes from fresh to expired at 30 s and
-     * the loading-only reuse path is unreachable; a hover over a plain `<Link>` more than
-     * 30 s after its last prefetch fetches the route tree again (cheap: no loading.tsx below
-     * those links, so no component renders, but each passes through middleware).
-     * `STATIC_STALETIME_MS` has no server-side consumer.
+     * ⚠ `static: 30` is safe ONLY together with ADR-0033 D33.13 invariant N: the portal sends
+     * no AUTO prefetch (every link is `src/components/ui/Link.tsx`, `prefetch={false}`;
+     * ESLint bans `next/link` elsewhere; `qa/no-auto-prefetch.spec.ts` checks it at runtime).
+     * With `static == dynamic` the AUTO "stale" band is gone (an AUTO entry goes from fresh
+     * or reusable straight to expired at 30 s), and without N a hover over an expired plain
+     * `<Link>` made a fresh tree-only entry whose click repainted the router's OLD cached
+     * page with no request, however old (P4, witnessed at +35 s and +70 s after a revoke).
+     * Under N no AUTO entry exists, so that path is closed and a return after 30 s always
+     * reaches the server. `STATIC_STALETIME_MS` has no server-side consumer.
      *
      * Every server action that calls `revalidatePath` still purges this cache (14.2's
      * action reducer clears the prefetch cache whenever the action renders), so a write

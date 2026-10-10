@@ -41,7 +41,20 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: { baseURL: BASE_URL, trace: "on-first-retry", locale: "en-US" },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    /**
+     * WebKit for the intent-prefetch tests that use the runner's own page (D.1, D.2, D.4).
+     * The other WebKit cells (D.3, D.5, and every test in client-load-reload and
+     * no-auto-prefetch) launch WebKit inside their spec and run under the chromium project.
+     */
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      testMatch: /intent-prefetch\.spec\.ts/,
+      grep: /D\.1 — pointer|D\.2: after|D\.4: hovering/,
+    },
+  ],
   webServer: {
     command: process.env.COACH_START_PREBUILT === "1" ? START : `npx next build && ${START}`,
     url: BASE_URL,

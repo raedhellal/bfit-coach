@@ -33,6 +33,7 @@ import {
  */
 
 const NOTICE = { en: "This trainee could not be loaded.", fr: "Ce client n'a pas pu être chargé." };
+type Lang = keyof typeof NOTICE;
 const BUSY = "<busy: data-client-load-reloading>";
 const row = (page: Page) => page.locator(`a.roster-row[href="${LINA_PATH}"]`);
 const h1 = (page: Page) => page.getByRole("heading", { level: 1 });
@@ -83,8 +84,13 @@ async function settle(page: Page, seen: Seen[]): Promise<void> {
   await page.waitForTimeout(500);
 }
 
-for (const engine of ["chromium", "webkit"] as Engine[]) {
-  test.describe(`EV-356d D.6 / P5, ${engine}`, () => {
+for (const [engine, lang] of [
+  ["chromium", "en"],
+  ["chromium", "fr"],
+  ["webkit", "en"],
+  ["webkit", "fr"],
+] as [Engine, Lang][]) {
+  test.describe(`EV-356d D.6 / P5, ${engine}, ${lang}`, () => {
     let browser: Browser;
     test.beforeAll(async () => {
       browser = await launch(engine);
@@ -94,7 +100,8 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
     });
 
     async function open(baseURL: string) {
-      const context = await signedInContext(browser, baseURL);
+      const context = await signedInContext(browser, baseURL, lang === "fr" ? "fr-FR" : "en-US");
+      await setSwitch(context, baseURL, "evoli_pro_locale", lang);
       const records = await recordNotice(context);
       const page = await context.newPage();
       const seen = track(context);
@@ -122,7 +129,7 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
         await expect(h1(page)).toHaveText(LINA_NAME, { timeout: 15_000 });
         await settle(page, seen);
         const after = seen.slice(n);
-        test.info().annotations.push({ type: `Q1 ${engine}`, description: `records ${JSON.stringify(records)}; after the click ${JSON.stringify(fmt(after))}` });
+        test.info().annotations.push({ type: `Q1 ${engine} ${lang}`, description: `records ${JSON.stringify(records)}; after the click ${JSON.stringify(fmt(after))}` });
         expect(notices(records), "the notice was never in the DOM").toEqual([]);
         expect(records, "the reload's busy state was drawn").toContain(BUSY);
         expect(fmt(docs(after, LINA_PATH)), "exactly one document recovered the page").toEqual([`DOC ${LINA_PATH} 200`]);
@@ -140,11 +147,11 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
         await setSwitch(context, baseURL!, "evoli_fixture_overview", "fail");
         const n = seen.length;
         await row(page).click();
-        await expect(h1(page)).toHaveText(NOTICE.en, { timeout: 15_000 });
+        await expect(h1(page)).toHaveText(NOTICE[lang], { timeout: 15_000 });
         await page.waitForTimeout(10_000);
         await settle(page, seen);
         const after = seen.slice(n);
-        test.info().annotations.push({ type: `Q2 ${engine}`, description: `records ${JSON.stringify(records)}; after the click ${JSON.stringify(fmt(after))}` });
+        test.info().annotations.push({ type: `Q2 ${engine} ${lang}`, description: `records ${JSON.stringify(records)}; after the click ${JSON.stringify(fmt(after))}` });
         expect(fmt(docs(after, LINA_PATH)), "one reload, answered 500, and no loop").toEqual([`DOC ${LINA_PATH} 500`]);
         expect(records.indexOf(BUSY), "busy first").toBe(0);
         expect(notices(records).length, "then the notice (the 500's)").toBeGreaterThan(0);
@@ -161,10 +168,10 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
         await setSwitch(context, baseURL!, "evoli_fixture_overview", "fail");
         const res = await page.goto(LINA_PATH);
         expect(res?.status()).toBe(500);
-        await expect(h1(page)).toHaveText(NOTICE.en);
+        await expect(h1(page)).toHaveText(NOTICE[lang]);
         await page.waitForTimeout(3_000);
         await settle(page, seen);
-        test.info().annotations.push({ type: `Q3 ${engine}`, description: `records ${JSON.stringify(records)}; ${JSON.stringify(fmt(seen))}` });
+        test.info().annotations.push({ type: `Q3 ${engine} ${lang}`, description: `records ${JSON.stringify(records)}; ${JSON.stringify(fmt(seen))}` });
         expect(fmt(seen.filter((s) => s.path === LINA_PATH && s.kind !== "AUTO")), "one document, no render after it").toEqual([
           `DOC ${LINA_PATH} 500`,
         ]);
@@ -183,7 +190,7 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
           await hydrated(page, "/");
           await setSwitch(context, baseURL!, "evoli_fixture_overview", "fail");
           await row(page).click();
-          await expect(h1(page)).toHaveText(NOTICE.en, { timeout: 15_000 });
+          await expect(h1(page)).toHaveText(NOTICE[lang], { timeout: 15_000 });
           await settle(page, seen);
           await context.clearCookies({ name: "evoli_fixture_overview" });
           const n = seen.length;
@@ -200,7 +207,7 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
           await expect(h1(page)).toHaveText(LINA_NAME, { timeout: 15_000 });
           await settle(page, seen);
           const after = seen.slice(n);
-          test.info().annotations.push({ type: `Q4 ${variant} ${engine}`, description: JSON.stringify(fmt(after)) });
+          test.info().annotations.push({ type: `Q4 ${variant} ${engine} ${lang}`, description: JSON.stringify(fmt(after)) });
           expect(
             after.filter((s) => s.path === LINA_PATH && (s.kind === "DOC" || s.kind === "FULL")).length,
             "Lina's page was fetched again, not replayed"
@@ -241,7 +248,7 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
         await expect(page).toHaveURL(/\/clients\/denied$/, { timeout: 15_000 });
         await settle(page, seen);
         const after = seen.slice(n);
-        test.info().annotations.push({ type: `Q6 ${engine}`, description: `records ${JSON.stringify(records)}; ${JSON.stringify(fmt(after))}` });
+        test.info().annotations.push({ type: `Q6 ${engine} ${lang}`, description: `records ${JSON.stringify(records)}; ${JSON.stringify(fmt(after))}` });
         expect(fmt(after.filter((s) => s.kind === "DOC")), "the reload is a real 307 to the 403 page").toEqual([
           `DOC ${LINA_PATH} 307`,
           "DOC /clients/denied 403",

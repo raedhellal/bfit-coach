@@ -15,7 +15,20 @@
             "name": "next/link",
             "message": "Use @/components/ui/Link (prefetch={false}): ADR-0033 D33.13 invariant N, the portal sends no AUTO prefetch. Only roster/IntentLink.tsx may import next/link."
           }
+        ],
+        "patterns": [
+          {
+            "group": ["next/dist/client/link*", "next/dist/esm/client/link*"],
+            "message": "Next's Link by a deep path is still next/link: use @/components/ui/Link (ADR-0033 D33.13 invariant N)."
+          }
         ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.property.name='prefetch']",
+        "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment."
       }
     ]
   },
@@ -23,6 +36,10 @@
     {
       "files": ["src/components/ui/Link.tsx", "src/components/roster/IntentLink.tsx"],
       "rules": { "no-restricted-imports": "off" }
+    },
+    {
+      "files": ["src/components/roster/IntentLink.tsx"],
+      "rules": { "no-restricted-syntax": "off" }
     },
     {
       "files": ["**/*.ts", "**/*.tsx"],

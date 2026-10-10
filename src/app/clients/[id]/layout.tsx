@@ -44,12 +44,14 @@ export default async function ClientLayout({
    * three reads, which is one round trip.
    *
    * What the extra call did cost was in prefetches. A `<Link>` to `/clients/{id}` (one
-   * per roster row, one per challenge participant) is prefetched on a production build,
-   * and that prefetch rendered THIS layout and stopped at `[id]/loading.tsx` above the
-   * page. The name was read and then never used: 6 of the roster's 12 background calls
-   * with six rows. Since perf/coach-fast-routes-no-skeleton there is no loading boundary
-   * under `[id]`, so the prefetch renders nothing at all (Next sends the route tree
-   * only). `qa/page-read-budget.spec.ts` counts a prefetch of this route.
+   * per roster row, one per challenge participant) used to be prefetched on sight on a
+   * production build, and that prefetch rendered THIS layout and stopped at
+   * `[id]/loading.tsx` above the page: 6 of the roster's 12 background calls with six rows.
+   * Since perf/coach-fast-routes-no-skeleton there is no loading boundary under `[id]`, and
+   * since EV-356d no link makes an automatic prefetch at all (ADR-0033 D33.13 invariant N,
+   * `@/components/ui/Link`). The one prefetch of this route left is the roster row's
+   * IntentLink: a FULL render of this layout AND the page, made only when the pointer or the
+   * focus rests on the row. `qa/page-read-budget.spec.ts` counts both.
    */
   /**
    * BUG-600 — a path segment that is not a UUID is not the id of any trainee, so it gets

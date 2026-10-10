@@ -19,6 +19,17 @@ import { useEffect } from "react";
  *
  * Mounted by `src/app/layout.tsx` OUTSIDE its `<Suspense>`: a dehydrated Suspense boundary
  * hydrates in a later commit, so a click made before it would still read `false`.
+ *
+ * ⚠ The no-loop guarantee has a PRECONDITION: on a document load, the overview's error must
+ * be met in the SAME commit as this component's mount, so that `error.tsx` reads `false`.
+ * That holds while no `loading.tsx` and no `<Suspense>` sits between the root and
+ * `src/app/clients/[id]/page.tsx`. Add one, and the error is streamed after the first flush
+ * and client-rendered in a LATER commit: `isBooted()` is then true on the 500's own document,
+ * it reloads, meets the same error, and reloads again, without end. The guard is BUG-629's
+ * `qa/client-overview-load-error-status.spec.ts` (default dev suite, EN and FR), which pins
+ * that a document load of the failing overview is a 5xx showing the notice — a loading
+ * boundary would break it first. `qa/client-load-reload.spec.ts` Q3 is the same check on
+ * `next start` (one document, no busy state).
  */
 let booted = false;
 

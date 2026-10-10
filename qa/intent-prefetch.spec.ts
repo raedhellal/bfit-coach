@@ -75,6 +75,10 @@ async function signIn(context: BrowserContext): Promise<void> {
     maxRedirects: 0,
   });
   expect(login.status()).toBe(200);
+  // The `webkit` project of playwright.start.config.ts runs D.1/D.2/D.4 here: WebKit does not
+  // send a production build's Secure cookies back to http://localhost (see signInOverHttpWebKit).
+  const cookies = await context.cookies();
+  await context.addCookies(cookies.map((c) => ({ ...c, secure: false })));
 }
 
 /**
@@ -367,12 +371,12 @@ test("D.2: after a 500 ms rest the click paints in at most half the no-hover tim
 });
 
 /**
- * D.4 — the client tab bar and the side menu stay plain `<Link>`s: hovering them renders no
- * page (no api read), right after the load and again after 30 s, when `static: 30` has
- * expired their AUTO entries (staff §1b.3: a hover then fetches the route tree again, which
- * must still read nothing).
+ * D.4 — the client tab bar and the side menu make no prefetch: hovering them sends no RSC
+ * request and reads nothing from the api, right after the load and again after 30 s. They
+ * are `@/components/ui/Link` (`prefetch={false}`, ADR-0033 D33.13 invariant N), so neither
+ * Link's hover prefetch nor IntentLink's FULL one exists on them.
  */
-test("D.4: hovering the client tabs and the side-menu links reads nothing, before and after 30 s", async ({ page }) => {
+test("D.4: hovering the client tabs and the side-menu links requests and reads nothing, before and after 30 s", async ({ page }) => {
   test.setTimeout(90_000);
   await signIn(page.context());
   await openRoster(page);
@@ -396,8 +400,14 @@ test("D.4: hovering the client tabs and the side-menu links reads nothing, befor
   // Internal page links outside the client: the side menu, the logo, the way back. Not the
   // skip link (`#main`, off screen until focused).
   const sideLinks = page.locator(`a[href^="/"]:not([href^="/clients/"])`).filter({ visible: true });
+  // N6: requests, not only api reads. No RSC request of any kind may leave on a hover here.
+  const rsc: string[] = [];
+  page.on("request", (req) => {
+    if (req.headers()["rsc"] === "1") rsc.push(`${new URL(req.url()).pathname} prefetch=${req.headers()["next-router-prefetch"] ?? "-"}`);
+  });
   async function hoverAll(label: string) {
     const j0 = (await journal(page)).length;
+    const r0 = rsc.length;
     const targets: Locator[] = [];
     for (const l of await tabs.all()) targets.push(l);
     for (const l of await sideLinks.all()) targets.push(l);
@@ -414,6 +424,7 @@ test("D.4: hovering the client tabs and the side-menu links reads nothing, befor
       after.map((e) => `${e.op}(${e.arg})`),
       `${label}: hovering ${targets.length} links read nothing`
     ).toEqual([]);
+    expect(rsc.slice(r0), `${label}: hovering ${targets.length} links sent no RSC request`).toEqual([]);
   }
   await hoverAll("right after the load");
   await page.waitForTimeout(Math.max(0, loadedAt + 31_000 - Date.now()));
@@ -598,9 +609,10 @@ test.describe("EV-356d D.5 — the revoked-client cache window (P2)", () => {
 /**
  * D.6 — staff's probe P3. The overview read fails while the row is hovered
  * (`evoli_fixture_overview=fail`, a 500 from the fixture), and works again by the click.
- * The click must show Lina's overview, never the error notice: a non-OK prefetch is turned
- * into a hard load at the click (`fetch-server-response.js`), which renders afresh. If the
- * cached error painted, EV-356d does not merge with that path (the story's STOP).
+ * The click must show Lina's overview, never the error notice. The prefetch answers 200
+ * with the error inside the flight, so the router caches it; `src/app/error.tsx` meets that
+ * error after boot and reloads the document once (ADR-0033 D33.13 point 8, R1-H), which
+ * renders afresh. `client-load-reload.spec.ts` Q1 checks every frame of the same steps.
  */
 test("D.6 (P3): a failure at hover time is not replayed at the click", async ({ page }) => {
   await signIn(page.context());
