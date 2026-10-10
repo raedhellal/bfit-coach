@@ -31,12 +31,14 @@ const LINA_ROW = `a.roster-row[href="${LINA_PATH}"]`;
 const LINA_NAME = "Lina M.";
 const ERROR_NOTICE_EN = "This trainee could not be loaded.";
 
-/** The dwell, read from the component so the sweeps below cannot drift from it. */
-const DWELL_MS = Number(
-  /export const INTENT_DWELL_MS = (\d+);/.exec(
-    readFileSync(resolve(__dirname, "..", "src/components/roster/IntentLink.tsx"), "utf8")
-  )?.[1]
-);
+/**
+ * The dwell, read from the component so the sweeps below cannot drift from it. NaN when the
+ * component is absent (the parent branch): the dwell test then fails, and the rest still run.
+ */
+const INTENT_LINK = resolve(__dirname, "..", "src/components/roster/IntentLink.tsx");
+const DWELL_MS = existsSync(INTENT_LINK)
+  ? Number(/export const INTENT_DWELL_MS = (\d+);/.exec(readFileSync(INTENT_LINK, "utf8"))?.[1])
+  : Number.NaN;
 
 interface Entry {
   op: string;
@@ -475,7 +477,9 @@ async function revokeTimeline(page: Page, label: string): Promise<string[]> {
   }, LINA_NAME);
   const n = seen.length;
   await page.locator(LINA_ROW).click();
-  await page.waitForURL("**/clients/denied");
+  // Past the window: the server is asked and answers the denial. A cached paint here (the
+  // `static: 300` mutant) shows her overview instead.
+  await expect(page, `${label} +65 s: past the ~60 s window, the denial page`).toHaveURL(/\/clients\/denied$/);
   expect(seen.slice(n).some((r) => r.path === LINA_PATH && (r.full || r.document)), "the click asked the server").toBe(
     true
   );
