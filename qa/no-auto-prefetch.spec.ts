@@ -65,10 +65,15 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
           await hydrated(page, path);
           visited.push(`${path} (${await hoverEveryLink(page)} links)`);
         }
+        // The positive control: a rest on a roster row is IntentLink's FULL prefetch, which the
+        // counter sees — so an empty AUTO list is not a deaf listener.
+        await hydrated(page, "/");
+        const full = page.waitForResponse((r) => new URL(r.url()).pathname === LINA_PATH, { timeout: 10_000 });
+        await page.locator(`a.roster-row[href="${LINA_PATH}"]`).hover();
+        await full;
         test.info().annotations.push({ type: `walk ${engine}`, description: visited.join("; ") });
         expect(fmt(seen.filter((s) => s.kind === "AUTO")), "AUTO prefetches").toEqual([]);
-        // Not vacuous: the walk did hover the roster rows, whose IntentLink makes FULL prefetches.
-        expect(seen.some((s) => s.kind === "FULL")).toBe(true);
+        expect(fmt(seen.filter((s) => s.kind === "FULL" && s.path === LINA_PATH)).length, "the control's FULL prefetch was seen").toBeGreaterThan(0);
       } finally {
         await context.close();
       }
@@ -88,6 +93,9 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
     }) => {
       test.setTimeout(180_000);
       const context = await signedInContext(browser, baseURL!);
+      // A hang names its step (this config sets no action timeout).
+      context.setDefaultTimeout(20_000);
+      const step = (what: string) => process.stdout.write(`Q5 ${engine} ${new Date().toISOString().slice(11, 19)} ${what}\n`);
       const seen = track(context);
       const pages = {
         tab35: await context.newPage(),
@@ -100,6 +108,8 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
       try {
         // Leave the routine in the tree cache, back on the overview.
         for (const p of [pages.tab35, pages.keyboard35, pages.tab70]) {
+          step("prep: tab page");
+          await p.bringToFront();
           await hydrated(p, LINA_PATH);
           await tab(p, ROUTINE).click();
           await expect(p).toHaveURL(new RegExp(`${ROUTINE}$`));
@@ -108,7 +118,9 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
           await p.mouse.move(1, 1);
         }
         // The same through the overview's programme card.
-        const card = (p: Page) => p.locator(`#ov-programme a[href="${ROUTINE}"]`);
+        const card = (p: Page) => p.locator(`a.link-button[href="${ROUTINE}"]`).first();
+        step("prep: card page");
+        await pages.card35.bringToFront();
         await hydrated(pages.card35, LINA_PATH);
         await card(pages.card35).click();
         await expect(pages.card35).toHaveURL(new RegExp(`${ROUTINE}$`));
@@ -116,6 +128,8 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
         await expect(card(pages.card35)).toBeVisible();
         await pages.card35.mouse.move(1, 1);
         // A participant's overview from the challenge page, then back to the challenge.
+        step("prep: participant page");
+        await pages.participant35.bringToFront();
         await hydrated(pages.participant35, `/challenges/${ACTIVE_CHALLENGE}`);
         const participant = pages.participant35.locator("a[data-participant-link]").first();
         const participantHref = (await participant.getAttribute("href"))!;
@@ -125,12 +139,15 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
         await expect(participant).toBeVisible();
         await pages.participant35.mouse.move(1, 1);
 
+        step("prep done");
         const t0 = Date.now();
         const at = (s: number) => new Promise((r) => setTimeout(r, Math.max(0, t0 + s * 1000 - Date.now())));
         await at(34);
         await setSwitch(context, baseURL!, "evoli_fixture_link", "ended");
 
         async function revisit(name: string, p: Page, go: () => Promise<void>) {
+          step(`revisit: ${name}`);
+          await p.bringToFront();
           const n = seen.length;
           await go();
           await p.waitForLoadState("networkidle").catch(() => undefined);
