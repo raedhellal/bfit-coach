@@ -429,7 +429,7 @@ test.describe("prefetching a client page", () => {
     await page.waitForLoadState("networkidle");
 
     const entries = (await journal(page)).slice(before);
-    expect(ops(entries.filter((e) => e.document))).toEqual(["getMe", "listClients"]);
+    expect(ops(entries.filter((e) => e.document))).toEqual(["getMe", "listClients", "listInvited"]);
     expect(ops(entries.filter((e) => !e.document)), "no background read").toEqual([]);
     expect(clientRequests, `production build: ${await isProductionBuild(page)}`).toEqual([]);
   });

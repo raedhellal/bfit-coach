@@ -75,6 +75,20 @@ async function signIn(context: BrowserContext): Promise<void> {
   expect(login.status()).toBe(200);
 }
 
+/**
+ * WebKit on `next start` over plain http. A production build marks the session cookies
+ * `Secure` (`src/lib/session.ts`, `middleware.ts`), and WebKit, unlike Chromium, does not
+ * exempt http://localhost: it never sends them back, so every page redirects to /login.
+ * The same cookies, re-added without the flag, are what an https origin would send. A token
+ * rotation mid-test would be dropped the same way; the tests here last about a minute.
+ */
+async function signInOverHttpWebKit(context: BrowserContext): Promise<void> {
+  await signIn(context);
+  const cookies = await context.cookies();
+  expect(cookies.length, "the sign-in set the session cookies").toBeGreaterThan(0);
+  await context.addCookies(cookies.map((c) => ({ ...c, secure: false })));
+}
+
 async function setCookie(page: Page, name: string, value: string): Promise<void> {
   await page.context().addCookies([{ name, value, url: new URL("/", page.url()).href }]);
 }
@@ -377,7 +391,9 @@ test("D.4: hovering the client tabs and the side-menu links reads nothing, befor
 
   // The AC's tabs: Programme and Nutrition (the overview tab is the page itself).
   const tabs = page.locator(`a[href="${LINA_PATH}/routine"], a[href="${LINA_PATH}/nutrition"]`);
-  const sideLinks = page.locator(`a[href]:not([href^="/clients/"])`).filter({ visible: true });
+  // Internal page links outside the client: the side menu, the logo, the way back. Not the
+  // skip link (`#main`, off screen until focused).
+  const sideLinks = page.locator(`a[href^="/"]:not([href^="/clients/"])`).filter({ visible: true });
   async function hoverAll(label: string) {
     const j0 = (await journal(page)).length;
     const targets: Locator[] = [];
@@ -504,7 +520,7 @@ test.describe("EV-356d D.5 — the revoked-client cache window (P2)", () => {
       const context = await browser.newContext({ baseURL, locale: "fr-FR", viewport: { width: 1280, height: 900 } });
       await context.addCookies([{ name: "evoli_pro_locale", value: "fr", url: baseURL! }]);
       try {
-        await signIn(context);
+        await signInOverHttpWebKit(context);
         const timeline = await revokeTimeline(await context.newPage(), "webkit fr");
         test.info().annotations.push({ type: "D.5 timeline (webkit)", description: timeline.join("; ") });
         process.stdout.write(`D.5 webkit: ${timeline.join("; ")}\n`);
@@ -527,7 +543,7 @@ test.describe("EV-356d D.5 — the revoked-client cache window (P2)", () => {
     }) => {
       const context = await browser.newContext({ baseURL, locale: "en-US", hasTouch: true, viewport: { width: 1024, height: 900 } });
       try {
-        await signIn(context);
+        await signInOverHttpWebKit(context);
         const page = await context.newPage();
         await openRoster(page);
         const seen = track(page);
@@ -601,9 +617,20 @@ test("D.6 (P3): a failure at hover time is not replayed at the click", async ({ 
   await page.context().clearCookies({ name: "evoli_fixture_overview" });
   const n = seen.length;
   await page.locator(LINA_ROW).click();
-  await expectLinaOverview(page);
-  await expect(page.getByText(ERROR_NOTICE_EN)).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`${LINA_PATH}$`));
+  await page.waitForLoadState("networkidle");
+  const h1 = await page.getByRole("heading", { level: 1 }).allTextContents();
   const how = seen.slice(n).filter((s) => s.path === LINA_PATH);
-  process.stdout.write(`D.6: at the click: ${JSON.stringify(how.map((s) => ({ full: s.full, document: s.document })))}\n`);
+  const record = `hover-time prefetch ${status}; at the click: h1 ${JSON.stringify(h1)}, requests ${JSON.stringify(
+    how.map((s) => ({ full: s.full, document: s.document }))
+  )}`;
+  test.info().annotations.push({ type: "D.6 (P3)", description: record });
+  process.stdout.write(`D.6: ${record}\n`);
+  // The control: the same URL loaded afresh shows her overview, so whatever the click
+  // painted came from the hover, not from the server at the click.
+  const reload = await page.request.get(LINA_PATH, { maxRedirects: 0 });
+  expect(reload.status(), "control: the server answers her page now").toBe(200);
+
+  expect(h1, `the click showed Lina's overview, never « ${ERROR_NOTICE_EN} »`).toEqual([LINA_NAME]);
   expect(how.some((s) => s.document || s.full), "the click rendered afresh").toBe(true);
 });
