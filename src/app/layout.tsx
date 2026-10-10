@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { fontVariables } from "./fonts";
 import { LegalFooter } from "@/components/shell/LegalFooter";
+import { BootMark } from "@/components/shell/BootMark";
 import { NavigationProgress } from "@/components/shell/NavigationProgress";
 import { UrlChangeCounter } from "@/components/shell/UrlChangeCounter";
 import { CopyProvider } from "@/lib/i18n/client";
@@ -46,6 +47,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang={locale} className={fontVariables}>
       <body>
         <CopyProvider locale={locale}>
+          {/* EV-356d D.6: marks the document's first commit for error.tsx. Outside the Suspense
+              below, which hydrates in a later commit. */}
+          <BootMark />
           {/* A slow page change's only feedback once a route has no loading.tsx.
               Suspense: it reads useSearchParams. */}
           <Suspense fallback={null}>
