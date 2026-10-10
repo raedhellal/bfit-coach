@@ -268,7 +268,9 @@ function RecipeEditorInner({
         /**
          * A create becomes an edit WITHOUT a router navigation — the template editor's
          * lesson (`router.replace` unmounted this island while `new/` and `[id]/` were two
-         * routes, and writes the history too late for a late edit's guard entry: read, not measured).
+         * routes, and writes the history too late for a late edit's guard entry: its commit
+         * replaces the guard's entry and the page's entry underneath keeps `/new`, staff's
+         * BUG-739 review probe, Chromium).
          * The guard's sentinel is released first, then the URL is corrected, so a reload
          * lands on `/recipes/{id}` and cannot create a second recipe.
          *

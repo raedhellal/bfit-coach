@@ -14,8 +14,9 @@ import { useCallback, useState } from "react";
  *
  * The cost: ANY soft navigation between two editor URLs now keeps the instance too. Without this
  * rule a `router.push("/recipes/B")` from A's editor showed A's draft under B's heading, and Save
- * wrote A's draft to A (staff's probe P4, both engines). The editors seed their state from props
- * once, so the island has to be re-keyed when the record changes.
+ * on B's page POSTed to `/recipes/<B>` carrying A's id: A was renamed and B left unchanged (staff's
+ * P4 + BUG-739 review probe, a never-re-key mutant, both engines). The editors seed their state
+ * from props once, so the island has to be re-keyed when the record changes.
  *
  * The rule: the caller keys its inner editor by `gen`. `gen` moves when the id PROP changes, unless
  * the new prop is the id the editor itself `adopt`ed. A create calls `adopt(id)`, so the

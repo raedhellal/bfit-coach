@@ -33,13 +33,17 @@ renders), and the segment swap re-mounts the editor. Witness W1 (2026-10-10): `r
   the create → update spec red.
 - On macOS, `press("End")` does not move a text field's caret (Chromium and WebKit). Set the
   selection instead.
-- WebKit on `next start` over http cannot sign in: the session cookie is `Secure` in production.
-  It needs an HTTPS front. Through my scratch node https proxy, WebKit logs "Failed to fetch RSC
-  payload" for the nav-link prefetches on EVERY page (rig artefact; Chromium is clean through the
-  same front).
-- `form-leave-guard`'s two BUG-730 "inside the create's step" tests fail in WebKit on base
-  `50f31f7` too: the final Back lands on `/x/{id}`. The spec is written for Chromium's
-  Navigation API.
+- WebKit on `next start` over plain http: the production session cookie is `Secure`, so a sign-in
+  through the form is not stored. The fix is NOT an HTTPS front. Re-add the session cookies without
+  `Secure` (EV-356d's `qa/start-build.ts` `signedInContext`, not on the BUG-739 base), and it works
+  over http (staff's BUG-739 review #8). My scratch node https proxy CAUSED the WebKit "Failed to
+  fetch RSC payload … Load failed" prefetch reds: over plain http the same prefetches fire and do
+  not fail (#8). Do not use a hand-rolled proxy as a witness rig.
+- `form-leave-guard`'s two BUG-730 "inside the create's step" tests are INTERMITTENT in WebKit on
+  both trees (staff: base `50f31f7` 3 of 8 green, BUG-739 tip 1 of 8). In every red run, the final
+  `page.goBack()` does not move from an identical history. Cause unknown. It is NOT the Navigation
+  API: that reads fine in WebKit (#5). Staff's N3 suggests a senior-qa row: a Playwright WebKit
+  `goBack` flake or a real Safari Back defect.
 
 Related: [[an-island-must-re-seed-from-props-not-from-its-own-save]],
 [[a-back-after-a-guarded-leave-can-hard-reload]].

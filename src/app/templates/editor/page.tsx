@@ -11,7 +11,8 @@ import TemplatePage from "../[id]/page";
  * (a create, then its first update) reaches the same editor instance.
  *
  * `String(…)`: a repeated `?id=a&id=b` is an array, which becomes "a,b" and so reaches the
- * existing-record branch (the api refuses it: load error), never the new one.
+ * existing-record branch (the api refuses it: load error; read from the source, not run), never the
+ * new one.
  *
  * Its own `dynamic`: an imported module's route config is not read.
  */

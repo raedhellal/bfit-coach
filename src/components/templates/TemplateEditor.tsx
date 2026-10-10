@@ -191,8 +191,9 @@ function TemplateEditorInner({
          * that followed it. Measured, not assumed — it is what the first cut of this did.
          * Since BUG-739 they are one route, and it still is not used: it writes the history
          * when its navigation COMMITS, after the guard's entry for a late edit is pushed
-         * (`stillUnsaved`, below), so that entry would keep the `/new` URL (read from Next's
-         * `HistoryUpdater`, not measured).
+         * (`stillUnsaved`, below): the commit replaces THAT entry with `/templates/{id}` and
+         * Next's own state (dropping `evoliUnsavedGuard`), and the page's entry underneath
+         * keeps `/templates/new` (staff's BUG-739 review probe, Chromium).
          *
          * `history.replaceState` corrects the URL without a remount, so a reload or a
          * shared link lands on `/templates/{id}` and cannot create a second template,
