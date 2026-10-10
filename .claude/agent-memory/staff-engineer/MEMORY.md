@@ -23,3 +23,5 @@
 - [Create-to-edit by replaceState remounts on the next save](create-to-edit-by-replacestate-remounts-on-next-save.md) — BUG-735: Next still on /new; first update remounts, late edit + notice lost; test create→update; expando witness
 - [New-string test copies the code, not the PO ruling](new-string-test-copies-the-code-not-the-po-ruling.md) — EV-356c sort-failure sentence ≠ story Copy, spec pinned the code's words; "red on base" committed before any run
 - [Red on base at a precondition](red-on-base-at-a-precondition.md) — base-red at a setup step the new behaviour satisfies is not a defect witness; classify each red line (fluidity batch 1)
+- [A rig artefact is retired by removing the rig](rig-artefact-retired-by-removing-the-rig.md) — BUG-739: WebKit next start needs no HTTPS proxy (de-secure cookies); the proxy made the RSC reds; count base greens too
+- ["Read, not measured" is not a reading check](read-not-measured-label-is-not-a-reading-check.md) — BUG-739 router.replace comment named the wrong entry; a cited probe witnessed half its sentence
