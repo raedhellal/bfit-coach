@@ -42,13 +42,17 @@ export default async function TemplatesPage() {
     /**
      * A roster failure must NOT take down the library. The list, the rename, the
      * duplicate and the delete all work without it; only "Use on a trainee" needs a
-     * trainee, and an empty list renders AC3's own "no trainees" sentence — which is
-     * also the true answer for a coach who has none.
+     * trainee.
+     *
+     * BUG-738: a failure is `null`, NOT `[]`. An empty list renders AC3's "no trainees"
+     * sentence, which is the true answer for a coach who has none and a false one for a
+     * coach whose roster could not be read. `/nutrition-templates` and `/challenges`
+     * already tell the two apart the same way.
      */
     coachApi
       .listClients()
-      .then((page) => page.items)
-      .catch((): RosterClient[] => []),
+      .then((page): RosterClient[] | null => page.items)
+      .catch(() => null),
   ]);
 
   /**
@@ -57,9 +61,12 @@ export default async function TemplatesPage() {
    * is fixed, and the alternative cost is the portal offering a trainee whose consent
    * it could not establish and then being refused by the server in front of the coach.
    */
-  const targets = trainees
-    .filter((client) => client.status === "ACTIVE" && hasScope(client.scopes, "WORKOUTS"))
-    .map((client) => ({ id: client.id, traineeDisplayName: client.traineeDisplayName }));
+  const targets =
+    trainees === null
+      ? null
+      : trainees
+          .filter((client) => client.status === "ACTIVE" && hasScope(client.scopes, "WORKOUTS"))
+          .map((client) => ({ id: client.id, traineeDisplayName: client.traineeDisplayName }));
 
   return (
     <CoachShell coachName={me?.displayName} section="templates">

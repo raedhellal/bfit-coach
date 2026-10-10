@@ -81,7 +81,8 @@ export function TemplateLibrary({
   trainees,
 }: {
   library: CoachTemplateList;
-  trainees: ApplyTarget[];
+  /** BUG-738: `null` = the roster read failed, which is not "no trainees". */
+  trainees: ApplyTarget[] | null;
 }) {
   const copy = useCopy();
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -554,11 +555,14 @@ function UseDialog({
 }: {
   open: boolean;
   template: CoachTemplateSummary | null;
-  trainees: ApplyTarget[];
+  /** BUG-738: `null` = the roster read failed. The picker then says so, and offers nobody. */
+  trainees: ApplyTarget[] | null;
   onClose: () => void;
 }) {
   const copy = useCopy();
   const router = useRouter();
+  const rosterFailed = trainees === null;
+  const offered = trainees ?? [];
   const [clientId, setClientId] = useState("");
   const [conflict, setConflict] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -577,15 +581,15 @@ function UseDialog({
 
   if (open && !seeded) {
     setSeeded(true);
-    setClientId(trainees[0]?.id ?? "");
-    setOpeningId(trainees[0]?.id ?? "");
+    setClientId(offered[0]?.id ?? "");
+    setOpeningId(offered[0]?.id ?? "");
     setConflict(null);
     setError(null);
     setRefusedAgain(false);
   }
   if (!open && seeded) setSeeded(false);
 
-  const trainee = trainees.find((t) => t.id === clientId) ?? null;
+  const trainee = offered.find((t) => t.id === clientId) ?? null;
 
   function run(replaces?: string) {
     if (!template || !trainee) return;
@@ -635,7 +639,7 @@ function UseDialog({
     });
   }
 
-  const noTrainees = trainees.length === 0;
+  const noTrainees = offered.length === 0;
 
   return (
     <Modal
@@ -667,7 +671,14 @@ function UseDialog({
         </>
       }
     >
-      {noTrainees ? (
+      {rosterFailed ? (
+        // BUG-738 — the roster read failed. Saying "no trainees" here would be a false
+        // statement about the coach's clients. The words are the challenges dialog's
+        // (senior-po: no new copy), announced as an alert like /nutrition-templates' own.
+        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
+          {copy.challenges.clientsLoadError}
+        </p>
+      ) : noTrainees ? (
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
           {copy.templates.noTrainees}
         </p>
@@ -699,7 +710,7 @@ function UseDialog({
                 padding: "0 10px",
               }}
             >
-              {trainees.map((t) => (
+              {offered.map((t) => (
                 <option key={t.id} value={t.id}>
                   {fullNameOf(t.traineeDisplayName, copy)}
                 </option>
