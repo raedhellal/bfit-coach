@@ -466,6 +466,24 @@ test.describe("F1 — « Use this template » while the apply runs", () => {
     return () => page.evaluate(() => (window as unknown as { __barEver?: boolean }).__barEver === true);
   }
 
+  /**
+   * Records, from now on, whether any frame shows the replace question AND a dialog button
+   * reading « Applying… » at once: before « Replace the draft » is pressed, that is a label on
+   * a button nobody pressed (`pressed` in TemplateLibrary's UseDialog).
+   */
+  async function watchQuestionWithApplying(page: Page) {
+    await page.evaluate(() => {
+      const w = window as unknown as { __earlyApplying?: boolean };
+      w.__earlyApplying = false;
+      new MutationObserver(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        if (!dialog?.textContent?.includes("This replaces your unpublished draft")) return;
+        if (Array.from(dialog.querySelectorAll("button")).some((b) => b.textContent?.trim() === "Applying…")) w.__earlyApplying = true;
+      }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    });
+    return () => page.evaluate(() => (window as unknown as { __earlyApplying?: boolean }).__earlyApplying === true);
+  }
+
   test("« Use this template » reads « Applying… » until the editor arrives", async ({ page }) => {
     await signIn(page);
     const dialog = await openUseDialog(page, SEEDED_A);
@@ -490,6 +508,7 @@ test.describe("F1 — « Use this template » while the apply runs", () => {
     const dialog = await openUseDialog(page, SEEDED_B);
     await dialog.locator("select").selectOption({ label: "Yusuf A." });
     const bar = await watchBar(page);
+    const earlyLabel = await watchQuestionWithApplying(page);
 
     const hold = await holdNextAction(page);
     await dialog.getByRole("button", { name: "Use this template" }).click();
@@ -504,7 +523,13 @@ test.describe("F1 — « Use this template » while the apply runs", () => {
     const replace = dialog.getByRole("button", { name: "Replace the draft", exact: true });
     await expect(replace).toBeEnabled();
     await expect(dialog.getByRole("button", { name: "Applying…", exact: true })).toHaveCount(0);
+    // EV-356a A.6: no bar from the click until 2 s after the question appears (staff B-n3).
+    // A fixed wait on purpose: the claim is about a window of time, not an event.
+    await page.waitForTimeout(2_000);
     expect(await bar(), "a refused apply never started the progress bar").toBe(false);
+    // Staff B-n1: the question arrives while the refused apply's transition is still pending,
+    // so `pending ? « Applying… » : « Replace the draft »` would label a button nobody pressed.
+    expect(await earlyLabel(), "« Replace the draft » never read « Applying… » before it was pressed").toBe(false);
 
     // The second press says it too, on the button that was pressed.
     const again = await holdNextAction(page);

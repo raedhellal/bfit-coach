@@ -36,7 +36,8 @@ const LANG = {
     noMatch: "No client matches.",
     clear: "Show all clients",
     sort: ["Needs attention", "Recently active"],
-    sortFailed: "The order could not be changed. Try again.",
+    // EV-356c's Copy (senior-po), verbatim from the story, not from copy.ts.
+    sortFailed: "The sort could not be changed. Try again.",
     inactiveFor: (d: number) => `Inactive for ${d}\u00a0days`,
     upToDate: "Up to date",
   },
@@ -55,7 +56,7 @@ const LANG = {
     noMatch: "Aucun client ne correspond.",
     clear: "Afficher tous les clients",
     sort: ["À surveiller", "Actifs récemment"],
-    sortFailed: "L'ordre n'a pas pu être changé. Réessayez.",
+    sortFailed: "Le tri n'a pas pu être modifié. Réessayez.",
     inactiveFor: (d: number) => `Inactif depuis ${d}\u00a0j`,
     upToDate: "À jour",
   },
