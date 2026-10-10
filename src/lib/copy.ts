@@ -2454,7 +2454,7 @@ export const en = {
     selectNone: "Clear",
     selected: (count: number) => `${count} selected`,
     noClients: "You have no linked clients yet. Invite a client from the roster first.",
-    /** The roster read failed — not the same fact as having no clients. */
+    /** The roster read failed — not the same fact as having no clients. Also /templates' "Use on a trainee" picker (BUG-738). */
     clientsLoadError: "Your clients could not be loaded. Reload the page to try again.",
     submit: "Create and invite",
     submitting: "Creating…",

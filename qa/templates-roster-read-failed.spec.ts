@@ -17,7 +17,7 @@ import { signInThroughForm } from "./sign-in";
  *       This suite's `empty` scenario serves a roster that really is empty, and the read
  *       SUCCEEDS — which the same test witnesses by finding no alert;
  *   (3) the library list, rename, duplicate and delete still work with the roster failing;
- *   (4) EN and FR, Chromium and WebKit.
+ *   (4) EN and FR, Chromium and WebKit, each of (1)–(3).
  *
  * Sentences are literals, never imports from `src/lib/copy*.ts` (an import would agree
  * with the shipped string by construction).
@@ -87,7 +87,10 @@ async function expectFailureSaid(page: Page, lang: Lang) {
   await expect(dialog.getByRole("alert")).toHaveText([t.failed]);
   await expect(dialog.getByText(t.none, { exact: false })).toHaveCount(0);
   await expect(dialog.getByRole("combobox")).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: t.useIt, exact: true })).toBeDisabled();
+  const apply = dialog.getByRole("button", { name: t.useIt, exact: true });
+  await expect(apply).toBeDisabled();
+  // Staff N1: the disabled control names the sentence that says why it is off.
+  await expect(apply).toHaveAccessibleDescription(t.failed);
 }
 
 /** (2) — the control: a roster that really is empty still says so, and nothing failed. */
@@ -97,7 +100,9 @@ async function expectNoTraineesSaid(page: Page, lang: Lang) {
   await expect(dialog.getByText(t.none, { exact: true })).toBeVisible();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await expect(dialog.getByText(t.failed, { exact: false })).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: t.useIt, exact: true })).toBeDisabled();
+  const apply = dialog.getByRole("button", { name: t.useIt, exact: true });
+  await expect(apply).toBeDisabled();
+  await expect(apply).toHaveAccessibleDescription(t.none);
 }
 
 async function rowAction(page: Page, lang: Lang, name: string, action: "duplicate" | "rename" | "remove") {
@@ -108,6 +113,37 @@ async function rowAction(page: Page, lang: Lang, name: string, action: "duplicat
     await expect(more).toHaveAttribute("aria-expanded", "true", { timeout: 1_000 });
   }).toPass();
   await row(page, name).getByRole("button", { name: t[action], exact: true }).click();
+}
+
+/** (3) — with the roster failing: the list, a rename, a duplicate and a delete, kept by the server. */
+async function expectLibraryWorks(page: Page, lang: Lang) {
+  const t = T[lang];
+  await page.goto("/templates");
+  await expect(row(page, SEEDED_A)).toBeVisible();
+  await expect(row(page, SEEDED_B)).toBeVisible();
+
+  const renamed = `BUG-738 ${lang}`;
+  await rowAction(page, lang, SEEDED_B, "rename");
+  const rename = page.getByRole("dialog");
+  await rename.getByLabel(t.nameLabel).fill(renamed);
+  await rename.getByRole("button", { name: t.rename, exact: true }).click();
+  await expect(row(page, renamed)).toBeVisible();
+  await expect(row(page, SEEDED_B)).toHaveCount(0);
+
+  await rowAction(page, lang, SEEDED_A, "duplicate");
+  const copy = `${SEEDED_A}${t.copySuffix}`;
+  await expect(row(page, copy)).toBeVisible();
+
+  await rowAction(page, lang, copy, "remove");
+  await page.getByRole("dialog").getByRole("button", { name: t.remove, exact: true }).click();
+  await expect(row(page, copy)).toHaveCount(0);
+
+  // From the server, not this client's state: a reload with the roster still failing.
+  await page.reload();
+  await expect(row(page, renamed)).toBeVisible();
+  await expect(row(page, SEEDED_A)).toBeVisible();
+  await expect(row(page, copy)).toHaveCount(0);
+  await expect(row(page, SEEDED_B)).toHaveCount(0);
 }
 
 for (const lang of ["en", "fr"] as const) {
@@ -138,32 +174,7 @@ for (const lang of ["en", "fr"] as const) {
     }) => {
       await signInThroughForm(page, { lang });
       await failRoster(context, baseURL!);
-      await page.goto("/templates");
-      await expect(row(page, SEEDED_A)).toBeVisible();
-      await expect(row(page, SEEDED_B)).toBeVisible();
-
-      const renamed = `BUG-738 ${lang}`;
-      await rowAction(page, lang, SEEDED_B, "rename");
-      const rename = page.getByRole("dialog");
-      await rename.getByLabel(t.nameLabel).fill(renamed);
-      await rename.getByRole("button", { name: t.rename, exact: true }).click();
-      await expect(row(page, renamed)).toBeVisible();
-      await expect(row(page, SEEDED_B)).toHaveCount(0);
-
-      await rowAction(page, lang, SEEDED_A, "duplicate");
-      const copy = `${SEEDED_A}${t.copySuffix}`;
-      await expect(row(page, copy)).toBeVisible();
-
-      await rowAction(page, lang, copy, "remove");
-      await page.getByRole("dialog").getByRole("button", { name: t.remove, exact: true }).click();
-      await expect(row(page, copy)).toHaveCount(0);
-
-      // From the server, not this client's state: a reload with the roster still failing.
-      await page.reload();
-      await expect(row(page, renamed)).toBeVisible();
-      await expect(row(page, SEEDED_A)).toBeVisible();
-      await expect(row(page, copy)).toHaveCount(0);
-      await expect(row(page, SEEDED_B)).toHaveCount(0);
+      await expectLibraryWorks(page, lang);
     });
   });
 }
@@ -207,6 +218,16 @@ test.describe("BUG-738 WebKit", () => {
       await withPage(baseURL!, async (page) => {
         await signInThroughForm(page, { lang });
         await expectNoTraineesSaid(page, lang);
+      });
+    });
+
+    test(`(${lang}) with the roster failing, the library lists, renames, duplicates and deletes`, async ({
+      baseURL,
+    }) => {
+      await withPage(baseURL!, async (page, context) => {
+        await signInThroughForm(page, { lang });
+        await failRoster(context, baseURL!);
+        await expectLibraryWorks(page, lang);
       });
     });
   }

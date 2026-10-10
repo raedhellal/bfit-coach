@@ -563,6 +563,8 @@ function UseDialog({
   const router = useRouter();
   const rosterFailed = trainees === null;
   const offered = trainees ?? [];
+  /** BUG-738 N1: the sentence that says why « Use » is off (a failed read, or nobody to offer). */
+  const reasonId = useId();
   const [clientId, setClientId] = useState("");
   const [conflict, setConflict] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -664,7 +666,11 @@ function UseDialog({
             // F1: the pressed button says the apply is running (`pressed`). The progress bar
             // still starts only after success: it has no cancel, so a refused apply
             // (`DRAFT_EXISTS`) would leave it up for 20 s.
-            <Button onClick={() => run()} disabled={pending || noTrainees || !trainee}>
+            <Button
+              onClick={() => run()}
+              disabled={pending || noTrainees || !trainee}
+              ariaDescribedBy={noTrainees ? reasonId : undefined}
+            >
               {pending && pressed === "use" ? copy.templates.applying : copy.templates.useIt}
             </Button>
           )}
@@ -675,11 +681,11 @@ function UseDialog({
         // BUG-738 — the roster read failed. Saying "no trainees" here would be a false
         // statement about the coach's clients. The words are the challenges dialog's
         // (senior-po: no new copy), announced as an alert like /nutrition-templates' own.
-        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
+        <p id={reasonId} role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
           {copy.challenges.clientsLoadError}
         </p>
       ) : noTrainees ? (
-        <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
+        <p id={reasonId} style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
           {copy.templates.noTrainees}
         </p>
       ) : (
