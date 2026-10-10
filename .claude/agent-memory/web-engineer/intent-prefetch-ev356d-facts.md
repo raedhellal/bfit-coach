@@ -40,6 +40,18 @@ after an 80 ms dwell (mouse pointerenter, focus). `staleTimes.static` 300 -> 30,
   Forward, with zero requests. Only a reload escapes it.
 - WebKit fires `pointerover` under a stationary pointer after Back, so an IntentLink row under the cursor prefetches.
   Chromium does not.
+- **The fixes (2026-10-10).** `51f9939`, R1-H: `BootMark` (a module flag, set in an effect, mounted outside the root
+  Suspense) plus the `error.tsx` client-load branch, which reloads once when the error is met after boot. `e9af1fe`,
+  invariant N: every link goes through `components/ui/Link.tsx` (`prefetch={false}`), and ESLint bans `next/link`
+  elsewhere.
+  - `next build` runs lint, so a mutant that brings `next/link` back fails the BUILD. Build it with
+    `next build --no-lint` to see its runtime red.
+  - R1-H changes timing for any spec that navigates client-side onto the overview during an outage: the arrival
+    reloads. BUG-713's walk had to wait for the 500 notice before its next `goto` (otherwise ERR_ABORTED).
+  - To see "at any frame" across a reload, use `addInitScript` (a MutationObserver) plus `exposeBinding`.
+    Skip text inside SCRIPT and STYLE.
+  - Multi-page tests in one context need `context.setDefaultTimeout`: the start config sets no action timeout, so a
+    bad locator hangs until the test timeout and names no step.
 - Scratch Playwright configs outside the repo cannot resolve `@playwright/test`. Put a probe under `qa/`, untracked,
   and give `webServer` a `cwd`.
 
