@@ -52,6 +52,10 @@ after an 80 ms dwell (mouse pointerenter, focus). `staleTimes.static` 300 -> 30,
     Skip text inside SCRIPT and STYLE.
   - Multi-page tests in one context need `context.setDefaultTimeout`: the start config sets no action timeout, so a
     bad locator hangs until the test timeout and names no step.
+- WebKit's Tab skips links (Safari default). A keyboard test across links in WebKit must press `Alt+Tab`. The
+  witness: plain Tab focused no roster row.
+- A spec-launched browser runs under the chromium project, while a Playwright `webkit` project with `grep` runs
+  specs that use the runner's own page. Both need the Secure-cookie strip on `next start`.
 - Scratch Playwright configs outside the repo cannot resolve `@playwright/test`. Put a probe under `qa/`, untracked,
   and give `webServer` a `cwd`.
 
