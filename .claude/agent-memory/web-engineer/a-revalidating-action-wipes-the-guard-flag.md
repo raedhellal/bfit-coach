@@ -1,6 +1,6 @@
 ---
 name: a-revalidating-action-wipes-the-guard-flag
-description: BUG-735 — after an update action that revalidates, Next 14.2 replaceStates the current entry and drops evoliUnsavedGuard; the sentinel is still there; witness by navigation.currentEntry.index. Also: a late edit + "stays" release needs stillUnsaved()
+description: BUG-735/741 — after an update action that revalidates, Next 14.2 replaceStates the current entry and drops evoliUnsavedGuard; the sentinel is still there; witness by navigation.currentEntry.index. Also: a late edit + "stays" release needs stillUnsaved()
 metadata:
   type: project
 ---
@@ -16,7 +16,10 @@ sentinel is re-pushed after the action). Witness with the Navigation API's
 `navigation.currentEntry.index` (Chromium AND Playwright WebKit 2359: staff ran the spec 8/8 on
 WebKit; I wrongly reported it Chromium-only — check an API in the engine before saying so): read `start` on load before the first keystroke; armed = `start+1`,
 clean = `start` (`historyIndex` in `qa/editor-late-edit.spec.ts`, as in BUG-730's specs).
-`armed()`/`disarmed()` in `form-leave-guard.spec.ts` are still fine BEFORE any action answers.
+**I was wrong that `form-leave-guard`'s `disarmed()` was "fine BEFORE any action answers": it was
+called AFTER saves, and so was `coach-progress-goal`'s `savedAndSettled`. QA's mutant M-S2 (no step
+back after any save) left both green (BUG-741). Since `d5ef9f6` both take `start` and wait for the
+index. Rule: a flag on `history.state` can witness an ARM; only the index witnesses a DISARM.**
 
 **The fix's shape (BUG-735, fix/bug-735-late-edit-dirty).** Template and recipe editors count
 edits (`revision`, RoutineEditor's pattern) and clear `dirty` only if nothing was typed after the
