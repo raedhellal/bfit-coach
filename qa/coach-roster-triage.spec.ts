@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { rosterBusyWasSeen, watchRosterBusy } from "./roster-busy";
 
 /**
  * EV-187 AC2 — the roster tells the coach who to open first.
@@ -121,10 +122,13 @@ test("one control flips the order, and it is remembered for the session", async 
   // is no longer the sign that the new order has landed. The sync point is the action's own
   // response, then the rows no longer marked busy (`aria-busy` on each group while pending).
   const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined);
+  // BUG-742: the busy check below is a sync only if the groups entered busy at all.
+  await watchRosterBusy(page);
   await page.getByRole("radio", { name: "Recently active" }).click();
   await expect(page.getByRole("radio", { name: "Recently active" })).toBeChecked();
   await answered;
   await expect(page.locator('section[data-roster-group][aria-busy="true"]')).toHaveCount(0);
+  expect(await rosterBusyWasSeen(page), "the groups never entered aria-busy: the read below is not synced").toBe(true);
 
   // Most recently active first: Lina trained yesterday, Tobias nine days ago, and every
   // trainee with no known activity is after them.
