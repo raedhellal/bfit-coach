@@ -44,7 +44,9 @@ export default defineConfig({
   // which only a populated roster has. pro-roster-unnamed-client.spec.ts (BUG-714) serves one
   // roster client with no name, and its pickers are built from the roster.
   // field-focus-ring-roster.spec.ts (BUG-724) sweeps the roster's search box, populated only.
-  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster)\.spec\.ts/,
+  // intent-prefetch.spec.ts (EV-356d) needs a production build: router.prefetch is a no-op
+  // under next dev, so it runs in playwright.start.config.ts only.
+  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intent-prefetch)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

@@ -120,19 +120,37 @@ const nextConfig = {
   env: buildStamp,
   experimental: {
     /**
-     * ADR-0033 D33.0 (branch 2a): the client router cache, written down rather than
-     * inherited. These ARE Next 14.2.35's defaults (`next/dist/server/config-shared.js`).
-     * A coach who returns to a page inside 30 s gets it from the browser's router cache
-     * with no server render, which the 2a baseline measured at 2-16 ms against ~310 ms
-     * for a first visit. Next 15 changes the dynamic default to 0, so an upgrade would
-     * silently take that away; with the values here it cannot.
+     * ADR-0033 D33.0 (branch 2a), amended by EV-356d: the client router cache, written down
+     * rather than inherited. These are NOT Next's defaults any more (14.2.35's are
+     * `{ dynamic: 30, static: 300 }`, `next/dist/server/config-shared.js`).
+     *
+     * `dynamic: 30` — a coach who returns to a page inside 30 s gets it from the browser's
+     * router cache with no server render, which the 2a baseline measured at 2-16 ms against
+     * ~310 ms for a first visit. Next 15 changes this default to 0, so an upgrade would
+     * silently take that away; with the value here it cannot.
+     *
+     * `static: 30` (was 300) — EV-356d's intent prefetch (`IntentLink`, roster rows only)
+     * makes a FULL prefetch of a client's overview, and a FULL entry is reused without a
+     * refetch until `static` from the prefetch (`prefetch-cache-utils.js`
+     * `getPrefetchEntryCacheStatus`), then `dynamic` from its first use. At 300 a hovered
+     * row clicked four minutes later would paint four-minute-old data. At 30 the window is
+     * ≤ ~60 s, the bound Raed ruled on 2026-10-10 (option A) — including the first open of a
+     * client after the trainee ended the link, if the row was hovered before. The api side
+     * is unchanged: it caches nothing and refuses every request after the revoke.
+     *
+     * Side effects of `static == dynamic`, read in 14.2.35 (staff round 1 §1b): the AUTO
+     * "stale" band is gone, so an unused AUTO entry goes from fresh to expired at 30 s and
+     * the loading-only reuse path is unreachable; a hover over a plain `<Link>` more than
+     * 30 s after its last prefetch fetches the route tree again (cheap: no loading.tsx below
+     * those links, so no component renders, but each passes through middleware).
+     * `STATIC_STALETIME_MS` has no server-side consumer.
      *
      * Every server action that calls `revalidatePath` still purges this cache (14.2's
      * action reducer clears the prefetch cache whenever the action renders), so a write
-     * is never followed by a 30 s-old page. `qa/stale-times-config.spec.ts` pins both
-     * numbers.
+     * is never followed by a cached page. `qa/stale-times-config.spec.ts` pins both
+     * numbers; `qa/intent-prefetch.spec.ts` D.5 witnesses the 60 s bound on `next start`.
      */
-    staleTimes: { dynamic: 30, static: 300 },
+    staleTimes: { dynamic: 30, static: 30 },
   },
   webpack: preloadableCopyChunks,
   async headers() {

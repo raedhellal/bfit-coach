@@ -1,6 +1,7 @@
 import { expect, type Page, type Request } from "@playwright/test";
 import { test } from "./fixture-test";
 import { openTargetsForm } from "./targets-card";
+import { isProductionBuild } from "./production-build";
 
 /**
  * perf/coach-parallel-page-reads — what each main route costs b-fit-api, and how many
@@ -402,30 +403,68 @@ test.describe("prefetching a client page", () => {
     expect(ops(entries)).toEqual([]);
   });
 
-  test("the roster's row prefetches cost no read (production build)", async ({ page }) => {
+  /**
+   * EV-356d D.4 — the roster's rows no longer prefetch on sight (`IntentLink`,
+   * `<Link prefetch={false}>`). Until then a production build sent one AUTO prefetch per
+   * row in the viewport (the route tree, no read); now a roster load sends no request for
+   * any client page at all, and still reads nothing in the background.
+   *
+   * Under `next dev` nothing prefetches anyway, so the request half holds trivially there;
+   * on `next start` (`playwright.start.config.ts`) it is the witness: on the parent
+   * branch it counted one request per visible row.
+   */
+  test("a roster load prefetches no client page and reads nothing in the background (D.4)", async ({ page }) => {
     await signIn(page);
-    const prefetched = new Set<string>();
+    const clientRequests: string[] = [];
     page.on("request", (req) => {
-      const h = req.headers();
       const path = new URL(req.url()).pathname;
-      if (h["next-router-prefetch"] === "1" && path.startsWith("/clients/")) prefetched.add(path);
+      if (req.headers()["rsc"] === "1" && path.startsWith("/clients/")) clientRequests.push(path);
     });
     const before = (await journal(page)).length;
     await page.goto("/", { waitUntil: "networkidle" });
-    // A prefetch is fired when a link enters the viewport, after hydration, and its
-    // render finishes after `networkidle` can already have fired.
+    await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
+    // A viewport prefetch is fired after hydration, and its render finishes after
+    // `networkidle` can already have fired.
     await page.waitForTimeout(1_000);
     await page.waitForLoadState("networkidle");
-    test.skip(prefetched.size === 0, "next dev does not prefetch <Link>s; the hand-sent prefetch above covers it there");
 
     const entries = (await journal(page)).slice(before);
-    const background = entries.filter((e) => !e.document);
     expect(ops(entries.filter((e) => e.document))).toEqual(["getMe", "listClients"]);
-    expect(
-      { reads: background.length, ops: [...new Set(background.map((e) => e.op))] },
-      `${prefetched.size} client links were prefetched`
-    ).toEqual({ reads: 0, ops: [] });
-    // The rows were prefetched (the route tree), so the count above is not vacuous.
-    expect(prefetched.size).toBeGreaterThan(0);
+    expect(ops(entries.filter((e) => !e.document)), "no background read").toEqual([]);
+    expect(clientRequests, `production build: ${await isProductionBuild(page)}`).toEqual([]);
+  });
+
+  /**
+   * EV-356d D.4 — hover = one render, re-hover inside 30 s = zero. Production build only:
+   * `router.prefetch` is a no-op under `next dev`, so the gate's dev server skips it and
+   * `playwright.start.config.ts` runs it.
+   */
+  test("hovering a row renders its client once; hovering it again inside 30 s renders nothing (D.4)", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/");
+    await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
+    test.skip(!(await isProductionBuild(page)), "router.prefetch is a no-op under next dev: run playwright.start.config.ts");
+    await page.waitForLoadState("networkidle");
+    await page.mouse.move(1, 1);
+    const before = (await journal(page)).length;
+
+    const row = page.locator(`a.roster-row[href="/clients/${LINA}"]`);
+    const rendered = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === `/clients/${LINA}` && r.request().headers()["rsc"] === "1"
+    );
+    await row.hover();
+    expect((await rendered).status()).toBe(200);
+    await page.mouse.move(1, 1);
+    await page.waitForLoadState("networkidle");
+    const first = (await journal(page)).slice(before);
+    expect(first.every((e) => !e.document)).toBe(true);
+    expect(new Set(first.map((e) => e.request)).size, "one render").toBe(1);
+    expect(first.map((e) => e.op)).toContain("getClient");
+
+    await row.hover();
+    await page.waitForTimeout(400);
+    await page.mouse.move(1, 1);
+    await page.waitForLoadState("networkidle");
+    expect((await journal(page)).slice(before + first.length), "the re-hover renders nothing").toEqual([]);
   });
 });
