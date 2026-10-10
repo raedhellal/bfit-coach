@@ -23,3 +23,4 @@
 - [Create-to-edit by replaceState remounts on the next save](create-to-edit-by-replacestate-remounts-on-next-save.md) — BUG-735: Next still on /new; first update remounts, late edit + notice lost; test create→update; expando witness
 - [New-string test copies the code, not the PO ruling](new-string-test-copies-the-code-not-the-po-ruling.md) — EV-356c sort-failure sentence ≠ story Copy, spec pinned the code's words; "red on base" committed before any run
 - [Red on base at a precondition](red-on-base-at-a-precondition.md) — base-red at a setup step the new behaviour satisfies is not a defect witness; classify each red line (fluidity batch 1)
+- [A whole-read fix leaves sibling page-0 readers](a-whole-read-fix-leaves-sibling-page-zero-readers.md) — BUG-472 fixed /challenges only; /templates + /nutrition-templates read page 0; fixture overflow rows have no scopes
