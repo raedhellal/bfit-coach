@@ -29,8 +29,9 @@ import { chromium, type FullConfig } from "@playwright/test";
  * ⚠ IT MAY ONLY READ. This runs in the same dev-server process as the tests and the
  * fixture is one in-memory store, so a warm-up that pressed a button would hand the
  * first spec a mutated world. Every navigation below is a GET, and the template id is a
- * random UUID that renders the "not in your library" notice — which compiles the
- * `/templates/[id]` route module without touching a template.
+ * random UUID that renders the "not in your library" notice — which compiles the page
+ * `/templates/{id}` is served by (`templates/editor/page.tsx`, through the BUG-739 rewrite)
+ * without touching a template.
  */
 
 const EMAIL = "coach@evoli.fit";
@@ -38,9 +39,9 @@ const PASSWORD = "Password123!";
 
 /** A trainee the fixture answers for in BOTH scenarios (empty and populated). */
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
-/** Never a real template. `/templates/[id]` is compiled either way. */
+/** Never a real template. `templates/editor/page.tsx` is compiled either way. */
 const NOBODYS_TEMPLATE = "00000000-0000-0000-0000-000000000000";
-/** Never a real recipe either: `/recipes/[id]` compiles on the "not in your library" notice. */
+/** Never a real recipe either: `recipes/editor/page.tsx` compiles on the "not in your library" notice. */
 const NOBODYS_RECIPE = "00000000-0000-0000-0000-000000000000";
 
 export default async function warmRoutes(config: FullConfig): Promise<void> {

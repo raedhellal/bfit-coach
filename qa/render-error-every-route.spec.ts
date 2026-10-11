@@ -1,7 +1,14 @@
 import { expect } from "@playwright/test";
-import { readdirSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  appPages,
+  beforeFilesRewrites,
+  destinationPath,
+  resolvePage,
+  sourceMatches,
+  urlPattern,
+} from "./app-pages";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 
@@ -45,7 +52,15 @@ const CHALLENGE = "c4a11e00-0000-4000-8000-000000000001";
 /** The seeded LAPSED invitation (AC-P14), not an Invited account on the list. */
 const LAPSED_INVITATION = "204b0000-0000-4000-8000-000000000001";
 
-/** Every shell page: its file under `src/app` → the URL the test opens. */
+/**
+ * Every shell page: its file under `src/app` → the URL the test opens.
+ *
+ * EV-362 AC6: `/recipes/new`, `/recipes/[id]`, `/templates/new` and `/templates/[id]` have no
+ * page file. They are served by `recipes/editor/page.tsx` and `templates/editor/page.tsx` through
+ * `next.config.mjs`'s `beforeFiles` rewrites (BUG-739), and this file mapping does not model
+ * rewrites (353.4), so it lists the editor files under the URLs their own folder serves. The
+ * addresses a coach uses are opened too, from `REWRITTEN` below.
+ */
 const ROUTE_FILES: Record<string, string> = {
   "(roster)/page.tsx": "/",
   "challenges/(list)/page.tsx": "/challenges",
@@ -56,12 +71,8 @@ const ROUTE_FILES: Record<string, string> = {
   "clients/denied/page.tsx": "/clients/denied",
   "invited/[userId]/page.tsx": `/invited/${LAPSED_INVITATION}`,
   "templates/page.tsx": "/templates",
-  "templates/new/page.tsx": "/templates/new",
-  "templates/[id]/page.tsx": `/templates/${TEMPLATE}`,
   "templates/editor/page.tsx": "/templates/editor",
   "recipes/page.tsx": "/recipes",
-  "recipes/new/page.tsx": "/recipes/new",
-  "recipes/[id]/page.tsx": `/recipes/${RECIPE}`,
   "recipes/editor/page.tsx": "/recipes/editor",
   "nutrition-templates/page.tsx": "/nutrition-templates",
   "nutrition-templates/new/page.tsx": "/nutrition-templates/new",
@@ -83,69 +94,23 @@ const NO_SHELL: { route: string; files: RegExp; reason: string }[] = [
   },
 ];
 
-const ROUTES = Object.values(ROUTE_FILES);
-
-/** A Next page file, in any of the default `pageExtensions` (EV-352 352.2). */
-const PAGE_FILE = /(^|\/)page\.(tsx|ts|jsx|js)$/;
-
-/** Every page file under `src/app`, as a `/`-separated path relative to it. */
-function appPages(): string[] {
-  const root = join(__dirname, "..", "src", "app");
-  return (readdirSync(root, { recursive: true }) as string[])
-    .map((p) => relative(root, join(root, p)).split(sep).join("/"))
-    .filter((p) => PAGE_FILE.test(p))
-    .sort();
-}
-
 /**
- * How Next ranks one URL segment of a page file: a static name beats `[param]`, which beats
- * `[...catchAll]`, which beats `[[...optional]]`. Route groups `(…)` are not segments.
+ * EV-362 AC6: the editor addresses a coach uses, which reach their page only through a
+ * `next.config.mjs` rewrite → the page file the rewrite serves. Opened like `ROUTES`, so the
+ * switch is still asserted on both of the editor pages' branches (new, and an existing record)
+ * at the canonical addresses. Checked statically against the rules themselves (EV-362 test
+ * below): every `beforeFiles` rule takes one of these URLs, each target is its rule's
+ * destination page and a `ROUTE_FILES` page, and the file-system router alone reaches NO page
+ * from the URL (else it belongs in `ROUTE_FILES`).
  */
-type Segment = { kind: 0 | 1 | 2 | 3; name: string };
+const REWRITTEN: Record<string, string> = {
+  "/templates/new": "templates/editor/page.tsx",
+  [`/templates/${TEMPLATE}`]: "templates/editor/page.tsx",
+  "/recipes/new": "recipes/editor/page.tsx",
+  [`/recipes/${RECIPE}`]: "recipes/editor/page.tsx",
+};
 
-function segmentsOf(file: string): Segment[] {
-  return file
-    .replace(PAGE_FILE, "")
-    .split("/")
-    .filter((s) => s !== "" && !/^\(.*\)$/.test(s))
-    .map((s): Segment => {
-      if (/^\[\[\.\.\.[^\]]+\]\]$/.test(s)) return { kind: 3, name: s };
-      if (/^\[\.\.\.[^\]]+\]$/.test(s)) return { kind: 2, name: s };
-      if (/^\[[^\].]+\]$/.test(s)) return { kind: 1, name: s };
-      // Parallel slots and intercepting routes change what a URL reaches: refuse, do not guess.
-      if (/^[@(]|[[\]]/.test(s)) throw new Error(`${file}: segment "${s}" is not one this check can derive`);
-      return { kind: 0, name: s };
-    });
-}
-
-/** The URL pattern a page file serves: groups removed, `[param]` one segment. */
-function urlPattern(file: string): RegExp {
-  let body = "";
-  for (const seg of segmentsOf(file)) {
-    if (seg.kind === 0) body += `/${seg.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
-    else if (seg.kind === 1) body += "/[^/]+";
-    else if (seg.kind === 2) body += "(?:/[^/]+)+";
-    else body += "(?:/[^/]+)*";
-  }
-  // `/?` so the root (`(roster)/page.tsx`, body "") is "/", and an optional catch-all can be empty.
-  return new RegExp(`^${body}/?$`);
-}
-
-/**
- * The page file Next's file-system router serves `url` from, among `pages`: the most specific
- * match, segment by segment. Middleware and config rewrites are not modelled (353.4).
- */
-function resolvePage(url: string, pages: string[]): string | undefined {
-  const rank = (file: string) => segmentsOf(file).map((s) => s.kind);
-  const byRank = (a: string, b: string) => {
-    const [ra, rb] = [rank(a), rank(b)];
-    for (let i = 0; i < Math.max(ra.length, rb.length); i += 1) {
-      if ((ra[i] ?? 9) !== (rb[i] ?? 9)) return (ra[i] ?? 9) - (rb[i] ?? 9);
-    }
-    return 0;
-  };
-  return pages.filter((p) => urlPattern(p).test(url.split("?")[0])).sort(byRank)[0];
-}
+const ROUTES = [...Object.values(ROUTE_FILES), ...Object.keys(REWRITTEN)];
 
 test("349.1: every page under src/app is in ROUTES or in NO_SHELL, and every listed file exists", () => {
   const pages = appPages();
@@ -177,7 +142,53 @@ test("352.4: each ROUTES URL is the one Next serves from the file listed beside 
 });
 
 /**
- * EV-353 353.3 — the default `pageExtensions` that `PAGE_FILE` assumes is PINNED: if
+ * EV-362 — `REWRITTEN` is bound to `next.config.mjs`'s `beforeFiles` rules, both ways:
+ *   · every rule takes at least one `REWRITTEN` URL, so a rule cannot lose its address here
+ *     (staff's M6: the `/recipes/{id}` entry deleted → the `/recipes/:id` rule is uncovered);
+ *   · every URL is taken by a rule (the FIRST in order, as Next tries them), and its target is
+ *     the page the file-system router serves for that rule's destination pathname (staff's M5: a
+ *     swapped target is red);
+ *   · and the file-system router alone reaches NO page from the URL, else it belongs in
+ *     `ROUTE_FILES`; each target is a `ROUTE_FILES` page.
+ * Sources are compiled as Next compiles them (`sourceMatches`, path-to-regexp).
+ */
+test("EV-362: REWRITTEN covers every beforeFiles rule, each URL's target is its rule's destination page, and no page file serves the URL (static)", async () => {
+  const pages = appPages();
+  const rules = await beforeFilesRewrites();
+  expect(rules.length, "next.config.mjs declares beforeFiles rewrites").toBeGreaterThan(0);
+
+  const uncovered = rules
+    .filter((rule) => !Object.keys(REWRITTEN).some((url) => sourceMatches(rule.source, url)))
+    .map((rule) => `${rule.source} -> ${rule.destination}`);
+  expect(uncovered, "beforeFiles rules no REWRITTEN URL exercises").toEqual([]);
+
+  const wrongTarget = Object.entries(REWRITTEN)
+    .map(([url, file]) => {
+      const rule = rules.find((r) => sourceMatches(r.source, url));
+      const served = rule ? resolvePage(destinationPath(rule.destination), pages) : undefined;
+      return { url, file, rule, served };
+    })
+    .filter(({ file, served }) => served !== file)
+    .map(({ url, file, rule, served }) =>
+      rule
+        ? `${url} -> ${file}, but its rule ${rule.source} -> ${rule.destination} reaches ${served ?? "no page"}`
+        : `${url} -> ${file}, but no beforeFiles rule takes it`
+    );
+  expect(wrongTarget, "REWRITTEN targets that are not their rule's destination page").toEqual([]);
+
+  const notListed = Object.entries(REWRITTEN)
+    .filter(([, file]) => !(file in ROUTE_FILES))
+    .map(([url, file]) => `${url} -> ${file}`);
+  expect(notListed, "REWRITTEN targets that are not ROUTE_FILES pages").toEqual([]);
+  const servedByFile = Object.keys(REWRITTEN)
+    .map((url) => [url, resolvePage(url, pages)] as const)
+    .filter(([, served]) => served !== undefined)
+    .map(([url, served]) => `${url} is served by ${served}`);
+  expect(servedByFile, "REWRITTEN URLs a page file serves (list them in ROUTE_FILES)").toEqual([]);
+});
+
+/**
+ * EV-353 353.3 — the default `pageExtensions` that `PAGE_FILE` (`qa/app-pages.ts`) assumes is PINNED: if
  * `next.config.mjs` sets `pageExtensions` (even to the defaults), this fails by name, and
  * whoever set it updates `PAGE_FILE` in the same change. The exported config itself is read
  * (imported, as Next imports it), not its source text, so a comment that mentions the key

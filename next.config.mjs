@@ -164,9 +164,9 @@ const nextConfig = {
    * (`layout-router.js`), so an editor whose id changes is NOT re-mounted. Before, `new/` and
    * `[id]/` were two segments: a create corrected the URL to `/x/{id}`, and the next update's
    * revalidating render swapped the segment and re-mounted the editor, losing a rename typed
-   * during « Saving… », the saved notice and the leave guard. The addresses do not change; the
-   * `new/` and `[id]/` page modules are what `editor/page.tsx` renders, and are not served as
-   * routes themselves.
+   * during « Saving… », the saved notice and the leave guard. The addresses do not change. Since
+   * EV-362 there is no `new/` or `[id]/` page file left: `editor/page.tsx` holds both branches,
+   * so without these rules `/x/new` and `/x/{id}` match no page file.
    *
    * Two pitfalls, both measured, both load-bearing:
    *   · `beforeFiles` rewrites CHAIN. Without the `(?!new$|editor$)` lookahead, `/recipes/new`
@@ -177,7 +177,8 @@ const nextConfig = {
    *     `/recipes/new?id=<A>` served recipe A's editor under `/new` (staff's probe P1). The `new`
    *     rules therefore pin `id=` (empty: a new record).
    *
-   * `beforeFiles`, so the rules run before the filesystem: `new/` and `[id]/` still exist.
+   * `beforeFiles`, so the rules run before the filesystem (they were written while `new/` and
+   * `[id]/` still existed; `qa/editor-create-then-update.spec.ts` pins the four rules as written).
    * Middleware runs on the ORIGINAL path, before these rules, so its matcher is unchanged.
    */
   async rewrites() {
