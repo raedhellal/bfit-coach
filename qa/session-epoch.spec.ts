@@ -427,8 +427,12 @@ for (const lang of ["en", "fr"] as Lang[]) {
       await t.context.close();
     });
 
-    test(`W17: Leave in a stale tab -> /login, no beforeunload prompt, no hidden tab left behind`, async ({ browser, baseURL }) => {
-      const t = await openTabs(browser, baseURL!, { lang });
+    test(`W17: Leave in a stale tab -> /login, no beforeunload prompt, no hidden tab left behind, no frame of the list`, async ({ browser, baseURL }) => {
+      // Records watch for the OTHER seeded template, which only the /templates list shows: Leave
+      // restores that list from the router cache, and (c) must hide it inside that commit (3a:
+      // the leaving editor is already deregistered). Since staff's S2 re-decision, a missing 3a
+      // still ends on /login, from the editor's late passive cleanup, but AFTER the list painted.
+      const t = await openTabs(browser, baseURL!, { lang, name: "Legacy strength" });
       await dirtyTemplateEditor(t);
       const since = await signOutInTab2(t);
       await t.tab1.bringToFront();
@@ -436,7 +440,12 @@ for (const lang of ["en", "fr"] as Lang[]) {
       const leave = t.tab1.getByRole("button", { name: L.leave });
       await expect(leave).toBeVisible();
       await leave.click();
-      await t.tab1.waitForURL((u) => u.pathname === "/login", { timeout: 15_000 });
+      await expect
+        .poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 })
+        .toBe("/login")
+        .catch(() => undefined); // judged below, after the records
+      expect.soft(recordsAfter(t, since), "no frame of the cached list").toEqual([]);
+      expect(new URL(t.tab1.url()).pathname).toBe("/login");
       await expect(t.tab1.getByLabel(L.email)).toBeVisible();
       await t.tab1.waitForTimeout(2_000);
       expect(t.dialogs, "no beforeunload prompt").toEqual([]);
@@ -446,6 +455,7 @@ for (const lang of ["en", "fr"] as Lang[]) {
       expect(docs.filter((s) => s.path !== "/login").length, fmt(docs).join(", ")).toBeLessThanOrEqual(1);
       expect(layerAfter(t, since, "data-session-ended")).toBe("b");
       expect(layerAfter(t, since)).toBe("c");
+      expect(recordsAfter(t, since), "no frame of the cached list").toEqual([]);
       await t.context.close();
     });
 

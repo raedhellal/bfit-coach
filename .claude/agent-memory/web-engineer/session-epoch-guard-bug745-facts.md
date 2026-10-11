@@ -44,6 +44,21 @@ gate (6 red, `page.goto` timeouts), not by any D33.14 witness. Locked by W11b an
   Forward inside the Back's popstate instead.
 - Playwright's `waitForURL` fails on an aborted navigation (`ERR_ABORTED`). Poll `page.url()`.
 
+**Round 2 (2026-10-11; architect R1–R9 and staff APPROVE WITH NITS accepted every deviation):**
+- R9: `crossSessionBoundary` records `boundaryTarget`, and `leave()` and the re-issue reload
+  `sessionReloadTarget()`. `replaceDocument` lives in `src/lib/documentLoad.ts` so the unit
+  harness runs the REAL `clientSession.ts` (U10, M11).
+- S2: when the last armed guard deregisters, the hook notifies (`onUnsavedWorkCleared`) and the
+  guard re-decides as (c). WebKit had left the banner over a clean editor (W20 = staff P3).
+  Consequence: M5 (undo 3a/3b) no longer reddens W17. A layout-phase `setEnded` flushes the
+  passive cleanup in the same task, and the re-decide leaves before paint. **Only U9 catches M5
+  now.** W17's list-name record is proven live by the M2+M6+MS2+M9 control.
+- S1: W19 (scripts held across the sign-out) plus the unit "E1 rendered, E2 at load" case. Both
+  go red with the rejected cookie read in `seedSeen`.
+- **Session witnesses have no CI**: `npm run test:e2e:session` with `COACH_SESSION_SERVER=dev`, then
+  `=start`. The default config ignores both session specs. Name both runs in any gate that
+  touches the guard, `useUnsavedChanges`, `toLogin` or the root layout.
+
 **Rigs:** `qa/tls-front.mjs` (an https front) is needed for WebKit on `next start`. A `__Host-`
 cookie needs Secure, and the server writes the epoch at sign-out, so re-adding cookies by hand
 cannot work. Here it was green in 40/40 WebKit start tests. The BUG-739 note says a hand-rolled
