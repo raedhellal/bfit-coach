@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { signInThroughForm } from "./sign-in";
+import { API_READ_TIMEOUT_MS } from "../src/lib/apiTimeouts";
 
 /**
  * BUG-690 (audit A3) — a stalled api read ends in the page's load-error state, within the
@@ -15,8 +16,8 @@ import { signInThroughForm } from "./sign-in";
  */
 
 const API = process.env.STALL_API_ORIGIN || `http://localhost:${process.env.STALL_API_PORT || "8096"}`;
-/** `API_READ_TIMEOUT_MS` in src/lib/apiFetch.ts (not imported: that module is server-only). */
-const READ_BOUND_MS = 8_000;
+/** The bound `apiFetch` enforces (QA-S3N-1 moved it out of the server-only module, so it is imported). */
+const READ_BOUND_MS = API_READ_TIMEOUT_MS;
 
 const L = {
   en: { loadError: "The roster could not be loaded.", retry: "Reload" },
