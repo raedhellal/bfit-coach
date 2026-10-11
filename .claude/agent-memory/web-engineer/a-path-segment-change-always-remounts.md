@@ -20,7 +20,8 @@ renders), and the segment swap re-mounts the editor. Witness W1 (2026-10-10): `r
 **How to apply:**
 - Shipped shape (B′, 2026-10-11, `d0e43a1`): `beforeFiles` rewrites `/x/new` → `/x/editor?id=`
   and `/x/:id((?!new$|editor$)[^/]+)` → `/x/editor?id=:id`. `editor/page.tsx` renders the old
-  `new/` and `[id]/` modules as JSX; those modules are kept and not served. The create corrects
+  `new/` and `[id]/` modules as JSX; those modules are kept and not served. (Superseded by EV-362:
+  the modules are merged into `editor/page.tsx` and deleted, see [[merged-editor-pages-ev362-facts]].) The create corrects
   the URL with `replaceState(null, …)`. Both halves are needed: W3 showed that with the raw
   `replaceState` alone, Next wrote `/new` back.
 - Rewrite pitfalls, both measured:

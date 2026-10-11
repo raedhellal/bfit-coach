@@ -2,7 +2,7 @@
 // ↑ The default for Next's compiler, stated for Playwright's: its loader compiles JSX in any
 // module a spec imports to its component-testing runtime (`playwright/jsx-runtime`), which
 // React cannot render. With the pragma, `qa/client-tab-bar.spec.ts` renders this file as Next does.
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import type { CoachAccessScope } from "@/lib/coachApi";
 import { MIN_TOUCH_TARGET } from "@/components/ui/kit";
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useRouter } from "next/navigation";
 import { logPortalEvent } from "./portalEvents";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
+import { isSessionLeaving } from "./sessionEpoch";
 
 /**
  * EV-190 U2 / AC2 — a coach's unsaved editor work cannot leave the page silently.
@@ -63,6 +64,13 @@ export interface Release {
  * dictionary chunk: a reload over unsaved work would raise this hook's `beforeunload`
  * prompt, and a coach who answers "stay" left the tab stranded on a render that could never
  * finish. With work unsaved the loader abandons the language switch instead.
+ *
+ * BUG-745 (ADR-0033 D33.14) — also read by `SessionEpochGuard`, at every event, to choose
+ * between reloading a tab whose session changed and keeping an editor's unsaved work on
+ * screen with the session-ended banner. That is why the registration is COMMIT-accurate (3a,
+ * the arming effect below): React runs the layout cleanups of components a commit unmounts in
+ * its mutation phase, before any layout effect of that commit, so the guard's post-commit check
+ * sees an editor that LEFT in the commit as gone and one that STAYED as still registered.
  */
 const armedGuards = new Set<{ current: boolean }>();
 
@@ -70,6 +78,24 @@ const armedGuards = new Set<{ current: boolean }>();
 export function hasUnsavedWork(): boolean {
   for (const live of armedGuards) if (live.current) return true;
   return false;
+}
+
+const unsavedWorkCleared = new Set<() => void>();
+
+/**
+ * BUG-745 (staff S2 on ADR-0033 D33.14) — called when the LAST armed guard deregisters, in the
+ * commit that took the work away (a save's clean commit, or the editor unmounting). The
+ * session-epoch guard re-decides there: a tab it kept on screen for unsaved work (the banner)
+ * must not stay once nothing is unsaved. Measured: in WebKit, a save answered after a sign-out
+ * in another tab hands the sentinel back (`release()` → `history.back()`) and its `popstate`
+ * reached layer (b) while `dirty` was still committed true; no URL change followed, so the
+ * banner stayed over a clean editor. Returns the unsubscribe.
+ */
+export function onUnsavedWorkCleared(listener: () => void): () => void {
+  unsavedWorkCleared.add(listener);
+  return () => {
+    unsavedWorkCleared.delete(listener);
+  };
 }
 
 export function useUnsavedChanges(dirty: boolean) {
@@ -191,7 +217,15 @@ export function useUnsavedChanges(dirty: boolean) {
   );
 
   // ── Closing the tab or reloading ────────────────────────────────────────────
-  useEffect(() => {
+  // `useCommitEffect`, not `useEffect` (BUG-745, ADR-0033 D33.14 3a): registered and removed
+  // inside the commit, so `hasUnsavedWork()` is exact for the session-epoch guard's layout
+  // effect, and the guard's `location.replace` meets no `beforeunload` prompt from an editor
+  // the same commit took away. ⚠ A layout effect is also destroyed when a Suspense boundary
+  // HIDES content already shown (React's `disappearLayoutEffects`): an editor hidden that way is
+  // deregistered while its state lives on. No such case exists today (the language switch and
+  // navigations are transitions, which keep shown content); a future non-transition suspension
+  // inside an editor (a `use()`, a lazy child) must be reviewed against this line.
+  useCommitEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!live.current) return;
@@ -216,6 +250,7 @@ export function useUnsavedChanges(dirty: boolean) {
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       armedGuards.delete(guard);
+      if (!hasUnsavedWork()) for (const listener of unsavedWorkCleared) listener();
     };
   }, [dirty]);
 
@@ -273,7 +308,10 @@ export function useUnsavedChanges(dirty: boolean) {
       // `bypass` means a confirmed navigation is already removing it.
       // Through `withCleanHistory`, like every other step of ours: a keystroke that re-arms
       // while this step is in flight is the same race as after a save (BUG-730).
-      if (!bypass.current && sentinel.current) withCleanHistory();
+      // NOT while the session-epoch guard is replacing the document (BUG-745, ADR-0033 D33.14
+      // 3b): the sentinel goes with the document, and a `history.back()` queued behind the
+      // `location.replace` could cancel it, an ordering no engine promises.
+      if (!bypass.current && sentinel.current && !isSessionLeaving()) withCleanHistory();
     };
   }, [dirty, push, withCleanHistory]);
 

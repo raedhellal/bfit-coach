@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { StatusPill, type StatusTone } from "@/components/ui/StatusPill";
 import { UiIcon } from "@/components/ui/icons";
 import type { ChallengePhase, CoachChallengeSummary } from "@/lib/coachApi";

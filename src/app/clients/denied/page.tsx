@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { DiscardTemplateOutcome } from "@/components/nutritionTemplates/DiscardTemplateOutcome";
 import { UiIcon } from "@/components/ui/icons";

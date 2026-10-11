@@ -4,7 +4,7 @@ import { hasCoachRole, isPendingOnly } from "@/lib/jwt";
 import { NEW_PASSWORD_MAX, NEW_PASSWORD_MIN } from "@/lib/password";
 import { routeAccessToken } from "@/lib/routeSession";
 import { refuseCrossOrigin } from "@/lib/sameOrigin";
-import { clearSession, writeSession } from "@/lib/session";
+import { beginSessionEpoch, clearSession, writeSession } from "@/lib/session";
 import { rememberCoach } from "@/lib/rememberCoach";
 
 /**
@@ -125,6 +125,9 @@ export async function POST(request: Request) {
       return refuse(502, "ACTIVATED_SIGN_IN_AGAIN");
     }
     writeSession(tokens);
+    // BUG-745 (ADR-0033 D33.14): the PENDING session ends and the coach's starts. Here, not in
+    // `writeSession`: `routeAccessToken` (above) stores a rotation through it, which is no boundary.
+    beginSessionEpoch();
     // EV-342k: the activated coach's name, as a sign-in writes it.
     await rememberCoach(tokens.accessToken);
     // No destination: the form goes to "/" itself, and middleware decides from there.

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Avatar, Badge } from "@/components/ui/kit";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { UiIcon } from "@/components/ui/icons";
@@ -9,6 +8,7 @@ import { rosterPlanChanged } from "@/lib/routineChange";
 import { fullNameOf, isUnnamed } from "@/lib/traineeName";
 import type { RosterRowView } from "@/lib/rosterView";
 import type { Copy } from "@/lib/copy";
+import { IntentLink } from "./IntentLink";
 
 /**
  * One roster client (EV-337d, plan §5.1). ONE markup, two layouts: a five-cell row from
@@ -123,8 +123,10 @@ export function RosterRow({ client: c, view, idx }: { client: RosterClient; view
     notes.push(copy.roster.flagsUnavailable);
   }
 
+  // EV-356d: the row's link prefetches the client's overview in full once the pointer or
+  // the focus rests on it (`IntentLink`), and never on sight or on touch.
   return (
-    <Link
+    <IntentLink
       href={`/clients/${c.id}`}
       className="roster-row"
       data-group={view.group}
@@ -177,6 +179,6 @@ export function RosterRow({ client: c, view, idx }: { client: RosterClient; view
         {view.group === "attention" ? copy.roster.actionReview : copy.roster.actionOpen}
         <UiIcon name="chevR" size={15} />
       </span>
-    </Link>
+    </IntentLink>
   );
 }

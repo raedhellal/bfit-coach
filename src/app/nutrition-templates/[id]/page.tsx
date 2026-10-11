@@ -10,10 +10,10 @@ import { getCopy } from "@/lib/i18n/server";
 /**
  * /nutrition-templates/[id] — AC2's Edit.
  *
- * Two failure states, as `/templates/[id]`: a 403 is ONE sentence for a foreign, an
- * unknown and a deleted template (EV-273a AC4 serves one body for all three), and any
- * other failure is the load error. Never `notFound()`: "this does not exist" is exactly
- * the fact the 403 withholds.
+ * Two failure states, as `templates/editor/page.tsx` on an existing template: a 403 is ONE
+ * sentence for a foreign, an unknown and a deleted template (EV-273a AC4 serves one body for
+ * all three), and any other failure is the load error. Never `notFound()`: "this does not
+ * exist" is exactly the fact the 403 withholds.
  *
  * Only `name` and `targets` reach the editor. A structure stored through the api
  * (edge case 9) is served, and dropped here, unread: the editor has no field for it.

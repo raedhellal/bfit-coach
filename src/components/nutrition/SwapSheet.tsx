@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { Button, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import {
   RecipePicker,

@@ -1,0 +1,654 @@
+import { expect } from "@playwright/test";
+import { test } from "./fixture-test";
+import {
+  LABELS,
+  LINA,
+  LINA_NAME,
+  SEEDED_TEMPLATE,
+  YUSUF,
+  YUSUF_NAME,
+  epochCookieName,
+  expectLeftToLogin,
+  expectNoLoop,
+  fmt,
+  holdResponse,
+  hydrated,
+  layerAfter,
+  openLinaThenRoster,
+  openTabs,
+  recordsAfter,
+  signOutInTab2,
+  type Lang,
+  type Tabs,
+} from "./session-epoch-harness";
+import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
+
+/**
+ * BUG-745, ADR-0033 D33.14 — a session boundary in one tab is honoured by every tab of the
+ * browser. The QA witnesses W2–W18 (W1 needs EV-356d's IntentLink and `static: 30`, so it is
+ * shown on the rebuilt train only). W16 runs because this branch contains s3j (`4e95519`), whose
+ * create corrects the URL with a `replaceState(null, …)` that Next syncs (K9). W4b is not in the
+ * ADR: see its comment.
+ *
+ * Run by `playwright.session.config.ts` on `next dev` AND `next start`, Chromium AND WebKit, EN
+ * and FR. Harness: `qa/session-epoch-harness.ts` (records, layers, requests).
+ *
+ * (d) is OFF unless a witness says otherwise (staff r2 S3): the sign-out's BroadcastChannel
+ * message, or a `focus` when Playwright brings tab 1 forward, would reload tab 1 before the
+ * click, traversal or action resolution the witness is about. `evoli_fixture_session_wake=off`
+ * is that "M9 build" in fixture mode (no post, no listener). W5, W6, W10, W11, W14 and W18 run
+ * with (d) on.
+ */
+
+const UPPER_LOWER = "7c2d0a11-0000-4000-8000-0000000000b1";
+const UNLINKED = "00000000-0000-0000-0000-000000000000";
+
+/** A fixture-shaped unsigned token (middleware decodes, never verifies). */
+function token(roles: string[], exp: number): string {
+  const enc = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  return `${enc({ alg: "none", typ: "JWT" })}.${enc({ sub: "1a2b3c4d-0000-4000-8000-00000000c0ac", email: "coach@evoli.fit", roles, exp })}.fixture`;
+}
+
+/** Replace the session cookies in the shared jar, with the attributes the server writes. */
+async function setSession(t: Tabs, access: string, refresh: string): Promise<void> {
+  const secure = t.baseURL.startsWith("https:");
+  const domain = new URL(t.baseURL).hostname;
+  await t.context.addCookies([
+    { name: "evoli_pro_at", value: access, domain, path: "/", httpOnly: true, secure, sameSite: "Lax" },
+    { name: "evoli_pro_rt", value: refresh, domain, path: "/", httpOnly: true, secure, sameSite: "Lax" },
+  ]);
+}
+
+async function epochValue(t: Tabs): Promise<string | undefined> {
+  return (await t.context.cookies()).find((c) => c.name === epochCookieName(t.baseURL))?.value;
+}
+
+/** Template editor with unsaved work: /templates → the seeded template (a soft navigation) → its name edited. */
+async function dirtyTemplateEditor(t: Tabs): Promise<void> {
+  const L = LABELS[t.lang];
+  await hydrated(t.tab1, "/templates");
+  await t.tab1.locator(`a[href="/templates/${UPPER_LOWER}"]`).first().click();
+  await t.tab1.waitForURL(`**/templates/${UPPER_LOWER}`);
+  const name = t.tab1.getByLabel(L.templateName, { exact: true });
+  await expect(name).toHaveValue(SEEDED_TEMPLATE);
+  // Typed until the island answers (a keystroke before hydration does not reach React state).
+  await expect(async () => {
+    await name.fill("");
+    await name.fill(`${SEEDED_TEMPLATE} v2`);
+    await expect(t.tab1.locator(".tpl-dirty-slot")).not.toBeEmpty({ timeout: 1_000 });
+  }).toPass();
+}
+
+for (const lang of ["en", "fr"] as Lang[]) {
+  const L = LABELS[lang];
+  /** W11's ten-second watch, once per witness in English (it is a property of the reload, not of the words). */
+  const watch = lang === "en";
+
+  test.describe(`BUG-745 D33.14 witnesses (${lang})`, () => {
+    test(`W2: a page already opened, sign-out in tab 2, click it in tab 1 within 30 s -> /login, layer a`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await openLinaThenRoster(t);
+      const since = await signOutInTab2(t);
+      await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+      await expectLeftToLogin(t, since, "a", { watch });
+      await t.context.close();
+    });
+
+    test(`W3: Back then Forward in tab 1 after a sign-out in tab 2 -> /login, layer b`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await openLinaThenRoster(t);
+      const since = await signOutInTab2(t);
+      await t.tab1.bringToFront();
+      // Back (to Lina's entry), then Forward queued from inside the Back's own popstate (after the
+      // guard's listener): the Forward reaches a document that is already leaving, which re-issues
+      // the reload. (A synchronous back(); forward() is no traversal at all in WebKit.)
+      await t.tab1.evaluate(() => {
+        window.addEventListener("popstate", () => history.forward(), { once: true });
+        history.back();
+      });
+      await expectLeftToLogin(t, since, "b", { watch, reissued: true });
+      await t.context.close();
+    });
+
+    test(`W4: a server action resolves after the sign-out and navigates (router.push) -> /login, layer c`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, name: YUSUF_NAME });
+      await hydrated(t.tab1, "/templates");
+      const row = t.tab1.getByRole("group", { name: SEEDED_TEMPLATE, exact: true });
+      const dialog = t.tab1.getByRole("dialog");
+      await expect(async () => {
+        await row.getByRole("button", { name: L.use }).click();
+        await expect(dialog).toBeVisible({ timeout: 1_000 });
+      }).toPass();
+      await dialog.locator("select").selectOption({ label: YUSUF_NAME });
+      // The ACTION's answer is held: the write reached the server under the old session.
+      const held = await holdResponse(t.tab1, (route) => route.request().method() === "POST" && route.request().headers()["next-action"] !== undefined);
+      await dialog.getByRole("button", { name: L.useConfirm }).click();
+      await held.reached;
+      const since = await signOutInTab2(t);
+      held.release();
+      // No click in tab 1 after the sign-out. The push's own RSC request is refused (307) by
+      // middleware: the action's answer revalidated, so the router cache had no copy of the page.
+      // Usually the router renders the redirect's /login and (c) leaves; ~1 in 10 in WebKit dev the
+      // redirect follow is aborted and Next falls back to a document load of the target, which
+      // middleware refuses (ruling R2: W4 is the coverage witness; W4b is (c)'s).
+      await expectLeftToLogin(t, since, "c", { clientPath: `/clients/${YUSUF}`, allowRefusedRsc: true, watch, routerFallback: true });
+      await t.context.close();
+    });
+
+    /**
+     * W4b — NOT one of the ADR's witnesses; added because W4 as written cannot fail on this code.
+     * Every create action calls `revalidatePath`, so its answer carries a render and the router
+     * replaces its cache (`server-action-reducer.js`: `prefetchCache = new Map()` when `rsc !==
+     * null`). The `router.push` that follows must therefore REQUEST the page, after the sign-out:
+     * middleware answers 307, nothing of the client can paint, and W4 stays green with (c)
+     * removed or turned into a `useEffect` (M2, M8). What (c) uniquely guards is a navigation whose
+     * answer was rendered under the OLD session and arrives after the boundary: this holds that
+     * answer (the push's data-carrying RSC GET, sent before the sign-out) instead of the action's.
+     */
+    test(`W4b: the navigation's own answer, rendered under the old session, arrives after the sign-out -> zero frames, layer c`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, name: YUSUF_NAME });
+      await hydrated(t.tab1, "/templates");
+      const row = t.tab1.getByRole("group", { name: SEEDED_TEMPLATE, exact: true });
+      const dialog = t.tab1.getByRole("dialog");
+      await expect(async () => {
+        await row.getByRole("button", { name: L.use }).click();
+        await expect(dialog).toBeVisible({ timeout: 1_000 });
+      }).toPass();
+      await dialog.locator("select").selectOption({ label: YUSUF_NAME });
+      const held = await holdResponse(
+        t.tab1,
+        (route) =>
+          route.request().method() === "GET" &&
+          route.request().headers()["rsc"] === "1" &&
+          // The request that carries the page's data. On a cold cache Next first sends a
+          // `Next-Router-Prefetch` request for the tree only, then this one.
+          route.request().headers()["next-router-prefetch"] === undefined &&
+          new URL(route.request().url()).pathname === `/clients/${YUSUF}/routine`
+      );
+      await dialog.getByRole("button", { name: L.useConfirm }).click();
+      await held.reached;
+      const since = await signOutInTab2(t);
+      held.release();
+      await expectLeftToLogin(t, since, "c", { clientPath: `/clients/${YUSUF}`, watch });
+      await t.context.close();
+    });
+
+    test(`W5: (d) on, tab 1 on the overview beside tab 2, sign-out -> tab 1 on /login within 1 s, no input, layer d`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, wake: true });
+      await hydrated(t.tab1, `/clients/${LINA}`);
+      await hydrated(t.tab2, "/");
+      const since = await signOutInTab2(t);
+      await t.tab1.waitForURL((u) => u.pathname === "/login", { timeout: 1_000 + (Date.now() - since) });
+      expect(Date.now() - since).toBeLessThan(3_000);
+      expect(recordsAfter(t, since)).toEqual([]);
+      expect(layerAfter(t, since)).toBe("d");
+      if (watch) await expectNoLoop(t, since);
+      await t.context.close();
+    });
+
+    test(`W6: (d) on, tab 1 hidden at the sign-out, then shown -> /login within 1 s of being shown, layer d`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, wake: true });
+      // Hidden as far as the page can tell (a headless page is always "visible").
+      await t.tab1.addInitScript(() => {
+        const w = window as unknown as { __hidden: boolean };
+        w.__hidden = true;
+        Object.defineProperty(document, "visibilityState", { get: () => (w.__hidden ? "hidden" : "visible"), configurable: true });
+        Object.defineProperty(document, "hidden", { get: () => w.__hidden, configurable: true });
+      });
+      await hydrated(t.tab1, `/clients/${LINA}`);
+      expect(await t.tab1.evaluate(() => document.visibilityState)).toBe("hidden");
+      const since = await signOutInTab2(t);
+      // Shown.
+      const shownAt = Date.now();
+      await t.tab1
+        .evaluate(() => {
+          (window as unknown as { __hidden: boolean }).__hidden = false;
+          document.dispatchEvent(new Event("visibilitychange"));
+        })
+        .catch(() => undefined); // already reloading: the message reached the hidden tab first
+      await t.tab1.waitForURL((u) => u.pathname === "/login", { timeout: 1_000 });
+      expect(Date.now() - shownAt).toBeLessThan(1_500);
+      expect(recordsAfter(t, since)).toEqual([]);
+      expect(layerAfter(t, since)).toBe("d");
+      await t.context.close();
+    });
+
+    test(`W7: a frozen tab, sign-out, unfreeze, click at once -> /login, layer a (Chromium CDP)`, async ({ browser, baseURL, browserName }) => {
+      test.skip(browserName !== "chromium", "Page.setWebLifecycleState is Chromium's CDP");
+      const t = await openTabs(browser, baseURL!, { lang });
+      await openLinaThenRoster(t);
+      const cdp = await t.context.newCDPSession(t.tab1);
+      await cdp.send("Page.setWebLifecycleState", { state: "frozen" });
+      const since = await signOutInTab2(t);
+      await cdp.send("Page.setWebLifecycleState", { state: "active" });
+      await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+      await expectLeftToLogin(t, since, "a", { watch });
+      await t.context.close();
+    });
+
+    test(`W8: a session ended by middleware's toLogin in tab 2 (refused refresh) -> tab 1's click goes to /login, layer a`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await openLinaThenRoster(t);
+      const before = await epochValue(t);
+      await setSession(t, token(["USER", "COACH"], Math.floor(Date.now() / 1000) - 60), "refused");
+      const since = Date.now();
+      const res = await t.tab2.goto("/");
+      expect(new URL(t.tab2.url()).pathname, "tab 2 was sent to /login").toBe("/login");
+      expect(res?.status()).toBe(200);
+      const after = await epochValue(t);
+      expect(after, "toLogin rotated the epoch").toBeTruthy();
+      expect(after).not.toBe(before);
+      await t.tab1.bringToFront();
+      await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+      await expectLeftToLogin(t, since, "a", { watch });
+      await t.context.close();
+    });
+
+    test(`W9: account switch, tab 2 signs in as another coach -> tab 1 paints nothing of Lina from its cache, layer a`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await openLinaThenRoster(t);
+      const since = await signOutInTab2(t);
+      await signInThroughForm(t.tab2, { email: "coach.b@evoli.fit", password: "Password123!", lang });
+      await t.tab1.bringToFront();
+      await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+      // It ends on what the second coach's session renders: here the roster (the fixture shows
+      // every coach the same rows), served by a document request.
+      await t.tab1.waitForLoadState("load");
+      await expect.poll(() => t.seen.filter((s) => s.at >= since && s.kind === "DOC").map((s) => `${s.path} ${s.status}`)).toEqual(["/ 200"]);
+      await expect(t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`)).toBeVisible();
+      expect(new URL(t.tab1.url()).pathname).toBe("/");
+      expect(recordsAfter(t, since, true), "nothing of Lina painted by the OLD document").toEqual([]);
+      // No NAVIGATION to her page. (On `next start` the new document's roster prefetches her row
+      // under coach B's session, AUTO: invariant N is not on this base. That is the new session's
+      // server answering, not the old document's cache.)
+      expect(t.seen.filter((s) => s.at >= since && s.kind === "FULL" && s.path.startsWith(`/clients/${LINA}`))).toEqual([]);
+      expect(await t.tab1.locator("h1").allTextContents()).not.toContain(LINA_NAME);
+      expect(layerAfter(t, since)).toBe("a");
+      if (watch) await expectNoLoop(t, since);
+      await t.context.close();
+    });
+
+    test(`W10: rotation is not a boundary -> a normal navigation, no document request, no data-session-leaving`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, wake: true });
+      await hydrated(t.tab1, "/");
+      const epoch = await epochValue(t);
+      expect(epoch).toBeTruthy();
+      // The access token has expired while tab 1 idled; the refresh cookie is good.
+      await setSession(t, token(["USER", "COACH"], Math.floor(Date.now() / 1000) - 60), "rotate:COACH:coach@evoli.fit");
+      const since = Date.now();
+      await hydrated(t.tab2, "/");
+      const access = (await t.context.cookies()).find((c) => c.name === "evoli_pro_at")?.value ?? "";
+      expect(JSON.parse(Buffer.from(access.split(".")[1], "base64url").toString()).exp * 1000, "middleware rotated").toBeGreaterThan(Date.now());
+      expect.soft(await epochValue(t), "the epoch is unchanged by a rotation").toBe(epoch);
+      await t.tab1.bringToFront();
+      await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+      await t.tab1.waitForURL(`**/clients/${LINA}`, { timeout: 15_000 });
+      await expect(t.tab1.locator("h1")).toHaveText(LINA_NAME);
+      await t.tab1.waitForTimeout(1_000);
+      expect(t.seen.filter((s) => s.at >= since && s.kind === "DOC"), fmt(t.seen).join(", ")).toEqual([]);
+      expect(t.reports.filter((r) => r.kind === "layer")).toEqual([]);
+      expect(await t.tab1.evaluate(() => document.documentElement.hasAttribute("data-session-leaving"))).toBe(false);
+      await t.context.close();
+    });
+
+    test(`W12: a session from before the deploy (no epoch at load), sign-out in tab 2, click in tab 1 -> /login, layer a`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, noEpochAtLoad: true });
+      await openLinaThenRoster(t);
+      expect(await t.tab1.evaluate(() => document.documentElement.getAttribute("data-session-epoch"))).toBe("");
+      const since = await signOutInTab2(t);
+      await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+      await expectLeftToLogin(t, since, "a", { watch });
+      await t.context.close();
+    });
+
+    test.describe("W13: no BroadcastChannel and no wake-ups (old Safari)", () => {
+      test(`W13/W2 -> /login, layer a`, async ({ browser, baseURL }) => {
+        const t = await openTabs(browser, baseURL!, { lang, noBroadcastChannel: true });
+        await openLinaThenRoster(t);
+        expect(await t.tab1.evaluate(() => typeof (window as unknown as { BroadcastChannel?: unknown }).BroadcastChannel)).toBe("undefined");
+        const since = await signOutInTab2(t);
+        await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+        await expectLeftToLogin(t, since, "a", { watch: false });
+        await t.context.close();
+      });
+      test(`W13/W3 -> /login, layer b`, async ({ browser, baseURL }) => {
+        const t = await openTabs(browser, baseURL!, { lang, noBroadcastChannel: true });
+        await openLinaThenRoster(t);
+        const since = await signOutInTab2(t);
+        await t.tab1.bringToFront();
+        await t.tab1.evaluate(() => history.back());
+        await expectLeftToLogin(t, since, "b", { watch: false });
+        await t.context.close();
+      });
+      test(`W13/W8 -> /login, layer a`, async ({ browser, baseURL }) => {
+        const t = await openTabs(browser, baseURL!, { lang, noBroadcastChannel: true });
+        await openLinaThenRoster(t);
+        await setSession(t, token(["USER", "COACH"], Math.floor(Date.now() / 1000) - 60), "refused");
+        const since = Date.now();
+        await t.tab2.goto("/");
+        expect(new URL(t.tab2.url()).pathname).toBe("/login");
+        await t.tab1.bringToFront();
+        await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+        await expectLeftToLogin(t, since, "a", { watch: false });
+        await t.context.close();
+      });
+    });
+
+    test(`W15: the editor exception -> a safe toggle works, Save posts nothing, a link does not navigate, the banner signs in again`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await dirtyTemplateEditor(t);
+      const editorUrl = t.tab1.url();
+      const since = await signOutInTab2(t);
+      await t.tab1.bringToFront();
+      const banner = t.tab1.locator("[data-session-ended-banner]");
+
+      // (i) a section toggle marked data-session-safe works.
+      const toggle = t.tab1.locator(".day-acc-toggle").first();
+      const before = await toggle.getAttribute("aria-expanded");
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", before === "true" ? "false" : "true");
+      await expect(banner).toBeVisible();
+      await expect(banner).toContainText(L.banner);
+      expect(layerAfter(t, since, "data-session-ended")).toBe("a");
+
+      // (ii) Save: zero server-action requests.
+      const save = t.tab1.getByRole("button", { name: L.save, exact: true });
+      await expect(save).toBeEnabled();
+      await save.click();
+      await t.tab1.waitForTimeout(1_500);
+      expect(t.seen.filter((s) => s.at >= since && s.kind === "ACTION"), "Save posted nothing").toEqual([]);
+
+      // (iii) a link: no navigation, no question, the URL unchanged.
+      await t.tab1.locator('.shell-sidebar a[href="/"]').last().click();
+      await t.tab1.waitForTimeout(1_000);
+      expect(t.tab1.url()).toBe(editorUrl);
+      expect(t.seen.filter((s) => s.at >= since && s.kind !== "ACTION"), "no request at all").toEqual([]);
+      await expect(t.tab1.getByRole("button", { name: L.leave })).toHaveCount(0);
+      await expect(banner).toBeVisible();
+      expect(await t.tab1.evaluate(() => document.documentElement.getAttribute("data-session-ended"))).toBe("a");
+      expect(await t.tab1.evaluate(() => document.documentElement.hasAttribute("data-session-leaving"))).toBe(false);
+      expect(recordsAfter(t, since)).toEqual([]);
+
+      // (iv) the banner's sign-in, accepting the browser's question about the unsaved work.
+      t.tab1.removeAllListeners("dialog");
+      const asked: string[] = [];
+      t.tab1.on("dialog", async (d) => {
+        asked.push(d.type());
+        await d.accept();
+      });
+      await banner.getByRole("button", { name: L.bannerButton }).click();
+      await t.tab1.waitForURL((u) => u.pathname === "/login", { timeout: 15_000 });
+      expect(asked, "the browser asked before discarding the work").toEqual(["beforeunload"]);
+      await t.context.close();
+    });
+
+    test(`W16: a staying editor, a create answered after the sign-out with late text -> URL corrected, editor and text kept, banner, layer c`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await hydrated(t.tab1, "/templates");
+      await t.tab1.goto("/templates/new");
+      const name = t.tab1.getByLabel(L.templateName, { exact: true });
+      await expect(async () => {
+        await name.fill("BUG-745 staying editor");
+        await expect(t.tab1.locator(".tpl-dirty-slot")).not.toBeEmpty({ timeout: 1_000 });
+      }).toPass({ timeout: 20_000 });
+      for (const day of [1, 2]) {
+        await openEveryDay(t.tab1);
+        await t.tab1.getByRole("group", { name: L.day(day), exact: true }).getByRole("button", { name: L.addExercise }).click();
+        const picker = t.tab1.getByRole("dialog");
+        for (let i = 0; i < 2; i += 1) await picker.locator("button[title]").nth(i).click();
+        await picker.getByRole("button").first().click();
+        await expect(t.tab1.getByRole("dialog")).toHaveCount(0);
+      }
+      const held = await holdResponse(t.tab1, (route) => route.request().method() === "POST" && route.request().headers()["next-action"] !== undefined);
+      await t.tab1.getByRole("button", { name: L.save, exact: true }).click();
+      await held.reached;
+      // Typed while the create is in flight: unsaved after its answer (BUG-735/739's `stillUnsaved`).
+      await name.fill("BUG-745 staying editor L1");
+      const since = await signOutInTab2(t);
+      await t.tab1.bringToFront();
+      held.release();
+      await expect(t.tab1).toHaveURL(/\/templates\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      const banner = t.tab1.locator("[data-session-ended-banner]");
+      await expect(banner).toBeVisible();
+      await expect(banner).toContainText(L.banner);
+      await expect(name).toHaveValue("BUG-745 staying editor L1");
+      await t.tab1.waitForTimeout(1_000);
+      /**
+       * ⚠ ADR-0033 D33.14 says `data-session-ended` = `c` here. On this code it is `b`, and that is
+       * the code's order, not a guard defect: the create's `leaving.release(then, "stays")`
+       * (TemplateEditor.tsx, the BUG-739 block) hands the unsaved guard's sentinel back with
+       * `history.back()` (useUnsavedChanges.ts `withCleanHistory`) BEFORE `then` runs the
+       * `replaceState(null, …)`. That traversal's `popstate` reaches layer (b) first, with the
+       * editor still dirty (late text), so `ended("b")` is the first writer; (c)'s `ended("c")` on
+       * the corrected URL's commit comes second and the attribute keeps `b`. Reported, not changed.
+       */
+      expect(layerAfter(t, since, "data-session-ended")).toBe("b");
+      expect(await t.tab1.evaluate(() => document.documentElement.hasAttribute("data-session-leaving"))).toBe(false);
+      expect(t.seen.filter((s) => s.at >= since && s.kind === "DOC"), "the editor stayed: no document load").toEqual([]);
+      expect(recordsAfter(t, since), "nothing of another page painted").toEqual([]);
+      await t.context.close();
+    });
+
+    test(`W17: Leave in a stale tab -> /login, no beforeunload prompt, no hidden tab left behind, no frame of the list`, async ({ browser, baseURL }) => {
+      // Records watch for the OTHER seeded template, which only the /templates list shows: Leave
+      // restores that list from the router cache, and (c) must hide it inside that commit.
+      // What this can catch, measured: M5 alone (3a/3b undone) is MASKED by staff's S2: `ended()`'s
+      // layout-phase setState flushes the editor's passive cleanup in the same task, and the S2
+      // re-decide leaves before paint, so W17 stays green. Only M5 + MS2 (3a undone AND the S2
+      // re-decide removed) turns W17 red (staff r2: 4/4, 9 records of the list, stuck on
+      // /templates). U9 is 3a's own witness.
+      const t = await openTabs(browser, baseURL!, { lang, name: "Legacy strength" });
+      await dirtyTemplateEditor(t);
+      const since = await signOutInTab2(t);
+      await t.tab1.bringToFront();
+      await t.tab1.evaluate(() => history.back());
+      const leave = t.tab1.getByRole("button", { name: L.leave });
+      await expect(leave).toBeVisible();
+      await leave.click();
+      await expect
+        .poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 })
+        .toBe("/login")
+        .catch(() => undefined); // judged below, after the records
+      expect.soft(recordsAfter(t, since), "no frame of the cached list").toEqual([]);
+      expect(new URL(t.tab1.url()).pathname).toBe("/login");
+      await expect(t.tab1.getByLabel(L.email)).toBeVisible();
+      await t.tab1.waitForTimeout(2_000);
+      expect(t.dialogs, "no beforeunload prompt").toEqual([]);
+      expect(new URL(t.tab1.url()).pathname).toBe("/login");
+      expect(await t.tab1.evaluate(() => document.documentElement.hasAttribute("data-session-leaving"))).toBe(false);
+      const docs = t.seen.filter((s) => s.at >= since && s.kind === "DOC");
+      expect(docs.filter((s) => s.path !== "/login").length, fmt(docs).join(", ")).toBeLessThanOrEqual(1);
+      expect(layerAfter(t, since, "data-session-ended")).toBe("b");
+      expect(layerAfter(t, since)).toBe("c");
+      expect(recordsAfter(t, since), "no frame of the cached list").toEqual([]);
+      await t.context.close();
+    });
+
+    test(`W11b: a 500 before the first byte (Next's error shell) loads once and stays: no reload loop`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, wake: true });
+      await t.context.addCookies([{ name: "evoli_fixture_overview", value: "fail", url: baseURL! }]);
+      const since = Date.now();
+      const res = await t.tab1.goto(`/clients/${LINA}`);
+      expect(res?.status()).toBe(500);
+      await t.tab1.waitForTimeout(5_000);
+      const docs = t.seen.filter((s) => s.at >= since && s.kind === "DOC");
+      expect(docs.map((s) => `${s.path} ${s.status}`), "one document load, then stable").toEqual([`/clients/${LINA} 500`]);
+      expect(t.reports.filter((r) => r.kind === "layer")).toEqual([]);
+      await t.context.close();
+    });
+
+    test(`W19 (N5): a boundary crossed after the server rendered tab 1 but before its scripts ran -> caught at hydration, /login, layer c`, async ({ browser, baseURL }) => {
+      // Staff's P2. (d) is off: the sign-out's message would not reach a tab whose scripts have
+      // not run anyway, but a focus on bringToFront could.
+      const t = await openTabs(browser, baseURL!, { lang });
+      await hydrated(t.tab2, "/");
+      let release!: () => void;
+      const released = new Promise<void>((r) => (release = r));
+      await t.tab1.route("**/_next/static/**/*.js", async (route) => {
+        await released;
+        await route.continue();
+      });
+      await t.tab1.goto(`/clients/${LINA}`, { waitUntil: "commit" });
+      // The server's HTML, painted and not hydrated, rendered under the session epoch in the jar.
+      await expect(t.tab1.locator("h1")).toHaveText(LINA_NAME);
+      const rendered = await t.tab1.evaluate(() => document.documentElement.getAttribute("data-session-epoch"));
+      expect(rendered).toBe(await epochValue(t));
+      const since = await signOutInTab2(t);
+      expect(await epochValue(t)).not.toBe(rendered);
+      release();
+      await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 30_000 }).toBe("/login");
+      expect(layerAfter(t, since), `layers: ${JSON.stringify(t.reports.filter((r) => r.kind === "layer" && r.at >= since))}`).toBe("c");
+      await t.context.close();
+    });
+
+    test(`W20 (staff P3): an update save answered after the sign-out, no late text -> /login, no banner left over a clean editor`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await dirtyTemplateEditor(t);
+      const held = await holdResponse(t.tab1, (route) => route.request().method() === "POST" && route.request().headers()["next-action"] !== undefined);
+      await t.tab1.getByRole("button", { name: L.save, exact: true }).click();
+      await held.reached;
+      const since = await signOutInTab2(t);
+      await t.tab1.bringToFront();
+      held.release();
+      // Chromium: the save's clean commit lands before release()'s popstate. WebKit: after it,
+      // so (b) first keeps the banner for work that is about to be saved; the work clearing
+      // then re-decides (staff S2). Either way the tab must not stay.
+      await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 }).toBe("/login");
+      await expect(t.tab1.getByLabel(L.email)).toBeVisible();
+      expect(recordsAfter(t, since)).toEqual([]);
+      expect(["b", "c"]).toContain(layerAfter(t, since));
+      expect(t.dialogs, "no beforeunload prompt: the work was saved").toEqual([]);
+      await t.context.close();
+    });
+
+    test(`W18: the revoked shape survives the placement -> one 307 to /clients/denied, then 403`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, wake: true });
+      const first = await t.context.request.get(`/clients/${UNLINKED}`, { maxRedirects: 0 });
+      expect(first.status()).toBe(307);
+      expect(new URL(first.headers()["location"], baseURL).pathname).toBe("/clients/denied");
+      const second = await t.context.request.get("/clients/denied", { maxRedirects: 0 });
+      expect(second.status()).toBe(403);
+      await t.context.close();
+    });
+  });
+}
+
+/**
+ * W21a / W21b (ADR-0033 D33.14 ruling R10): a lost reload is not a dead end.
+ *
+ * The FIRST main-frame navigation of tab 1 after the sign-out (the guard's own reload) is lost, in
+ * one of two shapes: `abort("connectionreset")` (the ADR's) or a `204` answer (staff's: a 204
+ * navigation response keeps the current document). WebKit then keeps the old document, hidden
+ * (`data-session-leaving`, `#app-root` not displayed), on the old URL. Under R6 as built (M13) it
+ * stayed there; R10 re-issues at the coach's next click (W21a) or wake-up (W21b), but never inside
+ * the 3 s gap. English only: nothing here is copy.
+ *
+ * Chromium is a CONTROL for the abort shape: it commits its own error page instead of keeping the
+ * old document (architect probe 2), so there is no hidden document to retry from. The 204 shape
+ * keeps the document in both engines, so it is a witness in both.
+ */
+type LostShape = "connectionreset" | "204";
+
+async function loseFirstNavigation(t: Tabs, shape: LostShape): Promise<{ lost: () => number }> {
+  let lost = 0;
+  await t.tab1.route("**/*", async (route) => {
+    const req = route.request();
+    if (lost === 0 && req.isNavigationRequest() && req.frame() === t.tab1.mainFrame()) {
+      lost += 1;
+      if (shape === "204") return route.fulfill({ status: 204, body: "" });
+      return route.abort("connectionreset");
+    }
+    return route.fallback();
+  });
+  return { lost: () => lost };
+}
+
+const hiddenState = (t: Tabs) =>
+  t.tab1.evaluate(() => ({
+    path: location.pathname,
+    leaving: document.documentElement.getAttribute("data-session-leaving"),
+    appRootDisplay: getComputedStyle(document.getElementById("app-root")!).display,
+  }));
+
+/** Answered document requests (an aborted one never loaded anything). */
+const docsSince = (t: Tabs, at: number) => t.seen.filter((s) => s.at >= at && s.kind === "DOC" && !s.failed);
+
+for (const shape of ["connectionreset", "204"] as LostShape[]) {
+  test.describe(`BUG-745 R10, a lost reload (${shape})`, () => {
+    test(`W21a: click path, (d) off -> no re-issue at +1 s, one at +3.2 s, 307 -> /login, 0 records`, async ({ browser, baseURL, browserName }) => {
+      const t = await openTabs(browser, baseURL!, { lang: "en" });
+      await openLinaThenRoster(t);
+      const since = await signOutInTab2(t);
+      const loss = await loseFirstNavigation(t, shape);
+      await t.tab1.bringToFront();
+      const issuedAt = Date.now();
+      await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+      await expect.poll(loss.lost).toBe(1);
+      await t.tab1.waitForTimeout(Math.max(0, issuedAt + 1_000 - Date.now()));
+
+      if (browserName === "chromium" && shape === "connectionreset") {
+        // CONTROL, measured: Chromium replaces the old document with its own error page, so the
+        // portal is gone and nothing is hidden behind it; the browser's Reload retries the target.
+        await expect.poll(() => t.tab1.url()).toMatch(/^chrome-error:\/\//);
+        expect(recordsAfter(t, since)).toEqual([]);
+        await t.context.close();
+        return;
+      }
+
+      // The loss happened: the old document is alive, hidden, on the old URL.
+      const stuck = await hiddenState(t);
+      expect(stuck, "the old document, hidden").toEqual({ path: "/", leaving: "a", appRootDisplay: "none" });
+      // +1 s: a click inside the gap re-issues nothing.
+      const at1 = Date.now();
+      await t.tab1.mouse.click(640, 450);
+      await t.tab1.waitForTimeout(500);
+      expect(docsSince(t, at1), `+1 s: no document request; ${fmt(t.seen.filter((s) => s.at >= since)).join(", ")}`).toEqual([]);
+      expect(t.seen.filter((s) => s.at >= at1 && s.kind === "DOC"), "not even an aborted one").toEqual([]);
+      expect((await hiddenState(t)).path).toBe("/");
+      // +3.2 s after the first issue: the click re-issues, once.
+      await t.tab1.waitForTimeout(Math.max(0, issuedAt + 3_200 - Date.now()));
+      const at3 = Date.now();
+      await t.tab1.mouse.click(640, 450);
+      await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 }).toBe("/login");
+      await expect(t.tab1.getByLabel(LABELS.en.email)).toBeVisible();
+      const docs = docsSince(t, at3);
+      expect(docs.map((d) => `${d.path} ${d.status}`), "exactly one new document request, refused").toEqual(["/ 307", "/login 200"]);
+      expect(recordsAfter(t, since)).toEqual([]);
+      expect(layerAfter(t, since)).toBe("a");
+      await expectNoLoop(t, since);
+      await t.context.close();
+    });
+
+    test(`W21b: wake path, (d) on -> the sign-out's message leaves (layer d), the reload is lost, a focus at +3.2 s recovers it`, async ({ browser, baseURL, browserName }) => {
+      const t = await openTabs(browser, baseURL!, { lang: "en", wake: true });
+      await openLinaThenRoster(t);
+      // Installed BEFORE the sign-out: the message makes tab 1 leave at once, and that reload is the one lost.
+      const loss = await loseFirstNavigation(t, shape);
+      const since = await signOutInTab2(t);
+      await expect.poll(loss.lost).toBe(1);
+      const issuedAt = Date.now();
+
+      if (browserName === "chromium" && shape === "connectionreset") {
+        await expect.poll(() => t.tab1.url()).toMatch(/^chrome-error:\/\//);
+        expect(recordsAfter(t, since)).toEqual([]);
+        await t.context.close();
+        return;
+      }
+
+      await t.tab1.waitForTimeout(500);
+      expect(await hiddenState(t), "the old document, hidden").toEqual({ path: "/", leaving: "d", appRootDisplay: "none" });
+      await t.tab1.waitForTimeout(Math.max(0, issuedAt + 3_200 - Date.now()));
+      const at3 = Date.now();
+      await t.tab1.bringToFront();
+      await t.tab1.evaluate(() => window.dispatchEvent(new FocusEvent("focus"))).catch(() => undefined);
+      await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 }).toBe("/login");
+      const docs = docsSince(t, at3);
+      expect(docs.map((d) => `${d.path} ${d.status}`), "one new document request, refused").toEqual(["/ 307", "/login 200"]);
+      expect(recordsAfter(t, since)).toEqual([]);
+      expect(layerAfter(t, since)).toBe("d");
+      await expectNoLoop(t, since);
+      await t.context.close();
+    });
+  });
+}
