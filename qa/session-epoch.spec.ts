@@ -432,9 +432,12 @@ for (const lang of ["en", "fr"] as Lang[]) {
 
     test(`W17: Leave in a stale tab -> /login, no beforeunload prompt, no hidden tab left behind, no frame of the list`, async ({ browser, baseURL }) => {
       // Records watch for the OTHER seeded template, which only the /templates list shows: Leave
-      // restores that list from the router cache, and (c) must hide it inside that commit (3a:
-      // the leaving editor is already deregistered). Since staff's S2 re-decision, a missing 3a
-      // still ends on /login, from the editor's late passive cleanup, but AFTER the list painted.
+      // restores that list from the router cache, and (c) must hide it inside that commit.
+      // What this can catch, measured: M5 alone (3a/3b undone) is MASKED by staff's S2: `ended()`'s
+      // layout-phase setState flushes the editor's passive cleanup in the same task, and the S2
+      // re-decide leaves before paint, so W17 stays green. Only M5 + MS2 (3a undone AND the S2
+      // re-decide removed) turns W17 red (staff r2: 4/4, 9 records of the list, stuck on
+      // /templates). U9 is 3a's own witness.
       const t = await openTabs(browser, baseURL!, { lang, name: "Legacy strength" });
       await dirtyTemplateEditor(t);
       const since = await signOutInTab2(t);
@@ -526,6 +529,125 @@ for (const lang of ["en", "fr"] as Lang[]) {
       expect(new URL(first.headers()["location"], baseURL).pathname).toBe("/clients/denied");
       const second = await t.context.request.get("/clients/denied", { maxRedirects: 0 });
       expect(second.status()).toBe(403);
+      await t.context.close();
+    });
+  });
+}
+
+/**
+ * W21a / W21b (ADR-0033 D33.14 ruling R10): a lost reload is not a dead end.
+ *
+ * The FIRST main-frame navigation of tab 1 after the sign-out (the guard's own reload) is lost, in
+ * one of two shapes: `abort("connectionreset")` (the ADR's) or a `204` answer (staff's: a 204
+ * navigation response keeps the current document). WebKit then keeps the old document, hidden
+ * (`data-session-leaving`, `#app-root` not displayed), on the old URL. Under R6 as built (M13) it
+ * stayed there; R10 re-issues at the coach's next click (W21a) or wake-up (W21b), but never inside
+ * the 3 s gap. English only: nothing here is copy.
+ *
+ * Chromium is a CONTROL for the abort shape: it commits its own error page instead of keeping the
+ * old document (architect probe 2), so there is no hidden document to retry from. The 204 shape
+ * keeps the document in both engines, so it is a witness in both.
+ */
+type LostShape = "connectionreset" | "204";
+
+async function loseFirstNavigation(t: Tabs, shape: LostShape): Promise<{ lost: () => number }> {
+  let lost = 0;
+  await t.tab1.route("**/*", async (route) => {
+    const req = route.request();
+    if (lost === 0 && req.isNavigationRequest() && req.frame() === t.tab1.mainFrame()) {
+      lost += 1;
+      if (shape === "204") return route.fulfill({ status: 204, body: "" });
+      return route.abort("connectionreset");
+    }
+    return route.fallback();
+  });
+  return { lost: () => lost };
+}
+
+const hiddenState = (t: Tabs) =>
+  t.tab1.evaluate(() => ({
+    path: location.pathname,
+    leaving: document.documentElement.getAttribute("data-session-leaving"),
+    appRootDisplay: getComputedStyle(document.getElementById("app-root")!).display,
+  }));
+
+/** Answered document requests (an aborted one never loaded anything). */
+const docsSince = (t: Tabs, at: number) => t.seen.filter((s) => s.at >= at && s.kind === "DOC" && !s.failed);
+
+for (const shape of ["connectionreset", "204"] as LostShape[]) {
+  test.describe(`BUG-745 R10, a lost reload (${shape})`, () => {
+    test(`W21a: click path, (d) off -> no re-issue at +1 s, one at +3.2 s, 307 -> /login, 0 records`, async ({ browser, baseURL, browserName }) => {
+      const t = await openTabs(browser, baseURL!, { lang: "en" });
+      await openLinaThenRoster(t);
+      const since = await signOutInTab2(t);
+      const loss = await loseFirstNavigation(t, shape);
+      await t.tab1.bringToFront();
+      const issuedAt = Date.now();
+      await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
+      await expect.poll(loss.lost).toBe(1);
+      await t.tab1.waitForTimeout(Math.max(0, issuedAt + 1_000 - Date.now()));
+
+      if (browserName === "chromium" && shape === "connectionreset") {
+        // CONTROL, measured: Chromium replaces the old document with its own error page, so the
+        // portal is gone and nothing is hidden behind it; the browser's Reload retries the target.
+        await expect.poll(() => t.tab1.url()).toMatch(/^chrome-error:\/\//);
+        expect(recordsAfter(t, since)).toEqual([]);
+        await t.context.close();
+        return;
+      }
+
+      // The loss happened: the old document is alive, hidden, on the old URL.
+      const stuck = await hiddenState(t);
+      expect(stuck, "the old document, hidden").toEqual({ path: "/", leaving: "a", appRootDisplay: "none" });
+      // +1 s: a click inside the gap re-issues nothing.
+      const at1 = Date.now();
+      await t.tab1.mouse.click(640, 450);
+      await t.tab1.waitForTimeout(500);
+      expect(docsSince(t, at1), `+1 s: no document request; ${fmt(t.seen.filter((s) => s.at >= since)).join(", ")}`).toEqual([]);
+      expect(t.seen.filter((s) => s.at >= at1 && s.kind === "DOC"), "not even an aborted one").toEqual([]);
+      expect((await hiddenState(t)).path).toBe("/");
+      // +3.2 s after the first issue: the click re-issues, once.
+      await t.tab1.waitForTimeout(Math.max(0, issuedAt + 3_200 - Date.now()));
+      const at3 = Date.now();
+      await t.tab1.mouse.click(640, 450);
+      await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 }).toBe("/login");
+      await expect(t.tab1.getByLabel(LABELS.en.email)).toBeVisible();
+      const docs = docsSince(t, at3);
+      expect(docs.map((d) => `${d.path} ${d.status}`), "exactly one new document request, refused").toEqual(["/ 307", "/login 200"]);
+      expect(recordsAfter(t, since)).toEqual([]);
+      expect(layerAfter(t, since)).toBe("a");
+      await expectNoLoop(t, since);
+      await t.context.close();
+    });
+
+    test(`W21b: wake path, (d) on -> the sign-out's message leaves (layer d), the reload is lost, a focus at +3.2 s recovers it`, async ({ browser, baseURL, browserName }) => {
+      const t = await openTabs(browser, baseURL!, { lang: "en", wake: true });
+      await openLinaThenRoster(t);
+      // Installed BEFORE the sign-out: the message makes tab 1 leave at once, and that reload is the one lost.
+      const loss = await loseFirstNavigation(t, shape);
+      const since = await signOutInTab2(t);
+      await expect.poll(loss.lost).toBe(1);
+      const issuedAt = Date.now();
+
+      if (browserName === "chromium" && shape === "connectionreset") {
+        await expect.poll(() => t.tab1.url()).toMatch(/^chrome-error:\/\//);
+        expect(recordsAfter(t, since)).toEqual([]);
+        await t.context.close();
+        return;
+      }
+
+      await t.tab1.waitForTimeout(500);
+      expect(await hiddenState(t), "the old document, hidden").toEqual({ path: "/", leaving: "d", appRootDisplay: "none" });
+      await t.tab1.waitForTimeout(Math.max(0, issuedAt + 3_200 - Date.now()));
+      const at3 = Date.now();
+      await t.tab1.bringToFront();
+      await t.tab1.evaluate(() => window.dispatchEvent(new FocusEvent("focus"))).catch(() => undefined);
+      await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 }).toBe("/login");
+      const docs = docsSince(t, at3);
+      expect(docs.map((d) => `${d.path} ${d.status}`), "one new document request, refused").toEqual(["/ 307", "/login 200"]);
+      expect(recordsAfter(t, since)).toEqual([]);
+      expect(layerAfter(t, since)).toBe("d");
+      await expectNoLoop(t, since);
       await t.context.close();
     });
   });

@@ -143,17 +143,41 @@ function mark(attr: string, layer: Layer): void {
 /**
  * Hide the portal (`globals.css` hides `#app-root` under `html[data-session-leaving]`), drop
  * the client caches and reload this URL (or, in the tab that crossed the boundary itself, the
- * page it is already loading: `sessionReloadTarget`, ruling R9), all in one task. Middleware then decides: `/login`
- * after a sign-out, this page re-rendered for the new session after a sign-in elsewhere.
- * Idempotent: a second layer firing while the document is already leaving (a traversal's
- * restore reaching (c) after (b) left) adds no second document request. Only a `popstate` while
- * leaving re-issues the reload (layer (b)), because a traversal can cancel the first.
+ * page it is already loading: `sessionReloadTarget`, ruling R9), all in one task. Middleware
+ * then decides: `/login` after a sign-out, this page re-rendered for the new session after a
+ * sign-in elsewhere.
+ *
+ * Once per document (R6), unless the load was lost (R10). A second layer that fires while the
+ * document is already leaving issues nothing within the retry gap of the last issue, so a Back's
+ * (b)-then-(c) stays one reload and a slow load is not restarted. Past the gap it re-issues, and
+ * the gap doubles (3 s, 6, 12, 24, capped at 30 s): WebKit keeps the old document, hidden, when
+ * the reload is lost (a dropped connection, a 204, Esc), and a coach's next click or wake-up is
+ * then what recovers it. No timer: nothing runs while the coach is idle. A `popstate` while
+ * leaving re-issues with no gate (`onPopState`), because a traversal cancels the load at once.
  */
+/** R10: when this document last issued its reload, and how long before a re-entry may re-issue it. */
+let issuedAt = 0;
+let retryGap = 3_000;
+const RETRY_GAP_CAP = 30_000;
+
+function issue(): void {
+  issuedAt = performance.now();
+  replaceDocument(sessionReloadTarget());
+}
+
 function leave(layer: Layer): void {
-  if (isSessionLeaving()) return;
+  if (isSessionLeaving()) {
+    // R10: WebKit keeps the old document, hidden, when the reload is lost. A coach's next click or
+    // wake-up re-issues it, but never within the gap, so a slow load is not restarted and a Back's
+    // (b)-then-(c) stays one reload (R6).
+    if (performance.now() - issuedAt < retryGap) return;
+    retryGap = Math.min(retryGap * 2, RETRY_GAP_CAP);
+    issue();
+    return;
+  }
   mark(SESSION_LEAVING_ATTR, layer);
   clearClientSession();
-  replaceDocument(sessionReloadTarget());
+  issue();
 }
 
 let showBanner: (() => void) | null = null;
@@ -207,7 +231,8 @@ function onActivate(event: Event): void {
 function onPopState(): void {
   if (isSessionLeaving()) {
     // A traversal queued before or after `leave()` must not leave a hidden tab that never loads.
-    replaceDocument(sessionReloadTarget());
+    // Ungated (R6, R10), and it restarts the retry clock.
+    issue();
     return;
   }
   decide("b");

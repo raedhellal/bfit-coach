@@ -360,6 +360,50 @@ test.describe("BUG-745 D33.14 — the session-epoch guard, unit", () => {
     });
   }
 
+  test("U11 (R10): a leaving document re-issues its reload only past the retry gap, which doubles", async ({ page }) => {
+    await open(page, "none");
+    // A clock the test moves (the gap is measured with performance.now).
+    await page.evaluate(() => {
+      const w = window as unknown as { __now: number };
+      w.__now = 100_000;
+      performance.now = () => w.__now;
+    });
+    const at = (ms: number) => page.evaluate((t) => ((window as unknown as { __now: number }).__now = 100_000 + t), ms);
+    const calls = async () => (await state(page)).replaced.length;
+    await boundary(page);
+
+    await at(0);
+    expect(await click(page, "#link"), "leave('a') at t=0").toBe(true);
+    expect(await calls()).toBe(1);
+
+    await at(1_000);
+    expect(await click(page, "#link"), "still cancelled while leaving").toBe(true);
+    expect(await calls(), "+1 s: inside the 3 s gap, no re-issue").toBe(1);
+
+    await at(3_100);
+    await page.evaluate(() => window.dispatchEvent(new FocusEvent("focus")));
+    expect(await calls(), "+3.1 s focus: past the gap, re-issued (the gap becomes 6 s)").toBe(2);
+
+    await at(5_000);
+    expect(await click(page, "#link")).toBe(true);
+    expect(await calls(), "+5 s: 1.9 s after the re-issue, inside the 6 s gap").toBe(2);
+
+    await at(9_200);
+    expect(await click(page, "#link")).toBe(true);
+    expect(await calls(), "+9.2 s: 6.1 s after the re-issue, past the 6 s gap").toBe(3);
+
+    await at(9_300);
+    await page.evaluate(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    expect(await calls(), "a popstate while leaving is ungated").toBe(4);
+    await at(9_400);
+    expect(await click(page, "#link")).toBe(true);
+    expect(await calls(), "and it restarted the clock: +0.1 s after it, nothing").toBe(4);
+
+    const s = await state(page);
+    expect(s.leaving).toBe("a");
+    expect(new Set(s.replaced)).toEqual(new Set(["https://unit.evoli.test/a"]));
+  });
+
   test("U10 control: with no boundary crossed in this tab, the reload goes to location.href", async ({ page }) => {
     await open(page, "none", "E1", { realSession: true });
     await boundary(page);
