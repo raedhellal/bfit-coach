@@ -59,6 +59,14 @@ gate (6 red, `page.goto` timeouts), not by any D33.14 witness. Locked by W11b an
   `=start`. The default config ignores both session specs. Name both runs in any gate that
   touches the guard, `useUnsavedChanges`, `toLogin` or the root layout.
 
+**Known flake, WebKit on `next dev` only:** W13/W8 fails about 1 in 8 runs (2/16 at 68a449b,
+4/16 at round 2; W8 itself 16/16). The guard fires (layer a, `DOC / 307`), then WebKit reports
+"The network connection was lost" on the `/login` redirect follow, about 6 s later, and the old
+document stays hidden. On `next start` behind tls-front: 32/32. It is a dev-server keep-alive
+artefact, not the guard. Note, though, that `leave()` never retries a lost load unless a `popstate`
+arrives (ruling R6). W4 on WebKit dev also sometimes gets Next's own document fallback (an aborted
+RSC redirect follow); W4 accepts that when the document is refused with a 307.
+
 **Rigs:** `qa/tls-front.mjs` (an https front) is needed for WebKit on `next start`. A `__Host-`
 cookie needs Secure, and the server writes the epoch at sign-out, so re-adding cookies by hand
 cannot work. Here it was green in 40/40 WebKit start tests. The BUG-739 note says a hand-rolled
