@@ -268,6 +268,24 @@ test.describe("BUG-745 D33.14 — the session-epoch guard, unit", () => {
     expect((await state(page)).leaving).toBe("a");
   });
 
+  test("the error shell: an <html> with no epoch at script time, filled in by React's commit, is NOT stale", async ({ page }) => {
+    // Next's error shell (a 500 before the first byte) is `<html id="__next_error__">` with no
+    // attributes; the client render then applies the root layout's, epoch included. Here the
+    // attribute is absent when the bundle evaluates and set before the guard's first commit.
+    await loadUnitPage(page, bundle(ENTRIES, STUBS) + "\n" + APP, { htmlAttrs: { id: "__next_error__" }, cookies: { evoli_pro_epoch: "E1" } });
+    await page.evaluate(() => document.documentElement.setAttribute("data-session-epoch", "E1"));
+    await page.evaluate(() => (window as unknown as { __mount: (m: string) => void }).__mount("none"));
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
+    expect(await click(page, "#link"), "the same session: the click goes through").toBe(false);
+    const s = await state(page);
+    expect(s.leaving, "no reload of an error page into itself").toBeNull();
+    expect(s.replaced).toEqual([]);
+    // And a real boundary afterwards is still seen.
+    await boundary(page);
+    expect(await click(page, "#link")).toBe(true);
+    expect((await state(page)).leaving).toBe("a");
+  });
+
   test("U8: in the exception, (a) cancels a type=button Save, every submit, and a Save nested in a marked container", async ({ page }) => {
     await open(page, "stays");
     await boundary(page);

@@ -66,13 +66,29 @@ import { hasUnsavedWork } from "@/lib/useUnsavedChanges";
 type Layer = "a" | "b" | "c" | "d";
 
 /**
- * What the server rendered this document under (staff r2 N5), read ONCE per document, at
- * module evaluation. Not the cookie at that moment: a boundary crossed after the server
- * rendered this document but before its script ran would then read as "not stale" for good.
- * `""` is "no epoch" (a session from before the cookie existed).
+ * What the server rendered this document under (staff r2 N5): the root layout's
+ * `<html data-session-epoch>`, read ONCE per document. Not the cookie: a boundary crossed after
+ * the server rendered this document but before its script ran would then read as "not stale"
+ * for good. `""` is "no epoch" (a session from before the cookie existed).
+ *
+ * ⚠ Read at the guard's FIRST COMMIT (`seedSeen`), not at module evaluation as D33.14 point 2
+ * words it. A render that throws before the first byte (BUG-629's 500, BUG-689) is served as
+ * Next's error shell, `<html id="__next_error__">` with none of the root layout's attributes
+ * (next/dist/server/app-render/app-render.js:381-389), and the browser then CLIENT-renders the
+ * whole tree (next/dist/client/app-index.js:152). At module evaluation the attribute is absent,
+ * `seen` read `null`, the cookie made that "stale", and every such page reloaded itself forever
+ * (witnessed: `client-overview-load-error-status.spec.ts` timed out in `page.goto`). By the
+ * first commit React has applied the root layout's `<html>` props, which carry the value the
+ * server read from the request's cookie: the same N5 value in both the SSR and the error-shell
+ * case. No listener exists before that commit, so nothing reads `seen` earlier.
  */
-const seen: string | null =
-  typeof document === "undefined" ? null : document.documentElement.getAttribute(SESSION_EPOCH_ATTR) || null;
+let seen: string | null = null;
+let seeded = false;
+function seedSeen(): void {
+  if (seeded) return;
+  seeded = true;
+  seen = document.documentElement.getAttribute(SESSION_EPOCH_ATTR) || null;
+}
 
 /**
  * Fixture mode only: `evoli_fixture_session_wake=off` makes the root layout render
@@ -214,6 +230,7 @@ export function SessionEpochGuard() {
   const [isEnded, setEnded] = useState(false);
 
   useCommitEffect(() => {
+    seedSeen();
     showBanner = () => setEnded(true);
     window.addEventListener("click", onActivate, true);
     window.addEventListener("auxclick", onActivate, true);

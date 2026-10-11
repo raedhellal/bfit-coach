@@ -18,6 +18,14 @@ metadata:
 it, a `focus` when Playwright brings tab 1 forward, or the BroadcastChannel message, reloads tab 1
 before the click the witness is about.
 
+**`seen` is seeded at the guard's FIRST COMMIT, not at module evaluation (the ADR's wording).**
+A render that throws before the first byte (BUG-629/BUG-689's 500s) is served as Next's error shell
+`<html id="__next_error__">` with NO root-layout attributes (`app-render.js:381-389`), and the
+client then renders the whole tree (`app-index.js:152`). A module-scope read got `null`, the cookie
+made that "stale", and every 500 page reloaded itself forever. That was caught only by the DEFAULT
+gate (6 red, `page.goto` timeouts), not by any D33.14 witness. Locked by W11b and the unit test
+"the error shell". Any future "read it at module scope" idea must survive the error shell.
+
 **Where the ADR text did not match the code (all reported, none redesigned):**
 - **W4 cannot fail here.** Every create action calls `revalidatePath`, so the action answer
   carries a render and `server-action-reducer.js` sets `prefetchCache = new Map()`. The push must

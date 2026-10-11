@@ -449,6 +449,19 @@ for (const lang of ["en", "fr"] as Lang[]) {
       await t.context.close();
     });
 
+    test(`W11b: a 500 before the first byte (Next's error shell) loads once and stays: no reload loop`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang, wake: true });
+      await t.context.addCookies([{ name: "evoli_fixture_overview", value: "fail", url: baseURL! }]);
+      const since = Date.now();
+      const res = await t.tab1.goto(`/clients/${LINA}`);
+      expect(res?.status()).toBe(500);
+      await t.tab1.waitForTimeout(5_000);
+      const docs = t.seen.filter((s) => s.at >= since && s.kind === "DOC");
+      expect(docs.map((s) => `${s.path} ${s.status}`), "one document load, then stable").toEqual([`/clients/${LINA} 500`]);
+      expect(t.reports.filter((r) => r.kind === "layer")).toEqual([]);
+      await t.context.close();
+    });
+
     test(`W18: the revoked shape survives the placement -> one 307 to /clients/denied, then 403`, async ({ browser, baseURL }) => {
       const t = await openTabs(browser, baseURL!, { lang, wake: true });
       const first = await t.context.request.get(`/clients/${UNLINKED}`, { maxRedirects: 0 });
