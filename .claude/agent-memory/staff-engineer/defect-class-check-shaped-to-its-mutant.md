@@ -40,3 +40,10 @@ optimistic reorder that clears busy together with it would pass, and EV-356c alr
 optimistic. When a witness uses data as a proxy for "the server answered", ask whether that data can
 change on the client first. Also, two sequential `waitForFunction`s (flag, then index) do not form a
 conjunction. Fold them into one predicate when it matters.
+**Same shape in lint guards (EV-356d N3, 2026-10-10, f1fa4b0):** a `no-restricted-syntax` ban on
+`CallExpression[callee.property.name='prefetch']` catches `r.prefetch(` and `r?.prefetch(` but lints
+`const { prefetch } = useRouter(); prefetch(x)` and `r["prefetch"](x)` clean; `no-restricted-imports`
+misses `require("next/link")`. Probe name-based bans with destructuring, computed access and require
+via `npx eslint --stdin --stdin-filename src/x.tsx` (writes nothing). Over-match is fine (fails loud);
+under-match is the gap. Fix: add `ObjectPattern > Property[key.name='prefetch']` and
+`MemberExpression[computed=true][property.value='prefetch']`.

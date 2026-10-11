@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { UiIcon } from "@/components/ui/icons";
 import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";

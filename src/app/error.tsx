@@ -1,8 +1,9 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ClientNoticeCard } from "@/components/client/ClientNoticeCard";
+import { isBooted } from "@/components/shell/BootMark";
 import { ShellFrame, sectionFor } from "@/components/shell/ShellFrame";
 import { Button, Card } from "@/components/ui/kit";
 import { isClientLoadError } from "@/lib/clientLoadError";
@@ -38,6 +39,25 @@ import { useCopy, useLocale } from "@/lib/i18n/client";
  * Recognised by its digest, it gets the page that branch always drew — `ClientNoticeCard`
  * with `copy.client.loadError` as the one h1 and the way back to the roster, in the shell
  * under « Clients » — not the generic sentence and its retry.
+ *
+ * EV-356d D.6 (ADR-0033 D33.13 point 8, R1-H) — that notice is shown only when it is the
+ * server's FRESH answer. On an RSC request (a client-side navigation, a prefetch) Next 14.2.35
+ * cannot answer non-OK: the page's throw travels as an error row inside a 200 flight, so the
+ * router CACHES it. A roster row's hover prefetch made while the api failed, a TEMPORARY entry
+ * from a failed click revisited inside 30 s, Back/Forward to it: each replayed « This trainee
+ * could not be loaded. » with no request, after the api had recovered (witnessed: D.6, P5).
+ *   · Arrival in a commit AFTER the document's first (`isBooted()`, `BootMark`): the error may
+ *     be such a replay, so the document is reloaded once. A document load renders afresh and,
+ *     if the read still fails, is BUG-629's 500 with this notice — then `isBooted()` is false
+ *     again (new document, module memory) and nothing reloads: no loop by construction.
+ *   · Arrival in the document's first render: the 500 itself; the notice, as before.
+ * A reload, not `router.refresh()` + `reset()`: no transition entanglement, no guard, no
+ * timeout, the browser's own progress, and an outage seen through a client navigation becomes
+ * a 500 document a monitor can see. While it reloads the page shows the shell and an
+ * `aria-busy` area with NO h1 and NO notice, deliberately: the sentence would be false.
+ * The flag is read once (`useState`'s lazy initialiser, a pure read: an errored tree renders
+ * twice before it commits); nothing is written during render. Never keep it in sessionStorage.
+ * The generic branch below keeps BUG-689's manual retry.
  */
 const SHELL_LESS = /^\/(login|activate|unavailable|i)(\/|$)/;
 
@@ -48,6 +68,12 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   const router = useRouter();
   const [retrying, startRetry] = useTransition();
   const onRoster = pathname === "/";
+  const clientLoad = isClientLoadError(error);
+  const [reloading] = useState(isBooted);
+
+  useEffect(() => {
+    if (clientLoad && reloading) window.location.reload();
+  }, [clientLoad, reloading]);
 
   const retry = () =>
     startRetry(() => {
@@ -87,7 +113,14 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
     </Card>
   );
 
-  if (isClientLoadError(error)) {
+  if (clientLoad) {
+    if (reloading) {
+      return (
+        <ShellFrame copy={copy} locale={locale} section="roster">
+          <div aria-busy="true" data-client-load-reloading="" />
+        </ShellFrame>
+      );
+    }
     return (
       <ShellFrame copy={copy} locale={locale} section="roster">
         <ClientNoticeCard message={copy.client.loadError} backHref="/" backLabel={copy.shell.backToRoster} asHeading />
