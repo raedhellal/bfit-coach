@@ -83,6 +83,7 @@
 - [A module split can grow its page](a-module-split-can-grow-the-page-it-was-for.md) — EV-348: webpack duplicated split modules, client page +0.78 kB; measure encodedBodySize first
 - [A failed preload poisons the URL in WebKit (EV-350)](a-failed-preload-poisons-the-url-in-webkit.md) — buildId-named chunk + DefinePlugin to preload an async chunk; skip on RSC/actions; evict with fetch cache:reload
 - [A route-table URL can match its file and reach another](a-route-table-url-can-match-its-file-and-reach-another.md) — EV-352: /templates/new matches [id]; resolve by Next precedence, refuse @/(.) segments
+- [Merged editor pages (EV-362)](merged-editor-pages-ev362-facts.md) — one editor/page.tsx per resource, new/ [id]/ deleted; rewritten URLs go in REWRITTEN, not ROUTE_FILES
 - [Overview at 768–1279 (EV-345)](overview-768-band-ev345-facts.md) — `.ov-pair` display:contents outside the band; probe by addStyleTag on next start; inline margins, :scope locators
 - [A first-viewport AC is about the bottom (EV-344)](a-first-viewport-ac-is-about-the-bottom.md) — row is 319 px at 1024, do floor arithmetic first; settings fold gated by `.prog-doc`; screenshot-pair method
 - [An N/A needs the whole write path](a-not-applicable-needs-the-whole-write-path.md) — EV-344 B1: a DB CHECK (session_minutes 20–90) refuses Publish; a 'known flake' needs the list entry or a base --repeat-each
@@ -103,5 +104,4 @@
 - [A shared transition labels every action](a-shared-transition-labels-every-action.md) — tag the running kind in the click; hold the action POST (qa/hold-action.ts) to test pending UI
 - [A hand-made context inherits the runner's language](a-hand-made-context-inherits-the-runners-language.md) — BUG-738: fr-FR WebKit context served EN; set evoli_pro_locale; failed roster = null on 3 pages
 - [A path-segment change always remounts](a-path-segment-change-always-remounts.md) — BUG-739: only search params keep an island; rewrites chain + merge the query; useEditorIdentity
-- [Merged editor pages (EV-362)](merged-editor-pages-ev362-facts.md) — one editor/page.tsx per resource, new/ [id]/ deleted; rewritten URLs go in REWRITTEN, not ROUTE_FILES
 - [A cleared marker is a sync only if entered](a-cleared-marker-is-a-sync-only-if-it-was-entered.md) — BUG-742: busy-gone is hollow if never entered OR left early; observer + order snapshot, not a poll
