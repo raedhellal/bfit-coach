@@ -67,6 +67,11 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  * uses, for the same reason: losing a tab mid-edit is the failure mode this design
  * buys, so it is the one that is defended.
  *
+ * ⚠ BUG-745 (ADR-0033 D33.14 point 4): every write here starts from a CLICK, which the
+ * session-epoch guard stops once the session changed in another tab. An autosave, or any write
+ * started from an effect, a timer or an action's continuation, must check `isSessionStale()`
+ * (`SessionEpochGuard`) first, and reopens that section.
+ *
  * ═══ THE REDESIGN (EV-337i, plan §5.7) ═══════════════════════════════════════════
  *
  * Layout only; the save path above is untouched (ADR-0033: the editor stays
@@ -338,10 +343,11 @@ export function TemplateEditor({
         width={420}
         footer={
           <>
-            <Button variant="secondary" onClick={leaving.stay}>
+            {/* BUG-745 (ADR-0033 D33.14): both answer the question and neither posts. */}
+            <Button variant="secondary" onClick={leaving.stay} sessionSafe>
               {copy.routine.leaveStay}
             </Button>
-            <Button variant="danger" onClick={leaving.leave}>
+            <Button variant="danger" onClick={leaving.leave} sessionSafe>
               {copy.routine.leaveConfirm}
             </Button>
           </>

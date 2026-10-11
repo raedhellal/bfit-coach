@@ -87,8 +87,10 @@ export const test = base.extend<{ fixtureAtSeed: void }, { oneWorkerPerFixtureSe
     { scope: "worker", auto: true },
   ],
   fixtureAtSeed: [
-    async ({ playwright, baseURL, oneWorkerPerFixtureServer: _ }, use) => {
-      const api = await playwright.request.newContext({ baseURL });
+    async ({ playwright, baseURL, ignoreHTTPSErrors, oneWorkerPerFixtureServer: _ }, use) => {
+      // `ignoreHTTPSErrors`: the session-epoch config serves `next start` behind a self-signed
+      // https front (playwright.session.config.ts); every other config is plain http.
+      const api = await playwright.request.newContext({ baseURL, ignoreHTTPSErrors });
       try {
         const login = await api.post("/api/auth/login", {
           data: { email: "coach@evoli.fit", password: "Password123!" },

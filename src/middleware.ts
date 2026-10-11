@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { hasCoachRole, isExpired, isPendingOnly } from "@/lib/jwt";
 import { refreshOutcome } from "@/lib/refreshOutcome";
+import { SESSION_EPOCH_COOKIE, newSessionEpoch, sessionEpochCookieOptions } from "@/lib/sessionEpoch";
 
 /**
  * The route guard (EV-183 AC1, ADR-0012 D5).
@@ -92,6 +93,15 @@ function toLogin(req: NextRequest, reason?: "not_coach" | "expired") {
   res.cookies.set(ACCESS_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
   res.cookies.set(REFRESH_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
   res.cookies.set(IDENTITY_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
+  /**
+   * BUG-745 (ADR-0033 D33.14): a session that ends here (expired, a refused refresh,
+   * `not_coach`) is a boundary every tab of the browser must see — but ONLY when this request
+   * carried a session. A redirect of a request that had none ends nothing, so it writes
+   * nothing: otherwise two signed-out tabs would reload each other's login form.
+   */
+  if (req.cookies.get(ACCESS_COOKIE)?.value || req.cookies.get(REFRESH_COOKIE)?.value) {
+    res.cookies.set(SESSION_EPOCH_COOKIE, newSessionEpoch(), sessionEpochCookieOptions());
+  }
   return res;
 }
 
@@ -288,6 +298,8 @@ export async function middleware(req: NextRequest) {
       ? NextResponse.rewrite(req.nextUrl, { status: 403 })
       : NextResponse.next();
   }
+  // EV-020 rotation. NOT a session boundary, so it writes no epoch (BUG-745, ADR-0033 D33.14):
+  // an epoch here would reload every tab of the browser every fifteen minutes.
   if (rotated) {
     res.cookies.set(ACCESS_COOKIE, rotated.accessToken, {
       ...cookieOptions(),

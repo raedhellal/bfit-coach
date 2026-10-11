@@ -24,8 +24,18 @@ export function clearClientSession(): void {
   clearRosterReturn();
 }
 
+/**
+ * A document load of `href` that leaves no history entry for the page it replaces. The one
+ * place this app calls `location.replace`: `crossSessionBoundary` below, and
+ * `SessionEpochGuard`'s `leave()` (BUG-745, ADR-0033 D33.14), which reloads a tab whose
+ * session changed in another tab so that middleware decides what it may show.
+ */
+export function replaceDocument(href: string): void {
+  window.location.replace(href);
+}
+
 /** Cross a session boundary: clear the client caches, then a hard `location.replace`. */
 export function crossSessionBoundary(path: string): void {
   clearClientSession();
-  window.location.replace(path);
+  replaceDocument(path);
 }

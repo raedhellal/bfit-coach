@@ -58,7 +58,10 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  *    retired key and the macro consistency rule are the server's to answer.
  * 4. **No autosave; the unsaved-changes guard holds the work** — the template editor's
  *    arrangement, for the template editor's reason: a coach typing a recipe is holding
- *    state the server does not have.
+ *    state the server does not have. ⚠ BUG-745 (ADR-0033 D33.14 point 4): every write here
+ *    starts from a CLICK, which the session-epoch guard stops after a session change in
+ *    another tab; an autosave or any effect-, timer- or continuation-started write must check
+ *    `isSessionStale()` (`SessionEpochGuard`) first, and reopens that section.
  *
  * EV-320c adds the meal-slot chips. The one rule they add: **a save never untags or
  * re-tags a recipe the coach did not change.** The chips show what the fill uses (an
@@ -556,10 +559,11 @@ export function RecipeEditor({
         width={420}
         footer={
           <>
-            <Button variant="secondary" onClick={leaving.stay}>
+            {/* BUG-745 (ADR-0033 D33.14): both answer the question and neither posts. */}
+            <Button variant="secondary" onClick={leaving.stay} sessionSafe>
               {copy.routine.leaveStay}
             </Button>
-            <Button variant="danger" onClick={leaving.leave}>
+            <Button variant="danger" onClick={leaving.leave} sessionSafe>
               {copy.routine.leaveConfirm}
             </Button>
           </>

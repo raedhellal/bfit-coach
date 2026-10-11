@@ -1,13 +1,17 @@
 import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import "./globals.css";
 import { fontVariables } from "./fonts";
 import { LegalFooter } from "@/components/shell/LegalFooter";
 import { NavigationProgress } from "@/components/shell/NavigationProgress";
+import { SessionEpochGuard } from "@/components/shell/SessionEpochGuard";
 import { UrlChangeCounter } from "@/components/shell/UrlChangeCounter";
 import { CopyProvider } from "@/lib/i18n/client";
 import { getCopy, getLocale } from "@/lib/i18n/server";
 import { preloadCopyChunk } from "@/lib/i18n/chunk";
+import { COACH_API_MODE } from "@/lib/env";
+import { SESSION_EPOCH_COOKIE } from "@/lib/sessionEpoch";
 
 /**
  * EV-324 — the title and description are in the request's language, so `metadata` is a
@@ -42,8 +46,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // EV-350: on a document load, this page language's dictionary chunk leaves with the
   // first-wave scripts, not after them (CopyProvider's import() then reuses it).
   preloadCopyChunk(locale);
+  const jar = cookies();
+  /**
+   * BUG-745 (ADR-0033 D33.14, staff r2 N5) — the session epoch this document is rendered under,
+   * echoed for `SessionEpochGuard`, which compares it with the cookie at every navigation. An
+   * ECHO, never an input: nothing here decides anything from it. `""` = no epoch yet.
+   */
+  const epoch = jar.get(SESSION_EPOCH_COOKIE)?.value ?? "";
+  // Fixture mode only: the witnesses of the guard's layers (a)–(c) run with layer (d) removed.
+  const wakeOff = COACH_API_MODE === "fixture" && jar.get("evoli_fixture_session_wake")?.value === "off";
   return (
-    <html lang={locale} className={fontVariables}>
+    <html
+      lang={locale}
+      className={fontVariables}
+      data-session-epoch={epoch}
+      data-session-wake={wakeOff ? "off" : undefined}
+    >
       <body>
         <CopyProvider locale={locale}>
           {/* A slow page change's only feedback once a route has no loading.tsx.
@@ -53,6 +71,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* BUG-691: « Retour aux clients » needs to know whether the roster is one entry back. */}
             <UrlChangeCounter />
           </Suspense>
+          {/*
+            BUG-745 (ADR-0033 D33.14): a session change in another tab hides #app-root before
+            the next frame and reloads. A SIBLING of #app-root and outside the Suspense above,
+            with none of its own: it wraps nothing (a Suspense around {children} would move the
+            flush above every page, and /clients/[id]'s redirect would become a 200). Its
+            session-ended banner therefore lives outside #app-root and outside every editor.
+          */}
+          <SessionEpochGuard />
           <div id="app-root">{children}</div>
         </CopyProvider>
         <LegalFooter copy={copy} />
