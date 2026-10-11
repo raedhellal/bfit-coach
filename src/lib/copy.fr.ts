@@ -1242,7 +1242,6 @@ export const fr = {
     pickTitle: "Utiliser pour un client",
     pickSub: (template: string) => `Choisissez le client qui recevra ${q(template)}.`,
     noTrainees: "Aucun de vos clients n'a partagé sa nutrition avec vous.",
-    traineesLoadError: "Vos clients n'ont pas pu être chargés. Fermez cette fenêtre et réessayez.",
     confirmTitle: (template: string, first: string) => `Utiliser ${q(template)} pour ${mid(first)} ?`,
     now: "Actuel",
     after: "Après",
@@ -1347,8 +1346,10 @@ export const fr = {
     selectNone: "Effacer",
     selected: (count: number) => `${count} sélectionné${s(count)}`,
     noClients: "Vous n'avez encore aucun client lié. Invitez d'abord un client depuis la liste des clients.",
-    /** Also /templates' « Appliquer à un client » picker (BUG-738): no copy of its own. */
+    /** Also /templates' « Appliquer à un client » (BUG-738) and /nutrition-templates' (EV-356g) pickers. */
     clientsLoadError: "Vos clients n'ont pas pu être chargés. Rechargez la page pour réessayer.",
+    /** EV-356g — also the pickers of /templates and /nutrition-templates. */
+    clientsLoading: "Chargement de vos clients…",
     submit: "Créer et inviter",
     submitting: "Création…",
     cancel: "Annuler",

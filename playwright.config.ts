@@ -50,7 +50,10 @@ export default defineConfig({
   // BUG-745: session-epoch.spec.ts and session-epoch-cookie.spec.ts need Lina's row, a refresh
   // stub and two engines on dev AND start (playwright.session.config.ts). The guard's unit tests,
   // session-epoch-unit.spec.ts, run HERE.
-  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intent-prefetch|client-load-reload|no-auto-prefetch|session-epoch|session-epoch-cookie)\.spec\.ts/,
+  // EV-356g: library-roster-unblocked.spec.ts times paints on a production build and needs the
+  // populated roster (playwright.start.config.ts). Its hook's unit tests, roster-read-unit.spec.ts,
+  // run HERE.
+  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intent-prefetch|client-load-reload|no-auto-prefetch|session-epoch|session-epoch-cookie|library-roster-unblocked)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.
