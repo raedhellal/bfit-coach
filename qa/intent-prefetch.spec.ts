@@ -78,7 +78,7 @@ async function signIn(context: BrowserContext): Promise<void> {
   // The `webkit` project of playwright.start.config.ts runs D.1/D.2/D.4 here: WebKit does not
   // send a production build's Secure cookies back to http://localhost (see signInOverHttpWebKit).
   const cookies = await context.cookies();
-  await context.addCookies(cookies.map((c) => ({ ...c, secure: false })));
+  await context.addCookies(cookies.map((c) => ({ ...c, secure: c.name.startsWith("__Host-") })));
 }
 
 /**
@@ -92,7 +92,7 @@ async function signInOverHttpWebKit(context: BrowserContext): Promise<void> {
   await signIn(context);
   const cookies = await context.cookies();
   expect(cookies.length, "the sign-in set the session cookies").toBeGreaterThan(0);
-  await context.addCookies(cookies.map((c) => ({ ...c, secure: false })));
+  await context.addCookies(cookies.map((c) => ({ ...c, secure: c.name.startsWith("__Host-") })));
 }
 
 async function setCookie(page: Page, name: string, value: string): Promise<void> {
