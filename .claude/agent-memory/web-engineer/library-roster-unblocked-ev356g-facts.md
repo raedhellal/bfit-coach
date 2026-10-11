@@ -29,8 +29,11 @@ with `then(ok, err)` in an effect: `loading | failed | ready`. Spec: `qa/library
   `responseEnd` (entry added when the body ends) or the navigation entry for a document.
 - `evoli_fixture_roster_delay=<ms>` holds `listClients` alone (5 s cap, per page read, before the
   fail switch, so `evoli_fixture_roster=fail` + delay = a slow failure).
-- The nutrition picker's failure sentence says « Fermez cette fenêtre et réessayez. »; closing the
-  dialog re-reads nothing (before or after EV-356g). Flagged to senior-po, not changed.
+- The nutrition picker said « Fermez cette fenêtre et réessayez. », untrue (closing re-reads
+  nothing, before or after EV-356g). Retired 2026-10-11 by the coordinator (Raed's delegation):
+  all three pickers now say `challenges.clientsLoadError` (BUG-738); `traineesLoadError` deleted.
+  G.4 asserts the exact sentence per role (alert in the template pickers, status in the challenge
+  dialog: a `getByRole("alert")` there finds nothing).
 
 **How to apply:** before streaming any read on a coach page, say what WebKit does on a document
 load; time paints in the page (`performance.now()` + a rAF after a MutationObserver), and pair each

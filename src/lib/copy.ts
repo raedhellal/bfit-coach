@@ -2305,8 +2305,10 @@ export const en = {
     pickSub: (template: string) => `Choose who gets “${template}”.`,
     /** AC3: only ACTIVE links with NUTRITION are offered, so nobody is refused after. */
     noTrainees: "You have no trainees who have shared their nutrition with you.",
-    /** The roster read failed: nobody is offered, and "no trainees" would be false. */
-    traineesLoadError: "Your trainees could not be loaded. Close this and try again.",
+    /*
+     * The roster read failed: the picker says `challenges.clientsLoadError` (EV-356g). Its own
+     * "Close this and try again." was untrue: closing the dialog re-reads nothing.
+     */
     /** AC4, verbatim. */
     confirmTitle: (template: string, first: string) => `Use “${template}” on ${mid(first)}?`,
     now: "Now",
@@ -2462,7 +2464,10 @@ export const en = {
     selectNone: "Clear",
     selected: (count: number) => `${count} selected`,
     noClients: "You have no linked clients yet. Invite a client from the roster first.",
-    /** The roster read failed — not the same fact as having no clients. Also /templates' "Use on a trainee" picker (BUG-738). */
+    /**
+     * The roster read failed — not the same fact as having no clients. Also /templates' "Use on a
+     * trainee" picker (BUG-738) and /nutrition-templates' (EV-356g).
+     */
     clientsLoadError: "Your clients could not be loaded. Reload the page to try again.",
     /**
      * EV-356g — the pickers' loading line: the page no longer waits for the roster, so a dialog

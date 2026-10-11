@@ -503,7 +503,11 @@ function PickDialog({
           {copy.challenges.clientsLoading}
         </p>
       ) : read.state === "failed" ? (
-        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>{T.traineesLoadError}</p>
+        // EV-356g — BUG-738's sentence: closing this dialog re-reads nothing, so the old "Close this
+        // and try again." was untrue. A reload is what reads the roster again.
+        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
+          {copy.challenges.clientsLoadError}
+        </p>
       ) : read.targets.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>{T.noTrainees}</p>
       ) : (

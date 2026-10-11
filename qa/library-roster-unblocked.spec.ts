@@ -18,8 +18,9 @@ import { launch, setSwitch, signedInContext, type Engine } from "./start-build";
  *         then the client list;
  *   G.3 — with the dialog closed, a rename settles in under 500 ms;
  *   G.4 — a failed roster read never takes the library down and never says the coach has no
- *         clients (BUG-738's sentence on /templates and /challenges; /nutrition-templates keeps
- *         its own failure sentence, EV-273b).
+ *         clients: BUG-738's sentence, as an alert, on all three pickers. /nutrition-templates used
+ *         to say « Fermez cette fenêtre et réessayez. », untrue (closing re-reads nothing); retired
+ *         by the coordinator under Raed's product delegation, 2026-10-11.
  *
  * Two ways in (`Arrival`): a DOCUMENT load of the URL, and a CLIENT navigation by the sidebar
  * link from `/recipes` (no roster read), the usual way in. Every timing is read IN THE PAGE
@@ -57,6 +58,10 @@ interface LibraryPage {
   /** The control that acts on the pick: disabled while there is nobody to pick. */
   act: Record<Lang, string>;
   failed: Record<Lang, string>;
+  /** How the failure is announced: an alert in the template pickers, the fieldset's status line in the challenge dialog. */
+  failedRole: "alert" | "status";
+  /** A failure sentence this picker must no longer say (EV-356g: the nutrition picker's untrue one). */
+  retired?: Record<Lang, string>;
   none: Record<Lang, string>;
 }
 
@@ -77,6 +82,7 @@ const PAGES: Record<PageKey, LibraryPage> = {
       en: "Your clients could not be loaded. Reload the page to try again.",
       fr: "Vos clients n'ont pas pu être chargés. Rechargez la page pour réessayer.",
     },
+    failedRole: "alert",
     none: {
       en: "You have no trainees who have shared their workouts with you.",
       fr: "Aucun de vos clients n'a partagé ses séances avec vous.",
@@ -95,7 +101,13 @@ const PAGES: Record<PageKey, LibraryPage> = {
     // ACTIVE + NUTRITION (coach-nutrition-templates-apply.spec.ts AC3).
     expectedOffered: ["Lina M.", "Petra L.", "Tobias R."],
     act: { en: "", fr: "" },
+    // EV-356g: BUG-738's sentence, as on the two other pickers (`retired` below must be gone).
     failed: {
+      en: "Your clients could not be loaded. Reload the page to try again.",
+      fr: "Vos clients n'ont pas pu être chargés. Rechargez la page pour réessayer.",
+    },
+    failedRole: "alert",
+    retired: {
       en: "Your trainees could not be loaded. Close this and try again.",
       fr: "Vos clients n'ont pas pu être chargés. Fermez cette fenêtre et réessayez.",
     },
@@ -119,6 +131,7 @@ const PAGES: Record<PageKey, LibraryPage> = {
       en: "Your clients could not be loaded. Reload the page to try again.",
       fr: "Vos clients n'ont pas pu être chargés. Rechargez la page pour réessayer.",
     },
+    failedRole: "status",
     none: {
       en: "You have no linked clients yet. Invite a client from the roster first.",
       fr: "Vous n'avez encore aucun client lié. Invitez d'abord un client depuis la liste des clients.",
@@ -342,7 +355,10 @@ for (const engine of ["chromium", "webkit"] as Engine[]) {
               const dialog = await openPickerEarly(page, lib, lang);
               // Held: the loading line, never the failure before it has happened.
               await expect(dialog.getByText(LOADING[lang], { exact: true })).toBeVisible();
-              await expect(dialog.getByText(lib.failed[lang], { exact: true })).toBeVisible();
+              await expect(dialog.getByRole(lib.failedRole).filter({ hasText: lib.failed[lang] })).toHaveText(lib.failed[lang]);
+              if (lib.retired) await expect(dialog.getByText(lib.retired[lang], { exact: false })).toHaveCount(0);
+              // "Close this and try again" is the retired sentence's half: no picker says it.
+              await expect(dialog.getByText(/Close this and try again|Fermez cette fenêtre/)).toHaveCount(0);
               await expect(dialog.getByText(LOADING[lang], { exact: false })).toHaveCount(0);
               await expect(dialog.getByText(lib.none[lang], { exact: false })).toHaveCount(0);
               if (lib.act[lang]) await expect(dialog.getByRole("button", { name: lib.act[lang], exact: true })).toBeDisabled();
