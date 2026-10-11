@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test } from "@playwright/test";
@@ -628,7 +628,8 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
    * N1 (staff r1). A symlink is never skipped in silence: ESLint follows one and lints its target
    * under the link's path, but this walk does not, so a `shared -> qa` link would hide test code
    * from the census. Each is a failure, except the repo-root `node_modules` link agent worktrees
-   * use.
+   * use, and that one only while it points OUTSIDE the repo: a root `node_modules -> qa` would
+   * make every bare import a way into test code. A link that does not resolve is a failure too.
    *
    * The symlink check runs BEFORE the unshipped names, on purpose (staff r2 N2' asked for the
    * reverse; declined with a witness). Git's `node_modules/` matches a DIRECTORY only: a symlink
@@ -639,12 +640,21 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
    * passed 100/100.
    */
   const symlinks: string[] = [];
+  const REAL_ROOT = realpathSync(ROOT);
+  const pointsOutside = (path: string) => {
+    try {
+      const target = realpathSync(join(ROOT, path));
+      return target !== REAL_ROOT && !target.startsWith(REAL_ROOT + sep);
+    } catch {
+      return false;
+    }
+  };
 
   /** Every regular file in the repo that git can ship, relative to the root, `/`-separated. */
   const walk = (dir: string): string[] =>
     readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
       const path = dir ? `${dir}/${entry.name}` : entry.name;
-      if (entry.isSymbolicLink() && path !== "node_modules") {
+      if (entry.isSymbolicLink() && !(path === "node_modules" && pointsOutside(path))) {
         symlinks.push(path);
         return [];
       }
@@ -732,12 +742,14 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
  * staff's counterexample, tsconfig `paths` `"#t/*": ["./qa/*"]` imported as `"#t/NavLink"` (or the
  * same through package.json `imports`), passed lint, tsc, this census and `next build`, and the qa
  * module's marker was in `.next/server/chunks`. So the aliases Next's resolver honours are pinned:
- *   · tsconfig (parsed by TypeScript, `extends` followed): every `paths` target RESOLVES under
- *     `src/` (staff r2: `"./src/../qa/*"` passed a spelling check and bundled qa), against the
- *     directory the paths were declared in (`pathsBasePath`, which also covers a `paths` inherited
- *     through `extends` from another folder), and there is no `baseUrl` (Next turns it into a
- *     module root, so `qa/x` would resolve); no `jsconfig.json`, which Next reads when tsconfig
- *     is absent;
+ *   · tsconfig: no `extends`, so `paths` is declared in the root tsconfig, where TypeScript and
+ *     Next resolve it from the same folder. They do not agree on an inherited `paths`: TypeScript
+ *     resolves it from the declaring file's folder (`pathsBasePath`), Next 14.2 from the root
+ *     (staff r3, t9: `extends: "./src/cfg/base.json"` declaring `"#t/*": ["./qa/*"]`, plus a decoy
+ *     `src/cfg/qa/NavLink.tsx` for tsc, bundled the real `qa/NavLink.tsx`). Every `paths` target
+ *     RESOLVES under `src/` (staff r2: `"./src/../qa/*"` passed a spelling check and bundled qa),
+ *     and there is no `baseUrl` (Next turns it into a module root, so `qa/x` would resolve); no
+ *     `jsconfig.json`, which Next reads when tsconfig is absent;
  *   · package.json: none of `imports` (`#x` subpaths), `exports` (a package importing itself by
  *     name) or `browser` (webpack's alias field), which each map a string to a file. A denylist:
  *     its other keys (`engines`, `overrides`, ...) do not reach the resolver;
@@ -755,18 +767,20 @@ const KEY_MESSAGE =
   "New key? If it maps a module name to a file (imports/exports/browser in package.json; modularizeImports, a resolveAlias or transpilePackages in next.config), it is banned by BUG-751 B1: it can name qa/ where the lint fence cannot read it. Otherwise add it to this list in the same commit.";
 
 test.describe("B1: no resolver alias can name test code", () => {
-  test("tsconfig: every paths target resolves under src/, no baseUrl, and no jsconfig.json", () => {
+  test("tsconfig: no extends, every paths target resolves under src/, no baseUrl, and no jsconfig.json", () => {
     const file = join(ROOT, "tsconfig.json");
     const read = ts.readConfigFile(file, ts.sys.readFile);
     expect(read.error, "tsconfig.json parses").toBeUndefined();
+    expect(
+      (read.config as { extends?: unknown }).extends,
+      "paths must be declared in the root tsconfig, where TypeScript and Next resolve them from the same folder (BUG-751 B1)"
+    ).toBeUndefined();
     const { options } = ts.parseJsonConfigFileContent(read.config, ts.sys, ROOT, undefined, file);
     expect(options.baseUrl, "a baseUrl makes the repo root a module root").toBeUndefined();
-    // Where TypeScript and Next resolve the targets from: the folder of the tsconfig that declared
-    // `paths` (an internal option, set by the parser; the root when it is absent).
-    const base = typeof options.pathsBasePath === "string" ? options.pathsBasePath : ROOT;
+    // With no `extends`, the root is where both TypeScript and Next resolve the targets from.
     const SRC = join(ROOT, "src");
     const targets = Object.entries(options.paths ?? {}).flatMap(([key, values]) =>
-      values.map((value) => ({ alias: `${key} -> ${value}`, to: resolve(base, value) }))
+      values.map((value) => ({ alias: `${key} -> ${value}`, to: resolve(ROOT, value) }))
     );
     expect(targets.length, "the census reads the @/ alias (a reader that sees nothing passes everything)").toBeGreaterThan(0);
     expect(
