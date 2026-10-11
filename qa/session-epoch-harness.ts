@@ -273,7 +273,7 @@ export async function expectLeftToLogin(
   t: Tabs,
   since: number,
   layer: string,
-  opts: { clientPath?: string; watch?: boolean; allowRefusedRsc?: boolean; reissued?: boolean } = {}
+  opts: { clientPath?: string; watch?: boolean; allowRefusedRsc?: boolean; reissued?: boolean; routerFallback?: boolean } = {}
 ): Promise<void> {
   const clientPath = opts.clientPath ?? `/clients/${LINA}`;
   // Polled, not `waitForURL`: a reload superseded by the popstate re-issue is an ABORTED
@@ -305,7 +305,18 @@ export async function expectLeftToLogin(
   } else {
     expect(docsBeforeLogin.length, `at most one document request before /login: ${fmt(after)}`).toBeLessThanOrEqual(1);
   }
-  expect(layerAfter(t, since), `the layer that did the work; reports: ${JSON.stringify(t.reports.filter((r) => r.kind !== "doc" && r.at >= since))}`).toBe(layer);
+  const fired = layerAfter(t, since);
+  if (opts.routerFallback && fired === null) {
+    // Next's own fallback: the refused RSC answer's redirect follow was aborted, so the router
+    // made a document navigation to the target itself (no client commit for the guard to see).
+    // Allowed only as a document request for the client's page that the server refused.
+    const docs = after.filter((s) => s.kind === "DOC" && s.path.startsWith(clientPath));
+    expect(docs.length, `the router's own document fallback: ${fmt(after)}`).toBe(1);
+    expect(docs[0].status, `refused by middleware: ${fmt(after)}`).toBe(307);
+    if (opts.watch !== false) await expectNoLoop(t, since);
+    return;
+  }
+  expect(fired, `the layer that did the work; reports: ${JSON.stringify(t.reports.filter((r) => r.kind !== "doc" && r.at >= since))}`).toBe(layer);
   if (opts.watch !== false) await expectNoLoop(t, since);
 }
 

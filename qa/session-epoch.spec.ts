@@ -129,7 +129,10 @@ for (const lang of ["en", "fr"] as Lang[]) {
       held.release();
       // No click in tab 1 after the sign-out. The push's own RSC request is refused (307) by
       // middleware: the action's answer revalidated, so the router cache had no copy of the page.
-      await expectLeftToLogin(t, since, "c", { clientPath: `/clients/${YUSUF}`, allowRefusedRsc: true, watch });
+      // Usually the router renders the redirect's /login and (c) leaves; ~1 in 10 in WebKit dev the
+      // redirect follow is aborted and Next falls back to a document load of the target, which
+      // middleware refuses (ruling R2: W4 is the coverage witness; W4b is (c)'s).
+      await expectLeftToLogin(t, since, "c", { clientPath: `/clients/${YUSUF}`, allowRefusedRsc: true, watch, routerFallback: true });
       await t.context.close();
     });
 
