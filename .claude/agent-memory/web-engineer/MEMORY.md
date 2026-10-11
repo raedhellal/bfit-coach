@@ -99,7 +99,8 @@
 - [Mutants against one hand-started dev server](mutants-against-a-hand-started-dev-server.md) — untracked config, webServer undefined, HMR per mutant, git checkout to revert
 - [.roster-search ring (BUG-724)](roster-search-ring-fails-inside-contrast.md) — halo dropped under the keyboard ring; sweep in qa/focus-ring-sweep.ts, roster half in its own file
 - [Text fields match :focus-visible on click](text-fields-match-focus-visible-on-click.md) — EV-337j2 N1: :has(input:focus-visible) does not separate pointer from keyboard
-- [Revalidating action wipes the guard flag](a-revalidating-action-wipes-the-guard-flag.md) — BUG-735: Next replaceStates without evoliUnsavedGuard; witness by history index; late edit + stays needs stillUnsaved()
+- [Revalidating action wipes the guard flag](a-revalidating-action-wipes-the-guard-flag.md) — BUG-735/741: flag witnesses an arm, only the history index a disarm; late edit + stays needs stillUnsaved()
 - [A shared transition labels every action](a-shared-transition-labels-every-action.md) — tag the running kind in the click; hold the action POST (qa/hold-action.ts) to test pending UI
 - [A hand-made context inherits the runner's language](a-hand-made-context-inherits-the-runners-language.md) — BUG-738: fr-FR WebKit context served EN; set evoli_pro_locale; failed roster = null on 3 pages
 - [A path-segment change always remounts](a-path-segment-change-always-remounts.md) — BUG-739: only search params keep an island; rewrites chain + merge the query; useEditorIdentity
+- [A cleared marker is a sync only if entered](a-cleared-marker-is-a-sync-only-if-it-was-entered.md) — BUG-742: busy-gone is hollow if never entered OR left early; observer + order snapshot, not a poll
