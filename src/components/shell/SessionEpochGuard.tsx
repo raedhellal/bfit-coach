@@ -127,9 +127,12 @@ function mark(attr: string, layer: Layer): void {
  * Hide the portal (`globals.css` hides `#app-root` under `html[data-session-leaving]`), drop
  * the client caches and reload this URL, all in one task. Middleware then decides: `/login`
  * after a sign-out, this page re-rendered for the new session after a sign-in elsewhere.
- * Idempotent; a `popstate` while leaving re-issues the reload (layer (b)).
+ * Idempotent: a second layer firing while the document is already leaving (a traversal's
+ * restore reaching (c) after (b) left) adds no second document request. Only a `popstate` while
+ * leaving re-issues the reload (layer (b)), because a traversal can cancel the first.
  */
 function leave(layer: Layer): void {
+  if (isSessionLeaving()) return;
   mark(SESSION_LEAVING_ATTR, layer);
   clearClientSession();
   replaceDocument(window.location.href);

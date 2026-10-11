@@ -38,6 +38,8 @@ export const LABELS = {
     useConfirm: "Use this template",
     save: "Save template",
     templateName: "Template name",
+    day: (n: number) => `Day ${n}`,
+    addExercise: "Add exercise",
   },
   fr: {
     locale: "fr-FR",
@@ -52,6 +54,8 @@ export const LABELS = {
     useConfirm: "Appliquer",
     save: "Enregistrer le modèle",
     templateName: "Nom du modèle",
+    day: (n: number) => `Jour ${n}`,
+    addExercise: "Ajouter un exercice",
   },
 } as const;
 
@@ -60,6 +64,8 @@ export interface Seen {
   kind: "DOC" | "FULL" | "AUTO" | "ACTION";
   path: string;
   status?: number;
+  /** Aborted before an answer (a later `location.replace` superseded it). */
+  failed?: boolean;
 }
 
 export interface Report {
@@ -117,6 +123,9 @@ export async function openTabs(browser: Browser, baseURL: string, opts: TabsOpti
     maxRedirects: 0,
   });
   expect(login.status(), "fixture sign-in").toBe(200);
+  // The language by its cookie too: a hand-made context can inherit the runner's English header
+  // (web-engineer note `a-hand-made-context-inherits-the-runners-language`).
+  await context.addCookies([{ name: "evoli_pro_locale", value: lang, url: baseURL }]);
   if (!opts.wake) {
     await context.addCookies([{ name: "evoli_fixture_session_wake", value: "off", url: baseURL }]);
   }
@@ -160,12 +169,16 @@ export async function openTabs(browser: Browser, baseURL: string, opts: TabsOpti
           continue;
         }
         if (hidden) continue;
+        // A flight payload in an inline <script> is data, never painted.
+        const inScript = (n: Node | null) => !!n && (n.nodeName === "SCRIPT" || n.parentNode?.nodeName === "SCRIPT");
+        if (inScript(m.target)) continue;
         if (m.type === "characterData") {
           const text = (m.target as CharacterData).data;
           if (text.includes(name)) send({ kind: "record", text: text.slice(0, 120) });
           continue;
         }
         for (const node of Array.from(m.addedNodes)) {
+          if (inScript(node)) continue;
           const text = node.textContent ?? "";
           if (text.includes(name)) send({ kind: "record", text: text.replace(/\s+/g, " ").slice(0, 120) });
         }
@@ -194,6 +207,10 @@ export async function openTabs(browser: Browser, baseURL: string, opts: TabsOpti
       .response()
       .then((res) => (entry.status = res?.status()))
       .catch(() => undefined);
+  });
+  tab1.on("requestfailed", (req) => {
+    const entry = [...seen].reverse().find((s) => s.path === new URL(req.url()).pathname && s.status === undefined);
+    if (entry) entry.failed = true;
   });
   tab1.on("dialog", async (dialog) => {
     dialogs.push(dialog.type());
@@ -245,7 +262,7 @@ export function layerAfter(t: Tabs, since: number, attr = "data-session-leaving"
   return t.reports.find((r) => r.kind === "layer" && r.attr === attr && r.at >= since)?.value ?? null;
 }
 
-export const fmt = (seen: Seen[]) => seen.map((s) => `${s.kind} ${s.path} ${s.status ?? "?"}`);
+export const fmt = (seen: Seen[]) => seen.map((s) => `${s.kind} ${s.path} ${s.failed ? "aborted" : s.status ?? "?"}`);
 
 /**
  * W1's expectations (the BUG-745 shape): tab 1 ends on /login, with ZERO records, no RSC
@@ -256,10 +273,12 @@ export async function expectLeftToLogin(
   t: Tabs,
   since: number,
   layer: string,
-  opts: { clientPath?: string; watch?: boolean; allowRefusedRsc?: boolean } = {}
+  opts: { clientPath?: string; watch?: boolean; allowRefusedRsc?: boolean; reissued?: boolean } = {}
 ): Promise<void> {
   const clientPath = opts.clientPath ?? `/clients/${LINA}`;
-  await t.tab1.waitForURL((u) => u.pathname === "/login", { timeout: 15_000 });
+  // Polled, not `waitForURL`: a reload superseded by the popstate re-issue is an ABORTED
+  // navigation, which `waitForURL` reports as a failure.
+  await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 }).toBe("/login");
   await expect(t.tab1.getByLabel(LABELS[t.lang].email)).toBeVisible();
   const after = t.seen.filter((s) => s.at >= since);
   const records = recordsAfter(t, since);
@@ -270,8 +289,18 @@ export async function expectLeftToLogin(
   } else {
     expect(rsc, `no RSC request for the client's page: ${fmt(after)}`).toEqual([]);
   }
-  const docsBeforeLogin = after.filter((s) => s.kind === "DOC" && s.path !== "/login");
-  expect(docsBeforeLogin.length, `at most one document request before /login: ${fmt(after)}`).toBeLessThanOrEqual(1);
+  // Answered ones: a request a later `location.replace` aborted never loaded a document (the
+  // popstate re-issue in W3's Back-then-Forward is such a case, by design).
+  const firstLogin = after.find((s) => s.kind === "DOC" && s.path === "/login" && !s.failed)?.at ?? Infinity;
+  const docsBeforeLogin = after.filter((s) => s.kind === "DOC" && s.path !== "/login" && !s.failed && s.at <= firstLogin);
+  if (opts.reissued) {
+    // A traversal queued while leaving re-issues the reload (D33.14 point 2): its document request
+    // is a second one, and the first may already have been answered. Each is refused by middleware.
+    expect(docsBeforeLogin.length, `at most the reload and its re-issue: ${fmt(after)}`).toBeLessThanOrEqual(2);
+    expect(docsBeforeLogin.every((s) => s.status === 307), `every one refused (307): ${fmt(after)}`).toBe(true);
+  } else {
+    expect(docsBeforeLogin.length, `at most one document request before /login: ${fmt(after)}`).toBeLessThanOrEqual(1);
+  }
   expect(layerAfter(t, since), `the layer that did the work; reports: ${JSON.stringify(t.reports.filter((r) => r.kind !== "doc" && r.at >= since))}`).toBe(layer);
   if (opts.watch !== false) await expectNoLoop(t, since);
 }

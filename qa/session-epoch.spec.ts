@@ -22,11 +22,14 @@ import {
   type Tabs,
 } from "./session-epoch-harness";
 import { signInThroughForm } from "./sign-in";
+import { openEveryDay } from "./day-accordion";
 
 /**
  * BUG-745, ADR-0033 D33.14 — a session boundary in one tab is honoured by every tab of the
  * browser. The QA witnesses W2–W18 (W1 needs EV-356d's IntentLink and `static: 30`, so it is
- * shown on the rebuilt train only; W16 needs s3j's synced `replaceState`, absent at `50f31f7`).
+ * shown on the rebuilt train only). W16 runs because this branch contains s3j (`4e95519`), whose
+ * create corrects the URL with a `replaceState(null, …)` that Next syncs (K9). W4b is not in the
+ * ADR: see its comment.
  *
  * Run by `playwright.session.config.ts` on `next dev` AND `next start`, Chromium AND WebKit, EN
  * and FR. Harness: `qa/session-epoch-harness.ts` (records, layers, requests).
@@ -97,11 +100,14 @@ for (const lang of ["en", "fr"] as Lang[]) {
       await openLinaThenRoster(t);
       const since = await signOutInTab2(t);
       await t.tab1.bringToFront();
-      // Back (to Lina's entry), then Forward if the tab is still there to take it.
-      await t.tab1.evaluate(() => history.back());
-      await t.tab1.waitForTimeout(300);
-      await t.tab1.evaluate(() => history.forward()).catch(() => undefined);
-      await expectLeftToLogin(t, since, "b", { watch });
+      // Back (to Lina's entry), then Forward queued from inside the Back's own popstate (after the
+      // guard's listener): the Forward reaches a document that is already leaving, which re-issues
+      // the reload. (A synchronous back(); forward() is no traversal at all in WebKit.)
+      await t.tab1.evaluate(() => {
+        window.addEventListener("popstate", () => history.forward(), { once: true });
+        history.back();
+      });
+      await expectLeftToLogin(t, since, "b", { watch, reissued: true });
       await t.context.close();
     });
 
@@ -127,6 +133,16 @@ for (const lang of ["en", "fr"] as Lang[]) {
       await t.context.close();
     });
 
+    /**
+     * W4b — NOT one of the ADR's witnesses; added because W4 as written cannot fail on this code.
+     * Every create action calls `revalidatePath`, so its answer carries a render and the router
+     * replaces its cache (`server-action-reducer.js`: `prefetchCache = new Map()` when `rsc !==
+     * null`). The `router.push` that follows must therefore REQUEST the page, after the sign-out:
+     * middleware answers 307, nothing of the client can paint, and W4 stays green with (c)
+     * removed or turned into a `useEffect` (M2, M8). What (c) uniquely guards is a navigation whose
+     * answer was rendered under the OLD session and arrives after the boundary: this holds that
+     * answer (the push's data-carrying RSC GET, sent before the sign-out) instead of the action's.
+     */
     test(`W4b: the navigation's own answer, rendered under the old session, arrives after the sign-out -> zero frames, layer c`, async ({ browser, baseURL }) => {
       const t = await openTabs(browser, baseURL!, { lang, name: YUSUF_NAME });
       await hydrated(t.tab1, "/templates");
@@ -142,6 +158,9 @@ for (const lang of ["en", "fr"] as Lang[]) {
         (route) =>
           route.request().method() === "GET" &&
           route.request().headers()["rsc"] === "1" &&
+          // The request that carries the page's data. On a cold cache Next first sends a
+          // `Next-Router-Prefetch` request for the tree only, then this one.
+          route.request().headers()["next-router-prefetch"] === undefined &&
           new URL(route.request().url()).pathname === `/clients/${YUSUF}/routine`
       );
       await dialog.getByRole("button", { name: L.useConfirm }).click();
@@ -237,7 +256,10 @@ for (const lang of ["en", "fr"] as Lang[]) {
       await expect(t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`)).toBeVisible();
       expect(new URL(t.tab1.url()).pathname).toBe("/");
       expect(recordsAfter(t, since, true), "nothing of Lina painted by the OLD document").toEqual([]);
-      expect(t.seen.filter((s) => s.at >= since && s.kind !== "DOC" && s.path.startsWith(`/clients/${LINA}`))).toEqual([]);
+      // No NAVIGATION to her page. (On `next start` the new document's roster prefetches her row
+      // under coach B's session, AUTO: invariant N is not on this base. That is the new session's
+      // server answering, not the old document's cache.)
+      expect(t.seen.filter((s) => s.at >= since && s.kind === "FULL" && s.path.startsWith(`/clients/${LINA}`))).toEqual([]);
       expect(await t.tab1.locator("h1").allTextContents()).not.toContain(LINA_NAME);
       expect(layerAfter(t, since)).toBe("a");
       if (watch) await expectNoLoop(t, since);
@@ -355,6 +377,53 @@ for (const lang of ["en", "fr"] as Lang[]) {
       await banner.getByRole("button", { name: L.bannerButton }).click();
       await t.tab1.waitForURL((u) => u.pathname === "/login", { timeout: 15_000 });
       expect(asked, "the browser asked before discarding the work").toEqual(["beforeunload"]);
+      await t.context.close();
+    });
+
+    test(`W16: a staying editor, a create answered after the sign-out with late text -> URL corrected, editor and text kept, banner, layer c`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await hydrated(t.tab1, "/templates");
+      await t.tab1.goto("/templates/new");
+      const name = t.tab1.getByLabel(L.templateName, { exact: true });
+      await expect(async () => {
+        await name.fill("BUG-745 staying editor");
+        await expect(t.tab1.locator(".tpl-dirty-slot")).not.toBeEmpty({ timeout: 1_000 });
+      }).toPass({ timeout: 20_000 });
+      for (const day of [1, 2]) {
+        await openEveryDay(t.tab1);
+        await t.tab1.getByRole("group", { name: L.day(day), exact: true }).getByRole("button", { name: L.addExercise }).click();
+        const picker = t.tab1.getByRole("dialog");
+        for (let i = 0; i < 2; i += 1) await picker.locator("button[title]").nth(i).click();
+        await picker.getByRole("button").first().click();
+        await expect(t.tab1.getByRole("dialog")).toHaveCount(0);
+      }
+      const held = await holdResponse(t.tab1, (route) => route.request().method() === "POST" && route.request().headers()["next-action"] !== undefined);
+      await t.tab1.getByRole("button", { name: L.save, exact: true }).click();
+      await held.reached;
+      // Typed while the create is in flight: unsaved after its answer (BUG-735/739's `stillUnsaved`).
+      await name.fill("BUG-745 staying editor L1");
+      const since = await signOutInTab2(t);
+      await t.tab1.bringToFront();
+      held.release();
+      await expect(t.tab1).toHaveURL(/\/templates\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      const banner = t.tab1.locator("[data-session-ended-banner]");
+      await expect(banner).toBeVisible();
+      await expect(banner).toContainText(L.banner);
+      await expect(name).toHaveValue("BUG-745 staying editor L1");
+      await t.tab1.waitForTimeout(1_000);
+      /**
+       * ⚠ ADR-0033 D33.14 says `data-session-ended` = `c` here. On this code it is `b`, and that is
+       * the code's order, not a guard defect: the create's `leaving.release(then, "stays")`
+       * (TemplateEditor.tsx, the BUG-739 block) hands the unsaved guard's sentinel back with
+       * `history.back()` (useUnsavedChanges.ts `withCleanHistory`) BEFORE `then` runs the
+       * `replaceState(null, …)`. That traversal's `popstate` reaches layer (b) first, with the
+       * editor still dirty (late text), so `ended("b")` is the first writer; (c)'s `ended("c")` on
+       * the corrected URL's commit comes second and the attribute keeps `b`. Reported, not changed.
+       */
+      expect(layerAfter(t, since, "data-session-ended")).toBe("b");
+      expect(await t.tab1.evaluate(() => document.documentElement.hasAttribute("data-session-leaving"))).toBe(false);
+      expect(t.seen.filter((s) => s.at >= since && s.kind === "DOC"), "the editor stayed: no document load").toEqual([]);
+      expect(recordsAfter(t, since), "nothing of another page painted").toEqual([]);
       await t.context.close();
     });
 
