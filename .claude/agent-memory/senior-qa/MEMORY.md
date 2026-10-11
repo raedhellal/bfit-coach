@@ -26,3 +26,4 @@
 - [coach-s3g gate](project_coach-s3g-gate.md) — 2026-10-09 83ff8e4 PASS (j2, BUG-724, BUG-730); natural-race keystroke rig, badge-at-keystroke witness, mid-flight save loss
 - [coach-s3h gate](project_coach-s3h-gate.md) — 2026-10-10 c378aea PASS (BUG-735, EV-356a/b/c); WebKit no sign-in on next start, streamed-frame recorder, HistoryUpdater-satisfied flag helpers
 - [coach-s3j gate](project_coach-s3j-gate.md) — 2026-10-11 8c29c7d FAIL (roster 349.1 red), re-gate 1d6c442 PASS; 738 PASS; WebKit prefetch-cancel console, create→New identity hole
+- [coach-s3k gate](project_coach-s3k-gate.md) — 2026-10-11 f4d6842 PASS (BUG-741/742 test-only); old-reader variants prove the false pass, M-flash timing-dependent, BUG-749 unchanged
