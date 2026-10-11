@@ -1,7 +1,7 @@
 {
   "root": true,
   "extends": "next/core-web-vitals",
-  "ignorePatterns": ["!.*", ".git/", ".next/", ".vercel/", ".idea/", "node_modules/", "next-env.d.ts", "out/", "test-results/", "playwright-report/"],
+  "ignorePatterns": ["!.*", ".git/", ".claude/worktrees/", ".next/", ".vercel/", ".idea/", "node_modules/", "next-env.d.ts", "out/", "test-results/", "playwright-report/"],
   "rules": {
     "eqeqeq": ["error", "smart"],
     "no-var": "error",

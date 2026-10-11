@@ -1,7 +1,9 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { expect, test } from "@playwright/test";
 import { ESLint, type LintMessage } from "eslint";
+import ts from "typescript";
 
 /**
  * BUG-743 + BUG-744 + BUG-751 — the lint half of ADR-0033 D33.13 points 1 and 2 (EV-356d), held
@@ -577,10 +579,14 @@ test.describe("BUG-751: the bans hold outside src, on any path but test code", (
  * file a src import reaches, wherever it lives, so the census walks the whole repo rather than
  * `src/` (BUG-751), and what it skips is NAMED:
  *   · test code: `qa/**` and the root `playwright*.config.ts`, the bans override's `excludedFiles`.
- *     App code may not import from it (the BUG-751 rows above), so it never reaches the bundle;
+ *     App code may not import from it: the BUG-751 rows above ban every path spelling, and the
+ *     "no resolver alias" test below bans every other way to name it (B1, staff r1);
  *   · what git does not ship (the directories `.gitignore` names: `node_modules/`, `.next/`, the
- *     report folders): a Vercel build is a clone, so it cannot bundle them;
+ *     report folders, `.claude/worktrees/`): a Vercel build is a clone, so it cannot bundle them;
  *   · `next-env.d.ts`, which Next generates, ESLint ignores and no bundle contains.
+ * This list is a SECOND copy of `.eslintrc.json`'s (`ignorePatterns`, the override's
+ * `excludedFiles`), kept on purpose: the tests below fail whenever the two disagree about a file
+ * on disk, so neither can widen alone.
  * Everything else must be linted with both bans exactly as the probe path is, a dot-folder
  * included: ESLint skips those by default, so `.eslintrc.json` opens them (`"!.*"`) and names the
  * ones to keep closed (`.git/`, `.next/`, `.vercel/`, `.idea/`, all unshipped).
@@ -604,23 +610,36 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
   const NODE_ENTRY = (f: string) => f === "next.config.mjs" || f.startsWith("scripts/");
   const TEST_CODE = (f: string) => f.startsWith("qa/") || /^playwright[^/]*\.config\.ts$/.test(f);
 
-  /** The directories git does not ship: the `.gitignore` entries that end in a slash, plus `.git`. */
-  const UNSHIPPED = new Set([
-    ".git",
-    ...readFileSync(join(ROOT, ".gitignore"), "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => /^[^#!*][^*]*\/$/.test(line))
-      .map((line) => line.replace(/^\/|\/$/g, "")),
-  ]);
+  /**
+   * The directories git does not ship: the `.gitignore` entries that end in a slash, plus `.git`.
+   * As git reads them: an entry with no other slash (`node_modules/`) matches that name at any
+   * depth; one with a slash before the end (`.claude/worktrees/`) is anchored at the root.
+   */
+  const dirEntries = readFileSync(join(ROOT, ".gitignore"), "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^[^#!*][^*]*\/$/.test(line))
+    .map((line) => line.replace(/\/$/, ""));
+  const UNSHIPPED_NAMES = new Set([".git", ...dirEntries.filter((e) => !e.includes("/"))]);
+  const UNSHIPPED_PATHS = new Set(dirEntries.filter((e) => e.includes("/")).map((e) => e.replace(/^\//, "")));
+
+  /**
+   * N1 (staff r1). A symlink is never skipped in silence: ESLint follows one and lints its target
+   * under the link's path, but this walk does not, so a `shared -> qa` link would hide test code
+   * from the census. Each is a failure, except the repo-root `node_modules` link agent worktrees
+   * use (gitignored output, never shipped).
+   */
+  const symlinks: string[] = [];
 
   /** Every regular file in the repo that git can ship, relative to the root, `/`-separated. */
   const walk = (dir: string): string[] =>
     readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
       const path = dir ? `${dir}/${entry.name}` : entry.name;
-      // A directory's base name, at any depth, as git reads `node_modules/` (the worktree's
-      // node_modules is a symlink, so it is matched by name here, never followed).
-      if (UNSHIPPED.has(entry.name)) return [];
+      if (entry.isSymbolicLink() && path !== "node_modules") {
+        symlinks.push(path);
+        return [];
+      }
+      if (UNSHIPPED_NAMES.has(entry.name) || UNSHIPPED_PATHS.has(path)) return [];
       if (entry.isDirectory()) return walk(path);
       return entry.isFile() ? [path] : [];
     });
@@ -629,12 +648,17 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
   const files = all.filter((f) => CODE.has(extname(f)) && !TEST_CODE(f) && f !== "next-env.d.ts");
 
   test("the census reaches the sanctioned files and files outside src (N3: a list that missed them would prove nothing about them)", () => {
-    expect([...UNSHIPPED], "node_modules and .next are read from .gitignore").toEqual(expect.arrayContaining(["node_modules", ".next"]));
+    expect([...UNSHIPPED_NAMES], "node_modules and .next are read from .gitignore").toEqual(expect.arrayContaining(["node_modules", ".next"]));
+    expect([...UNSHIPPED_PATHS], "agent worktrees are read from .gitignore, anchored").toEqual([".claude/worktrees"]);
     expect(files).toContain(LINK);
     expect(files).toContain(INTENT);
     expect(files).toContain("next.config.mjs");
     expect(files).toContain("scripts/spec-sync.mjs");
     expect(files.filter((f) => f.startsWith("qa/")), "test code is the exemption").toEqual([]);
+  });
+
+  test("no symlink in the shipped tree (N1: the walk does not follow one, ESLint does)", () => {
+    expect(symlinks).toEqual([]);
   });
 
   test("no ESLint config or ignore file but the root's, and no file type next build's lint would skip", () => {
@@ -691,4 +715,91 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
     );
     expect(hidden, "a ban hidden by an inline directive").toEqual([]);
   });
+});
+
+/**
+ * B1 (staff r1). The qa/ fence above reads module STRINGS, so it holds only while every string
+ * that can reach qa/ spells a path. A resolver alias is another spelling the selectors cannot read:
+ * staff's counterexample, tsconfig `paths` `"#t/*": ["./qa/*"]` imported as `"#t/NavLink"` (or the
+ * same through package.json `imports`), passed lint, tsc, this census and `next build`, and the qa
+ * module's marker was in `.next/server/chunks`. So the aliases Next's resolver honours are pinned:
+ *   · tsconfig (parsed by TypeScript, `extends` followed): every `paths` target is under `./src/`,
+ *     and there is no `baseUrl` (Next turns it into a module root, so `qa/x` would resolve);
+ *     no `jsconfig.json`, which Next reads when tsconfig is absent;
+ *   · package.json: only the keys it has today. `imports` (`#x` subpaths), `exports` (a package
+ *     importing itself by name) and `browser` (webpack's alias field) each map a string to a file;
+ *   · next.config.mjs: only the keys it has today, and its `webpack` function, run against a stub
+ *     config for each of the four compilations, leaves `resolve`, `resolveLoader` and `module`
+ *     exactly as it got them and adds only the plugins it is known to add.
+ * NOT pinned, named plainly: a `webpack` function that changes resolution only when it sees a
+ * field the stub lacks, and a plugin object whose `apply` rewrites requests (the client build's
+ * EV-350 plugin is accepted by its shape, not its body). Behind those are review and the
+ * runtime walk.
+ */
+test.describe("B1: no resolver alias can name test code", () => {
+  test("tsconfig: every paths target is under ./src/, no baseUrl, and no jsconfig.json", () => {
+    const file = join(ROOT, "tsconfig.json");
+    const read = ts.readConfigFile(file, ts.sys.readFile);
+    expect(read.error, "tsconfig.json parses").toBeUndefined();
+    const { options } = ts.parseJsonConfigFileContent(read.config, ts.sys, ROOT, undefined, file);
+    expect(options.baseUrl, "a baseUrl makes the repo root a module root").toBeUndefined();
+    const targets = Object.entries(options.paths ?? {}).flatMap(([key, values]) => values.map((v) => `${key} -> ${v}`));
+    expect(targets.length, "the census reads the @/ alias (a reader that sees nothing passes everything)").toBeGreaterThan(0);
+    expect(targets.filter((t) => !/ -> \.\/src\//.test(t))).toEqual([]);
+    expect(existsSync(join(ROOT, "jsconfig.json"))).toBe(false);
+  });
+
+  test("package.json has no key that maps a module name (imports, exports, browser, ...)", () => {
+    const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as Record<string, unknown>;
+    expect(Object.keys(pkg).sort()).toEqual(["dependencies", "description", "devDependencies", "name", "private", "scripts", "version"]);
+  });
+
+  test("next.config.mjs has only its known keys, and its webpack function adds no alias in any compilation", async () => {
+    const config = (await import(pathToFileURL(join(ROOT, "next.config.mjs")).href)).default as Record<string, unknown> & {
+      experimental?: Record<string, unknown>;
+      webpack: (config: Record<string, unknown>, options: Record<string, unknown>) => Record<string, unknown>;
+    };
+    expect(Object.keys(config).sort()).toEqual(["env", "eslint", "experimental", "headers", "reactStrictMode", "rewrites", "webpack"]);
+    expect(Object.keys(config.experimental ?? {})).toEqual(["staleTimes"]);
+
+    class DefinePlugin {
+      constructor(readonly definitions: unknown) {}
+    }
+    class WebpackError extends Error {}
+    for (const isServer of [true, false]) {
+      for (const dev of [true, false]) {
+        const stub = {
+          resolve: { alias: { react: "/stub/react" }, modules: ["node_modules"], extensions: [".tsx", ".ts", ".js"], plugins: [] },
+          resolveLoader: { alias: {} },
+          module: { rules: [] },
+          plugins: [] as unknown[],
+          output: { chunkFilename: "static/chunks/[name].[contenthash].js" },
+        };
+        const before = JSON.stringify({ resolve: stub.resolve, resolveLoader: stub.resolveLoader, module: stub.module });
+        const out = config.webpack(stub, { isServer, dev, buildId: "b", webpack: { DefinePlugin, WebpackError } }) as typeof stub;
+        const label = `${isServer ? "server" : "client"} ${dev ? "dev" : "prod"}`;
+        expect(JSON.stringify({ resolve: out.resolve, resolveLoader: out.resolveLoader, module: out.module }), `${label}: resolution untouched`).toBe(before);
+        const added = out.plugins.map((p) => (p instanceof DefinePlugin ? "DefinePlugin" : Object.keys(p as object).join(",")));
+        expect(added, `${label}: only the known plugins`).toEqual(isServer ? ["DefinePlugin"] : dev ? [] : ["apply"]);
+      }
+    }
+  });
+});
+
+/**
+ * S2 (staff r1). The wiring that makes `next build` and `npm run lint` read the whole repo, pinned
+ * as `qa/stale-times-config.spec.ts` pins staleTimes. Without `eslint.dirs`, `next build` falls
+ * back to Next's default folders and `next lint` with no `--dir` does too, so `shared/`, the root
+ * and `qa/` silently stop being linted while every other test here stays green. `npm run build`
+ * is what Vercel runs, and `next build` lints unless `eslint.ignoreDuringBuilds` (pinned absent by
+ * the deep-equal) or a `--no-lint` in the script; vercel.json may not override the build command.
+ */
+test("the lint wiring: eslint.dirs is [\".\"], the lint and build scripts read it, and Vercel runs that build", async () => {
+  const config = (await import(pathToFileURL(join(ROOT, "next.config.mjs")).href)).default as { eslint?: unknown };
+  expect(config.eslint).toEqual({ dirs: ["."] });
+  const { scripts } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
+  expect(scripts.lint).toBe("next lint --max-warnings=0");
+  expect(scripts.build).toBe("next build");
+  const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as Record<string, unknown>;
+  expect(Object.keys(vercel).sort(), "no buildCommand / installCommand / framework override").toEqual(["$schema", "regions"]);
 });

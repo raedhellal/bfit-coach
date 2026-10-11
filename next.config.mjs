@@ -124,12 +124,15 @@ const nextConfig = {
    * src component, was bundled and never linted: invariant N held only for files under src.
    *
    * `"."`, not a list of folders: Next bundles any file a src import reaches, wherever it lives,
-   * so the safe default is "everything is linted" and the exceptions are named, in ONE place,
-   * `.eslintrc.json`: `ignorePatterns` (generated output) and the bans override's
-   * `excludedFiles` (test code, which a file Next can bundle is barred from importing).
-   * A folder list fails open: the next new top-level folder is unlinted until someone
-   * remembers it. `qa/invariant-n-lint-bans.spec.ts` walks the whole tree and fails on any
-   * file outside the named exceptions that ESLint skips or lints without both bans.
+   * so the safe default is "everything is linted" and the exceptions are named. ESLint reads
+   * them from `.eslintrc.json`: `ignorePatterns` (what git does not ship, and Next's generated
+   * `next-env.d.ts`) and the bans override's `excludedFiles` (test code, which a file Next can
+   * bundle is barred from importing). `qa/invariant-n-lint-bans.spec.ts` holds a SECOND copy on
+   * purpose (its `TEST_CODE`, and `.gitignore`'s directory entries) and walks the whole tree:
+   * it fails on any file outside its copy that ESLint skips or lints without both bans, so the
+   * two copies cannot drift apart unnoticed. A folder list fails open: the next new top-level
+   * folder is unlinted until someone remembers it. The census also pins this key, the `lint`
+   * script, and the resolver aliases (tsconfig `paths`, package.json, the `webpack` below).
    */
   eslint: { dirs: ["."] },
   // No NEXT_PUBLIC_* API URL here on purpose: the browser never talks to b-fit-api.
