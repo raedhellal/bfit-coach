@@ -19,7 +19,7 @@ declare module "eslint" {
     fatalErrorCount?: number;
   }
   export class ESLint {
-    constructor(options?: { cwd?: string; useEslintrc?: boolean });
+    constructor(options?: { cwd?: string; useEslintrc?: boolean; allowInlineConfig?: boolean });
     lintText(code: string, options?: { filePath?: string }): Promise<LintResult[]>;
     lintFiles(patterns: string | string[]): Promise<LintResult[]>;
     isPathIgnored(filePath: string): Promise<boolean>;

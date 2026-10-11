@@ -23,6 +23,12 @@ import { ESLint, type LintMessage } from "eslint";
  * amendment); a false negative merges silently. So any identifier, string or template named
  * `prefetch` in `src/` is flagged, the router's or not (BUG-744 expected (4)).
  *
+ * What no selector can see, because ESLint has no data flow. Each of these lints CLEAN (staff
+ * confirmed them in the BUG-743/744 review): a name built at runtime, such as `"pre" + "fetch"`,
+ * `` `pre${"fetch"}` `` or `["pre", "fetch"].join("")`; a computed key spread onto a Link
+ * (`{...{ [k]: true }}`); and an aliased `require` called with a computed name
+ * (`const r = require; r(m)`). Behind them are tsc, `next build` and the runtime walk.
+ *
  * A pure check: it reads files and runs ESLint, it starts no server.
  */
 
@@ -30,7 +36,7 @@ const ROOT = resolve(__dirname, "..");
 const PROBE = "src/components/zzprobe";
 
 /** Which ADR clause the message must name: the rule fired for the right reason, not by accident. */
-type Clause = "invariant N" | "D33.13 point 1";
+type Clause = "invariant N" | "D33.13 point 1" | "Next's internals by a deep path";
 
 interface Evasion {
   /** The row it comes from, or "control" for a shape that was flagged before and must stay so. */
@@ -171,6 +177,28 @@ const EVASIONS: Evasion[] = [
     code: `export const L = module.require("next/link");\n`,
     clause: "invariant N",
   },
+  // A template outside import()/require(): only the TemplateElement selectors see these (staff S2).
+  {
+    from: "BUG-743 extra",
+    name: "a template in another require: module.require(`next/link`)",
+    file: `${PROBE}/moduleRequireTemplate.tsx`,
+    code: "export const L = module.require(`next/link`);\n",
+    clause: "invariant N",
+  },
+  {
+    from: "BUG-743 extra",
+    name: "a template deep path in another require: module.require(`next/dist/client/link`)",
+    file: `${PROBE}/moduleRequireDeepLinkTemplate.tsx`,
+    code: "export const L = module.require(`next/dist/client/link`);\n",
+    clause: "invariant N",
+  },
+  {
+    from: "BUG-744 extra",
+    name: "a template deep path that is not Link: module.require(`next/dist/client/components/app-router`)",
+    file: `${PROBE}/moduleRequireDeepTemplate.tsx`,
+    code: "export const R = module.require(`next/dist/client/components/app-router`);\n",
+    clause: "Next's internals by a deep path",
+  },
   {
     from: "BUG-743 extra",
     name: "the deep module by import(): import(\"next/dist/client/link\")",
@@ -300,11 +328,27 @@ const EVASIONS: Evasion[] = [
     code: `function prefetch(_href: string) {}\nexport function P() {\n  prefetch("/clients/x");\n  return null;\n}\n`,
     clause: "D33.13 point 1",
   },
+  // A Link prefetch prop other than the literal {false}: a FULL prefetch of every link if it were
+  // the wrapper's (true), Next 14's AUTO (null), or a string that is truthy at runtime ("false").
   {
     from: "BUG-744 extra",
-    name: "a Link prefetch prop other than {false} (a FULL prefetch of every link if it were the wrapper's)",
-    file: `${PROBE}/prefetchProp.tsx`,
-    code: `import NextLink from "next/link";\nexport const A = () => <NextLink href="/" prefetch />;\nexport const B = () => <NextLink href="/" prefetch={null} />;\n`,
+    name: "a Link prefetch prop: <NextLink prefetch> (true, FULL)",
+    file: `${PROBE}/prefetchPropTrue.tsx`,
+    code: `import NextLink from "next/link";\nexport const A = () => <NextLink href="/" prefetch />;\n`,
+    clause: "D33.13 point 1",
+  },
+  {
+    from: "BUG-744 extra",
+    name: "a Link prefetch prop: <NextLink prefetch={null}> (AUTO)",
+    file: `${PROBE}/prefetchPropNull.tsx`,
+    code: `import NextLink from "next/link";\nexport const B = () => <NextLink href="/" prefetch={null} />;\n`,
+    clause: "D33.13 point 1",
+  },
+  {
+    from: "BUG-744 extra",
+    name: "a Link prefetch prop: <NextLink prefetch={\"false\"}> (a string, so FULL)",
+    file: `${PROBE}/prefetchPropString.tsx`,
+    code: `import NextLink from "next/link";\nexport const C = () => <NextLink href="/" prefetch={"false"} />;\n`,
     clause: "D33.13 point 1",
   },
   {
@@ -389,13 +433,33 @@ test.describe("the sanctioned files still lint clean, and only because of their 
 });
 
 /**
+ * S3 (staff, BUG-743/744 review). IntentLink has `no-restricted-syntax` OFF, so lint cannot see what
+ * its `<Link>` does: its `prefetch={false}` is pinned here instead, as the wrapper's is above. Without
+ * it, the roster rows would add Link's AUTO prefetch (viewport, hover, touch) to the ruled FULL one.
+ */
+test("roster/IntentLink.tsx renders exactly one <Link>, and it carries prefetch={false}", () => {
+  const code = readFileSync(join(ROOT, INTENT), "utf8")
+    .split("\n")
+    .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
+    .join("\n");
+  expect(code.match(/<Link\b/g) ?? [], "one <Link> element in the component's code").toHaveLength(1);
+  expect(code).toMatch(/return \(\s*<Link\b[^>]*?\bprefetch=\{false\}/);
+});
+
+/**
  * The bans only hold if ESLint reaches every file with them ON. The bypasses a selector cannot
  * see: a nested `.eslintrc`, an `.eslintignore` or an `ignorePatterns` entry that drops a file, an
  * override that turns a ban off for one more file, a file whose extension `next lint` skips, and an
  * inline directive that switches a ban off for a line or a file.
  */
 test.describe("every file in src is linted with both bans on", () => {
-  const LINTED = new Set([".js", ".mjs", ".cjs", ".jsx", ".ts", ".mts", ".cts", ".tsx"]);
+  /**
+   * S1 (staff): what `next build` lints, which is the Vercel pass: `.js`, `.jsx`, `.ts` and `.tsx`
+   * only (`next/dist/lib/eslint/runLintCheck.js:137-142`). `next lint`'s CLI default also reads
+   * `.mjs`, `.cjs`, `.mts` and `.cts`, but a build would ship an `.mjs` that re-exports next/link
+   * unlinted. So those four extensions are forbidden in src.
+   */
+  const LINTED = new Set([".js", ".jsx", ".ts", ".tsx"]);
   const ASSETS = new Set([".css", ".png", ".svg", ".jpg", ".jpeg", ".webp", ".ico", ".json", ".woff", ".woff2"]);
   /** Every regular file under src, relative to the repo root. */
   const all = (readdirSync(join(ROOT, "src"), { recursive: true, encoding: "utf8" }) as string[])
@@ -403,9 +467,14 @@ test.describe("every file in src is linted with both bans on", () => {
     .filter((f) => statSync(join(ROOT, f)).isFile());
   const files = all.filter((f) => LINTED.has(extname(f)));
 
-  test("no ESLint config or ignore file under src, and no file type next lint would skip", () => {
+  test("the census reaches the two sanctioned files (N3: a list that missed them would prove nothing about them)", () => {
+    expect(files).toContain(LINK);
+    expect(files).toContain(INTENT);
+  });
+
+  test("no ESLint config or ignore file under src, and no file type next build's lint would skip", () => {
     expect(all.filter((f) => /(^|\/)(\.eslint[^/]*|package\.json)$/.test(f)), "a nested ESLint config can turn the bans off").toEqual([]);
-    expect(all.filter((f) => !LINTED.has(extname(f)) && !ASSETS.has(extname(f))), "a file next lint does not read").toEqual([]);
+    expect(all.filter((f) => !LINTED.has(extname(f)) && !ASSETS.has(extname(f))), "a file next build's lint does not read").toEqual([]);
   });
 
   /**
@@ -435,18 +504,20 @@ test.describe("every file in src is linted with both bans on", () => {
     expect(off).toEqual([]);
   });
 
-  test("no inline directive in src switches a ban off, or switches every rule off", () => {
-    const found: string[] = [];
-    for (const file of files) {
-      const lines = readFileSync(join(ROOT, file), "utf8").split("\n");
-      lines.forEach((line, i) => {
-        const directive = /(?:\/\/|\/\*)\s*(eslint-disable(?:-next-line|-line)?|eslint-enable|eslint(?=\s))\s*([^*\n]*)/.exec(line);
-        if (!directive) return;
-        const names = directive[2].split("--")[0].trim();
-        if (directive[1] === "eslint-enable") return;
-        if (names === "" || /no-restricted-(imports|syntax)/.test(names)) found.push(`${file}:${i + 1}: ${line.trim()}`);
-      });
-    }
-    expect(found).toEqual([]);
+  /**
+   * B1 (staff). ESLint judges the directives, not a regex: a line-by-line scan missed a block
+   * comment that puts `eslint-disable no-restricted-syntax` on its own line, which ESLint honours.
+   * With inline config OFF, no file in src may report either ban. Directives for OTHER rules
+   * (`InviteLinkPanel.tsx`'s img, `portalEvents.ts`'s console) stay allowed: their rules are ignored.
+   */
+  test("with inline directives ignored, no file in src reports either ban", async () => {
+    const strict = new ESLint({ cwd: ROOT, useEslintrc: true, allowInlineConfig: false });
+    const results = await strict.lintFiles(files.map((f) => join(ROOT, f)));
+    const hidden = results.flatMap((r) =>
+      r.messages
+        .filter((m) => m.ruleId !== null && BANS.has(m.ruleId))
+        .map((m) => `${r.filePath.slice(ROOT.length + 1)}:${describe(m)}`)
+    );
+    expect(hidden, "a ban hidden by an inline directive").toEqual([]);
   });
 });
