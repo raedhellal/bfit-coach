@@ -1,7 +1,5 @@
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { expect, type Locator, type Page } from "@playwright/test";
+import { appPages, beforeFilesRewrites, destinationPath, resolvePage, sampleUrl, sourceMatches } from "./app-pages";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { openEveryDay } from "./day-accordion";
@@ -415,30 +413,39 @@ for (const e of [RECIPE, TEMPLATE]) {
   });
 }
 
-/** A Next page file in Next's default `pageExtensions` (pinned by render-error-every-route's 353.3). */
-const PAGE_FILE = /^page\.(tsx|ts|jsx|js)$/;
-
 /**
- * EV-362 AC1 — one page file per editor. `new/` and `[id]/` were deleted when `editor/page.tsx`
- * took both branches over, and they stay absent: a page file there would be a second copy of the
- * editor that no URL reaches (the rewrites below send `/x/new` and `/x/{id}` to `editor/`), and a
- * `loading.tsx`, `layout.tsx` or `error.tsx` there would be silently dead. Any other folder with a
- * page directly under `recipes/` or `templates/` is shadowed the same way (the `:id` rule takes
- * every single segment but `new` and `editor`), so `editor` is the only one allowed.
+ * EV-362 AC1 — one page file per editor, and no page a rewrite hides.
  *
- * Mutant: restore `src/app/recipes/new/page.tsx` from `8c866e1` → red, naming the folder.
+ * (a) The four page files `editor/page.tsx` replaced stay absent: `recipes/new`, `recipes/[id]`,
+ *     `templates/new`, `templates/[id]`, in any page extension. Only those files: a nested page
+ *     such as `recipes/[id]/history/page.tsx` is not pinned by (a), and (b) lets it through,
+ *     since no rule takes a two-segment URL under `recipes/`.
+ * (b) No page under `src/app` has a URL that a `beforeFiles` source takes, except a rule's own
+ *     destination page (`editor/`). Such a page is unreachable (the rule rewrites its URL
+ *     before the file system is consulted), and a `loading.tsx`, `layout.tsx` or `error.tsx`
+ *     beside it is silently dead. Each page's URL is its path with `(group)` segments removed and
+ *     each dynamic segment filled with a sample (`sampleUrl`); the sources are compiled as Next
+ *     compiles them (`sourceMatches`). So `recipes/(list)/page.tsx` (`/recipes`) passes, and
+ *     `recipes/(x)/import/page.tsx` (`/recipes/import`, taken by the `:id` rule) fails.
+ *
+ * Mutants (staff's EV-362 review): M1 restore `recipes/new/page.tsx` → red (a) and (b);
+ * M7 add `recipes/(list)/page.tsx` → green; M8 add `recipes/(x)/import/page.tsx` → red (b).
  */
-test("EV-362: the editor is one page file per resource; new/ and [id]/ stay absent", async () => {
-  const app = join(__dirname, "../src/app");
-  for (const dir of ["recipes/new", "recipes/[id]", "templates/new", "templates/[id]"]) {
-    expect(existsSync(join(app, dir)), `src/app/${dir} exists`).toBe(false);
-  }
-  for (const resource of ["recipes", "templates"]) {
-    const pageFolders = readdirSync(join(app, resource), { withFileTypes: true })
-      .filter((d) => d.isDirectory() && readdirSync(join(app, resource, d.name)).some((f) => PAGE_FILE.test(f)))
-      .map((d) => d.name);
-    expect(pageFolders, `src/app/${resource}: folders holding a page`).toEqual(["editor"]);
-  }
+test("EV-362: the four replaced page files stay absent, and no page sits under a beforeFiles rewrite", async () => {
+  const pages = appPages();
+  const replaced = pages.filter((p) => /^(recipes|templates)\/(new|\[id\])\/page\.(tsx|ts|jsx|js)$/.test(p));
+  expect(replaced, "page files EV-362 deleted, back in src/app").toEqual([]);
+
+  const rules = await beforeFilesRewrites();
+  expect(rules.length, "next.config.mjs declares beforeFiles rewrites").toBeGreaterThan(0);
+  const destinations = new Set(rules.map((r) => resolvePage(destinationPath(r.destination), pages)));
+  const shadowed = pages
+    .filter((p) => !destinations.has(p))
+    .flatMap((p) => {
+      const url = sampleUrl(p);
+      return rules.filter((r) => sourceMatches(r.source, url)).map((r) => `${p} (${url}) is taken by ${r.source}`);
+    });
+  expect(shadowed, "pages whose URL a beforeFiles rewrite takes first").toEqual([]);
 });
 
 /**
@@ -451,13 +458,7 @@ test("EV-362: the editor is one page file per resource; new/ and [id]/ stay abse
  * Mutants: drop the lookahead from `/recipes/:id`, or the `?id=` from `/templates/new` → red.
  */
 test("EV-362: next.config.mjs declares the four editor rewrites with the lookahead and the pinned id=", async () => {
-  const file = join(__dirname, "..", "next.config.mjs");
-  const config = (await import(pathToFileURL(file).href)).default as {
-    rewrites?: () => Promise<{ beforeFiles?: unknown; afterFiles?: unknown; fallback?: unknown }>;
-  };
-  expect(typeof config.rewrites, "next.config.mjs exports rewrites()").toBe("function");
-  const rewrites = await config.rewrites!();
-  expect(rewrites.beforeFiles).toEqual([
+  expect(await beforeFilesRewrites()).toEqual([
     { source: "/recipes/new", destination: "/recipes/editor?id=" },
     { source: "/recipes/:id((?!new$|editor$)[^/]+)", destination: "/recipes/editor?id=:id" },
     { source: "/templates/new", destination: "/templates/editor?id=" },
