@@ -27,6 +27,8 @@ export function ProfileLine({ line, details, children }: { line: string; details
         <button
           type="button"
           className="prog-profile-toggle"
+          // BUG-745 (ADR-0033 D33.14): opens or closes a section, nothing more.
+          data-session-safe=""
           aria-expanded={open}
           aria-controls={cardId}
           onClick={() => setOpen((v) => !v)}

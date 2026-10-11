@@ -18,6 +18,7 @@
     "test:e2e:legacy": "playwright test --config playwright.legacy.config.ts",
     "test:e2e:activation": "playwright test --config playwright.activation.config.ts",
     "test:e2e:timeout": "playwright test --config playwright.timeout.config.ts",
+    "test:e2e:session": "playwright test --config playwright.session.config.ts --workers=1",
     "test:e2e:alone": "node scripts/each-spec-alone.mjs"
   },
   "dependencies": {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/kit";
 import { crossSessionBoundary } from "@/lib/clientSession";
+import { announceSessionBoundary } from "./SessionEpochGuard";
 import { useCopy } from "@/lib/i18n/client";
 
 /**
@@ -23,6 +24,9 @@ export function SignOutButton({ block = false }: { block?: boolean }) {
     // Whatever the answer, leave: a failed POST still must not leave the portal on screen,
     // and the guard on /login decides from the cookies that are actually there.
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    // BUG-745 (ADR-0033 D33.14 layer (d)): the other tabs of this browser leave now, not at
+    // their next click. Best effort; their own checks do not depend on it.
+    announceSessionBoundary();
     crossSessionBoundary("/login");
   }
 

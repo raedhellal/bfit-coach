@@ -94,6 +94,22 @@ body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
    page that fits the viewport is never covered by it. 0 below 768 px, where it is static. */
 :root { --legal-footer-h: 0px; }
 #app-root { width:100%; min-height:calc(100vh - var(--legal-footer-h)); }
+/* BUG-745 (ADR-0033 D33.14): a tab whose session changed elsewhere is being reloaded. Nothing of
+   the portal may reach another frame, whichever layer fired (the attribute's value names it);
+   the page background stays. `display: none`, not `visibility`: a descendant cannot opt back in. */
+html[data-session-leaving] #app-root,
+html[data-session-leaving] [data-session-ended-banner] { display: none !important; }
+/* The editor exception's banner (SessionEpochGuard): above the shell's bars and above a dialog
+   (Modal is z-index 80), so it stays readable while the coach copies the work. */
+.session-ended-banner {
+  position: fixed; z-index: 90; left: 50%; transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  width: min(560px, calc(100% - 24px));
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; border-radius: var(--r-md);
+  background: var(--err-bg); color: var(--err-ink); box-shadow: var(--e-2);
+}
+.session-ended-text { margin: 0; flex: 1 1 240px; font-size: 13.5px; line-height: 1.45; font-weight: 600; }
 * { box-sizing:border-box; }
 a { color:inherit; text-decoration:none; }
 button { font-family:var(--font-body); }

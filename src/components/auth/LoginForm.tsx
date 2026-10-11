@@ -4,6 +4,7 @@ import { useState } from "react";
 import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
 import { crossSessionBoundary } from "@/lib/clientSession";
+import { announceSessionBoundary } from "@/components/shell/SessionEpochGuard";
 import { useCopy } from "@/lib/i18n/client";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
@@ -87,6 +88,8 @@ export function LoginForm({ initialError }: { initialError?: string | null }) {
       const body = (await res.json().catch(() => null)) as { next?: string } | null;
       // ADR-0033 D33.7: a hard navigation — nothing rendered signed-out is replayed.
       leaving = true;
+      // BUG-745 (ADR-0033 D33.14 layer (d)): a session started; the other tabs reload under it.
+      announceSessionBoundary();
       crossSessionBoundary(body?.next === "/activate" ? "/activate" : "/");
     } catch {
       setError(copy.login.unavailable);

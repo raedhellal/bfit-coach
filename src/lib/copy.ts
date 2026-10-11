@@ -200,6 +200,14 @@ export const en = {
     language: "Language",
     /** The switch's one-line failure: the cookie was not written, nothing changed. */
     languageFailed: "The language could not be changed. Try again.",
+    /**
+     * BUG-745 (ADR-0033 D33.14 point 4, the PO's wording): the session changed in another tab
+     * while this one holds unsaved editor work. The editor stays on screen; nothing saves or
+     * navigates but this banner's button and the controls that only open or close a section.
+     */
+    sessionEnded: "Your session has ended. Copy your changes, then sign in again.",
+    /** The banner's one action: a document load of this URL, so middleware decides. */
+    sessionEndedSignIn: "Sign in again",
   },
 
   roster: {

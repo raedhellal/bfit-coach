@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { UiIcon } from "@/components/ui/icons";
 import { Button, Input } from "@/components/ui/kit";
 import { crossSessionBoundary } from "@/lib/clientSession";
+import { announceSessionBoundary } from "@/components/shell/SessionEpochGuard";
 import { useCopy } from "@/lib/i18n/client";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 import { LEGAL_URLS } from "@/lib/legal";
@@ -114,6 +115,8 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
         // (ADR-0033 D33.7): the client router would otherwise replay an RSC payload rendered
         // for the PENDING session.
         leaving = true;
+        // BUG-745 (ADR-0033 D33.14 layer (d)): the session changed; the other tabs reload under it.
+        announceSessionBoundary();
         crossSessionBoundary("/");
         return;
       }
@@ -181,6 +184,8 @@ export function ActivationForm({ versions: initialVersions, expiredMessage }: Ac
           break;
         case "SESSION_EXPIRED":
           leaving = true;
+          // The handler cleared the session (a new epoch): tell the other tabs too.
+          announceSessionBoundary();
           crossSessionBoundary("/login?error=expired");
           return;
         case "API_UNAVAILABLE":

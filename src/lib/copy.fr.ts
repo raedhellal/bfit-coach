@@ -164,6 +164,8 @@ export const fr = {
     account: "Mon compte",
     language: "Langue",
     languageFailed: "La langue n'a pas pu être changée. Réessayez.",
+    sessionEnded: "Votre session est terminée. Copiez vos modifications, puis reconnectez-vous.",
+    sessionEndedSignIn: "Se reconnecter",
   },
 
   roster: {

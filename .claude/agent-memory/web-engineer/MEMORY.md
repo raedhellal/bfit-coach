@@ -106,3 +106,5 @@
 - [A path-segment change always remounts](a-path-segment-change-always-remounts.md) — BUG-739: only search params keep an island; rewrites chain + merge the query; useEditorIdentity
 - [A cleared marker is a sync only if entered](a-cleared-marker-is-a-sync-only-if-it-was-entered.md) — BUG-742: busy-gone is hollow if never entered OR left early; observer + order snapshot, not a poll
 - [Intent prefetch (EV-356d)](intent-prefetch-ev356d-facts.md) — next-start-only tests; WebKit Secure cookies; cached RSC errors (R1-H reload); no AUTO prefetch (ui/Link)
+- [Session-epoch guard (BUG-745)](session-epoch-guard-bug745-facts.md) — seen seeded at first commit (Next's 500 error shell has no html attrs: reload loop); wake-off switch; W4 can't fail (revalidate clears cache), W16 layer b, M3 vs W10; TLS front for WebKit start; R9 reload target, S2 masks M5 alone (U9; M5+MS2 reds W17); R10 retry gap, W21a/b, chrome-error control; run `npm run test:e2e:session` dev+start, no CI
+- [Browser unit harness](browser-unit-harness-for-client-modules.md) — qa/unit-harness.ts: Next's compiled React in a real page, stubs by specifier, mutants read from disk

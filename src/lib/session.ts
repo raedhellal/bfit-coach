@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { IS_PROD } from "./env";
 import { decodeJwt } from "./jwt";
+import { SESSION_EPOCH_COOKIE, newSessionEpoch, sessionEpochCookieOptions } from "./sessionEpoch";
 
 /**
  * The BFF session (ADR-0012 D5, EV-183 AC1).
@@ -61,11 +62,28 @@ function refreshCookieOptions() {
   };
 }
 
-/** Route handlers only — Next.js forbids writing cookies while rendering. */
+/**
+ * Route handlers only — Next.js forbids writing cookies while rendering.
+ *
+ * ⚠ Writes NO session epoch (BUG-745, ADR-0033 D33.14 K2). `routeAccessToken` calls this to
+ * store a ROTATED pair, and a rotation is not a boundary: an epoch written here would reload
+ * every tab of the browser on every EV-020 rotation. A session that STARTS calls
+ * `beginSessionEpoch()` after this (the login and activation handlers).
+ */
 export function writeSession(tokens: SessionTokens): void {
   const store = cookies();
   store.set(ACCESS_COOKIE, tokens.accessToken, accessCookieOptions(tokens.expiresIn));
   store.set(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
+}
+
+/**
+ * BUG-745 (ADR-0033 D33.14) — a session has started in this browser: a NEW epoch, so every
+ * other tab's next navigation, click or wake-up sees that its document belongs to another
+ * session (`SessionEpochGuard`). Called by the login and activation handlers, after
+ * `writeSession`, and only there.
+ */
+export function beginSessionEpoch(): void {
+  cookies().set(SESSION_EPOCH_COOKIE, newSessionEpoch(), sessionEpochCookieOptions());
 }
 
 export function clearSession(): void {
@@ -74,6 +92,9 @@ export function clearSession(): void {
   store.set(REFRESH_COOKIE, "", { ...refreshCookieOptions(), maxAge: 0 });
   // EV-342k K.4: a session that ends takes its name with it.
   store.set(IDENTITY_COOKIE, "", { ...refreshCookieOptions(), maxAge: 0 });
+  // BUG-745 (D33.14): a session that ends is a boundary. A NEW value, never a deletion: a tab
+  // from before the epoch existed reads `null`, and a deleted cookie would read `null` too.
+  store.set(SESSION_EPOCH_COOKIE, newSessionEpoch(), sessionEpochCookieOptions());
 }
 
 export function readAccessToken(): string | null {
