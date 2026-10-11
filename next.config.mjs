@@ -114,6 +114,28 @@ function preloadableCopyChunks(config, { isServer, dev, buildId, webpack }) {
 
 const nextConfig = {
   reactStrictMode: true,
+  /**
+   * BUG-751 — lint the whole repo, at build time and in `npm run lint`, from this one list.
+   *
+   * `next build` lints only `eslint.dirs` (default `app pages components lib src`,
+   * `next/dist/lib/verifyAndLint.js`), and `next lint` with no `--dir` reads the same key
+   * (`next/dist/cli/next-lint.js`). The `lint` script used to name `--dir src --dir qa`, so a
+   * `shared/NavLink.tsx` or a root `NavLink.tsx` that re-exported `next/link`, imported by a
+   * src component, was bundled and never linted: invariant N held only for files under src.
+   *
+   * `"."`, not a list of folders: Next bundles any file a src import reaches, wherever it lives,
+   * so the safe default is "everything is linted" and the exceptions are named. ESLint reads
+   * them from `.eslintrc.json`: `ignorePatterns` (what git does not ship, and Next's generated
+   * `next-env.d.ts`) and the bans override's `excludedFiles` (test code, which a file Next can
+   * bundle is barred from importing). `qa/invariant-n-lint-bans.spec.ts` holds a SECOND copy on
+   * purpose (its `TEST_CODE`, and `.gitignore`'s directory entries) and walks the whole tree:
+   * it fails on any file outside its copy that ESLint skips or lints without both bans, so
+   * `excludedFiles` and `ignorePatterns` cannot widen alone (the census's own copy can: review
+   * that list). A folder list fails open: the next new top-level
+   * folder is unlinted until someone remembers it. The census also pins this key, the `lint`
+   * script, and the resolver aliases (tsconfig `paths`, package.json, the `webpack` below).
+   */
+  eslint: { dirs: ["."] },
   // No NEXT_PUBLIC_* API URL here on purpose: the browser never talks to b-fit-api.
   // Every api call goes through the server (src/lib/apiFetch.ts) so the session
   // tokens stay in httpOnly cookies (ADR-0012 D5).
