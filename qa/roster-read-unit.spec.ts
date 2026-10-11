@@ -35,8 +35,11 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *   R7 an answer BEFORE the deadline is never overwritten by it, `[]` (truly no clients) included;
  *   R8 a NEW promise gets its own full wait: the replaced read's deadline does not fail it.
  *
- * Red on 3c76491 (no deadline): R5 and R8 stay `loading` at the deadline, R5's exports and
- * `@/lib/apiTimeouts` do not exist. R6's first test is red there too, at its `failed` step.
+ * Red on 3c76491 (no deadline), 7 of these 10: R5 x3 (no exports; `loading` at the deadline),
+ * R6 x3 (at their `failed` step), R8. R7 is green there by construction (no deadline to
+ * overwrite anything): its witness is a mutant whose answer leaves the deadline running (2/2
+ * red). Also killed: no delivery margin (R5 x2, R8), a late answer dropped (R6's list), one
+ * deadline per mount instead of per promise (R8).
  *
  * Not on the fixture server, but on its config: this file uses the resetting `test` only so
  * `qa/fixture-isolation.spec.ts` needs no exemption for it.

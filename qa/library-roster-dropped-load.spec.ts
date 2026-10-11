@@ -40,7 +40,8 @@ import { launch, setSwitch, signedInContext, type Engine } from "./start-build";
  * scope); when it hydrated early, C3 is asserted too.
  *
  * Red on 3c76491 (no deadline): C3 times out in all three Chromium cells, the picker still says
- * it is loading.
+ * it is loading (and in a WebKit cell that hydrated early). A /challenges dialog given the
+ * one-call deadline fails C3's lower bound (failure at 12 082 ms, deadline 20 000).
  *
  * Sentences are literals, never imports from `src/lib/copy*.ts`.
  */
