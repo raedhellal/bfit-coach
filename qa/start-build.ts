@@ -20,8 +20,10 @@ export async function launch(engine: Engine): Promise<Browser> {
  * A signed-in context. A production build marks the session cookies `Secure`; WebKit (unlike
  * Chromium) will not send them back to http://localhost, so they are re-added without the flag
  * (in both engines, for one code path). That is what an https origin would send.
- * Exception: a `__Host-` cookie (BUG-745's `__Host-evoli_pro_epoch`) must keep `Secure`, or
- * Chromium refuses it ("Invalid cookie fields"); WebKit never stored it over http in the first place.
+ * Exception: a `__Host-` cookie (BUG-745's `__Host-evoli_pro_epoch`) keeps `Secure`, or Chromium
+ * refuses it ("Invalid cookie fields"). WebKit then stores it (from `context.request`) but does not
+ * send it over http, so WebKit cells run with no epoch, which the guard reads as "not stale". No
+ * start-config spec reads the epoch; BUG-745's witnesses use playwright.session.config.ts (https front).
  */
 export async function signedInContext(browser: Browser, baseURL: string, locale = "en-US"): Promise<BrowserContext> {
   const context = await browser.newContext({ baseURL, locale, viewport: { width: 1280, height: 900 } });
