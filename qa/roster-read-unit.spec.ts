@@ -35,7 +35,7 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *   R7 an answer BEFORE the deadline is never overwritten by it, `[]` (truly no clients) included;
  *   R8 a NEW promise gets its own full wait: the replaced read's deadline does not fail it.
  *
- * Red on 3c76491 (no deadline), 7 of these 10: R5 x3 (no exports; `loading` at the deadline),
+ * Red on 3c76491 (no deadline), 7 of these 9: R5 x3 (no exports; `loading` at the deadline),
  * R6 x3 (at their `failed` step), R8. R7 is green there by construction (no deadline to
  * overwrite anything): its witness is a mutant whose answer leaves the deadline running (2/2
  * red). Also killed: no delivery margin (R5 x2, R8), a late answer dropped (R6's list), one

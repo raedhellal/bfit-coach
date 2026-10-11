@@ -37,7 +37,9 @@ import { launch, setSwitch, signedInContext, type Engine } from "./start-build";
  *      (no refetch; ADR-0033 D33.13 invariant N untouched).
  * WebKit: C4 is asserted; the rest is RECORDED (annotations). WebKit usually runs no script until
  * the document ends, so after a drop the page never hydrates (QA-S3N-2, ruled accepted, out of
- * scope); when it hydrated early, C3 is asserted too.
+ * scope); when it hydrated early, C3 is asserted too. An inert WebKit cell passes on C4 alone and
+ * is NOT evidence for the deadline: only a cell whose annotation says "picker opened" is (staff
+ * N4). Whether WebKit hydrates early is chance (3/3 inert in staff's run, 1/3 early in ours).
  *
  * Red on 3c76491 (no deadline): C3 times out in all three Chromium cells, the picker still says
  * it is loading (and in a WebKit cell that hydrated early). A /challenges dialog given the
