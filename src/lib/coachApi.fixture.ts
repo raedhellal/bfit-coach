@@ -4211,6 +4211,9 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *                                              reads n steps (the 9,950-of-10,000 bar);
  *   `evoli_fixture_roster=fail`              → `GET /coach-portal/clients` is a 500 (the
  *                                              create dialog's roster-failure sentence);
+ *   `evoli_fixture_roster_delay=<ms>`        → EV-356g: `GET /coach-portal/clients` answers
+ *                                              <ms> later (capped at 5 s), per page read;
+ *                                              nothing else is held.
  *   `evoli_fixture_roster_extra=<n>`         → n more ACTIVE roster rows after the six
  *                                              (BUG-472: a roster past one 100-row page);
  *   `evoli_fixture_roster_boundary=1`        → three more rows, last trained 6, 7 and 8
@@ -5903,6 +5906,14 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async listClients(sort = "needs_attention" as RosterSort, page = 0, size = 100): Promise<RosterPage> {
+    /**
+     * EV-356g — `evoli_fixture_roster_delay=<ms>` holds THIS read alone (capped at 5 s, this
+     * browser context only), the way `evoli_fixture_recipes_delay` holds the recipe list. It
+     * stands in for the production roster read (≥ 8 s on 2026-10-11), so a test can watch the
+     * libraries paint without it. Per call: `/challenges` reads every page, so n pages hold n
+     * times. Held BEFORE the fail switch, so the two together are a slow failure.
+     */
+    await heldListRead("evoli_fixture_roster_delay");
     // EV-321b — the roster read fails (this browser context only).
     if ((await fixtureSwitch("evoli_fixture_roster")) === "fail") {
       await fail(500, "INTERNAL_ERROR", "Internal error");

@@ -1,13 +1,8 @@
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
-import { NutritionTemplateLibrary } from "@/components/nutritionTemplates/NutritionTemplateLibrary";
+import { NutritionTemplateLibrary, type NutritionTarget } from "@/components/nutritionTemplates/NutritionTemplateLibrary";
 import { PageHead } from "@/components/ui/kit";
-import {
-  coachApi,
-  hasScope,
-  type NutritionTemplateList,
-  type RosterClient,
-} from "@/lib/coachApi";
+import { coachApi, hasScope, type NutritionTemplateList } from "@/lib/coachApi";
 import { readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
 
@@ -16,7 +11,8 @@ import { getCopy } from "@/lib/i18n/server";
  *
  * The routine library's shape (EV-188b, `/templates`), for the same reasons:
  * `force-dynamic` because ADR-0012 D3 forbids caching an authorization outcome; two
- * parallel reads; three explicit states (load error · empty library · the list).
+ * reads started together, of which only the library is awaited (EV-356g); three explicit
+ * states (load error · empty library · the list).
  *
  * AC3 — "Use on a trainee" offers ONLY the coach's ACTIVE links that carry NUTRITION.
  * That is decided HERE, from `RosterClient.scopes`, so a trainee the coach may not write
@@ -31,27 +27,26 @@ export const dynamic = "force-dynamic";
 
 export default async function NutritionTemplatesPage() {
   const copy = getCopy();
-  const [me, library, roster] = await Promise.all([
+  // A roster failure must not take the library down: only "Use on a trainee" needs a
+  // trainee. It is `null`, NOT `[]` — an empty list would render "You have no trainees
+  // who have shared their nutrition with you.", a false sentence (staff review nit).
+  // EV-356g: started beside the library read and never awaited here; the island's picker
+  // waits for it inside its dialog (`useRosterRead`). The `.catch` is attached at once.
+  const trainees: Promise<NutritionTarget[] | null> = coachApi
+    .listClients()
+    .then((page) =>
+      page.items
+        .filter((client) => client.status === "ACTIVE" && hasScope(client.scopes, "NUTRITION"))
+        .map((client) => ({ id: client.id, traineeDisplayName: client.traineeDisplayName }))
+    )
+    .catch(() => null);
+  const [me, library] = await Promise.all([
     readCoachMe(),
     coachApi
       .listNutritionTemplates()
       .then((value): NutritionTemplateList | null => value)
       .catch(() => null),
-    // A roster failure must not take the library down: only "Use on a trainee" needs a
-    // trainee. It is `null`, NOT `[]` — an empty list would render "You have no trainees
-    // who have shared their nutrition with you.", a false sentence (staff review nit).
-    coachApi
-      .listClients()
-      .then((page): RosterClient[] | null => page.items)
-      .catch(() => null),
   ]);
-
-  const trainees =
-    roster === null
-      ? null
-      : roster
-          .filter((client) => client.status === "ACTIVE" && hasScope(client.scopes, "NUTRITION"))
-          .map((client) => ({ id: client.id, traineeDisplayName: client.traineeDisplayName }));
 
   return (
     <CoachShell coachName={me?.displayName} section="nutrition-templates">
@@ -59,7 +54,7 @@ export default async function NutritionTemplatesPage() {
       {library === null ? (
         <ClientNotice message={copy.nutritionTemplates.loadError} />
       ) : (
-        <NutritionTemplateLibrary library={library} trainees={trainees} />
+        <NutritionTemplateLibrary library={library} roster={trainees} />
       )}
     </CoachShell>
   );

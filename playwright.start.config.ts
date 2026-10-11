@@ -22,6 +22,8 @@ import { defineConfig, devices } from "@playwright/test";
  *   · `no-auto-prefetch.spec.ts` — P4, invariant N (D33.13 point 2), Chromium and WebKit;
  *   · `page-read-budget.spec.ts` — its D.4 rows ("a roster load prefetches no client page",
  *     "hover = one render, re-hover = zero"), which the roster config can only half-run.
+ *   · `library-roster-unblocked.spec.ts` — EV-356g G.1–G.4: the libraries paint before a held
+ *     roster read. Its timings are a production build's (a dev server compiles on first hit).
  */
 const PORT = process.env.COACH_START_PORT || "3302";
 const BASE_URL = `http://localhost:${PORT}`;
@@ -29,7 +31,7 @@ const START = `npx next start -p ${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch)\.spec\.ts/,
+  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249).
   workers: 1,

@@ -22,6 +22,7 @@ import { matchesSearch, searchKey } from "@/lib/rosterView";
 import type { CoachTemplateList, CoachTemplateSummary } from "@/lib/coachApi";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
+import { useRosterRead } from "@/lib/useRosterRead";
 
 /**
  * AC2's library list and its five row controls, plus AC3's "Use on a trainee".
@@ -29,7 +30,8 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  * A client island because every control here is a dialog: the alternative — a route per
  * rename and per delete — would put a coach through a navigation to change one string.
  * Nothing is fetched here; the two lists arrive from the server component above, and
- * every write goes back through a server action.
+ * every write goes back through a server action. EV-356g: the trainee list arrives as the
+ * page's UNRESOLVED roster read, so the library paints without it; only the picker waits.
  *
  * WHAT THE ROW MAY SHOW: name, day count, exercise count, last-updated — AC2's
  * "and nothing else", which is not a style note. A row that could render an exercise
@@ -78,11 +80,14 @@ type Dialog =
 
 export function TemplateLibrary({
   library,
-  trainees,
+  roster,
 }: {
   library: CoachTemplateList;
-  /** BUG-738: `null` = the roster read failed, which is not "no trainees". */
-  trainees: ApplyTarget[] | null;
+  /**
+   * EV-356g: the page's roster read, NOT awaited by the page. Resolves to `null` when it
+   * failed (BUG-738: not "no trainees"); read through `useRosterRead`, never `use()`.
+   */
+  roster: Promise<ApplyTarget[] | null>;
 }) {
   const copy = useCopy();
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -253,7 +258,7 @@ export function TemplateLibrary({
       <UseDialog
         open={dialog?.kind === "use"}
         template={dialog?.kind === "use" ? dialog.template : null}
-        trainees={trainees}
+        roster={roster}
         onClose={close}
       />
     </div>
@@ -550,19 +555,25 @@ function DeleteDialog({
 function UseDialog({
   open,
   template,
-  trainees,
+  roster,
   onClose,
 }: {
   open: boolean;
   template: CoachTemplateSummary | null;
-  /** BUG-738: `null` = the roster read failed. The picker then says so, and offers nobody. */
-  trainees: ApplyTarget[] | null;
+  /**
+   * EV-356g: the roster read, still in flight when the dialog may already be open. While it
+   * is, the dialog says so and offers nobody. BUG-738: `null` = it failed; the picker then
+   * says so, and offers nobody.
+   */
+  roster: Promise<ApplyTarget[] | null>;
   onClose: () => void;
 }) {
   const copy = useCopy();
   const router = useRouter();
-  const rosterFailed = trainees === null;
-  const offered = trainees ?? [];
+  const read = useRosterRead(roster);
+  const rosterLoading = read.state === "loading";
+  const rosterFailed = read.state === "failed";
+  const offered = read.state === "ready" ? read.targets : [];
   /** BUG-738 N1: the sentence that says why « Use » is off (a failed read, or nobody to offer). */
   const reasonId = useId();
   const [clientId, setClientId] = useState("");
@@ -590,6 +601,16 @@ function UseDialog({
     setRefusedAgain(false);
   }
   if (!open && seeded) setSeeded(false);
+  /**
+   * EV-356g — opened before the roster answered: nothing was picked then, so the first
+   * trainee is picked when the list arrives, and that is the opening pick (BUG-699's
+   * `dirty` compares against it). A pick the coach made is never replaced: `clientId` is
+   * only seeded while empty.
+   */
+  if (open && seeded && clientId === "" && offered.length > 0) {
+    setClientId(offered[0].id);
+    setOpeningId(offered[0].id);
+  }
 
   const trainee = offered.find((t) => t.id === clientId) ?? null;
 
@@ -641,6 +662,7 @@ function UseDialog({
     });
   }
 
+  /** Nobody to offer: still loading, failed, or truly none. Each says so in its own words. */
   const noTrainees = offered.length === 0;
 
   return (
@@ -677,7 +699,12 @@ function UseDialog({
         </>
       }
     >
-      {rosterFailed ? (
+      {rosterLoading ? (
+        // EV-356g — the page did not wait for the roster; this dialog does, and says so.
+        <p id={reasonId} role="status" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
+          {copy.challenges.clientsLoading}
+        </p>
+      ) : rosterFailed ? (
         // BUG-738 — the roster read failed. Saying "no trainees" here would be a false
         // statement about the coach's clients. The words are the challenges dialog's
         // (senior-po: no new copy), announced as an alert like /nutrition-templates' own.
