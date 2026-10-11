@@ -5,8 +5,13 @@ import { defineConfig, devices } from "@playwright/test";
  * cookie rules (`qa/session-epoch-cookie.spec.ts`), on the POPULATED fixture (Lina M.'s row),
  * in Chromium AND WebKit, on either server:
  *
- *   COACH_SESSION_SERVER=dev   npx playwright test --config playwright.session.config.ts --workers=1
- *   COACH_SESSION_SERVER=start npx playwright test --config playwright.session.config.ts --workers=1
+ *   COACH_SESSION_SERVER=dev   npm run test:e2e:session
+ *   COACH_SESSION_SERVER=start npm run test:e2e:session
+ *
+ * ⚠ NO CI RUNS THIS. b-fit-coach has no `.github/workflows`, and `playwright.config.ts` ignores
+ * both session specs, so the default gate does not run them either. A QA gate on anything that
+ * touches the session, the guard, `useUnsavedChanges`, middleware's `toLogin` or the root layout
+ * must run BOTH lines above (staff S3 on BUG-745).
  *
  * `start` builds the checkout first (`COACH_SESSION_PREBUILT=1` skips that when you have just run
  * `npx next build` on this tree), serves it with `next start`, and puts `qa/tls-front.mjs` in

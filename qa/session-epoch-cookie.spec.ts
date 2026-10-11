@@ -217,6 +217,12 @@ test.describe("BUG-745 D33.14 — the session epoch cookie", () => {
     expect(layout.match(/SESSION_EPOCH_COOKIE/g)?.length, "imported once, read once").toBe(2);
     expect(layout).toMatch(/\.get\(SESSION_EPOCH_COOKIE\)\?\.value \?\? ""/);
     expect(layout).toMatch(/data-session-epoch=\{epoch\}/);
+    // The fixture-only switch that removes layer (d) (ruling R8, staff N2): only in fixture mode,
+    // a server-only variable, and nothing else in src renders the attribute.
+    expect(layout).toContain('const wakeOff = COACH_API_MODE === "fixture" && jar.get("evoli_fixture_session_wake")?.value === "off";');
+    expect(layout).toContain('data-session-wake={wakeOff ? "off" : undefined}');
+    const wakeWriters = files.filter((f) => /data-session-wake=/.test(code(f))).map((f) => relative(SRC, f));
+    expect(wakeWriters).toEqual(["app/layout.tsx"]);
     // The browser reads it in one place: the parser and `document.cookie` are sessionEpoch.ts's.
     const cookieReaders = files.filter((f) => /document\.cookie/.test(code(f))).map((f) => relative(SRC, f));
     expect(cookieReaders).toEqual(["lib/sessionEpoch.ts"]);

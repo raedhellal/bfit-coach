@@ -3,18 +3,21 @@ import { test } from "./fixture-test";
 import { bundle, loadUnitPage } from "./unit-harness";
 
 /**
- * BUG-745, ADR-0033 D33.14 — the unit tests U1, U2, U3, U7, U8 and U9, in a real browser with
- * the React the portal ships (`qa/unit-harness.ts`). U4–U6 are about what the server writes and
- * live in `qa/session-epoch-cookie.spec.ts`; the witnesses W* are `qa/session-epoch.spec.ts`.
+ * BUG-745, ADR-0033 D33.14 — the unit tests U1, U2, U3, U7, U8, U9 and U10 (ruling R9), the N5
+ * seed case (staff S1) and the cleared-work re-decision (staff S2), in a real browser with the
+ * React the portal ships (`qa/unit-harness.ts`). U4–U6 are about what the server writes and live
+ * in `qa/session-epoch-cookie.spec.ts`; the witnesses W* are `qa/session-epoch.spec.ts`.
  *
  * Every test loads a fresh page: the guard reads the epoch the document was rendered under ONCE,
- * at module evaluation, from `<html data-session-epoch>`, so each starts with
- * `data-session-epoch="E1"` and the cookie `evoli_pro_epoch=E1` (the development name: the
- * harness runs React's development build, where `IS_PROD` is false). A boundary in another tab
- * is the cookie becoming `E2`.
+ * at its FIRST COMMIT, from `<html data-session-epoch>` (ruling R1: Next's error shell has no
+ * attributes until React's commit applies them). Each page starts with `data-session-epoch="E1"`
+ * and the cookie `evoli_pro_epoch=E1` (the development name: the harness runs React's
+ * development build, where `IS_PROD` is false). A boundary in another tab is the cookie
+ * becoming `E2`.
  *
  * The seams are stubs, nothing else: `@/lib/clientSession` records the `location.replace` a
- * real leave would make (it would unload the test page), `next/navigation` reads the URL from a
+ * real leave would make (it would unload the test page; U10 runs the REAL `clientSession.ts` and
+ * stubs only `./documentLoad`, its one `location.replace`), `next/navigation` reads the URL from a
  * context the test drives inside `startTransition` (as the App Router does), and the copy, the
  * kit Button, the analytics call and the progress bar are inert.
  *
@@ -47,6 +50,7 @@ const STUBS: Record<string, string> = {
     exports.replaceDocument = function (href) { window.__replaced.push(href); };
     exports.clearClientSession = function () { window.__cleared++; };
     exports.crossSessionBoundary = function (path) { window.__crossed.push(path); };
+    exports.sessionReloadTarget = function () { return window.location.href; };
   `,
   "@/lib/i18n/client": `
     exports.useCopy = function () {
@@ -63,6 +67,16 @@ const STUBS: Record<string, string> = {
   "@/components/shell/NavigationProgress": `exports.startNavigationProgress = function () {};`,
 };
 
+/** U10: the REAL clientSession.ts, with only its `location.replace` (./documentLoad) recorded. */
+const REAL_SESSION_STUBS: Record<string, string> = Object.fromEntries([
+  ...Object.entries(STUBS).filter(([k]) => k !== "@/lib/clientSession"),
+  [
+    "./documentLoad",
+    `window.__replaced = window.__replaced || []; window.__cleared = 0; window.__crossed = [];
+     exports.replaceDocument = function (href) { window.__replaced.push(href); };`,
+  ],
+]);
+
 const ENTRIES = {
   React: "react",
   ReactDOM: "react-dom",
@@ -70,6 +84,7 @@ const ENTRIES = {
   nav: "next/navigation",
   guard: "@/components/shell/SessionEpochGuard",
   hook: "@/lib/useUnsavedChanges",
+  clientSession: "@/lib/clientSession",
 };
 
 /**
@@ -83,7 +98,12 @@ window.__spy = { link: 0, save: 0, submit: 0, toggle: 0, nested: 0 };
 window.__log = [];
 window.__mount = function (editorMode) {
   var U = window.__unit, R = U.React, h = R.createElement, nav = U.nav;
-  function Editor() { U.hook.useUnsavedChanges(true); return h("div", { id: "editor" }, "editor"); }
+  function Editor() {
+    var d = R.useState(true);
+    window.__setDirty = d[1];
+    U.hook.useUnsavedChanges(d[0]);
+    return h("div", { id: "editor" }, "editor");
+  }
   function Probe(p) {
     var n = R.useContext(nav.NavContext);
     R.useLayoutEffect(function () {
@@ -133,10 +153,16 @@ window.__navigate = function (pathname) {
 
 type Mode = "none" | "stays" | "leaves";
 
-async function open(page: Page, mode: Mode, epochAtRender: string | null = "E1"): Promise<void> {
-  await loadUnitPage(page, bundle(ENTRIES, STUBS) + "\n" + APP, {
+async function open(
+  page: Page,
+  mode: Mode,
+  epochAtRender: string | null = "E1",
+  opts: { cookieAtLoad?: string; realSession?: boolean } = {}
+): Promise<void> {
+  const cookie = opts.cookieAtLoad ?? epochAtRender;
+  await loadUnitPage(page, bundle(ENTRIES, opts.realSession ? REAL_SESSION_STUBS : STUBS) + "\n" + APP, {
     htmlAttrs: { "data-session-epoch": epochAtRender ?? "" },
-    cookies: epochAtRender ? { evoli_pro_epoch: epochAtRender } : {},
+    cookies: cookie ? { evoli_pro_epoch: cookie } : {},
   });
   await page.evaluate((m) => (window as unknown as { __mount: (m: string) => void }).__mount(m), mode);
   // Let the mount's passive effects (the editor's sentinel push) settle.
@@ -160,8 +186,8 @@ const state = (page: Page) =>
     const html = document.documentElement;
     return {
       spy: { ...w.__spy },
-      replaced: [...w.__replaced],
-      crossed: [...w.__crossed],
+      replaced: [...(w.__replaced ?? [])],
+      crossed: [...(w.__crossed ?? [])],
       cleared: w.__cleared,
       log: w.__log.map((e) => ({ ...e })),
       leaving: html.getAttribute("data-session-leaving"),
@@ -284,6 +310,61 @@ test.describe("BUG-745 D33.14 — the session-epoch guard, unit", () => {
     await boundary(page);
     expect(await click(page, "#link")).toBe(true);
     expect((await state(page)).leaving).toBe("a");
+  });
+
+  test("N5 (staff S1): a page rendered under E1 that loads with cookie E2 leaves at mount, layer c, with no event", async ({ page }) => {
+    // The boundary was crossed after the server rendered this document and before its script ran.
+    await open(page, "none", "E1", { cookieAtLoad: "E2" });
+    const s = await state(page);
+    expect(s.leaving, "caught at the first commit by (c)").toBe("c");
+    expect(s.replaced).toEqual(["https://unit.evoli.test/a"]);
+  });
+
+  test("S2: a banner kept for unsaved work is not left over a clean editor: the work clearing re-decides, layer c", async ({ page }) => {
+    await open(page, "stays");
+    await boundary(page);
+    // (b) decides while the editor is still dirty: the exception, not a reload.
+    await page.evaluate(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    let s = await state(page);
+    expect(s.ended).toBe("b");
+    expect(s.leaving).toBeNull();
+    // The save's clean commit, with no URL change after it (WebKit's order in staff's P3).
+    await page.evaluate(async () => {
+      const w = window as unknown as { __setDirty: (d: boolean) => void; __unit: { React: { startTransition: (f: () => void) => void } } };
+      w.__unit.React.startTransition(() => w.__setDirty(false));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    s = await state(page);
+    expect(s.leaving, "nothing is unsaved any more: leave").toBe("c");
+    expect(s.replaced).toEqual(["https://unit.evoli.test/a"]);
+  });
+
+  for (const trigger of ["focus", "click", "popstate"] as const) {
+    test(`U10 (R9): after this tab's own crossSessionBoundary(p) and an epoch change, a ${trigger} reloads p, not location.href`, async ({ page }) => {
+      await open(page, "none", "E1", { realSession: true });
+      const target = "/login?error=expired";
+      await page.evaluate((p) => (window as unknown as { __unit: { clientSession: { crossSessionBoundary: (p: string) => void } } }).__unit.clientSession.crossSessionBoundary(p), target);
+      expect((await state(page)).replaced).toEqual([target]);
+      await boundary(page);
+      if (trigger === "focus") await page.evaluate(() => window.dispatchEvent(new FocusEvent("focus")));
+      if (trigger === "click") expect(await click(page, "#link")).toBe(true);
+      if (trigger === "popstate") {
+        await page.evaluate(() => window.dispatchEvent(new PopStateEvent("popstate")));
+        // And the re-issue of a popstate while leaving goes there too.
+        await page.evaluate(() => window.dispatchEvent(new PopStateEvent("popstate")));
+      }
+      const s = await state(page);
+      expect(s.leaving).not.toBeNull();
+      expect(s.replaced.slice(1).length).toBeGreaterThan(0);
+      expect(s.replaced, "every reload goes to the boundary's own target").toEqual(Array(s.replaced.length).fill(target));
+    });
+  }
+
+  test("U10 control: with no boundary crossed in this tab, the reload goes to location.href", async ({ page }) => {
+    await open(page, "none", "E1", { realSession: true });
+    await boundary(page);
+    expect(await click(page, "#link")).toBe(true);
+    expect((await state(page)).replaced).toEqual(["https://unit.evoli.test/a"]);
   });
 
   test("U8: in the exception, (a) cancels a type=button Save, every submit, and a Save nested in a marked container", async ({ page }) => {

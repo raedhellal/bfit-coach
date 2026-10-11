@@ -462,6 +462,50 @@ for (const lang of ["en", "fr"] as Lang[]) {
       await t.context.close();
     });
 
+    test(`W19 (N5): a boundary crossed after the server rendered tab 1 but before its scripts ran -> caught at hydration, /login, layer c`, async ({ browser, baseURL }) => {
+      // Staff's P2. (d) is off: the sign-out's message would not reach a tab whose scripts have
+      // not run anyway, but a focus on bringToFront could.
+      const t = await openTabs(browser, baseURL!, { lang });
+      await hydrated(t.tab2, "/");
+      let release!: () => void;
+      const released = new Promise<void>((r) => (release = r));
+      await t.tab1.route("**/_next/static/**/*.js", async (route) => {
+        await released;
+        await route.continue();
+      });
+      await t.tab1.goto(`/clients/${LINA}`, { waitUntil: "commit" });
+      // The server's HTML, painted and not hydrated, rendered under the session epoch in the jar.
+      await expect(t.tab1.locator("h1")).toHaveText(LINA_NAME);
+      const rendered = await t.tab1.evaluate(() => document.documentElement.getAttribute("data-session-epoch"));
+      expect(rendered).toBe(await epochValue(t));
+      const since = await signOutInTab2(t);
+      expect(await epochValue(t)).not.toBe(rendered);
+      release();
+      await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 30_000 }).toBe("/login");
+      expect(layerAfter(t, since), `layers: ${JSON.stringify(t.reports.filter((r) => r.kind === "layer" && r.at >= since))}`).toBe("c");
+      await t.context.close();
+    });
+
+    test(`W20 (staff P3): an update save answered after the sign-out, no late text -> /login, no banner left over a clean editor`, async ({ browser, baseURL }) => {
+      const t = await openTabs(browser, baseURL!, { lang });
+      await dirtyTemplateEditor(t);
+      const held = await holdResponse(t.tab1, (route) => route.request().method() === "POST" && route.request().headers()["next-action"] !== undefined);
+      await t.tab1.getByRole("button", { name: L.save, exact: true }).click();
+      await held.reached;
+      const since = await signOutInTab2(t);
+      await t.tab1.bringToFront();
+      held.release();
+      // Chromium: the save's clean commit lands before release()'s popstate. WebKit: after it,
+      // so (b) first keeps the banner for work that is about to be saved; the work clearing
+      // then re-decides (staff S2). Either way the tab must not stay.
+      await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 }).toBe("/login");
+      await expect(t.tab1.getByLabel(L.email)).toBeVisible();
+      expect(recordsAfter(t, since)).toEqual([]);
+      expect(["b", "c"]).toContain(layerAfter(t, since));
+      expect(t.dialogs, "no beforeunload prompt: the work was saved").toEqual([]);
+      await t.context.close();
+    });
+
     test(`W18: the revoked shape survives the placement -> one 307 to /clients/denied, then 403`, async ({ browser, baseURL }) => {
       const t = await openTabs(browser, baseURL!, { lang, wake: true });
       const first = await t.context.request.get(`/clients/${UNLINKED}`, { maxRedirects: 0 });

@@ -80,6 +80,24 @@ export function hasUnsavedWork(): boolean {
   return false;
 }
 
+const unsavedWorkCleared = new Set<() => void>();
+
+/**
+ * BUG-745 (staff S2 on ADR-0033 D33.14) — called when the LAST armed guard deregisters, in the
+ * commit that took the work away (a save's clean commit, or the editor unmounting). The
+ * session-epoch guard re-decides there: a tab it kept on screen for unsaved work (the banner)
+ * must not stay once nothing is unsaved. Measured: in WebKit, a save answered after a sign-out
+ * in another tab hands the sentinel back (`release()` → `history.back()`) and its `popstate`
+ * reached layer (b) while `dirty` was still committed true; no URL change followed, so the
+ * banner stayed over a clean editor. Returns the unsubscribe.
+ */
+export function onUnsavedWorkCleared(listener: () => void): () => void {
+  unsavedWorkCleared.add(listener);
+  return () => {
+    unsavedWorkCleared.delete(listener);
+  };
+}
+
 export function useUnsavedChanges(dirty: boolean) {
   const router = useRouter();
   const [pending, setPending] = useState<Pending | null>(null);
@@ -232,6 +250,7 @@ export function useUnsavedChanges(dirty: boolean) {
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       armedGuards.delete(guard);
+      if (!hasUnsavedWork()) for (const listener of unsavedWorkCleared) listener();
     };
   }, [dirty]);
 

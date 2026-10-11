@@ -61,4 +61,4 @@ http
     json(res, 404, { code: "NOT_FOUND", message: req.url, details: null });
   })
 // eslint-disable-next-line no-console
-  .listen(port, () => console.log(`session-epoch stub api on ${port}`));
+  .listen(port, "127.0.0.1", () => console.log(`session-epoch stub api on ${port}`));

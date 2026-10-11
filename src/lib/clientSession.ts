@@ -7,7 +7,10 @@
  *
  * Client-only (it touches `window`); import it from client components.
  */
+import { replaceDocument } from "./documentLoad";
 import { clearRosterReturn } from "./rosterReturn";
+
+export { replaceDocument };
 
 /**
  * Drop every client-side cache of the old session before the document goes.
@@ -24,18 +27,23 @@ export function clearClientSession(): void {
   clearRosterReturn();
 }
 
-/**
- * A document load of `href` that leaves no history entry for the page it replaces. The one
- * place this app calls `location.replace`: `crossSessionBoundary` below, and
- * `SessionEpochGuard`'s `leave()` (BUG-745, ADR-0033 D33.14), which reloads a tab whose
- * session changed in another tab so that middleware decides what it may show.
- */
-export function replaceDocument(href: string): void {
-  window.location.replace(href);
-}
+/** The document load this tab's own crossSessionBoundary asked for, if it did (BUG-745 R9). */
+let boundaryTarget: string | null = null;
 
 /** Cross a session boundary: clear the client caches, then a hard `location.replace`. */
 export function crossSessionBoundary(path: string): void {
   clearClientSession();
+  boundaryTarget = path;
   replaceDocument(path);
+}
+
+/**
+ * Where a reload for a session change goes (ADR-0033 D33.14 point 2, ruling R9): this tab's own
+ * boundary target, else this URL. The tab that crossed the boundary itself is already loading
+ * `path`; a stray focus, click or `popstate` before it unloads must not supersede that load with
+ * `location.href` (which would drop `/login?error=expired`'s message, or show a PENDING account
+ * that has just signed in the login form again).
+ */
+export function sessionReloadTarget(): string {
+  return boundaryTarget ?? window.location.href;
 }

@@ -59,4 +59,4 @@ const server = https.createServer({ key, cert }, (req, res) => {
   req.pipe(upstream);
 });
 // eslint-disable-next-line no-console
-server.listen(front, () => console.log(`tls-front https://localhost:${front} -> http://127.0.0.1:${target}`));
+server.listen(front, "127.0.0.1", () => console.log(`tls-front https://localhost:${front} -> http://127.0.0.1:${target}`));

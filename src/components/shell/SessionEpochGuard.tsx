@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/kit";
-import { clearClientSession, crossSessionBoundary, replaceDocument } from "@/lib/clientSession";
+import { clearClientSession, crossSessionBoundary, replaceDocument, sessionReloadTarget } from "@/lib/clientSession";
 import { useCopy } from "@/lib/i18n/client";
 import {
   SESSION_ENDED_ATTR,
@@ -13,7 +13,7 @@ import {
   isStale,
   readBrowserSessionEpoch,
 } from "@/lib/sessionEpoch";
-import { hasUnsavedWork } from "@/lib/useUnsavedChanges";
+import { hasUnsavedWork, onUnsavedWorkCleared } from "@/lib/useUnsavedChanges";
 
 /**
  * BUG-745, ADR-0033 D33.14 — a sign-in or a sign-out in one tab is honoured by every tab of
@@ -83,22 +83,23 @@ type Layer = "a" | "b" | "c" | "d";
  * case. No listener exists before that commit, so nothing reads `seen` earlier.
  */
 let seen: string | null = null;
-let seeded = false;
-function seedSeen(): void {
-  if (seeded) return;
-  seeded = true;
-  seen = document.documentElement.getAttribute(SESSION_EPOCH_ATTR) || null;
-}
-
 /**
  * Fixture mode only: `evoli_fixture_session_wake=off` makes the root layout render
  * `data-session-wake="off"`, which removes layer (d) — no BroadcastChannel post or listener and
  * no wake-up listener. ADR-0033 D33.14's witnesses of (a), (b) and (c) run that way (staff r2
  * S3): with (d) on, the sign-out's message reloads the tab before the click, traversal or
  * action resolution the witness is about. The root layout never renders it in live mode.
+ * Read with `seen`, at the first commit, for the same error-shell reason (staff N1).
  */
-const wakeOff: boolean =
-  typeof document !== "undefined" && document.documentElement.getAttribute("data-session-wake") === "off";
+let wakeOff = false;
+let seeded = false;
+function seedSeen(): void {
+  if (seeded) return;
+  seeded = true;
+  const html = document.documentElement;
+  seen = html.getAttribute(SESSION_EPOCH_ATTR) || null;
+  wakeOff = html.getAttribute("data-session-wake") === "off";
+}
 
 const CHANNEL_NAME = "evoli-pro-session";
 let channel: BroadcastChannel | null = null;
@@ -141,7 +142,8 @@ function mark(attr: string, layer: Layer): void {
 
 /**
  * Hide the portal (`globals.css` hides `#app-root` under `html[data-session-leaving]`), drop
- * the client caches and reload this URL, all in one task. Middleware then decides: `/login`
+ * the client caches and reload this URL (or, in the tab that crossed the boundary itself, the
+ * page it is already loading: `sessionReloadTarget`, ruling R9), all in one task. Middleware then decides: `/login`
  * after a sign-out, this page re-rendered for the new session after a sign-in elsewhere.
  * Idempotent: a second layer firing while the document is already leaving (a traversal's
  * restore reaching (c) after (b) left) adds no second document request. Only a `popstate` while
@@ -151,7 +153,7 @@ function leave(layer: Layer): void {
   if (isSessionLeaving()) return;
   mark(SESSION_LEAVING_ATTR, layer);
   clearClientSession();
-  replaceDocument(window.location.href);
+  replaceDocument(sessionReloadTarget());
 }
 
 let showBanner: (() => void) | null = null;
@@ -205,7 +207,7 @@ function onActivate(event: Event): void {
 function onPopState(): void {
   if (isSessionLeaving()) {
     // A traversal queued before or after `leave()` must not leave a hidden tab that never loads.
-    replaceDocument(window.location.href);
+    replaceDocument(sessionReloadTarget());
     return;
   }
   decide("b");
@@ -236,7 +238,10 @@ export function SessionEpochGuard() {
     window.addEventListener("auxclick", onActivate, true);
     window.addEventListener("submit", onActivate, true);
     window.addEventListener("popstate", onPopState);
+    // Staff S2: the moment nothing is unsaved any more, the exception no longer applies.
+    const offCleared = onUnsavedWorkCleared(() => decide("c"));
     return () => {
+      offCleared();
       showBanner = null;
       window.removeEventListener("click", onActivate, true);
       window.removeEventListener("auxclick", onActivate, true);
