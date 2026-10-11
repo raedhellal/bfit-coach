@@ -28,3 +28,4 @@
 - [coach-s3j gate](project_coach-s3j-gate.md) — 2026-10-11 8c29c7d FAIL (roster 349.1 red), re-gate 1d6c442 PASS; 738 PASS; WebKit prefetch-cancel console, create→New identity hole
 - [coach-s3k gate](project_coach-s3k-gate.md) — 2026-10-11 f4d6842 PASS (BUG-741/742 test-only); old-reader variants prove the false pass, M-flash timing-dependent, BUG-749 unchanged
 - [coach-s3l gate](project_coach-s3l-gate.md) — 2026-10-11 cd13f54 FAIL (start config 23/66: __Host- epoch vs secure:false helpers); W1, R1-H x guard, (c) mutants, router.push probes
+- [coach-s3i gate](project_coach-s3i-gate.md) — 2026-10-10 f303bc0 EV-356d PASS; next-start prefetch rig, DOM-vs-frame busy, MPA denial wipes router, sign-out window probe
