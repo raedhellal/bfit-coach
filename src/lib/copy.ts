@@ -2464,6 +2464,11 @@ export const en = {
     noClients: "You have no linked clients yet. Invite a client from the roster first.",
     /** The roster read failed — not the same fact as having no clients. Also /templates' "Use on a trainee" picker (BUG-738). */
     clientsLoadError: "Your clients could not be loaded. Reload the page to try again.",
+    /**
+     * EV-356g — the pickers' loading line: the page no longer waits for the roster, so a dialog
+     * opened before it answers says so. Also /templates' and /nutrition-templates' pickers.
+     */
+    clientsLoading: "Loading your clients…",
     submit: "Create and invite",
     submitting: "Creating…",
     cancel: "Cancel",

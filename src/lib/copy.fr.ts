@@ -1349,6 +1349,8 @@ export const fr = {
     noClients: "Vous n'avez encore aucun client lié. Invitez d'abord un client depuis la liste des clients.",
     /** Also /templates' « Appliquer à un client » picker (BUG-738): no copy of its own. */
     clientsLoadError: "Vos clients n'ont pas pu être chargés. Rechargez la page pour réessayer.",
+    /** EV-356g — also the pickers of /templates and /nutrition-templates. */
+    clientsLoading: "Chargement de vos clients…",
     submit: "Créer et inviter",
     submitting: "Création…",
     cancel: "Annuler",
