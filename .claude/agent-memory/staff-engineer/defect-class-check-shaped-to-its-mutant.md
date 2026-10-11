@@ -32,3 +32,11 @@ render-landed witness is the data itself (poll the new order), never the marker.
 found a sibling of the BUG-741 flag reader that the row missed (`editor-save-no-refresh.spec.ts:78`,
 "sentinel released", green under M-S2). When a row names N readers of a signal, grep the whole of
 `qa/` for the signal's literal.
+
+**Nits round, `ae2c492`.** The fix snapshots the rows in the observer callback that first sees busy
+gone and asserts the snapshot is the new order. M-flash goes red 3/3, and real code passed 20/20 at
+x10. Limit: the snapshot ties the marker to the VISIBLE change, not to the server render. A client-side
+optimistic reorder that clears busy together with it would pass, and EV-356c already made the radio
+optimistic. When a witness uses data as a proxy for "the server answered", ask whether that data can
+change on the client first. Also, two sequential `waitForFunction`s (flag, then index) do not form a
+conjunction. Fold them into one predicate when it matters.
