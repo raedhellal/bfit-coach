@@ -34,6 +34,54 @@
   },
   "overrides": [
     {
+      "files": ["src/**"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "Identifier[name='prefetch']",
+            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. In src the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744)."
+          },
+          {
+            "selector": "Literal[value='prefetch']:not(TSLiteralType > Literal)",
+            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. In src the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744)."
+          },
+          {
+            "selector": "TemplateElement[value.cooked='prefetch']",
+            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. In src the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744)."
+          },
+          {
+            "selector": "JSXAttribute[name.name='prefetch']:not([value.expression.value=false])",
+            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. In src the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744)."
+          },
+          {
+            "selector": "Literal[value=/next[/](.*[/])?link(\\.\\w+)?([/?#!]|$)/i]:not(ImportDeclaration[source.value='next/link'] > Literal)",
+            "message": "Use @/components/ui/Link (prefetch={false}): ADR-0033 D33.13 invariant N, the portal sends no AUTO prefetch. Next's Link by any other spelling (a path into node_modules, next/link.js, import(), require()) is still next/link (BUG-743)."
+          },
+          {
+            "selector": "TemplateElement[value.cooked=/next[/](.*[/])?link(\\.\\w+)?([/?#!]|$)/i]",
+            "message": "Use @/components/ui/Link (prefetch={false}): ADR-0033 D33.13 invariant N, the portal sends no AUTO prefetch. Next's Link by any other spelling (a path into node_modules, next/link.js, import(), require()) is still next/link (BUG-743)."
+          },
+          {
+            "selector": "Literal[value=/next[/](.*[/])?dist[/]/i]",
+            "message": "Next's internals by a deep path (next/dist/...) reach Link or the router's prefetch under other names: ADR-0033 D33.13 invariant N and point 1. Import Next's public entry points."
+          },
+          {
+            "selector": "TemplateElement[value.cooked=/next[/](.*[/])?dist[/]/i]",
+            "message": "Next's internals by a deep path (next/dist/...) reach Link or the router's prefetch under other names: ADR-0033 D33.13 invariant N and point 1. Import Next's public entry points."
+          },
+          {
+            "selector": "ImportExpression:not([source.type='Literal'])",
+            "message": "A dynamic import() names its module as one plain string literal, so the ADR-0033 D33.13 invariant N ban on next/link can read it (BUG-743). A computed module name cannot be checked."
+          },
+          {
+            "selector": "CallExpression[callee.name='require']:not([arguments.0.type='Literal'])",
+            "message": "A require() names its module as one plain string literal, so the ADR-0033 D33.13 invariant N ban on next/link can read it (BUG-743). A computed module name cannot be checked."
+          }
+        ]
+      }
+    },
+    {
       "files": ["src/components/ui/Link.tsx", "src/components/roster/IntentLink.tsx"],
       "rules": { "no-restricted-imports": "off" }
     },
