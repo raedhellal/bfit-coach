@@ -277,10 +277,10 @@ for (const lang of ["en", "fr"] as Lang[]) {
       await hydrated(t.tab2, "/");
       const access = (await t.context.cookies()).find((c) => c.name === "evoli_pro_at")?.value ?? "";
       expect(JSON.parse(Buffer.from(access.split(".")[1], "base64url").toString()).exp * 1000, "middleware rotated").toBeGreaterThan(Date.now());
-      expect(await epochValue(t), "the epoch is unchanged by a rotation").toBe(epoch);
+      expect.soft(await epochValue(t), "the epoch is unchanged by a rotation").toBe(epoch);
       await t.tab1.bringToFront();
       await t.tab1.locator(`a.roster-row[href="/clients/${LINA}"]`).click();
-      await t.tab1.waitForURL(`**/clients/${LINA}`);
+      await t.tab1.waitForURL(`**/clients/${LINA}`, { timeout: 15_000 });
       await expect(t.tab1.locator("h1")).toHaveText(LINA_NAME);
       await t.tab1.waitForTimeout(1_000);
       expect(t.seen.filter((s) => s.at >= since && s.kind === "DOC"), fmt(t.seen).join(", ")).toEqual([]);

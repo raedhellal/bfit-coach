@@ -278,11 +278,15 @@ export async function expectLeftToLogin(
   const clientPath = opts.clientPath ?? `/clients/${LINA}`;
   // Polled, not `waitForURL`: a reload superseded by the popstate re-issue is an ABORTED
   // navigation, which `waitForURL` reports as a failure.
-  await expect.poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 }).toBe("/login");
-  await expect(t.tab1.getByLabel(LABELS[t.lang].email)).toBeVisible();
+  await expect
+    .poll(() => new URL(t.tab1.url()).pathname, { timeout: 15_000 })
+    .toBe("/login")
+    .catch(() => undefined); // judged below, after the records, so a red run shows both
   const after = t.seen.filter((s) => s.at >= since);
   const records = recordsAfter(t, since);
-  expect(records, `zero records; requests: ${fmt(after).join(", ")}`).toEqual([]);
+  expect.soft(records, `zero records; requests: ${fmt(after).join(", ")}`).toEqual([]);
+  expect(new URL(t.tab1.url()).pathname, "tab 1 ends on /login").toBe("/login");
+  await expect(t.tab1.getByLabel(LABELS[t.lang].email)).toBeVisible();
   const rsc = after.filter((s) => (s.kind === "FULL" || s.kind === "AUTO") && s.path.startsWith(clientPath));
   if (opts.allowRefusedRsc) {
     expect(rsc.filter((s) => s.status === 200), `no RSC answer for the client's page: ${fmt(after)}`).toEqual([]);

@@ -103,3 +103,5 @@
 - [A shared transition labels every action](a-shared-transition-labels-every-action.md) — tag the running kind in the click; hold the action POST (qa/hold-action.ts) to test pending UI
 - [A hand-made context inherits the runner's language](a-hand-made-context-inherits-the-runners-language.md) — BUG-738: fr-FR WebKit context served EN; set evoli_pro_locale; failed roster = null on 3 pages
 - [A path-segment change always remounts](a-path-segment-change-always-remounts.md) — BUG-739: only search params keep an island; rewrites chain + merge the query; useEditorIdentity
+- [Session-epoch guard (BUG-745)](session-epoch-guard-bug745-facts.md) — wake-off switch; W4 can't fail (revalidate clears cache), W16 layer b, M3 vs W10; TLS front for WebKit start
+- [Browser unit harness](browser-unit-harness-for-client-modules.md) — qa/unit-harness.ts: Next's compiled React in a real page, stubs by specifier, mutants read from disk
