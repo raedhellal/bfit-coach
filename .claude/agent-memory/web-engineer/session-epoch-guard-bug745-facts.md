@@ -50,21 +50,35 @@ gate (6 red, `page.goto` timeouts), not by any D33.14 witness. Locked by W11b an
   harness runs the REAL `clientSession.ts` (U10, M11).
 - S2: when the last armed guard deregisters, the hook notifies (`onUnsavedWorkCleared`) and the
   guard re-decides as (c). WebKit had left the banner over a clean editor (W20 = staff P3).
-  Consequence: M5 (undo 3a/3b) no longer reddens W17. A layout-phase `setEnded` flushes the
-  passive cleanup in the same task, and the re-decide leaves before paint. **Only U9 catches M5
-  now.** W17's list-name record is proven live by the M2+M6+MS2+M9 control.
+  Consequence: M5 (undo 3a/3b) ALONE no longer reddens W17. A layout-phase `setEnded` flushes the
+  passive cleanup in the same task, and the re-decide leaves before paint. U9 catches M5, and
+  **M5+MS2 reddens W17** (staff r2: 4/4, 9 list records, stuck on /templates). That pair is W17's
+  mutant. The M2+M6+MS2+M9 control also shows the list-name record works.
 - S1: W19 (scripts held across the sign-out) plus the unit "E1 rendered, E2 at load" case. Both
   go red with the rejected cookie read in `seedSeen`.
 - **Session witnesses have no CI**: `npm run test:e2e:session` with `COACH_SESSION_SERVER=dev`, then
   `=start`. The default config ignores both session specs. Name both runs in any gate that
   touches the guard, `useUnsavedChanges`, `toLogin` or the root layout.
 
+**Round 3, R10 (hub 6f31493): a lost reload is not a dead end.** `leave()` on a document that is
+already leaving re-issues once `performance.now() - issuedAt >= retryGap` (3 s, doubling, capped
+at 30 s). `onPopState` issues ungated and restarts the clock. No timer.
+- Measured with Playwright: after `route.abort("connectionreset")`, Chromium commits
+  `chrome-error://`, so its abort shape is a CONTROL. A `204` answer keeps the old document hidden
+  in BOTH engines, so the 204 shape witnesses R10 in Chromium too.
+- Witnesses: U11 (stub `performance.now` in the page), W21a (click path) and W21b (wake path,
+  (d) on). M13 (R6 as built) reddens W21a/b in WebKit and in Chromium 204. M14 (no gap) reddens U11
+  and makes W21a's +1 s click send a second document.
+- Runner trap: `mutant-run.sh` reverts with `git checkout -- src`, which ERASES uncommitted work.
+  Commit first; this lost R10 once. Mutants that orphan a variable (`issuedAt`, `retryGap`) fail
+  `next build` on lint, so add `void x;` (or a self-assignment for prefer-const).
+
 **Known flake, WebKit on `next dev` only:** W13/W8 fails about 1 in 8 runs (2/16 at 68a449b,
 4/16 at round 2; W8 itself 16/16). The guard fires (layer a, `DOC / 307`), then WebKit reports
 "The network connection was lost" on the `/login` redirect follow, about 6 s later, and the old
 document stays hidden. On `next start` behind tls-front: 32/32. It is a dev-server keep-alive
 artefact, not the guard. Note, though, that `leave()` never retries a lost load unless a `popstate`
-arrives (ruling R6). W4 on WebKit dev also sometimes gets Next's own document fallback (an aborted
+arrives (ruling R6, since amended by R10). W4 on WebKit dev also sometimes gets Next's own document fallback (an aborted
 RSC redirect follow); W4 accepts that when the document is refused with a 307.
 
 **Rigs:** `qa/tls-front.mjs` (an https front) is needed for WebKit on `next start`. A `__Host-`
