@@ -166,8 +166,12 @@ test.describe("BUG-691, the other paths back", () => {
     await page.getByRole("radio", { name: "Recently active" }).click();
     await expect(page.getByRole("radio", { name: "Recently active" })).toHaveAttribute("aria-checked", "true");
     await answered;
+    await expect
+      .poll(() => rosterBusyWasSeen(page), { message: "the groups never entered aria-busy: the read below is not synced" })
+      .toBe(true);
     await expect(page.locator('section[data-roster-group][aria-busy="true"]')).toHaveCount(0);
-    expect(await rosterBusyWasSeen(page), "the groups never entered aria-busy: the read below is not synced").toBe(true);
+    // ⚠ Entered, not "left with the render": nothing on this filtered roster changes, so a marker
+    // that clears early is not caught here (staff S2; see qa/roster-busy.ts).
     expect(rosterPath(page)).toBe("/?filter=alerts&q=lin");
     await expect(page.getByRole("searchbox", { name: "Search clients" })).toHaveValue("lin");
   });

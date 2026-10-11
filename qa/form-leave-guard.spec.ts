@@ -108,8 +108,19 @@ async function historyIndex(page: Page): Promise<number> {
     () => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index
   );
 }
-async function armed(page: Page) {
+/**
+ * The guard has pushed its entry. The flag can witness an arm (only the guard's `pushState`
+ * writes it; Next can only remove it). Given `start`, the index must also stand at
+ * `start + 1` (staff N1, BUG-741 review), so every later `disarmed(page, start)` is a step
+ * back from a pushed entry by construction, never a wait that held from the start.
+ */
+async function armed(page: Page, start?: number) {
   await page.waitForFunction(() => window.history.state?.evoliUnsavedGuard === true);
+  if (start === undefined) return;
+  await page.waitForFunction(
+    (i) => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index === i,
+    start + 1
+  );
 }
 /**
  * The guard has handed its entry back: the history stands at `start` again.
@@ -251,13 +262,13 @@ for (const lang of ["en", "fr"] as const) {
         const here = new URL(page.url()).pathname;
 
         await form.field(page, w).fill(form.values[0]);
-        await armed(page);
+        await armed(page, start);
         await form.save(page, w);
         await disarmed(page, start);
 
         // A re-edit after the save asks again.
         await form.field(page, w).fill(form.values[1]);
-        await armed(page);
+        await armed(page, start);
         await navLink(page, w).click();
         await expect(leaveDialog(page, w)).toBeVisible();
         await leaveDialog(page, w).getByRole("button", { name: w.stay, exact: true }).click();
@@ -276,7 +287,7 @@ for (const lang of ["en", "fr"] as const) {
         await form.open(page, w);
         const start = await historyIndex(page);
         await form.field(page, w).fill(form.values[0]);
-        await armed(page);
+        await armed(page, start);
         await form.save(page, w);
         await disarmed(page, start);
         await navLink(page, w).click();
@@ -352,7 +363,7 @@ test.describe("BUG-665 — what the hook owns by construction (EN)", () => {
     const field = progressGoal.field(page, w);
     const stored = await field.inputValue();
     await field.fill("71");
-    await armed(page);
+    await armed(page, start);
     await field.fill(stored);
     await disarmed(page, start);
     await navLink(page, w).click();
@@ -455,7 +466,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     const start = await historyIndex(page);
 
     await field.fill("71");
-    await armed(page);
+    await armed(page, start);
     await block.getByRole("button", { name: w.save, exact: true }).click();
     // The first save's notice is new, so it is a sync point: `saved()` has run, and its
     // `history.back()` is now held.
@@ -469,7 +480,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await expect(field).toHaveValue("69");
 
     // The re-edit is still guarded: one Back asks, and Stay keeps it.
-    await armed(page);
+    await armed(page, start);
     await pressBack(page);
     await expect(leaveDialog(page, w)).toBeVisible();
     await leaveDialog(page, w).getByRole("button", { name: w.stay, exact: true }).click();
@@ -500,7 +511,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     const start = await historyIndex(page);
 
     await field.fill("71");
-    await armed(page);
+    await armed(page, start);
     await block.getByRole("button", { name: w.save, exact: true }).click();
     await expect(block.getByText(w.saved, { exact: true })).toBeVisible();
     // Dirty, then clean again, both before the save's step lands: nothing is left to guard.
@@ -532,7 +543,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     const start = await historyIndex(page);
 
     await field.fill("71");
-    await armed(page);
+    await armed(page, start);
     await save.click();
     await expect(block.getByText(w.saved, { exact: true })).toBeVisible();
     await field.fill("69");
@@ -569,13 +580,13 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     const start = await historyIndex(page);
 
     await field.fill("71");
-    await armed(page);
+    await armed(page, start);
     await field.fill(stored);
     await field.fill("69");
     await heldStepsLanded(page, 1);
 
     await expect(leaveDialog(page, w)).toHaveCount(0);
-    await armed(page);
+    await armed(page, start);
     await pressBack(page);
     await expect(leaveDialog(page, w)).toBeVisible();
     await leaveDialog(page, w).getByRole("button", { name: w.stay, exact: true }).click();
@@ -604,12 +615,12 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     const start = await historyIndex(page);
 
     await field.fill("71");
-    await armed(page);
+    await armed(page, start);
     await save.click();
     await expect(block.getByText(w.saved, { exact: true })).toBeVisible();
     await field.fill("69");
     await heldStepsLanded(page, 1);
-    await armed(page);
+    await armed(page, start);
 
     const answered = page.waitForResponse(
       (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined
@@ -728,6 +739,9 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
         message: "the unsaved re-edit holds no guard entry: Back would leave without asking",
       })
       .toBe(true);
+    await expect
+      .poll(() => historyIndex(page), { message: "the re-edit's guard entry is not one past where the page was loaded" })
+      .toBe(c.start + 1);
     await pressBack(page);
     await expect(leaveDialog(page, w), "Back with an unsaved re-edit did not ask").toBeVisible();
     await leaveDialog(page, w).getByRole("button", { name: w.stay, exact: true }).click();
@@ -771,7 +785,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
       await picker.getByRole("button").first().click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
     }
-    await armed(page);
+    await armed(page, start);
     await createStaysGuarded(page, {
       list: "/templates",
       fresh: "/templates",
@@ -801,7 +815,7 @@ test.describe("BUG-730 — typing while a save's history step is in flight (EN)"
     await page.getByLabel("Protein (g)").fill("20");
     await page.getByLabel("Carbs (g)").fill("30");
     await page.getByLabel("Fat (g)").fill("5");
-    await armed(page);
+    await armed(page, start);
     await createStaysGuarded(page, {
       list: "/recipes",
       fresh: "/recipes",
@@ -830,7 +844,7 @@ async function guardAtWidth(page: Page, width: number, engine: string) {
   const start = await historyIndex(page);
   const field = progressGoal.field(page, w);
   await field.fill("71");
-  await armed(page);
+  await armed(page, start);
   const link = page.getByRole("navigation", { name: w.portal }).getByRole("link", { name: w.recipes, exact: true });
   await expect(link, `${label}: one visible Recipes link`).toHaveCount(1);
   await link.click();
