@@ -25,4 +25,4 @@
 - [coach-s3f gate](project_coach-s3f-gate.md) — 2026-10-09 d1fed49 PASS (BUG-718/720); \b after « à » made a negative check vacuous; param-name copy sweep; facts-diff regressions
 - [coach-s3g gate](project_coach-s3g-gate.md) — 2026-10-09 83ff8e4 PASS (j2, BUG-724, BUG-730); natural-race keystroke rig, badge-at-keystroke witness, mid-flight save loss
 - [coach-s3h gate](project_coach-s3h-gate.md) — 2026-10-10 c378aea PASS (BUG-735, EV-356a/b/c); WebKit no sign-in on next start, streamed-frame recorder, HistoryUpdater-satisfied flag helpers
-- [coach-s3j gate](project_coach-s3j-gate.md) — 2026-10-11 8c29c7d FAIL (roster 349.1 red from BUG-739 editor pages); 738 PASS; WebKit prefetch-cancel console, create→New identity hole
+- [coach-s3j gate](project_coach-s3j-gate.md) — 2026-10-11 8c29c7d FAIL (roster 349.1 red), re-gate 1d6c442 PASS; 738 PASS; WebKit prefetch-cancel console, create→New identity hole

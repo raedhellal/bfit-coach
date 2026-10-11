@@ -7,7 +7,7 @@ metadata:
 
 **2026-10-11, b-fit-coach `train/coach-s3j` @ 8c29c7d** = 50f31f7 (s3h) + 6609ee8 (BUG-738 @8e6801a) + 8c29c7d (BUG-739 @06fcbdd).
 Session log: scratchpad `coach-s3j-qa.md`; artefacts scratchpad `s3j/`. Previous: [[project_coach-s3h-gate]]. Verdict and numbers
-live in the session log, not here.
+live in the session log, not here. FAIL at 8c29c7d (roster 349.1), re-gated PASS at 1d6c442 (registry fix 311a5e6, qa/ only).
 
 **Why:** a coach merge is a production deploy ([[coach-portal-merge-is-release]]); BUG-739 also owes a Vercel deploy smoke (Q8).
 
