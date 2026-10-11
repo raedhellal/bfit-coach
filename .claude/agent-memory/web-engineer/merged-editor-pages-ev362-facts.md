@@ -22,13 +22,26 @@ across two files. Raed approved deleting them by delegation (EV-362 Source).
   you edit a branch.
 - `qa/render-error-every-route.spec.ts`: 352.4 models the file-system router only. So a rewritten URL
   (`/recipes/new`, `/recipes/{id}`) can NOT sit in `ROUTE_FILES`. It goes in `REWRITTEN` (URL → target
-  file). A static test checks that no page file serves those URLs and that each target is a `ROUTE_FILES`
-  page. Deleting the four entries without adding `REWRITTEN` would have silently dropped BUG-704's
-  render-error check of `/x/{id}`. The 19 opened URLs are the same as before.
-- `qa/editor-create-then-update.spec.ts` ends with two static tests:
-  - AC1: the four folders are absent, and `editor` is the only page folder directly under
-    recipes/ and templates/. Any other single-segment folder would be shadowed by the `:id` rule.
-  - AC2: it imports `next.config.mjs`, calls `rewrites()`, and `toEqual`s the four rules.
+  file), which staff's review bound to `rewrites().beforeFiles`:
+  - every rule must take at least one `REWRITTEN` URL;
+  - each target must be the page the first matching rule's destination pathname resolves to;
+  - no page file may serve the URL directly.
+  Deleting the four entries without `REWRITTEN` would have silently dropped BUG-704's check of `/x/{id}`.
+- Page-file helpers (`PAGE_FILE`, `appPages`, `segmentsOf`, `urlPattern`, `resolvePage`, `sampleUrl`,
+  `beforeFilesRewrites`, `sourceMatches`) live in `qa/app-pages.ts`. A spec must not import another
+  spec. Sources compile with `next/dist/compiled/path-to-regexp` using Next's options (`/` delimiter,
+  case-insensitive, strict). It ships no types, so `qa/next-path-to-regexp.d.ts` declares them.
+- `qa/editor-create-then-update.spec.ts` has two static tests:
+  - AC1 pins the four page FILES absent, not their folders, so a nested `recipes/[id]/history` page
+    is allowed. It also fails any page under `src/app` whose sample URL (groups dropped, dynamic
+    segments filled) a `beforeFiles` source takes, except a rule's destination page.
+  - AC2 `toEqual`s the four rules as declared.
+- Mutants witnessed (2026-10-11):
+  - M1 restored `recipes/new` → red on both limbs.
+  - M5 a swapped REWRITTEN target → red. M6 the `/recipes/{id}` entry deleted → red.
+  - M7 `recipes/(list)/page.tsx` → AC1 green. M8 `recipes/(x)/import/page.tsx` → red.
+  - M9 `recipes/[id]/history/page.tsx` → green.
+  - An expect that fails stops the test, so make the first limb `expect.soft` if both limbs must report.
 - `qa/warm-routes.ts` still warms `/x/new` and `/x/{nobody}`. Those compile `editor/page.tsx` through
   the rewrite.
 - WebKit on `next start` (cookies re-added without `Secure`, scratch `sign-in.ts` patch): BUG-739's

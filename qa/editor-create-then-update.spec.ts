@@ -434,7 +434,8 @@ for (const e of [RECIPE, TEMPLATE]) {
 test("EV-362: the four replaced page files stay absent, and no page sits under a beforeFiles rewrite", async () => {
   const pages = appPages();
   const replaced = pages.filter((p) => /^(recipes|templates)\/(new|\[id\])\/page\.(tsx|ts|jsx|js)$/.test(p));
-  expect(replaced, "page files EV-362 deleted, back in src/app").toEqual([]);
+  // Soft: a restored file is reported by both limbs, so the (b) message shows which rule took it.
+  expect.soft(replaced, "page files EV-362 deleted, back in src/app").toEqual([]);
 
   const rules = await beforeFilesRewrites();
   expect(rules.length, "next.config.mjs declares beforeFiles rewrites").toBeGreaterThan(0);
