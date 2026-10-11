@@ -24,6 +24,8 @@ import { defineConfig, devices } from "@playwright/test";
  *     "hover = one render, re-hover = zero"), which the roster config can only half-run.
  *   · `library-roster-unblocked.spec.ts` — EV-356g G.1–G.4: the libraries paint before a held
  *     roster read. Its timings are a production build's (a dev server compiles on first hit).
+ *   · `library-roster-dropped-load.spec.ts` — QA-S3N-1: a document load whose connection drops
+ *     while the roster is pending; the picker's wait ends at its deadline. Starts its own proxy.
  */
 const PORT = process.env.COACH_START_PORT || "3302";
 const BASE_URL = `http://localhost:${PORT}`;
@@ -31,7 +33,7 @@ const START = `npx next start -p ${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked)\.spec\.ts/,
+  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked|library-roster-dropped-load)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249).
   workers: 1,

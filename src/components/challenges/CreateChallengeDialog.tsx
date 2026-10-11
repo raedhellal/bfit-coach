@@ -24,7 +24,8 @@ import {
 } from "@/lib/challengeDocument";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 import { useCoachForm } from "@/lib/useCoachForm";
-import { useRosterRead } from "@/lib/useRosterRead";
+import { WHOLE_ROSTER_READ_ROUNDS } from "@/lib/rosterAll";
+import { rosterReadDeadlineMs, useRosterRead } from "@/lib/useRosterRead";
 
 /** A trainee the coach may invite: an ACTIVE roster row. STEPS needs no data scope. */
 export interface InviteTarget {
@@ -60,7 +61,8 @@ export interface InviteTarget {
  */
 export function CreateChallengeDialog({ roster }: { roster: Promise<InviteTarget[] | null> }) {
   const copy = useCopy();
-  const read = useRosterRead(roster);
+  // QA-S3N-1: the whole roster is page 0, then the rest, each bounded by the api read timeout.
+  const read = useRosterRead(roster, rosterReadDeadlineMs(WHOLE_ROSTER_READ_ROUNDS));
   const rosterLoading = read.state === "loading";
   const rosterFailed = read.state === "failed";
   const clients = read.state === "ready" ? read.targets : [];

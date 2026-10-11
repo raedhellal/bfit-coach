@@ -21,6 +21,23 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *   R4 a NEW promise (a revalidated page) → `loading` again, and the replaced promise settling
  *      late never overwrites the new one's answer.
  *
+ * QA-S3N-1 — a DOCUMENT load whose connection drops while the roster is pending leaves the
+ * thenable pending FOREVER (Next never closes the inline stream), and the picker said it was
+ * loading forever. The hook now has a deadline: the server's own bound (`API_READ_TIMEOUT_MS`,
+ * 8 s, per sequential api call) plus 4 s for delivery. On page time (`page.clock`), from the
+ * effect that subscribed:
+ *
+ *   R5 a promise that never settles is `loading` up to 1 ms before the deadline and `failed` at
+ *      it: 12 s for one call (/templates, /nutrition-templates), 20 s for the whole-roster read
+ *      (/challenges, two rounds); the exported deadlines are those, derived from 8 s;
+ *   R6 an answer AFTER the deadline still wins: a list replaces `failed` (true data); `null` or a
+ *      rejection leaves it `failed`, with no boundary and no unhandled rejection;
+ *   R7 an answer BEFORE the deadline is never overwritten by it, `[]` (truly no clients) included;
+ *   R8 a NEW promise gets its own full wait: the replaced read's deadline does not fail it.
+ *
+ * Red on 3c76491 (no deadline): R5 and R8 stay `loading` at the deadline, R5's exports and
+ * `@/lib/apiTimeouts` do not exist. R6's first test is red there too, at its `failed` step.
+ *
  * Not on the fixture server, but on its config: this file uses the resetting `test` only so
  * `qa/fixture-isolation.spec.ts` needs no exemption for it.
  */
@@ -34,6 +51,7 @@ const ENTRIES = {
 const APP = `
 window.__caught = [];
 window.__unhandled = 0;
+window.__effects = 0;
 window.addEventListener("unhandledrejection", function () { window.__unhandled++; });
 (function () {
   var U = window.__unit, R = U.React, h = R.createElement;
@@ -44,12 +62,14 @@ window.addEventListener("unhandledrejection", function () { window.__unhandled++
     render() { return this.state.error ? h("p", { id: "boundary" }, "boundary") : this.props.children; }
   }
   function Probe(p) {
-    var read = U.roster.useRosterRead(p.read);
+    var read = U.roster.useRosterRead(p.read, p.deadline);
+    // Declared after the hook, so it runs after the hook's own effect: the deadline has started.
+    R.useEffect(function () { window.__effects++; }, [p.read]);
     var text = read.state === "ready" ? "ready:" + read.targets.map(function (t) { return t.id; }).join(",") : read.state;
     return h("output", { id: "state" }, text);
   }
   var root = U.ReactDOMClient.createRoot(document.getElementById("root"));
-  window.__show = function (read) { root.render(h(Boundary, null, h(Probe, { read: read }))); };
+  window.__show = function (read, deadline) { root.render(h(Boundary, null, h(Probe, { read: read, deadline: deadline }))); };
   window.__deferred = function () {
     var d = {};
     d.promise = new Promise(function (res, rej) { d.resolve = res; d.reject = rej; });
@@ -167,6 +187,161 @@ test.describe("EV-356g useRosterRead", () => {
       ((window as unknown as { __next: { resolve: (v: unknown) => void } }).__next).resolve([{ id: "fresh" }])
     );
     await expect(state(page)).toHaveText("ready:fresh");
+    await expectNoBoundary(page);
+  });
+
+  // ── QA-S3N-1: the deadline, on page time ──────────────────────────────────────────────────
+
+  /** 8 s (`API_READ_TIMEOUT_MS`) per sequential api call + 4 s delivery margin. Literals on purpose. */
+  const ONE_CALL_MS = 12_000;
+  const WHOLE_ROSTER_MS = 20_000;
+
+  type W = Record<string, unknown> & {
+    __show: (p: unknown, deadline?: number) => void;
+    __deferred: () => { promise: Promise<unknown>; resolve: (v: unknown) => void; reject: (e: unknown) => void };
+    __effects: number;
+  };
+
+  /**
+   * Fake page time from before the bundle runs: every `setTimeout` the hook starts is the clock's.
+   * PAUSED: an installed clock otherwise keeps flowing with real time, and the runner's own waits
+   * would then move the deadline. From here on only `runFor` moves it.
+   */
+  async function loadOnPageTime(page: Page) {
+    await page.clock.install({ time: 0 });
+    await page.clock.pauseAt(1_000);
+    await load(page);
+  }
+
+  /** Shows a never-settling (until told) promise as `name`, and waits until its effect has run. */
+  async function showPending(page: Page, name: string, deadline?: number) {
+    const before = await page.evaluate(() => (window as unknown as W).__effects);
+    await page.evaluate(
+      ([n, d]) => {
+        const w = window as unknown as W;
+        w[n as string] = w.__deferred();
+        w.__show((w[n as string] as { promise: Promise<unknown> }).promise, d as number | undefined);
+      },
+      [name, deadline] as const
+    );
+    await expect.poll(() => page.evaluate(() => (window as unknown as W).__effects)).toBeGreaterThan(before);
+    await expect(state(page)).toHaveText("loading");
+  }
+
+  /** Advances page time, then lets React commit whatever that fired (its scheduler is not faked). */
+  async function advance(page: Page, ms: number) {
+    await page.clock.runFor(ms);
+    await page.waitForTimeout(100);
+  }
+
+  const settle = (page: Page, name: string, how: "resolve" | "reject", value?: unknown) =>
+    page.evaluate(
+      ([n, h, v]) => {
+        const d = (window as unknown as W)[n as string] as { resolve: (v: unknown) => void; reject: (e: unknown) => void };
+        if (h === "resolve") d.resolve(v);
+        else d.reject(new Error("Connection closed."));
+      },
+      [name, how, value] as const
+    );
+
+  test("R5: the deadlines are the server's bound plus the delivery margin: 8 s + 4 s, and 2 × 8 s + 4 s", async ({ page }) => {
+    await loadUnitPage(
+      page,
+      bundle({ roster: "@/lib/useRosterRead", timeouts: "@/lib/apiTimeouts", all: "@/lib/rosterAll" }, {})
+    );
+    const read = await page.evaluate(() => {
+      const U = (window as unknown as { __unit: Record<string, Record<string, unknown>> }).__unit;
+      const deadline = U.roster.rosterReadDeadlineMs as (rounds?: number) => number;
+      return {
+        api: U.timeouts.API_READ_TIMEOUT_MS,
+        margin: U.roster.ROSTER_DELIVERY_MARGIN_MS,
+        rounds: U.all.WHOLE_ROSTER_READ_ROUNDS,
+        one: deadline(),
+        whole: deadline(U.all.WHOLE_ROSTER_READ_ROUNDS as number),
+      };
+    });
+    expect(read).toEqual({ api: 8_000, margin: 4_000, rounds: 2, one: ONE_CALL_MS, whole: WHOLE_ROSTER_MS });
+  });
+
+  for (const [label, deadline, expected] of [
+    ["the default (one api call)", undefined, ONE_CALL_MS],
+    ["the whole-roster read's (two rounds)", WHOLE_ROSTER_MS, WHOLE_ROSTER_MS],
+  ] as const) {
+    test(`R5: a promise that never settles is \`loading\` until ${label} deadline, ${expected} ms, then \`failed\``, async ({
+      page,
+    }) => {
+      await loadOnPageTime(page);
+      await showPending(page, "__d", deadline);
+      // The server's own bound: a read it could still answer is never called failed.
+      await advance(page, 8_000);
+      await expect(state(page)).toHaveText("loading");
+      await advance(page, expected - 8_000 - 1);
+      await expect(state(page)).toHaveText("loading");
+      await advance(page, 1);
+      await expect(state(page)).toHaveText("failed");
+      await expectNoBoundary(page);
+    });
+  }
+
+  test("R6: a list that arrives AFTER the deadline replaces `failed` (it is the server's answer)", async ({ page }) => {
+    await loadOnPageTime(page);
+    await showPending(page, "__d");
+    await advance(page, ONE_CALL_MS);
+    await expect(state(page)).toHaveText("failed");
+    await settle(page, "__d", "resolve", [{ id: "lina" }, { id: "petra" }]);
+    await expect(state(page)).toHaveText("ready:lina,petra");
+    await expectNoBoundary(page);
+  });
+
+  for (const [label, how, value] of [
+    ["`null` (the server's own failure)", "resolve", null],
+    ["a rejection (a cut stream)", "reject", undefined],
+  ] as const) {
+    test(`R6: ${label} arriving after the deadline leaves it \`failed\``, async ({ page }) => {
+      await loadOnPageTime(page);
+      await showPending(page, "__d");
+      await advance(page, ONE_CALL_MS);
+      await expect(state(page)).toHaveText("failed");
+      await settle(page, "__d", how, value);
+      await advance(page, 1_000);
+      await expect(state(page)).toHaveText("failed");
+      await expectNoBoundary(page);
+    });
+  }
+
+  for (const [label, value, expected] of [
+    ["a list", [{ id: "lina" }], "ready:lina"],
+    ["[] (truly no clients)", [], "ready:"],
+  ] as const) {
+    test(`R7: ${label} answered before the deadline is never overwritten by it`, async ({ page }) => {
+      await loadOnPageTime(page);
+      await showPending(page, "__d");
+      await advance(page, 1_000);
+      await settle(page, "__d", "resolve", value);
+      await expect(state(page)).toHaveText(expected);
+      await advance(page, 60_000);
+      await expect(state(page)).toHaveText(expected);
+      await expectNoBoundary(page);
+    });
+  }
+
+  test("R8: a new promise gets its own full wait; the replaced read's deadline does not fail it", async ({ page }) => {
+    await loadOnPageTime(page);
+    await showPending(page, "__first");
+    await advance(page, 10_000);
+    await expect(state(page)).toHaveText("loading");
+    await showPending(page, "__second");
+    // 13 s after the first read began: its deadline (12 s) has passed, the second's has not.
+    await advance(page, 3_000);
+    await expect(state(page)).toHaveText("loading");
+    await advance(page, ONE_CALL_MS - 3_000 - 1);
+    await expect(state(page)).toHaveText("loading");
+    await advance(page, 1);
+    await expect(state(page)).toHaveText("failed");
+    // The replaced read answering now is not this read's answer.
+    await settle(page, "__first", "resolve", [{ id: "stale" }]);
+    await advance(page, 100);
+    await expect(state(page)).toHaveText("failed");
     await expectNoBoundary(page);
   });
 });
