@@ -27,3 +27,4 @@
 - [A rig artefact is retired by removing the rig](rig-artefact-retired-by-removing-the-rig.md) — BUG-739: WebKit next start needs no HTTPS proxy (de-secure cookies); the proxy made the RSC reds; count base greens too
 - ["Read, not measured" is not a reading check](read-not-measured-label-is-not-a-reading-check.md) — BUG-739 router.replace comment named the wrong entry; a cited probe witnessed half its sentence
 - [Boot-commit reload flag needs a same-commit error](boot-commit-reload-flag-needs-same-commit-error.md) — EV-356d R1-H loops if a loading.tsx/Suspense streams the error; next/dist/client/link and `ref` slip past invariant N
+- [Request context stores what the browser refuses](request-context-stores-what-the-browser-refuses.md) — WebKit page-nav drops a `__Host-` from http, `context.request` stores it; name the writer
