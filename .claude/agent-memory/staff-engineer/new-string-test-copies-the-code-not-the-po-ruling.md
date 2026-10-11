@@ -26,3 +26,5 @@ When a branch adds a new string, check the literal in the code AND in the spec a
 **Also from this review (useful, not defects):**
 - A per-card `running` tag read as `pending && tag` is a sound fix for "shared useTransition labels every action" when every starter is disabled on `pending`.
 - A `pressed` guard covers the render where an urgent setState after an await lands while `pending` is still true. That window is sub-frame and needs a MutationObserver to pin.
+
+**Recurrence (EV-356g @ b-fit-coach 5071beb, 2026-10-11).** The story says only "a loading line". The branch invented « Chargement de vos clients… » / "Loading your clients…", and the spec's `LOADING` literal copies it. No PO ruling exists in the hub, so it is Should fix (no contradiction), not Blocking. The same branch also RETIRED a shipped sentence "by the coordinator under Raed's delegation", recorded only in a commit message. A sibling row (BUG-746 Expected (4)) still pinned the retired words. When a branch retires a string, grep BUGS.md and the stories for the OLD literal: a later row's AC may pin it ([[stale-sibling-banner-contradicts-the-new-one]]).
