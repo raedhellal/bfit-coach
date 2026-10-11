@@ -114,6 +114,24 @@ function preloadableCopyChunks(config, { isServer, dev, buildId, webpack }) {
 
 const nextConfig = {
   reactStrictMode: true,
+  /**
+   * BUG-751 — lint the whole repo, at build time and in `npm run lint`, from this one list.
+   *
+   * `next build` lints only `eslint.dirs` (default `app pages components lib src`,
+   * `next/dist/lib/verifyAndLint.js`), and `next lint` with no `--dir` reads the same key
+   * (`next/dist/cli/next-lint.js`). The `lint` script used to name `--dir src --dir qa`, so a
+   * `shared/NavLink.tsx` or a root `NavLink.tsx` that re-exported `next/link`, imported by a
+   * src component, was bundled and never linted: invariant N held only for files under src.
+   *
+   * `"."`, not a list of folders: Next bundles any file a src import reaches, wherever it lives,
+   * so the safe default is "everything is linted" and the exceptions are named, in ONE place,
+   * `.eslintrc.json`: `ignorePatterns` (generated output) and the bans override's
+   * `excludedFiles` (test code, which a file Next can bundle is barred from importing).
+   * A folder list fails open: the next new top-level folder is unlinted until someone
+   * remembers it. `qa/invariant-n-lint-bans.spec.ts` walks the whole tree and fails on any
+   * file outside the named exceptions that ESLint skips or lints without both bans.
+   */
+  eslint: { dirs: ["."] },
   // No NEXT_PUBLIC_* API URL here on purpose: the browser never talks to b-fit-api.
   // Every api call goes through the server (src/lib/apiFetch.ts) so the session
   // tokens stay in httpOnly cookies (ADR-0012 D5).

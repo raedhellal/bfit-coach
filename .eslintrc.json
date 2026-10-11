@@ -1,7 +1,7 @@
 {
   "root": true,
   "extends": "next/core-web-vitals",
-  "ignorePatterns": [".next/", "node_modules/", "next-env.d.ts"],
+  "ignorePatterns": ["!.*", ".git/", ".next/", ".vercel/", ".idea/", "node_modules/", "next-env.d.ts", "out/", "test-results/", "playwright-report/"],
   "rules": {
     "eqeqeq": ["error", "smart"],
     "no-var": "error",
@@ -34,25 +34,26 @@
   },
   "overrides": [
     {
-      "files": ["src/**"],
+      "files": ["**/*"],
+      "excludedFiles": ["qa/**", "./playwright*.config.ts"],
       "rules": {
         "no-restricted-syntax": [
           "error",
           {
             "selector": "Identifier[name='prefetch']",
-            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. In src the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744). Not a router prefetch? Ask architect for an exemption in .eslintrc.json; inline disables fail the census."
+            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. Outside test code (qa/, the root playwright configs) the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744). Not a router prefetch? Ask architect for an exemption in .eslintrc.json; inline disables fail the census."
           },
           {
             "selector": "Literal[value='prefetch']:not(TSLiteralType > Literal)",
-            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. In src the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744). Not a router prefetch? Ask architect for an exemption in .eslintrc.json; inline disables fail the census."
+            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. Outside test code (qa/, the root playwright configs) the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744). Not a router prefetch? Ask architect for an exemption in .eslintrc.json; inline disables fail the census."
           },
           {
             "selector": "TemplateElement[value.cooked='prefetch']",
-            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. In src the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744). Not a router prefetch? Ask architect for an exemption in .eslintrc.json; inline disables fail the census."
+            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. Outside test code (qa/, the root playwright configs) the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744). Not a router prefetch? Ask architect for an exemption in .eslintrc.json; inline disables fail the census."
           },
           {
             "selector": "JSXAttribute[name.name='prefetch']:not([value.expression.raw='false'])",
-            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. In src the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744). Not a router prefetch? Ask architect for an exemption in .eslintrc.json; inline disables fail the census."
+            "message": "A FULL prefetch is ruled for one host only, the roster row's IntentLink (ADR-0033 D33.13 point 1). Any other host is an ADR amendment. Outside test code (qa/, the root playwright configs) the name `prefetch` is banned in every form (identifier, destructured key, string, template, a Link prefetch prop other than {false}), the router's or not: rename a local `prefetch` (BUG-744). Not a router prefetch? Ask architect for an exemption in .eslintrc.json; inline disables fail the census."
           },
           {
             "selector": "Literal[value=/next[/](.*[/])?link(\\.\\w+)?([/?#!]|$)/i]:not(ImportDeclaration[source.value='next/link'] > Literal)",
@@ -75,11 +76,23 @@
             "message": "A dynamic import() names its module as one plain string literal, so the ADR-0033 D33.13 invariant N ban on next/link can read it (BUG-743). A computed module name cannot be checked. Write one literal import() per module, as src/lib/i18n/client.tsx:153-154 does. Need an exemption? Ask architect for one in .eslintrc.json; inline disables fail the census."
           },
           {
+            "selector": "Literal[value=/^([.][.]?|@)?[/](.*[/])?(qa([/]|$)|playwright[^/]*[.]config)/i]",
+            "message": "Test code is not app code: a file Next can bundle never imports from qa/ or a playwright config (BUG-751). The ADR-0033 D33.13 invariant N and point 1 bans are off for test code, so an import from it would carry next/link or a FULL prefetch into the portal unlinted. Move the shared code under src/ and import it from there."
+          },
+          {
+            "selector": "TemplateElement[value.cooked=/^([.][.]?|@)?[/](.*[/])?(qa([/]|$)|playwright[^/]*[.]config)/i]",
+            "message": "Test code is not app code: a file Next can bundle never imports from qa/ or a playwright config (BUG-751). The ADR-0033 D33.13 invariant N and point 1 bans are off for test code, so an import from it would carry next/link or a FULL prefetch into the portal unlinted. Move the shared code under src/ and import it from there."
+          },
+          {
             "selector": "CallExpression[callee.name='require']:not([arguments.0.type='Literal'])",
             "message": "A require() names its module as one plain string literal, so the ADR-0033 D33.13 invariant N ban on next/link can read it (BUG-743). A computed module name cannot be checked. Need an exemption? Ask architect for one in .eslintrc.json; inline disables fail the census."
           }
         ]
       }
+    },
+    {
+      "files": ["scripts/**"],
+      "rules": { "no-console": "off" }
     },
     {
       "files": ["src/components/ui/Link.tsx", "src/components/roster/IntentLink.tsx"],

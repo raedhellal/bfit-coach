@@ -1,11 +1,11 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { ESLint, type LintMessage } from "eslint";
 
 /**
- * BUG-743 + BUG-744 — the lint half of ADR-0033 D33.13 points 1 and 2 (EV-356d), held by the
- * repo's REAL `.eslintrc.json`, through ESLint's Node API, on in-memory files under `src/`.
+ * BUG-743 + BUG-744 + BUG-751 — the lint half of ADR-0033 D33.13 points 1 and 2 (EV-356d), held
+ * by the repo's REAL `.eslintrc.json`, through ESLint's Node API, on in-memory files.
  *
  * Point 2, invariant N: the portal sends no AUTO prefetch, so `next/link` is reached only through
  * `src/components/ui/Link.tsx` (which forces `prefetch={false}`) and `roster/IntentLink.tsx`.
@@ -15,8 +15,8 @@ import { ESLint, type LintMessage } from "eslint";
  *
  * Before this file, `no-restricted-imports` read only static imports with the exact spelling
  * (BUG-743) and the FULL ban matched only `x.prefetch(...)` (BUG-744). Every row below is a shape
- * that must FAIL lint; each names the file it is linted as, because the bans are scoped to `src/`
- * and the parser depends on the extension. A snippet that does not parse is a failure of this
+ * that must FAIL lint; each names the file it is linted as, because the bans exempt test code
+ * (`qa/`, the root playwright configs) and the parser depends on the extension. A snippet that does not parse is a failure of this
  * test, never a pass: a parse error is also a severity-2 message, so `fatal` is checked first.
  *
  * Over-matching is by design: a false positive fails loudly and is fixed by renaming (or an ADR
@@ -36,11 +36,11 @@ const ROOT = resolve(__dirname, "..");
 const PROBE = "src/components/zzprobe";
 
 /** Which ADR clause the message must name: the rule fired for the right reason, not by accident. */
-type Clause = "invariant N" | "D33.13 point 1" | "Next's internals by a deep path";
+type Clause = "invariant N" | "D33.13 point 1" | "Next's internals by a deep path" | "Test code is not app code";
 
 interface Evasion {
   /** The row it comes from, or "control" for a shape that was flagged before and must stay so. */
-  from: "BUG-743" | "BUG-744" | "BUG-743 extra" | "BUG-744 extra" | "control";
+  from: "BUG-743" | "BUG-744" | "BUG-743 extra" | "BUG-744 extra" | "BUG-751" | "control";
   name: string;
   file: string;
   code: string;
@@ -351,6 +351,74 @@ const EVASIONS: Evasion[] = [
     code: `import NextLink from "next/link";\nexport const C = () => <NextLink href="/" prefetch={"false"} />;\n`,
     clause: "D33.13 point 1",
   },
+
+  // ---- BUG-751: app code reaching test code, which the bans exempt -----------------------------
+  // qa/ and the root playwright configs are the one exemption from the bans (they drive the
+  // router's prefetch on purpose). A file Next can bundle that imports from them would carry an
+  // unlinted next/link or FULL prefetch into the portal, so the import itself is banned.
+  {
+    from: "BUG-751",
+    name: "a static import from qa/ by a relative path",
+    file: `${PROBE}/qaStatic.tsx`,
+    code: `import L from "../../../qa/NavLink";\nexport default L;\n`,
+    clause: "Test code is not app code",
+  },
+  {
+    from: "BUG-751",
+    name: "a re-export from qa/ through the @/ alias",
+    file: `${PROBE}/qaAlias.tsx`,
+    code: `export { default } from "@/../qa/NavLink";\n`,
+    clause: "Test code is not app code",
+  },
+  {
+    from: "BUG-751",
+    name: "another case: ../QA/ (resolves on a case-insensitive disk)",
+    file: `${PROBE}/qaUpper.tsx`,
+    code: `import L from "../../../QA/NavLink";\nexport default L;\n`,
+    clause: "Test code is not app code",
+  },
+  {
+    from: "BUG-751",
+    name: "import() from qa/",
+    file: `${PROBE}/qaDynamic.tsx`,
+    code: `export const L = () => import("../../../qa/NavLink");\n`,
+    clause: "Test code is not app code",
+  },
+  {
+    from: "BUG-751",
+    name: "require() from qa/ in a .js file",
+    file: `${PROBE}/qaRequire.js`,
+    code: `export const L = require("../../../qa/NavLink").default;\n`,
+    clause: "Test code is not app code",
+  },
+  {
+    from: "BUG-751",
+    name: "a template: import(`../qa/...`)",
+    file: `${PROBE}/qaTemplate.tsx`,
+    code: "export const L = () => import(`../../../qa/NavLink`);\n",
+    clause: "Test code is not app code",
+  },
+  {
+    from: "BUG-751",
+    name: "the qa folder itself: import from \"../../../qa\"",
+    file: `${PROBE}/qaFolder.tsx`,
+    code: `import * as Q from "../../../qa";\nexport default Q;\n`,
+    clause: "Test code is not app code",
+  },
+  {
+    from: "BUG-751",
+    name: "a root playwright config",
+    file: `${PROBE}/playwrightConfig.tsx`,
+    code: `import c from "../../../playwright.start.config";\nexport default c;\n`,
+    clause: "Test code is not app code",
+  },
+  {
+    from: "BUG-751",
+    name: "from a file at the repo root: \"./qa/...\"",
+    file: "zzprobe-root.tsx",
+    code: `import L from "./qa/NavLink";\nexport default L;\n`,
+    clause: "Test code is not app code",
+  },
   {
     from: "control",
     name: "r.prefetch(x)",
@@ -447,41 +515,143 @@ test("roster/IntentLink.tsx renders exactly one <Link>, and it carries prefetch=
 });
 
 /**
- * The bans only hold if ESLint reaches every file with them ON. The bypasses a selector cannot
- * see: a nested `.eslintrc`, an `.eslintignore` or an `ignorePatterns` entry that drops a file, an
- * override that turns a ban off for one more file, a file whose extension `next lint` skips, and an
- * inline directive that switches a ban off for a line or a file.
+ * BUG-751. Before it, the bans' override was `files: ["src/**"]` and the `lint` script read only
+ * `src` and `qa`: a `shared/NavLink.tsx` or a root `NavLink.tsx` re-exporting next/link, imported by
+ * a src component, was bundled and never linted. The override now covers every file except test
+ * code, and `next build` and `npm run lint` read the whole repo (`eslint.dirs` in next.config.mjs).
+ *
+ * The rows below lint the same shapes at paths outside src that have no file today, so a folder
+ * added tomorrow is covered before it exists: the census further down only sees files on disk.
+ * The last three paths are inside the exemption's NAMES but not its paths: an override glob with
+ * no slash matches a basename in any folder, so an unanchored `playwright*.config.ts` exemption
+ * would have exempted `src/playwright.zz.config.ts` too.
  */
-test.describe("every file in src is linted with both bans on", () => {
+test.describe("BUG-751: the bans hold outside src, on any path but test code", () => {
+  const OUTSIDE = [
+    "shared/zzprobe/Probe.tsx",
+    "zzprobe.tsx",
+    "lib/deep/zzprobe/Probe.tsx",
+    "src/qa/Probe.tsx",
+    "src/playwright.zz.config.ts",
+    "shared/playwright.config.ts",
+  ];
+  /** `jsx`: linted as `.tsx` where the path is `.ts`, which would not parse it. */
+  const SHAPES: Array<{ name: string; code: string; clause: Clause; jsx?: true }> = [
+    { name: "import NextLink from \"next/link\" (QA's plant)", code: `import NextLink from "next/link";\nexport default NextLink;\n`, clause: "invariant N" },
+    { name: "export { default } from \"next/link.js\"", code: `export { default } from "next/link.js";\n`, clause: "invariant N" },
+    {
+      name: "useRouter().prefetch(x)",
+      code: `${ROUTER}export function P() {\n  useRouter().prefetch("/clients/x");\n  return null;\n}\n`,
+      clause: "D33.13 point 1",
+    },
+    {
+      name: "const { prefetch: go } = useRouter()",
+      code: `${ROUTER}export function P() {\n  const { prefetch: go } = useRouter();\n  go("/clients/x");\n  return null;\n}\n`,
+      clause: "D33.13 point 1",
+    },
+    {
+      name: "a FULL <Link prefetch={true}>",
+      code: `import Link from "@/components/ui/Link";\nexport const A = () => <Link href="/" prefetch={true} />;\n`,
+      clause: "D33.13 point 1",
+      jsx: true,
+    },
+  ];
+  for (const path of OUTSIDE) {
+    for (const shape of SHAPES) {
+      const file = shape.jsx && path.endsWith(".ts") ? `${path}x` : path;
+      test(`${file}: ${shape.name}`, async () => {
+        const [result] = await eslint.lintText(shape.code, { filePath: join(ROOT, file) });
+        expect(result.messages.filter((m) => m.fatal).map(describe), "the snippet parses").toEqual([]);
+        const bans = result.messages.filter((m) => m.severity === 2 && m.ruleId !== null && BANS.has(m.ruleId));
+        expect(
+          bans.filter((m) => m.message.includes(shape.clause)).map(describe),
+          `${file} must fail lint with a message naming ADR-0033 ${shape.clause}`
+        ).not.toEqual([]);
+      });
+    }
+  }
+});
+
+/**
+ * The bans only hold if ESLint reaches every file Next can bundle, with them ON. Next bundles any
+ * file a src import reaches, wherever it lives, so the census walks the whole repo rather than
+ * `src/` (BUG-751), and what it skips is NAMED:
+ *   · test code: `qa/**` and the root `playwright*.config.ts`, the bans override's `excludedFiles`.
+ *     App code may not import from it (the BUG-751 rows above), so it never reaches the bundle;
+ *   · what git does not ship (the directories `.gitignore` names: `node_modules/`, `.next/`, the
+ *     report folders): a Vercel build is a clone, so it cannot bundle them;
+ *   · `next-env.d.ts`, which Next generates, ESLint ignores and no bundle contains.
+ * Everything else must be linted with both bans exactly as the probe path is, a dot-folder
+ * included: ESLint skips those by default, so `.eslintrc.json` opens them (`"!.*"`) and names the
+ * ones to keep closed (`.git/`, `.next/`, `.vercel/`, `.idea/`, all unshipped).
+ *
+ * The bypasses a selector cannot see: a nested `.eslintrc`, an `.eslintignore` or an
+ * `ignorePatterns` entry that drops a file, an override that turns a ban off for one more file, a
+ * file whose extension `next build` skips, and an inline directive that switches a ban off.
+ */
+test.describe("every file Next can bundle is linted with both bans on", () => {
   /**
    * S1 (staff): what `next build` lints, which is the Vercel pass: `.js`, `.jsx`, `.ts` and `.tsx`
    * only (`next/dist/lib/eslint/runLintCheck.js:137-142`). `next lint`'s CLI default also reads
    * `.mjs`, `.cjs`, `.mts` and `.cts`, but a build would ship an `.mjs` that re-exports next/link
-   * unlinted. So those four extensions are forbidden in src.
+   * unlinted. So those four extensions are forbidden in src, and outside it they are allowed only
+   * for the node entry points (`next.config.mjs`, `scripts/`), which `npm run lint` and this census
+   * still lint with both bans.
    */
   const LINTED = new Set([".js", ".jsx", ".ts", ".tsx"]);
+  const CODE = new Set([...LINTED, ".mjs", ".cjs", ".mts", ".cts"]);
   const ASSETS = new Set([".css", ".png", ".svg", ".jpg", ".jpeg", ".webp", ".ico", ".json", ".woff", ".woff2"]);
-  /** Every regular file under src, relative to the repo root. */
-  const all = (readdirSync(join(ROOT, "src"), { recursive: true, encoding: "utf8" }) as string[])
-    .map((f) => join("src", f))
-    .filter((f) => statSync(join(ROOT, f)).isFile());
-  const files = all.filter((f) => LINTED.has(extname(f)));
+  const NODE_ENTRY = (f: string) => f === "next.config.mjs" || f.startsWith("scripts/");
+  const TEST_CODE = (f: string) => f.startsWith("qa/") || /^playwright[^/]*\.config\.ts$/.test(f);
 
-  test("the census reaches the two sanctioned files (N3: a list that missed them would prove nothing about them)", () => {
+  /** The directories git does not ship: the `.gitignore` entries that end in a slash, plus `.git`. */
+  const UNSHIPPED = new Set([
+    ".git",
+    ...readFileSync(join(ROOT, ".gitignore"), "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => /^[^#!*][^*]*\/$/.test(line))
+      .map((line) => line.replace(/^\/|\/$/g, "")),
+  ]);
+
+  /** Every regular file in the repo that git can ship, relative to the root, `/`-separated. */
+  const walk = (dir: string): string[] =>
+    readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+      const path = dir ? `${dir}/${entry.name}` : entry.name;
+      // A directory's base name, at any depth, as git reads `node_modules/` (the worktree's
+      // node_modules is a symlink, so it is matched by name here, never followed).
+      if (UNSHIPPED.has(entry.name)) return [];
+      if (entry.isDirectory()) return walk(path);
+      return entry.isFile() ? [path] : [];
+    });
+  const all = walk("");
+  const inSrc = all.filter((f) => f.startsWith("src/"));
+  const files = all.filter((f) => CODE.has(extname(f)) && !TEST_CODE(f) && f !== "next-env.d.ts");
+
+  test("the census reaches the sanctioned files and files outside src (N3: a list that missed them would prove nothing about them)", () => {
+    expect([...UNSHIPPED], "node_modules and .next are read from .gitignore").toEqual(expect.arrayContaining(["node_modules", ".next"]));
     expect(files).toContain(LINK);
     expect(files).toContain(INTENT);
+    expect(files).toContain("next.config.mjs");
+    expect(files).toContain("scripts/spec-sync.mjs");
+    expect(files.filter((f) => f.startsWith("qa/")), "test code is the exemption").toEqual([]);
   });
 
-  test("no ESLint config or ignore file under src, and no file type next build's lint would skip", () => {
-    expect(all.filter((f) => /(^|\/)(\.eslint[^/]*|package\.json)$/.test(f)), "a nested ESLint config can turn the bans off").toEqual([]);
-    expect(all.filter((f) => !LINTED.has(extname(f)) && !ASSETS.has(extname(f))), "a file next build's lint does not read").toEqual([]);
+  test("no ESLint config or ignore file but the root's, and no file type next build's lint would skip", () => {
+    const configs = all.filter((f) => /(^|\/)(\.eslint[^/]*|eslint\.config\.[^/]*|package\.json)$/.test(f));
+    expect(configs, "a nested ESLint config can turn the bans off").toEqual([".eslintrc.json", "package.json"]);
+    expect(inSrc.filter((f) => !LINTED.has(extname(f)) && !ASSETS.has(extname(f))), "a file in src next build's lint does not read").toEqual([]);
+    expect(
+      files.filter((f) => !LINTED.has(extname(f)) && !NODE_ENTRY(f)),
+      "an .mjs/.cjs/.mts/.cts outside the node entry points: next build's lint does not read it"
+    ).toEqual([]);
   });
 
   /**
    * Not only ON: the SAME options as the probe path the evasions above are linted at. An override
    * that re-enabled a ban for one folder with a shorter selector list would pass an on/off check.
    */
-  test("ESLint ignores no file in src, and each one gets both bans exactly as the probe does, except the two sanctioned files", async () => {
+  test("ESLint ignores no file Next can bundle, and each one gets both bans exactly as the probe does, except the two sanctioned files", async () => {
     const probe = (await eslint.calculateConfigForFile(join(ROOT, PROBE, "probe.tsx"))).rules ?? {};
     const level = (setting: unknown) => (Array.isArray(setting) ? setting[0] : setting);
     for (const rule of BANS) expect([2, "error"], `${rule} is an error at the probe path`).toContain(level(probe[rule]));
@@ -507,10 +677,11 @@ test.describe("every file in src is linted with both bans on", () => {
   /**
    * B1 (staff). ESLint judges the directives, not a regex: a line-by-line scan missed a block
    * comment that puts `eslint-disable no-restricted-syntax` on its own line, which ESLint honours.
-   * With inline config OFF, no file in src may report either ban. Directives for OTHER rules
-   * (`InviteLinkPanel.tsx`'s img, `portalEvents.ts`'s console) stay allowed: their rules are ignored.
+   * With inline config OFF, no file Next can bundle may report either ban. Directives for OTHER
+   * rules (`InviteLinkPanel.tsx`'s img, `portalEvents.ts`'s console) stay allowed: their rules are
+   * ignored. A file ESLint ignores is reported by the test above, not here.
    */
-  test("with inline directives ignored, no file in src reports either ban", async () => {
+  test("with inline directives ignored, no file Next can bundle reports either ban", async () => {
     const strict = new ESLint({ cwd: ROOT, useEslintrc: true, allowInlineConfig: false });
     const results = await strict.lintFiles(files.map((f) => join(ROOT, f)));
     const hidden = results.flatMap((r) =>
