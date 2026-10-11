@@ -1,5 +1,6 @@
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
@@ -34,8 +35,9 @@ import { openEveryDay } from "./day-accordion";
  *     by `window.next.router.push` (Next's own handle on the app router, dev and production):
  *     no link in the portal goes from an editor to another, and none is added for the test;
  *   · a direct load renders with no console error or warning (no hydration diff);
- *   · `new/` and `[id]/` hold only their `page.tsx`: they are not served as routes, so a
- *     `loading.tsx`, `layout.tsx` or `error.tsx` there would be silently dead.
+ *   · EV-362: the editor is ONE page file per resource (`src/app/x/editor/page.tsx`); the four
+ *     `new/` and `[id]/` page files it used to compose are deleted and stay absent, and
+ *     `next.config.mjs` still declares the four rewrites exactly (the last two tests below).
  *
  * Sample point, stated: a re-mount lands with the update's router state, a few ms around the
  * notice's own commit, so every "still the same" read is taken SETTLE_MS after the notice is
@@ -413,11 +415,52 @@ for (const e of [RECIPE, TEMPLATE]) {
   });
 }
 
-test("the not-served route folders hold only their page.tsx", async () => {
-  // `new/` and `[id]/` are rendered by `editor/page.tsx` through the rewrites, never as routes:
-  // a `loading.tsx`, `layout.tsx` or `error.tsx` added beside them would never run.
+/** A Next page file in Next's default `pageExtensions` (pinned by render-error-every-route's 353.3). */
+const PAGE_FILE = /^page\.(tsx|ts|jsx|js)$/;
+
+/**
+ * EV-362 AC1 — one page file per editor. `new/` and `[id]/` were deleted when `editor/page.tsx`
+ * took both branches over, and they stay absent: a page file there would be a second copy of the
+ * editor that no URL reaches (the rewrites below send `/x/new` and `/x/{id}` to `editor/`), and a
+ * `loading.tsx`, `layout.tsx` or `error.tsx` there would be silently dead. Any other folder with a
+ * page directly under `recipes/` or `templates/` is shadowed the same way (the `:id` rule takes
+ * every single segment but `new` and `editor`), so `editor` is the only one allowed.
+ *
+ * Mutant: restore `src/app/recipes/new/page.tsx` from `8c866e1` → red, naming the folder.
+ */
+test("EV-362: the editor is one page file per resource; new/ and [id]/ stay absent", async () => {
   const app = join(__dirname, "../src/app");
   for (const dir of ["recipes/new", "recipes/[id]", "templates/new", "templates/[id]"]) {
-    expect(readdirSync(join(app, dir)).sort(), `src/app/${dir}`).toEqual(["page.tsx"]);
+    expect(existsSync(join(app, dir)), `src/app/${dir} exists`).toBe(false);
   }
+  for (const resource of ["recipes", "templates"]) {
+    const pageFolders = readdirSync(join(app, resource), { withFileTypes: true })
+      .filter((d) => d.isDirectory() && readdirSync(join(app, resource, d.name)).some((f) => PAGE_FILE.test(f)))
+      .map((d) => d.name);
+    expect(pageFolders, `src/app/${resource}: folders holding a page`).toEqual(["editor"]);
+  }
+});
+
+/**
+ * EV-362 AC2 — `next.config.mjs` declares the four BUG-739 `beforeFiles` rewrites, as written:
+ * the `(?!new$|editor$)` lookahead (the rules CHAIN) and the pinned `id=` on the `new` rules (a
+ * request's own `id` would otherwise win). The exported config is read, as Next reads it, so a
+ * comment cannot satisfy it. With `new/` and `[id]/` gone, these rules are the only way to the
+ * editors.
+ *
+ * Mutants: drop the lookahead from `/recipes/:id`, or the `?id=` from `/templates/new` → red.
+ */
+test("EV-362: next.config.mjs declares the four editor rewrites with the lookahead and the pinned id=", async () => {
+  const file = join(__dirname, "..", "next.config.mjs");
+  const config = (await import(pathToFileURL(file).href)).default as {
+    rewrites?: () => Promise<{ beforeFiles?: unknown; afterFiles?: unknown; fallback?: unknown }>;
+  };
+  expect(typeof config.rewrites, "next.config.mjs exports rewrites()").toBe("function");
+  const rewrites = await config.rewrites!();
+  expect(rewrites.beforeFiles).toEqual([
+    { source: "/recipes/new", destination: "/recipes/editor?id=" },
+    { source: "/recipes/:id((?!new$|editor$)[^/]+)", destination: "/recipes/editor?id=:id" },
+    { source: "/templates/new", destination: "/templates/editor?id=" },
+    { source: "/templates/:id((?!new$|editor$)[^/]+)", destination: "/templates/editor?id=:id" },
+  ]);
 });

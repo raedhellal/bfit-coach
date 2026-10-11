@@ -45,7 +45,15 @@ const CHALLENGE = "c4a11e00-0000-4000-8000-000000000001";
 /** The seeded LAPSED invitation (AC-P14), not an Invited account on the list. */
 const LAPSED_INVITATION = "204b0000-0000-4000-8000-000000000001";
 
-/** Every shell page: its file under `src/app` → the URL the test opens. */
+/**
+ * Every shell page: its file under `src/app` → the URL the test opens.
+ *
+ * EV-362 AC6: `/recipes/new`, `/recipes/[id]`, `/templates/new` and `/templates/[id]` have no
+ * page file. They are served by `recipes/editor/page.tsx` and `templates/editor/page.tsx` through
+ * `next.config.mjs`'s `beforeFiles` rewrites (BUG-739), and this file mapping does not model
+ * rewrites (353.4), so it lists the editor files under the URLs their own folder serves. The
+ * addresses a coach uses are opened too, from `REWRITTEN` below.
+ */
 const ROUTE_FILES: Record<string, string> = {
   "(roster)/page.tsx": "/",
   "challenges/(list)/page.tsx": "/challenges",
@@ -56,12 +64,8 @@ const ROUTE_FILES: Record<string, string> = {
   "clients/denied/page.tsx": "/clients/denied",
   "invited/[userId]/page.tsx": `/invited/${LAPSED_INVITATION}`,
   "templates/page.tsx": "/templates",
-  "templates/new/page.tsx": "/templates/new",
-  "templates/[id]/page.tsx": `/templates/${TEMPLATE}`,
   "templates/editor/page.tsx": "/templates/editor",
   "recipes/page.tsx": "/recipes",
-  "recipes/new/page.tsx": "/recipes/new",
-  "recipes/[id]/page.tsx": `/recipes/${RECIPE}`,
   "recipes/editor/page.tsx": "/recipes/editor",
   "nutrition-templates/page.tsx": "/nutrition-templates",
   "nutrition-templates/new/page.tsx": "/nutrition-templates/new",
@@ -83,7 +87,22 @@ const NO_SHELL: { route: string; files: RegExp; reason: string }[] = [
   },
 ];
 
-const ROUTES = Object.values(ROUTE_FILES);
+/**
+ * EV-362 AC6: the editor addresses a coach uses, which reach their page only through a
+ * `next.config.mjs` rewrite → the page file the rewrite serves. Opened like `ROUTES`, so the
+ * switch is still asserted on both of the editor pages' branches (new, and an existing record)
+ * at the canonical addresses. Checked statically (EV-362 test below): each target is a
+ * `ROUTE_FILES` page, and the file-system router alone reaches NO page from the URL (else it
+ * belongs in `ROUTE_FILES`).
+ */
+const REWRITTEN: Record<string, string> = {
+  "/templates/new": "templates/editor/page.tsx",
+  [`/templates/${TEMPLATE}`]: "templates/editor/page.tsx",
+  "/recipes/new": "recipes/editor/page.tsx",
+  [`/recipes/${RECIPE}`]: "recipes/editor/page.tsx",
+};
+
+const ROUTES = [...Object.values(ROUTE_FILES), ...Object.keys(REWRITTEN)];
 
 /** A Next page file, in any of the default `pageExtensions` (EV-352 352.2). */
 const PAGE_FILE = /(^|\/)page\.(tsx|ts|jsx|js)$/;
@@ -174,6 +193,19 @@ test("352.4: each ROUTES URL is the one Next serves from the file listed beside 
     .filter(([file, , served]) => served !== file)
     .map(([file, url, served]) => `${file} -> ${url} is served by ${served ?? "no page"}`);
   expect(reachedElsewhere, "ROUTE_FILES entries whose URL Next serves from another page").toEqual([]);
+});
+
+test("EV-362: each REWRITTEN URL reaches no page by the file system, and its target is a ROUTE_FILES page (static)", () => {
+  const pages = appPages();
+  const notListed = Object.entries(REWRITTEN)
+    .filter(([, file]) => !(file in ROUTE_FILES))
+    .map(([url, file]) => `${url} -> ${file}`);
+  expect(notListed, "REWRITTEN targets that are not ROUTE_FILES pages").toEqual([]);
+  const servedByFile = Object.keys(REWRITTEN)
+    .map((url) => [url, resolvePage(url, pages)] as const)
+    .filter(([, served]) => served !== undefined)
+    .map(([url, served]) => `${url} is served by ${served}`);
+  expect(servedByFile, "REWRITTEN URLs a page file serves (list them in ROUTE_FILES)").toEqual([]);
 });
 
 /**
