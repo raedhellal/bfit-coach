@@ -103,4 +103,5 @@
 - [A shared transition labels every action](a-shared-transition-labels-every-action.md) — tag the running kind in the click; hold the action POST (qa/hold-action.ts) to test pending UI
 - [A hand-made context inherits the runner's language](a-hand-made-context-inherits-the-runners-language.md) — BUG-738: fr-FR WebKit context served EN; set evoli_pro_locale; failed roster = null on 3 pages
 - [A path-segment change always remounts](a-path-segment-change-always-remounts.md) — BUG-739: only search params keep an island; rewrites chain + merge the query; useEditorIdentity
+- [Merged editor pages (EV-362)](merged-editor-pages-ev362-facts.md) — one editor/page.tsx per resource, new/ [id]/ deleted; rewritten URLs go in REWRITTEN, not ROUTE_FILES
 - [A cleared marker is a sync only if entered](a-cleared-marker-is-a-sync-only-if-it-was-entered.md) — BUG-742: busy-gone is hollow if never entered OR left early; observer + order snapshot, not a poll
