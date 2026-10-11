@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { expect, webkit, type Browser, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { rosterBusyWasSeen, watchRosterBusy } from "./roster-busy";
 
 /**
  * BUG-691 (audit A8) — the roster keeps its search, filter and scroll position after
@@ -160,10 +161,17 @@ test.describe("BUG-691, the other paths back", () => {
     // the sync point: the URL must be read AFTER the action's response has been applied, or
     // this asserts the URL before anything could have rewritten it.
     const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined);
+    // BUG-742: the busy check below is a sync only if the groups entered busy at all.
+    await watchRosterBusy(page);
     await page.getByRole("radio", { name: "Recently active" }).click();
     await expect(page.getByRole("radio", { name: "Recently active" })).toHaveAttribute("aria-checked", "true");
     await answered;
+    await expect
+      .poll(() => rosterBusyWasSeen(page), { message: "the groups never entered aria-busy: the read below is not synced" })
+      .toBe(true);
     await expect(page.locator('section[data-roster-group][aria-busy="true"]')).toHaveCount(0);
+    // ⚠ Entered, not "left with the render": nothing on this filtered roster changes, so a marker
+    // that clears early is not caught here (staff S2; see qa/roster-busy.ts).
     expect(rosterPath(page)).toBe("/?filter=alerts&q=lin");
     await expect(page.getByRole("searchbox", { name: "Search clients" })).toHaveValue("lin");
   });

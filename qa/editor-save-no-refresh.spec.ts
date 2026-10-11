@@ -17,7 +17,8 @@ import { signInThroughForm } from "./sign-in";
  * renames, saves, and requires:
  *
  *   1. the <h1> shows the new name, from ONE action POST and ZERO RSC GETs;
- *   2. the unsaved-changes sentinel is gone, the URL is the editor's, and the title is
+ *   2. the unsaved-changes sentinel is gone (the history index is back where the editor was
+ *      loaded, BUG-741), the URL is the editor's, and the title is
  *      still fresh once the sentinel's popstate has settled;
  *   3. the guard re-arms on the next edit and still asks on a link out, and after a second
  *      save ONE Back press lands on the library, which lists the new name.
@@ -30,9 +31,19 @@ async function signIn(page: Page) {
   await signInThroughForm(page, { email: "coach@evoli.fit", password: "Password123!" });
 }
 
+/**
+ * The guard's flag, where in the session history the page stands (the Navigation API:
+ * Chromium, and Playwright's WebKit), and the path.
+ *
+ * BUG-741 (staff S1): the flag witnesses an ARM only. The save's action revalidates, and Next
+ * 14.2's HistoryUpdater then `replaceState`s the current entry without the flag while the
+ * guard's entry is still current, so "flag gone" passed under QA's mutant M-S2 (no step back
+ * after a save). A release is read from the index: armed is `start + 1`, clean is `start`.
+ */
 function history(page: Page) {
   return page.evaluate(() => ({
     guard: !!(window.history.state as { evoliUnsavedGuard?: boolean } | null)?.evoliUnsavedGuard,
+    index: (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index,
     url: location.pathname,
   }));
 }
@@ -63,21 +74,25 @@ async function renameSaveAndLeave(page: Page, e: Editor) {
   await page.getByRole("link", { name: "Edit" }).first().click();
   await page.waitForURL(e.editorPattern);
   const editorUrl = new URL(page.url()).pathname;
+  // Where the editor was loaded, read before the first keystroke arms the guard.
+  const start = (await history(page)).index;
   const h1: Locator = page.locator("h1").first();
   const name = page.getByLabel(e.nameLabel);
 
   // (1) Rename with the sentinel armed, save: the server-rendered title follows.
   await name.fill("Probe renamed");
   await expect.poll(async () => (await history(page)).guard, { message: "sentinel armed" }).toBe(true);
+  await expect.poll(async () => (await history(page)).index, { message: "sentinel pushed" }).toBe(start + 1);
   const traffic = countRouterTraffic(page);
   await page.getByRole("button", { name: e.save }).click();
   await expect(page.getByText(e.saved, { exact: true })).toBeVisible();
   await expect(h1, "the PageHead title, re-rendered by the action's own response").toHaveText("Probe renamed");
 
   // (2) History handed back clean, and the fresh title survives the popstate restore.
-  await expect.poll(async () => (await history(page)).guard, { message: "sentinel released" }).toBe(false);
+  await expect.poll(async () => (await history(page)).index, { message: "sentinel released" }).toBe(start);
   await page.waitForTimeout(1_000);
-  expect(await history(page)).toEqual({ guard: false, url: editorUrl });
+  const settled = await history(page);
+  expect({ index: settled.index, url: settled.url }).toEqual({ index: start, url: editorUrl });
   await expect(h1).toHaveText("Probe renamed");
   await expect(name).toHaveValue("Probe renamed");
   expect(traffic, "one action, and no refresh behind it").toEqual({ actions: 1, rscGets: 0 });
@@ -85,13 +100,14 @@ async function renameSaveAndLeave(page: Page, e: Editor) {
   // (3) The guard re-arms and still asks; a second save, then ONE Back is the library.
   await name.fill("Probe renamed 2");
   await expect.poll(async () => (await history(page)).guard).toBe(true);
+  await expect.poll(async () => (await history(page)).index).toBe(start + 1);
   await page.getByRole("link", { name: e.back }).first().click();
   await expect(page.getByText("Leave with unsaved changes?")).toBeVisible();
   await page.getByRole("button", { name: "Stay on this page" }).click();
   expect(new URL(page.url()).pathname).toBe(editorUrl);
   await page.getByRole("button", { name: e.save }).click();
   await expect(h1).toHaveText("Probe renamed 2");
-  await expect.poll(async () => (await history(page)).guard).toBe(false);
+  await expect.poll(async () => (await history(page)).index, { message: "second sentinel released" }).toBe(start);
   await page.waitForTimeout(1_000);
   await page.goBack();
   await expect(page).toHaveURL(e.libraryPattern);
