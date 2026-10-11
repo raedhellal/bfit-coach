@@ -1,6 +1,6 @@
 ---
 name: a-cleared-marker-is-a-sync-only-if-it-was-entered
-description: BUG-742 — "wait until aria-busy is gone" passes at once if busy never appeared; witness the entry with a MutationObserver armed before the click, not an expect poll
+description: BUG-742 — "wait until aria-busy is gone" passes at once if busy never appeared, or left early; witness entry AND that it left with the render (observer snapshot), not an expect poll
 metadata:
   type: feedback
 ---
@@ -20,5 +20,12 @@ producing these: the visible state changes before the server answers.
 assert it saw the marker. Not `expect(busy).not.toHaveCount(0)`: an expect poll retries at
 100/250/500 ms and can miss a short busy window at zero fixture latency. Witness both ways: the
 marker removed must go red on its own, and the original regression must stay red without it.
+
+**Entered is necessary, NOT sufficient (staff S2, 2026-10-11).** A marker that clears BEFORE the
+render (staff's M-flash: busy gone 20 ms after the sort starts) is entered and seen, and the
+"gone" wait passes early again (M-691 + M-flash: URL test green 2/3). Also witness that it LEFT
+with the render: the observer snapshots the rows at the first callback with busy gone, and the
+test asserts that snapshot is the new order. Where the action changes nothing visible (the
+`q=lin` URL test) there is no DOM witness; name the gap rather than sync on Next internals.
 Related: [[a-notice-already-on-screen-is-not-a-sync-point]],
 [[a-revalidating-action-wipes-the-guard-flag]].
