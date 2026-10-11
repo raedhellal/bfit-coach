@@ -35,6 +35,7 @@ import {
 } from "@/lib/recipeActions";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { useEditorIdentity } from "@/lib/useEditorIdentity";
 import type { CoachIngredientOption, MealSlot, RecipeUnit } from "@/lib/coachApi";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
@@ -92,12 +93,7 @@ const FIELD = {
 
 const LABEL = { fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 } as const;
 
-export function RecipeEditor({
-  recipeId: initialRecipeId,
-  initial,
-  unknownKeys = [],
-  storedMealSlots = null,
-}: {
+interface RecipeEditorProps {
   /** Null for "New recipe": the first successful save is a POST. */
   recipeId: string | null;
   initial: RecipeDraft;
@@ -105,7 +101,25 @@ export function RecipeEditor({
   unknownKeys?: string[];
   /** `CoachRecipeResponse.mealSlots` as READ (null = untagged). Ignored for a new recipe. */
   storedMealSlots?: MealSlot[] | null;
-}) {
+}
+
+/**
+ * BUG-739 — the editor, re-keyed when the RECORD changes and only then (`useEditorIdentity`).
+ * `/recipes/new` and `/recipes/{id}` are one route now, so a create's own next update arrives as
+ * new props for this same instance; a navigation to another recipe gets a fresh one.
+ */
+export function RecipeEditor(props: RecipeEditorProps) {
+  const { gen, adopt } = useEditorIdentity(props.recipeId);
+  return <RecipeEditorInner key={gen} {...props} adopt={adopt} />;
+}
+
+function RecipeEditorInner({
+  recipeId: initialRecipeId,
+  initial,
+  unknownKeys = [],
+  storedMealSlots = null,
+  adopt,
+}: RecipeEditorProps & { adopt: (id: string) => void }) {
   const copy = useCopy();
   const [recipeId, setRecipeId] = useState<string | null>(initialRecipeId);
   const [draft, setDraft] = useState<RecipeDraft>(initial);
@@ -256,24 +270,35 @@ export function RecipeEditor({
       if (recipeId === null) {
         /**
          * A create becomes an edit WITHOUT a router navigation — the template editor's
-         * lesson: `router.replace` unmounts this island and destroys the confirmation.
+         * lesson (`router.replace` unmounted this island while `new/` and `[id]/` were two
+         * routes, and writes the history too late for a late edit's guard entry: its commit
+         * replaces the guard's entry and the page's entry underneath keeps `/new`, staff's
+         * BUG-739 review probe, Chromium).
          * The guard's sentinel is released first, then the URL is corrected, so a reload
          * lands on `/recipes/{id}` and cannot create a second recipe.
+         *
+         * BUG-739: the correction goes THROUGH Next's router. `replaceState(null, …)` is what
+         * Next's patched `replaceState` acts on; passing `history.state` (which carries its
+         * `__NA`) went past it, Next still believed the page was `/recipes/new`, and its next
+         * render wrote that URL back. `/recipes/new` and `/recipes/{id}` being one route
+         * (`next.config.mjs`) is the other half: the update's render then reaches this same
+         * instance. `adopt` tells the identity rule that `{id}` is the record it already has.
          */
         const id = result.recipe.id;
         // "stays": the coach is still on this page, so work typed meanwhile stays guarded (BUG-730).
         leaving.release(() => {
           setRecipeId(id);
-          window.history.replaceState(window.history.state, "", `/recipes/${id}`);
+          adopt(id);
+          window.history.replaceState(null, "", `/recipes/${id}`);
         }, "stays");
         // The step takes the sentinel out and `dirty` never changed: ask for it back (BUG-735).
         if (late) leaving.stillUnsaved();
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateRecipeAction` revalidates.
-      // With a late edit the sentinel stays where it is: Back still asks (BUG-735). NOT on the
-      // first update after a create on this page: that answer re-mounts the editor (new/ and
-      // [id]/ are different segments), and the late edit is lost (BUG-739).
+      // With a late edit the sentinel stays where it is: Back still asks (BUG-735). The first
+      // update after a create on this page included, since BUG-739: its answer no longer
+      // re-mounts the editor.
       // `stillUnsaved` is a no-op while that entry is current; it puts one back if a previous
       // save's step left the form dirty with none (BUG-736's end state; read from the code,
       // not constructed). Keyed on `late`.

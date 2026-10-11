@@ -1347,6 +1347,7 @@ export const fr = {
     selectNone: "Effacer",
     selected: (count: number) => `${count} sélectionné${s(count)}`,
     noClients: "Vous n'avez encore aucun client lié. Invitez d'abord un client depuis la liste des clients.",
+    /** Also /templates' « Appliquer à un client » picker (BUG-738): no copy of its own. */
     clientsLoadError: "Vos clients n'ont pas pu être chargés. Rechargez la page pour réessayer.",
     submit: "Créer et inviter",
     submitting: "Création…",
