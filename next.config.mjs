@@ -129,8 +129,9 @@ const nextConfig = {
    * `next-env.d.ts`) and the bans override's `excludedFiles` (test code, which a file Next can
    * bundle is barred from importing). `qa/invariant-n-lint-bans.spec.ts` holds a SECOND copy on
    * purpose (its `TEST_CODE`, and `.gitignore`'s directory entries) and walks the whole tree:
-   * it fails on any file outside its copy that ESLint skips or lints without both bans, so the
-   * two copies cannot drift apart unnoticed. A folder list fails open: the next new top-level
+   * it fails on any file outside its copy that ESLint skips or lints without both bans, so
+   * `excludedFiles` and `ignorePatterns` cannot widen alone (the census's own copy can: review
+   * that list). A folder list fails open: the next new top-level
    * folder is unlinted until someone remembers it. The census also pins this key, the `lint`
    * script, and the resolver aliases (tsconfig `paths`, package.json, the `webpack` below).
    */

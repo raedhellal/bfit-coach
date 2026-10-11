@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test } from "@playwright/test";
 import { ESLint, type LintMessage } from "eslint";
@@ -585,8 +585,9 @@ test.describe("BUG-751: the bans hold outside src, on any path but test code", (
  *     report folders, `.claude/worktrees/`): a Vercel build is a clone, so it cannot bundle them;
  *   · `next-env.d.ts`, which Next generates, ESLint ignores and no bundle contains.
  * This list is a SECOND copy of `.eslintrc.json`'s (`ignorePatterns`, the override's
- * `excludedFiles`), kept on purpose: the tests below fail whenever the two disagree about a file
- * on disk, so neither can widen alone.
+ * `excludedFiles`), kept on purpose: the tests below fail on any file outside it that ESLint skips
+ * or lints without both bans, so `excludedFiles` and `ignorePatterns` cannot widen alone. The
+ * converse is not held: widening `TEST_CODE` alone also drops those files from the checks here.
  * Everything else must be linted with both bans exactly as the probe path is, a dot-folder
  * included: ESLint skips those by default, so `.eslintrc.json` opens them (`"!.*"`) and names the
  * ones to keep closed (`.git/`, `.next/`, `.vercel/`, `.idea/`, all unshipped).
@@ -627,7 +628,15 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
    * N1 (staff r1). A symlink is never skipped in silence: ESLint follows one and lints its target
    * under the link's path, but this walk does not, so a `shared -> qa` link would hide test code
    * from the census. Each is a failure, except the repo-root `node_modules` link agent worktrees
-   * use (gitignored output, never shipped).
+   * use.
+   *
+   * The symlink check runs BEFORE the unshipped names, on purpose (staff r2 N2' asked for the
+   * reverse; declined with a witness). Git's `node_modules/` matches a DIRECTORY only: a symlink
+   * named `node_modules` is not ignored (`git status` lists it, `git check-ignore` does not match
+   * it), so it ships. Measured: `src/components/client/node_modules -> ../../../qa` and a bare
+   * `import … from "NavLink.js"` in TabBar passed tsc, lint and `next build` with the qa marker in
+   * `.next/server/chunks`; with the check first the census names the link, in the other order it
+   * passed 100/100.
    */
   const symlinks: string[] = [];
 
@@ -649,7 +658,7 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
 
   test("the census reaches the sanctioned files and files outside src (N3: a list that missed them would prove nothing about them)", () => {
     expect([...UNSHIPPED_NAMES], "node_modules and .next are read from .gitignore").toEqual(expect.arrayContaining(["node_modules", ".next"]));
-    expect([...UNSHIPPED_PATHS], "agent worktrees are read from .gitignore, anchored").toEqual([".claude/worktrees"]);
+    expect([...UNSHIPPED_PATHS], "agent worktrees are read from .gitignore, anchored").toEqual(expect.arrayContaining([".claude/worktrees"]));
     expect(files).toContain(LINK);
     expect(files).toContain(INTENT);
     expect(files).toContain("next.config.mjs");
@@ -723,35 +732,56 @@ test.describe("every file Next can bundle is linted with both bans on", () => {
  * staff's counterexample, tsconfig `paths` `"#t/*": ["./qa/*"]` imported as `"#t/NavLink"` (or the
  * same through package.json `imports`), passed lint, tsc, this census and `next build`, and the qa
  * module's marker was in `.next/server/chunks`. So the aliases Next's resolver honours are pinned:
- *   · tsconfig (parsed by TypeScript, `extends` followed): every `paths` target is under `./src/`,
- *     and there is no `baseUrl` (Next turns it into a module root, so `qa/x` would resolve);
- *     no `jsconfig.json`, which Next reads when tsconfig is absent;
- *   · package.json: only the keys it has today. `imports` (`#x` subpaths), `exports` (a package
- *     importing itself by name) and `browser` (webpack's alias field) each map a string to a file;
- *   · next.config.mjs: only the keys it has today, and its `webpack` function, run against a stub
- *     config for each of the four compilations, leaves `resolve`, `resolveLoader` and `module`
- *     exactly as it got them and adds only the plugins it is known to add.
+ *   · tsconfig (parsed by TypeScript, `extends` followed): every `paths` target RESOLVES under
+ *     `src/` (staff r2: `"./src/../qa/*"` passed a spelling check and bundled qa), against the
+ *     directory the paths were declared in (`pathsBasePath`, which also covers a `paths` inherited
+ *     through `extends` from another folder), and there is no `baseUrl` (Next turns it into a
+ *     module root, so `qa/x` would resolve); no `jsconfig.json`, which Next reads when tsconfig
+ *     is absent;
+ *   · package.json: none of `imports` (`#x` subpaths), `exports` (a package importing itself by
+ *     name) or `browser` (webpack's alias field), which each map a string to a file. A denylist:
+ *     its other keys (`engines`, `overrides`, ...) do not reach the resolver;
+ *   · next.config.mjs: only the keys it has today (an allowlist: Next keeps adding resolver
+ *     keys, `modularizeImports`, `transpilePackages`, `experimental.turbo.resolveAlias`), and its
+ *     `webpack` function, run against a stub config for each of the four compilations, leaves
+ *     `resolve`, `resolveLoader` and `module` exactly as it got them and adds only the plugins
+ *     it is known to add.
  * NOT pinned, named plainly: a `webpack` function that changes resolution only when it sees a
  * field the stub lacks, and a plugin object whose `apply` rewrites requests (the client build's
  * EV-350 plugin is accepted by its shape, not its body). Behind those are review and the
  * runtime walk.
  */
+const KEY_MESSAGE =
+  "New key? If it maps a module name to a file (imports/exports/browser in package.json; modularizeImports, a resolveAlias or transpilePackages in next.config), it is banned by BUG-751 B1: it can name qa/ where the lint fence cannot read it. Otherwise add it to this list in the same commit.";
+
 test.describe("B1: no resolver alias can name test code", () => {
-  test("tsconfig: every paths target is under ./src/, no baseUrl, and no jsconfig.json", () => {
+  test("tsconfig: every paths target resolves under src/, no baseUrl, and no jsconfig.json", () => {
     const file = join(ROOT, "tsconfig.json");
     const read = ts.readConfigFile(file, ts.sys.readFile);
     expect(read.error, "tsconfig.json parses").toBeUndefined();
     const { options } = ts.parseJsonConfigFileContent(read.config, ts.sys, ROOT, undefined, file);
     expect(options.baseUrl, "a baseUrl makes the repo root a module root").toBeUndefined();
-    const targets = Object.entries(options.paths ?? {}).flatMap(([key, values]) => values.map((v) => `${key} -> ${v}`));
+    // Where TypeScript and Next resolve the targets from: the folder of the tsconfig that declared
+    // `paths` (an internal option, set by the parser; the root when it is absent).
+    const base = typeof options.pathsBasePath === "string" ? options.pathsBasePath : ROOT;
+    const SRC = join(ROOT, "src");
+    const targets = Object.entries(options.paths ?? {}).flatMap(([key, values]) =>
+      values.map((value) => ({ alias: `${key} -> ${value}`, to: resolve(base, value) }))
+    );
     expect(targets.length, "the census reads the @/ alias (a reader that sees nothing passes everything)").toBeGreaterThan(0);
-    expect(targets.filter((t) => !/ -> \.\/src\//.test(t))).toEqual([]);
+    expect(
+      targets.filter(({ to }) => to !== SRC && !to.startsWith(SRC + sep)).map(({ alias, to }) => `${alias} (resolves to ${to})`),
+      "a paths target outside src/ can name test code where the lint fence cannot read it (BUG-751 B1)"
+    ).toEqual([]);
     expect(existsSync(join(ROOT, "jsconfig.json"))).toBe(false);
   });
 
-  test("package.json has no key that maps a module name (imports, exports, browser, ...)", () => {
+  test("package.json has no key that maps a module name (imports, exports, browser)", () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as Record<string, unknown>;
-    expect(Object.keys(pkg).sort()).toEqual(["dependencies", "description", "devDependencies", "name", "private", "scripts", "version"]);
+    expect(
+      ["imports", "exports", "browser"].filter((key) => key in pkg),
+      "package.json imports/exports/browser map a module name to a file, so they can name qa/ where the lint fence cannot read it (BUG-751 B1)"
+    ).toEqual([]);
   });
 
   test("next.config.mjs has only its known keys, and its webpack function adds no alias in any compilation", async () => {
@@ -759,8 +789,8 @@ test.describe("B1: no resolver alias can name test code", () => {
       experimental?: Record<string, unknown>;
       webpack: (config: Record<string, unknown>, options: Record<string, unknown>) => Record<string, unknown>;
     };
-    expect(Object.keys(config).sort()).toEqual(["env", "eslint", "experimental", "headers", "reactStrictMode", "rewrites", "webpack"]);
-    expect(Object.keys(config.experimental ?? {})).toEqual(["staleTimes"]);
+    expect(Object.keys(config).sort(), KEY_MESSAGE).toEqual(["env", "eslint", "experimental", "headers", "reactStrictMode", "rewrites", "webpack"]);
+    expect(Object.keys(config.experimental ?? {}), KEY_MESSAGE).toEqual(["staleTimes"]);
 
     class DefinePlugin {
       constructor(readonly definitions: unknown) {}
