@@ -8,6 +8,7 @@ import { useCopy } from "@/lib/i18n/client";
 import { askIntakeConsentAction, cancelIntakeConsentAction } from "@/lib/intakeActions";
 import {
   INTAKE_POLL_MS,
+  INTAKE_REQUEST_TTL_MS,
   intakeConsentPath,
   pollOutcome,
   type IntakeStatus,
@@ -32,12 +33,16 @@ import { settled } from "@/lib/settled";
  * visible, never two at once, and:
  *   · none while hidden; one on becoming visible again, then every 3 s;
  *   · none from the deadline on: `liveForMs` after the coach's own ask (the 201's own two
- *     instants, so a browser clock that is off does not move it). A page that LOADED on
- *     `pending: true` has no deadline (the GET carries none, staff N4): it polls until the api
- *     says `pending: false`, which the server guarantees within 15 minutes;
+ *     instants, so a browser clock that is off does not move it). A card that LOADED on
+ *     `pending: true` (or whose server read turned pending while it was not waiting) has no
+ *     instant from the api (the GET carries none, staff N4), so its deadline is the TTL itself,
+ *     15 minutes from the moment the card starts that wait (ADR-0034a D34a.6: at most the
+ *     TTL). A reachable api says `pending: false` by then; the deadline is what ends a wait
+ *     whose reads keep failing (502, api down, the route 404ing after the hold goes off);
  *   · none after an answer, a cancel, or the card leaving the page.
- * A failed poll is not an answer: the wait goes on. A 403 is the link ending (W8): the same
- * path as a routine save on a revoked link, `router.refresh()` to the layout's denial page.
+ * A failed poll is not an answer: the wait goes on, until the deadline. A 403 is the link
+ * ending (W8): the same path as a routine save on a revoked link, `router.refresh()` to the
+ * layout's denial page.
  * The middleware's 307 to /login is a session that ended: the page is reloaded, which lands
  * there.
  *
@@ -62,7 +67,12 @@ type Phase =
   | { kind: "granted" }
   | { kind: "idle"; capped: boolean; notice: Notice }
   | { kind: "answered"; capped: boolean; notice: Notice }
-  | { kind: "waiting"; deadline: number | null; notice: Notice };
+  | { kind: "waiting"; deadline: number; notice: Notice };
+
+/** A wait this document did not start: the api's TTL from now, the longest it can be live (D34a.6). */
+function inheritedWait(): Phase {
+  return { kind: "waiting", deadline: Date.now() + INTAKE_REQUEST_TTL_MS, notice: null };
+}
 
 function startPhase(clientId: string, initial: IntakeStatus): Phase {
   if (initial.granted) {
@@ -72,7 +82,7 @@ function startPhase(clientId: string, initial: IntakeStatus): Phase {
   const until = LIVE_UNTIL.get(clientId);
   if (until !== undefined && until > Date.now()) return { kind: "waiting", deadline: until, notice: null };
   LIVE_UNTIL.delete(clientId);
-  return initial.pending ? { kind: "waiting", deadline: null, notice: null } : { kind: "idle", capped: false, notice: null };
+  return initial.pending ? inheritedWait() : { kind: "idle", capped: false, notice: null };
 }
 
 async function readStatus(clientId: string, signal: AbortSignal): Promise<PollOutcome> {
@@ -131,7 +141,7 @@ export function IntakeConsentCard({
       // The first read failed: this one is the card's first state.
       if (!current) return startPhase(clientId, initial);
       if (initial.pending && (current.kind === "idle" || current.kind === "answered")) {
-        return { kind: "waiting", deadline: null, notice: null };
+        return inheritedWait();
       }
       return current;
     });
@@ -147,7 +157,7 @@ export function IntakeConsentCard({
   accessEndedRef.current = accessEnded;
 
   const waiting = phase?.kind === "waiting";
-  const deadline = phase?.kind === "waiting" ? phase.deadline : null;
+  const deadline = phase?.kind === "waiting" ? phase.deadline : 0;
 
   useEffect(() => {
     if (!waiting) return;
@@ -155,7 +165,7 @@ export function IntakeConsentCard({
     let timer: ReturnType<typeof setTimeout> | undefined;
     let inFlight: AbortController | null = null;
 
-    const expired = () => deadline !== null && Date.now() >= deadline;
+    const expired = () => Date.now() >= deadline;
     const settle = (next: Phase) => {
       stopped = true;
       LIVE_UNTIL.delete(clientId);
@@ -168,7 +178,7 @@ export function IntakeConsentCard({
       timer = undefined;
       if (stopped || document.visibilityState !== "visible") return;
       if (expired()) return endOnExpiry();
-      const wait = deadline === null ? delay : Math.min(delay, Math.max(0, deadline - Date.now()));
+      const wait = Math.min(delay, Math.max(0, deadline - Date.now()));
       timer = setTimeout(tick, Math.max(0, wait));
     }
 
@@ -259,9 +269,12 @@ export function IntakeConsentCard({
     const result = await settled(cancelIntakeConsentAction(clientId), { ok: false, code: "FAILED" as const });
     setBusy(false);
     if (result.ok) {
-      // W5: back to W1's no-grant state. An answer that already arrived is kept.
+      // W5: back to W1's no-grant state, whatever the card showed meanwhile, except a grant.
+      // A poll that lands between the DELETE committing and this reply reads `pending: false`
+      // and settles `answered`: that is THIS cancel, seen early, not the trainee's answer
+      // (staff r1 S2). Only a grant is news the cancel cannot have caused.
       LIVE_UNTIL.delete(clientId);
-      setPhase((current) => (current?.kind === "waiting" ? { kind: "idle", capped: false, notice: null } : current));
+      setPhase((current) => (current?.kind === "granted" ? current : { kind: "idle", capped: false, notice: null }));
       return;
     }
     if (result.code === "ACCESS_DENIED") return accessEnded();

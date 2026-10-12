@@ -4,6 +4,7 @@ import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { expectNoSidewaysScroll, expectUnoccluded } from "./layout";
 import { expectNoEnglish } from "./french";
+import { callIntakeAction, intakeActionId } from "./intake-actions-direct";
 
 /**
  * EV-341w — « Demander l'accord »: the coach asks for the intake interview consent, waits,
@@ -151,7 +152,7 @@ test.describe("EV-341w (EN)", () => {
       await expect(card(page).getByRole("button")).toHaveCount(0);
     });
 
-    test("pending on load (asked in another tab): the waiting panel, polling with no deadline until it is answered (N4)", async ({ page }) => {
+    test("pending on load (asked in another tab): the waiting panel, polling until it is answered (N4)", async ({ page }) => {
       await signIn(page);
       await openOverview(page);
       await ask(page);
@@ -160,10 +161,44 @@ test.describe("EV-341w (EN)", () => {
       await expectSentence(page, T.en.waiting);
       await expect(card(page).getByRole("button", { name: T.en.cancel, exact: true })).toBeVisible();
       const before = await count(page, "getIntakeConsent");
-      await page.waitForTimeout(3_600);
-      expect(await count(page, "getIntakeConsent"), "the loaded panel polls").toBeGreaterThan(before);
+      // One poll interval is 3 s; 6 s leaves a loaded machine room (staff r1 N2: a fixed 3.6 s
+      // wait failed under load).
+      await expect
+        .poll(() => count(page, "getIntakeConsent"), { timeout: 6_000, message: "the loaded panel polls" })
+        .toBeGreaterThan(before);
       await answer(page, "dismiss");
       await expectSentence(page, T.en.notNow, "en", 4_000);
+    });
+
+    test("pending on load, every read failing: the poll stops at the 15-minute TTL (D34a.6, staff r1 S1)", async ({ page }) => {
+      test.setTimeout(90_000);
+      await signIn(page);
+      await openOverview(page);
+      await ask(page);
+      // The browser's clock, faked from the next load on and flowing: the TTL is passed by a
+      // jump rather than waited out. The server's clock is untouched (the reads never reach it).
+      await page.clock.install();
+      let failedReads = 0;
+      await page.route(
+        (url) => url.pathname === `/api/bff/clients/${LINA}/intake-consent`,
+        (route) => {
+          failedReads++;
+          return route.fulfill({ status: 502, contentType: "application/json", body: '{"code":"BAD_GATEWAY"}' });
+        }
+      );
+      await page.reload();
+      await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
+      await expectSentence(page, T.en.waiting);
+      // A failed read is not an answer: the wait goes on through two of them.
+      await expect.poll(() => failedReads, { timeout: 9_000, message: "failed reads before the TTL" }).toBeGreaterThanOrEqual(2);
+      await expectSentence(page, T.en.waiting);
+
+      await page.clock.fastForward("15:01");
+      await expectSentence(page, T.en.notNow, "en", 5_000);
+      await expect(card(page).getByRole("button", { name: T.en.ask, exact: true })).toBeEnabled();
+      const atDeadline = failedReads;
+      await page.waitForTimeout(7_000);
+      expect(failedReads, "reads after the TTL").toBe(atDeadline);
     });
   });
 
@@ -172,6 +207,29 @@ test.describe("EV-341w (EN)", () => {
     await openOverview(page);
     await ask(page);
     expect(await count(page, "requestIntakeConsent")).toBe(1);
+  });
+
+  test("N3's method, proved here with the hold ON: the direct action call is the card's own (same id) and reaches the api", async ({ page, baseURL }) => {
+    // intake-hold-off.spec.ts calls the two actions this way on a server with the hold OFF, where
+    // a call that reaches nothing would also read as a refusal. This is its control.
+    await signIn(page);
+    await openOverview(page);
+    const sent: string[] = [];
+    page.on("request", (r) => {
+      const id = r.headers()["next-action"];
+      if (id) sent.push(id);
+    });
+    await ask(page);
+    await card(page).getByRole("button", { name: T.en.cancel, exact: true }).click();
+    await expectSentence(page, T.en.noGrant);
+    expect(sent, "the Next-Action ids the card's own clicks sent").toEqual([
+      intakeActionId("askIntakeConsentAction"),
+      intakeActionId("cancelIntakeConsentAction"),
+    ]);
+    expect(await callIntakeAction(page, baseURL!, "askIntakeConsentAction", LINA)).toMatchObject({ ok: true });
+    expect(await count(page, "requestIntakeConsent"), "the direct ask reached the api").toBe(2);
+    expect(await callIntakeAction(page, baseURL!, "cancelIntakeConsentAction", LINA)).toEqual({ ok: true });
+    expect(await count(page, "cancelIntakeConsentRequest"), "the direct cancel reached the api").toBe(2);
   });
 
   test("W3 the poll: 9–11 GETs in 30 s visible, none in 30 s hidden, and no other request", async ({ page }) => {
@@ -268,6 +326,37 @@ test.describe("EV-341w (EN)", () => {
     expect(expired, "an expiry renders as a decline does").toBe(declined);
     expect(cancelledElsewhere, "a cancel in another tab renders as a decline does").toBe(declined);
     expect(declined).toContain(T.en.notNow);
+    await expect(card(page).getByRole("button", { name: T.en.ask, exact: true })).toBeEnabled();
+  });
+
+  test("W5 cancel: a poll that lands between the DELETE and the action's reply does not turn the cancel into « Pas d'accord » (staff r1 S2)", async ({ page }) => {
+    await signIn(page);
+    await openOverview(page);
+    await ask(page);
+    // Hold the cancel action's reply AFTER the fixture has committed the DELETE, until the
+    // card's next poll has read `pending: false` and settled. That is the interleaving.
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let held = false;
+    await page.route(
+      (url) => url.pathname === OVERVIEW,
+      async (route) => {
+        if (route.request().method() !== "POST" || !route.request().headers()["next-action"]) return route.fallback();
+        const response = await route.fetch();
+        held = true;
+        await released;
+        await route.fulfill({ response });
+      }
+    );
+    await card(page).getByRole("button", { name: T.en.cancel, exact: true }).click();
+    await expect.poll(() => held, { timeout: 5_000, message: "the DELETE committed, its reply held" }).toBe(true);
+    expect(await count(page, "cancelIntakeConsentRequest")).toBe(1);
+    // The poll lands meanwhile and reads the cancelled request as not pending.
+    await expect(card(page).locator("[data-intake-state]")).toHaveAttribute("data-intake-state", "answered", { timeout: 6_000 });
+    release();
+    await expectSentence(page, T.en.noGrant);
+    await expect(card(page).locator("[data-intake-state]")).toHaveAttribute("data-intake-state", "idle");
+    await expect(card(page).getByText(T.en.notNow)).toHaveCount(0);
     await expect(card(page).getByRole("button", { name: T.en.ask, exact: true })).toBeEnabled();
   });
 

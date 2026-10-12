@@ -20,9 +20,11 @@ export const INTAKE_POLL_MS = 3_000;
 export const INTAKE_REQUEST_TTL_MS = 15 * 60 * 1000;
 
 /**
- * A read's body, accepted only as EXACTLY the two booleans. Anything else (an older or newer
- * api, a proxy's page, a field the api's PR12 pin forbids) is a failed read: never a guess
- * that the trainee answered, and never a crash.
+ * A read's body, as the two booleans and nothing else. A body without both booleans (an older
+ * api, a proxy's page, a string where a boolean belongs) is a failed read: never a guess that
+ * the trainee answered, and never a crash. Any OTHER field (a newer api, one the api's PR12
+ * pin forbids, such as a reason) is DROPPED, not a failure: the card is built from the two
+ * booleans only, so nothing else ever reaches it.
  */
 export function asIntakeStatus(body: unknown): IntakeStatus | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;

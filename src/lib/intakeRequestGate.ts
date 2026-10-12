@@ -4,14 +4,19 @@
  *
  * The card may go live only in the same coach deploy as EV-341b or later, and never before
  * EV-341q (the trainee's answer screen) is in an app build Raed has shipped: before that, the
- * coach's request reaches no screen. And `D-PROV-1`'s go-live gate keeps it off for every
- * coach outside Evoli's own test accounts until the flags are read. A merge to `main`
- * deploys this repo, so the hold cannot be "do not merge yet"; it is this predicate.
+ * coach's request reaches no screen. A merge to `main` deploys this repo, so the hold cannot
+ * be "do not merge yet"; it is this predicate.
+ *
+ * ⚠ The switch is DEPLOYMENT-WIDE: `on` shows the card to EVERY coach this deployment serves,
+ * and it reads no account, role or allow-list. It does not implement `D-PROV-1`'s go-live
+ * gate (Evoli's own test accounts only): turning it on where real coaches sign in releases
+ * the feature to all of them. That gate is a release decision recorded in the story's hold,
+ * not something this code enforces.
  *
  * ON only for the exact value `on` of `COACH_INTAKE_REQUEST` (server environment, never
  * shipped to the browser). Absent, empty, `true`, `ON`, `1` and anything else are OFF: a
  * switch that fails open would release the feature on a typo. Pure, so
- * `qa/intake-request-gate.spec.ts` pins it with no server.
+ * `qa/intake-consent-unit.spec.ts` pins it with no server.
  *
  * OFF means: no card on the overview, no `GET …/intake-consent` in its render, the BFF read
  * answers 404, and the two server actions refuse before calling the api.

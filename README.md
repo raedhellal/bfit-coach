@@ -92,7 +92,7 @@ browser:
 | `COACH_API_MODE` | `live` | `fixture` serves in-memory demo data instead of the api. |
 | `COACH_FIXTURE_SCENARIO` | `populated` | fixture only. `empty` = zero-trainee roster. |
 | `INVITE_BASE_URL` | `http://localhost:3300` | The host the invite URL + QR encode; the link is `<INVITE_BASE_URL>/i/<token>?coach=<name>`. **Set it to the Mac's LAN IP for the demo** (`ipconfig getifaddr en0`, e.g. `http://192.168.1.24:3300`) and start Next with `npm run dev -- -H 0.0.0.0`, or a phone cannot reach it. |
-| `COACH_INTAKE_REQUEST` | unset (off) | EV-341w's **release hold**: `on` (exactly) shows the overview's « Entretien » card, its poll route `GET /api/bff/clients/{id}/intake-consent` and its two actions. Anything else, including unset, is off: no card, no intake read, the route 404s. Turn it on only in the deploy that carries EV-341b, after EV-341q is in a shipped app build, and per `D-PROV-1` (`src/lib/intakeRequestGate.ts`). The default Playwright suite sets it. |
+| `COACH_INTAKE_REQUEST` | unset (off) | EV-341w's **release hold**: `on` (exactly) shows the overview's « Entretien » card, its poll route `GET /api/bff/clients/{id}/intake-consent` and its two actions. Anything else, including unset, is off: no card, no intake read, the route 404s. Turn it on only in the deploy that carries EV-341b, after EV-341q is in a shipped app build. ⚠ Deployment-wide: `on` shows the card to every coach that deployment serves; it reads no account or allow-list, so it does not enforce `D-PROV-1`'s test-accounts-only gate (`src/lib/intakeRequestGate.ts`). The default Playwright suite sets it. |
 
 ### The fixture switch
 
