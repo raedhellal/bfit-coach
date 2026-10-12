@@ -1357,6 +1357,9 @@ function inactivityBoundaryRows(): RosterClient[] {
     status: "ACTIVE" as const,
     since: isoInstant(40),
     routineChangedSinceYourPublish: false,
+    // EV-341j: established clients on a programme this coach published (no pill, J4). They are
+    // roster-only rows (no plan record), so `withProgrammeStatus` keeps this value.
+    programmeStatus: "PUBLISHED" as const,
   }));
 }
 
@@ -5964,6 +5967,8 @@ function fixtureProgrammeStatus(id: string): ProgrammeStatus {
 
 /** The roster row's `programmeStatus`, from the row's own `scopes` (null without WORKOUTS). */
 function withProgrammeStatus(row: RosterClient): RosterClient {
+  // A roster-only row that states its own (the inactivity boundary rows) keeps it.
+  if (row.programmeStatus !== undefined) return row;
   return { ...row, programmeStatus: row.scopes.includes("WORKOUTS") ? fixtureProgrammeStatus(row.id) : null };
 }
 
