@@ -115,6 +115,11 @@ export default defineConfig({
       COACH_API_MODE: "fixture",
       COACH_FIXTURE_SCENARIO: "empty",
       INVITE_BASE_URL: BASE_URL,
+      // EV-341w's release hold is OFF by default (src/lib/intakeRequestGate.ts). This suite
+      // turns it ON so the « Entretien » card is under every default spec that opens an
+      // overview (W11). The roster and start suites leave it off: page-read-budget's exact
+      // overview reads there are the witness that an unset flag makes no intake read.
+      COACH_INTAKE_REQUEST: "on",
     },
   },
 });

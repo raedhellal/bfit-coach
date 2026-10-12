@@ -285,7 +285,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 84; // EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types; EV-204b: +4 initialisation types
+const SCHEMAS_EXPECTED = 86; // EV-341w: +2 intake consent types; EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types; EV-204b: +4 initialisation types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -430,6 +430,13 @@ const REQUEST_FACING_EXPECTED = [
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
+  // EV-341 (api 95ca369d). Not sent by this branch; each is the named portal slice's to tag.
+  CoachIntakeSectionWrite:
+    "PUT …/intake/sections/{n} (EV-341a): no portal call yet. EV-341b (the interview page) tags it and deletes this line.",
+  CoachTrialSessionRequest:
+    "POST …/trial-session/preview (EV-341i): EV-341j's, on feat/ev341j-trial-session-portal (sibling branch, same base and api). The second of the two to merge deletes this line.",
+  CoachTrialSessionAssignRequest:
+    "POST …/trial-session (EV-341i): EV-341j's, as above. The second of the two to merge deletes this line.",
 };
 
 const receivable = requestSchemas(spec);

@@ -83,7 +83,7 @@ config, this is the entry (`.vscode/launch.json` / `.claude/launch.json` shape):
 
 ## Environment
 
-See `.env.example`. Four variables, none of them secret, none of them shipped to the
+See `.env.example`. Five variables, none of them secret, none of them shipped to the
 browser:
 
 | Variable | Default | Notes |
@@ -92,6 +92,7 @@ browser:
 | `COACH_API_MODE` | `live` | `fixture` serves in-memory demo data instead of the api. |
 | `COACH_FIXTURE_SCENARIO` | `populated` | fixture only. `empty` = zero-trainee roster. |
 | `INVITE_BASE_URL` | `http://localhost:3300` | The host the invite URL + QR encode; the link is `<INVITE_BASE_URL>/i/<token>?coach=<name>`. **Set it to the Mac's LAN IP for the demo** (`ipconfig getifaddr en0`, e.g. `http://192.168.1.24:3300`) and start Next with `npm run dev -- -H 0.0.0.0`, or a phone cannot reach it. |
+| `COACH_INTAKE_REQUEST` | unset (off) | EV-341w's **release hold**: `on` (exactly) shows the overview's « Entretien » card, its poll route `GET /api/bff/clients/{id}/intake-consent` and its two actions. Anything else, including unset, is off: no card, no intake read, the route 404s. Turn it on only in the deploy that carries EV-341b, after EV-341q is in a shipped app build, and per `D-PROV-1` (`src/lib/intakeRequestGate.ts`). The default Playwright suite sets it. |
 
 ### The fixture switch
 
@@ -122,6 +123,7 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 | `POST /api/auth/login` | BFF sign-in — proxies `POST /auth/login`, sets the cookies. |
 | `POST /api/auth/activate` | EV-278c: proxies `POST /me/activate` for a PENDING session, refuses any `consentAccepted` that is not literal `true` before the api is called, and swaps both cookies to the fresh COACH tokens. |
 | `POST /api/auth/logout` | Clears both cookies. |
+| `GET /api/bff/clients/{id}/intake-consent` | EV-341w: the « Entretien » card's 3 s poll, a GET route handler (not an action: actions are dispatched one at a time). Behind middleware like a page; `{ granted, pending }` / 403 / 502, `no-store`; 404 while `COACH_INTAKE_REQUEST` is not `on`. |
 | `GET /api/version` | **Public** deploy marker — the portal's `/actuator/info`. `{ commit, commitShort, buildTime, environment, region }`, never cached, GET/HEAD only. See below. |
 | `/i/[token]` | **Public** invite landing page — the page the QR encodes. Inside the middleware matcher, let through explicitly, **GET/HEAD only** (anything else answers 405). |
 

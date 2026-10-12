@@ -2723,6 +2723,65 @@ export function isMilestoneOutOfRange(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_MILESTONE_OUT_OF_RANGE";
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341w — « Demander l'accord »: the coach asks for the intake interview consent.
+ *
+ * b-fit-api EV-341p2 (vendored at `95ca369d`, `spec/b-fit-api.sha`; merged on the api's
+ * merge line, NOT deployed when this was written). Three operations, all gated on an ACTIVE
+ * link and no data scope (`requireManagedLink`):
+ *
+ *   GET    /coach-portal/clients/{id}/intake-consent          → { granted, pending }
+ *   POST   /coach-portal/clients/{id}/intake-consent-request  → 201 { id, requestedAt, expiresAt }
+ *          409 INTAKE_ALREADY_GRANTED · 429 INTAKE_REQUEST_LIMIT (+ Retry-After)
+ *   DELETE /coach-portal/clients/{id}/intake-consent-request  → 204, with or without a live one
+ *   403 COACH_ACCESS_DENIED on all three: one body for a foreign, revoked or unknown id.
+ *
+ * 🔴 THREE PROPERTIES THE TYPES CANNOT STATE:
+ *   1. **No refusal is ever on the wire.** A decline, an expiry and a cancellation all read
+ *      `{ granted: false, pending: false }` (the api pins the DTO to exactly two fields,
+ *      PR12). The portal must not reconstruct one either: nothing it stores or renders may
+ *      tell the three apart (EV-341w W4, W9).
+ *   2. **`pending` is the TTL at read time.** A request past its 15 minutes reads `false`
+ *      even while its row is still open, so a poll may stop on `pending: false` alone.
+ *   3. **A page that loads on `pending: true` has no `expiresAt`** (the GET carries none).
+ *      The server guarantees `pending` turns false within 15 minutes, so the waiting panel
+ *      keeps polling until it does (staff N4 on EV-341p2).
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * `GET …/intake-consent` — exactly the two booleans, and never a reason.
+ *
+ * @wire CoachIntakeConsentStatus
+ */
+export interface CoachIntakeConsentStatus {
+  /** The link holds the `COACH_INTAKE` consent (scope INTAKE). */
+  granted: boolean;
+  /** A request is open AND its 15 minutes have not passed (read time). */
+  pending: boolean;
+}
+
+/**
+ * `POST …/intake-consent-request`'s 201. `expiresAt` = `requestedAt` + 15 minutes, both on
+ * the server's clock: the waiting panel times its poll from their DIFFERENCE, never by
+ * comparing `expiresAt` with the browser's clock.
+ *
+ * @wire CoachIntakeRequest
+ */
+export interface CoachIntakeRequest {
+  id: string;
+  requestedAt: string;
+  expiresAt: string;
+}
+
+/** 409 — the link already holds the consent; nothing was written (PR6). */
+export function isIntakeAlreadyGranted(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "INTAKE_ALREADY_GRANTED";
+}
+/** 429 — three requests on this link in the rolling 24 h, whatever became of them (PR5). */
+export function isIntakeRequestLimit(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 429 && err.code === "INTAKE_REQUEST_LIMIT";
+}
+
 // ── the live client ──────────────────────────────────────────────────────────
 
 /**
@@ -2838,6 +2897,20 @@ const liveCoachApi = {
       `/coach-portal/clients/${encodeURIComponent(id)}/revoke`,
       { method: "POST" }
     );
+  },
+
+  // ── EV-341w the intake consent request (b-fit-api EV-341p2, see the block above) ──
+
+  getIntakeConsent(id: string): Promise<CoachIntakeConsentStatus> {
+    return apiFetch<CoachIntakeConsentStatus>(`${client(id)}/intake-consent`);
+  },
+  /** Never retried: a second POST supersedes the first and spends one of the three a day. */
+  requestIntakeConsent(id: string): Promise<CoachIntakeRequest> {
+    return apiFetch<CoachIntakeRequest>(`${client(id)}/intake-consent-request`, { method: "POST" });
+  },
+  async cancelIntakeConsentRequest(id: string): Promise<void> {
+    // 204 No Content, with or without a live request (PR10).
+    await apiFetch<void>(`${client(id)}/intake-consent-request`, { method: "DELETE" });
   },
 
   // ── EV-184b routine (PROVISIONAL paths — see the block at the top) ─────────

@@ -78,6 +78,8 @@ import type {
   InitialisedAccountPage,
   InitialiseTraineeRequest,
   ResendInvitationRequest,
+  CoachIntakeConsentStatus,
+  CoachIntakeRequest,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -4841,6 +4843,13 @@ interface FixtureState {
   initialiseCalls: number[];
   /** `"initialise-resend:<coach>:<user>"`'s window, per user id. */
   resendCalls: Map<string, number[]>;
+  /**
+   * EV-341w — the intake consent and its requests, per link (b-fit-api EV-341p2's
+   * `coach_intake_requests` and the link's INTAKE grant). No entry = no grant and no
+   * request ever made, which is every seeded link: a test reaches the other states through
+   * the portal's own button and `POST /api/fixture/intake` (the trainee's half).
+   */
+  intake: Map<string, FixtureIntakeLink>;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -4930,6 +4939,7 @@ function freshState(): FixtureState {
     invitationMails: [],
     initialiseCalls: [],
     resendCalls: new Map(),
+    intake: new Map(),
   };
 }
 
@@ -5878,6 +5888,169 @@ async function fixtureListInvited(page = 0, size = 20): Promise<InitialisedAccou
   };
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341w — THE INTAKE CONSENT REQUEST, ported from b-fit-api EV-341p2 @ 95ca369d
+ * (`CoachIntakeRequestUseCase`): one open request per link, 15 minutes, 3 per rolling 24 h.
+ *
+ *   · the guard is `requireManagedLink`: an ACTIVE link and NO data scope, so every seeded
+ *     link may ask; a revoked process or `evoli_fixture_link=ended` is the one 403;
+ *   · every write first closes an open request past its expiry as EXPIRED (the api's lazy
+ *     close, no sweeper), then applies its own reason;
+ *   · the read never writes: an open request past its expiry reads `pending: false`.
+ *
+ * Fixture-only switches (one browser context each):
+ *   `evoli_fixture_intake_ttl_ms=<ms>`  → requests made in this context live <ms> (1 s to
+ *                                         15 min) instead of 15 minutes, so W3's "no GET
+ *                                         after expiresAt" fits in a test;
+ *   `evoli_fixture_intake_read=fail`    → the GET answers 500 (a poll that failed must not
+ *                                         end the wait or show an answer).
+ * The trainee's half (grant, « Pas maintenant », or an expiry) is `fixtureIntakeAnswer`,
+ * reached through `POST /api/fixture/intake`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const INTAKE_TTL_MS = 15 * 60 * 1000; // CoachIntakeRequestUseCase.TTL
+const INTAKE_CAP = 3; // CoachIntakeRequestUseCase.MAX_PER_DAY
+const INTAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type IntakeClosedReason = "EXPIRED" | "SUPERSEDED" | "CANCELLED" | "DISMISSED" | "GRANTED";
+interface FixtureIntakeRequest {
+  id: string;
+  requestedAt: number;
+  expiresAt: number;
+  closedAt: number | null;
+  closedReason: IntakeClosedReason | null;
+}
+interface FixtureIntakeLink {
+  granted: boolean;
+  requests: FixtureIntakeRequest[];
+}
+
+function intakeLink(id: string): FixtureIntakeLink {
+  const links = state().intake;
+  let link = links.get(id);
+  if (!link) {
+    link = { granted: false, requests: [] };
+    links.set(id, link);
+  }
+  return link;
+}
+
+/** `requireManagedLink`: the overview's own guard (ACTIVE, no data scope). */
+async function assertManagedLink(id: string): Promise<void> {
+  await failIfMalformedId(id); // BUG-600: the api's 400 comes before its guard.
+  if (!OVERVIEWS[id] || state().revoked || (await linkEnded())) {
+    await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  }
+}
+
+/** The lazy close every request write starts with (PR9): EXPIRED at its own expiry. */
+function closeExpired(link: FixtureIntakeLink, now: number): void {
+  for (const r of link.requests) {
+    if (r.closedAt === null && r.expiresAt <= now) {
+      r.closedAt = r.expiresAt;
+      r.closedReason = "EXPIRED";
+    }
+  }
+}
+
+function liveRequest(link: FixtureIntakeLink, now: number): FixtureIntakeRequest | undefined {
+  return link.requests.find((r) => r.closedAt === null && r.expiresAt > now);
+}
+
+async function intakeTtlMs(): Promise<number> {
+  const raw = Number(await fixtureSwitch("evoli_fixture_intake_ttl_ms"));
+  return Number.isFinite(raw) && raw >= 1_000 ? Math.min(raw, INTAKE_TTL_MS) : INTAKE_TTL_MS;
+}
+
+async function fixtureGetIntakeConsent(id: string): Promise<CoachIntakeConsentStatus> {
+  await assertManagedLink(id);
+  if ((await fixtureSwitch("evoli_fixture_intake_read")) === "fail") {
+    await fail(500, "INTERNAL_ERROR", "Internal error");
+  }
+  const link = state().intake.get(id);
+  // Exactly two fields (PR12): nothing here can say WHY a request is no longer pending.
+  return { granted: link?.granted ?? false, pending: link ? liveRequest(link, Date.now()) !== undefined : false };
+}
+
+async function fixtureRequestIntakeConsent(id: string): Promise<CoachIntakeRequest> {
+  await assertManagedLink(id);
+  const now = Date.now();
+  const link = intakeLink(id);
+  closeExpired(link, now);
+  if (link.granted) await fail(409, "INTAKE_ALREADY_GRANTED", "The client has already allowed the intake interview");
+  const inWindow = link.requests.filter((r) => r.requestedAt > now - INTAKE_WINDOW_MS);
+  if (inWindow.length >= INTAKE_CAP) {
+    const oldest = Math.min(...inWindow.map((r) => r.requestedAt));
+    const seconds = Math.min(86_400, Math.max(1, Math.ceil((oldest + INTAKE_WINDOW_MS - now) / 1000)));
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(429, "Too many intake requests on this link", "INTAKE_REQUEST_LIMIT", null, seconds);
+  }
+  const live = liveRequest(link, now);
+  if (live) {
+    live.closedAt = now;
+    live.closedReason = "SUPERSEDED";
+  }
+  const created: FixtureIntakeRequest = {
+    id: crypto.randomUUID(),
+    requestedAt: now,
+    expiresAt: now + (await intakeTtlMs()),
+    closedAt: null,
+    closedReason: null,
+  };
+  link.requests.push(created);
+  return {
+    id: created.id,
+    requestedAt: new Date(created.requestedAt).toISOString(),
+    expiresAt: new Date(created.expiresAt).toISOString(),
+  };
+}
+
+async function fixtureCancelIntakeConsentRequest(id: string): Promise<void> {
+  await assertManagedLink(id);
+  const now = Date.now();
+  const link = state().intake.get(id);
+  if (!link) return;
+  closeExpired(link, now);
+  const live = liveRequest(link, now);
+  if (live) {
+    live.closedAt = now;
+    live.closedReason = "CANCELLED";
+  }
+}
+
+/**
+ * ⚠ TEST AFFORDANCE — the TRAINEE's half of EV-341p2, which no coach call can reach:
+ *   `grant`   → `POST /me/my-coach/intake-consent`: the link gains the grant and every open
+ *               request closes GRANTED (PR8);
+ *   `dismiss` → « Pas maintenant »: the live request closes DISMISSED (PR11); none, nothing;
+ *   `expire`  → the live request's 15 minutes pass now (its row stays open, as on the api,
+ *               until the next write: PR4).
+ * Answers whether anything changed.
+ */
+export function fixtureIntakeAnswer(id: string, answer: "grant" | "dismiss" | "expire"): boolean {
+  const now = Date.now();
+  const link = intakeLink(id);
+  if (answer === "grant") {
+    link.granted = true;
+    for (const r of link.requests) {
+      if (r.closedAt === null) {
+        r.closedAt = now;
+        r.closedReason = "GRANTED";
+      }
+    }
+    return true;
+  }
+  const live = liveRequest(link, now);
+  if (!live) return false;
+  if (answer === "dismiss") {
+    live.closedAt = now;
+    live.closedReason = "DISMISSED";
+  } else {
+    live.expiresAt = now - 1;
+  }
+  return true;
+}
+
 export const fixtureCoachApi: CoachApi = {
   // ── EV-278c activation ────────────────────────────────────────────────────
   getActivation: fixtureGetActivation,
@@ -6033,6 +6206,11 @@ export const fixtureCoachApi: CoachApi = {
   async revokeClient(): Promise<void> {
     state().revoked = true;
   },
+
+  // ── EV-341w the intake consent request (see the block above `fixtureCoachApi`) ──
+  getIntakeConsent: fixtureGetIntakeConsent,
+  requestIntakeConsent: fixtureRequestIntakeConsent,
+  cancelIntakeConsentRequest: fixtureCancelIntakeConsentRequest,
 
   /**
    * EV-202b — `PUT /coach-portal/clients/{id}/progress-goal`.
