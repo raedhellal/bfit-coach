@@ -266,6 +266,15 @@ export interface RosterClient {
    * claim, and silence from an older api is not one.
    */
   routineChangedSinceYourPublish?: boolean | null;
+  /**
+   * EV-341i/j J4 — where the client stands before their first programme. Null when the link
+   * lacks WORKOUTS ("not shared"); the api computes it per row in one grouped read.
+   *
+   * OPTIONAL in this type although the api always sends the key: an api that predates
+   * EV-341i omits it, and `programmePill` (src/lib/trialSession.ts) reads only the three
+   * values that carry a pill. Absent, null, PUBLISHED and an unknown value all draw nothing.
+   */
+  programmeStatus?: ProgrammeStatus | null;
 }
 
 /**
@@ -2723,6 +2732,127 @@ export function isMilestoneOutOfRange(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_MILESTONE_OUT_OF_RANGE";
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341j — the trial session (« Séance d'essai »), b-fit-api EV-341i @ 95ca369d (vendored,
+ * `spec/b-fit-api.sha`; merged on the api's merge line, NOT deployed when this was written).
+ *
+ *   GET  /coach-portal/clients/{id}/trial-session           [WORKOUTS] → { programmeStatus, trialSession|null }
+ *   POST /coach-portal/clients/{id}/trial-session/preview   ← CoachTrialSessionRequest → repairs + digest, writes NOTHING
+ *   POST /coach-portal/clients/{id}/trial-session           ← the same body + `digest` → 201, the read
+ *        409 COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED (digest absent, stale, another body's, a publish's)
+ *        409 TRIAL_SESSION_ALREADY_OPEN · 400 VALIDATION_ERROR / COACH_FIELD_NOT_ACCEPTED /
+ *        COACH_DRAFT_REPS_ON_DURATION · 503 CATALOG_UNAVAILABLE
+ *   POST /coach-portal/clients/{id}/trial-session/withdraw  → 200, the read (idempotent)
+ *   403 on all four: one body for foreign, revoked, unknown and "no WORKOUTS".
+ *
+ * 🔴 PROPERTIES THE TYPES CANNOT STATE:
+ *   1. **No edit exists** (ADR-0034 Q7 (f), J3). A change is withdraw, then assign anew, so the
+ *      portal has no control that changes an assigned session.
+ *   2. **DONE is derived and wins over a withdraw** (I3b). `trialSession` is the open one
+ *      (ASSIGNED, or DONE and not withdrawn), else the latest DONE one (withdrawn or not),
+ *      else null. A DONE session stays OPEN until withdrawn (EV-341i's provisional ruling):
+ *      a new assign over it is 409 TRIAL_SESSION_ALREADY_OPEN, so J3c withdraws it first.
+ *   3. **The digest is domain-separated from a publish's**: the assign echoes the trial
+ *      preview's digest VERBATIM with the very body it previewed. Any other body is a 409.
+ *   4. **Undeclared keys are a 400** (`COACH_FIELD_NOT_ACCEPTED`): the body is built in ONE
+ *      place, `trialSessionBody` (src/lib/trialSession.ts), from these fields only.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** `CoachTrialSessionResponse.programmeStatus` and the roster row's (EV-341i I6). */
+export type ProgrammeStatus = "AWAITING_PROGRAMME" | "TRIAL_ASSIGNED" | "TRIAL_DONE" | "PUBLISHED";
+/** Derived by the api: DONE if completed (wins over a withdraw), else WITHDRAWN, else ASSIGNED. */
+export type TrialSessionStatus = "ASSIGNED" | "WITHDRAWN" | "DONE";
+
+/**
+ * One exercise of an assigned trial session, as the api stores it on the carrier workout.
+ * The portal shows none of them today (J3: the card says when, not what); typed so the read
+ * is checked against the wire.
+ *
+ * @wire TrialSessionExercise
+ */
+export interface TrialSessionExercise {
+  name: string;
+  slug: string;
+  sets: number | null;
+  reps: number | null;
+  durationMinutes: number | null;
+  restSeconds: number | null;
+  orderIndex: number;
+}
+
+/**
+ * One trial session.
+ *
+ * @wire TrialSessionResponse
+ */
+export interface TrialSession {
+  id: string;
+  status: TrialSessionStatus;
+  title: string;
+  /** `YYYY-MM-DD`, or null. */
+  plannedOn: string | null;
+  /** The coach's note to the client. Free text: never logged, never put in a URL. */
+  note: string | null;
+  /** The carrier workout (the trainee's player opens it). */
+  workoutId: string;
+  estimatedMinutes: number | null;
+  /** ISO instant — J3's « Assignée le {date} ». */
+  assignedAt: string;
+  withdrawnAt: string | null;
+  /** `YYYY-MM-DD` the first completion is filed under — J3's « Faite le {date} »; null unless DONE. */
+  completedOn: string | null;
+  exercises: TrialSessionExercise[];
+}
+
+/**
+ * `GET …/trial-session` (and the assign's 201 and the withdraw's 200).
+ *
+ * @wire CoachTrialSessionResponse
+ */
+export interface CoachTrialSessionResponse {
+  programmeStatus: ProgrammeStatus;
+  trialSession: TrialSession | null;
+}
+
+/**
+ * The trial session as the coach composes it, and the preview's body. It names no person:
+ * the subject is the URL's link id; injuries and equipment are the trainee's stored answers.
+ *
+ * `title`, `plannedOn` and `note` are OPTIONAL on the wire and EV-341j's portal sends none of
+ * them: J1 names no field and no copy for them, so the api's defaults apply (title « Séance
+ * d'essai », the assign date's weekday, no note). They are declared so the body builder and
+ * the drift guard know the whole schema; `trialSessionBody` never sets them.
+ *
+ * @wire CoachTrialSessionRequest
+ */
+export interface CoachTrialSessionRequest {
+  title?: string | null;
+  plannedOn?: string | null;
+  note?: string | null;
+  estimatedMinutes?: number | null;
+  /** 1..30 rows, in order: the routine day editor's rows. */
+  exercises: RoutineExercise[];
+}
+
+/**
+ * `POST …/trial-session/preview`'s answer. `repairs` are whole sentences in the engine's
+ * words (English, api content), rendered verbatim like a publish's.
+ *
+ * @wire CoachTrialSessionPreviewResponse
+ */
+export interface CoachTrialSessionPreview {
+  repairs: PublishRepair[];
+  repairCount: number;
+  /** Opaque. Echoed verbatim to the assign with the same body, never stored past the dialog. */
+  digest: string;
+  equipmentChecked: boolean;
+}
+
+/** 409 — one open trial session per client, a DONE one included until withdrawn (I1). */
+export function isTrialSessionAlreadyOpen(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "TRIAL_SESSION_ALREADY_OPEN";
+}
+
 // ── the live client ──────────────────────────────────────────────────────────
 
 /**
@@ -2838,6 +2968,28 @@ const liveCoachApi = {
       `/coach-portal/clients/${encodeURIComponent(id)}/revoke`,
       { method: "POST" }
     );
+  },
+
+  // ── EV-341j the trial session (b-fit-api EV-341i, see the block above) ─────────
+
+  getTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+    return apiFetch<CoachTrialSessionResponse>(`${client(id)}/trial-session`);
+  },
+  previewTrialSession(id: string, body: CoachTrialSessionRequest): Promise<CoachTrialSessionPreview> {
+    return apiFetch<CoachTrialSessionPreview>(`${client(id)}/trial-session/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  /** Never retried: a lost 201 followed by a retry is a 409 TRIAL_SESSION_ALREADY_OPEN. */
+  assignTrialSession(id: string, body: CoachTrialSessionRequest, digest: string): Promise<CoachTrialSessionResponse> {
+    return apiFetch<CoachTrialSessionResponse>(`${client(id)}/trial-session`, {
+      method: "POST",
+      body: JSON.stringify({ ...body, digest }),
+    });
+  },
+  withdrawTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+    return apiFetch<CoachTrialSessionResponse>(`${client(id)}/trial-session/withdraw`, { method: "POST" });
   },
 
   // ── EV-184b routine (PROVISIONAL paths — see the block at the top) ─────────

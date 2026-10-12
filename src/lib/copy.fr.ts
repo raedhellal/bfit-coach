@@ -1575,4 +1575,28 @@ export const fr = {
   navProgress: {
     label: "Chargement de la page",
   },
+  // EV-341j — le texte de la story (J1–J4), à l'espace insécable près devant « ? ».
+  trial: {
+    title: "Séance d'essai",
+    prepare: "Préparer une séance d'essai",
+    fromTemplate: "Partir d'un modèle",
+    assign: "Assigner",
+    assignedOn: (date: string) => `Assignée le ${date}`,
+    withdraw: "Retirer",
+    doneOn: (date: string) => `Faite le ${date}`,
+    withdrawTitle: "Retirer la séance d'essai\u00a0?",
+    withdrawBody: (firstName: string) =>
+      `${firstName} ne la verra plus dans l'app. Si ${mid(firstName)} l'a déjà commencée, elle pourra être terminée et comptera comme faite.`,
+    prepareAnother: "Préparer une autre séance d'essai",
+    pills: {
+      AWAITING_PROGRAMME: "Programme à préparer",
+      TRIAL_ASSIGNED: "Séance d'essai assignée",
+      TRIAL_DONE: "Séance d'essai faite",
+    },
+    needsExercise: "Ajoutez au moins un exercice.",
+    full: "Une séance d'essai compte au plus 30 exercices.",
+    assignFailed: "La séance d'essai n'a pas pu être assignée.",
+    withdrawFailed: "La séance d'essai n'a pas pu être retirée.",
+    loadError: "Ce bloc n'a pas pu être chargé. Rechargez la page pour réessayer.",
+  },
 } satisfies Copy;

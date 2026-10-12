@@ -120,6 +120,14 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
     },
   },
 
+  /* ── EV-341 (api 95ca369d), arrived with the EV-341j re-vendor ───────────── */
+  LegalVersions: {
+    missingInPortal: {
+      coachIntakeTextVersion:
+        "EV-341p1 — the version of the COACH_INTAKE sentence the TRAINEE agrees to in the app (EV-341q). The portal never shows or sends that sentence: the consent is the trainee's own act on their own phone (ADR-0034a), and /activate reads only the privacy and terms versions. A decision, not drift.",
+    },
+  },
+
   CoachApplyWeekRequest: {
     missingInPortal: {
       mealStructure:

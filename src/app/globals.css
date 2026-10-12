@@ -1793,3 +1793,8 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 }
 .nut-tile-unit { font: 500 var(--fs-meta)/18px var(--font-body); color: var(--ink-2); }
 .nut-targets-actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* EV-341j — the Programme tab's « Séance d'essai » card: the state line and its one control on
+   one row, wrapping under each other when the row is too narrow (390 px). */
+.trial-row { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; }
+.trial-row > .ov-note { flex: 1 1 220px; min-width: 0; }
