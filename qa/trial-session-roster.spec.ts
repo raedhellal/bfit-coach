@@ -86,7 +86,13 @@ test.describe("J4 (FR)", () => {
     await roster(page);
     await expect(pill(page, "Tobias R.")).toHaveText(PILLS.fr.awaiting);
     // The trial is assigned through the English portal's twin in the fixture store; the pill is what is under test.
-    const en = await page.context().browser()!.newContext({ locale: "en-US", baseURL: new URL(page.url()).origin });
+    const origin = new URL(page.url()).origin;
+    const en = await page.context().browser()!.newContext({ locale: "en-US", baseURL: origin });
+    // The language switch's cookie, not `locale` alone: in this hand-made context Chromium sent
+    // `Accept-Language: en-US` on navigations but `fr-FR` on the server actions' fetches
+    // (measured on train/coach-s3p), so the assign's revalidated render came back French and
+    // « Assigned on » was a race against it. The cookie wins over the header (`getLocale`).
+    await en.addCookies([{ name: "evoli_pro_locale", value: "en", url: origin }]);
     const other = await en.newPage();
     try {
       await signInThroughForm(other);
