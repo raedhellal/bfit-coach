@@ -632,7 +632,7 @@ export function RoutineDocumentEditor({
 }
 
 /** One prescription: every field `RoutineExercise` carries, in one named group. */
-function ExerciseRow({
+export function ExerciseRow({
   exercise,
   first,
   last,

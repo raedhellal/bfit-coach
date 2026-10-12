@@ -2774,6 +2774,54 @@ export const en = {
     } as Record<string, string>,
   },
   /**
+   * EV-341j — the trial session on the Programme tab, and its roster pill. Every string
+   * marked "J" is the story's, verbatim (QA checks them character by character). The four
+   * marked "not in the story" are failure and bound sentences no AC words: senior-po's to
+   * confirm or replace.
+   *
+   * ⛔ There is deliberately no edit control and so no "Edit" / « Modifier » string (J3,
+   * ADR-0034 Q7 (f)): a change is withdraw, then prepare a new one.
+   */
+  trial: {
+    /** J1 — the card's name (FR « Séance d'essai »). */
+    title: "Trial session",
+    /** J1, verbatim. */
+    prepare: "Prepare a trial session",
+    /** J1, verbatim: the template-day picker's button and its dialog's title. */
+    fromTemplate: "Start from a template",
+    /** J2, verbatim. */
+    assign: "Assign",
+    /** J3, verbatim. `date` is the assign instant, printed in UTC like every instant here. */
+    assignedOn: (date: string) => `Assigned on ${date}`,
+    /** J3, verbatim. */
+    withdraw: "Withdraw",
+    /** J3, verbatim. `date` is the day the completion was filed under. */
+    doneOn: (date: string) => `Done on ${date}`,
+    /** J3b, verbatim. */
+    withdrawTitle: "Withdraw the trial session?",
+    /** J3b, verbatim. Sentence-initial name first, then mid-sentence. */
+    withdrawBody: (firstName: string) =>
+      `${firstName} will no longer see it in the app. If ${mid(firstName)} has already started it, it can still be finished and will count as done.`,
+    // ⛔ No « Préparer une autre séance d'essai »: J3c was withdrawn (2026-10-12 (d), senior-po on
+    // staff's EV-341i ruling 1). TRIAL_DONE has no prepare path; do not add one back.
+    /** J4, verbatim — the roster pill, one per client, none for PUBLISHED. */
+    pills: {
+      AWAITING_PROGRAMME: "Programme to prepare",
+      TRIAL_ASSIGNED: "Trial session assigned",
+      TRIAL_DONE: "Trial session done",
+    },
+    /** Not in the story: Assign is off until the session holds an exercise. */
+    needsExercise: "Add at least one exercise.",
+    /** Not in the story: the api's bound (1..30 rows). */
+    full: "A trial session holds at most 30 exercises.",
+    /** Not in the story. Nothing was written (the api refused or did not answer). */
+    assignFailed: "The trial session could not be assigned.",
+    /** Not in the story. */
+    withdrawFailed: "The trial session could not be withdrawn.",
+    /** The card's read failed (not a 403): the overview's own block sentence. */
+    loadError: "This block could not be loaded. Reload the page to try again.",
+  },
+  /**
    * ADR-0033 follow-up (perf/coach-fast-routes-no-skeleton): the navigation progress
    * bar's accessible name. It shows only when a page change takes longer than 400 ms.
    */

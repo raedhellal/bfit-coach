@@ -120,18 +120,7 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
     },
   },
 
-  /* ── EV-341 (api 95ca369d), arrived with the EV-341w re-vendor ──────────────
-   * Both EV-341 portal branches (feat/ev341w-ask-intake-consent, feat/ev341j-trial-session-portal)
-   * were cut from coach 8a5241c and vendor the same api commit, so each sees the other's new
-   * fields. `RosterClient.programmeStatus` is EV-341j's (J4, the roster pill): WHICHEVER OF THE
-   * TWO MERGES SECOND DELETES THE ENTRY BELOW (it goes stale the moment 341j's tag declares it).
-   * ---------------------------------------------------------------------- */
-  RosterClient: {
-    missingInPortal: {
-      programmeStatus:
-        "EV-341i's roster pill state, read by EV-341j J4 on feat/ev341j-trial-session-portal (sibling branch, same base and api). Owner: web-engineer, deleted by the second of the two merges.",
-    },
-  },
+  /* ── EV-341 (api 95ca369d), arrived with the EV-341j re-vendor ───────────── */
   LegalVersions: {
     missingInPortal: {
       coachIntakeTextVersion:

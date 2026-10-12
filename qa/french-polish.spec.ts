@@ -143,6 +143,8 @@ const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
   "routine.repsOnDuration#0", // weekday
   "routine.traineeChanged#1",
   "templates.updatedAt#0",
+  "trial.assignedOn#0", // EV-341j J3: « Assignée le {date} »
+  "trial.doneOn#0", // EV-341j J3: « Faite le {date} »
 ];
 
 test("PB-4 — no French sentence puts an unelided de / que / le / la before a vowel-initial name or title", () => {
