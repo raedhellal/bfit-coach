@@ -2242,6 +2242,7 @@ export const CHALLENGE_PAGE_SIZE = 50;
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-341j — the trial session (« Séance d'essai »), b-fit-api EV-341i @ 95ca369d (vendored,
  * `spec/b-fit-api.sha`; merged on the api's merge line, NOT deployed when this was written).
+ * Re-vendored at api origin/main `8655a2e5` for train/coach-s3p: no trial schema changed.
  *
  *   GET  /coach-portal/clients/{id}/trial-session           [WORKOUTS] → { programmeStatus, trialSession|null }
  *   POST /coach-portal/clients/{id}/trial-session/preview   ← CoachTrialSessionRequest → repairs + digest, writes NOTHING
@@ -2857,7 +2858,8 @@ export function isMilestoneOutOfRange(err: unknown): boolean {
  * EV-341w — « Demander l'accord »: the coach asks for the intake interview consent.
  *
  * b-fit-api EV-341p2 (vendored at `95ca369d`, `spec/b-fit-api.sha`; merged on the api's
- * merge line, NOT deployed when this was written). Three operations, all gated on an ACTIVE
+ * merge line, NOT deployed when this was written; re-vendored at api origin/main `8655a2e5`
+ * for train/coach-s3p, no intake-consent schema changed). Three operations, all gated on an ACTIVE
  * link and no data scope (`requireManagedLink`):
  *
  *   GET    /coach-portal/clients/{id}/intake-consent          → { granted, pending }

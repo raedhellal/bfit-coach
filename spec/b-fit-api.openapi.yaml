@@ -5719,7 +5719,8 @@ paths:
         eight `sections`, each with its `version` (0 until first written, every field `null` or
         `[]`) and its `values`; `completedAt` once finished. Otherwise `state: GRANT_MISSING` and
         NOTHING else: no `status`, no `sections`. The portal shows the interview disabled and
-        explained. This is the only response that carries the notes back. Gate: an ACTIVE link;
+        explained. With the client's own GET /me/my-coach/intake (EV-341r), the only response that
+        carries the notes back; the client can read every note written here. Gate: an ACTIVE link;
         the sections are read under the INTAKE scope.
       security:
         - bearerAuth: []
@@ -8187,6 +8188,42 @@ paths:
               schema:
                 allOf:
                   - $ref: "#/components/schemas/TrialSessionResponse"
+                nullable: true
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/my-coach/intake:
+    get:
+      summary: The intake interview my coach recorded, or null
+      description: >-
+        EV-341r R1 (D-INTAKE-6 (r1), ADR-0034 D34.11). The trainee reads what their coach recorded
+        about them. When the caller's ACTIVE coach link holds the interview consent (INTAKE):
+        `state: READY`, the derived `status`, `completedAt` once finished, and all eight `sections`
+        as their answers, the notes included, whether or not the coach has finished. Without the
+        consent: `state: GRANT_MISSING` and nothing else. With no ACTIVE link: a literal JSON `null`,
+        as GET /me/my-coach answers. After a withdraw or a revoke the intake is deleted and the next
+        read answers GRANT_MISSING or `null`. The link and the intake are read from one snapshot, so
+        a read racing a withdraw answers either the whole intake or the state after it, never a
+        granted interview that reads as empty. A coach's token reads the coach's own (normally
+        absent) link, never a client's intake. Sent with `Cache-Control: no-store`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The intake, GRANT_MISSING, or null
+          headers:
+            Cache-Control:
+              description: "`no-store`: free text about the caller's health, never kept by a cache."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/MyCoachIntake"
                 nullable: true
         "401":
           description: Unauthorized
@@ -11368,6 +11405,52 @@ components:
               $ref: "#/components/schemas/CoachIntakeNutritionSection"
             COACH_NOTES:
               $ref: "#/components/schemas/CoachIntakeCoachNotesSection"
+          required: [GOALS, HISTORY, AVAILABILITY, LIFESTYLE, HEALTH, MEASUREMENTS, NUTRITION, COACH_NOTES]
+      required: [state]
+    MyCoachIntake:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-341r. The trainee's read of the intake. READY: `status`, all eight `sections` (each the
+        section's answers, the same values the coach writes) and, once finished, `completedAt`.
+        GRANT_MISSING: `state` only. No section `version` or `updatedAt`: those are the coach's
+        autosave controls. The notes and GOALS' `eventLabel` are free text the coach wrote; they are
+        never logged and never in an error.
+      properties:
+        state:
+          type: string
+          enum: [READY, GRANT_MISSING]
+          description: READY when the caller's link holds INTAKE (their interview consent).
+        status:
+          type: string
+          enum: [NOT_STARTED, IN_PROGRESS, COMPLETE]
+          description: READY only. Derived as in CoachIntake.
+        completedAt:
+          type: string
+          format: date-time
+          description: READY and COMPLETE only. When the coach first finished the interview.
+        sections:
+          type: object
+          additionalProperties: false
+          description: >-
+            READY only. Always all eight, written or not; a field never answered is `null` or `[]`.
+          properties:
+            GOALS:
+              $ref: "#/components/schemas/CoachIntakeGoals"
+            HISTORY:
+              $ref: "#/components/schemas/CoachIntakeHistory"
+            AVAILABILITY:
+              $ref: "#/components/schemas/CoachIntakeAvailability"
+            LIFESTYLE:
+              $ref: "#/components/schemas/CoachIntakeLifestyle"
+            HEALTH:
+              $ref: "#/components/schemas/CoachIntakeNoteOnly"
+            MEASUREMENTS:
+              $ref: "#/components/schemas/CoachIntakeNoteOnly"
+            NUTRITION:
+              $ref: "#/components/schemas/CoachIntakeNutrition"
+            COACH_NOTES:
+              $ref: "#/components/schemas/CoachIntakeCoachNotes"
           required: [GOALS, HISTORY, AVAILABILITY, LIFESTYLE, HEALTH, MEASUREMENTS, NUTRITION, COACH_NOTES]
       required: [state]
     CoachIntakeGoalsSection:
