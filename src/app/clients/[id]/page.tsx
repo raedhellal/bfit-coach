@@ -25,7 +25,7 @@ import {
   type CoachRoutineResponse,
   type FiredRedFlag,
 } from "@/lib/coachApi";
-import { readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
+import { isClientId, readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
 import { clientLoadError } from "@/lib/clientLoadError";
 import { firstName, formatDate, formatKg, formatShortDate } from "@/lib/format";
@@ -100,7 +100,10 @@ export default async function ClientPage({ params }: { params: { id: string } })
    * itself, so there is no `scopes` to wait for and no extra round trip. Behind the release
    * hold (`COACH_INTAKE_REQUEST`, src/lib/intakeRequestGate.ts): off, the read is not made.
    */
-  const intakeRead = INTAKE_REQUEST_ENABLED ? settle(coachApi.getIntakeConsent(params.id)) : null;
+  // BUG-600: a segment that is not a UUID asks the api nothing (the layout denies it; this page
+  // renders beside the layout, so its own reads must not run on it either).
+  const intakeRead =
+    INTAKE_REQUEST_ENABLED && isClientId(params.id) ? settle(coachApi.getIntakeConsent(params.id)) : null;
   const { overview, forbidden } = await readClientOverview(params.id);
   // BUG-671 — a TAB CHANGE does not render `layout.tsx` again (its segment is unchanged), so
   // the layout's 403 decision never runs on one; when the tab change renders this page on the
