@@ -57,6 +57,31 @@ export function asTrialRead(body: unknown): TrialRead | null {
   };
 }
 
+/** A preview the card may act on: every repair a sentence it can show, and the digest to echo. */
+export interface TrialPreview {
+  repairs: string[];
+  digest: string;
+}
+
+/**
+ * The preview's answer, accepted only WHOLE (staff r1 S1). The digest is of the repair set the
+ * api computed, so the card may echo it only after showing every one of those repairs: a
+ * repair that is not a sentence cannot be shown, and dropping it would have the coach
+ * acknowledge, by assigning, a repair they never saw (and with nothing left, assign straight
+ * on). So ANY non-string repair fails the preview, as does a `repairCount` that disagrees with
+ * the list (when the api sends one; the spec requires it, an older api may not). A failed
+ * preview shows the error line and assigns nothing.
+ */
+export function asTrialPreview(body: unknown): TrialPreview | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const preview = body as { repairs?: unknown; repairCount?: unknown; digest?: unknown };
+  if (typeof preview.digest !== "string" || !Array.isArray(preview.repairs)) return null;
+  const repairs: unknown[] = preview.repairs;
+  if (!repairs.every((repair): repair is string => typeof repair === "string")) return null;
+  if (preview.repairCount !== undefined && preview.repairCount !== repairs.length) return null;
+  return { repairs: repairs as string[], digest: preview.digest };
+}
+
 /**
  * What the Programme tab's « Séance d'essai » card shows.
  *

@@ -2,6 +2,7 @@ import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
 import {
   MAX_TRIAL_EXERCISES,
+  asTrialPreview,
   asTrialRead,
   programmePill,
   trialCardView,
@@ -82,6 +83,43 @@ test.describe("the read's guard", () => {
       { programmeStatus: "TRIAL_DONE", trialSession: { status: "DONE", assignedAt: "2026-10-01T09:00:00Z", completedOn: 5 } },
     ]) {
       expect(asTrialRead(body), JSON.stringify(body)).toBeNull();
+    }
+  });
+});
+
+test.describe("the preview's answer (staff r1 S1: never acknowledge a repair the coach was not shown)", () => {
+  const digest = "d1g3st";
+  const said = "Barbell Back Squat was replaced with Goblet Squat (knee).";
+
+  test("is accepted whole: string repairs, a digest, and a repairCount that agrees (or none)", () => {
+    expect(asTrialPreview({ repairs: [], repairCount: 0, digest, equipmentChecked: false })).toEqual({ repairs: [], digest });
+    expect(asTrialPreview({ repairs: [said], repairCount: 1, digest, equipmentChecked: true })).toEqual({ repairs: [said], digest });
+    expect(asTrialPreview({ repairs: [said], digest }), "an api that sends no repairCount").toEqual({ repairs: [said], digest });
+  });
+
+  test("ANY repair that is not a sentence fails the whole preview, instead of being dropped", () => {
+    for (const repairs of [
+      [{ exercise: "Barbell Back Squat", replacedWith: "Goblet Squat", rule: "KNEE" }],
+      [said, { exercise: "Deadlift" }],
+      [null],
+      [said, 42],
+      [said, undefined],
+      [["nested"]],
+    ]) {
+      expect(asTrialPreview({ repairs, repairCount: repairs.length, digest }), JSON.stringify(repairs)).toBeNull();
+    }
+  });
+
+  test("a repairCount that disagrees with the list fails it", () => {
+    for (const repairCount of [0, 2, -1, "1", null, 1.5]) {
+      expect(asTrialPreview({ repairs: [said], repairCount, digest }), `repairCount ${JSON.stringify(repairCount)}`).toBeNull();
+    }
+    expect(asTrialPreview({ repairs: [], repairCount: 1, digest }), "a count for repairs the list does not hold").toBeNull();
+  });
+
+  test("no digest, or no list, is a failed preview", () => {
+    for (const body of [null, undefined, "x", [], {}, { repairs: [] }, { digest }, { repairs: "none", digest }, { repairs: [], digest: 7 }]) {
+      expect(asTrialPreview(body), JSON.stringify(body)).toBeNull();
     }
   });
 });

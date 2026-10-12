@@ -315,6 +315,20 @@ test.describe("EV-341j (EN)", () => {
       expect(await count(page, "withdrawTrialSession", NILS)).toBe(1);
     });
 
+    test("J3b, the link ended: the withdraw's 403 is the overview's denial page (staff r1 N3)", async ({ page, baseURL }) => {
+      await signInThroughForm(page);
+      await assignGoblet(page);
+      await card(page).getByRole("button", { name: T.en.withdraw, exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: T.en.withdrawTitle });
+      await expect(dialog).toBeVisible();
+      // The link ends while the dialog is open: the withdraw is the call that meets it.
+      await page.context().addCookies([{ name: "evoli_fixture_link", value: "ended", url: baseURL! }]);
+      await dialog.getByRole("button", { name: T.en.withdraw, exact: true }).click();
+      await expect(page).toHaveURL(/\/clients\/denied$/, { timeout: 10_000 });
+      await expect(page.getByText(T.en.denied, { exact: true })).toBeVisible();
+      expect(await count(page, "withdrawTrialSession", NILS), "the withdraw reached the api and was refused").toBe(1);
+    });
+
     test("J3 done: « Faite le » links to the history, and the card holds no control (J3c withdrawn)", async ({ page }) => {
       await signInThroughForm(page);
       await assignGoblet(page);

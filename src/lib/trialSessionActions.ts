@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { coachApi, type CoachTrialSessionRequest, type RoutineTrainingDay } from "./coachApi";
 import { isClientId } from "./clientOverview";
-import { asTrialRead, trialFailure, type TrialFailure, type TrialRead } from "./trialSession";
+import { asTrialPreview, asTrialRead, trialFailure, type TrialFailure, type TrialRead } from "./trialSession";
 
 /**
  * EV-341j — the trial session's writes and the two template reads « Partir d'un modèle »
@@ -34,9 +34,10 @@ export async function previewTrialSessionAction(
 ): Promise<TrialPreviewResult> {
   if (!isClientId(clientId)) return { ok: false, failure: "ACCESS_DENIED" };
   try {
-    const preview = await coachApi.previewTrialSession(clientId, body);
-    if (typeof preview?.digest !== "string" || !Array.isArray(preview.repairs)) return { ok: false, failure: "FAILED" };
-    return { ok: true, repairs: preview.repairs.filter((r): r is string => typeof r === "string"), digest: preview.digest };
+    // Accepted whole or not at all (`asTrialPreview`): a repair the card cannot show is never
+    // acknowledged by the digest's echo.
+    const preview = asTrialPreview(await coachApi.previewTrialSession(clientId, body));
+    return preview ? { ok: true, ...preview } : { ok: false, failure: "FAILED" };
   } catch (err) {
     return { ok: false, failure: trialFailure(err) };
   }
