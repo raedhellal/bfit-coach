@@ -246,6 +246,30 @@ test.describe("EV-341j (EN)", () => {
       expect(await count(page, "assignTrialSession", OMAR)).toBe(0);
     });
 
+    /**
+     * Staff r2 N4: the ACTION accepts a preview only whole (`asTrialPreview`), not just the
+     * function. Nils has no repairs, so a preview whose extra repair is not a sentence, or whose
+     * `repairCount` disagrees with its list, would, with the odd repair dropped, leave nothing to
+     * show and assign straight on with a valid digest: a repair acknowledged that the coach never
+     * saw. Red control: the r1 inline `.filter(string)` in `previewTrialSessionAction` assigns.
+     */
+    for (const sw of ["object_repair", "count_mismatch"] as const) {
+      test(`a preview the card cannot show whole (${sw}): the error line, no dialog, no assign`, async ({ page, baseURL }) => {
+        await signInThroughForm(page);
+        await page.context().addCookies([{ name: "evoli_fixture_trial_preview", value: sw, url: baseURL! }]);
+        await openProgramme(page, NILS);
+        await prepare(page);
+        await addExercise(page, "Goblet Squat");
+        await card(page).getByRole("button", { name: T.en.assign, exact: true }).click();
+        await expect(card(page).getByRole("alert")).toHaveText(T.en.failed);
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        expect(await count(page, "previewTrialSession", NILS)).toBe(1);
+        expect(await count(page, "assignTrialSession", NILS), "nothing is assigned").toBe(0);
+        await expect(card(page).getByRole("group", { name: "Goblet Squat" }), "the editor keeps its rows").toBeVisible();
+        await expect(card(page).getByText(T.en.assignedOn(today("en")), { exact: true })).toHaveCount(0);
+      });
+    }
+
     test("assigned in another tab meanwhile (409 already open): the editor closes on the assigned one", async ({ page, context }) => {
       await signInThroughForm(page);
       await openProgramme(page, NILS);

@@ -202,12 +202,14 @@ test.describe("J.3 — widths", () => {
  * the 768–1279 px band are full, so EV-345's 2,198 px, ruled before the card existed, does not
  * hold with it. The card's idle state is what a page loads in and is the state measured; the
  * read first asserts the card is on the page, so a page that lost it cannot pass by being
- * shorter. The waiting state (the longer sentence) is recorded beside it, NOT asserted:
- * measured on `next dev` 2026-10-12, idle 2,240 px EN / 2,293 px FR (7 px under the limit),
- * waiting 2,261 px EN / 2,335 px FR. The French waiting page is 35 px OVER 2,300; that number
- * went back to the PO with the round, and the limit was not raised to meet it.
+ * shorter. The waiting state (the longer sentence, after « Demander l'accord ») has its own
+ * limit: at most 2,340 px, EN and FR (PO ruling, 2026-10-12, under Raed's 2026-10-11
+ * delegation). So the card is held to idle ≤ 2,300 px and waiting ≤ 2,340 px, both asserted.
+ * Measured on `next dev` 2026-10-12: idle 2,240 px EN / 2,293 px FR (7 px of slack), waiting
+ * 2,261 px EN / 2,335 px FR (5 px of slack).
  */
 const J3_LIMIT_WITH_INTAKE = 2300;
+const J3_LIMIT_WITH_INTAKE_WAITING = 2340;
 
 async function heightWithIntakeCard(page: import("@playwright/test").Page, lang: "en" | "fr"): Promise<number> {
   const card = page.locator("section[aria-labelledby='ov-intake']");
@@ -217,6 +219,9 @@ async function heightWithIntakeCard(page: import("@playwright/test").Page, lang:
   await expect(card.locator("[data-intake-state='waiting']")).toBeVisible();
   const waiting = await page.evaluate(() => document.documentElement.scrollHeight);
   test.info().annotations.push({ type: `overview height at 768x1024 (${lang}), intake card WAITING`, description: `${waiting} px` });
+  expect(waiting, `the overview with the intake card WAITING (${lang}), PO limit ${J3_LIMIT_WITH_INTAKE_WAITING} px`).toBeLessThanOrEqual(
+    J3_LIMIT_WITH_INTAKE_WAITING
+  );
   return idle;
 }
 

@@ -4889,6 +4889,15 @@ interface FixtureState {
  *                                         UNACKNOWLEDGED (the trainee's injuries changed
  *                                         between the preview and the assign): the card must
  *                                         preview again, never retry the digest.
+ *   `evoli_fixture_trial_preview=object_repair` → the preview's repairs gain one that is NOT a
+ *                                         sentence (an object), `repairCount` still equal to
+ *                                         the list and the digest still valid;
+ *   `evoli_fixture_trial_preview=count_mismatch` → the repairs are the real ones but
+ *                                         `repairCount` is one more than the list.
+ *                                         Both are a preview the card cannot show whole: the
+ *                                         action must fail it (`asTrialPreview`, staff r2 N4),
+ *                                         and with the digest valid an action that dropped the
+ *                                         odd repair would assign straight on.
  * The trainee completing the session in the app is `fixtureTrialComplete`, reached through
  * `POST /api/fixture/trial`.
  * ════════════════════════════════════════════════════════════════════════════ */
@@ -5026,7 +5035,15 @@ async function fixturePreviewTrialSession(id: string, body: CoachTrialSessionReq
   if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
   const repairs = trialRepairs(id, body);
   // Writes NOTHING (EV-341i I2): the digest is a function of the body, not a stored token.
-  return { repairs, repairCount: repairs.length, digest: trialDigest(id, body), equipmentChecked: false };
+  const preview = { repairs, repairCount: repairs.length, digest: trialDigest(id, body), equipmentChecked: false };
+  const sw = await fixtureSwitch("evoli_fixture_trial_preview");
+  if (sw === "object_repair") {
+    // Off the wire type on purpose: the shape an api that structured its repairs would send.
+    const odd = { exerciseName: "Goblet Squat", change: "SWAPPED" } as unknown as PublishRepair;
+    return { ...preview, repairs: [...repairs, odd], repairCount: repairs.length + 1 };
+  }
+  if (sw === "count_mismatch") return { ...preview, repairCount: repairs.length + 1 };
+  return preview;
 }
 
 async function fixtureAssignTrialSession(
