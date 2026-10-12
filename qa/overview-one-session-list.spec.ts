@@ -196,22 +196,28 @@ test.describe("J.3 — widths", () => {
 });
 
 /**
- * ⚠ EV-341w DEVIATION, owed a PO ruling before its release hold lifts. The « Entretien » card
- * (present in this suite: `COACH_INTAKE_REQUEST=on`; absent on every deploy until EV-341b's)
- * adds ~141 px at 768 × 1024 (measured 2,240 px EN / 2,293 px FR with it), and the page has no
- * slack to absorb it: both columns of the 768–1279 px band are filled. J.3's budget was ruled
- * before the card existed, so it is measured here WITHOUT the card (removed from the layout
- * before the read) and the height WITH it is recorded as an annotation. A ruling that keeps
- * 2,198 px for the page with the card is a layout change; one that raises it edits this helper.
+ * EV-341w — J.3's budget RE-RULED to include the « Entretien » card (PO ruling relayed with
+ * staff r1 S4, 2026-10-12): at most 2,300 px, EN and FR, at 768 × 1024, WITH the card shown
+ * (this suite runs with `COACH_INTAKE_REQUEST=on`). The card adds ~141 px and both columns of
+ * the 768–1279 px band are full, so EV-345's 2,198 px, ruled before the card existed, does not
+ * hold with it. The card's idle state is what a page loads in and is the state measured; the
+ * read first asserts the card is on the page, so a page that lost it cannot pass by being
+ * shorter. The waiting state (the longer sentence) is recorded beside it, NOT asserted:
+ * measured on `next dev` 2026-10-12, idle 2,240 px EN / 2,293 px FR (7 px under the limit),
+ * waiting 2,261 px EN / 2,335 px FR. The French waiting page is 35 px OVER 2,300; that number
+ * went back to the PO with the round, and the limit was not raised to meet it.
  */
-async function heightWithoutIntakeCard(page: import("@playwright/test").Page, lang: string): Promise<number> {
-  const withCard = await page.evaluate(() => document.documentElement.scrollHeight);
-  test.info().annotations.push({ type: `overview height at 768x1024 (${lang}) WITH the intake card`, description: `${withCard} px` });
-  return page.evaluate(() => {
-    const card = document.querySelector<HTMLElement>("section[aria-labelledby='ov-intake']");
-    if (card) card.style.display = "none";
-    return document.documentElement.scrollHeight;
-  });
+const J3_LIMIT_WITH_INTAKE = 2300;
+
+async function heightWithIntakeCard(page: import("@playwright/test").Page, lang: "en" | "fr"): Promise<number> {
+  const card = page.locator("section[aria-labelledby='ov-intake']");
+  await expect(card.locator("[data-intake-state='idle']"), "the intake card, idle, is on the page").toBeVisible();
+  const idle = await page.evaluate(() => document.documentElement.scrollHeight);
+  await card.getByRole("button", { name: lang === "fr" ? "Demander l'accord" : "Ask for consent", exact: true }).click();
+  await expect(card.locator("[data-intake-state='waiting']")).toBeVisible();
+  const waiting = await page.evaluate(() => document.documentElement.scrollHeight);
+  test.info().annotations.push({ type: `overview height at 768x1024 (${lang}), intake card WAITING`, description: `${waiting} px` });
+  return idle;
 }
 
 test.describe("J.3 as ruled (768 × 1024)", () => {
@@ -224,7 +230,8 @@ test.describe("J.3 as ruled (768 × 1024)", () => {
    * same heights for this page; EV-345's number of record is still the `next start` one.
    *
    * Title prescribed by the PO (EV-342 J-R3); EV-345.2 turned the `test.fixme` into a plain
-   * `test` with its assertion unchanged. Failed before EV-345 at 2,851 px.
+   * `test` with its assertion unchanged. Failed before EV-345 at 2,851 px. Since EV-341w the
+   * limit is 2,300 px with the intake card on the page (`J3_LIMIT_WITH_INTAKE`, above).
    */
   test.describe("French", () => {
     test.use({ locale: "fr-FR" });
@@ -234,20 +241,23 @@ test.describe("J.3 as ruled (768 × 1024)", () => {
       await signInFrench(page);
       await page.goto(`/clients/${LINA}`);
       await expect(page.getByRole("region", { name: "Activité récente" }).getByRole("listitem")).toHaveCount(5);
-      const height = await heightWithoutIntakeCard(page, "fr");
-      test.info().annotations.push({ type: "overview height at 768x1024 (fr)", description: `${height} px` });
-      expect(height).toBeLessThanOrEqual(2198);
+      const height = await heightWithIntakeCard(page, "fr");
+      test.info().annotations.push({ type: "overview height at 768x1024 (fr), intake card idle", description: `${height} px` });
+      expect(height).toBeLessThanOrEqual(J3_LIMIT_WITH_INTAKE);
     });
   });
 
-  /** EV-345.2's English limb: "EN is measured and recorded, and it is also ≤ 2,198 px". */
-  test("EV-345.2 (EN): at 768×1024 the English overview is also at most 2,198 px", async ({ page }) => {
+  /**
+   * EV-345.2's English limb: "EN is measured and recorded, and it is also ≤ 2,198 px". Since
+   * EV-341w's re-ruling the English limb is held to the same 2,300 px as the French, card shown.
+   */
+  test("EV-345.2 (EN): at 768×1024 the English overview, intake card shown, is at most 2,300 px", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await signInThroughForm(page);
     await page.goto(`/clients/${LINA}`);
     await expect(activity(page).getByRole("listitem")).toHaveCount(5);
-    const height = await heightWithoutIntakeCard(page, "en");
-    test.info().annotations.push({ type: "overview height at 768x1024 (en)", description: `${height} px` });
-    expect(height).toBeLessThanOrEqual(2198);
+    const height = await heightWithIntakeCard(page, "en");
+    test.info().annotations.push({ type: "overview height at 768x1024 (en), intake card idle", description: `${height} px` });
+    expect(height).toBeLessThanOrEqual(J3_LIMIT_WITH_INTAKE);
   });
 });
