@@ -1,5 +1,11 @@
 import "server-only";
 import type {
+  CoachTrialSessionRequest,
+  RoutineExercise,
+  CoachTrialSessionResponse,
+  CoachTrialSessionPreview,
+  ProgrammeStatus,
+  TrialSession,
   ActivateAccountRequest,
   ActivationStatus,
   AccountRole,
@@ -78,12 +84,6 @@ import type {
   InitialisedAccountPage,
   InitialiseTraineeRequest,
   ResendInvitationRequest,
-  CoachTrialSessionRequest,
-  RoutineExercise,
-  CoachTrialSessionResponse,
-  CoachTrialSessionPreview,
-  ProgrammeStatus,
-  TrialSession,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -4839,6 +4839,12 @@ interface FixtureState {
   /** EV-321b — the coach's challenges, by id, each with its participants' day rows. */
   challenges: Map<string, StoredChallenge>;
   /**
+   * EV-341j — every trial session assigned per link, oldest first (b-fit-api EV-341i's
+   * `coach_trial_sessions` and the carrier's completion). Empty at the seed: a test assigns
+   * through the portal's own editor, and completes through `POST /api/fixture/trial`.
+   */
+  trialSessions: Map<string, StoredTrialSession[]>;
+  /**
    * EV-204b — accounts a coach initialised (`POST /coach-portal/trainees`), keyed by USER
    * id. Hidden seeds only (an expired one, an activated one, another coach's): nothing is
    * LISTED until a test adds a client, so the `empty` scenario's roster stays empty.
@@ -4850,12 +4856,220 @@ interface FixtureState {
   initialiseCalls: number[];
   /** `"initialise-resend:<coach>:<user>"`'s window, per user id. */
   resendCalls: Map<string, number[]>;
-  /**
-   * EV-341j — every trial session assigned per link, oldest first (b-fit-api EV-341i's
-   * `coach_trial_sessions` and the carrier's completion). Empty at the seed: a test assigns
-   * through the portal's own editor, and completes through `POST /api/fixture/trial`.
-   */
-  trialSessions: Map<string, StoredTrialSession[]>;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341j — THE TRIAL SESSION, ported from b-fit-api EV-341i @ 95ca369d
+ * (`CoachTrialSessionUseCase`): one open session per link, two-phase assign, derived status.
+ *
+ *   · guard: WORKOUTS on an ACTIVE link (`assertScope`), the routine endpoints' own;
+ *   · status DERIVED on read: DONE if completed (wins over a withdraw), else WITHDRAWN if
+ *     withdrawn, else ASSIGNED. OPEN = not withdrawn (a DONE one stays open until withdrawn,
+ *     EV-341i's ruling, accepted by staff);
+ *   · the coach's read: the open one, else the latest DONE one, else null;
+ *   · `programmeStatus`: PUBLISHED when THIS coach published the live plan (the EV-283a
+ *     authorship record: COACH, or a publish the trainee has since changed), else from the read;
+ *   · the digest is the preview's, of THIS body and its repairs, under a "trial" domain, so a
+ *     publish's digest never acknowledges a trial and the other way round.
+ *
+ * Fixture-only switches (one browser context each):
+ *   `evoli_fixture_trial_read=fail`     → the GET answers 500 (the card's load-error line);
+ *   `evoli_fixture_trial_read=missing`  → the GET answers 404, an api that predates EV-341i:
+ *                                         the card is not drawn at all;
+ *   `evoli_fixture_trial_assign=stale`  → every assign answers 409 COACH_PUBLISH_REPAIRS_
+ *                                         UNACKNOWLEDGED (the trainee's injuries changed
+ *                                         between the preview and the assign): the card must
+ *                                         preview again, never retry the digest.
+ * The trainee completing the session in the app is `fixtureTrialComplete`, reached through
+ * `POST /api/fixture/trial`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface StoredTrialSession {
+  id: string;
+  title: string;
+  plannedOn: string | null;
+  note: string | null;
+  estimatedMinutes: number | null;
+  /** The REPAIRED rows (the trainee receives what the policy returned, as a publish does). */
+  exercises: RoutineExercise[];
+  assignedAt: string;
+  withdrawnAt: string | null;
+  completedOn: string | null;
+}
+
+const TRIAL_BODY_KEYS = new Set(["title", "plannedOn", "note", "estimatedMinutes", "exercises", "digest"]);
+const TRIAL_MAX_EXERCISES = 30;
+
+function trialStatus(t: StoredTrialSession): TrialSession["status"] {
+  return t.completedOn ? "DONE" : t.withdrawnAt ? "WITHDRAWN" : "ASSIGNED";
+}
+
+function trialsOf(id: string): StoredTrialSession[] {
+  return state().trialSessions.get(id) ?? [];
+}
+
+function openTrial(id: string): StoredTrialSession | undefined {
+  return trialsOf(id).find((t) => t.withdrawnAt === null);
+}
+
+/** The coach's read: the open one, else the latest DONE one, else none. */
+function shownTrial(id: string): StoredTrialSession | undefined {
+  return openTrial(id) ?? [...trialsOf(id)].reverse().find((t) => t.completedOn !== null);
+}
+
+function publishedByThisCoach(id: string): boolean {
+  const author = state().planAuthors.get(id);
+  return !!state().plans.get(id) && !!author && (author.lastChangedBy === "COACH" || author.changedSinceYourPublish);
+}
+
+function fixtureProgrammeStatus(id: string): ProgrammeStatus {
+  if (publishedByThisCoach(id)) return "PUBLISHED";
+  const shown = shownTrial(id);
+  if (!shown) return "AWAITING_PROGRAMME";
+  return trialStatus(shown) === "DONE" ? "TRIAL_DONE" : "TRIAL_ASSIGNED";
+}
+
+/** The roster row's `programmeStatus`, from the row's own `scopes` (null without WORKOUTS). */
+function withProgrammeStatus(row: RosterClient): RosterClient {
+  // A roster-only row that states its own (the inactivity boundary rows) keeps it.
+  if (row.programmeStatus !== undefined) return row;
+  return { ...row, programmeStatus: row.scopes.includes("WORKOUTS") ? fixtureProgrammeStatus(row.id) : null };
+}
+
+function trialResponse(id: string): CoachTrialSessionResponse {
+  const shown = shownTrial(id);
+  return {
+    programmeStatus: fixtureProgrammeStatus(id),
+    trialSession: shown
+      ? {
+          id: shown.id,
+          status: trialStatus(shown),
+          title: shown.title,
+          plannedOn: shown.plannedOn,
+          note: shown.note,
+          workoutId: `workout-trial-${shown.id.slice(0, 8)}`,
+          estimatedMinutes: shown.estimatedMinutes,
+          assignedAt: shown.assignedAt,
+          withdrawnAt: shown.withdrawnAt,
+          completedOn: shown.completedOn,
+          exercises: shown.exercises.map((ex, orderIndex) => ({
+            name: ex.name,
+            slug: CATALOG.find((c) => c.name === ex.name)?.slug ?? ex.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            sets: ex.sets,
+            reps: ex.reps === null ? null : Number.parseInt(ex.reps, 10) || null,
+            durationMinutes: ex.durationSeconds === null ? null : Math.max(1, Math.round(ex.durationSeconds / 60)),
+            restSeconds: Number.parseInt(ex.rest, 10) || null,
+            orderIndex,
+          })),
+        }
+      : null,
+  };
+}
+
+/** The request's own checks, in the api's order: undeclared keys, the rows, reps on a timed row. */
+async function checkTrialBody(body: CoachTrialSessionRequest): Promise<void> {
+  const extra = Object.keys(body ?? {}).filter((k) => !TRIAL_BODY_KEYS.has(k));
+  if (extra.length > 0) await fail(400, "COACH_FIELD_NOT_ACCEPTED", `${extra[0]} is not accepted`);
+  const rows = Array.isArray(body?.exercises) ? body.exercises : null;
+  if (!rows || rows.length < 1 || rows.length > TRIAL_MAX_EXERCISES) {
+    await fail(400, "VALIDATION_ERROR", "exercises size must be between 1 and 30");
+  }
+  if ((rows as RoutineExercise[]).some((ex) => ex.trackingType === "DURATION" && ex.reps !== null)) {
+    await fail(400, "COACH_DRAFT_REPS_ON_DURATION", "A timed exercise carries no reps");
+  }
+}
+
+function trialRepairs(id: string, body: CoachTrialSessionRequest): PublishRepair[] {
+  return repairsFor(id, { ...blankTrialRoutine(), trainingDays: [{ dayOfWeek: 1, focus: "", estimatedMinutes: null, exercises: body.exercises }] });
+}
+
+function trialDigest(id: string, body: CoachTrialSessionRequest): string {
+  const { title = null, plannedOn = null, note = null, estimatedMinutes = null, exercises } = body;
+  return digestOf(
+    JSON.stringify({ domain: "trial", body: { title, plannedOn, note, estimatedMinutes, exercises }, repairs: trialRepairs(id, body) })
+  );
+}
+
+function blankTrialRoutine(): Routine {
+  return {
+    name: "",
+    goal: FIXTURE_SUBJECT.goal,
+    level: FIXTURE_SUBJECT.level,
+    daysPerWeek: 1,
+    trainingDays: [],
+    weeklyProgression: [],
+    constraints: { equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: 1 },
+    summary: null,
+  };
+}
+
+async function fixtureGetTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  const sw = await fixtureSwitch("evoli_fixture_trial_read");
+  if (sw === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+  if (sw === "missing") await fail(404, "NOT_FOUND", "No static resource");
+  return trialResponse(id);
+}
+
+async function fixturePreviewTrialSession(id: string, body: CoachTrialSessionRequest): Promise<CoachTrialSessionPreview> {
+  await assertScope(id, "WORKOUTS");
+  await checkTrialBody(body);
+  if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
+  const repairs = trialRepairs(id, body);
+  // Writes NOTHING (EV-341i I2): the digest is a function of the body, not a stored token.
+  return { repairs, repairCount: repairs.length, digest: trialDigest(id, body), equipmentChecked: false };
+}
+
+async function fixtureAssignTrialSession(
+  id: string,
+  body: CoachTrialSessionRequest,
+  digest: string
+): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  await checkTrialBody(body);
+  if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
+  const stale = (await fixtureSwitch("evoli_fixture_trial_assign")) === "stale";
+  if (stale || typeof digest !== "string" || digest !== trialDigest(id, body)) {
+    await fail(409, "COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED", "Repairs not acknowledged");
+  }
+  if (openTrial(id)) await fail(409, "TRIAL_SESSION_ALREADY_OPEN", "A trial session is already open");
+  const repaired = applyRepairs(id, {
+    ...blankTrialRoutine(),
+    trainingDays: [{ dayOfWeek: 1, focus: "", estimatedMinutes: null, exercises: body.exercises }],
+  }).trainingDays[0].exercises;
+  const stored: StoredTrialSession = {
+    id: crypto.randomUUID(),
+    title: body.title?.trim() || "Séance d'essai",
+    plannedOn: body.plannedOn ?? null,
+    note: body.note ?? null,
+    estimatedMinutes: body.estimatedMinutes ?? null,
+    exercises: repaired,
+    assignedAt: new Date().toISOString(),
+    withdrawnAt: null,
+    completedOn: null,
+  };
+  state().trialSessions.set(id, [...trialsOf(id), stored]);
+  return trialResponse(id);
+}
+
+async function fixtureWithdrawTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  const open = openTrial(id);
+  if (open) open.withdrawnAt = new Date().toISOString();
+  return trialResponse(id);
+}
+
+/**
+ * ⚠ TEST AFFORDANCE — the TRAINEE finishing the session in the app's player
+ * (`POST /me/workout/complete` on the carrier workout): the latest session not yet done,
+ * withdrawn or not (I3b: a player already open can still finish a withdrawn one), is DONE
+ * today. Answers whether there was one.
+ */
+export function fixtureTrialComplete(id: string): boolean {
+  const target = [...trialsOf(id)].reverse().find((t) => t.completedOn === null);
+  if (!target) return false;
+  target.completedOn = new Date().toISOString().slice(0, 10);
+  return true;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -4941,11 +5155,11 @@ function freshState(): FixtureState {
     legalVersions: { privacyPolicyVersion: "v1.0", termsVersion: "v1.0" },
     activations: [],
     challenges: seedChallenges(),
+    trialSessions: new Map(),
     invited: seedInvited(),
     invitationMails: [],
     initialiseCalls: [],
     resendCalls: new Map(),
-    trialSessions: new Map(),
   };
 }
 
@@ -5892,220 +6106,6 @@ async function fixtureListInvited(page = 0, size = 20): Promise<InitialisedAccou
     totalElements: rows.length,
     totalPages: Math.ceil(rows.length / size),
   };
-}
-
-/* ════════════════════════════════════════════════════════════════════════════
- * EV-341j — THE TRIAL SESSION, ported from b-fit-api EV-341i @ 95ca369d
- * (`CoachTrialSessionUseCase`): one open session per link, two-phase assign, derived status.
- *
- *   · guard: WORKOUTS on an ACTIVE link (`assertScope`), the routine endpoints' own;
- *   · status DERIVED on read: DONE if completed (wins over a withdraw), else WITHDRAWN if
- *     withdrawn, else ASSIGNED. OPEN = not withdrawn (a DONE one stays open until withdrawn,
- *     EV-341i's provisional ruling);
- *   · the coach's read: the open one, else the latest DONE one, else null;
- *   · `programmeStatus`: PUBLISHED when THIS coach published the live plan (the EV-283a
- *     authorship record: COACH, or a publish the trainee has since changed), else from the read;
- *   · the digest is the preview's, of THIS body and its repairs, under a "trial" domain, so a
- *     publish's digest never acknowledges a trial and the other way round.
- *
- * Fixture-only switches (one browser context each):
- *   `evoli_fixture_trial_read=fail`     → the GET answers 500 (the card's load-error line);
- *   `evoli_fixture_trial_read=missing`  → the GET answers 404, an api that predates EV-341i:
- *                                         the card is not drawn at all;
- *   `evoli_fixture_trial_assign=stale`  → every assign answers 409 COACH_PUBLISH_REPAIRS_
- *                                         UNACKNOWLEDGED (the trainee's injuries changed
- *                                         between the preview and the assign): the card must
- *                                         preview again, never retry the digest.
- * The trainee completing the session in the app is `fixtureTrialComplete`, reached through
- * `POST /api/fixture/trial`.
- * ════════════════════════════════════════════════════════════════════════════ */
-
-interface StoredTrialSession {
-  id: string;
-  title: string;
-  plannedOn: string | null;
-  note: string | null;
-  estimatedMinutes: number | null;
-  /** The REPAIRED rows (the trainee receives what the policy returned, as a publish does). */
-  exercises: RoutineExercise[];
-  assignedAt: string;
-  withdrawnAt: string | null;
-  completedOn: string | null;
-}
-
-const TRIAL_BODY_KEYS = new Set(["title", "plannedOn", "note", "estimatedMinutes", "exercises", "digest"]);
-const TRIAL_MAX_EXERCISES = 30;
-
-function trialStatus(t: StoredTrialSession): TrialSession["status"] {
-  return t.completedOn ? "DONE" : t.withdrawnAt ? "WITHDRAWN" : "ASSIGNED";
-}
-
-function trialsOf(id: string): StoredTrialSession[] {
-  return state().trialSessions.get(id) ?? [];
-}
-
-function openTrial(id: string): StoredTrialSession | undefined {
-  return trialsOf(id).find((t) => t.withdrawnAt === null);
-}
-
-/** The coach's read: the open one, else the latest DONE one, else none. */
-function shownTrial(id: string): StoredTrialSession | undefined {
-  return openTrial(id) ?? [...trialsOf(id)].reverse().find((t) => t.completedOn !== null);
-}
-
-function publishedByThisCoach(id: string): boolean {
-  const author = state().planAuthors.get(id);
-  return !!state().plans.get(id) && !!author && (author.lastChangedBy === "COACH" || author.changedSinceYourPublish);
-}
-
-function fixtureProgrammeStatus(id: string): ProgrammeStatus {
-  if (publishedByThisCoach(id)) return "PUBLISHED";
-  const shown = shownTrial(id);
-  if (!shown) return "AWAITING_PROGRAMME";
-  return trialStatus(shown) === "DONE" ? "TRIAL_DONE" : "TRIAL_ASSIGNED";
-}
-
-/** The roster row's `programmeStatus`, from the row's own `scopes` (null without WORKOUTS). */
-function withProgrammeStatus(row: RosterClient): RosterClient {
-  // A roster-only row that states its own (the inactivity boundary rows) keeps it.
-  if (row.programmeStatus !== undefined) return row;
-  return { ...row, programmeStatus: row.scopes.includes("WORKOUTS") ? fixtureProgrammeStatus(row.id) : null };
-}
-
-function trialResponse(id: string): CoachTrialSessionResponse {
-  const shown = shownTrial(id);
-  return {
-    programmeStatus: fixtureProgrammeStatus(id),
-    trialSession: shown
-      ? {
-          id: shown.id,
-          status: trialStatus(shown),
-          title: shown.title,
-          plannedOn: shown.plannedOn,
-          note: shown.note,
-          workoutId: `workout-trial-${shown.id.slice(0, 8)}`,
-          estimatedMinutes: shown.estimatedMinutes,
-          assignedAt: shown.assignedAt,
-          withdrawnAt: shown.withdrawnAt,
-          completedOn: shown.completedOn,
-          exercises: shown.exercises.map((ex, orderIndex) => ({
-            name: ex.name,
-            slug: CATALOG.find((c) => c.name === ex.name)?.slug ?? ex.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-            sets: ex.sets,
-            reps: ex.reps === null ? null : Number.parseInt(ex.reps, 10) || null,
-            durationMinutes: ex.durationSeconds === null ? null : Math.max(1, Math.round(ex.durationSeconds / 60)),
-            restSeconds: Number.parseInt(ex.rest, 10) || null,
-            orderIndex,
-          })),
-        }
-      : null,
-  };
-}
-
-/** The request's own checks, in the api's order: undeclared keys, the rows, reps on a timed row. */
-async function checkTrialBody(body: CoachTrialSessionRequest): Promise<void> {
-  const extra = Object.keys(body ?? {}).filter((k) => !TRIAL_BODY_KEYS.has(k));
-  if (extra.length > 0) await fail(400, "COACH_FIELD_NOT_ACCEPTED", `${extra[0]} is not accepted`);
-  const rows = Array.isArray(body?.exercises) ? body.exercises : null;
-  if (!rows || rows.length < 1 || rows.length > TRIAL_MAX_EXERCISES) {
-    await fail(400, "VALIDATION_ERROR", "exercises size must be between 1 and 30");
-  }
-  if ((rows as RoutineExercise[]).some((ex) => ex.trackingType === "DURATION" && ex.reps !== null)) {
-    await fail(400, "COACH_DRAFT_REPS_ON_DURATION", "A timed exercise carries no reps");
-  }
-}
-
-function trialRepairs(id: string, body: CoachTrialSessionRequest): PublishRepair[] {
-  return repairsFor(id, { ...blankTrialRoutine(), trainingDays: [{ dayOfWeek: 1, focus: "", estimatedMinutes: null, exercises: body.exercises }] });
-}
-
-function trialDigest(id: string, body: CoachTrialSessionRequest): string {
-  const { title = null, plannedOn = null, note = null, estimatedMinutes = null, exercises } = body;
-  return digestOf(
-    JSON.stringify({ domain: "trial", body: { title, plannedOn, note, estimatedMinutes, exercises }, repairs: trialRepairs(id, body) })
-  );
-}
-
-function blankTrialRoutine(): Routine {
-  return {
-    name: "",
-    goal: FIXTURE_SUBJECT.goal,
-    level: FIXTURE_SUBJECT.level,
-    daysPerWeek: 1,
-    trainingDays: [],
-    weeklyProgression: [],
-    constraints: { equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: 1 },
-    summary: null,
-  };
-}
-
-async function fixtureGetTrialSession(id: string): Promise<CoachTrialSessionResponse> {
-  await assertScope(id, "WORKOUTS");
-  const sw = await fixtureSwitch("evoli_fixture_trial_read");
-  if (sw === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
-  if (sw === "missing") await fail(404, "NOT_FOUND", "No static resource");
-  return trialResponse(id);
-}
-
-async function fixturePreviewTrialSession(id: string, body: CoachTrialSessionRequest): Promise<CoachTrialSessionPreview> {
-  await assertScope(id, "WORKOUTS");
-  await checkTrialBody(body);
-  if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
-  const repairs = trialRepairs(id, body);
-  // Writes NOTHING (EV-341i I2): the digest is a function of the body, not a stored token.
-  return { repairs, repairCount: repairs.length, digest: trialDigest(id, body), equipmentChecked: false };
-}
-
-async function fixtureAssignTrialSession(
-  id: string,
-  body: CoachTrialSessionRequest,
-  digest: string
-): Promise<CoachTrialSessionResponse> {
-  await assertScope(id, "WORKOUTS");
-  await checkTrialBody(body);
-  if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
-  const stale = (await fixtureSwitch("evoli_fixture_trial_assign")) === "stale";
-  if (stale || typeof digest !== "string" || digest !== trialDigest(id, body)) {
-    await fail(409, "COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED", "Repairs not acknowledged");
-  }
-  if (openTrial(id)) await fail(409, "TRIAL_SESSION_ALREADY_OPEN", "A trial session is already open");
-  const repaired = applyRepairs(id, {
-    ...blankTrialRoutine(),
-    trainingDays: [{ dayOfWeek: 1, focus: "", estimatedMinutes: null, exercises: body.exercises }],
-  }).trainingDays[0].exercises;
-  const stored: StoredTrialSession = {
-    id: crypto.randomUUID(),
-    title: body.title?.trim() || "Séance d'essai",
-    plannedOn: body.plannedOn ?? null,
-    note: body.note ?? null,
-    estimatedMinutes: body.estimatedMinutes ?? null,
-    exercises: repaired,
-    assignedAt: new Date().toISOString(),
-    withdrawnAt: null,
-    completedOn: null,
-  };
-  state().trialSessions.set(id, [...trialsOf(id), stored]);
-  return trialResponse(id);
-}
-
-async function fixtureWithdrawTrialSession(id: string): Promise<CoachTrialSessionResponse> {
-  await assertScope(id, "WORKOUTS");
-  const open = openTrial(id);
-  if (open) open.withdrawnAt = new Date().toISOString();
-  return trialResponse(id);
-}
-
-/**
- * ⚠ TEST AFFORDANCE — the TRAINEE finishing the session in the app's player
- * (`POST /me/workout/complete` on the carrier workout): the latest session not yet done,
- * withdrawn or not (I3b: a player already open can still finish a withdrawn one), is DONE
- * today. Answers whether there was one.
- */
-export function fixtureTrialComplete(id: string): boolean {
-  const target = [...trialsOf(id)].reverse().find((t) => t.completedOn === null);
-  if (!target) return false;
-  target.completedOn = new Date().toISOString().slice(0, 10);
-  return true;
 }
 
 export const fixtureCoachApi: CoachApi = {

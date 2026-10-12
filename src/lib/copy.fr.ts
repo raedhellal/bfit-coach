@@ -1572,9 +1572,6 @@ export const fr = {
       cardio: "Cardio",
     } as Record<string, string>,
   },
-  navProgress: {
-    label: "Chargement de la page",
-  },
   // EV-341j — le texte de la story (J1–J4), à l'espace insécable près devant « ? ».
   trial: {
     title: "Séance d'essai",
@@ -1587,7 +1584,6 @@ export const fr = {
     withdrawTitle: "Retirer la séance d'essai\u00a0?",
     withdrawBody: (firstName: string) =>
       `${firstName} ne la verra plus dans l'app. Si ${mid(firstName)} l'a déjà commencée, elle pourra être terminée et comptera comme faite.`,
-    prepareAnother: "Préparer une autre séance d'essai",
     pills: {
       AWAITING_PROGRAMME: "Programme à préparer",
       TRIAL_ASSIGNED: "Séance d'essai assignée",
@@ -1598,5 +1594,8 @@ export const fr = {
     assignFailed: "La séance d'essai n'a pas pu être assignée.",
     withdrawFailed: "La séance d'essai n'a pas pu être retirée.",
     loadError: "Ce bloc n'a pas pu être chargé. Rechargez la page pour réessayer.",
+  },
+  navProgress: {
+    label: "Chargement de la page",
   },
 } satisfies Copy;

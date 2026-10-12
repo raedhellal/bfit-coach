@@ -9,7 +9,7 @@ import { formatDate, formatInstant } from "../src/lib/format";
 /**
  * EV-341j — the trial session on the Programme tab: J1 (prepare, from a template day), J2
  * (assign through the two phases, EV-184's repair dialog), J3 (assigned / done, no edit),
- * J3b (the withdraw dialog), J3c (prepare another over a done one), and the portal rules
+ * J3b (the withdraw dialog), the withdrawn J3c (a done session offers NO prepare path), and the portal rules
  * (French, widths, keyboard, WebKit). J4's roster pill is `trial-session-roster.spec.ts`
  * (populated roster); the pure parts are `trial-session-unit.spec.ts`.
  *
@@ -36,7 +36,6 @@ const T = {
     assign: "Assign",
     withdraw: "Withdraw",
     cancel: "Cancel",
-    another: "Prepare another trial session",
     needs: "Add at least one exercise.",
     addExercise: "Add exercise",
     search: "Search the catalog",
@@ -60,7 +59,6 @@ const T = {
     assign: "Assigner",
     withdraw: "Retirer",
     cancel: "Annuler",
-    another: "Préparer une autre séance d'essai",
     needs: "Ajoutez au moins un exercice.",
     addExercise: "Ajouter un exercice",
     search: "Rechercher dans le catalogue",
@@ -277,7 +275,7 @@ test.describe("EV-341j (EN)", () => {
     });
   });
 
-  test.describe("J3 / J3b / J3c", () => {
+  test.describe("J3 / J3b", () => {
     async function assignGoblet(page: Page) {
       await openProgramme(page, NILS);
       await prepare(page);
@@ -317,7 +315,7 @@ test.describe("EV-341j (EN)", () => {
       expect(await count(page, "withdrawTrialSession", NILS)).toBe(1);
     });
 
-    test("J3 done: « Faite le » links to the history; also when it was withdrawn before it was finished", async ({ page }) => {
+    test("J3 done: « Faite le » links to the history, and the card holds no control (J3c withdrawn)", async ({ page }) => {
       await signInThroughForm(page);
       await assignGoblet(page);
       await complete(page, NILS);
@@ -325,34 +323,22 @@ test.describe("EV-341j (EN)", () => {
       const link = card(page).getByRole("link", { name: T.en.doneOn(todayDate("en")), exact: true });
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute("href", `/clients/${NILS}#ov-activity`);
-
-      // A second session, withdrawn, then finished by a player that was already open (I3b).
-      await card(page).getByRole("button", { name: T.en.another, exact: true }).click();
-      await addExercise(page, "Goblet Squat");
-      await card(page).getByRole("button", { name: T.en.assign, exact: true }).click();
-      await assigned(page);
-      await card(page).getByRole("button", { name: T.en.withdraw, exact: true }).click();
-      await page.getByRole("dialog", { name: T.en.withdrawTitle }).getByRole("button", { name: T.en.withdraw, exact: true }).click();
-      await complete(page, NILS);
-      await page.reload();
-      await expect(card(page).getByRole("link", { name: T.en.doneOn(todayDate("en")), exact: true })).toBeVisible();
+      // TRIAL_DONE has no prepare path in this release: no « Préparer » of any kind, no button at all.
+      await expect(card(page).getByRole("button")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^(Prepare|Préparer)/ })).toHaveCount(0);
     });
 
-    test("J3c: « Préparer une autre » withdraws the done one with no dialog and opens the empty editor", async ({ page }) => {
+    test("J3 done: also when it was withdrawn before it was finished (DONE wins, I3b)", async ({ page }) => {
       await signInThroughForm(page);
       await assignGoblet(page);
+      await card(page).getByRole("button", { name: T.en.withdraw, exact: true }).click();
+      await page.getByRole("dialog", { name: T.en.withdrawTitle }).getByRole("button", { name: T.en.withdraw, exact: true }).click();
+      await expect(card(page).getByRole("button", { name: T.en.prepare, exact: true })).toBeVisible();
+      // A player that was already open finishes the withdrawn session.
       await complete(page, NILS);
       await page.reload();
-      await card(page).getByRole("button", { name: T.en.another, exact: true }).click();
-      await expect(page.getByRole("dialog")).toHaveCount(0);
-      await expect(card(page).getByRole("button", { name: T.en.fromTemplate, exact: true })).toBeVisible();
-      await expect(card(page).getByRole("group")).toHaveCount(0);
-      // It stays « Faite le » (and TRIAL_DONE) until the new one is assigned.
       await expect(card(page).getByRole("link", { name: T.en.doneOn(todayDate("en")), exact: true })).toBeVisible();
-      expect(await count(page, "withdrawTrialSession", NILS)).toBe(1);
-      await addExercise(page, "Goblet Squat");
-      await card(page).getByRole("button", { name: T.en.assign, exact: true }).click();
-      await assigned(page);
+      await expect(card(page).getByRole("button")).toHaveCount(0);
     });
   });
 
@@ -429,7 +415,7 @@ test.describe("EV-341j (FR, the default language)", () => {
     await complete(page, NILS);
     await page.reload();
     await expect(card(page, "fr").getByRole("link", { name: T.fr.doneOn(todayDate("fr")), exact: true })).toBeVisible();
-    await expect(card(page, "fr").getByRole("button", { name: T.fr.another, exact: true })).toBeVisible();
+    await expect(card(page, "fr").getByRole("button"), "J3c withdrawn: no control on a done session").toHaveCount(0);
     await expectNoEnglish(page, "a done trial session");
   });
 });

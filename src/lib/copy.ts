@@ -2774,13 +2774,6 @@ export const en = {
     } as Record<string, string>,
   },
   /**
-   * ADR-0033 follow-up (perf/coach-fast-routes-no-skeleton): the navigation progress
-   * bar's accessible name. It shows only when a page change takes longer than 400 ms.
-   */
-  navProgress: {
-    label: "Loading the page",
-  },
-  /**
    * EV-341j — the trial session on the Programme tab, and its roster pill. Every string
    * marked "J" is the story's, verbatim (QA checks them character by character). The four
    * marked "not in the story" are failure and bound sentences no AC words: senior-po's to
@@ -2809,8 +2802,8 @@ export const en = {
     /** J3b, verbatim. Sentence-initial name first, then mid-sentence. */
     withdrawBody: (firstName: string) =>
       `${firstName} will no longer see it in the app. If ${mid(firstName)} has already started it, it can still be finished and will count as done.`,
-    /** J3c, verbatim. */
-    prepareAnother: "Prepare another trial session",
+    // ⛔ No « Préparer une autre séance d'essai »: J3c was withdrawn (2026-10-12 (d), senior-po on
+    // staff's EV-341i ruling 1). TRIAL_DONE has no prepare path; do not add one back.
     /** J4, verbatim — the roster pill, one per client, none for PUBLISHED. */
     pills: {
       AWAITING_PROGRAMME: "Programme to prepare",
@@ -2827,6 +2820,13 @@ export const en = {
     withdrawFailed: "The trial session could not be withdrawn.",
     /** The card's read failed (not a 403): the overview's own block sentence. */
     loadError: "This block could not be loaded. Reload the page to try again.",
+  },
+  /**
+   * ADR-0033 follow-up (perf/coach-fast-routes-no-skeleton): the navigation progress
+   * bar's accessible name. It shows only when a page change takes longer than 400 ms.
+   */
+  navProgress: {
+    label: "Loading the page",
   },
 } as const;
 

@@ -64,17 +64,18 @@ export function asTrialRead(body: unknown): TrialRead | null {
  *   · `assigned` — J3: an ASSIGNED session, « Assignée le {date} » + « Retirer », whatever the
  *                  programme status (I5: a publish leaves it open, and the coach can still
  *                  withdraw it).
- *   · `done`     — J3: « Faite le {date} », linked to the history; J3c's « Préparer une autre
- *                  séance d'essai » only while the client is TRIAL_DONE (not after a publish).
+ *   · `done`     — J3: « Faite le {date} », linked to the history, and NO control: a done
+ *                  session has no prepare path (J3c, which offered one, was withdrawn
+ *                  2026-10-12 (d); a second trial session is out of the story's scope).
  *   · `none`     — PUBLISHED with nothing ASSIGNED: no card. A programme is on the Programme tab
  *                  already, and neither J1 nor J3 asks for a trial card then.
- * A DONE session that was withdrawn (J3c's click, or a withdraw that lost the race to the
- * completion: I3b) still reads `done`: DONE wins.
+ * A DONE session that was withdrawn (a withdraw that lost the race to the completion: I3b)
+ * still reads `done`: DONE wins.
  */
 export type TrialCardView =
   | { kind: "prepare" }
   | { kind: "assigned"; assignedAt: string }
-  | { kind: "done"; completedOn: string | null; prepareAnother: boolean }
+  | { kind: "done"; completedOn: string | null }
   | { kind: "none" };
 
 export function trialCardView(read: TrialRead): TrialCardView {
@@ -82,7 +83,7 @@ export function trialCardView(read: TrialRead): TrialCardView {
   if (t?.status === "ASSIGNED") return { kind: "assigned", assignedAt: t.assignedAt };
   if (read.programmeStatus === "PUBLISHED") return { kind: "none" };
   if (t?.status === "DONE") {
-    return { kind: "done", completedOn: t.completedOn, prepareAnother: read.programmeStatus === "TRIAL_DONE" };
+    return { kind: "done", completedOn: t.completedOn };
   }
   return { kind: "prepare" };
 }

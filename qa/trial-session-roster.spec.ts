@@ -8,9 +8,6 @@ import { signInThroughForm } from "./sign-in";
  * On the POPULATED roster (playwright.roster.config.ts). From the seed: Tobias has all scopes
  * and no plan (AWAITING_PROGRAMME), Lina and Yusuf have a plan this coach published
  * (PUBLISHED), and Petra, Sara and Mara do not share their workouts (null).
- *
- * Also J3c's last clause: after « Préparer une autre séance d'essai » the pill stays « faite »
- * until the new one is assigned, then reads « Séance d'essai assignée ».
  */
 
 const TOBIAS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0009";
@@ -68,7 +65,7 @@ test.describe("J4 (EN)", () => {
     expect(described).toContain(`roster-${TOBIAS}-status`);
   });
 
-  test("assigned, done, and J3c: « faite » until the next assign, then « assignée »", async ({ page }) => {
+  test("assigned, then done", async ({ page }) => {
     await signInThroughForm(page);
     await page.goto(`/clients/${TOBIAS}/routine`);
     await assignGoblet(page, "Prepare a trial session");
@@ -78,18 +75,6 @@ test.describe("J4 (EN)", () => {
     await complete(page);
     await roster(page);
     await expect(pill(page, "Tobias R.")).toHaveText(PILLS.en.done);
-
-    await page.goto(`/clients/${TOBIAS}/routine`);
-    await page.getByRole("button", { name: "Prepare another trial session", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Start from a template", exact: true })).toBeVisible();
-    await roster(page);
-    await expect(pill(page, "Tobias R."), "TRIAL_DONE until the new one is assigned").toHaveText(PILLS.en.done);
-
-    await page.goto(`/clients/${TOBIAS}/routine`);
-    await page.getByRole("button", { name: "Prepare another trial session", exact: true }).click();
-    await assignGoblet(page, "");
-    await roster(page);
-    await expect(pill(page, "Tobias R.")).toHaveText(PILLS.en.assigned);
   });
 });
 

@@ -63,7 +63,7 @@ export async function assignTrialSessionAction(
   }
 }
 
-/** J3b / J3c — the withdraw (idempotent on the api: with nothing open it answers the same read). */
+/** J3b — the withdraw (idempotent on the api: with nothing open it answers the same read). */
 export async function withdrawTrialSessionAction(clientId: string): Promise<TrialWriteResult> {
   if (!isClientId(clientId)) return { ok: false, failure: "ACCESS_DENIED" };
   try {

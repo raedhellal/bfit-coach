@@ -47,8 +47,7 @@ import type {
  *   J3  ASSIGNED: « Assignée le {date} » + « Retirer », and NO edit control (ADR-0034 Q7 (f)).
  *       DONE: « Faite le {date} », linked to the session in the overview's history.
  *   J3b « Retirer » asks first (the dialog's words are the story's).
- *   J3c TRIAL_DONE: « Préparer une autre séance d'essai » withdraws the done one with NO dialog
- *       (it stays « Faite le » and TRIAL_DONE until the next assign) and opens the empty editor.
+ *   J3c is WITHDRAWN (2026-10-12 (d)): a TRIAL_DONE card offers no prepare path, no control.
  *
  * No write is optimistic (ADR-0033 D33.6): every state change follows the api's answer. The
  * assign and the withdraw revalidate the page, so the card re-seeds from the server's read.
@@ -98,7 +97,7 @@ export function TrialSessionCard({
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
-  const [busy, setBusy] = useState<null | "assign" | "withdraw" | "another">(null);
+  const [busy, setBusy] = useState<null | "assign" | "withdraw">(null);
   const [error, setError] = useState<string | null>(null);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
 
@@ -243,21 +242,6 @@ export function TrialSessionCard({
     setWithdrawError(t.withdrawFailed);
   }
 
-  /** J3c — withdraw the done one, no dialog, then the empty editor. */
-  async function prepareAnother(): Promise<void> {
-    setBusy("another");
-    setError(null);
-    const result = await settled(withdrawTrialSessionAction(clientId), { ok: false, failure: "FAILED" as const });
-    setBusy(null);
-    if (result.ok) {
-      if (result.read) setCurrent(result.read);
-      openEditor();
-      return;
-    }
-    if (result.failure === "ACCESS_DENIED") return accessEnded();
-    setError(t.assignFailed);
-  }
-
   if (view?.kind === "none" && !editing) return null;
 
   const full = exercises.length >= MAX_TRIAL_EXERCISES;
@@ -288,11 +272,6 @@ export function TrialSessionCard({
                 {t.doneOn(formatDate(view.completedOn, copy.locale))}
               </Link>
             </p>
-            {view.prepareAnother && !editing && (
-              <Button variant="secondary" icon="plus" onClick={prepareAnother} disabled={busy !== null}>
-                {t.prepareAnother}
-              </Button>
-            )}
           </div>
         )}
 
@@ -303,7 +282,7 @@ export function TrialSessionCard({
         )}
 
         {editing && (
-          <div className="trial-editor" style={{ display: "grid", gap: 12, marginTop: view?.kind === "done" ? 12 : 0 }}>
+          <div className="trial-editor" style={{ display: "grid", gap: 12 }}>
             <div>
               <Button variant="secondary" icon="file" onClick={() => setTemplatesOpen(true)} disabled={busy !== null}>
                 {t.fromTemplate}

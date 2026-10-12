@@ -103,8 +103,8 @@ test.describe("the card's state", () => {
     expect(trialCardView(read("PUBLISHED", "ASSIGNED"))).toEqual({ kind: "assigned", assignedAt: at });
   });
 
-  test("J3/J3c: done → the date; « Préparer une autre » only while TRIAL_DONE", () => {
-    expect(trialCardView(read("TRIAL_DONE", "DONE"))).toEqual({ kind: "done", completedOn: "2026-10-02", prepareAnother: true });
+  test("J3: done → the date and nothing else (J3c withdrawn: TRIAL_DONE has no prepare path)", () => {
+    expect(trialCardView(read("TRIAL_DONE", "DONE"))).toEqual({ kind: "done", completedOn: "2026-10-02" });
     expect(trialCardView(read("PUBLISHED", "DONE"))).toEqual({ kind: "none" });
   });
 
