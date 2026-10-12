@@ -10,7 +10,7 @@ import { firstName } from "../src/lib/format";
  * "Nothing was changed for this trainee.", « Les objectifs de ce client … ».
  *
  * This file pins EVERY copy function the fallback reaches, found by a code trace from the six
- * `firstName()` calls (overview `page.tsx`, `routineChange.ts`, `ProgressGoalBlock`,
+ * `firstName()` calls (overview `page.tsx` — since EV-341w also the « Entretien » card it feeds —, `routineChange.ts`, `ProgressGoalBlock`,
  * `NutritionWeekCard` → `SwapSheet` → `refusalSentence`, `NutritionTemplateLibrary`,
  * `TemplateUseOutcome`), not by a grep of the copy files. Each row is called with what the
  * component passes for a nameless trainee: `firstName(null, locale)`.
@@ -166,6 +166,13 @@ function enRows(): Row[] {
       text: t.targetsUnknown(first),
       expected: "We couldn't confirm whether this trainee's targets changed. Check their nutrition page before you try again.",
     },
+    // EV-341w: the overview's « Entretien » card (`firstName()` in the overview page).
+    { key: "intake.noGrant", text: en.intake.noGrant(first), expected: "This trainee hasn't allowed the intake interview yet." },
+    {
+      key: "intake.waiting",
+      text: en.intake.waiting(first),
+      expected: "Ask this trainee to open Evoli Fit. If the app is already open: Preferences, then Coaching.",
+    },
   ];
 }
 
@@ -314,6 +321,13 @@ function frRows(): Row[] {
       expected:
         "Nous n'avons pas pu confirmer si les objectifs de ce client ont changé. Vérifiez sa page nutrition avant de réessayer.",
     },
+    // EV-341w: the overview's « Entretien » card.
+    { key: "intake.noGrant", text: fr.intake.noGrant(first), expected: "Ce client n'a pas encore autorisé l'entretien." },
+    {
+      key: "intake.waiting",
+      text: fr.intake.waiting(first),
+      expected: "Demandez à ce client d'ouvrir Evoli Fit. Si l'application est déjà ouverte : Préférences, puis Coaching.",
+    },
   ];
 }
 
@@ -325,10 +339,11 @@ const FALLBACK = {
 } as const;
 
 /**
- * Every copy function the trace found, by language: 31 keys each. Pinned, so a row dropped from
- * the table (and with it a call site) fails here rather than going quiet.
+ * Every copy function the trace found, by language: 33 keys each (EV-341w: +2, the « Entretien »
+ * card). Pinned, so a row dropped from the table (and with it a call site) fails here rather than
+ * going quiet.
  */
-const KEYS = 31;
+const KEYS = 33;
 
 for (const lang of ["en", "fr"] as const) {
   test.describe(`BUG-720 — the fallback's case, sentence by sentence (${lang})`, () => {

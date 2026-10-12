@@ -53,7 +53,9 @@ export default defineConfig({
   // EV-356g: library-roster-unblocked.spec.ts times paints on a production build and needs the
   // populated roster (playwright.start.config.ts). Its hook's unit tests, roster-read-unit.spec.ts,
   // run HERE.
-  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intent-prefetch|client-load-reload|no-auto-prefetch|session-epoch|session-epoch-cookie|library-roster-unblocked|library-roster-dropped-load)\.spec\.ts/,
+  // EV-341w N3: intake-hold-off.spec.ts needs a server with COACH_INTAKE_REQUEST unset, which
+  // this suite sets (playwright.roster.config.ts leaves it unset).
+  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intent-prefetch|client-load-reload|no-auto-prefetch|session-epoch|session-epoch-cookie|library-roster-unblocked|library-roster-dropped-load|intake-hold-off)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.
@@ -115,6 +117,11 @@ export default defineConfig({
       COACH_API_MODE: "fixture",
       COACH_FIXTURE_SCENARIO: "empty",
       INVITE_BASE_URL: BASE_URL,
+      // EV-341w's release hold is OFF by default (src/lib/intakeRequestGate.ts). This suite
+      // turns it ON so the « Entretien » card is under every default spec that opens an
+      // overview (W11). The roster and start suites leave it off: page-read-budget's exact
+      // overview reads there are the witness that an unset flag makes no intake read.
+      COACH_INTAKE_REQUEST: "on",
     },
   },
 });

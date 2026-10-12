@@ -1575,4 +1575,19 @@ export const fr = {
   navProgress: {
     label: "Chargement de la page",
   },
+  // EV-341w — le texte de la story (section Copy), à l'espace insécable près devant « : ».
+  intake: {
+    title: "Entretien",
+    noGrant: (firstName: string) => `${firstName} n'a pas encore autorisé l'entretien.`,
+    ask: "Demander l'accord",
+    waiting: (firstName: string) =>
+      `Demandez à ${mid(firstName)} d'ouvrir Evoli Fit. Si l'application est déjà ouverte\u00a0: Préférences, puis Coaching.`,
+    cancel: "Annuler la demande",
+    granted: "Accord donné",
+    notNow: "Pas d'accord pour l'instant.",
+    cap: "Vous avez déjà demandé 3 fois en 24 heures. Vous pourrez redemander plus tard.",
+    askFailed: "La demande n'a pas pu être envoyée. Réessayez.",
+    cancelFailed: "La demande n'a pas pu être annulée. Réessayez.",
+    loadError: "Ce bloc n'a pas pu être chargé. Rechargez la page pour réessayer.",
+  },
 } satisfies Copy;

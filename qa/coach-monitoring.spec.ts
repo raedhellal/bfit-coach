@@ -590,7 +590,10 @@ test.describe("AC6 — the page is read-only, by a closed list", () => {
      * chrome and is scoped out above. A new control arriving here fails by name.
      */
     // EV-342j added « Show the last 10 » (a read: it opens rows already on the page).
-    expect(names.sort()).toEqual(["More", "Save", "Show the last 10"]);
+    // EV-341w added « Ask for consent » (the « Entretien » card, present while the release hold
+    // COACH_INTAKE_REQUEST is on, as in this suite). It writes no trainee data: it asks the
+    // CLIENT, on their own phone, for the intake consent; only their own answer writes one.
+    expect(names.sort()).toEqual(["Ask for consent", "More", "Save", "Show the last 10"]);
   });
 });
 

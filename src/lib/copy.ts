@@ -2780,6 +2780,40 @@ export const en = {
   navProgress: {
     label: "Loading the page",
   },
+  /**
+   * EV-341w — the overview's « Entretien » card: « Demander l'accord », the waiting panel and
+   * the answer. Every sentence marked "W" is the story's Copy section, verbatim; QA checks
+   * them character by character.
+   *
+   * ⛔ There is deliberately NO sentence for a refusal, a decline, an expiry or a cancel as
+   * such (W4, W9, ADR-0034a D34a.6): the api sends none, and the three read as one answer,
+   * `notNow`. Do not add one.
+   */
+  intake: {
+    /** The card's title (EV-341b's tab name, EN "Intake"). */
+    title: "Intake",
+    /** W1, verbatim. Sentence-initial: the fallback keeps its capital. */
+    noGrant: (firstName: string) => `${firstName} hasn't allowed the intake interview yet.`,
+    /** W1/W2, verbatim. */
+    ask: "Ask for consent",
+    /** W2, verbatim. */
+    waiting: (firstName: string) =>
+      `Ask ${mid(firstName)} to open Evoli Fit. If the app is already open: Preferences, then Coaching.`,
+    /** W2/W5, verbatim. */
+    cancel: "Cancel the request",
+    /** W1/W4/W7, verbatim. */
+    granted: "Consent given",
+    /** W4, verbatim: a decline, an expiry and a cancel elsewhere, all alike. */
+    notNow: "No consent for now.",
+    /** W6, verbatim. */
+    cap: "You have already asked 3 times in 24 hours. You can ask again later.",
+    /** Not in the story (no AC names this failure): the ask did not reach the api or it failed. */
+    askFailed: "The request could not be sent. Try again.",
+    /** Not in the story: the cancel did not reach the api or it failed. The wait goes on. */
+    cancelFailed: "The request could not be cancelled. Try again.",
+    /** The card's read failed (not a 403): the overview's own block sentence. */
+    loadError: "This block could not be loaded. Reload the page to try again.",
+  },
 } as const;
 
 /**
