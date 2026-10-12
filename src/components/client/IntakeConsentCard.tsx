@@ -142,6 +142,9 @@ export function IntakeConsentCard({
     LIVE_UNTIL.delete(clientId);
     router.refresh();
   }
+  /** The poll's 403 takes the same path; the effect reads it through a ref (one refresh call site). */
+  const accessEndedRef = useRef(accessEnded);
+  accessEndedRef.current = accessEnded;
 
   const waiting = phase?.kind === "waiting";
   const deadline = phase?.kind === "waiting" ? phase.deadline : null;
@@ -184,11 +187,8 @@ export function IntakeConsentCard({
           if (!outcome.status.pending) return settle({ kind: "answered", capped: false, notice: null });
           return schedule(INTAKE_POLL_MS - (Date.now() - started));
         case "denied":
-          // W8, as `accessEnded` below (inlined: an effect names what it uses).
           stopped = true;
-          LIVE_UNTIL.delete(clientId);
-          router.refresh();
-          return;
+          return accessEndedRef.current();
         case "signedOut":
           stopped = true;
           window.location.reload();
@@ -220,7 +220,7 @@ export function IntakeConsentCard({
       inFlight?.abort();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [waiting, deadline, clientId, router]);
+  }, [waiting, deadline, clientId]);
 
   async function ask() {
     if (busy) return;

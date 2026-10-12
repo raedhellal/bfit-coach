@@ -408,7 +408,10 @@ export default async function ClientPage({ params }: { params: { id: string } })
           }
         />
         <div className="ov-stack">
-          {/* EV-341w: first in the column, the thing a coach does at the start of a session. */}
+          <ProgrammeSummary clientId={overview.clientId} read={programme} />
+          <NutritionSummary clientId={overview.clientId} read={nutrition} />
+          {/* EV-341w: last in the column, so EV-345's two rows (activity beside the programme
+              summary) keep their tops and the 768 px page its height budget. */}
           {intake && (
             <IntakeConsentCard
               clientId={overview.clientId}
@@ -416,8 +419,6 @@ export default async function ClientPage({ params }: { params: { id: string } })
               initial={intake.ok ? asIntakeStatus(intake.value) : null}
             />
           )}
-          <ProgrammeSummary clientId={overview.clientId} read={programme} />
-          <NutritionSummary clientId={overview.clientId} read={nutrition} />
         </div>
       </div>
 
