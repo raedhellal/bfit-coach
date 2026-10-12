@@ -25,6 +25,14 @@ import type { RosterClient, RosterPage } from "./coachApi";
  */
 export const ROSTER_MAX_PAGES = 50;
 
+/**
+ * QA-S3N-1 — how many api calls `readWholeRoster` makes ONE AFTER ANOTHER: page 0, then every
+ * other page in parallel. Each call is bounded by `API_READ_TIMEOUT_MS` (`apiFetch`), so the
+ * whole read is bounded by this many of them, and a client waiting on it
+ * (`rosterReadDeadlineMs`) must wait at least that long. Change it with the shape below.
+ */
+export const WHOLE_ROSTER_READ_ROUNDS = 2;
+
 export async function readWholeRoster(
   readPage: (page: number) => Promise<RosterPage>,
   maxPages = ROSTER_MAX_PAGES
