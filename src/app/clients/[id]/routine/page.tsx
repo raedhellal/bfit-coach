@@ -11,7 +11,10 @@ import {
 } from "@/components/routine/RoutineEditor";
 import { TraineeChangedBanner } from "@/components/routine/TraineeChangedBanner";
 import { SaveAsTemplateButton } from "@/components/templates/SaveAsTemplateButton";
-import { coachApi, hasScope, isForbidden, type CoachRoutineResponse } from "@/lib/coachApi";
+import { coachApi, hasScope, isForbidden, isRouteNotFound, type CoachRoutineResponse } from "@/lib/coachApi";
+import { TrialSessionCard, type TrialCardRead } from "@/components/routine/TrialSessionCard";
+import { asTrialRead } from "@/lib/trialSession";
+import { firstName } from "@/lib/format";
 import { equipmentLabels, injuryLabels } from "@/lib/guardrailLabels";
 import { editableDocument } from "@/lib/routineDocument";
 import { traineeChangeNotice } from "@/lib/routineChange";
@@ -94,6 +97,12 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   let unbindableExercises: string[] = [];
   /** EV-188 AC3's "Started from {name}", resolved from the draft's template id. */
   let sourceTemplateName: string | null = null;
+  /**
+   * EV-341j — the « Séance d'essai » card's read: `absent` is an api without the route (an
+   * older deployment: a 404), and the card is then not drawn at all, rather than claiming a
+   * load error about a feature the api does not have yet.
+   */
+  let trial: TrialCardRead = { state: "absent" };
   if (!overview) {
     message = copy.routine.loadError;
   } else if (!hasScope(overview.scopes, "WORKOUTS")) {
@@ -121,12 +130,25 @@ export default async function RoutinePage({ params }: { params: { id: string } }
        * or no `updatedAt`: BUG-195c below) opens the editor on the published plan, the
        * same state a discard produces.
        */
-      const [routineRead, draftRead] = await Promise.allSettled([
+      /**
+       * EV-341j: the trial session is read in the same round, under the same WORKOUTS scope
+       * (page-read-budget: still depth 2). A 403 on it is a denial like the other two; any
+       * other failure loses the card's content and nothing else.
+       */
+      const [routineRead, draftRead, trialRead] = await Promise.allSettled([
         coachApi.getRoutine(params.id),
         coachApi.getRoutineDraft(params.id),
+        coachApi.getTrialSession(params.id),
       ]);
       if (routineRead.status === "rejected") throw routineRead.reason;
       if (draftRead.status === "rejected" && isForbidden(draftRead.reason)) throw draftRead.reason;
+      if (trialRead.status === "rejected" && isForbidden(trialRead.reason)) throw trialRead.reason;
+      if (trialRead.status === "fulfilled") {
+        const read = asTrialRead(trialRead.value);
+        trial = read ? { state: "ok", read } : { state: "failed" };
+      } else {
+        trial = isRouteNotFound(trialRead.reason) ? { state: "absent" } : { state: "failed" };
+      }
       routine = routineRead.value;
       if (routine.hasDraft) {
         if (draftRead.status === "rejected") throw draftRead.reason;
@@ -311,6 +333,14 @@ export default async function RoutinePage({ params }: { params: { id: string } }
             <>
               {head}
               {changedByTrainee && <TraineeChangedBanner sentence={changedByTrainee} />}
+              {/* EV-341j: above both columns, where a coach preparing a new client looks first. */}
+              {trial.state !== "absent" && (
+                <TrialSessionCard
+                  clientId={params.id}
+                  firstName={firstName(overview?.traineeDisplayName, copy.locale)}
+                  read={trial}
+                />
+              )}
             </>
           }
           profile={profile}

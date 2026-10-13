@@ -1,3 +1,5 @@
+import { intakeRequestEnabled } from "./intakeRequestGate";
+
 // The single place this app reads its environment, and the single place a
 // request URL is assembled.
 //
@@ -44,3 +46,6 @@ export const INVITE_BASE_URL = (
 ).replace(/\/+$/, "");
 
 export const IS_PROD = process.env.NODE_ENV === "production";
+
+/** EV-341w's release hold (`src/lib/intakeRequestGate.ts`): OFF unless `COACH_INTAKE_REQUEST=on`. */
+export const INTAKE_REQUEST_ENABLED = intakeRequestEnabled(process.env.COACH_INTAKE_REQUEST);

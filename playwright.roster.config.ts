@@ -33,8 +33,11 @@ export default defineConfig({
    * appends to a populated roster only.
    * template-use-no-week-card.spec.ts (BUG-718) drives "Use on a trainee", so the picker again.
    * field-focus-ring-roster.spec.ts (BUG-724) sweeps the roster's search box: no rows, no box.
+   * intake-hold-off.spec.ts (EV-341w N3) needs COACH_INTAKE_REQUEST UNSET, which this config
+   * leaves it (the default suite sets it on): the two intake actions refuse here.
+   * trial-session-roster.spec.ts (EV-341j J4) reads the programme pill on the seeded rows.
    */
-  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster)\.spec\.ts/,
+  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intake-hold-off|trial-session-roster)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249) — see
   // playwright.config.ts's `workers` note.

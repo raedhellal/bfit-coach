@@ -151,11 +151,16 @@ test("recipe editor: a save re-renders the page title through its action, histor
  * Refresh button. (The release that merged both, b82c018, still pinned 13 and was red
  * here.) BUG-689 added one: the root error boundary's retry (`src/app/error.tsx`), which
  * follows no write at all: it asks the server for a fresh render after a server-side throw,
- * because `reset()` alone re-renders the failed payload. 10 now.
+ * because `reset()` alone re-renders the failed payload. 10 then.
+ * EV-341w added one: the « Entretien » card's 403 (`IntakeConsentCard` `accessEnded`, shared by
+ * its two actions and its poll), which revalidates nothing, so the refresh is what reaches the
+ * layout's denial redirect. EV-341j added one: the trial session card's 403 (`TrialSessionCard`
+ * `accessEnded`), a refused write that does not revalidate, so the refresh is what reaches the
+ * page's denial redirect. 12 (each branch alone counted 11; the train carries both).
  * A new call is a decision: if its action revalidates, it renders the page a
  * second time for nothing. Comment lines are not counted.
  */
-test("src holds exactly 10 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry)", () => {
+test("src holds exactly 12 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry, plus EV-341w's and EV-341j's 403s)", () => {
   const src = join(__dirname, "..", "src");
   const calls: string[] = [];
   for (const file of readdirSync(src, { recursive: true, encoding: "utf8" })) {
@@ -168,5 +173,5 @@ test("src holds exactly 10 router.refresh() calls (ADR-0033 2a's inventory, less
         if (code.includes("router.refresh()")) calls.push(`${file}:${i + 1}`);
       });
   }
-  expect(calls.length, calls.sort().join("\n")).toBe(10);
+  expect(calls.length, calls.sort().join("\n")).toBe(12);
 });

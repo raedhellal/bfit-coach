@@ -1,5 +1,11 @@
 import "server-only";
 import type {
+  CoachTrialSessionRequest,
+  RoutineExercise,
+  CoachTrialSessionResponse,
+  CoachTrialSessionPreview,
+  ProgrammeStatus,
+  TrialSession,
   ActivateAccountRequest,
   ActivationStatus,
   AccountRole,
@@ -78,6 +84,8 @@ import type {
   InitialisedAccountPage,
   InitialiseTraineeRequest,
   ResendInvitationRequest,
+  CoachIntakeConsentStatus,
+  CoachIntakeRequest,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -1351,6 +1359,9 @@ function inactivityBoundaryRows(): RosterClient[] {
     status: "ACTIVE" as const,
     since: isoInstant(40),
     routineChangedSinceYourPublish: false,
+    // EV-341j: established clients on a programme this coach published (no pill, J4). They are
+    // roster-only rows (no plan record), so `withProgrammeStatus` keeps this value.
+    programmeStatus: "PUBLISHED" as const,
   }));
 }
 
@@ -4830,6 +4841,12 @@ interface FixtureState {
   /** EV-321b — the coach's challenges, by id, each with its participants' day rows. */
   challenges: Map<string, StoredChallenge>;
   /**
+   * EV-341j — every trial session assigned per link, oldest first (b-fit-api EV-341i's
+   * `coach_trial_sessions` and the carrier's completion). Empty at the seed: a test assigns
+   * through the portal's own editor, and completes through `POST /api/fixture/trial`.
+   */
+  trialSessions: Map<string, StoredTrialSession[]>;
+  /**
    * EV-204b — accounts a coach initialised (`POST /coach-portal/trainees`), keyed by USER
    * id. Hidden seeds only (an expired one, an activated one, another coach's): nothing is
    * LISTED until a test adds a client, so the `empty` scenario's roster stays empty.
@@ -4841,6 +4858,244 @@ interface FixtureState {
   initialiseCalls: number[];
   /** `"initialise-resend:<coach>:<user>"`'s window, per user id. */
   resendCalls: Map<string, number[]>;
+  /**
+   * EV-341w — the intake consent and its requests, per link (b-fit-api EV-341p2's
+   * `coach_intake_requests` and the link's INTAKE grant). No entry = no grant and no
+   * request ever made, which is every seeded link: a test reaches the other states through
+   * the portal's own button and `POST /api/fixture/intake` (the trainee's half).
+   */
+  intake: Map<string, FixtureIntakeLink>;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341j — THE TRIAL SESSION, ported from b-fit-api EV-341i @ 95ca369d
+ * (`CoachTrialSessionUseCase`): one open session per link, two-phase assign, derived status.
+ *
+ *   · guard: WORKOUTS on an ACTIVE link (`assertScope`), the routine endpoints' own;
+ *   · status DERIVED on read: DONE if completed (wins over a withdraw), else WITHDRAWN if
+ *     withdrawn, else ASSIGNED. OPEN = not withdrawn (a DONE one stays open until withdrawn,
+ *     EV-341i's ruling, accepted by staff);
+ *   · the coach's read: the open one, else the latest DONE one, else null;
+ *   · `programmeStatus`: PUBLISHED when THIS coach published the live plan (the EV-283a
+ *     authorship record: COACH, or a publish the trainee has since changed), else from the read;
+ *   · the digest is the preview's, of THIS body and its repairs, under a "trial" domain, so a
+ *     publish's digest never acknowledges a trial and the other way round.
+ *
+ * Fixture-only switches (one browser context each):
+ *   `evoli_fixture_trial_read=fail`     → the GET answers 500 (the card's load-error line);
+ *   `evoli_fixture_trial_read=missing`  → the GET answers 404, an api that predates EV-341i:
+ *                                         the card is not drawn at all;
+ *   `evoli_fixture_trial_assign=stale`  → every assign answers 409 COACH_PUBLISH_REPAIRS_
+ *                                         UNACKNOWLEDGED (the trainee's injuries changed
+ *                                         between the preview and the assign): the card must
+ *                                         preview again, never retry the digest.
+ *   `evoli_fixture_trial_preview=object_repair` → the preview's repairs gain one that is NOT a
+ *                                         sentence (an object), `repairCount` still equal to
+ *                                         the list and the digest still valid;
+ *   `evoli_fixture_trial_preview=count_mismatch` → the repairs are the real ones but
+ *                                         `repairCount` is one more than the list.
+ *                                         Both are a preview the card cannot show whole: the
+ *                                         action must fail it (`asTrialPreview`, staff r2 N4),
+ *                                         and with the digest valid an action that dropped the
+ *                                         odd repair would assign straight on.
+ * The trainee completing the session in the app is `fixtureTrialComplete`, reached through
+ * `POST /api/fixture/trial`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface StoredTrialSession {
+  id: string;
+  title: string;
+  plannedOn: string | null;
+  note: string | null;
+  estimatedMinutes: number | null;
+  /** The REPAIRED rows (the trainee receives what the policy returned, as a publish does). */
+  exercises: RoutineExercise[];
+  assignedAt: string;
+  withdrawnAt: string | null;
+  completedOn: string | null;
+}
+
+const TRIAL_BODY_KEYS = new Set(["title", "plannedOn", "note", "estimatedMinutes", "exercises", "digest"]);
+const TRIAL_MAX_EXERCISES = 30;
+
+function trialStatus(t: StoredTrialSession): TrialSession["status"] {
+  return t.completedOn ? "DONE" : t.withdrawnAt ? "WITHDRAWN" : "ASSIGNED";
+}
+
+function trialsOf(id: string): StoredTrialSession[] {
+  return state().trialSessions.get(id) ?? [];
+}
+
+function openTrial(id: string): StoredTrialSession | undefined {
+  return trialsOf(id).find((t) => t.withdrawnAt === null);
+}
+
+/** The coach's read: the open one, else the latest DONE one, else none. */
+function shownTrial(id: string): StoredTrialSession | undefined {
+  return openTrial(id) ?? [...trialsOf(id)].reverse().find((t) => t.completedOn !== null);
+}
+
+function publishedByThisCoach(id: string): boolean {
+  const author = state().planAuthors.get(id);
+  return !!state().plans.get(id) && !!author && (author.lastChangedBy === "COACH" || author.changedSinceYourPublish);
+}
+
+function fixtureProgrammeStatus(id: string): ProgrammeStatus {
+  if (publishedByThisCoach(id)) return "PUBLISHED";
+  const shown = shownTrial(id);
+  if (!shown) return "AWAITING_PROGRAMME";
+  return trialStatus(shown) === "DONE" ? "TRIAL_DONE" : "TRIAL_ASSIGNED";
+}
+
+/** The roster row's `programmeStatus`, from the row's own `scopes` (null without WORKOUTS). */
+function withProgrammeStatus(row: RosterClient): RosterClient {
+  // A roster-only row that states its own (the inactivity boundary rows) keeps it.
+  if (row.programmeStatus !== undefined) return row;
+  return { ...row, programmeStatus: row.scopes.includes("WORKOUTS") ? fixtureProgrammeStatus(row.id) : null };
+}
+
+function trialResponse(id: string): CoachTrialSessionResponse {
+  const shown = shownTrial(id);
+  return {
+    programmeStatus: fixtureProgrammeStatus(id),
+    trialSession: shown
+      ? {
+          id: shown.id,
+          status: trialStatus(shown),
+          title: shown.title,
+          plannedOn: shown.plannedOn,
+          note: shown.note,
+          workoutId: `workout-trial-${shown.id.slice(0, 8)}`,
+          estimatedMinutes: shown.estimatedMinutes,
+          assignedAt: shown.assignedAt,
+          withdrawnAt: shown.withdrawnAt,
+          completedOn: shown.completedOn,
+          exercises: shown.exercises.map((ex, orderIndex) => ({
+            name: ex.name,
+            slug: CATALOG.find((c) => c.name === ex.name)?.slug ?? ex.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            sets: ex.sets,
+            reps: ex.reps === null ? null : Number.parseInt(ex.reps, 10) || null,
+            durationMinutes: ex.durationSeconds === null ? null : Math.max(1, Math.round(ex.durationSeconds / 60)),
+            restSeconds: Number.parseInt(ex.rest, 10) || null,
+            orderIndex,
+          })),
+        }
+      : null,
+  };
+}
+
+/** The request's own checks, in the api's order: undeclared keys, the rows, reps on a timed row. */
+async function checkTrialBody(body: CoachTrialSessionRequest): Promise<void> {
+  const extra = Object.keys(body ?? {}).filter((k) => !TRIAL_BODY_KEYS.has(k));
+  if (extra.length > 0) await fail(400, "COACH_FIELD_NOT_ACCEPTED", `${extra[0]} is not accepted`);
+  const rows = Array.isArray(body?.exercises) ? body.exercises : null;
+  if (!rows || rows.length < 1 || rows.length > TRIAL_MAX_EXERCISES) {
+    await fail(400, "VALIDATION_ERROR", "exercises size must be between 1 and 30");
+  }
+  if ((rows as RoutineExercise[]).some((ex) => ex.trackingType === "DURATION" && ex.reps !== null)) {
+    await fail(400, "COACH_DRAFT_REPS_ON_DURATION", "A timed exercise carries no reps");
+  }
+}
+
+function trialRepairs(id: string, body: CoachTrialSessionRequest): PublishRepair[] {
+  return repairsFor(id, { ...blankTrialRoutine(), trainingDays: [{ dayOfWeek: 1, focus: "", estimatedMinutes: null, exercises: body.exercises }] });
+}
+
+function trialDigest(id: string, body: CoachTrialSessionRequest): string {
+  const { title = null, plannedOn = null, note = null, estimatedMinutes = null, exercises } = body;
+  return digestOf(
+    JSON.stringify({ domain: "trial", body: { title, plannedOn, note, estimatedMinutes, exercises }, repairs: trialRepairs(id, body) })
+  );
+}
+
+function blankTrialRoutine(): Routine {
+  return {
+    name: "",
+    goal: FIXTURE_SUBJECT.goal,
+    level: FIXTURE_SUBJECT.level,
+    daysPerWeek: 1,
+    trainingDays: [],
+    weeklyProgression: [],
+    constraints: { equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: 1 },
+    summary: null,
+  };
+}
+
+async function fixtureGetTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  const sw = await fixtureSwitch("evoli_fixture_trial_read");
+  if (sw === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+  if (sw === "missing") await fail(404, "NOT_FOUND", "No static resource");
+  return trialResponse(id);
+}
+
+async function fixturePreviewTrialSession(id: string, body: CoachTrialSessionRequest): Promise<CoachTrialSessionPreview> {
+  await assertScope(id, "WORKOUTS");
+  await checkTrialBody(body);
+  if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
+  const repairs = trialRepairs(id, body);
+  // Writes NOTHING (EV-341i I2): the digest is a function of the body, not a stored token.
+  const preview = { repairs, repairCount: repairs.length, digest: trialDigest(id, body), equipmentChecked: false };
+  const sw = await fixtureSwitch("evoli_fixture_trial_preview");
+  if (sw === "object_repair") {
+    // Off the wire type on purpose: the shape an api that structured its repairs would send.
+    const odd = { exerciseName: "Goblet Squat", change: "SWAPPED" } as unknown as PublishRepair;
+    return { ...preview, repairs: [...repairs, odd], repairCount: repairs.length + 1 };
+  }
+  if (sw === "count_mismatch") return { ...preview, repairCount: repairs.length + 1 };
+  return preview;
+}
+
+async function fixtureAssignTrialSession(
+  id: string,
+  body: CoachTrialSessionRequest,
+  digest: string
+): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  await checkTrialBody(body);
+  if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
+  const stale = (await fixtureSwitch("evoli_fixture_trial_assign")) === "stale";
+  if (stale || typeof digest !== "string" || digest !== trialDigest(id, body)) {
+    await fail(409, "COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED", "Repairs not acknowledged");
+  }
+  if (openTrial(id)) await fail(409, "TRIAL_SESSION_ALREADY_OPEN", "A trial session is already open");
+  const repaired = applyRepairs(id, {
+    ...blankTrialRoutine(),
+    trainingDays: [{ dayOfWeek: 1, focus: "", estimatedMinutes: null, exercises: body.exercises }],
+  }).trainingDays[0].exercises;
+  const stored: StoredTrialSession = {
+    id: crypto.randomUUID(),
+    title: body.title?.trim() || "Séance d'essai",
+    plannedOn: body.plannedOn ?? null,
+    note: body.note ?? null,
+    estimatedMinutes: body.estimatedMinutes ?? null,
+    exercises: repaired,
+    assignedAt: new Date().toISOString(),
+    withdrawnAt: null,
+    completedOn: null,
+  };
+  state().trialSessions.set(id, [...trialsOf(id), stored]);
+  return trialResponse(id);
+}
+
+async function fixtureWithdrawTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  const open = openTrial(id);
+  if (open) open.withdrawnAt = new Date().toISOString();
+  return trialResponse(id);
+}
+
+/**
+ * ⚠ TEST AFFORDANCE — the TRAINEE finishing the session in the app's player
+ * (`POST /me/workout/complete` on the carrier workout): the latest session not yet done,
+ * withdrawn or not (I3b: a player already open can still finish a withdrawn one), is DONE
+ * today. Answers whether there was one.
+ */
+export function fixtureTrialComplete(id: string): boolean {
+  const target = [...trialsOf(id)].reverse().find((t) => t.completedOn === null);
+  if (!target) return false;
+  target.completedOn = new Date().toISOString().slice(0, 10);
+  return true;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -4926,10 +5181,12 @@ function freshState(): FixtureState {
     legalVersions: { privacyPolicyVersion: "v1.0", termsVersion: "v1.0" },
     activations: [],
     challenges: seedChallenges(),
+    trialSessions: new Map(),
     invited: seedInvited(),
     invitationMails: [],
     initialiseCalls: [],
     resendCalls: new Map(),
+    intake: new Map(),
   };
 }
 
@@ -5878,6 +6135,169 @@ async function fixtureListInvited(page = 0, size = 20): Promise<InitialisedAccou
   };
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341w — THE INTAKE CONSENT REQUEST, ported from b-fit-api EV-341p2 @ 95ca369d
+ * (`CoachIntakeRequestUseCase`): one open request per link, 15 minutes, 3 per rolling 24 h.
+ *
+ *   · the guard is `requireManagedLink`: an ACTIVE link and NO data scope, so every seeded
+ *     link may ask; a revoked process or `evoli_fixture_link=ended` is the one 403;
+ *   · every write first closes an open request past its expiry as EXPIRED (the api's lazy
+ *     close, no sweeper), then applies its own reason;
+ *   · the read never writes: an open request past its expiry reads `pending: false`.
+ *
+ * Fixture-only switches (one browser context each):
+ *   `evoli_fixture_intake_ttl_ms=<ms>`  → requests made in this context live <ms> (1 s to
+ *                                         15 min) instead of 15 minutes, so W3's "no GET
+ *                                         after expiresAt" fits in a test;
+ *   `evoli_fixture_intake_read=fail`    → the GET answers 500 (a poll that failed must not
+ *                                         end the wait or show an answer).
+ * The trainee's half (grant, « Pas maintenant », or an expiry) is `fixtureIntakeAnswer`,
+ * reached through `POST /api/fixture/intake`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const INTAKE_TTL_MS = 15 * 60 * 1000; // CoachIntakeRequestUseCase.TTL
+const INTAKE_CAP = 3; // CoachIntakeRequestUseCase.MAX_PER_DAY
+const INTAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type IntakeClosedReason = "EXPIRED" | "SUPERSEDED" | "CANCELLED" | "DISMISSED" | "GRANTED";
+interface FixtureIntakeRequest {
+  id: string;
+  requestedAt: number;
+  expiresAt: number;
+  closedAt: number | null;
+  closedReason: IntakeClosedReason | null;
+}
+interface FixtureIntakeLink {
+  granted: boolean;
+  requests: FixtureIntakeRequest[];
+}
+
+function intakeLink(id: string): FixtureIntakeLink {
+  const links = state().intake;
+  let link = links.get(id);
+  if (!link) {
+    link = { granted: false, requests: [] };
+    links.set(id, link);
+  }
+  return link;
+}
+
+/** `requireManagedLink`: the overview's own guard (ACTIVE, no data scope). */
+async function assertManagedLink(id: string): Promise<void> {
+  await failIfMalformedId(id); // BUG-600: the api's 400 comes before its guard.
+  if (!OVERVIEWS[id] || state().revoked || (await linkEnded())) {
+    await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  }
+}
+
+/** The lazy close every request write starts with (PR9): EXPIRED at its own expiry. */
+function closeExpired(link: FixtureIntakeLink, now: number): void {
+  for (const r of link.requests) {
+    if (r.closedAt === null && r.expiresAt <= now) {
+      r.closedAt = r.expiresAt;
+      r.closedReason = "EXPIRED";
+    }
+  }
+}
+
+function liveRequest(link: FixtureIntakeLink, now: number): FixtureIntakeRequest | undefined {
+  return link.requests.find((r) => r.closedAt === null && r.expiresAt > now);
+}
+
+async function intakeTtlMs(): Promise<number> {
+  const raw = Number(await fixtureSwitch("evoli_fixture_intake_ttl_ms"));
+  return Number.isFinite(raw) && raw >= 1_000 ? Math.min(raw, INTAKE_TTL_MS) : INTAKE_TTL_MS;
+}
+
+async function fixtureGetIntakeConsent(id: string): Promise<CoachIntakeConsentStatus> {
+  await assertManagedLink(id);
+  if ((await fixtureSwitch("evoli_fixture_intake_read")) === "fail") {
+    await fail(500, "INTERNAL_ERROR", "Internal error");
+  }
+  const link = state().intake.get(id);
+  // Exactly two fields (PR12): nothing here can say WHY a request is no longer pending.
+  return { granted: link?.granted ?? false, pending: link ? liveRequest(link, Date.now()) !== undefined : false };
+}
+
+async function fixtureRequestIntakeConsent(id: string): Promise<CoachIntakeRequest> {
+  await assertManagedLink(id);
+  const now = Date.now();
+  const link = intakeLink(id);
+  closeExpired(link, now);
+  if (link.granted) await fail(409, "INTAKE_ALREADY_GRANTED", "The client has already allowed the intake interview");
+  const inWindow = link.requests.filter((r) => r.requestedAt > now - INTAKE_WINDOW_MS);
+  if (inWindow.length >= INTAKE_CAP) {
+    const oldest = Math.min(...inWindow.map((r) => r.requestedAt));
+    const seconds = Math.min(86_400, Math.max(1, Math.ceil((oldest + INTAKE_WINDOW_MS - now) / 1000)));
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(429, "Too many intake requests on this link", "INTAKE_REQUEST_LIMIT", null, seconds);
+  }
+  const live = liveRequest(link, now);
+  if (live) {
+    live.closedAt = now;
+    live.closedReason = "SUPERSEDED";
+  }
+  const created: FixtureIntakeRequest = {
+    id: crypto.randomUUID(),
+    requestedAt: now,
+    expiresAt: now + (await intakeTtlMs()),
+    closedAt: null,
+    closedReason: null,
+  };
+  link.requests.push(created);
+  return {
+    id: created.id,
+    requestedAt: new Date(created.requestedAt).toISOString(),
+    expiresAt: new Date(created.expiresAt).toISOString(),
+  };
+}
+
+async function fixtureCancelIntakeConsentRequest(id: string): Promise<void> {
+  await assertManagedLink(id);
+  const now = Date.now();
+  const link = state().intake.get(id);
+  if (!link) return;
+  closeExpired(link, now);
+  const live = liveRequest(link, now);
+  if (live) {
+    live.closedAt = now;
+    live.closedReason = "CANCELLED";
+  }
+}
+
+/**
+ * ⚠ TEST AFFORDANCE — the TRAINEE's half of EV-341p2, which no coach call can reach:
+ *   `grant`   → `POST /me/my-coach/intake-consent`: the link gains the grant and every open
+ *               request closes GRANTED (PR8);
+ *   `dismiss` → « Pas maintenant »: the live request closes DISMISSED (PR11); none, nothing;
+ *   `expire`  → the live request's 15 minutes pass now (its row stays open, as on the api,
+ *               until the next write: PR4).
+ * Answers whether anything changed.
+ */
+export function fixtureIntakeAnswer(id: string, answer: "grant" | "dismiss" | "expire"): boolean {
+  const now = Date.now();
+  const link = intakeLink(id);
+  if (answer === "grant") {
+    link.granted = true;
+    for (const r of link.requests) {
+      if (r.closedAt === null) {
+        r.closedAt = now;
+        r.closedReason = "GRANTED";
+      }
+    }
+    return true;
+  }
+  const live = liveRequest(link, now);
+  if (!live) return false;
+  if (answer === "dismiss") {
+    live.closedAt = now;
+    live.closedReason = "DISMISSED";
+  } else {
+    live.expiresAt = now - 1;
+  }
+  return true;
+}
+
 export const fixtureCoachApi: CoachApi = {
   // ── EV-278c activation ────────────────────────────────────────────────────
   getActivation: fixtureGetActivation,
@@ -5937,7 +6357,9 @@ export const fixtureCoachApi: CoachApi = {
         : sortRoster(
             await Promise.all(
               [lina(), petra(), yusuf(), sara(), tobias(), mara(), ...boundary, ...workoutsFlag].map(async (row) =>
-                withPlanFlag({ ...row, traineeDisplayName: await servedDisplayName(row.id, row.traineeDisplayName) })
+                withProgrammeStatus(
+                  withPlanFlag({ ...row, traineeDisplayName: await servedDisplayName(row.id, row.traineeDisplayName) })
+                )
               )
             ),
             sort
@@ -6034,6 +6456,11 @@ export const fixtureCoachApi: CoachApi = {
     state().revoked = true;
   },
 
+  // ── EV-341w the intake consent request (see the block above `fixtureCoachApi`) ──
+  getIntakeConsent: fixtureGetIntakeConsent,
+  requestIntakeConsent: fixtureRequestIntakeConsent,
+  cancelIntakeConsentRequest: fixtureCancelIntakeConsentRequest,
+
   /**
    * EV-202b — `PUT /coach-portal/clients/{id}/progress-goal`.
    *
@@ -6096,6 +6523,12 @@ export const fixtureCoachApi: CoachApi = {
     // The SAME block the GET embeds, recomputed — so the portal needs no refetch.
     return progressGoalFor(id, sinceOf(id));
   },
+
+  // ── EV-341j the trial session (see the block above `fixtureCoachApi`) ──────
+  getTrialSession: fixtureGetTrialSession,
+  previewTrialSession: fixturePreviewTrialSession,
+  assignTrialSession: fixtureAssignTrialSession,
+  withdrawTrialSession: fixtureWithdrawTrialSession,
 
   // ── EV-184b routine ───────────────────────────────────────────────────────
 

@@ -144,8 +144,9 @@ const ROUTES: { route: string; reads: string[]; depth: number; why?: string }[] 
   },
   {
     // EV-342c: the draft is read with the routine, even when `hasDraft` will say no.
+    // EV-341j: the trial session too, in the same round (same WORKOUTS scope).
     route: `/clients/${LINA}/routine`,
-    reads: ["getClient", "getRoutine", "getRoutineDraft"],
+    reads: ["getClient", "getRoutine", "getRoutineDraft", "getTrialSession"],
     depth: 2,
     why: "the routine and draft reads wait for the overview's `scopes` to show WORKOUTS (ADR-0015 D5)",
   },
@@ -210,7 +211,7 @@ test.describe("the routine tab with a draft", () => {
     await hold(page, baseURL, HOLD_MS);
     const entries = await documentLoad(page, `/clients/${YUSUF}/routine`);
     await expect(page.getByText(/^Started from /)).toHaveText(line!);
-    expect(ops(entries)).toEqual(["getClient", "getRoutine", "getRoutineDraft", "listTemplates"]);
+    expect(ops(entries)).toEqual(["getClient", "getRoutine", "getRoutineDraft", "getTrialSession", "listTemplates"]);
     // overview → routine + draft → library (EV-342c C.1: was 4, one round per read).
     expect(depth(entries)).toBe(3);
   });
@@ -228,7 +229,7 @@ test.describe("the routine tab with a draft", () => {
     const entries = await documentLoad(page, `/clients/${LINA}/routine`);
     await expect(page.getByText("Draft — not yet published")).toBeVisible();
     await expect(page.getByText(/^Started from /)).toHaveCount(0);
-    expect(ops(entries)).toEqual(["getClient", "getRoutine", "getRoutineDraft"]);
+    expect(ops(entries)).toEqual(["getClient", "getRoutine", "getRoutineDraft", "getTrialSession"]);
     // overview → routine + draft (EV-342c: was 3).
     expect(depth(entries)).toBe(2);
   });
@@ -301,7 +302,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
     expect(cost).toEqual({
       actionPosts: 1,
       rscGets: 0,
-      reads: ["getClient", "getRoutine", "getRoutineDraft"],
+      reads: ["getClient", "getRoutine", "getRoutineDraft", "getTrialSession"],
       renders: 1,
     });
   });
@@ -325,7 +326,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
     expect(cost).toEqual({
       actionPosts: 1,
       rscGets: 0,
-      reads: ["getClient", "getRoutine", "getRoutineDraft"],
+      reads: ["getClient", "getRoutine", "getRoutineDraft", "getTrialSession"],
       renders: 1,
     });
   });

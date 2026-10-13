@@ -25,13 +25,16 @@ import {
   type CoachRoutineResponse,
   type FiredRedFlag,
 } from "@/lib/coachApi";
-import { readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
+import { isClientId, readClientOverview, readClientProgress, readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
 import { clientLoadError } from "@/lib/clientLoadError";
 import { firstName, formatDate, formatKg, formatShortDate } from "@/lib/format";
 import { fullNameOf } from "@/lib/traineeName";
 import { codedInjuryLabels } from "@/lib/guardrailLabels";
 import { weightCaption } from "@/lib/weight";
+import { IntakeConsentCard } from "@/components/client/IntakeConsentCard";
+import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
+import { asIntakeStatus } from "@/lib/intakeConsent";
 
 /**
  * /clients/[id] — the trainee overview (AC5, EV-083's slice; redesigned by EV-337e, plan
@@ -91,6 +94,16 @@ export default async function ClientPage({ params }: { params: { id: string } })
    */
   const progressRead = readClientProgress(params.id);
   const meRead = readCoachMe();
+  /**
+   * EV-341w — the « Entretien » card's starting state, in step 1 with the overview: the api
+   * gates it on an ACTIVE link and NO data scope (`requireManagedLink`), like the overview
+   * itself, so there is no `scopes` to wait for and no extra round trip. Behind the release
+   * hold (`COACH_INTAKE_REQUEST`, src/lib/intakeRequestGate.ts): off, the read is not made.
+   */
+  // BUG-600: a segment that is not a UUID asks the api nothing (the layout denies it; this page
+  // renders beside the layout, so its own reads must not run on it either).
+  const intakeRead =
+    INTAKE_REQUEST_ENABLED && isClientId(params.id) ? settle(coachApi.getIntakeConsent(params.id)) : null;
   const { overview, forbidden } = await readClientOverview(params.id);
   // BUG-671 — a TAB CHANGE does not render `layout.tsx` again (its segment is unchanged), so
   // the layout's 403 decision never runs on one; when the tab change renders this page on the
@@ -144,11 +157,12 @@ export default async function ClientPage({ params }: { params: { id: string } })
   const nutritionShared = hasScope(overview.scopes, "NUTRITION");
   const nothingShared = !progressShared && !weighInsShared && !workoutsShared && !nutritionShared;
 
-  const [progress, me, routineRead, nutritionRead] = await Promise.all([
+  const [progress, me, routineRead, nutritionRead, intake] = await Promise.all([
     progressRead,
     meRead,
     workoutsShared ? settle<CoachRoutineResponse>(coachApi.getRoutine(params.id)) : null,
     nutritionShared ? settle<CoachNutritionResponse>(coachApi.getNutrition(params.id)) : null,
+    intakeRead,
   ]);
   /**
    * A 403 on a summary read, with its scope held, means the link ended between the
@@ -157,7 +171,11 @@ export default async function ClientPage({ params }: { params: { id: string } })
    * with a 200 — the coach still lands on the denial page; the status AC5 pins is the
    * layout's.)
    */
-  if ((routineRead && !routineRead.ok && routineRead.forbidden) || (nutritionRead && !nutritionRead.ok && nutritionRead.forbidden)) {
+  if (
+    (routineRead && !routineRead.ok && routineRead.forbidden) ||
+    (nutritionRead && !nutritionRead.ok && nutritionRead.forbidden) ||
+    (intake && !intake.ok && intake.forbidden)
+  ) {
     redirect("/clients/denied");
   }
   const programme = summary(workoutsShared, routineRead);
@@ -392,6 +410,15 @@ export default async function ClientPage({ params }: { params: { id: string } })
         <div className="ov-stack">
           <ProgrammeSummary clientId={overview.clientId} read={programme} />
           <NutritionSummary clientId={overview.clientId} read={nutrition} />
+          {/* EV-341w: last in the column, so EV-345's two rows (activity beside the programme
+              summary) keep their tops and the 768 px page its height budget. */}
+          {intake && (
+            <IntakeConsentCard
+              clientId={overview.clientId}
+              firstName={firstName(overview.traineeDisplayName, copy.locale)}
+              initial={intake.ok ? asIntakeStatus(intake.value) : null}
+            />
+          )}
         </div>
       </div>
 
