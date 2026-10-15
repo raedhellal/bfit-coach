@@ -33,6 +33,9 @@ export function CatalogPicker({
   keepOpen,
   onClose,
   onPick,
+  rowBlock,
+  limitNote,
+  focusSearch,
 }: {
   open: boolean;
   title: string;
@@ -45,6 +48,19 @@ export function CatalogPicker({
   keepOpen?: boolean;
   onClose: () => void;
   onPick: (exercise: CatalogExercise) => void;
+  /**
+   * EV-341y2 YP2 — a row the coach cannot pick here, and why. `note` is shown on the row (the
+   * other list's « Déjà dans l'autre liste »); a row blocked with no note is one already in the
+   * list being filled. The day editor passes nothing: every row stays pickable there.
+   */
+  rowBlock?: (exercise: CatalogExercise) => { note: string | null } | null;
+  /**
+   * EV-341y2 YP2 — the list is full: every row rests and this line says why (« 10 exercices au
+   * maximum. »). Null or absent: no limit is reached.
+   */
+  limitNote?: string | null;
+  /** EV-341y2 YP8 — the search field takes the focus when the picker opens (keyboard-only use). */
+  focusSearch?: boolean;
 }) {
   const copy = useCopy();
   const [q, setQ] = useState("");
@@ -188,6 +204,7 @@ export function CatalogPicker({
             icon="search"
             placeholder={copy.routine.catalogSearch}
             full
+            autoFocus={focusSearch}
             onChange={(e) => setQ(e.target.value)}
           />
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
@@ -221,6 +238,12 @@ export function CatalogPicker({
             </p>
           )}
 
+          {limitNote && (
+            <p data-catalog-limit="" style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-2)", fontWeight: 600 }}>
+              {limitNote}
+            </p>
+          )}
+
           <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
             {pending && items.length === 0 && (
               <p style={{ margin: 0, fontSize: 13, color: "var(--ink-3)" }}>
@@ -237,11 +260,17 @@ export function CatalogPicker({
                 {copy.routine.catalogNoResults}
               </p>
             )}
-            {items.map((item) => (
+            {items.map((item) => {
+              const block = rowBlock?.(item) ?? null;
+              const resting = !!limitNote || block !== null;
+              return (
               <button
                 key={item.slug}
                 type="button"
+                disabled={resting}
+                data-catalog-row={item.name}
                 onClick={() => {
+                  if (resting) return;
                   onPick(item);
                   if (keepOpen) setAdded(item.name);
                 }}
@@ -251,17 +280,23 @@ export function CatalogPicker({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  flexWrap: "wrap",
                   gap: 10,
                   padding: "8px 12px",
                   borderRadius: "var(--r-md)",
                   border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  cursor: "pointer",
+                  background: resting ? "var(--surface-2)" : "var(--surface)",
+                  cursor: resting ? "default" : "pointer",
                   textAlign: "left",
                 }}
               >
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: resting ? "var(--ink-3)" : "var(--ink)" }}>
                   {truncateName(item.name)}
+                  {block?.note && (
+                    <span data-catalog-row-note="" style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "var(--ink-2)" }}>
+                      {block.note}
+                    </span>
+                  )}
                 </span>
                 <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   {/* BUG-489: words, not the catalogue's raw values ("quads,glutes", "NONE"). */}
@@ -269,7 +304,8 @@ export function CatalogPicker({
                   {item.equipment && <Badge tone="neutral">{equipmentLabel(item.equipment, copy)}</Badge>}
                 </span>
               </button>
-            ))}
+              );
+            })}
             {/*
               The day the exercise landed on is BEHIND this dialog, so without this the
               only feedback for a pick is the modal not closing. `status` announces it

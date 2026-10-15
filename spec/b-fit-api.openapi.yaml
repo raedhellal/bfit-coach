@@ -1735,6 +1735,64 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /me/workout/performance:
+    post:
+      summary: Save logged sets for an exercise in a workout
+      description: >-
+        Also served at `/me/workouts/performance`. Replaces the caller's sets for this workout and
+        exercise on one UTC day, so a re-post for the same day is idempotent. That day is the UTC
+        date of `performedAt` when sent (BUG-808: a post replayed from the offline queue sends the
+        moment the workout was done, so its sets are not filed under the day the replay arrives),
+        else the UTC date of the server's now. Performance logs are keyed by UTC day (ADR-0025
+        D25.4). Server constants (`OfflineReplayWindow`, shared with `completedAt` on
+        `/me/workout/complete`): `performedAt` may be at most `FUTURE_SKEW` (5 minutes) after the
+        server's now and at most `MAX_AGE` (7 days) before it. An offline replay should send the
+        same instant as `performedAt` here and as `completedAt` on the completion.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutExercisePerformanceRequest"
+            example:
+              exerciseSlug: "push_up"
+              workoutId: "db90f318-2b9f-4c36-9e8a-2d0b8791a0f2"
+              performedAt: "2026-01-11T04:30:00Z"
+              sets:
+                - setNumber: 1
+                  reps: 12
+                  weight: 20.0
+      responses:
+        "200":
+          description: Saved performance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutExercisePerformanceResponse"
+        "400":
+          description: >-
+            Invalid request; `PERFORMANCE_DATE_IN_FUTURE`: `performedAt` is more than 5 minutes
+            after the server's now; `PERFORMANCE_DATE_TOO_OLD`: `performedAt` is more than 7 days
+            before it. Nothing is written. Clients must branch on the `code`, never on the message
+            text, which is not part of the contract.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Workout not found or not accessible to the caller (`WORKOUT_NOT_FOUND`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /me/workout/complete:
     post:
       summary: Complete workout
@@ -1788,7 +1846,12 @@ paths:
             Invalid request, or `COMPLETION_DATE_IN_FUTURE`: `date`, or the day the session is
             recorded as ending (`date` 00:00 UTC + `durationSeconds`, for a date other than the
             server's today), is after the caller's local today (readable `X-Timezone`) or after the
-            server's today + 1 day (no readable `X-Timezone`). Nothing is written.
+            server's today + 1 day (no readable `X-Timezone`); or a sent `completedAt` is more than
+            `FUTURE_SKEW` (5 min) after the server's now. `COMPLETION_DATE_TOO_OLD`: a sent
+            `completedAt` is more than `MAX_AGE` (7 days) before it. `COMPLETION_DATE_MISMATCH`: both
+            `date` and `completedAt` were sent and `date` is more than one day from `completedAt`'s
+            UTC date. Nothing is written. Clients must branch on the `code`, never on the message
+            text, which is not part of the contract.
           content:
             application/json:
               schema:
@@ -5796,7 +5859,10 @@ paths:
           description: >-
             `INTAKE_FIELD_INVALID` — a value outside its field's vocabulary, bounds or length (also
             a `section` path segment that names no section, a missing or negative `version`, a
-            missing `values`); `details.field` names the field, never the value.
+            missing `values`; and, EV-341y1, an `emphasis` value outside the catalogue's target
+            muscles or an exercise name that is not a catalogue `name`, unless already stored at
+            the `version` sent). Checked before the version compare, so such a value with a stale
+            `version` is this 400, not a 409. `details.field` names the field, never the value.
             `COACH_FIELD_NOT_ACCEPTED` — a key the body or the section does not declare, at the top
             level or inside `values`; the message names the key. `Malformed request body.` for JSON
             that does not parse.
@@ -11587,6 +11653,22 @@ components:
           type: string
           format: date
           nullable: true
+        emphasis:
+          type: array
+          maxItems: 5
+          uniqueItems: true
+          description: >-
+            EV-341y1 Y1. The muscle groups to emphasise, in the coach's order: each exactly (case and
+            spacing count) a value of the `muscles` facet of GET /coach-portal/catalog/exercises. A
+            value already stored in `emphasis` is accepted again on a re-save even if the facet no
+            longer has it, so a catalogue re-sync never blocks the autosave; with an unsynced
+            catalogue (an empty facet) stored values are kept and any new value is refused. The
+            check runs before the version compare: a save with a stale `version` carries nothing
+            over, so a dropped value there answers 400, not 409. A section stored before EV-341y1
+            reads back []. Refused as INTAKE_FIELD_INVALID naming `emphasis`.
+          items:
+            type: string
+            maxLength: 80
         notes:
           $ref: "#/components/schemas/CoachIntakeSectionNote"
     CoachIntakeHistory:
@@ -11613,6 +11695,33 @@ components:
           items:
             type: string
             enum: [STRENGTH, RUNNING, CYCLING, SWIMMING, TEAM_SPORTS, COMBAT, YOGA_PILATES, HIIT, OTHER]
+        likedExercises:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          description: >-
+            EV-341y1 Y2. « Exercices appréciés »: exercises picked from Evoli's catalogue, never
+            typed; each exactly an item `name` of GET /coach-portal/catalog/exercises (case and
+            spacing count). A name already stored in this list is accepted again on a re-save even
+            if the catalogue no longer has it, so a catalogue re-sync never blocks the autosave. The
+            check runs before the version compare: a save with a stale `version` carries nothing
+            over, so a dropped name there answers 400 INTAKE_FIELD_INVALID, not 409. A section
+            stored before EV-341y1 reads back []. Refused as INTAKE_FIELD_INVALID naming
+            `likedExercises`.
+          items:
+            type: string
+            maxLength: 160
+        avoidedExercises:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          description: >-
+            EV-341y1 Y2. « Exercices à éviter »: the same rules as `likedExercises`, and no name may
+            be in both lists (refused naming `avoidedExercises`). Not an injury list: injuries stay
+            the trainee's own entry.
+          items:
+            type: string
+            maxLength: 160
         notes:
           $ref: "#/components/schemas/CoachIntakeSectionNote"
     CoachIntakeAvailability:
@@ -11647,8 +11756,23 @@ components:
           items:
             type: string
             enum: [GYM, HOME, OUTDOOR, COACH_STUDIO]
+        splitPreference:
+          allOf:
+            - $ref: "#/components/schemas/SplitPreference"
+          nullable: true
+          description: >-
+            EV-341y1 Y3. The split the client prefers; null when unanswered (and when the section
+            was stored before EV-341y1). Any other value is INTAKE_FIELD_INVALID naming
+            `splitPreference`.
         notes:
           $ref: "#/components/schemas/CoachIntakeSectionNote"
+    SplitPreference:
+      type: string
+      enum: [FULL_BODY, UPPER_LOWER, PUSH_PULL_LEGS, NO_PREFERENCE]
+      description: >-
+        EV-341y1. The intake's split preference (section 3). Information for the coach; it reaches a
+        model only as a sentence the coach sees and may delete in the Regenerate brief's notes,
+        never as an api field of the brief.
     CoachIntakeLifestyle:
       type: object
       additionalProperties: false
@@ -12314,6 +12438,59 @@ components:
         - name
         - orderIndex
         - restSeconds
+    WorkoutExercisePerformanceRequest:
+      type: object
+      properties:
+        exerciseSlug:
+          type: string
+        workoutId:
+          type: string
+          format: uuid
+        sets:
+          type: array
+          nullable: true
+          description: Absent or null saves no sets (and still clears that day's sets).
+          items:
+            $ref: "#/components/schemas/PerformanceSet"
+        performedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            BUG-808 — the moment the sets were done; they are filed under its UTC date. Optional;
+            absent, the server's now. At most 5 minutes after the server's now
+            (`PERFORMANCE_DATE_IN_FUTURE`) and at most 7 days before it (`PERFORMANCE_DATE_TOO_OLD`).
+      required:
+        - exerciseSlug
+        - workoutId
+    WorkoutExercisePerformanceResponse:
+      type: object
+      properties:
+        exerciseSlug:
+          type: string
+        workoutId:
+          type: string
+          format: uuid
+        sets:
+          type: array
+          items:
+            $ref: "#/components/schemas/PerformanceSet"
+    PerformanceSet:
+      type: object
+      properties:
+        setNumber:
+          type: integer
+        reps:
+          type: integer
+          nullable: true
+        weight:
+          type: number
+          nullable: true
+        durationSeconds:
+          type: integer
+          nullable: true
+      required:
+        - setNumber
     CompleteWorkoutRequest:
       type: object
       properties:
@@ -14021,7 +14198,24 @@ components:
             not be in the future (EV-248, 400 `COMPLETION_DATE_IN_FUTURE`; see the `X-Timezone`
             parameter for the exact bound). For a date other than the server's today the session is
             recorded as ending at `date` 00:00 UTC + `durationSeconds`, and that end may not fall in
-            the future either.
+            the future either. With `completedAt` sent, the date still decides the filed day.
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            BUG-808 — the instant the workout finished, sent by a completion replayed from the
+            offline queue (the same instant as the performance posts' `performedAt`). Stored as the
+            completion time, the key session ordering and volume badges join performance logs on by
+            UTC day; `date` (or, without one, `X-Timezone`) still decides the day the session is
+            filed under. Without `date`, the filed day is derived from `completedAt` (the day the
+            session started, `completedAt` - `durationSeconds`, in the `X-Timezone` zone, UTC
+            without one), not from the moment the replay arrives. With `date`, the date must be
+            within one day of `completedAt`'s UTC date (every real offset is -12h..+14h), else 400
+            `COMPLETION_DATE_MISMATCH`. Omitted: unchanged (the moment of the request, or `date`
+            00:00 UTC + `durationSeconds` for a past `date`). Server constants: at most `FUTURE_SKEW` (5
+            minutes) after the server's now (400 `COMPLETION_DATE_IN_FUTURE`) and at most `MAX_AGE`
+            (7 days) before it (400 `COMPLETION_DATE_TOO_OLD`).
         durationSeconds:
           type: integer
           nullable: true

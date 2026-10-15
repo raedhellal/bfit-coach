@@ -1871,3 +1871,25 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
   }
 }
 .intake-hint { margin: -4px 0 8px; font-size: var(--fs-label); line-height: 16px; color: var(--ink-3); }
+
+/* EV-341y2 — the catalogue picks (YP1, YP2): chosen values as chips, each with a 44 px remove
+   button; the search opener; the split's « Effacer » (YP4). */
+.intake-chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; padding: 0; }
+.intake-chip {
+  display: inline-flex; align-items: center; gap: 2px; min-height: 44px; max-width: 100%; padding: 0 0 0 14px;
+  border: 1px solid var(--blue-500); border-radius: var(--r-md); background: var(--blue-50);
+  font-size: 13.5px; color: var(--ink);
+}
+.intake-chip[data-dropped="true"] { border-style: dashed; border-color: var(--border-2); background: var(--surface-2); }
+.intake-chip-text { min-width: 0; overflow-wrap: anywhere; }
+.intake-chip-dropped { color: var(--ink-2); font-size: var(--fs-label); }
+.intake-chip-remove {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 44px; height: 44px; border: 0; border-radius: var(--r-md); background: transparent;
+  font: 600 18px/1 var(--font-body); color: var(--ink-2); cursor: pointer;
+}
+.intake-chip-remove:disabled { cursor: default; color: var(--ink-3); }
+.intake-chip-remove:focus-visible { outline: 2px solid var(--blue-500); outline-offset: -2px; }
+.intake-picker-open { display: inline-flex; }
+.intake-limit { margin: 8px 0 0; color: var(--ink-2); font-weight: 600; }
+.intake-clear { display: inline-flex; }

@@ -501,10 +501,55 @@ test.describe("the form helpers (B2, B6, B16)", () => {
         motivationScore: 4,
         eventLabel: null,
         eventDate: null,
+        emphasis: [],
         notes: null,
       },
       problems: [],
     });
+    // EV-341y2: HISTORY and AVAILABILITY carry their new fields too, empty when unanswered; no equipment key (YP7).
+    expect(sectionToApi("HISTORY", empty).values).toEqual({
+      level: null,
+      trainingAge: null,
+      currentSessionsPerWeek: null,
+      activities: [],
+      likedExercises: [],
+      avoidedExercises: [],
+      notes: null,
+    });
+    expect(sectionToApi("AVAILABILITY", empty).values).toEqual({
+      sessionsPerWeek: null,
+      sessionMinutes: null,
+      availableDays: [],
+      timeOfDay: null,
+      trainingPlaces: [],
+      splitPreference: null,
+      notes: null,
+    });
+  });
+
+  test("EV-341y2 YP5 / YP6 / YP6b: a catalogue pick list keeps the coach's order and every stored value, the catalogue's or not", () => {
+    // Read: kept as stored, in order; a value the catalogue dropped is NOT filtered (nothing here knows the catalogue).
+    const form = formFromApi({
+      GOALS: { values: { emphasis: ["glutes", "calves", "glutes", 7] } },
+      HISTORY: { values: { likedExercises: ["Plank", "Goblet Squat"], avoidedExercises: "Push-Up" } },
+      AVAILABILITY: { values: { splitPreference: "UPPER_LOWER" } },
+    });
+    expect(form["GOALS.emphasis"], "strings once each, stored order").toEqual(["glutes", "calves"]);
+    expect(form["HISTORY.likedExercises"]).toEqual(["Plank", "Goblet Squat"]);
+    expect(form["HISTORY.avoidedExercises"], "not a list: read as empty").toEqual([]);
+    expect(form["AVAILABILITY.splitPreference"]).toBe("UPPER_LOWER");
+    expect(sectionAnswered("GOALS", form)).toBe(true);
+    // Write: exactly as chosen.
+    expect(sectionToApi("GOALS", { ...form, "GOALS.emphasis": ["hamstrings", "glutes", "calves"] }).values.emphasis).toEqual([
+      "hamstrings",
+      "glutes",
+      "calves",
+    ]);
+    expect(sectionToApi("HISTORY", form).values.likedExercises).toEqual(["Plank", "Goblet Squat"]);
+    expect(sectionToApi("AVAILABILITY", form).values.splitPreference).toBe("UPPER_LOWER");
+    // « Effacer »: the empty choice is null on the wire; a value outside the enum is never sent.
+    expect(sectionToApi("AVAILABILITY", { ...form, "AVAILABILITY.splitPreference": "" }).values.splitPreference).toBeNull();
+    expect(formFromApi({ AVAILABILITY: { values: { splitPreference: "BRO_SPLIT" } } })["AVAILABILITY.splitPreference"]).toBe("");
   });
 
   test("B16: notes are counted in code points — 1,000 emoji is allowed, 1,001 is a problem", () => {

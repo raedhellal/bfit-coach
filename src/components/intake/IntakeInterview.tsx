@@ -3,6 +3,7 @@
 import { useId, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/kit";
+import { EmphasisControl, ExerciseListControl } from "@/components/intake/IntakeCatalogFields";
 import { useCopy } from "@/lib/i18n/client";
 import { useCoachForm, type CoachForm } from "@/lib/useCoachForm";
 import { useAutosave } from "@/lib/useAutosave";
@@ -57,8 +58,8 @@ export interface IntakeInterviewProps {
     values: IntakeFormValues;
     /**
      * Each section's stored values AS THE API SENT THEM, every key (staff r1 S3). A save writes the
-     * whole section, so a key this build does not know (EV-341y1's `emphasis`, … once the api
-     * has them) is sent back as it was stored rather than cleared.
+     * whole section, so a key this build does not know (an api ahead of this build) is sent back
+     * as it was stored rather than cleared. EV-341y1's four fields are known since EV-341y2.
      */
     raw: Record<IntakeFormSection, Record<string, unknown>>;
   } | null;
@@ -66,6 +67,19 @@ export interface IntakeInterviewProps {
   disabledReasonId?: string;
   /** B10: section 3's read-only equipment, rendered by the page. */
   equipment?: ReactNode;
+  /** The client's first name as the page's sentences use it (YP3's injury line). */
+  firstName?: string;
+  /**
+   * EV-341y2: what the page read from the catalogue. `muscles` is the `muscles` facet (YP1), or
+   * null when it could not be read; `droppedExercises` the stored names the catalogue certainly no
+   * longer has (YP6). Null as a whole when nothing was read (no grant: every field is disabled).
+   */
+  catalogue?: IntakeCatalogue | null;
+}
+
+export interface IntakeCatalogue {
+  muscles: string[] | null;
+  droppedExercises: string[];
 }
 
 type Payload = { values: Record<string, unknown>; form: IntakeFormValues };
@@ -98,7 +112,15 @@ function aggregate(statuses: Record<IntakeFormSection, SectionStatus>, signedOut
   return null;
 }
 
-export function IntakeInterview({ clientId, sessionSubject, initial, disabledReasonId, equipment }: IntakeInterviewProps) {
+export function IntakeInterview({
+  clientId,
+  sessionSubject,
+  initial,
+  disabledReasonId,
+  equipment,
+  firstName = "",
+  catalogue = null,
+}: IntakeInterviewProps) {
   const copy = useCopy();
   const c = copy.intakePage;
   const router = useRouter();
@@ -372,6 +394,9 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
                     section={section}
                     field={field}
                     value={values[formKey(section, field.field)]}
+                    other={field.kind === "exercises" ? values[formKey(section, field.other)] : undefined}
+                    catalogue={catalogue}
+                    firstName={firstName}
                     problem={problems.find((p) => p.field === field.field) ?? null}
                     disabled={disabled}
                     describedBy={disabledReasonId}
@@ -395,6 +420,9 @@ function FieldControl({
   section,
   field,
   value,
+  other,
+  catalogue,
+  firstName,
   problem,
   disabled,
   describedBy,
@@ -405,6 +433,10 @@ function FieldControl({
   section: IntakeFormSection;
   field: IntakeField;
   value: IntakeFormValue | undefined;
+  /** An exercise list's OTHER list (YP2). */
+  other: IntakeFormValue | undefined;
+  catalogue: IntakeCatalogue | null;
+  firstName: string;
   problem: IntakeFieldProblem | null;
   disabled: boolean;
   describedBy?: string;
@@ -421,6 +453,42 @@ function FieldControl({
   const list = Array.isArray(value) ? value : [];
 
   const describe = (...ids: (string | null | undefined | false)[]) => ids.filter(Boolean).join(" ") || undefined;
+
+  if (field.kind === "muscles") {
+    return (
+      <EmphasisControl
+        id={id}
+        fieldKey={key}
+        label={label}
+        max={field.max}
+        value={list}
+        facet={catalogue ? catalogue.muscles : []}
+        disabled={disabled}
+        describedBy={describedBy}
+        onChange={onChange}
+        onLeave={onLeave}
+      />
+    );
+  }
+
+  if (field.kind === "exercises") {
+    return (
+      <ExerciseListControl
+        id={id}
+        fieldKey={key}
+        label={label}
+        max={field.max}
+        value={list}
+        other={Array.isArray(other) ? other : []}
+        droppedNames={catalogue?.droppedExercises ?? []}
+        helper={field.field === "avoidedExercises" ? c.injuryNotHere(firstName) : undefined}
+        disabled={disabled}
+        describedBy={describedBy}
+        onChange={onChange}
+        onLeave={onLeave}
+      />
+    );
+  }
 
   if (field.kind === "single" || field.kind === "singleInt") {
     const options = field.kind === "single" ? field.options : field.options.map(String);
@@ -448,6 +516,18 @@ function FieldControl({
               <span>{optionLabel(option)}</span>
             </label>
           ))}
+          {/* YP4: nothing is pre-selected, and a radio cannot be unticked, so a choice is undone here. */}
+          {field.kind === "single" && field.clearable && text !== "" && (
+            <ClearChoice
+              label={c.clearChoice}
+              disabled={disabled}
+              onClear={(group) => {
+                onChange(key, "");
+                // The button goes with the choice: the focus stays in the group, on its first option.
+                requestAnimationFrame(() => group?.querySelector<HTMLInputElement>("input[type=radio]")?.focus());
+              }}
+            />
+          )}
         </div>
       </fieldset>
     );
@@ -565,5 +645,16 @@ function FieldControl({
         </p>
       )}
     </div>
+  );
+}
+
+function ClearChoice({ label, disabled, onClear }: { label: string; disabled: boolean; onClear(group: HTMLElement | null): void }) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  return (
+    <span ref={ref} className="intake-clear" data-intake-clear="">
+      <Button variant="secondary" disabled={disabled} onClick={() => onClear(ref.current?.closest("fieldset") ?? null)}>
+        {label}
+      </Button>
+    </span>
   );
 }
