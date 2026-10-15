@@ -51,11 +51,15 @@ import { recipePlacementOn } from "@/lib/recipePlacement";
  * one-column order is the reading order.
  *
  * EV-337g2 — « Appliquer à la semaine » (G2.1): a card in the aside under the targets card,
- * holding the page's one apply control. Its selector needs the coach's nutrition templates,
- * a THIRD read, made beside the other two (it needs nothing they return, so it adds no round
- * trip) and only on the branch that draws the card. It is the coach's own library, not the
- * trainee's data, so its failure is its own: the card offers the current targets alone and
- * says the templates could not be loaded (G2.5); a 403 there is not "the link ended".
+ * holding the page's one apply control. Its selector needs the coach's nutrition templates:
+ * the document's FOURTH read (after the overview, the nutrition and the food log; the read
+ * budget in `qa/page-read-budget.spec.ts` lists four), made in the same `allSettled` as the
+ * two NUTRITION reads (it needs nothing they return, so it adds no round trip). So it is made
+ * whenever the overview shows NUTRITION, including when `getNutrition` then answers 403 (the
+ * redirect) or fails (the load-error notice), where no card is drawn. It is the coach's own
+ * library, not the trainee's data, so its failure is its own: the card offers the current
+ * targets alone and says the templates could not be loaded (G2.5); a 403 there is not "the
+ * link ended".
  */
 export const dynamic = "force-dynamic";
 
