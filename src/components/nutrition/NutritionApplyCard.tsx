@@ -216,9 +216,12 @@ export function NutritionApplyCard({
       <Card style={{ marginBottom: 18 }}>
         <CardHead title={<span id={TITLE_ID}>{copy.nutrition.applyCardTitle}</span>} icon="calendar" />
         <label style={{ display: "block" }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>
+          {/* Staff N4: a label holds phrasing content, so the caption is a block-styled span. */}
+          <span
+            style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}
+          >
             {copy.nutrition.applyFrom}
-          </div>
+          </span>
           <select
             value={value}
             onChange={(e) => setSource(e.target.value)}

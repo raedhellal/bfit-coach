@@ -258,6 +258,15 @@ async function g21Structure(page: Page, lang: Lang, tag: string) {
 
   // One select, labelled; its first option, then each template by name in the library's order.
   await expect(c.getByRole("combobox")).toHaveCount(1);
+  // Staff N4: the select's `<label>` holds phrasing content only (HTML: a label's content model).
+  // Its caption was a `<div>`; a block element inside a label is invalid markup.
+  const labelBlocks = await selector(page, lang).evaluate((el) => {
+    const label = el.closest("label");
+    if (!label) return ["(no wrapping label)"];
+    const block = "address,article,aside,blockquote,div,dl,fieldset,figure,footer,form,h1,h2,h3,h4,h5,h6,header,hr,main,nav,ol,p,pre,section,table,ul";
+    return Array.from(label.querySelectorAll(block)).map((n) => n.tagName.toLowerCase());
+  });
+  expect(labelBlocks, "N4: no block element inside the select's label").toEqual([]);
   expect(await optionTexts(page, lang)).toEqual([t.current, ...libraryOrder]);
   await expect(selector(page, lang)).toHaveValue(/.+/);
   expect(await selector(page, lang).evaluate((el) => (el as HTMLSelectElement).selectedIndex), "the first option is selected").toBe(0);
