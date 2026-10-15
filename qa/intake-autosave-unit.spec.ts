@@ -3,6 +3,7 @@ import { test } from "./fixture-test";
 import { AutosaveEngine, type AutosaveTimers, type SaveOutcome } from "../src/lib/autosave";
 import { classifySave, intakeSectionPath } from "../src/lib/autosaveTransport";
 import { cookieFromSetCookieList } from "../src/lib/setCookieList";
+import { catalogueHasName, type NameSearch } from "../src/lib/catalogNameCheck";
 import {
   firstUnanswered,
   formFromApi,
@@ -588,3 +589,49 @@ test.describe("the form helpers (B2, B6, B16)", () => {
     expect(form["GOALS.motivationScore"]).toBe("");
   });
 });
+
+test.describe("EV-341y2 YP6: is a stored name still in the catalogue (catalogNameCheck)", () => {
+  /** The api's search over `names`: case-insensitive substring, sorted by name, paged with a clamp. */
+  function catalogue(names: string[], clamp = 50, calls: number[] = []): NameSearch {
+    return async (q, page, size) => {
+      calls.push(page);
+      const per = Math.min(size, clamp);
+      const matches = names.filter((n) => n.toLowerCase().includes(q.toLowerCase())).sort();
+      return { items: matches.slice(page * per, page * per + per).map((name) => ({ name })), totalElements: matches.length };
+    };
+  }
+
+  test("the exact row among the matches: present", async () => {
+    expect(await catalogueHasName("Plank", catalogue(["Plank", "Side Plank"]))).toBe(true);
+  });
+
+  test("matches exist, none exact, every one read: dropped (staff y2 r1 S2b)", async () => {
+    // « Cable Lateral Raise » is gone; a longer name containing it survives.
+    expect(await catalogueHasName("Cable Lateral Raise", catalogue(["Single-Arm Standing Cable Lateral Raise With Pause"]))).toBe(false);
+    expect(await catalogueHasName("Goblet Squat", catalogue(["Plank"]))).toBe(false);
+  });
+
+  test("a lower page clamp than asked: rows are counted, never inferred from the page size (staff y2 r1 S3)", async () => {
+    // 60 matches, the api serves 20 a page although 50 were asked; the exact row is the last one.
+    // "A Curl …" sorts before "Curl", so the exact row is on the third page (offset 40–59). Counting
+    // 50 a page, the old arithmetic said "every row read" after page 2 and marked it dropped.
+    const others = Array.from({ length: 59 }, (_, i) => `A Curl ${String(i).padStart(2, "0")}`);
+    const calls: number[] = [];
+    expect(await catalogueHasName("Curl", catalogue([...others, "Curl"], 20, calls))).toBe(true);
+    expect(calls).toEqual([0, 1, 2]);
+    // Absent under the same clamp: all 3 pages are read before saying so.
+    calls.length = 0;
+    expect(await catalogueHasName("Curl", catalogue([...others, "Curl Z"], 20, calls))).toBe(false);
+    expect(calls).toEqual([0, 1, 2]);
+  });
+
+  test("more matches than the pages read, or a failed read: not known (unmarked)", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => `Press ${String(i).padStart(3, "0")}`);
+    expect(await catalogueHasName("Press", catalogue(many))).toBeNull();
+    const failing: NameSearch = async () => {
+      throw new Error("503");
+    };
+    expect(await catalogueHasName("Press", failing)).toBeNull();
+  });
+});
+

@@ -1,5 +1,6 @@
 import "server-only";
-import { coachApi, type CatalogPage } from "./coachApi";
+import { catalogueHasName, type NameSearch } from "./catalogNameCheck";
+import { coachApi } from "./coachApi";
 
 /**
  * EV-341y2 — the two catalogue facts the interview page needs, read on the server with the
@@ -11,19 +12,13 @@ import { coachApi, type CatalogPage } from "./coachApi";
  *   · YP6: which stored exercise names the catalogue no longer returns.
  *
  * The api has no "is this name in the catalogue" read for the portal (`existingNames` is the
- * intake save's own check), so a name is looked up through the SAME search the picker uses:
- * `q=<name>` is a case-insensitive substring match, sorted by name, so the exact row is among the
- * matches if it exists. A name is reported dropped ONLY when every match was read and none is
- * exactly it. When the matches run past `MAX_PAGES` pages, or a read fails, the answer is "not
- * known", and the name is shown as it is, unmarked: the mark is a claim, and a claim needs a
+ * intake save's own check), so a name is looked up through the SAME search the picker uses
+ * (`catalogNameCheck.ts`, which cites the api query that makes this sound). A name is reported
+ * dropped ONLY when every match was received and none is exactly it. When the matches run past
+ * the page limit, or a read fails, the answer is "not known", and the name is shown unmarked: the mark is a claim, and a claim needs a
  * witness (YP6 says the page never removes the name either way, so nothing is lost by not
  * marking it).
  */
-
-/** The api's page-size clamp (`MAX_CATALOG_PAGE_SIZE`). */
-const PAGE_SIZE = 50;
-/** 200 matching rows per name at most; a name that common is not worth more reads to mark. */
-const MAX_PAGES = 4;
 
 /** The facet, or null when the catalogue could not be read (unavailable, or any failure). */
 export async function readMuscleFacet(): Promise<string[] | null> {
@@ -35,25 +30,12 @@ export async function readMuscleFacet(): Promise<string[] | null> {
   }
 }
 
-/** True: the catalogue has a row named exactly `name`; false: it has none; null: not known. */
-async function catalogueHasName(name: string): Promise<boolean | null> {
-  try {
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const result: CatalogPage = await coachApi.searchCatalog(name, "", "", { page, size: PAGE_SIZE });
-      if (result.items.some((item) => item.name === name)) return true;
-      const read = page * PAGE_SIZE + result.items.length;
-      if (result.items.length === 0 || read >= result.totalElements) return false;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
+const search: NameSearch = (name, page, size) => coachApi.searchCatalog(name, "", "", { page, size });
 
 /** The names among `names` the catalogue certainly no longer has, in the order given. */
 export async function droppedExerciseNames(names: readonly string[]): Promise<string[]> {
   const unique = Array.from(new Set(names.filter((n) => typeof n === "string" && n.trim() !== "")));
   if (unique.length === 0) return [];
-  const answers = await Promise.all(unique.map(catalogueHasName));
+  const answers = await Promise.all(unique.map((name) => catalogueHasName(name, search)));
   return unique.filter((_, i) => answers[i] === false);
 }

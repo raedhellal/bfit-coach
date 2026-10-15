@@ -1892,4 +1892,5 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .intake-chip-remove:focus-visible { outline: 2px solid var(--blue-500); outline-offset: -2px; }
 .intake-picker-open { display: inline-flex; }
 .intake-limit { margin: 8px 0 0; color: var(--ink-2); font-weight: 600; }
+.intake-limit:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; border-radius: var(--r-sm); }
 .intake-clear { display: inline-flex; }

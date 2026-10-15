@@ -462,7 +462,8 @@ function FieldControl({
         label={label}
         max={field.max}
         value={list}
-        facet={catalogue ? catalogue.muscles : []}
+        // Unknown is not dropped: no catalogue read (no grant) is "unknown", never an empty facet.
+        facet={catalogue?.muscles ?? null}
         disabled={disabled}
         describedBy={describedBy}
         onChange={onChange}

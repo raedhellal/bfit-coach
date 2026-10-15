@@ -252,8 +252,14 @@ export function ExerciseListControl({
 
   function close() {
     setOpen(false);
-    // YP8: back to the control that opened the search (Escape, × or « Terminé »).
-    requestAnimationFrame(() => opener.current?.querySelector<HTMLButtonElement>("button")?.focus());
+    // YP8: back to the control that opened the search (Escape, × or « Terminé »). At 10 that
+    // control is disabled and cannot take the focus (staff y2 r1 S1: it fell to <body>), so the
+    // focus goes to the line that says why, « 10 exercices au maximum. », which is read out.
+    requestAnimationFrame(() => {
+      const button = opener.current?.querySelector<HTMLButtonElement>("button");
+      if (button && !button.disabled) button.focus();
+      else scope.current?.querySelector<HTMLElement>("[data-intake-limit]")?.focus();
+    });
   }
 
   function pick(exercise: CatalogExercise) {
@@ -269,7 +275,6 @@ export function ExerciseListControl({
       ref={(el) => {
         scope.current = el;
       }}
-      className="intake-field"
       data-intake-field={fieldKey}
       onBlur={onLeave}
     >
@@ -302,7 +307,7 @@ export function ExerciseListControl({
           </Button>
         </span>
         {full && (
-          <p id={maxId} className="intake-hint intake-limit" data-intake-limit={fieldKey}>
+          <p id={maxId} className="intake-hint intake-limit" data-intake-limit={fieldKey} tabIndex={-1}>
             {c.exercisesMax}
           </p>
         )}

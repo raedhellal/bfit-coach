@@ -454,6 +454,73 @@ for (const lang of ["en", "fr"] as const) {
   });
 }
 
+test.describe("YP6: a dropped name that is a substring of a surviving one (staff y2 r1 S2b)", () => {
+  test("the search returns rows but none exact: the name is marked", async ({ page }) => {
+    const t = T.en;
+    await signIn(page);
+    await grant(page);
+    await seedSection(page, "HISTORY", { likedExercises: ["Cable Lateral Raise", "Plank"] });
+    // « Single-Arm Standing Cable Lateral Raise With Pause » survives and contains the dropped name.
+    await setSwitch(page.context(), page, "evoli_fixture_catalog_drop_exercise", encodeURIComponent("Cable Lateral Raise"));
+    await openIntake(page);
+    await openSection(page, "HISTORY");
+    const liked = group(page, "HISTORY", t.liked);
+    expect(plain(await chip(liked, "Cable Lateral Raise").locator(".intake-chip-text").textContent())).toBe(`Cable Lateral Raise ${t.dropped}`);
+    expect(plain(await chip(liked, "Plank").locator(".intake-chip-text").textContent())).toBe("Plank");
+    // The control: the search the page used does return a row for that name, just not the exact one.
+    await liked.getByRole("button", { name: t.add, exact: true }).click();
+    const search = page.getByRole("dialog", { name: t.liked, exact: true });
+    await search.getByRole("textbox").fill("Cable Lateral Raise");
+    await expect(search.locator("[data-catalog-row]")).toHaveText([/Single-Arm Standing Cable Lateral Raise With Pause/]);
+  });
+});
+
+test.describe("the catalogue unavailable (staff y2 r1 S2a)", () => {
+  test("section 1 says so and offers nothing; stored values are shown unmarked, kept on save, removable", async ({ page }) => {
+    const t = T.en;
+    await signIn(page);
+    await grant(page);
+    await seedSection(page, "GOALS", { emphasis: ["glutes"] });
+    await seedSection(page, "HISTORY", { likedExercises: ["Plank"], avoidedExercises: ["Push-Up"] });
+    await setSwitch(page.context(), page, "evoli_fixture_catalog", "down");
+    await openIntake(page);
+    await openSection(page, "GOALS");
+    const emphasis = group(page, "GOALS", t.emphasis);
+    await expect(emphasis.locator('[data-intake-catalogue="unavailable"]')).toHaveText("The exercise catalog is unavailable. Try again shortly.");
+    await expect(emphasis).toHaveAccessibleDescription("Up to 5. The exercise catalog is unavailable. Try again shortly.");
+    await expect(emphasis.getByRole("checkbox")).toHaveCount(0);
+    // Unknown is not dropped: no mark.
+    expect(plain(await chip(emphasis, "glutes").locator(".intake-chip-text").textContent())).toBe("Glutes");
+
+    // Another field of section 1: the stored value goes back unchanged, and the api takes it.
+    let before = (await puts(page, "GOALS")).length;
+    await notesOf(page, "GOALS", "en").fill("Catalogue down");
+    await notesOf(page, "GOALS", "en").press("Tab");
+    expect((await nextPut(page, "GOALS", before)).body.values.emphasis).toEqual(["glutes"]);
+    await settledSaved(page);
+
+    await openSection(page, "HISTORY");
+    const liked = group(page, "HISTORY", t.liked);
+    const avoided = group(page, "HISTORY", t.avoided);
+    expect(plain(await chip(liked, "Plank").locator(".intake-chip-text").textContent())).toBe("Plank");
+    expect(plain(await chip(avoided, "Push-Up").locator(".intake-chip-text").textContent())).toBe("Push-Up");
+    before = (await puts(page, "HISTORY")).length;
+    await notesOf(page, "HISTORY", "en").fill("Catalogue down");
+    await notesOf(page, "HISTORY", "en").press("Tab");
+    const history = (await nextPut(page, "HISTORY", before)).body.values;
+    expect(history.likedExercises).toEqual(["Plank"]);
+    expect(history.avoidedExercises).toEqual(["Push-Up"]);
+    await settledSaved(page);
+
+    // Removable.
+    await openSection(page, "GOALS");
+    before = (await puts(page, "GOALS")).length;
+    await emphasis.getByRole("button", { name: t.remove("Glutes"), exact: true }).click();
+    expect((await nextPut(page, "GOALS", before)).body.values.emphasis).toEqual([]);
+    await settledSaved(page);
+  });
+});
+
 // ── YP7 ──────────────────────────────────────────────────────────────────────
 
 test.describe("YP7 no equipment control", () => {
@@ -535,6 +602,49 @@ test.describe("YP8 keyboard, widths, targets", () => {
     await expect(opener).toBeFocused();
     await expect.poll(async () => (await lastPut(page, "HISTORY")).body.values.likedExercises, { timeout: 10_000 }).toEqual([]);
   });
+
+  for (const how of ["Escape", "Done"] as const) {
+    test(`at 10, closing the search by ${how} puts the focus on « 10 exercises at most. », never on <body> (staff y2 r1 S1)`, async ({ page }) => {
+      test.setTimeout(120_000);
+      const t = T.en;
+      await signIn(page);
+      await grant(page);
+      await seedSection(page, "HISTORY", { likedExercises: NINE });
+      await openIntake(page);
+      await sectionTab(page, "GOALS").focus();
+      await page.keyboard.press("ArrowDown");
+      await expect(panel(page, "HISTORY")).toBeVisible();
+      const liked = group(page, "HISTORY", t.liked);
+      const opener = liked.getByRole("button", { name: t.add, exact: true });
+      for (let i = 0; i < 60 && !(await opener.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("Tab");
+      await expect(opener).toBeFocused();
+      await page.keyboard.press("Enter");
+      const search = page.getByRole("dialog", { name: t.liked, exact: true });
+      await expect(search.getByRole("textbox")).toBeFocused();
+      await page.keyboard.type("Plank");
+      const row = search.locator('[data-catalog-row="Plank"]');
+      await expect(search.locator("[data-catalog-row]")).toHaveCount(1);
+      for (let i = 0; i < 10 && !(await row.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("Tab");
+      await page.keyboard.press("Enter");
+      await expect(search.locator("[data-catalog-limit]")).toHaveText(t.max10);
+      if (how === "Escape") {
+        await page.keyboard.press("Escape");
+      } else {
+        const done = search.getByRole("button", { name: t.done, exact: true });
+        for (let i = 0; i < 20 && !(await done.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("Tab");
+        await expect(done).toBeFocused();
+        await page.keyboard.press("Enter");
+      }
+      await expect(search).toHaveCount(0);
+      await expect(opener).toBeDisabled();
+      const limit = liked.locator('[data-intake-limit="HISTORY.likedExercises"]');
+      await expect(limit).toBeFocused();
+      expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
+      // From there the keyboard goes on: Shift+Tab reaches the last chip's remove button.
+      await page.keyboard.press("Shift+Tab");
+      expect(await active(page)).toBe(`BUTTON:${t.remove("Plank")}`);
+    });
+  }
 
   test("the muscle groups and the split by keyboard: Space ticks, a chip is removed by Enter, « Clear » by Enter", async ({ page }) => {
     test.setTimeout(120_000);

@@ -280,7 +280,8 @@ export function CatalogPicker({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  flexWrap: "wrap",
+                  // Only a row with a note wraps (EV-341y2); the day editor's rows are as before.
+                  flexWrap: block?.note ? "wrap" : undefined,
                   gap: 10,
                   padding: "8px 12px",
                   borderRadius: "var(--r-md)",
