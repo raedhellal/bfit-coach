@@ -273,6 +273,51 @@ test.describe("B18 — the autosave engine", () => {
     expect(engine.snapshot().refused.GOALS).toBeNull();
   });
 
+  test("B4a (staff r2 #1): « Réessayer » never re-sends a refused section, whatever else it sends", async () => {
+    const { clock, sent, engine } = rig();
+    engine.change("GOALS", "refused");
+    engine.change("HISTORY", "h");
+    await clock.advance(1_500);
+    sent.find((x) => x.key === "GOALS")!.answer({ kind: "invalid", field: "notes" });
+    sent.find((x) => x.key === "HISTORY")!.answer({ kind: "failed" });
+    await clock.advance(0);
+    for (let i = 0; i < 3; i++) {
+      await clock.advance(5_000);
+      sent.filter((x) => x.key === "HISTORY").at(-1)!.answer({ kind: "failed" });
+    }
+    await clock.advance(0);
+    expect(engine.snapshot().statuses).toEqual({ GOALS: "invalid", HISTORY: "failed" });
+    const before = sent.length;
+    engine.retry();
+    expect(sent.slice(before).map((x) => x.key), "HISTORY only").toEqual(["HISTORY"]);
+    await clock.advance(60_000);
+    expect(sent.filter((x) => x.key === "GOALS")).toHaveLength(1);
+  });
+
+  test("B4a (staff r2 #1): a session end (a save's or endSession's) leaves a refused section refused, and « Réessayer » after it does not re-send it", async () => {
+    for (const trigger of ["save", "endSession"] as const) {
+      const { clock, sent, engine } = rig();
+      engine.change("GOALS", "refused");
+      await clock.advance(1_500);
+      sent[0].answer({ kind: "invalid", field: null });
+      await clock.advance(0);
+      engine.change("HISTORY", "h");
+      if (trigger === "save") {
+        engine.flush("HISTORY");
+        sent[1].answer({ kind: "signedOut" });
+      } else {
+        engine.endSession();
+      }
+      await clock.advance(0);
+      expect(engine.snapshot().statuses.GOALS, trigger).toBe("invalid");
+      expect(engine.snapshot().signedOut, trigger).toBe(true);
+      const before = sent.length;
+      engine.retry();
+      expect(sent.slice(before).map((x) => x.key), `${trigger}: HISTORY only`).toEqual(["HISTORY"]);
+      expect(sent.filter((x) => x.key === "GOALS"), trigger).toHaveLength(1);
+    }
+  });
+
   test("B15 from outside a save (staff r1 S5): endSession stops every queue and keeps the work dirty; retry() leaves it", async () => {
     const { clock, sent, engine } = rig();
     engine.change("GOALS", "g");

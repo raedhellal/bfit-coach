@@ -80,6 +80,8 @@ export type PollOutcome =
  */
 export function pollOutcome(status: number, type: string, body: unknown): PollOutcome {
   if (type === "opaqueredirect" || (status >= 300 && status < 400)) return { kind: "signedOut" };
+  // EV-341b (staff r2 N3): the route's own 401 SESSION_EXPIRED (no token it could find or rotate).
+  if (status === 401) return { kind: "signedOut" };
   if (status === 403) return { kind: "denied" };
   if (status !== 200) return { kind: "failed" };
   const parsed = asIntakeStatus(body);

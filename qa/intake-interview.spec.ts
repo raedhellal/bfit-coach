@@ -453,6 +453,12 @@ for (const lang of ["en", "fr"] as const) {
       await signIn(page, lang);
       await grant(page);
       await openIntake(page);
+      // A section saved BEFORE the refusals (staff r2 #2): « Enregistré » must not sit beside them.
+      await tab(page, "LIFESTYLE").click();
+      await notes(page, "LIFESTYLE", lang).fill("Saved first");
+      await notes(page, "LIFESTYLE", lang).press("Tab");
+      await settledSaved(page, lang);
+      await tab(page, "GOALS").click();
       let refuse = true;
       await page.route(`**/api/clients/${LINA}/intake/GOALS`, (route) =>
         refuse
@@ -472,6 +478,8 @@ for (const lang of ["en", "fr"] as const) {
       expect((await lines.allTextContents()).map(plain)).toEqual([plain(REFUSED[lang].field(REFUSED[lang].event)), plain(REFUSED[lang].section)]);
       await expect(alertOf(page, "failed"), "never B4's sentences").toHaveCount(0);
       await expect(lines.getByRole("button"), "no « Réessayer » for a refusal").toHaveCount(0);
+      await expect(status(page), "no « Enregistré » beside a refusal").toHaveAttribute("data-intake-status", "idle");
+      expect(plain(await status(page).textContent())).toBe("");
       expect(await page.evaluate(() => window.history.state?.evoliUnsavedGuard === true), "the leave guard asks while refused").toBe(true);
       // The next change to GOALS saves it; its line goes when that save answers 2xx.
       refuse = false;
@@ -1464,14 +1472,45 @@ test.describe("staff r1 S7: another account signs in, in another tab", () => {
   });
 });
 
-test.describe("staff r1 N4: the section select's name and the motivations limit", () => {
-  test("the select is « Section »; « 3 au maximum. » describes the motivation boxes (EN and FR)", async ({ page }) => {
-    await signIn(page);
-    await grant(page);
-    await openIntake(page);
-    const hint = panel(page, "GOALS").locator('[data-intake-hint="motivations"]');
-    await expect(hint).toHaveText("Up to 3.");
-    await expect(panel(page, "GOALS").getByRole("checkbox", { name: "Health", exact: true })).toHaveAccessibleDescription("Up to 3.");
-    expect(await page.locator("select.intake-select").getAttribute("aria-label")).toBe("Section");
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`staff r1 N4 / B8a: the section select's name and the motivations limit (${lang.toUpperCase()})`, () => {
+    test.use({ locale: T[lang].locale });
+
+    test("the select is « Section »; the hint describes the motivations group and each of its boxes", async ({ page }) => {
+      await signIn(page, lang);
+      await grant(page);
+      await openIntake(page);
+      const hintText = lang === "en" ? "Up to 3." : "3 au maximum.";
+      const hint = panel(page, "GOALS").locator('[data-intake-hint="motivations"]');
+      await expect(hint).toHaveText(hintText);
+      await expect(panel(page, "GOALS").getByRole("group", { name: lang === "en" ? "Motivations" : "Motivations", exact: true })).toHaveAccessibleDescription(hintText);
+      await expect(panel(page, "GOALS").getByRole("checkbox", { name: lang === "en" ? "Health" : "Santé", exact: true })).toHaveAccessibleDescription(hintText);
+      expect(await page.locator("select.intake-select").getAttribute("aria-label")).toBe("Section");
+    });
   });
-});
+}
+
+/*
+ * Staff r2 S1 — BUG-704's render-error switch on the intake page WITH THE FLAG ON. The every-route
+ * spec (`render-error-every-route.spec.ts`) runs on the roster server, where the page is dark, so
+ * it lists the page in NO_SHELL; this is that route's case on the server that draws it.
+ */
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`BUG-704 on the intake page, flag on (${lang.toUpperCase()})`, () => {
+    test.use({ locale: T[lang].locale });
+
+    test("the switch off: the page's own h1; on: the root error page, inside the shell", async ({ page }) => {
+      const sentence = lang === "en" ? "Something went wrong." : "Une erreur est survenue.";
+      await signIn(page, lang);
+      await grant(page);
+      await page.goto(INTAKE);
+      await expect(page.locator("h1").first()).toBeVisible();
+      expect(await page.locator("h1").allTextContents()).not.toContain(sentence);
+      await page.context().addCookies([{ name: "evoli_fixture_render_error", value: "always", url: new URL("/", page.url()).href }]);
+      await page.goto(INTAKE);
+      await expect(page.locator("h1").first()).toBeVisible();
+      expect(await page.locator("h1").allTextContents()).toEqual([sentence]);
+      await expect(page.locator(".app-shell")).toHaveCount(1);
+    });
+  });
+}

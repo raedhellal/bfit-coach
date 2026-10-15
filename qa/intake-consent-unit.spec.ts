@@ -86,11 +86,13 @@ test.describe("a poll's outcome", () => {
   test("the middleware's redirect to /login is a session that ended, not an answer", () => {
     expect(pollOutcome(0, "opaqueredirect", null)).toEqual({ kind: "signedOut" });
     expect(pollOutcome(307, "basic", null)).toEqual({ kind: "signedOut" });
+    // EV-341b (staff r2 N3): the poll route's own 401 SESSION_EXPIRED is the same session end.
+    expect(pollOutcome(401, "basic", { code: "SESSION_EXPIRED" })).toEqual({ kind: "signedOut" });
   });
 
   test("403 is the link ending (W8); every other status keeps the wait going", () => {
     expect(pollOutcome(403, "basic", { code: "COACH_ACCESS_DENIED" })).toEqual({ kind: "denied" });
-    for (const status of [400, 401, 404, 429, 500, 502, 503, 504]) {
+    for (const status of [400, 404, 429, 500, 502, 503, 504]) {
       expect(pollOutcome(status, "basic", null), String(status)).toEqual({ kind: "failed" });
     }
   });

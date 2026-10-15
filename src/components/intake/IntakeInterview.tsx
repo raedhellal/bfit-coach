@@ -91,6 +91,8 @@ function aggregate(statuses: Record<IntakeFormSection, SectionStatus>, signedOut
   if (all.includes("failed")) return "failed";
   if (all.includes("retrying")) return "retrying";
   if (all.includes("saving") || all.includes("pending")) return "saving";
+  // B4a (staff r2 #2): with a section refused, « Enregistré » would contradict its line.
+  if (all.includes("invalid")) return null;
   if (all.includes("saved")) return "saved";
   return null;
 }

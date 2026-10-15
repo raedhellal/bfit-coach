@@ -233,6 +233,8 @@ export class AutosaveEngine<K extends string, P> {
     this.signedOut = false;
     for (const [key, s] of this.sections) {
       if (s.status === "conflict" || s.status === "blocked") continue;
+      // B4a (staff r2 #1): a refused section is re-armed by a change only, never by « Réessayer ».
+      if (s.status === "invalid") continue;
       if (s.pending === null) {
         if (s.status === "signedOut") s.status = s.inFlight ? "saving" : "idle";
         continue;
@@ -274,7 +276,8 @@ export class AutosaveEngine<K extends string, P> {
       this.clearIdle(s);
       this.clearRetry(s);
       s.queued = false;
-      if (s.pending !== null || s.inFlight) s.status = "signedOut";
+      // A refused section keeps its refusal: B15 does not turn it into something « Réessayer » sends.
+      if (s.status !== "invalid" && (s.pending !== null || s.inFlight)) s.status = "signedOut";
     }
     this.emit();
   }
@@ -396,7 +399,8 @@ export class AutosaveEngine<K extends string, P> {
           this.clearIdle(other);
           this.clearRetry(other);
           other.queued = false;
-          if (other.pending !== null || other.inFlight) other.status = "signedOut";
+          // A refused section keeps its refusal (B4a, staff r2 #1).
+          if (other.status !== "invalid" && (other.pending !== null || other.inFlight)) other.status = "signedOut";
         }
         break;
       case "failed": {
