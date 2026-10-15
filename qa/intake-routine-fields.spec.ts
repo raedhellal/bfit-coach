@@ -471,7 +471,9 @@ test.describe("YP6: a dropped name that is a substring of a surviving one (staff
     await liked.getByRole("button", { name: t.add, exact: true }).click();
     const search = page.getByRole("dialog", { name: t.liked, exact: true });
     await search.getByRole("textbox").fill("Cable Lateral Raise");
-    await expect(search.locator("[data-catalog-row]")).toHaveText([/Single-Arm Standing Cable Lateral Raise With Pause/]);
+    // The row's name as served (its visible text is truncated: `truncateName`).
+    await expect(search.locator("[data-catalog-row]")).toHaveCount(1);
+    await expect(search.locator("[data-catalog-row]")).toHaveAttribute("data-catalog-row", "Single-Arm Standing Cable Lateral Raise With Pause");
   });
 });
 
