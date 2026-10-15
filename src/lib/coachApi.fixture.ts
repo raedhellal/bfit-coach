@@ -86,6 +86,11 @@ import type {
   ResendInvitationRequest,
   CoachIntakeConsentStatus,
   CoachIntakeRequest,
+  CoachIntake,
+  CoachIntakeSection,
+  CoachIntakeSectionName,
+  CoachIntakeSectionSaved,
+  CoachIntakeSectionWrite,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -5354,6 +5359,7 @@ export function resetFixtureState(): void {
   (globalThis as GlobalWithCalls)[CALLS_KEY] = [];
   (globalThis as GlobalWithCalls)[READS_KEY] = [];
   (globalThis as GlobalWithDraftPuts)[DRAFT_PUTS_KEY] = [];
+  resetIntakePuts();
   (globalThis as GlobalWithSwapCache)[SWAP_CACHE_KEY] = new Map();
 }
 
@@ -6170,6 +6176,12 @@ interface FixtureIntakeRequest {
 interface FixtureIntakeLink {
   granted: boolean;
   requests: FixtureIntakeRequest[];
+  /**
+   * EV-341b — the link's intake (b-fit-api EV-341a's `coach_intake_sections`), one entry per
+   * section written; an absent section reads version 0, every field empty. A plain object, not
+   * a Map, so the seed's canonical form stays one JSON shape.
+   */
+  sections?: Partial<Record<CoachIntakeSectionName, { version: number; updatedAt: string; values: Record<string, unknown> }>>;
 }
 
 function intakeLink(id: string): FixtureIntakeLink {
@@ -6296,6 +6308,239 @@ export function fixtureIntakeAnswer(id: string, answer: "grant" | "dismiss" | "e
     live.expiresAt = now - 1;
   }
   return true;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341b — THE INTAKE INTERVIEW, ported from b-fit-api EV-341a @ 8655a2e5
+ * (`CoachIntakeUseCase`, `IntakeSectionBody`): one record per link, one version per section.
+ *
+ *   · the read's gate is the overview's (`requireManagedLink`); a link without the grant reads
+ *     `{ state: "GRANT_MISSING" }` and nothing else (AC6);
+ *   · a write needs the grant too: without it, `403 COACH_ACCESS_DENIED` and nothing stored;
+ *   · the body is `{ version, values }`, both required, any other key `400
+ *     COACH_FIELD_NOT_ACCEPTED`; each section's fields are checked as the api's reader checks
+ *     them (`400 INTAKE_FIELD_INVALID` naming the field, never the value);
+ *   · a stale `version` is `409 INTAKE_VERSION_CONFLICT` carrying the stored version and time.
+ *
+ * Fixture-only switches (one browser context each), read on the WRITE only:
+ *   `evoli_fixture_intake_save=fail`          → every section PUT answers 500 (B4);
+ *   `evoli_fixture_intake_save_delay_ms=<ms>` → every section PUT is held <ms> (≤ 15 s) before
+ *                                               it is judged, so a save can be caught in flight.
+ * Every PUT the fixture judged is recorded with its body (`fixtureIntakePuts`, through
+ * `GET /api/fixture/calls`): B5a's "the first PUT after « Recharger » carries the stored values
+ * plus that change" is read from there.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const FIXTURE_INTAKE_SECTIONS: readonly CoachIntakeSectionName[] = [
+  "GOALS",
+  "HISTORY",
+  "AVAILABILITY",
+  "LIFESTYLE",
+  "HEALTH",
+  "MEASUREMENTS",
+  "NUTRITION",
+  "COACH_NOTES",
+];
+
+type IntakeFieldRule =
+  | { kind: "one"; values: readonly string[] }
+  | { kind: "list"; values: readonly string[]; max: number }
+  | { kind: "int"; min: number; max: number }
+  | { kind: "intIn"; values: readonly number[] }
+  | { kind: "text"; max: number }
+  | { kind: "date" };
+
+const NOTES_RULE: IntakeFieldRule = { kind: "text", max: 1000 };
+const WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
+const ACTIVITIES = ["STRENGTH", "RUNNING", "CYCLING", "SWIMMING", "TEAM_SPORTS", "COMBAT", "YOGA_PILATES", "HIIT", "OTHER"] as const;
+const PLACES = ["GYM", "HOME", "OUTDOOR", "COACH_STUDIO"] as const;
+const FREQUENCY = ["RARELY", "SOMETIMES", "OFTEN"] as const;
+
+/** `IntakeSectionBody.values`, field by field, in the record's order. */
+const INTAKE_RULES: Record<CoachIntakeSectionName, Record<string, IntakeFieldRule>> = {
+  GOALS: {
+    primaryGoal: { kind: "one", values: ["LOSE_WEIGHT", "BUILD_MUSCLE", "GET_STRONGER", "ENDURANCE", "MOBILITY"] },
+    motivations: { kind: "list", values: ["HEALTH", "CONFIDENCE", "APPEARANCE", "PERFORMANCE", "ENERGY", "EVENT"], max: 3 },
+    motivationScore: { kind: "int", min: 1, max: 5 },
+    eventLabel: { kind: "text", max: 80 },
+    eventDate: { kind: "date" },
+    notes: NOTES_RULE,
+  },
+  HISTORY: {
+    level: { kind: "one", values: ["BEGINNER", "INTERMEDIATE", "ADVANCED"] },
+    trainingAge: { kind: "one", values: ["NONE", "LT_6M", "M6_24", "Y2_5", "GT_5Y"] },
+    currentSessionsPerWeek: { kind: "int", min: 0, max: 14 },
+    activities: { kind: "list", values: ACTIVITIES, max: ACTIVITIES.length },
+    notes: NOTES_RULE,
+  },
+  AVAILABILITY: {
+    sessionsPerWeek: { kind: "int", min: 2, max: 6 },
+    sessionMinutes: { kind: "intIn", values: [30, 45, 60, 75, 90] },
+    availableDays: { kind: "list", values: WEEKDAYS, max: WEEKDAYS.length },
+    timeOfDay: { kind: "one", values: ["MORNING", "MIDDAY", "EVENING"] },
+    trainingPlaces: { kind: "list", values: PLACES, max: PLACES.length },
+    notes: NOTES_RULE,
+  },
+  LIFESTYLE: {
+    workActivity: { kind: "one", values: ["SEDENTARY", "STANDING", "PHYSICAL"] },
+    sleepHours: { kind: "one", values: ["LT_6", "H6_7", "H7_8", "GT_8"] },
+    stressScore: { kind: "int", min: 1, max: 5 },
+    notes: NOTES_RULE,
+  },
+  HEALTH: { notes: NOTES_RULE },
+  MEASUREMENTS: { notes: NOTES_RULE },
+  NUTRITION: {
+    usualMealsPerDay: { kind: "int", min: 1, max: 6 },
+    snacking: { kind: "one", values: FREQUENCY },
+    cooking: { kind: "one", values: FREQUENCY },
+    mealsOutPerWeek: { kind: "int", min: 0, max: 14 },
+    alcoholPerWeek: { kind: "one", values: ["NONE", "D1_3", "D4_7", "GT_7"] },
+    waterPerDay: { kind: "one", values: ["LT_1L", "L1_2", "GT_2L"] },
+    notes: NOTES_RULE,
+  },
+  COACH_NOTES: { notes: { kind: "text", max: 4000 } },
+};
+
+/** `IntakeSectionBody.storable`: no control character but tab and line breaks, lone surrogates refused, code points counted. */
+function intakeStorable(text: string, max: number): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if ((c < 0x20 || (c >= 0x7f && c <= 0x9f)) && c !== 0x09 && c !== 0x0a && c !== 0x0d) return false;
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const next = text.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      i++;
+    } else if (c >= 0xdc00 && c <= 0xdfff) {
+      return false;
+    }
+  }
+  return Array.from(text).length <= max;
+}
+
+/** One field, judged as the api's reader judges it. Returns the stored value, or throws 400. */
+async function intakeFieldValue(field: string, rule: IntakeFieldRule, raw: unknown): Promise<unknown> {
+  const invalid = () => failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field });
+  if (raw === undefined || raw === null) return rule.kind === "list" ? [] : null;
+  switch (rule.kind) {
+    case "one":
+      return typeof raw === "string" && rule.values.includes(raw) ? raw : invalid();
+    case "list": {
+      if (!Array.isArray(raw) || raw.length > rule.max) return invalid();
+      const seen: string[] = [];
+      for (const item of raw) {
+        if (typeof item !== "string" || !rule.values.includes(item) || seen.includes(item)) return invalid();
+        seen.push(item);
+      }
+      return seen;
+    }
+    case "int":
+      return Number.isInteger(raw) && (raw as number) >= rule.min && (raw as number) <= rule.max ? raw : invalid();
+    case "intIn":
+      return Number.isInteger(raw) && rule.values.includes(raw as number) ? raw : invalid();
+    case "text":
+      return typeof raw === "string" && intakeStorable(raw, rule.max) ? raw : invalid();
+    case "date": {
+      if (typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return invalid();
+      const parsed = new Date(`${raw}T00:00:00Z`);
+      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === raw ? raw : invalid();
+    }
+  }
+}
+
+function emptyIntakeValues(section: CoachIntakeSectionName): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [field, rule] of Object.entries(INTAKE_RULES[section])) out[field] = rule.kind === "list" ? [] : null;
+  return out;
+}
+
+/** A section PUT as the fixture received it (the request body, re-built), for B5a's witness. */
+export interface FixtureIntakePut {
+  clientId: string;
+  section: string;
+  body: unknown;
+  at: number;
+}
+const INTAKE_PUTS_KEY = Symbol.for("evoli.coach.fixture.intakePuts");
+type GlobalWithIntakePuts = typeof globalThis & Record<symbol, FixtureIntakePut[] | undefined>;
+
+/** Every section PUT since the last reset, in arrival order (copies). */
+export function fixtureIntakePuts(): FixtureIntakePut[] {
+  return ((globalThis as GlobalWithIntakePuts)[INTAKE_PUTS_KEY] ?? []).map((entry) => structuredClone(entry));
+}
+
+function resetIntakePuts(): void {
+  (globalThis as GlobalWithIntakePuts)[INTAKE_PUTS_KEY] = [];
+}
+
+async function fixtureGetIntake(id: string): Promise<CoachIntake> {
+  await assertManagedLink(id);
+  const link = state().intake.get(id);
+  if (!link?.granted) return { state: "GRANT_MISSING" };
+  const sections: Partial<Record<CoachIntakeSectionName, CoachIntakeSection>> = {};
+  let written = false;
+  for (const name of FIXTURE_INTAKE_SECTIONS) {
+    const stored = link.sections?.[name];
+    if (stored) written = true;
+    sections[name] = stored
+      ? { version: stored.version, updatedAt: stored.updatedAt, values: structuredClone(stored.values) }
+      : { version: 0, updatedAt: null, values: emptyIntakeValues(name) };
+  }
+  return { state: "READY", status: written ? "IN_PROGRESS" : "NOT_STARTED", sections };
+}
+
+async function fixtureSaveIntakeSection(
+  id: string,
+  section: CoachIntakeSectionName,
+  body: CoachIntakeSectionWrite
+): Promise<CoachIntakeSectionSaved> {
+  const g = globalThis as GlobalWithIntakePuts;
+  (g[INTAKE_PUTS_KEY] ??= []).push({ clientId: id, section, body: structuredClone(body), at: Date.now() });
+  const delay = Number(await fixtureSwitch("evoli_fixture_intake_save_delay_ms"));
+  if (Number.isFinite(delay) && delay > 0) await new Promise((r) => setTimeout(r, Math.min(delay, 15_000)));
+  if ((await fixtureSwitch("evoli_fixture_intake_save")) === "fail") {
+    await fail(500, "INTERNAL_ERROR", "Internal error");
+  }
+  await assertManagedLink(id);
+  if (!FIXTURE_INTAKE_SECTIONS.includes(section)) {
+    await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "section" });
+  }
+  const link = state().intake.get(id);
+  // AC6: no grant, no write; the guard's one body.
+  if (!link?.granted) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  const raw = body as unknown as Record<string, unknown>;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "body" });
+  }
+  for (const key of Object.keys(raw)) {
+    if (key !== "version" && key !== "values") await fail(400, "COACH_FIELD_NOT_ACCEPTED", `Field not accepted: ${key}`);
+  }
+  const version = raw.version;
+  if (!Number.isInteger(version) || (version as number) < 0) {
+    await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "version" });
+  }
+  const values = raw.values as Record<string, unknown> | null | undefined;
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "values" });
+  }
+  const rules = INTAKE_RULES[section];
+  for (const key of Object.keys(values as object)) {
+    if (!Object.hasOwn(rules, key)) await fail(400, "COACH_FIELD_NOT_ACCEPTED", `Field not accepted: ${key}`);
+  }
+  const stored: Record<string, unknown> = {};
+  for (const [field, rule] of Object.entries(rules)) {
+    stored[field] = await intakeFieldValue(field, rule, (values as Record<string, unknown>)[field]);
+  }
+  const current = link!.sections?.[section];
+  const currentVersion = current?.version ?? 0;
+  if (version !== currentVersion) {
+    await failWithDetails(409, "INTAKE_VERSION_CONFLICT", "The section was changed since it was read", {
+      version: currentVersion,
+      updatedAt: current?.updatedAt ?? null,
+    });
+  }
+  const updatedAt = new Date().toISOString();
+  link!.sections = { ...(link!.sections ?? {}), [section]: { version: currentVersion + 1, updatedAt, values: stored } };
+  return { version: currentVersion + 1, updatedAt };
 }
 
 export const fixtureCoachApi: CoachApi = {
@@ -6460,6 +6705,10 @@ export const fixtureCoachApi: CoachApi = {
   getIntakeConsent: fixtureGetIntakeConsent,
   requestIntakeConsent: fixtureRequestIntakeConsent,
   cancelIntakeConsentRequest: fixtureCancelIntakeConsentRequest,
+
+  // ── EV-341b the intake interview (see the block above `fixtureCoachApi`) ──
+  getIntake: fixtureGetIntake,
+  saveIntakeSection: fixtureSaveIntakeSection,
 
   /**
    * EV-202b — `PUT /coach-portal/clients/{id}/progress-goal`.

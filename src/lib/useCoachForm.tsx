@@ -62,6 +62,12 @@ import { useUnsavedChanges, type AfterStep } from "./useUnsavedChanges";
  * overview holds the progress goal only, the nutrition tab the targets only). A page that
  * needs several sections (EV-341b's intake) builds them as ONE form, or lifts the guard
  * out of the sections first.
+ *
+ * AUTOSAVE (EV-341b B7a, staff H4). A form that autosaves holds unsaved work this hook cannot
+ * see: a save waiting for its idle time, in flight, or failed, while every field already
+ * equals what the form calls the server's value. The autosave's own `dirty` comes in through
+ * `extraDirty`, and the guard asks while EITHER says so. Access ending (`endAccess`) wins over
+ * both: nothing can be saved any more, so nothing is held (B14).
  */
 export interface CoachForm<V extends FormShape<V>> {
   values: V;
@@ -91,11 +97,14 @@ export interface CoachForm<V extends FormShape<V>> {
 export function useCoachForm<V extends FormShape<V>>({
   server,
   enabled = true,
+  extraDirty = false,
 }: {
   /** The server's values for the fields, in the form's terms (strings for text fields). */
   server: V;
   /** False while the form is not on screen (a closed dialog): nothing to guard then. */
   enabled?: boolean;
+  /** Unsaved work this hook does not hold: an autosave queue's `dirty` (EV-341b B7a). */
+  extraDirty?: boolean;
 }): CoachForm<V> {
   const [state, setState] = useState<CoachFormState<V>>(() => seedForm(server));
 
@@ -108,12 +117,13 @@ export function useCoachForm<V extends FormShape<V>>({
     setState((s) => (s.seen === signature ? s : reseedFromServer(s, server)));
   }
 
-  const dirty = enabled && isDirty(current);
+  // `abandoned` (access ended) silences `extraDirty` too: `isDirty` already reads it.
+  const dirty = enabled && !current.abandoned && (isDirty(current) || extraDirty);
   const leaving = useUnsavedChanges(dirty);
   const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   /** The state as last rendered, for `saved` to decide synchronously (see there). */
-  const latest = useRef(current);
-  latest.current = current;
+  const latest = useRef({ state: current, extraDirty });
+  latest.current = { state: current, extraDirty };
 
   const set = useCallback(<K extends keyof V>(key: K, value: V[K]) => {
     setState((s) => editField(s, key, value));
@@ -137,10 +147,10 @@ export function useCoachForm<V extends FormShape<V>>({
    */
   const saved = useCallback(
     (stored?: V, then?: () => void, after?: AfterStep) => {
-      const next = markSaved(latest.current, stored);
+      const next = markSaved(latest.current.state, stored);
       // `after` comes with every `then`: the overload above requires it (BUG-730 N1).
       if (then) release(then, after as AfterStep);
-      else if (!isDirty(next)) release();
+      else if (!isDirty(next) && !latest.current.extraDirty) release();
       setState((s) => markSaved(s, stored));
     },
     [release]

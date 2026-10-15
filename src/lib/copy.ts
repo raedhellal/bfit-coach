@@ -681,8 +681,12 @@ export const en = {
     menu: "More",
     revoke: "Revoke access",
     revokeTitle: "Revoke access?",
+    /**
+     * EV-341b B12, verbatim (ADR-0034 attack point 5): a revoke deletes the link's intake at
+     * t = 0, so the dialog says so before the coach confirms. Title and buttons unchanged.
+     */
     revokeBody: (name: string) =>
-      `${name} will be removed from your roster and you will no longer see their training data. They keep their Evoli Fit account and all of their history.`,
+      `${name} will be removed from your roster and you will no longer see their training data. If you recorded an intake interview with ${name}, it will be permanently deleted. They keep their Evoli Fit account and all of their training history.`,
     revokeConfirm: "Revoke access",
     revokeCancel: "Cancel",
     revoking: "Revoking…",
@@ -922,6 +926,7 @@ export const en = {
     overview: "Overview",
     routine: "Routine", // EV-184 AC1, verbatim
     nutrition: "Nutrition", // EV-185 AC1, verbatim
+    intake: "Intake", // EV-341b B1, verbatim
   },
 
   /**
@@ -2861,6 +2866,134 @@ export const en = {
     cancelFailed: "The request could not be cancelled. Try again.",
     /** The card's read failed (not a 403): the overview's own block sentence. */
     loadError: "This block could not be loaded. Reload the page to try again.",
+  },
+
+  /**
+   * EV-341b — the interview page (`/clients/[id]/intake`), sections 1–4. Every sentence is the
+   * story's, verbatim (B1–B19). The field and value labels are the catalogue table's
+   * (§ "The interview, section by section"), and where that table gives a French word only,
+   * the English label is the one EV-341r R4 adopted for the trainee's read of the same
+   * record (b-fit-mobile `coaching.intakeRead`), so the coach and the client read one
+   * vocabulary.
+   *
+   * ⛔ Not here, on purpose: « Indiqué dans l'app : {goal} » (B10). No coach-portal read
+   * carries the trainee's PROFILE goal (EV-359 is not built, and the intake read has no such
+   * field), and a goal guessed from the published plan would be a claim nobody made.
+   */
+  intakePage: {
+    /** B1, verbatim: the tab's `h2` (the page's `h1` stays the client's name). */
+    title: "Intake interview",
+    /** B19, verbatim. Sentence-initial: the fallback keeps its capital. */
+    clientCanRead: (firstName: string) => `${firstName} can read this intake, notes included, in their app.`,
+    /** B11, verbatim. Mid-sentence. */
+    grantMissing: (firstName: string) => `You can save the intake once ${mid(firstName)} has allowed it in the app.`,
+    /** B11, verbatim: `/invited/[userId]`, beside the disabled « Entretien » control. */
+    grantMissingInvited: (firstName: string) =>
+      `You can save the intake once ${mid(firstName)} has activated their account and allowed the intake in the app.`,
+    /** B2, verbatim: a section's status in the list. */
+    notStarted: "Not started",
+    started: "Started",
+    /** B3, verbatim. */
+    saving: "Saving…",
+    saved: "Saved",
+    /** B4, verbatim: from the first failure, while the retries run. */
+    retrying: "Not saved. Retrying…",
+    /** B4, verbatim: after the last retry. */
+    failed: "Not saved. Check your connection: your answers are still on this page.",
+    /** B4 / B15, verbatim. */
+    tryAgain: "Try again",
+    /** B5, verbatim. */
+    conflict: "This intake was changed in another tab.",
+    reload: "Reload",
+    /** B15, verbatim. */
+    sessionEnded: "Your session has expired. Sign in again in a new tab: your answers are still on this page.",
+    /** B16, verbatim: the note's live counter, in code points. */
+    notesCounter: (count: number) => `${count.toLocaleString("en-GB")} / 1,000`,
+    /** B16, verbatim. */
+    notesTooLong: "Too long: 1,000 characters at most.",
+    sections: {
+      GOALS: "Goals and motivation",
+      HISTORY: "Training history",
+      AVAILABILITY: "Availability and equipment",
+      LIFESTYLE: "Lifestyle",
+    },
+    /** The catalogue's fields (EV-341r R4's adopted labels where the table names a key only). */
+    fields: {
+      primaryGoal: "Main goal",
+      motivations: "Motivations",
+      motivationScore: "Motivation",
+      eventLabel: "Event",
+      eventDate: "Event date",
+      level: "Level",
+      trainingAge: "Training experience",
+      currentSessionsPerWeek: "Current sessions per week",
+      activities: "Activities",
+      sessionsPerWeek: "Sessions per week",
+      sessionMinutes: "Session length",
+      availableDays: "Available days",
+      timeOfDay: "Preferred time of day",
+      trainingPlaces: "Training places",
+      workActivity: "Activity at work",
+      sleepHours: "Sleep per night",
+      stressScore: "Stress",
+      notes: "Notes",
+    } as Record<string, string>,
+    /** The catalogue's values, per field. */
+    values: {
+      primaryGoal: {
+        BUILD_MUSCLE: "Build muscle",
+        LOSE_WEIGHT: "Lose fat",
+        GET_STRONGER: "Get stronger",
+        MOBILITY: "General fitness",
+        ENDURANCE: "Endurance",
+      },
+      motivations: {
+        HEALTH: "Health",
+        CONFIDENCE: "Self-confidence",
+        APPEARANCE: "Appearance",
+        PERFORMANCE: "Sports performance",
+        ENERGY: "Everyday energy",
+        EVENT: "Preparing for an event",
+      },
+      level: { BEGINNER: "Beginner", INTERMEDIATE: "Intermediate", ADVANCED: "Advanced" },
+      trainingAge: {
+        NONE: "Never trained",
+        LT_6M: "Less than 6 months",
+        M6_24: "6 months to 2 years",
+        Y2_5: "2 to 5 years",
+        GT_5Y: "More than 5 years",
+      },
+      activities: {
+        STRENGTH: "Strength training",
+        RUNNING: "Running",
+        CYCLING: "Cycling",
+        SWIMMING: "Swimming",
+        TEAM_SPORTS: "Team sports",
+        COMBAT: "Combat sports",
+        YOGA_PILATES: "Yoga / Pilates",
+        HIIT: "CrossFit / HIIT",
+        OTHER: "Other",
+      },
+      availableDays: {
+        MONDAY: "Monday",
+        TUESDAY: "Tuesday",
+        WEDNESDAY: "Wednesday",
+        THURSDAY: "Thursday",
+        FRIDAY: "Friday",
+        SATURDAY: "Saturday",
+        SUNDAY: "Sunday",
+      },
+      timeOfDay: { MORNING: "Morning", MIDDAY: "Midday", EVENING: "Evening" },
+      trainingPlaces: { GYM: "Gym", HOME: "Home", OUTDOOR: "Outdoors", COACH_STUDIO: "Coach's studio" },
+      workActivity: {
+        SEDENTARY: "Sitting most of the time",
+        STANDING: "Standing or moving",
+        PHYSICAL: "Physical work",
+      },
+      sleepHours: { LT_6: "Less than 6 h", H6_7: "6 to 7 h", H7_8: "7 to 8 h", GT_8: "More than 8 h" },
+    } as Record<string, Record<string, string>>,
+    /** EV-341r R4's unit: a session length option (U+00A0 keeps the number with its unit). */
+    minutes: (value: number) => `${value}\u00a0min`,
   },
 } as const;
 

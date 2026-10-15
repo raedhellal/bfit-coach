@@ -4,7 +4,7 @@ import type { Copy } from "@/lib/copy";
 import { TabBar, type TabDef } from "./TabBar";
 
 /**
- * Overview · Routine · Nutrition (EV-184 AC1, EV-185 AC1), on EVERY client page (EV-342e).
+ * Overview · Routine · Nutrition · Intake (EV-184 AC1, EV-185 AC1, EV-341b B1), on EVERY client page (EV-342e).
  *
  * Real routes, not client-side panels. Three reasons: each tab is a separate api read
  * and a panel would make the overview pay for all three; a tab must be linkable,
@@ -35,6 +35,8 @@ export const CLIENT_SECTIONS = [
   { key: "overview", path: "" },
   { key: "routine", path: "/routine", scope: "WORKOUTS" },
   { key: "nutrition", path: "/nutrition", scope: "NUTRITION" },
+  // EV-341b B1: always rendered, never filtered out (D22.6a); without the grant its page says why.
+  { key: "intake", path: "/intake", scope: "INTAKE" },
 ] as const satisfies readonly { key: keyof Omit<Copy["tabs"], "label">; path: string; scope?: CoachAccessScope }[];
 
 export type ClientTab = (typeof CLIENT_SECTIONS)[number]["key"];

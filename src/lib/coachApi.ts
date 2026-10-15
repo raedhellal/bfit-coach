@@ -165,7 +165,7 @@ export type ClientStatus = "ACTIVE";
  * inference to make from a null field. The list arrives on the trainee overview,
  * which requires an ACTIVE link and no data scope at all.
  */
-export type CoachAccessScope = "WORKOUTS" | "PROGRESS" | "NUTRITION" | "WEIGH_INS";
+export type CoachAccessScope = "WORKOUTS" | "PROGRESS" | "NUTRITION" | "WEIGH_INS" | "INTAKE";
 
 /**
  * `GET /coach-portal/me` → `CoachProfileResponse`.
@@ -2914,6 +2914,146 @@ export function isIntakeRequestLimit(err: unknown): boolean {
   return err instanceof ApiError && err.status === 429 && err.code === "INTAKE_REQUEST_LIMIT";
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341b — the intake interview, sections 1–4 (b-fit-api EV-341a, in production since
+ * `8655a2e5`, the vendored spec's commit).
+ *
+ *   GET /coach-portal/clients/{id}/intake                    → CoachIntake
+ *       READY: `status`, all eight `sections` (each `{ version, updatedAt, values }`);
+ *       GRANT_MISSING: `state` only (the link does not hold INTAKE).
+ *   PUT /coach-portal/clients/{id}/intake/sections/{section} ← `{ version, values }`
+ *       → 200 `{ version, updatedAt }`, never the answers
+ *       400 INTAKE_FIELD_INVALID (`details.field`, never the value) · COACH_FIELD_NOT_ACCEPTED
+ *       403 COACH_ACCESS_DENIED (also: no INTAKE, or withdrawn while the write waited)
+ *       409 INTAKE_VERSION_CONFLICT (`details.version`, `details.updatedAt`, nothing else)
+ *
+ * 🔴 THREE PROPERTIES THE TYPES CANNOT STATE:
+ *   1. **A section PUT is a WHOLE section.** An absent field is CLEARED. The portal builds
+ *      every write from every field of the section (`src/lib/intakeForm.ts`), never a patch.
+ *   2. **One version per section.** Two sections save at once without conflict (ADR-0034 Q6),
+ *      so the autosave runs one queue per section, never one per intake.
+ *   3. **A 409 carries no values.** The portal re-reads the intake (`GET`) when the coach
+ *      chooses « Recharger », and never re-sends what was typed before the conflict (B5a).
+ *
+ * The section NOTES and GOALS' `eventLabel` are free text about a named person: never logged
+ * here, never put in an error, never in a URL.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** The eight sections, in the api's (and the portal's) order. */
+export const INTAKE_SECTION_NAMES = [
+  "GOALS",
+  "HISTORY",
+  "AVAILABILITY",
+  "LIFESTYLE",
+  "HEALTH",
+  "MEASUREMENTS",
+  "NUTRITION",
+  "COACH_NOTES",
+] as const;
+export type CoachIntakeSectionName = (typeof INTAKE_SECTION_NAMES)[number];
+
+/**
+ * Section 1's values (`GOALS`). Every field is optional on the wire (null or `[]` when unanswered).
+ * `emphasis` (EV-341y1) is not in the vendored spec and not built here (EV-341y2's).
+ *
+ * @wire CoachIntakeGoals
+ */
+export interface CoachIntakeGoals {
+  primaryGoal?: string | null;
+  motivations?: string[];
+  motivationScore?: number | null;
+  eventLabel?: string | null;
+  eventDate?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Section 2's values (`HISTORY`). `likedExercises` / `avoidedExercises` are EV-341y2's.
+ *
+ * @wire CoachIntakeHistory
+ */
+export interface CoachIntakeHistory {
+  level?: string | null;
+  trainingAge?: string | null;
+  currentSessionsPerWeek?: number | null;
+  activities?: string[];
+  notes?: string | null;
+}
+
+/**
+ * Section 3's values (`AVAILABILITY`). `splitPreference` is EV-341y2's.
+ *
+ * @wire CoachIntakeAvailability
+ */
+export interface CoachIntakeAvailability {
+  sessionsPerWeek?: number | null;
+  sessionMinutes?: number | null;
+  availableDays?: string[];
+  timeOfDay?: string | null;
+  trainingPlaces?: string[];
+  notes?: string | null;
+}
+
+/**
+ * Section 4's values (`LIFESTYLE`).
+ *
+ * @wire CoachIntakeLifestyle
+ */
+export interface CoachIntakeLifestyle {
+  workActivity?: string | null;
+  sleepHours?: string | null;
+  stressScore?: number | null;
+  notes?: string | null;
+}
+
+/** One section as `GET …/intake` serves it: its own version token, when, and the answers. */
+export interface CoachIntakeSection {
+  /** 0 until first written; sent back on the section's next PUT. */
+  version: number;
+  updatedAt: string | null;
+  /** The section's answers, in the schema its name selects. Read field by field, never trusted whole. */
+  values: Record<string, unknown>;
+}
+
+/**
+ * `GET …/intake`. READY carries `status` and all eight `sections`; GRANT_MISSING carries
+ * `state` only.
+ *
+ * @wire CoachIntake
+ */
+export interface CoachIntake {
+  state: "READY" | "GRANT_MISSING";
+  status?: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE";
+  completedAt?: string;
+  sections?: Partial<Record<CoachIntakeSectionName, CoachIntakeSection>>;
+}
+
+/**
+ * `PUT …/intake/sections/{section}`'s body: the section's version as last read, and the WHOLE
+ * section (property 1 above).
+ *
+ * @wire CoachIntakeSectionWrite
+ */
+export interface CoachIntakeSectionWrite {
+  version: number;
+  values: Record<string, unknown>;
+}
+
+/**
+ * `PUT …/intake/sections/{section}`'s 200. Never the answers.
+ *
+ * @wire CoachIntakeSectionSaved
+ */
+export interface CoachIntakeSectionSaved {
+  version: number;
+  updatedAt: string;
+}
+
+/** 409 — the section was written since `version` was read (another tab or device). */
+export function isIntakeVersionConflict(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "INTAKE_VERSION_CONFLICT";
+}
+
 // ── the live client ──────────────────────────────────────────────────────────
 
 /**
@@ -3043,6 +3183,23 @@ const liveCoachApi = {
   async cancelIntakeConsentRequest(id: string): Promise<void> {
     // 204 No Content, with or without a live request (PR10).
     await apiFetch<void>(`${client(id)}/intake-consent-request`, { method: "DELETE" });
+  },
+
+  // ── EV-341b the intake interview (b-fit-api EV-341a, see the block above) ──
+
+  getIntake(id: string): Promise<CoachIntake> {
+    return apiFetch<CoachIntake>(`${client(id)}/intake`);
+  },
+  /** One WHOLE section (an absent field is cleared), compared on that section's own version. */
+  saveIntakeSection(
+    id: string,
+    section: CoachIntakeSectionName,
+    body: CoachIntakeSectionWrite
+  ): Promise<CoachIntakeSectionSaved> {
+    return apiFetch<CoachIntakeSectionSaved>(`${client(id)}/intake/sections/${encodeURIComponent(section)}`, {
+      method: "PUT",
+      body: JSON.stringify({ version: body.version, values: body.values }),
+    });
   },
 
   // ── EV-184b routine (PROVISIONAL paths — see the block at the top) ─────────

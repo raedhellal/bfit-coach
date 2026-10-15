@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/kit";
 import { readCoachMe } from "@/lib/clientOverview";
 import { readAllInvited } from "@/lib/invited";
 import { getCopy } from "@/lib/i18n/server";
-import { formatExpiryUtc, formatInstant } from "@/lib/format";
+import { firstName, formatExpiryUtc, formatInstant } from "@/lib/format";
 import type { InitialisedAccount } from "@/lib/coachApi";
 
 /**
@@ -127,6 +127,29 @@ export default async function InvitedPage({ params }: { params: { userId: string
           {/* A native `disabled` button: not focusable, not clickable, no handler. The reason
               is its description, so a screen reader that lists it says why it is off. */}
           <DisabledControl label={c.bodyDataAction} describedBy="invited-body-why" />
+        </div>
+      </section>
+
+      {/*
+        EV-341b B11: the intake, visible and disabled, with the reason beside it and wired to it.
+        No button and no request (B11a, ADR-0034a F7): an invited client has no link, so no
+        consent request can exist.
+      */}
+      <section className="ov-card ov-section" aria-labelledby="invited-intake-title" data-invited-intake="">
+        <div className="ov-card-head">
+          <h2 id="invited-intake-title" className="ov-card-title">
+            {copy.intake.title}
+          </h2>
+        </div>
+        <p id="invited-intake-why" className="ov-note">
+          {copy.intakePage.grantMissingInvited(firstName(row.fullName, copy.locale))}
+        </p>
+        <div style={{ marginTop: 14 }}>
+          <span style={{ display: "inline-flex" }} data-invited-intake-control="">
+            <Button variant="secondary" disabled ariaDescribedBy="invited-intake-why">
+              {copy.tabs.intake}
+            </Button>
+          </span>
         </div>
       </section>
     </CoachShell>

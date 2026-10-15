@@ -68,6 +68,7 @@ const ROUTE_FILES: Record<string, string> = {
   "clients/[id]/page.tsx": `/clients/${LINA}`,
   "clients/[id]/routine/page.tsx": `/clients/${LINA}/routine`,
   "clients/[id]/nutrition/page.tsx": `/clients/${LINA}/nutrition`,
+  "clients/[id]/intake/page.tsx": `/clients/${LINA}/intake`,
   "clients/denied/page.tsx": "/clients/denied",
   "invited/[userId]/page.tsx": `/invited/${LAPSED_INVITATION}`,
   "templates/page.tsx": "/templates",
