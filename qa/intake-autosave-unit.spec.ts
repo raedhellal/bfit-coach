@@ -2,6 +2,7 @@ import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
 import { AutosaveEngine, type AutosaveTimers, type SaveOutcome } from "../src/lib/autosave";
 import { classifySave, intakeSectionPath } from "../src/lib/autosaveTransport";
+import { cookieFromSetCookieList } from "../src/lib/setCookieList";
 import {
   firstUnanswered,
   formFromApi,
@@ -350,6 +351,26 @@ test.describe("the transport's answer table (B13a, B14, B15)", () => {
     expect(intakeSectionPath("6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001", "GOALS")).toBe(
       "/api/clients/6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001/intake/GOALS"
     );
+  });
+});
+
+test.describe("B17 — the token the middleware rotated, as a route handler must read it", () => {
+  const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln";
+  test("read from the forwarded Set-Cookie list, attributes and other cookies around it", () => {
+    const header = [
+      `evoli_pro_at=${JWT}; Path=/; Max-Age=60; Expires=Thu, 15 Oct 2026 07:15:00 GMT; HttpOnly; SameSite=lax`,
+      "evoli_pro_rt=refresh.token.value; Path=/; Max-Age=2592000; HttpOnly; SameSite=lax",
+    ].join(",");
+    expect(cookieFromSetCookieList(header, "evoli_pro_at")).toBe(JWT);
+    expect(cookieFromSetCookieList(header, "evoli_pro_rt")).toBe("refresh.token.value");
+    expect(cookieFromSetCookieList(`evoli_pro_rt=a; Path=/,evoli_pro_at=${JWT}; Path=/`, "evoli_pro_at")).toBe(JWT);
+  });
+  test("absent, another cookie only, or a cookie being cleared: nothing", () => {
+    expect(cookieFromSetCookieList(null, "evoli_pro_at")).toBeNull();
+    expect(cookieFromSetCookieList("", "evoli_pro_at")).toBeNull();
+    expect(cookieFromSetCookieList("evoli_pro_rt=x; Path=/", "evoli_pro_at")).toBeNull();
+    expect(cookieFromSetCookieList("evoli_pro_at=; Path=/; Max-Age=0", "evoli_pro_at")).toBeNull();
+    expect(cookieFromSetCookieList(`xevoli_pro_at=${JWT}; Path=/`, "evoli_pro_at"), "not a suffix match").toBeNull();
   });
 });
 

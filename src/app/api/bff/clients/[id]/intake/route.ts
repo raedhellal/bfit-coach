@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { coachApi, isForbidden } from "@/lib/coachApi";
 import { isClientId } from "@/lib/clientOverview";
 import { INTAKE_FORM_SECTIONS } from "@/lib/intakeForm";
+import { handlerAccessToken } from "@/lib/handlerSession";
 
 /**
  * EV-341b B5 — « Recharger »: the intake as the api holds it now, through the BFF, so the page
@@ -20,6 +21,7 @@ import { INTAKE_FORM_SECTIONS } from "@/lib/intakeForm";
  *   200 `{ state: "READY", sections: { GOALS: { version, values }, … } }` or `{ state: "GRANT_MISSING" }`
  *   403 `{ code: "COACH_ACCESS_DENIED" }` — revoked, foreign, unknown, or not a UUID
  *   403 `{ code: "CROSS_ORIGIN" }`
+ *   401 `{ code: "SESSION_EXPIRED" }` — no session to continue
  *   502 `{ code: "UPSTREAM" }`
  * A session that cannot be continued is the middleware's 307 to /login (the page reads it with
  * `redirect: "manual"`).
@@ -37,8 +39,16 @@ export async function GET(request: Request, { params }: { params: { id: string }
   if (!isClientId(params.id)) {
     return NextResponse.json({ code: "COACH_ACCESS_DENIED" }, { status: 403, headers: NO_STORE });
   }
+  // The token the middleware rotated for this request (src/lib/handlerSession.ts, B17).
+  const session = await handlerAccessToken(request);
+  if (session.kind !== "token") {
+    return NextResponse.json({ code: session.kind === "expired" ? "SESSION_EXPIRED" : "UPSTREAM" }, {
+      status: session.kind === "expired" ? 401 : 502,
+      headers: NO_STORE,
+    });
+  }
   try {
-    const intake = await coachApi.getIntake(params.id);
+    const intake = await coachApi.getIntake(params.id, session.accessToken);
     if (intake?.state === "GRANT_MISSING") return NextResponse.json({ state: "GRANT_MISSING" }, { headers: NO_STORE });
     if (intake?.state !== "READY" || !intake.sections) {
       return NextResponse.json({ code: "UPSTREAM" }, { status: 502, headers: NO_STORE });

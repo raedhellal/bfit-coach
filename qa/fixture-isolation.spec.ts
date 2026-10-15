@@ -63,6 +63,7 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
   "coach-challenges.live.spec.ts": "live config, same (EV-321b)",
   "coach-nutrition-templates.live.spec.ts": "live config, same (EV-273b)",
   "coach-add-client.live.spec.ts": "live config, same (EV-204b): reads the api's mail-stub log",
+  "intake-token-expiry.live.spec.ts": "intake-live config (EV-341b B17): a real b-fit-api with a 1-minute token, no fixture store",
   "coach-legacy-api.spec.ts": "legacy config: COACH_API_MODE=live against qa/legacy-api.mjs",
   "refresh-single-flight.spec.ts": "refresh config: COACH_API_MODE=live against qa/stub-api.mjs",
   "coach-activation.stub.spec.ts": "activation config: COACH_API_MODE=live against qa/activation-stub-api.mjs; resets the stub per test",

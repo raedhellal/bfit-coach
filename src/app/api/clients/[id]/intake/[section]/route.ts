@@ -5,6 +5,7 @@ import { isClientId } from "@/lib/clientOverview";
 import { refuseCrossOrigin } from "@/lib/sameOrigin";
 import { SESSION_SUBJECT_HEADER } from "@/lib/autosaveTransport";
 import { sessionSubjectTag } from "@/lib/sessionSubject";
+import { handlerAccessToken } from "@/lib/handlerSession";
 
 /**
  * EV-341b B3, B13, B13a (ADR-0034 D34.10 (1)) — the intake's autosave transport:
@@ -85,8 +86,13 @@ export async function PUT(request: Request, { params }: { params: { id: string; 
   if (!isJsonContentType(request.headers.get("content-type"))) {
     return json({ code: "UNSUPPORTED_MEDIA_TYPE" }, 415);
   }
+  // B17: the token the middleware rotated for THIS request, which `cookies()` does not show a
+  // route handler (src/lib/handlerSession.ts).
+  const session = await handlerAccessToken(request);
+  if (session.kind === "expired") return json({ code: "SESSION_EXPIRED" }, 401);
+  if (session.kind === "unavailable") return json({ code: "UPSTREAM" }, 502);
   const subject = request.headers.get(SESSION_SUBJECT_HEADER);
-  const current = sessionSubjectTag();
+  const current = sessionSubjectTag(session.accessToken);
   if (!subject || !current || subject !== current) return json({ code: "SESSION_CHANGED" }, 401);
   if (!isClientId(params.id)) return json({ code: "COACH_ACCESS_DENIED" }, 403);
   if (!isSection(params.section)) return json({ code: "INVALID_REQUEST", field: "section" }, 400);
@@ -119,10 +125,12 @@ export async function PUT(request: Request, { params }: { params: { id: string; 
   try {
     // `values` is forwarded as sent: the api's reader is the vocabulary's one judge (an
     // undeclared key is its 400 COACH_FIELD_NOT_ACCEPTED, never dropped here in silence).
-    const saved = await coachApi.saveIntakeSection(params.id, params.section, {
-      version,
-      values: values as Record<string, unknown>,
-    });
+    const saved = await coachApi.saveIntakeSection(
+      params.id,
+      params.section,
+      { version, values: values as Record<string, unknown> },
+      session.accessToken
+    );
     if (
       typeof saved?.version !== "number" ||
       !Number.isInteger(saved.version) ||

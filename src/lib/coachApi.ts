@@ -3187,19 +3187,25 @@ const liveCoachApi = {
 
   // ── EV-341b the intake interview (b-fit-api EV-341a, see the block above) ──
 
-  getIntake(id: string): Promise<CoachIntake> {
-    return apiFetch<CoachIntake>(`${client(id)}/intake`);
+  /**
+   * `bearer`: a route handler's token (`handlerAccessToken`), which the request's cookies may not
+   * hold yet (see `src/lib/handlerSession.ts`). A page render passes none.
+   */
+  getIntake(id: string, bearer?: string): Promise<CoachIntake> {
+    return apiFetch<CoachIntake>(`${client(id)}/intake`, {}, { bearer });
   },
   /** One WHOLE section (an absent field is cleared), compared on that section's own version. */
   saveIntakeSection(
     id: string,
     section: CoachIntakeSectionName,
-    body: CoachIntakeSectionWrite
+    body: CoachIntakeSectionWrite,
+    bearer?: string
   ): Promise<CoachIntakeSectionSaved> {
-    return apiFetch<CoachIntakeSectionSaved>(`${client(id)}/intake/sections/${encodeURIComponent(section)}`, {
-      method: "PUT",
-      body: JSON.stringify({ version: body.version, values: body.values }),
-    });
+    return apiFetch<CoachIntakeSectionSaved>(
+      `${client(id)}/intake/sections/${encodeURIComponent(section)}`,
+      { method: "PUT", body: JSON.stringify({ version: body.version, values: body.values }) },
+      { bearer }
+    );
   },
 
   // ── EV-184b routine (PROVISIONAL paths — see the block at the top) ─────────

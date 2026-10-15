@@ -12,6 +12,7 @@
     "spec:sync": "node scripts/spec-sync.mjs",
     "test:e2e": "playwright test",
     "test:e2e:live": "playwright test --config playwright.live.config.ts",
+    "test:e2e:intake-live": "playwright test --config playwright.intake-live.config.ts",
     "test:e2e:roster": "playwright test --config playwright.roster.config.ts",
     "test:e2e:start": "playwright test --config playwright.start.config.ts",
     "test:e2e:refresh": "playwright test --config playwright.refresh.config.ts",
