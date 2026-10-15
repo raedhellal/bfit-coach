@@ -47,6 +47,8 @@ export default defineConfig({
       COACH_API_MODE: "live",
       API_BASE_URL: API_ORIGIN,
       INVITE_BASE_URL: BASE_URL,
+      // EV-341b merges dark behind the release hold (story R6): the gate runs with it ON.
+      COACH_INTAKE_REQUEST: "on",
     },
   },
 });
