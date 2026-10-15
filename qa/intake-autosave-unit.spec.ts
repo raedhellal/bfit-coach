@@ -273,6 +273,27 @@ test.describe("B18 — the autosave engine", () => {
     expect(engine.snapshot().refused.GOALS).toBeNull();
   });
 
+  test("B18 (staff r3 #2): values typed while a save is out are sent after it is refused, never lost; the refusal stays until a 2xx", async () => {
+    const { clock, sent, engine } = rig();
+    engine.change("GOALS", "v1");
+    await clock.advance(1_500); // v1 in flight
+    engine.change("GOALS", "v2"); // typed while v1 is out
+    sent[0].answer({ kind: "invalid", field: "eventLabel" });
+    await clock.advance(0);
+    expect(engine.snapshot().statuses.GOALS, "the newer values wait their idle time").toBe("pending");
+    expect(engine.snapshot().refused.GOALS).toEqual({ field: "eventLabel" });
+    expect(engine.snapshot().dirty).toBe(true);
+    await clock.advance(1_500);
+    expect(sent.map((x) => x.payload), "v2 is sent, v1 never again").toEqual(["v1", "v2"]);
+    sent[1].answer(ok(1));
+    await clock.advance(0);
+    expect(engine.snapshot().refused.GOALS).toBeNull();
+    expect(engine.snapshot().statuses.GOALS).toBe("saved");
+    engine.retry();
+    await clock.advance(60_000);
+    expect(sent).toHaveLength(2);
+  });
+
   test("B4a (staff r2 #1): « Réessayer » never re-sends a refused section, whatever else it sends", async () => {
     const { clock, sent, engine } = rig();
     engine.change("GOALS", "refused");

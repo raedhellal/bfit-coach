@@ -383,9 +383,22 @@ export class AutosaveEngine<K extends string, P> {
       case "invalid":
         s.refused = { field: outcome.field };
         if (s.status === "blocked") break;
-        if (s.pending === null) s.pending = { payload };
-        s.queued = false;
         s.failures = 0;
+        if (s.pending !== null) {
+          // Staff r3 #2: the coach typed newer values while the refused body was out. They are a
+          // change, not the refused body: they are sent after the idle time like any change (B3),
+          // and the refusal's line stays until a save of the section answers 2xx (B4a).
+          s.queued = false;
+          this.clearIdle(s);
+          s.idleTimer = this.timers.setTimeout(() => {
+            s.idleTimer = null;
+            this.fire(key);
+          }, this.idleMs);
+          s.status = "pending";
+          break;
+        }
+        s.pending = { payload };
+        s.queued = false;
         this.clearIdle(s);
         s.status = "invalid";
         break;

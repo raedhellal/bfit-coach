@@ -91,8 +91,9 @@ function aggregate(statuses: Record<IntakeFormSection, SectionStatus>, signedOut
   if (all.includes("failed")) return "failed";
   if (all.includes("retrying")) return "retrying";
   if (all.includes("saving") || all.includes("pending")) return "saving";
-  // B4a (staff r2 #2): with a section refused, « Enregistré » would contradict its line.
-  if (all.includes("invalid")) return null;
+  // B4a, B5, B16/B16a (staff r2 #2, r3 #1): with a section refused, in conflict or blocked by an
+  // over-long field, « Enregistré » would contradict its line. Every non-success state is above or here.
+  if (all.some((s) => s === "invalid" || s === "conflict" || s === "blocked")) return null;
   if (all.includes("saved")) return "saved";
   return null;
 }

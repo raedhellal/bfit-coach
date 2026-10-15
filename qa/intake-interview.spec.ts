@@ -172,6 +172,24 @@ async function waitForPuts(page: Page, section: string, count: number, timeout =
   await expect.poll(async () => (await puts(page, section)).length, { timeout, intervals: [100] }).toBe(count);
 }
 
+/**
+ * Staff r3 #1: a section other than the one under test saves first, so « Enregistré » WOULD be
+ * the status line if a non-success state let it through. Returns to GOALS.
+ */
+async function saveAnotherSectionFirst(page: Page, lang: Lang = "en") {
+  await tab(page, "LIFESTYLE").click();
+  await notes(page, "LIFESTYLE", lang).fill("Saved first");
+  await notes(page, "LIFESTYLE", lang).press("Tab");
+  await settledSaved(page, lang);
+  await tab(page, "GOALS").click();
+}
+
+/** No « Enregistré » / "Saved" beside a refusal, a conflict or a blocked field (staff r2 #2, r3 #1). */
+async function expectNoSavedStatus(page: Page) {
+  await expect(status(page)).toHaveAttribute("data-intake-status", "idle");
+  expect(plain(await status(page).textContent())).toBe("");
+}
+
 /** Every save acknowledged: the guard's history entry is gone and the status says « Saved ». */
 async function settledSaved(page: Page, lang: Lang = "en") {
   await expectStatus(page, T[lang].saved);
@@ -478,8 +496,7 @@ for (const lang of ["en", "fr"] as const) {
       expect((await lines.allTextContents()).map(plain)).toEqual([plain(REFUSED[lang].field(REFUSED[lang].event)), plain(REFUSED[lang].section)]);
       await expect(alertOf(page, "failed"), "never B4's sentences").toHaveCount(0);
       await expect(lines.getByRole("button"), "no « Réessayer » for a refusal").toHaveCount(0);
-      await expect(status(page), "no « Enregistré » beside a refusal").toHaveAttribute("data-intake-status", "idle");
-      expect(plain(await status(page).textContent())).toBe("");
+      await expectNoSavedStatus(page);
       expect(await page.evaluate(() => window.history.state?.evoliUnsavedGuard === true), "the leave guard asks while refused").toBe(true);
       // The next change to GOALS saves it; its line goes when that save answers 2xx.
       refuse = false;
@@ -505,6 +522,7 @@ for (const lang of ["en", "fr"] as const) {
       await signIn(page, lang);
       await grant(page);
       await openIntake(page);
+      await saveAnotherSectionFirst(page, lang);
       const goals = panel(page, "GOALS");
       // Saved once here: GOALS is at version 1 in this tab.
       await notes(page, "GOALS", lang).fill("Mine, first");
@@ -517,6 +535,7 @@ for (const lang of ["en", "fr"] as const) {
       await notes(page, "GOALS", lang).press("Tab");
       await expect(alertOf(page, "conflict")).toBeVisible();
       expect(plain(await alertOf(page, "conflict").locator("p").textContent())).toBe(plain(T[lang].conflict));
+      await expectNoSavedStatus(page);
       await expect(notes(page, "GOALS", lang), "the unsaved values stay visible").toHaveValue("Mine, typed before the conflict");
       const afterConflict = (await puts(page, "GOALS")).length;
       // B5a: typing on queues nothing; 5 s later, still no PUT for the section.
@@ -1302,6 +1321,7 @@ for (const lang of ["en", "fr"] as const) {
       await field.fill("\u{1F600}".repeat(1001));
       await expect.poll(async () => plain(await counter.textContent())).toBe(lang === "en" ? "1,001 / 1,000" : "1 001 / 1 000");
       await expect(counter).toHaveAttribute("data-over", "true");
+      await expectNoSavedStatus(page); // blocked (B16): its section saved before, « Enregistré » must not stay
       const error = panel(page, "LIFESTYLE").locator('[data-intake-error="notes"]');
       expect(plain(await error.textContent())).toBe(plain(T[lang].tooLong));
       expect(await counter.evaluate((el) => getComputedStyle(el).color)).toBe(await error.evaluate((el) => getComputedStyle(el).color));
@@ -1361,6 +1381,7 @@ test.describe("B16a (staff r1 S4): GOALS' event, counted in code points", () => 
     await signIn(page);
     await grant(page);
     await openIntake(page);
+    await saveAnotherSectionFirst(page);
     const field = panel(page, "GOALS").getByRole("textbox", { name: "Event", exact: true });
     expect(await field.getAttribute("maxlength")).toBeNull();
     await field.fill("\u{1F600}".repeat(80));
@@ -1373,6 +1394,7 @@ test.describe("B16a (staff r1 S4): GOALS' event, counted in code points", () => 
     await expect(field).toHaveAccessibleDescription("Too long: 80 characters at most.");
     await expect(panel(page, "GOALS").locator(".intake-counter"), "no counter on the event (B16a)").toHaveCount(1); // the notes' own
     await expect(field).toHaveAttribute("aria-invalid", "true");
+    await expectNoSavedStatus(page);
     await field.press("Tab");
     await page.waitForTimeout(3_000);
     expect((await puts(page, "GOALS")).length, "nothing sent over 80").toBe(1);
@@ -1483,7 +1505,7 @@ for (const lang of ["en", "fr"] as const) {
       const hintText = lang === "en" ? "Up to 3." : "3 au maximum.";
       const hint = panel(page, "GOALS").locator('[data-intake-hint="motivations"]');
       await expect(hint).toHaveText(hintText);
-      await expect(panel(page, "GOALS").getByRole("group", { name: lang === "en" ? "Motivations" : "Motivations", exact: true })).toHaveAccessibleDescription(hintText);
+      await expect(panel(page, "GOALS").getByRole("group", { name: "Motivations", exact: true })).toHaveAccessibleDescription(hintText);
       await expect(panel(page, "GOALS").getByRole("checkbox", { name: lang === "en" ? "Health" : "Santé", exact: true })).toHaveAccessibleDescription(hintText);
       expect(await page.locator("select.intake-select").getAttribute("aria-label")).toBe("Section");
     });
