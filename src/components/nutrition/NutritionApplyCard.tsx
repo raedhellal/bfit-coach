@@ -17,7 +17,7 @@ import { useCopy } from "@/lib/i18n/client";
 import { fullNameOf } from "@/lib/traineeName";
 import { truncateName } from "@/lib/format";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
-import type { UseOutcome } from "@/lib/nutritionTemplateUse";
+import type { UseOutcome, UseOutcomeKind } from "@/lib/nutritionTemplateUse";
 import type { NutritionTemplate } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 
@@ -123,14 +123,29 @@ export function useApplyScope(): ApplyScope {
 }
 
 /**
+ * Whether each outcome's TARGETS step landed, every kind classified by name (staff N1). A
+ * `Record`, not a deny-list: a kind added to `UseOutcomeKind` is a type error here until
+ * someone decides it, instead of silently counting as "landed" and resetting the selection.
+ */
+const TARGETS_LANDED: Record<UseOutcomeKind, boolean> = {
+  APPLIED: true,
+  WEEK_RATE_LIMITED: true,
+  WEEK_GENERATING: true,
+  WEEK_FAILED: true,
+  WEEK_UNKNOWN: true,
+  TARGETS_FAILED: false,
+  TARGETS_UNKNOWN: false,
+};
+
+/**
  * The selection after an outcome (EV-337g2-R1, G2.3c). When the targets step LANDED (APPLIED and
  * every WEEK_* kind), the template's targets are now the current targets, and a template's week
  * step is the same week apply as today's (it carries no template), so what is left to do is
  * today's apply: back to the first option. When the targets step was refused or its answer was
  * lost (TARGETS_*), nothing known changed, and the selection still says what the coach asked for.
  */
-export function targetsLanded(kind: UseOutcome["kind"]): boolean {
-  return kind !== "TARGETS_FAILED" && kind !== "TARGETS_UNKNOWN";
+export function targetsLanded(kind: UseOutcomeKind): boolean {
+  return TARGETS_LANDED[kind];
 }
 
 /** The first option's value. A template's id is a UUID, so it can never collide. */
