@@ -133,21 +133,9 @@ export function CatalogPicker({
     setAdded(null);
   }, [open]);
 
-  /**
-   * Escape closes the picker (edge case 14: "pressing Escape after the third keeps all
-   * three"). The kit's `Modal` has no key handling of its own, and adding it there
-   * would change every dialog in the portal in a change whose QA pass is about touch
-   * targets — so it is handled here, for the one dialog a coach now keeps open across
-   * several actions and therefore expects to dismiss with a key.
-   */
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  // Escape closes the picker (edge case 14: "pressing Escape after the third keeps all
+  // three"). Since BUG-171 the kit's `Modal` owns Escape for every dialog; the local
+  // handler EV-190b added here would now call `onClose` a second time, so it is gone.
 
   // Debounced so a five-letter query is one request per pause, not five.
   useEffect(() => {
