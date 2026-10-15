@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
 import type { RosterClient, RosterPage } from "../src/lib/coachApi";
-import { readWholeRoster } from "../src/lib/rosterAll";
+import { readWholeRoster, WHOLE_ROSTER_READ_ROUNDS } from "../src/lib/rosterAll";
 
 /**
  * BUG-472 — `readWholeRoster`, driven WITHOUT a browser: every page is read, each once,
@@ -91,4 +91,44 @@ test("past the page bound the read is refused, not truncated", async () => {
   await expect(readWholeRoster(api.read, 3)).rejects.toThrow(/4 pages/);
   expect(api.calls).toEqual([0]);
   expect(await readWholeRoster(pagedApi(range(300), 100).read, 3)).toHaveLength(300);
+});
+
+/**
+ * QA-S3N-1 (staff N1) — the picker on /challenges waits `WHOLE_ROSTER_READ_ROUNDS` api read
+ * bounds (`rosterReadDeadlineMs`), so that constant must be the number of reads
+ * `readWholeRoster` makes ONE AFTER ANOTHER. A read's round is 1 + the deepest round already
+ * answered when it was called: reads started together share a round, a read started after an
+ * answer is the next one. Every read answers on a later task, so nothing settles early.
+ */
+function roundCountingApi(rows: RosterClient[], size: number) {
+  const inner = pagedApi(rows, size);
+  let answeredRound = 0;
+  let deepest = 0;
+  const read = async (page: number): Promise<RosterPage> => {
+    const round = answeredRound + 1;
+    deepest = Math.max(deepest, round);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const answer = await inner.read(page);
+    answeredRound = Math.max(answeredRound, round);
+    return answer;
+  };
+  return { read, rounds: () => deepest };
+}
+
+for (const [label, n] of [
+  ["one page", 100],
+  ["three pages", 250],
+  ["the page bound (50 pages)", 5_000],
+] as const) {
+  test(`QA-S3N-1: ${label} is read in at most WHOLE_ROSTER_READ_ROUNDS sequential rounds`, async () => {
+    const api = roundCountingApi(range(n), 100);
+    expect(await readWholeRoster(api.read)).toHaveLength(n);
+    expect(api.rounds()).toBeLessThanOrEqual(WHOLE_ROSTER_READ_ROUNDS);
+  });
+}
+
+test("QA-S3N-1: a multi-page roster uses exactly WHOLE_ROSTER_READ_ROUNDS rounds (the constant is not padded)", async () => {
+  const api = roundCountingApi(range(250), 100);
+  await readWholeRoster(api.read);
+  expect(api.rounds()).toBe(WHOLE_ROSTER_READ_ROUNDS);
 });

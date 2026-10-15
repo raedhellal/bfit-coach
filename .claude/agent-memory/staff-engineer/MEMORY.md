@@ -18,3 +18,15 @@
 - [Guard on the request field, not the stored value](guard-on-the-request-field-not-the-stored-value.md) — EV-248 bounded `date`; stored date = date + durationSeconds; open the mapper
 - [Collapsible form: the stay-open branch is unwitnessed](collapsible-form-close-branch-unwitnessed.md) — always-close mutant passed 54 specs at EV-337g1; hold the action POST and type
 - [Either reading is unpinned](review-either-reading-is-unpinned.md) — "tests pass under either reading" = chosen behaviour unbound; mutate to the other reading, expect GREEN (EV-337g2 R2)
+- [Check shaped to its mutant](defect-class-check-shaped-to-its-mutant.md) — a check added for one survivor kills only that shape (EV-337j2); ESLint name bans miss destructuring/computed (EV-356d)
+- [Text inputs match :focus-visible on click](text-inputs-match-focus-visible-on-click.md) — no keyboard/pointer split on text fields; probe before a selector nit (EV-337j2 N1)
+- [Continuation presence is not intent](continuation-presence-is-not-intent.md) — BUG-730: `thens.length===0` assumed every then leaves; template/recipe creates stay → Back unguarded; a Back press heals a forgotten sentinel
+- [Create-to-edit by replaceState remounts on the next save](create-to-edit-by-replacestate-remounts-on-next-save.md) — BUG-735: Next still on /new; first update remounts, late edit + notice lost; test create→update; expando witness
+- [New-string test copies the code, not the PO ruling](new-string-test-copies-the-code-not-the-po-ruling.md) — EV-356c sentence ≠ story Copy; EV-356g unruled loading line + retired string still pinned by BUG-746
+- [Red on base at a precondition](red-on-base-at-a-precondition.md) — base-red at a setup step the new behaviour satisfies is not a defect witness; classify each red line (fluidity batch 1)
+- [A whole-read fix leaves sibling page-0 readers](a-whole-read-fix-leaves-sibling-page-zero-readers.md) — BUG-472 fixed /challenges only; /templates + /nutrition-templates read page 0; fixture overflow rows have no scopes
+- [A rig artefact is retired by removing the rig](rig-artefact-retired-by-removing-the-rig.md) — BUG-739: WebKit next start needs no HTTPS proxy (de-secure cookies); the proxy made the RSC reds; count base greens too
+- ["Read, not measured" is not a reading check](read-not-measured-label-is-not-a-reading-check.md) — BUG-739 router.replace comment named the wrong entry; a cited probe witnessed half its sentence
+- [Boot-commit reload flag needs a same-commit error](boot-commit-reload-flag-needs-same-commit-error.md) — EV-356d R1-H loops if a loading.tsx/Suspense streams the error; next/dist/client/link and `ref` slip past invariant N
+- [Request context stores what the browser refuses](request-context-stores-what-the-browser-refuses.md) — WebKit page-nav drops a `__Host-` from http, `context.request` stores it; name the writer
+- [Streamed read in WebKit: paint, not interactivity](streamed-read-in-webkit-is-paint-not-interactivity.md) — WebKit runs async scripts at doc end; EV-356g paint 0.1 s, TTI unchanged, early clicks dropped

@@ -315,13 +315,15 @@ test.describe("the programme and nutrition summaries", () => {
 
   test("a withheld scope is never asked for, and says so in words", async ({ page }) => {
     await signIn(page);
-    expect(await readsOf(page, `/clients/${MARA}`)).toEqual(["getClient", "getClientProgress"]);
+    // EV-341w: the « Entretien » card's read is gated on the link alone (requireManagedLink, no
+    // data scope), like the overview itself, so it is asked for here and is not a withheld scope.
+    expect(await readsOf(page, `/clients/${MARA}`)).toEqual(["getClient", "getClientProgress", "getIntakeConsent"]);
     await expect(region(page, "Routine")).toContainText("This trainee has not shared their workouts with you.");
     await expect(region(page, "Nutrition")).toContainText("This trainee has not shared their nutrition with you.");
     await expect(region(page, "No data shared")).toContainText("This is not a zero");
 
-    expect(await readsOf(page, `/clients/${PETRA}`)).toEqual(["getClient", "getClientProgress", "getNutrition"]);
-    expect(await readsOf(page, `/clients/${YUSUF}`)).toEqual(["getClient", "getClientProgress", "getRoutine"]);
+    expect(await readsOf(page, `/clients/${PETRA}`)).toEqual(["getClient", "getClientProgress", "getIntakeConsent", "getNutrition"]);
+    expect(await readsOf(page, `/clients/${YUSUF}`)).toEqual(["getClient", "getClientProgress", "getIntakeConsent", "getRoutine"]);
     await expect(region(page, "No data shared")).toHaveCount(0);
   });
 });

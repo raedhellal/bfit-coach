@@ -46,6 +46,7 @@ const T = {
     more: "More",
     revoke: "Revoke access",
     revokeBody:
+      // The roster config runs with COACH_INTAKE_REQUEST unset: main's body (EV-341b G7).
       "Unnamed client will be removed from your roster and you will no longer see their training data. They keep their Evoli Fit account and all of their history.",
     noDataBody:
       "Unnamed client has not shared their sessions, progress, weigh-ins or nutrition with you. This is not a zero: it is what they chose to share.",

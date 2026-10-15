@@ -43,9 +43,24 @@ export default defineConfig({
   // roster-search-prehydration.spec.ts (BUG-686 follow-up) types into the roster's search box,
   // which only a populated roster has. pro-roster-unnamed-client.spec.ts (BUG-714) serves one
   // roster client with no name, and its pickers are built from the roster.
+  // field-focus-ring-roster.spec.ts (BUG-724) sweeps the roster's search box, populated only.
+  // intent-prefetch.spec.ts (EV-356d) needs a production build: router.prefetch is a no-op
+  // under next dev, so it runs in playwright.start.config.ts only, with client-load-reload.spec.ts
+  // and no-auto-prefetch.spec.ts (both drive production-build behaviour in Chromium and WebKit).
+  // BUG-745: session-epoch.spec.ts and session-epoch-cookie.spec.ts need Lina's row, a refresh
+  // stub and two engines on dev AND start (playwright.session.config.ts). The guard's unit tests,
+  // session-epoch-unit.spec.ts, run HERE.
+  // EV-356g: library-roster-unblocked.spec.ts times paints on a production build and needs the
+  // populated roster (playwright.start.config.ts). Its hook's unit tests, roster-read-unit.spec.ts,
+  // run HERE.
+  // EV-341w N3: intake-hold-off.spec.ts needs a server with COACH_INTAKE_REQUEST unset, which
+  // this suite sets (playwright.roster.config.ts leaves it unset).
+  // EV-341j: trial-session-roster.spec.ts reads J4's pill on the populated roster (roster config).
+  // EV-341b B17: intake-token-expiry.live.spec.ts needs a real api with a 1-minute token
+  // (playwright.intake-live.config.ts).
   // pro-nutrition-apply-card.spec.ts (EV-337g2) offers the coach's nutrition templates, which
   // only the populated scenario seeds.
-  testIgnore: /(coach-live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|pro-nutrition-apply-card)\.spec\.ts/,
+  testIgnore: /(coach-live|intake-token-expiry\.live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intent-prefetch|client-load-reload|no-auto-prefetch|session-epoch|session-epoch-cookie|library-roster-unblocked|library-roster-dropped-load|intake-hold-off|trial-session-roster|pro-nutrition-apply-card)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.
@@ -107,6 +122,11 @@ export default defineConfig({
       COACH_API_MODE: "fixture",
       COACH_FIXTURE_SCENARIO: "empty",
       INVITE_BASE_URL: BASE_URL,
+      // EV-341w's release hold is OFF by default (src/lib/intakeRequestGate.ts). This suite
+      // turns it ON so the « Entretien » card is under every default spec that opens an
+      // overview (W11). The roster and start suites leave it off: page-read-budget's exact
+      // overview reads there are the witness that an unset flag makes no intake read.
+      COACH_INTAKE_REQUEST: "on",
     },
   },
 });

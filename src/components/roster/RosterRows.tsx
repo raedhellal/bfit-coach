@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Avatar, Badge } from "@/components/ui/kit";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { UiIcon } from "@/components/ui/icons";
@@ -6,9 +5,11 @@ import { getCopy } from "@/lib/i18n/server";
 import { formatDate } from "@/lib/format";
 import { hasScope, type RosterClient } from "@/lib/coachApi";
 import { rosterPlanChanged } from "@/lib/routineChange";
+import { programmePill, type ProgrammePill } from "@/lib/trialSession";
 import { fullNameOf, isUnnamed } from "@/lib/traineeName";
 import type { RosterRowView } from "@/lib/rosterView";
 import type { Copy } from "@/lib/copy";
+import { IntentLink } from "./IntentLink";
 
 /**
  * One roster client (EV-337d, plan §5.1). ONE markup, two layouts: a five-cell row from
@@ -107,6 +108,29 @@ function PlanChangedMarker({ client, copy }: { client: RosterClient; copy: Copy 
   );
 }
 
+/**
+ * EV-341j J4 — where the client stands before their first programme: one pill, from the row's
+ * `programmeStatus`, and none for PUBLISHED, for a link without WORKOUTS (null), for an api that
+ * predates EV-341i (absent) and for a value this portal does not know. Words, colour as
+ * decoration (`StatusPill`).
+ */
+const PROGRAMME_PILL_LOOK: Record<ProgrammePill, { tone: "amber" | "blue" | "green"; icon: string }> = {
+  AWAITING_PROGRAMME: { tone: "amber", icon: "edit" },
+  TRIAL_ASSIGNED: { tone: "blue", icon: "dumbbell" },
+  TRIAL_DONE: { tone: "green", icon: "checkCircle" },
+};
+
+function ProgrammeStatusPill({ client, copy, id }: { client: RosterClient; copy: Copy; id: string }) {
+  const pill = programmePill(client.programmeStatus);
+  if (!pill) return null;
+  const look = PROGRAMME_PILL_LOOK[pill];
+  return (
+    <span data-programme-status={pill} style={{ display: "inline-flex" }}>
+      <StatusPill id={id} tone={look.tone} icon={look.icon} label={copy.trial.pills[pill]} />
+    </span>
+  );
+}
+
 export function RosterRow({ client: c, view, idx }: { client: RosterClient; view: RosterRowView; idx: number }) {
   const copy = getCopy();
   const base = `roster-${c.id}`;
@@ -123,8 +147,10 @@ export function RosterRow({ client: c, view, idx }: { client: RosterClient; view
     notes.push(copy.roster.flagsUnavailable);
   }
 
+  // EV-356d: the row's link prefetches the client's overview in full once the pointer or
+  // the focus rests on it (`IntentLink`), and never on sight or on touch.
   return (
-    <Link
+    <IntentLink
       href={`/clients/${c.id}`}
       className="roster-row"
       data-group={view.group}
@@ -163,12 +189,13 @@ export function RosterRow({ client: c, view, idx }: { client: RosterClient; view
 
       <span className="roster-status" id={`${base}-status`}>
         <Status view={view} copy={copy} id={`${base}-pill`} />
-        {(notes.length > 0 || rosterPlanChanged(c)) && (
+        {(notes.length > 0 || rosterPlanChanged(c) || programmePill(c.programmeStatus) !== null) && (
           <span className="roster-notes">
             {notes.map((n) => (
               <span key={n}>{n}</span>
             ))}
             <PlanChangedMarker client={c} copy={copy} />
+            <ProgrammeStatusPill client={c} copy={copy} id={`${base}-programme`} />
           </span>
         )}
       </span>
@@ -177,6 +204,6 @@ export function RosterRow({ client: c, view, idx }: { client: RosterClient; view
         {view.group === "attention" ? copy.roster.actionReview : copy.roster.actionOpen}
         <UiIcon name="chevR" size={15} />
       </span>
-    </Link>
+    </IntentLink>
   );
 }

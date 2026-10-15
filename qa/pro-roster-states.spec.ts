@@ -11,8 +11,8 @@ import { expectNoSidewaysScroll } from "./layout";
  */
 
 const STATES = {
-  en: { locale: "en-US", email: "Email", password: "Password", signIn: "Sign in", h1: "Roster", empty: "No trainees yet", nav: "Portal", roster: "Roster", templates: "Templates", templatesH1: "Training templates" },
-  fr: { locale: "fr-FR", email: "E-mail", password: "Mot de passe", signIn: "Se connecter", h1: "Clients", empty: "Aucun client pour l'instant", nav: "Portail", roster: "Clients", templates: "Modèles", templatesH1: "Modèles d'entraînement" },
+  en: { locale: "en-US", email: "Email", password: "Password", signIn: "Sign in", h1: "Roster", empty: "No trainees yet", nav: "Portal", roster: "Roster", templates: "Templates", templatesH1: "Training templates", recipes: "Recipes", signingIn: "Signing in…" },
+  fr: { locale: "fr-FR", email: "E-mail", password: "Mot de passe", signIn: "Se connecter", h1: "Clients", empty: "Aucun client pour l'instant", nav: "Portail", roster: "Clients", templates: "Modèles", templatesH1: "Modèles d'entraînement", recipes: "Recettes", signingIn: "Connexion…" },
 } as const;
 
 async function signIn(page: Page, lang: keyof typeof STATES) {
@@ -48,10 +48,39 @@ function frameFacts(page: Page, nav: string) {
   }, nav);
 }
 
+/**
+ * From /templates, every fixture read held 1.5 s, a click on the side menu's roster link.
+ * Returns the skeleton watcher (`watchSkeleton`), installed BEFORE the click.
+ */
 async function holdRosterFromTemplates(page: Page, baseURL: string, nav: string, roster: string) {
   await page.goto("/templates");
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1500", url: baseURL }]);
+  const skeleton = await watchSkeleton(page);
   await page.getByRole("navigation", { name: nav }).getByRole("link", { name: roster, exact: true }).click();
+  // Something answered the click: the progress bar (a held navigation) or a skeleton.
+  await expect(page.locator(BAR).or(page.locator(SKELETON)).first()).toBeVisible();
+  return skeleton;
+}
+
+/** The navigation progress bar while it shows (`NavigationProgress`): a navigation is pending. */
+const BAR = '[data-nav-progress="visible"]';
+/** The kit's `Skeleton`: its inline style is the only `animation: shimmer` in the portal. */
+const SKELETON = '[style*="shimmer"]';
+
+/**
+ * From now on, whether the kit's `Skeleton` (its inline `animation: shimmer`) is ever in the
+ * DOM, recorded by a MutationObserver in the page — a skeleton that came and went between two
+ * reads still counts. Returns a reader.
+ */
+async function watchSkeleton(page: Page): Promise<() => Promise<boolean>> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __skeletonEver?: boolean };
+    w.__skeletonEver = !!document.querySelector('[style*="shimmer"]');
+    new MutationObserver(() => {
+      if (document.querySelector('[style*="shimmer"]')) w.__skeletonEver = true;
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  });
+  return () => page.evaluate(() => (window as unknown as { __skeletonEver?: boolean }).__skeletonEver === true);
 }
 
 for (const lang of ["fr", "en"] as const) {
@@ -79,72 +108,85 @@ for (const lang of ["fr", "en"] as const) {
     });
 
     /**
-     * The loading state is the existing `(roster)/loading.tsx` (this branch does not touch
-     * loading files: `perf/coach-fast-routes-no-skeleton` owns them). It is HELD on the server
-     * with the fixture's latency cookie, so the test really sees it.
+     * Fluidity batch 1, F2 — the roster has NO loading state any more: `(roster)/loading.tsx`
+     * is deleted. A held roster (the fixture's latency cookie) reached from the side menu
+     * keeps the page the coach is on until the roster arrives, with the navigation progress
+     * bar after 400 ms (`NavigationProgress`). No skeleton is ever drawn: "ever" is recorded
+     * by a MutationObserver from before the click (`watchSkeleton`), not sampled.
+     *
+     * Until d717e57 this test asserted the opposite (« the held roster shows its skeleton »).
+     * The skeleton was React's ~300 ms reveal throttle on every side-menu return, the same
+     * cost EV-342a removed from the other routes' loading files.
      */
-    test("loading: the held roster shows its skeleton with one h1 and no sideways scroll", async ({ page, context, baseURL }) => {
+    test("loading: a side-menu return keeps the page on screen until the roster arrives, and draws no skeleton", async ({ page, context, baseURL }) => {
       await signIn(page, lang);
       const l = STATES[lang];
       for (const width of [390, 1440]) {
         await page.setViewportSize({ width, height: 900 });
-        await page.goto("/templates");
-        await context.addCookies([{ name: "evoli_fixture_api_latency", value: "1500", url: baseURL! }]);
-        await page.getByRole("navigation", { name: l.nav }).getByRole("link", { name: l.roster, exact: true }).click();
-        // The shimmer is the skeleton's mark; read the layout in the same frame.
-        await expect
-          .poll(() => page.evaluate(() => Array.from(document.querySelectorAll("*")).some((e) => getComputedStyle(e).animationName === "shimmer")))
-          .toBe(true);
+        const skeleton = await holdRosterFromTemplates(page, baseURL!, l.nav, l.roster);
+        expect(await skeleton(), `${lang} at ${width}: no skeleton while the roster loads`).toBe(false);
+        await expect(page.locator(BAR), `${lang} at ${width}: the roster is still loading`).toBeVisible();
         const facts = await page.evaluate(() => ({
-          h1: document.querySelectorAll("h1").length,
-          // D3: no count while the roster read is loading.
-          count: document.querySelectorAll(".shell-nav-count").length,
+          h1: Array.from(document.querySelectorAll("h1")).map((h) => h.textContent?.trim()),
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-          shimmer: Array.from(document.querySelectorAll("*")).some((e) => getComputedStyle(e).animationName === "shimmer"),
         }));
-        expect(facts, `${lang} loading at ${width}`).toMatchObject({ h1: 1, shimmer: true, count: 0 });
+        expect(facts.h1, `${lang} loading at ${width}: the page left is still the one on screen`).toEqual([l.templatesH1]);
         expect(facts.overflow, `${lang} loading at ${width}`).toBeLessThanOrEqual(1);
         await expect(page.getByText(l.empty, { exact: true })).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator("h1")).toHaveCount(1);
+        expect(await skeleton(), `${lang} at ${width}: no skeleton was drawn on the way to the roster`).toBe(false);
         await context.clearCookies({ name: "evoli_fixture_api_latency" });
       }
     });
 
     /**
-     * BUG-667 (roster half) — the held roster's loading state keeps the shell: the navigation of
-     * the width is on screen during the load, it is the same navigation (same boxes) as the loaded
-     * page's, and nothing in the frame moves when the content lands. Both ways in: a click from
-     * another section (the client transition) and a document load of `/`.
+     * BUG-667 (roster half) — the navigation stays on screen and in place while the roster
+     * loads. With no loading state the two ways in are:
+     *   · a click from another section: the page left is held, shell and all, and the
+     *     roster's shell lands with the same banners and the same side navigation (the
+     *     narrow tab bar keeps its sections; its y follows the page's length, by design);
+     *   · a document load of `/`: the response's first byte waits for the reads, so the
+     *     document never holds a frame of shell without content — the served HTML has no
+     *     skeleton in it (until d717e57 the streamed fallback was in the HTML).
      */
     test("loading: the navigation stays on screen and in place while the roster loads (BUG-667)", async ({ page, context, baseURL }) => {
       await signIn(page, lang);
       const l = STATES[lang];
       for (const width of [390, 1440]) {
-        for (const way of ["click", "document"] as const) {
-          const label = `${lang} ${way} at ${width}`;
-          await page.setViewportSize({ width, height: 900 });
-          if (way === "click") await holdRosterFromTemplates(page, baseURL!, l.nav, l.roster);
-          else {
-            await context.addCookies([{ name: "evoli_fixture_api_latency", value: "1500", url: baseURL! }]);
-            await page.goto("/", { waitUntil: "commit" });
+        const label = `${lang} click at ${width}`;
+        await page.setViewportSize({ width, height: 900 });
+        const skeleton = await holdRosterFromTemplates(page, baseURL!, l.nav, l.roster);
+        await expect(page.locator(BAR), `${label}: the roster is still loading`).toBeVisible();
+        await expect.poll(async () => (await frameFacts(page, l.nav)).css).toBe(true);
+        const loading = await frameFacts(page, l.nav);
+        expect(loading.navs, `${label}: exactly one navigation is displayed while loading`).toHaveLength(1);
+        expect(loading.navs[0].links, `${label}: its five sections`).toHaveLength(5);
+        await expect(page.getByText(l.empty, { exact: true })).toBeVisible({ timeout: 15_000 });
+        const loaded = await frameFacts(page, l.nav);
+        expect(await skeleton(), `${label}: no skeleton at any point`).toBe(false);
+        expect(loaded.banners, `${label}: the banners did not move when the content landed`).toEqual(loading.banners);
+        if (width >= 1024) {
+          expect(loaded.navs, `${label}: the side navigation did not move when the content landed`).toEqual(loading.navs);
+        } else {
+          // The tab bar is sticky as the shell column's last child: it settles above the legal
+          // footer at the end of a SHORT page (globals.css, `.shell-tabbar`), so its y follows
+          // the length of the page on screen, which is now a different page. Its sections and
+          // their sizes are what must hold; its y only has to stay in the viewport.
+          const shape = (n: { links: string[] }) => n.links.map((a) => a.replace(/@\d+,\d+,/, "@"));
+          expect(loaded.navs.map(shape), `${label}: the same tab bar, the same sections`).toEqual(loading.navs.map(shape));
+          for (const f of [loading, loaded]) {
+            const [, y, , h] = f.navs[0].box.split(",").map(Number);
+            expect(y + h, `${label}: the tab bar is on screen`).toBeLessThanOrEqual(900);
           }
-          await expect
-            .poll(async () => {
-              const f = await frameFacts(page, l.nav);
-              return f.shimmer && f.css;
-            }, { message: `${label}: the styled skeleton never showed` })
-            .toBe(true);
-          const loading = await frameFacts(page, l.nav);
-          expect(loading.shimmer && loading.css, `${label}: read in the styled skeleton's frame`).toBe(true);
-          expect(loading.navs, `${label}: exactly one navigation is displayed while loading`).toHaveLength(1);
-          expect(loading.navs[0].links, `${label}: its five sections`).toHaveLength(5);
-          await expect(page.getByText(l.empty, { exact: true })).toBeVisible({ timeout: 15_000 });
-          const loaded = await frameFacts(page, l.nav);
-          expect(loaded.shimmer, `${label}: the content has landed`).toBe(false);
-          expect(loaded.navs, `${label}: the navigation did not move when the content landed`).toEqual(loading.navs);
-          expect(loaded.banners, `${label}: the banners did not move when the content landed`).toEqual(loading.banners);
-          await context.clearCookies({ name: "evoli_fixture_api_latency" });
         }
+        await context.clearCookies({ name: "evoli_fixture_api_latency" });
       }
+
+      await context.addCookies([{ name: "evoli_fixture_api_latency", value: "1500", url: baseURL! }]);
+      const html = await (await page.request.get("/", { headers: { "Accept-Language": STATES[lang].locale } })).text();
+      await context.clearCookies({ name: "evoli_fixture_api_latency" });
+      expect(html, `${lang} document: the roster's content is in the response`).toContain(l.empty.replace(/'/g, "&#x27;"));
+      expect(html.includes("animation:shimmer"), `${lang} document: no skeleton was streamed ahead of the roster`).toBe(false);
     });
 
     test("loading: a navigation link can be followed while the roster loads (BUG-667)", async ({ page, context, baseURL }) => {
@@ -153,17 +195,55 @@ for (const lang of ["fr", "en"] as const) {
       for (const width of [390, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         await holdRosterFromTemplates(page, baseURL!, l.nav, l.roster);
-        await expect.poll(async () => (await frameFacts(page, l.nav)).shimmer, { message: `${lang} at ${width}: the skeleton never showed` }).toBe(true);
+        await expect(page.locator(BAR), `${lang} at ${width}: the roster is still loading`).toBeVisible();
         // Clicked while the roster is still loading; the latency cookie is cleared first, so the
-        // templates page answers at once and the click is what moves the coach.
+        // recipes page answers at once and the click is what moves the coach.
         await context.clearCookies({ name: "evoli_fixture_api_latency" });
         const before = await frameFacts(page, l.nav);
-        expect(before.shimmer, `${lang} at ${width}: still loading when the link is clicked`).toBe(true);
         expect(before.navs, `${lang} at ${width}: the navigation is there to click`).toHaveLength(1);
-        await page.getByRole("navigation", { name: l.nav }).getByRole("link", { name: l.templates, exact: true }).click({ timeout: 1_000 });
-        await page.waitForURL("**/templates");
-        await expect(page.getByRole("heading", { level: 1, name: l.templatesH1, exact: true })).toBeVisible();
+        const nav = page.getByRole("navigation", { name: l.nav });
+        await nav.getByRole("link", { name: l.recipes, exact: true }).click({ timeout: 1_000 });
+        await page.waitForURL("**/recipes");
+        await expect(nav.getByRole("link", { name: l.recipes, exact: true })).toHaveAttribute("aria-current", "page");
+        await expect(page.getByText(l.empty, { exact: true })).toHaveCount(0);
       }
+    });
+
+    /**
+     * F2's other way in: signing in is a DOCUMENT load of `/` (`crossSessionBoundary`). The
+     * sign-in page stays on screen, its button reading « Signing in… », until the roster's
+     * document arrives; nothing in between draws a skeleton. Recorded across the document
+     * swap by an init script (one per document) reporting to the test.
+     */
+    test("loading: signing in goes from « signing in » straight to the roster, with no skeleton", async ({ page, context, baseURL }) => {
+      const seen: string[] = [];
+      await page.exposeFunction("__f2Saw", (what: string) => void seen.push(what));
+      await page.addInitScript(() => {
+        const report = (window as unknown as { __f2Saw: (w: string) => void }).__f2Saw;
+        const scan = () => {
+          if (document.querySelector('[style*="shimmer"]')) report(`skeleton on ${location.pathname}`);
+        };
+        new MutationObserver(scan).observe(document, { subtree: true, childList: true, attributes: true });
+        // The sign-in button's label, each time it changes (a `pagehide` report is lost with
+        // the document, measured).
+        let last: string | undefined;
+        new MutationObserver(() => {
+          const text = document.querySelector("form button[type=submit]")?.textContent?.trim();
+          if (text && text !== last) report(`${location.pathname} button: ${(last = text)}`);
+        }).observe(document, { subtree: true, childList: true, characterData: true });
+      });
+      // Every fixture read held 1 s (under the identity race's 1.5 s), so the roster's
+      // document is slow enough that a streamed skeleton would have been painted first.
+      await context.addCookies([{ name: "evoli_fixture_api_latency", value: "1000", url: baseURL! }]);
+      await signIn(page, lang);
+      const l = STATES[lang];
+      await expect(page.getByText(l.empty, { exact: true })).toBeVisible({ timeout: 15_000 });
+      await context.clearCookies({ name: "evoli_fixture_api_latency" });
+      expect(seen.filter((w) => w.startsWith("skeleton")), `${lang}: no skeleton between sign-in and the roster`).toEqual([]);
+      const labels = seen.filter((w) => w.startsWith("/login button: "));
+      expect(labels.at(-1), `${lang}: the sign-in page was left still saying it was signing in (${labels.join(" → ")})`).toBe(
+        `/login button: ${l.signingIn}`
+      );
     });
   });
 }

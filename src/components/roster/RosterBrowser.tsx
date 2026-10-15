@@ -14,6 +14,7 @@ import {
 } from "@/lib/rosterView";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 import { filterFromParam, noteLeavingRoster, rosterHref, takeScrollRestore } from "@/lib/rosterReturn";
+import { useRosterSortPending } from "@/components/roster/RosterSortPending";
 
 /**
  * EV-337d — search, filters and the four groups over the roster the SERVER read.
@@ -78,6 +79,8 @@ export function RosterBrowser({ entries }: { entries: RosterEntry[] }) {
   // BUG-686 follow-up: what was typed into the server HTML before hydration reaches state.
   const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   const searchId = useId();
+  // F3: a new order is on its way; the rows on screen are the old order until it lands.
+  const sorting = useRosterSortPending();
 
   const counts = useMemo(() => {
     const out: Record<RosterFilter, number> = { all: 0, flagged: 0, inactive: 0 };
@@ -154,7 +157,13 @@ export function RosterBrowser({ entries }: { entries: RosterEntry[] }) {
           if (rows.length === 0) return null;
           const headingId = `roster-group-${group}`;
           return (
-            <section key={group} className="roster-group" aria-labelledby={headingId} data-roster-group={group}>
+            <section
+              key={group}
+              className="roster-group"
+              aria-labelledby={headingId}
+              data-roster-group={group}
+              aria-busy={sorting || undefined}
+            >
               <div className="roster-group-head">
                 <h2 id={headingId} className="roster-group-title">
                   {copy.roster.groups[group]}

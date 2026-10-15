@@ -186,6 +186,33 @@ test("outside fixture mode the fixture reset route is a 404 to a signed-in coach
 });
 
 /**
+ * EV-341w — the RELEASE HOLD, in live mode with the flag unset (what a Vercel deploy gets
+ * until `COACH_INTAKE_REQUEST=on` is set there): the « Entretien » card is not on the
+ * overview, its poll route does not exist, and neither does the fixture's trainee half. The
+ * legacy api stub has no intake routes either, so a portal that called one would render the
+ * card's load-error sentence instead of nothing; the region check below catches that too.
+ */
+test("EV-341w: with the release hold off, no intake card, no poll route, no fixture route", async ({ page }) => {
+  await signIn(page);
+  const poll = await page.request.fetch(`/api/bff/clients/${LEGACY_CLIENT}/intake-consent`, {
+    method: "GET",
+    maxRedirects: 0,
+  });
+  expect(poll.status(), "GET /api/bff/…/intake-consent with the hold off").toBe(404);
+  const answer = await page.request.fetch("/api/fixture/intake", {
+    method: "POST",
+    data: { clientId: LEGACY_CLIENT, answer: "grant" },
+    maxRedirects: 0,
+  });
+  expect(answer.status(), "POST /api/fixture/intake in live mode").toBe(404);
+  const response = await page.goto(`/clients/${LEGACY_CLIENT}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Lina M." })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Intake", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Ask for consent" })).toHaveCount(0);
+});
+
+/**
  * `evoli_fixture_overview=fail` is a fixture switch, and the deployment runs live. A
  * coach's browser could carry that cookie (a tester who used a fixture build on the same
  * host), so live mode must ignore it: the live client never reads the cookie, and the

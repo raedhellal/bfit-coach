@@ -165,7 +165,7 @@ export type ClientStatus = "ACTIVE";
  * inference to make from a null field. The list arrives on the trainee overview,
  * which requires an ACTIVE link and no data scope at all.
  */
-export type CoachAccessScope = "WORKOUTS" | "PROGRESS" | "NUTRITION" | "WEIGH_INS";
+export type CoachAccessScope = "WORKOUTS" | "PROGRESS" | "NUTRITION" | "WEIGH_INS" | "INTAKE";
 
 /**
  * `GET /coach-portal/me` → `CoachProfileResponse`.
@@ -266,6 +266,15 @@ export interface RosterClient {
    * claim, and silence from an older api is not one.
    */
   routineChangedSinceYourPublish?: boolean | null;
+  /**
+   * EV-341i/j J4 — where the client stands before their first programme. Null when the link
+   * lacks WORKOUTS ("not shared"); the api computes it per row in one grouped read.
+   *
+   * OPTIONAL in this type although the api always sends the key: an api that predates
+   * EV-341i omits it, and `programmePill` (src/lib/trialSession.ts) reads only the three
+   * values that carry a pill. Absent, null, PUBLISHED and an unknown value all draw nothing.
+   */
+  programmeStatus?: ProgrammeStatus | null;
 }
 
 /**
@@ -2230,6 +2239,128 @@ export interface CoachChallengeDetail {
 /** The page size the list asks for: the api's maximum. */
 export const CHALLENGE_PAGE_SIZE = 50;
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341j — the trial session (« Séance d'essai »), b-fit-api EV-341i @ 95ca369d (vendored,
+ * `spec/b-fit-api.sha`; merged on the api's merge line, NOT deployed when this was written).
+ * Re-vendored at api origin/main `8655a2e5` for train/coach-s3p: no trial schema changed.
+ *
+ *   GET  /coach-portal/clients/{id}/trial-session           [WORKOUTS] → { programmeStatus, trialSession|null }
+ *   POST /coach-portal/clients/{id}/trial-session/preview   ← CoachTrialSessionRequest → repairs + digest, writes NOTHING
+ *   POST /coach-portal/clients/{id}/trial-session           ← the same body + `digest` → 201, the read
+ *        409 COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED (digest absent, stale, another body's, a publish's)
+ *        409 TRIAL_SESSION_ALREADY_OPEN · 400 VALIDATION_ERROR / COACH_FIELD_NOT_ACCEPTED /
+ *        COACH_DRAFT_REPS_ON_DURATION · 503 CATALOG_UNAVAILABLE
+ *   POST /coach-portal/clients/{id}/trial-session/withdraw  → 200, the read (idempotent)
+ *   403 on all four: one body for foreign, revoked, unknown and "no WORKOUTS".
+ *
+ * 🔴 PROPERTIES THE TYPES CANNOT STATE:
+ *   1. **No edit exists** (ADR-0034 Q7 (f), J3). A change is withdraw, then assign anew, so the
+ *      portal has no control that changes an assigned session.
+ *   2. **DONE is derived and wins over a withdraw** (I3b). `trialSession` is the open one
+ *      (ASSIGNED, or DONE and not withdrawn), else the latest DONE one (withdrawn or not),
+ *      else null. A DONE session stays OPEN until withdrawn (EV-341i, staff r1 ruling 1): a new
+ *      assign over it is 409 TRIAL_SESSION_ALREADY_OPEN, and the portal offers none (J3c withdrawn).
+ *   3. **The digest is domain-separated from a publish's**: the assign echoes the trial
+ *      preview's digest VERBATIM with the very body it previewed. Any other body is a 409.
+ *   4. **Undeclared keys are a 400** (`COACH_FIELD_NOT_ACCEPTED`): the body is built in ONE
+ *      place, `trialSessionBody` (src/lib/trialSession.ts), from these fields only.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** `CoachTrialSessionResponse.programmeStatus` and the roster row's (EV-341i I6). */
+export type ProgrammeStatus = "AWAITING_PROGRAMME" | "TRIAL_ASSIGNED" | "TRIAL_DONE" | "PUBLISHED";
+/** Derived by the api: DONE if completed (wins over a withdraw), else WITHDRAWN, else ASSIGNED. */
+export type TrialSessionStatus = "ASSIGNED" | "WITHDRAWN" | "DONE";
+
+/**
+ * One exercise of an assigned trial session, as the api stores it on the carrier workout.
+ * The portal shows none of them today (J3: the card says when, not what); typed so the read
+ * is checked against the wire.
+ *
+ * @wire TrialSessionExercise
+ */
+export interface TrialSessionExercise {
+  name: string;
+  slug: string;
+  sets: number | null;
+  reps: number | null;
+  durationMinutes: number | null;
+  restSeconds: number | null;
+  orderIndex: number;
+}
+
+/**
+ * One trial session.
+ *
+ * @wire TrialSessionResponse
+ */
+export interface TrialSession {
+  id: string;
+  status: TrialSessionStatus;
+  title: string;
+  /** `YYYY-MM-DD`, or null. */
+  plannedOn: string | null;
+  /** The coach's note to the client. Free text: never logged, never put in a URL. */
+  note: string | null;
+  /** The carrier workout (the trainee's player opens it). */
+  workoutId: string;
+  estimatedMinutes: number | null;
+  /** ISO instant — J3's « Assignée le {date} ». */
+  assignedAt: string;
+  withdrawnAt: string | null;
+  /** `YYYY-MM-DD` the first completion is filed under — J3's « Faite le {date} »; null unless DONE. */
+  completedOn: string | null;
+  exercises: TrialSessionExercise[];
+}
+
+/**
+ * `GET …/trial-session` (and the assign's 201 and the withdraw's 200).
+ *
+ * @wire CoachTrialSessionResponse
+ */
+export interface CoachTrialSessionResponse {
+  programmeStatus: ProgrammeStatus;
+  trialSession: TrialSession | null;
+}
+
+/**
+ * The trial session as the coach composes it, and the preview's body. It names no person:
+ * the subject is the URL's link id; injuries and equipment are the trainee's stored answers.
+ *
+ * `title`, `plannedOn` and `note` are OPTIONAL on the wire and EV-341j's portal sends none of
+ * them: J1 names no field and no copy for them, so the api's defaults apply (title « Séance
+ * d'essai », the assign date's weekday, no note). They are declared so the body builder and
+ * the drift guard know the whole schema; `trialSessionBody` never sets them.
+ *
+ * @wire CoachTrialSessionRequest
+ */
+export interface CoachTrialSessionRequest {
+  title?: string | null;
+  plannedOn?: string | null;
+  note?: string | null;
+  estimatedMinutes?: number | null;
+  /** 1..30 rows, in order: the routine day editor's rows. */
+  exercises: RoutineExercise[];
+}
+
+/**
+ * `POST …/trial-session/preview`'s answer. `repairs` are whole sentences in the engine's
+ * words (English, api content), rendered verbatim like a publish's.
+ *
+ * @wire CoachTrialSessionPreviewResponse
+ */
+export interface CoachTrialSessionPreview {
+  repairs: PublishRepair[];
+  repairCount: number;
+  /** Opaque. Echoed verbatim to the assign with the same body, never stored past the dialog. */
+  digest: string;
+  equipmentChecked: boolean;
+}
+
+/** 409 — one open trial session per client, a DONE one included until withdrawn (I1). */
+export function isTrialSessionAlreadyOpen(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "TRIAL_SESSION_ALREADY_OPEN";
+}
+
 // ── error helpers ────────────────────────────────────────────────────────────
 
 export { ApiError } from "./apiFetch";
@@ -2723,6 +2854,206 @@ export function isMilestoneOutOfRange(err: unknown): boolean {
   return err instanceof ApiError && err.code === "COACH_MILESTONE_OUT_OF_RANGE";
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341w — « Demander l'accord »: the coach asks for the intake interview consent.
+ *
+ * b-fit-api EV-341p2 (vendored at `95ca369d`, `spec/b-fit-api.sha`; merged on the api's
+ * merge line, NOT deployed when this was written; re-vendored at api origin/main `8655a2e5`
+ * for train/coach-s3p, no intake-consent schema changed). Three operations, all gated on an ACTIVE
+ * link and no data scope (`requireManagedLink`):
+ *
+ *   GET    /coach-portal/clients/{id}/intake-consent          → { granted, pending }
+ *   POST   /coach-portal/clients/{id}/intake-consent-request  → 201 { id, requestedAt, expiresAt }
+ *          409 INTAKE_ALREADY_GRANTED · 429 INTAKE_REQUEST_LIMIT (+ Retry-After)
+ *   DELETE /coach-portal/clients/{id}/intake-consent-request  → 204, with or without a live one
+ *   403 COACH_ACCESS_DENIED on all three: one body for a foreign, revoked or unknown id.
+ *
+ * 🔴 THREE PROPERTIES THE TYPES CANNOT STATE:
+ *   1. **No refusal is ever on the wire.** A decline, an expiry and a cancellation all read
+ *      `{ granted: false, pending: false }` (the api pins the DTO to exactly two fields,
+ *      PR12). The portal must not reconstruct one either: nothing it stores or renders may
+ *      tell the three apart (EV-341w W4, W9).
+ *   2. **`pending` is the TTL at read time.** A request past its 15 minutes reads `false`
+ *      even while its row is still open, so a poll may stop on `pending: false` alone.
+ *   3. **A page that loads on `pending: true` has no `expiresAt`** (the GET carries none).
+ *      The server guarantees `pending` turns false within 15 minutes, so the waiting panel
+ *      keeps polling until it does (staff N4 on EV-341p2).
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * `GET …/intake-consent` — exactly the two booleans, and never a reason.
+ *
+ * @wire CoachIntakeConsentStatus
+ */
+export interface CoachIntakeConsentStatus {
+  /** The link holds the `COACH_INTAKE` consent (scope INTAKE). */
+  granted: boolean;
+  /** A request is open AND its 15 minutes have not passed (read time). */
+  pending: boolean;
+}
+
+/**
+ * `POST …/intake-consent-request`'s 201. `expiresAt` = `requestedAt` + 15 minutes, both on
+ * the server's clock: the waiting panel times its poll from their DIFFERENCE, never by
+ * comparing `expiresAt` with the browser's clock.
+ *
+ * @wire CoachIntakeRequest
+ */
+export interface CoachIntakeRequest {
+  id: string;
+  requestedAt: string;
+  expiresAt: string;
+}
+
+/** 409 — the link already holds the consent; nothing was written (PR6). */
+export function isIntakeAlreadyGranted(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "INTAKE_ALREADY_GRANTED";
+}
+/** 429 — three requests on this link in the rolling 24 h, whatever became of them (PR5). */
+export function isIntakeRequestLimit(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 429 && err.code === "INTAKE_REQUEST_LIMIT";
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341b — the intake interview, sections 1–4 (b-fit-api EV-341a, in production since
+ * `8655a2e5`, the vendored spec's commit).
+ *
+ *   GET /coach-portal/clients/{id}/intake                    → CoachIntake
+ *       READY: `status`, all eight `sections` (each `{ version, updatedAt, values }`);
+ *       GRANT_MISSING: `state` only (the link does not hold INTAKE).
+ *   PUT /coach-portal/clients/{id}/intake/sections/{section} ← `{ version, values }`
+ *       → 200 `{ version, updatedAt }`, never the answers
+ *       400 INTAKE_FIELD_INVALID (`details.field`, never the value) · COACH_FIELD_NOT_ACCEPTED
+ *       403 COACH_ACCESS_DENIED (also: no INTAKE, or withdrawn while the write waited)
+ *       409 INTAKE_VERSION_CONFLICT (`details.version`, `details.updatedAt`, nothing else)
+ *
+ * 🔴 THREE PROPERTIES THE TYPES CANNOT STATE:
+ *   1. **A section PUT is a WHOLE section.** An absent field is CLEARED. The portal builds
+ *      every write from every field of the section (`src/lib/intakeForm.ts`), never a patch.
+ *   2. **One version per section.** Two sections save at once without conflict (ADR-0034 Q6),
+ *      so the autosave runs one queue per section, never one per intake.
+ *   3. **A 409 carries no values.** The portal re-reads the intake (`GET`) when the coach
+ *      chooses « Recharger », and never re-sends what was typed before the conflict (B5a).
+ *
+ * The section NOTES and GOALS' `eventLabel` are free text about a named person: never logged
+ * here, never put in an error, never in a URL.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** The eight sections, in the api's (and the portal's) order. */
+export const INTAKE_SECTION_NAMES = [
+  "GOALS",
+  "HISTORY",
+  "AVAILABILITY",
+  "LIFESTYLE",
+  "HEALTH",
+  "MEASUREMENTS",
+  "NUTRITION",
+  "COACH_NOTES",
+] as const;
+export type CoachIntakeSectionName = (typeof INTAKE_SECTION_NAMES)[number];
+
+/**
+ * Section 1's values (`GOALS`). Every field is optional on the wire (null or `[]` when unanswered).
+ * `emphasis` (EV-341y1) is not in the vendored spec and not built here (EV-341y2's).
+ *
+ * @wire CoachIntakeGoals
+ */
+export interface CoachIntakeGoals {
+  primaryGoal?: string | null;
+  motivations?: string[];
+  motivationScore?: number | null;
+  eventLabel?: string | null;
+  eventDate?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Section 2's values (`HISTORY`). `likedExercises` / `avoidedExercises` are EV-341y2's.
+ *
+ * @wire CoachIntakeHistory
+ */
+export interface CoachIntakeHistory {
+  level?: string | null;
+  trainingAge?: string | null;
+  currentSessionsPerWeek?: number | null;
+  activities?: string[];
+  notes?: string | null;
+}
+
+/**
+ * Section 3's values (`AVAILABILITY`). `splitPreference` is EV-341y2's.
+ *
+ * @wire CoachIntakeAvailability
+ */
+export interface CoachIntakeAvailability {
+  sessionsPerWeek?: number | null;
+  sessionMinutes?: number | null;
+  availableDays?: string[];
+  timeOfDay?: string | null;
+  trainingPlaces?: string[];
+  notes?: string | null;
+}
+
+/**
+ * Section 4's values (`LIFESTYLE`).
+ *
+ * @wire CoachIntakeLifestyle
+ */
+export interface CoachIntakeLifestyle {
+  workActivity?: string | null;
+  sleepHours?: string | null;
+  stressScore?: number | null;
+  notes?: string | null;
+}
+
+/** One section as `GET …/intake` serves it: its own version token, when, and the answers. */
+export interface CoachIntakeSection {
+  /** 0 until first written; sent back on the section's next PUT. */
+  version: number;
+  updatedAt: string | null;
+  /** The section's answers, in the schema its name selects. Read field by field, never trusted whole. */
+  values: Record<string, unknown>;
+}
+
+/**
+ * `GET …/intake`. READY carries `status` and all eight `sections`; GRANT_MISSING carries
+ * `state` only.
+ *
+ * @wire CoachIntake
+ */
+export interface CoachIntake {
+  state: "READY" | "GRANT_MISSING";
+  status?: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE";
+  completedAt?: string;
+  sections?: Partial<Record<CoachIntakeSectionName, CoachIntakeSection>>;
+}
+
+/**
+ * `PUT …/intake/sections/{section}`'s body: the section's version as last read, and the WHOLE
+ * section (property 1 above).
+ *
+ * @wire CoachIntakeSectionWrite
+ */
+export interface CoachIntakeSectionWrite {
+  version: number;
+  values: Record<string, unknown>;
+}
+
+/**
+ * `PUT …/intake/sections/{section}`'s 200. Never the answers.
+ *
+ * @wire CoachIntakeSectionSaved
+ */
+export interface CoachIntakeSectionSaved {
+  version: number;
+  updatedAt: string;
+}
+
+/** 409 — the section was written since `version` was read (another tab or device). */
+export function isIntakeVersionConflict(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "INTAKE_VERSION_CONFLICT";
+}
+
 // ── the live client ──────────────────────────────────────────────────────────
 
 /**
@@ -2837,6 +3168,44 @@ const liveCoachApi = {
     await apiFetch<void>(
       `/coach-portal/clients/${encodeURIComponent(id)}/revoke`,
       { method: "POST" }
+    );
+  },
+
+  // ── EV-341w the intake consent request (b-fit-api EV-341p2, see the block above) ──
+
+  /** `bearer`: the poll route's token (`handlerAccessToken`, EV-341b staff r1 S1); a page passes none. */
+  getIntakeConsent(id: string, bearer?: string): Promise<CoachIntakeConsentStatus> {
+    return apiFetch<CoachIntakeConsentStatus>(`${client(id)}/intake-consent`, {}, { bearer });
+  },
+  /** Never retried: a second POST supersedes the first and spends one of the three a day. */
+  requestIntakeConsent(id: string): Promise<CoachIntakeRequest> {
+    return apiFetch<CoachIntakeRequest>(`${client(id)}/intake-consent-request`, { method: "POST" });
+  },
+  async cancelIntakeConsentRequest(id: string): Promise<void> {
+    // 204 No Content, with or without a live request (PR10).
+    await apiFetch<void>(`${client(id)}/intake-consent-request`, { method: "DELETE" });
+  },
+
+  // ── EV-341b the intake interview (b-fit-api EV-341a, see the block above) ──
+
+  /**
+   * `bearer`: a route handler's token (`handlerAccessToken`), which the request's cookies may not
+   * hold yet (see `src/lib/handlerSession.ts`). A page render passes none.
+   */
+  getIntake(id: string, bearer?: string): Promise<CoachIntake> {
+    return apiFetch<CoachIntake>(`${client(id)}/intake`, {}, { bearer });
+  },
+  /** One WHOLE section (an absent field is cleared), compared on that section's own version. */
+  saveIntakeSection(
+    id: string,
+    section: CoachIntakeSectionName,
+    body: CoachIntakeSectionWrite,
+    bearer?: string
+  ): Promise<CoachIntakeSectionSaved> {
+    return apiFetch<CoachIntakeSectionSaved>(
+      `${client(id)}/intake/sections/${encodeURIComponent(section)}`,
+      { method: "PUT", body: JSON.stringify({ version: body.version, values: body.values }) },
+      { bearer }
     );
   },
 
@@ -3108,6 +3477,28 @@ const liveCoachApi = {
   async deleteChallenge(id: string): Promise<void> {
     // 204 No Content.
     await apiFetch<void>(`/coach-portal/challenges/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+
+  // ── EV-341j the trial session (b-fit-api EV-341i, see its block above `// ── error helpers`) ──
+
+  getTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+    return apiFetch<CoachTrialSessionResponse>(`${client(id)}/trial-session`);
+  },
+  previewTrialSession(id: string, body: CoachTrialSessionRequest): Promise<CoachTrialSessionPreview> {
+    return apiFetch<CoachTrialSessionPreview>(`${client(id)}/trial-session/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  /** Never retried: a lost 201 followed by a retry is a 409 TRIAL_SESSION_ALREADY_OPEN. */
+  assignTrialSession(id: string, body: CoachTrialSessionRequest, digest: string): Promise<CoachTrialSessionResponse> {
+    return apiFetch<CoachTrialSessionResponse>(`${client(id)}/trial-session`, {
+      method: "POST",
+      body: JSON.stringify({ ...body, digest }),
+    });
+  },
+  withdrawTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+    return apiFetch<CoachTrialSessionResponse>(`${client(id)}/trial-session/withdraw`, { method: "POST" });
   },
 };
 

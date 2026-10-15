@@ -443,6 +443,8 @@ export function RoutineDocumentEditor({
               <button
                 type="button"
                 className="day-acc-toggle"
+                // BUG-745 (ADR-0033 D33.14): opens or closes a section, nothing more.
+                data-session-safe=""
                 aria-expanded={isOpen(dayIndex)}
                 aria-controls={`${dayIds}-day-${dayIndex}`}
                 onClick={() => toggleDay(dayIndex)}
@@ -630,7 +632,7 @@ export function RoutineDocumentEditor({
 }
 
 /** One prescription: every field `RoutineExercise` carries, in one named group. */
-function ExerciseRow({
+export function ExerciseRow({
   exercise,
   first,
   last,
@@ -895,6 +897,9 @@ function PlanSettingsFold({
         <button
           type="button"
           className="plan-settings-toggle"
+          // BUG-745 (ADR-0033 D33.14): the toggle, never the box: the session-epoch guard reads
+          // the mark on the click's NEAREST control, so only a control can carry it.
+          data-session-safe=""
           aria-expanded={open}
           aria-controls={id}
           onClick={() => onOpenChange(!open)}

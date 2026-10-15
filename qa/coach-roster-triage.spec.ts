@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { rosterBusyWasSeen, rosterOrderWhenBusyLeft, watchRosterBusy } from "./roster-busy";
 
 /**
  * EV-187 AC2 — the roster tells the coach who to open first.
@@ -117,14 +118,32 @@ test("one control flips the order, and it is remembered for the session", async 
   const needsAttention = page.getByRole("radio", { name: "Needs attention" });
   await expect(needsAttention).toBeChecked();
 
+  // EV-356c (F3): the chosen option is checked AT ONCE now, before the server answers, so it
+  // is no longer the sign that the new order has landed. The sync point is the action's own
+  // response, then the rows no longer marked busy (`aria-busy` on each group while pending).
+  const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined);
+  // BUG-742: the busy check below is a sync only if the groups entered busy at all.
+  await watchRosterBusy(page);
   await page.getByRole("radio", { name: "Recently active" }).click();
   await expect(page.getByRole("radio", { name: "Recently active" })).toBeChecked();
+  await answered;
+  await expect
+    .poll(() => rosterBusyWasSeen(page), { message: "the groups never entered aria-busy: the read below is not synced" })
+    .toBe(true);
+  await expect(page.locator('section[data-roster-group][aria-busy="true"]')).toHaveCount(0);
+  // BUG-742 S2: entered is not enough. Wait on the new order itself, so the reads below follow
+  // the render whatever the marker does…
+  await expect.poll(async () => (await rowNames(page))[0], { message: "the new order never landed" }).toContain("Lina M.");
 
   // Most recently active first: Lina trained yesterday, Tobias nine days ago, and every
   // trainee with no known activity is after them.
   const byActivity = await rowNames(page);
   expect(byActivity[0]).toContain("Lina M.");
   expect(byActivity[1]).toContain("Tobias R.");
+  // …and require that busy LEFT with that render: the rows as they stood when the marker
+  // cleared are already the new order. A marker that clears early (staff's M-flash) makes a
+  // "busy gone" sync, here and in the BUG-691 URL test, read the page before the render.
+  expect(await rosterOrderWhenBusyLeft(page), "aria-busy left before the new order landed").toEqual(byActivity);
 
   // Remembered across a navigation away and back — which a query string is not.
   await page.goto("/clients/6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001");

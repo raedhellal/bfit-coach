@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { Button, Card, MIN_TOUCH_TARGET, Modal, PageHead } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -12,6 +12,7 @@ import type { Copy } from "@/lib/copy";
 import { useCopy } from "@/lib/i18n/client";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { useEditorIdentity } from "@/lib/useEditorIdentity";
 import {
   MAX_EXERCISES_PER_DAY,
   TEMPLATE_NAME_MAX,
@@ -67,6 +68,11 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  * uses, for the same reason: losing a tab mid-edit is the failure mode this design
  * buys, so it is the one that is defended.
  *
+ * ⚠ BUG-745 (ADR-0033 D33.14 point 4): every write here starts from a CLICK, which the
+ * session-epoch guard stops once the session changed in another tab. An autosave, or any write
+ * started from an effect, a timer or an action's continuation, must check `isSessionStale()`
+ * (`SessionEpochGuard`) first, and reopens that section.
+ *
  * ═══ THE REDESIGN (EV-337i, plan §5.7) ═══════════════════════════════════════════
  *
  * Layout only; the save path above is untouched (ADR-0033: the editor stays
@@ -92,13 +98,7 @@ const failureCopy = (copy: Copy): Record<TemplateFailure, string> => ({
   FAILED: copy.templates.saveFailed,
 });
 
-export function TemplateEditor({
-  templateId: initialTemplateId,
-  initial,
-  title,
-  sub,
-  back,
-}: {
+interface TemplateEditorProps {
   /** Null for "New template": the first successful save is a POST, then a navigation. */
   templateId: string | null;
   initial: TemplateDraft;
@@ -107,7 +107,26 @@ export function TemplateEditor({
   sub?: ReactNode;
   /** The page's `BackLink`, rendered by the server page. */
   back: ReactNode;
-}) {
+}
+
+/**
+ * BUG-739 — the editor, re-keyed when the RECORD changes and only then (`useEditorIdentity`).
+ * `/templates/new` and `/templates/{id}` are one route now, so a create's own next update arrives
+ * as new props for this same instance; a navigation to another template gets a fresh one.
+ */
+export function TemplateEditor(props: TemplateEditorProps) {
+  const { gen, adopt } = useEditorIdentity(props.templateId);
+  return <TemplateEditorInner key={gen} {...props} adopt={adopt} />;
+}
+
+function TemplateEditorInner({
+  templateId: initialTemplateId,
+  initial,
+  title,
+  sub,
+  back,
+  adopt,
+}: TemplateEditorProps & { adopt: (id: string) => void }) {
   const copy = useCopy();
   /**
    * Null until the first save on a NEW template, and the id from then on.
@@ -123,8 +142,16 @@ export function TemplateEditor({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const leaving = useUnsavedChanges(dirty);
+  /**
+   * BUG-735 — counts edits, so a save can tell whether the coach typed while its request was
+   * in flight (the name and the document stay open during « Saving… »). The routine editor's
+   * `revision`, for the same reason: only an answer that covers everything on screen may
+   * clear `dirty`.
+   */
+  const revision = useRef(0);
 
   function edit(next: TemplateDraft) {
+    revision.current += 1;
     setDraft(next);
     setDirty(true);
     setNotice(null);
@@ -140,6 +167,7 @@ export function TemplateEditor({
 
   function save() {
     if (!saveable) return;
+    const sent = revision.current;
     startTransition(async () => {
       const body = forSave(draft);
       const result = await settled(
@@ -154,32 +182,57 @@ export function TemplateEditor({
       }
       setError(null);
       setNotice(copy.templates.saved);
-      setDirty(false);
+      // BUG-735: an edit made after the request left is not in this answer. It stays unsaved
+      // (the badge, the guard, and the next Save sends it), as in `useCoachForm`'s forms.
+      const late = revision.current !== sent;
+      if (!late) setDirty(false);
       if (templateId === null) {
         /**
          * A create becomes an edit — WITHOUT a router navigation.
          *
-         * `router.replace("/templates/{id}")` is the obvious move and it is wrong here:
-         * it unmounts this island, so the "Template saved" confirmation the coach just
-         * earned is destroyed by the navigation that follows it, and they are left on a
-         * new URL with no sign that anything happened. Measured, not assumed — it is
-         * what the first cut of this did.
+         * `router.replace("/templates/{id}")` is the obvious move and it was wrong here:
+         * while `new/` and `[id]/` were two routes it unmounted this island, so the
+         * "Template saved" confirmation the coach just earned was destroyed by the navigation
+         * that followed it. Measured, not assumed — it is what the first cut of this did.
+         * Since BUG-739 they are one route, and it still is not used: it writes the history
+         * when its navigation COMMITS, after the guard's entry for a late edit is pushed
+         * (`stillUnsaved`, below): the commit replaces THAT entry with `/templates/{id}` and
+         * Next's own state (dropping `evoliUnsavedGuard`), and the page's entry underneath
+         * keeps `/templates/new` (staff's BUG-739 review probe, Chromium).
          *
          * `history.replaceState` corrects the URL without a remount, so a reload or a
          * shared link lands on `/templates/{id}` and cannot create a second template,
          * and the Back button still goes to the library. The unsaved-changes guard's
          * sentinel is released FIRST — a `replaceState` over the sentinel entry would
          * leave the guard holding a history entry that no longer points where it thinks.
+         *
+         * BUG-739: the correction goes THROUGH Next's router. `replaceState(null, …)` is what
+         * Next's patched `replaceState` acts on; passing `history.state` (which carries its
+         * `__NA`) went past it, Next still believed the page was `/templates/new`, and its next
+         * render wrote that URL back. `/templates/new` and `/templates/{id}` being one route
+         * (`next.config.mjs`) is the other half: the update's render then reaches this same
+         * instance. `adopt` tells the identity rule that `{id}` is the record it already has.
          */
         const id = result.template.id;
+        // "stays": the coach is still on this page, so work typed meanwhile stays guarded (BUG-730).
         leaving.release(() => {
           setTemplateId(id);
-          window.history.replaceState(window.history.state, "", `/templates/${id}`);
-        });
+          adopt(id);
+          window.history.replaceState(null, "", `/templates/${id}`);
+        }, "stays");
+        // The step takes the sentinel out and `dirty` never changed: ask for it back (BUG-735).
+        if (late) leaving.stillUnsaved();
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateTemplateAction` revalidates.
-      leaving.release();
+      // With a late edit the sentinel stays where it is: Back still asks (BUG-735). The first
+      // update after a create on this page included, since BUG-739: its answer no longer
+      // re-mounts the editor.
+      // `stillUnsaved` is a no-op while that entry is current; it puts one back if a previous
+      // save's step left the form dirty with none (BUG-736's end state; read from the code,
+      // not constructed). Keyed on `late`.
+      if (!late) leaving.release();
+      else leaving.stillUnsaved();
     });
   }
 
@@ -316,10 +369,11 @@ export function TemplateEditor({
         width={420}
         footer={
           <>
-            <Button variant="secondary" onClick={leaving.stay}>
+            {/* BUG-745 (ADR-0033 D33.14): both answer the question and neither posts. */}
+            <Button variant="secondary" onClick={leaving.stay} sessionSafe>
               {copy.routine.leaveStay}
             </Button>
-            <Button variant="danger" onClick={leaving.leave}>
+            <Button variant="danger" onClick={leaving.leave} sessionSafe>
               {copy.routine.leaveConfirm}
             </Button>
           </>

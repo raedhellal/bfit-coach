@@ -16,7 +16,7 @@ import {
   type FormShape,
 } from "./coachFormState";
 import { useAdoptPrehydrationInput } from "./useAdoptPrehydrationInput";
-import { useUnsavedChanges } from "./useUnsavedChanges";
+import { useUnsavedChanges, type AfterStep } from "./useUnsavedChanges";
 
 /**
  * EV-342o (B2) — one way to build a coach-portal form.
@@ -46,11 +46,11 @@ import { useUnsavedChanges } from "./useUnsavedChanges";
  *   form.markSent();                     // before the request: what is shown is what is sent
  *   const result = await settled(...);
  *   if (result.ok) form.saved(stored?);  // the server's answer, in the form's terms
- *   else if (access ended) form.endAccess(() => router.refresh());
+ *   else if (access ended) form.endAccess(() => router.refresh(), "leaves");
  *   else form.setErrors({...});          // and the work stays unsaved
  *
  * A save that NAVIGATES (a create that goes to a list, a dialog that opens what it made)
- * passes the navigation as `saved(stored, then)`: the guard holds a sentinel history entry
+ * passes the navigation as `saved(stored, then, "leaves")`: the guard holds a sentinel history entry
  * while the form is dirty, and a `router.push` over it leaves a dead Back press, after which
  * the guard's cleanup would step the coach back off the page they were sent to.
  *
@@ -62,6 +62,12 @@ import { useUnsavedChanges } from "./useUnsavedChanges";
  * overview holds the progress goal only, the nutrition tab the targets only). A page that
  * needs several sections (EV-341b's intake) builds them as ONE form, or lifts the guard
  * out of the sections first.
+ *
+ * AUTOSAVE (EV-341b B7a, staff H4). A form that autosaves holds unsaved work this hook cannot
+ * see: a save waiting for its idle time, in flight, or failed, while every field already
+ * equals what the form calls the server's value. The autosave's own `dirty` comes in through
+ * `extraDirty`, and the guard asks while EITHER says so. Access ending (`endAccess`) wins over
+ * both: nothing can be saved any more, so nothing is held (B14).
  */
 export interface CoachForm<V extends FormShape<V>> {
   values: V;
@@ -73,11 +79,17 @@ export interface CoachForm<V extends FormShape<V>> {
   touched(key: keyof V): boolean;
   setErrors(errors: FieldErrors<V>): void;
   markSent(): void;
-  /** The server accepted the save; `then`: a navigation it leads to (see the protocol). */
-  saved(stored?: V, then?: () => void): void;
+  /** The server accepted the save. */
+  saved(stored?: V): void;
+  /**
+   * The server accepted the save, and `then` follows it once the guard's entry is gone. `after`
+   * says whether `then` leaves the page (a create that opens the list) or stays on it (BUG-730:
+   * work typed during the guard's step is guarded again only if the coach stays).
+   */
+  saved(stored: V | undefined, then: () => void, after: AfterStep): void;
   reset(values: V): void;
-  /** A 403 on a write: stop guarding (nothing can be saved), then `then` (a refresh). */
-  endAccess(then: () => void): void;
+  /** A 403 on a write: stop guarding (nothing can be saved), then `then` (a refresh: "leaves"). */
+  endAccess(then: () => void, after: AfterStep): void;
   scope: RefObject<HTMLDivElement>;
   guard: ReactElement;
 }
@@ -85,11 +97,14 @@ export interface CoachForm<V extends FormShape<V>> {
 export function useCoachForm<V extends FormShape<V>>({
   server,
   enabled = true,
+  extraDirty = false,
 }: {
   /** The server's values for the fields, in the form's terms (strings for text fields). */
   server: V;
   /** False while the form is not on screen (a closed dialog): nothing to guard then. */
   enabled?: boolean;
+  /** Unsaved work this hook does not hold: an autosave queue's `dirty` (EV-341b B7a). */
+  extraDirty?: boolean;
 }): CoachForm<V> {
   const [state, setState] = useState<CoachFormState<V>>(() => seedForm(server));
 
@@ -102,12 +117,13 @@ export function useCoachForm<V extends FormShape<V>>({
     setState((s) => (s.seen === signature ? s : reseedFromServer(s, server)));
   }
 
-  const dirty = enabled && isDirty(current);
+  // `abandoned` (access ended) silences `extraDirty` too: `isDirty` already reads it.
+  const dirty = enabled && !current.abandoned && (isDirty(current) || extraDirty);
   const leaving = useUnsavedChanges(dirty);
   const scope = useAdoptPrehydrationInput<HTMLDivElement>();
   /** The state as last rendered, for `saved` to decide synchronously (see there). */
-  const latest = useRef(current);
-  latest.current = current;
+  const latest = useRef({ state: current, extraDirty });
+  latest.current = { state: current, extraDirty };
 
   const set = useCallback(<K extends keyof V>(key: K, value: V[K]) => {
     setState((s) => editField(s, key, value));
@@ -130,19 +146,20 @@ export function useCoachForm<V extends FormShape<V>>({
    * save, since a second call before the first's popstate would step back twice.
    */
   const saved = useCallback(
-    (stored?: V, then?: () => void) => {
-      const next = markSaved(latest.current, stored);
-      if (then) release(then);
-      else if (!isDirty(next)) release();
+    (stored?: V, then?: () => void, after?: AfterStep) => {
+      const next = markSaved(latest.current.state, stored);
+      // `after` comes with every `then`: the overload above requires it (BUG-730 N1).
+      if (then) release(then, after as AfterStep);
+      else if (!isDirty(next) && !latest.current.extraDirty) release();
       setState((s) => markSaved(s, stored));
     },
     [release]
   );
 
   const endAccess = useCallback(
-    (then: () => void) => {
+    (then: () => void, after: AfterStep) => {
       setState((s) => ({ ...s, abandoned: true }));
-      release(then);
+      release(then, after);
     },
     [release]
   );

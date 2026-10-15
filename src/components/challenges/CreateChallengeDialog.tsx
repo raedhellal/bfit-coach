@@ -24,6 +24,8 @@ import {
 } from "@/lib/challengeDocument";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
 import { useCoachForm } from "@/lib/useCoachForm";
+import { WHOLE_ROSTER_READ_ROUNDS } from "@/lib/rosterAll";
+import { rosterReadDeadlineMs, useRosterRead } from "@/lib/useRosterRead";
 
 /** A trainee the coach may invite: an ACTIVE roster row. STEPS needs no data scope. */
 export interface InviteTarget {
@@ -37,14 +39,15 @@ export interface InviteTarget {
  * (today → today + 6) and the clients to invite.
  *
  * A client island because it is a dialog with live validation. Nothing is fetched here:
- * the roster arrives from the page's server read, and the one write goes through
+ * the roster arrives from the page's server read (EV-356g: UNRESOLVED, so the challenge
+ * list paints without it and this dialog says it is loading), and the one write goes through
  * `createChallengeAction`. Every check runs through `challengeDocument.ts`, the same
  * module the unit spec drives, and the body is built there too.
  *
  * Problems are shown only after the first Create press: a coach who has not typed a
  * title yet is not in error, they are filling in a form.
  *
- * `rosterFailed`: the page's roster read failed. That is not "no linked clients", and
+ * A roster read that resolves to `null` failed. That is not "no linked clients", and
  * saying so would send a coach who has clients off to invite them again.
  *
  * BUG-665 / EV-342o: the values are `useCoachForm`'s, guarded while the dialog is open. A
@@ -56,14 +59,13 @@ export interface InviteTarget {
  * are not in the server HTML (`Modal` renders nothing while closed), so there is nothing
  * typed before hydration to adopt and `scope` is not attached.
  */
-export function CreateChallengeDialog({
-  clients,
-  rosterFailed = false,
-}: {
-  clients: InviteTarget[];
-  rosterFailed?: boolean;
-}) {
+export function CreateChallengeDialog({ roster }: { roster: Promise<InviteTarget[] | null> }) {
   const copy = useCopy();
+  // QA-S3N-1: the whole roster is page 0, then the rest, each bounded by the api read timeout.
+  const read = useRosterRead(roster, rosterReadDeadlineMs(WHOLE_ROSTER_READ_ROUNDS));
+  const rosterLoading = read.state === "loading";
+  const rosterFailed = read.state === "failed";
+  const clients = read.state === "ready" ? read.targets : [];
   const c = copy.challenges;
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -120,7 +122,7 @@ export function CreateChallengeDialog({
       draft.saved(undefined, () => {
         startNavigationProgress(href);
         router.push(href);
-      });
+      }, "leaves");
     });
   }
 
@@ -248,7 +250,7 @@ export function CreateChallengeDialog({
             </legend>
             {clients.length === 0 ? (
               <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--ink-3)", lineHeight: 1.5 }}>
-                {rosterFailed ? c.clientsLoadError : c.noClients}
+                {rosterLoading ? c.clientsLoading : rosterFailed ? c.clientsLoadError : c.noClients}
               </p>
             ) : (
               <>

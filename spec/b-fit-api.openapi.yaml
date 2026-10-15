@@ -1129,13 +1129,7 @@ paths:
                   equipment: ["NONE"]
       responses:
         "403":
-          description: >-
-            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
-            plan. Refused before any model call and before any AI credit is consumed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
+          $ref: "#/components/responses/AiNotIncluded"
         "200":
           description: Plan
           content:
@@ -1149,11 +1143,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
         "404":
-          description: Plan template not found
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed). Otherwise: plan template not found.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "400":
+          description: >-
+            INVALID_REQUEST: a body the server cannot read. A `goal` or `level` outside its enum
+            (enum values are case-sensitive, so `lose_weight` is refused too), or a `daysPerWeek` or
+            `sessionMinutes` that cannot be read as a 32-bit integer (a non-numeric string, or a value
+            outside the int range). Nothing is generated. Not refused: a numeric string (`"3"`) is
+            read as the number, and a fraction is truncated (`3.7` is 3); the value is then clamped
+            to 2-6 days and 20-90 minutes, never refused for its size.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: INVALID_REQUEST
+                message: Malformed request body.
+                details: null
+        "409":
+          description: >-
+            ONBOARDING_REQUIRED: the body and the stored profile TOGETHER still miss a field the
+            generator needs: `goal`, `level`, `daysPerWeek`, `sessionMinutes` or a non-empty
+            `equipment` list. Typical cause: an empty body (`{}` or none) from an account whose
+            profile was saved without `equipment`, or that has no profile yet. Send the missing
+            fields in the body, or complete the profile with `PUT /me/profile`, and retry.
+            `details.missingFields` names those five fields; today it lists all five whichever are
+            actually absent (measured: a profile missing only `equipment` gets all five), so a
+            client must not read it as the exact gap. Refused before the generator runs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: ONBOARDING_REQUIRED
+                message: Onboarding profile required
+                details:
+                  missingFields: [goal, level, daysPerWeek, sessionMinutes, equipment]
   /me/plan:
     get:
       summary: Active plan
@@ -1811,7 +1842,9 @@ paths:
         "404":
           description: >-
             Not found. EV-063: a workout or session that belongs to another account answers 404
-            here too — identical to one that does not exist, so the id cannot be probed.
+            here too — identical to one that does not exist, so the id cannot be probed. So does a
+            workout of a shared CATALOGUE plan, even one the caller has selected: selecting a
+            catalogue plan makes it readable, never editable — only a plan the caller owns is.
           content:
             application/json:
               schema:
@@ -1856,7 +1889,9 @@ paths:
         "404":
           description: >-
             Not found. EV-063: a workout or session that belongs to another account answers 404
-            here too — identical to one that does not exist, so the id cannot be probed.
+            here too — identical to one that does not exist, so the id cannot be probed. So does a
+            workout of a shared CATALOGUE plan, even one the caller has selected: selecting a
+            catalogue plan makes it readable, never editable — only a plan the caller owns is.
           content:
             application/json:
               schema:
@@ -1896,7 +1931,9 @@ paths:
         "404":
           description: >-
             Not found. EV-063: a workout or session that belongs to another account answers 404
-            here too — identical to one that does not exist, so the id cannot be probed.
+            here too — identical to one that does not exist, so the id cannot be probed. So does a
+            workout of a shared CATALOGUE plan, even one the caller has selected: selecting a
+            catalogue plan makes it readable, never editable — only a plan the caller owns is.
           content:
             application/json:
               schema:
@@ -2200,13 +2237,7 @@ paths:
               $ref: "#/components/schemas/CoachInterpretTextRequest"
       responses:
         "403":
-          description: >-
-            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
-            plan. Refused before any model call and before any AI credit is consumed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
+          $ref: "#/components/responses/AiNotIncluded"
         "200":
           description: Interpretation
           content:
@@ -2215,6 +2246,22 @@ paths:
                 $ref: "#/components/schemas/CoachInterpretTextResponse"
         "400":
           description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
+            A workout that does not exist or is not on the account's plan is 404 WORKOUT_NOT_FOUND
+            (only when the text routes to a workout intent).
           content:
             application/json:
               schema:
@@ -2246,13 +2293,7 @@ paths:
                 - audio
       responses:
         "403":
-          description: >-
-            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
-            plan. Refused before any model call and before any AI credit is consumed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
+          $ref: "#/components/responses/AiNotIncluded"
         "200":
           description: Voice processed
           content:
@@ -2267,6 +2308,322 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/coach/chat:
+    post:
+      summary: Chat with the AI coach to tweak the current routine (uses one AI CHAT credit)
+      description: >-
+        The Coach tab and the in-workout Nova (ADR-0028 §2.2 #1). The coach reads `routine`, or the
+        latest saved routine when it is omitted, and may edit it; `routineUpdated` says whether it
+        did. A message the server's safety check catches gets a fixed safety reply with the routine
+        unchanged, and is not charged. At most the last few `history` turns are read.
+
+
+        Undocumented until EV-304.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutineCoachChatRequest"
+      responses:
+        "200":
+          description: The coach's reply, and the routine after any edit it applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutineCoachChatResponse"
+        "400":
+          description: >-
+            VALIDATION_ERROR (a blank `message`, a `message` over 2000 characters, an invalid
+            `history` turn) or INVALID_REQUEST (an unreadable body; or no `routine` sent and none
+            saved yet, so generate a plan first).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "402":
+          description: COACH_SUBSCRIPTION_REQUIRED — the account has no active coach entitlement.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          $ref: "#/components/responses/AiNotIncluded"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: >-
+            AI_RATE_LIMITED (the per-minute burst throttle, checked first) or AI_QUOTA_EXCEEDED (the
+            monthly AI credit allowance is spent).
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds to wait before retrying — what is left of the fixed window that
+                refused the request (BUG-152). Always at least 1, and capped at 86400 so a
+                long reset (the monthly AI quota) is still a value a client can schedule.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: >-
+            ROUTINE_GENERATION_FAILED — the coach produced nothing usable. The CHAT credit is
+            refunded (BUG-283).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/coach/routine:
+    post:
+      summary: Generate a personalized routine from the onboarding profile, synchronously (uses one AI GENERATE credit)
+      description: >-
+        ADR-0028 §2.2 #2. Answers with the generated routine (the asynchronous, progressive route is
+        `POST /me/routine/generations`). The request wins and the stored profile fills the gaps. A
+        model failure that the deterministic generator rescues still answers 200, and stays charged.
+
+
+        Two request encodings are accepted. `application/json` is the profile alone.
+        `multipart/form-data` carries the same profile as a `profile` part plus an optional `photo`
+        part; the photo is used for qualitative cues only and is never stored.
+
+
+        Undocumented until EV-304.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutineGenerateRequest"
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - profile
+              properties:
+                profile:
+                  $ref: "#/components/schemas/RoutineGenerateRequest"
+                photo:
+                  type: string
+                  format: binary
+                  description: Optional photo; transient, never persisted.
+            encoding:
+              profile:
+                contentType: application/json
+      responses:
+        "200":
+          description: The generated routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Routine"
+        "400":
+          description: >-
+            VALIDATION_ERROR (a profile field out of range), INVALID_REQUEST (an unreadable body or
+            a missing `profile` part) or BAD_REQUEST (the `photo` part could not be read).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          $ref: "#/components/responses/AiNotIncluded"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            ROUTINE_GENERATION_IN_PROGRESS (BUG-362) — a routine generation for this account is
+            already running (a double tap). Refused above the meter, so nothing is charged; re-read
+            the plan instead of generating again. The refusal lasts while the first request runs and
+            at most 10 minutes from its start.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: AI_QUOTA_EXCEEDED — the monthly AI credit allowance is spent.
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds to wait before retrying — what is left of the fixed window that
+                refused the request (BUG-152). Always at least 1, and capped at 86400 so a
+                long reset (the monthly AI quota) is still a value a client can schedule.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: ROUTINE_GENERATION_FAILED — the model produced no usable routine.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: >-
+            CATALOG_UNAVAILABLE — the exercise catalog for the active provider is empty, so no
+            routine can be grounded. Refused above the meter: nothing is charged, safe to retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    get:
+      summary: Read your current saved routine (model-free)
+      description: >-
+        The signed-in account's newest saved routine, whoever wrote it: the account's own edit, a
+        coach's publish, a generation or a chat rewrite. It is the same document the coach portal's
+        routine page reads for its client. `routine` is exactly the shape `PUT /me/coach/routine`
+        accepts, so it can be sent back unchanged. Echo `version` as `If-Match` on that PUT to be
+        refused (409 ROUTINE_STALE) instead of silently replacing a routine this device has not seen.
+        Model-free: no credit, no rate limit, and not refused for a coached account (ADR-0028 §2.2).
+        A server older than this route answers 405 here (POST and PUT are mapped on the path).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The current routine and its version
+          headers:
+            ETag:
+              description: The version, quoted (the same value as `version`)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraineeRoutineResponse"
+        "304":
+          description: Not modified. `If-None-Match` named the current version; no body.
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: AUTH_FORBIDDEN — a PENDING (not yet activated) account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            ROUTINE_NOT_FOUND — the account has no saved routine yet. A 404 with a code rather than a
+            204, so a 200 always carries all three fields and the absence is never confused with a
+            routing 404. Self-scoped: it says nothing about any other account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      summary: Save a user-edited routine and sync it to the active plan
+      description: >-
+        Replaces the account's routine and makes it the active plan (the safety guardrail repairs it
+        first; the response is the repaired routine). Optional staleness guard: send `If-Match` with
+        the `version` GET returned. If the routine has changed since (a coach published, another
+        device saved), the save is refused with 409 ROUTINE_STALE and nothing is written. Without
+        `If-Match` the save replaces whatever is current, as it always has, so older app builds keep
+        working.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          description: >-
+            The version this save replaces, as GET /me/coach/routine returned it, quoted or not. A
+            comma-separated list matches if any entry is current. `*` means "a routine exists" (it
+            refuses only a first save). Compared strongly: a weak tag (`W/"…"`) never matches. A
+            header that is present but blank or unreadable never matches either; it is not treated
+            as absent.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Routine"
+      responses:
+        "200":
+          description: The saved routine, as repaired by the guardrail
+          headers:
+            ETag:
+              description: The saved routine's new version, quoted. Assert it on the next save.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Routine"
+        "400":
+          description: VALIDATION_ERROR — invalid routine (checked before If-Match)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: AUTH_FORBIDDEN — a PENDING (not yet activated) account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            ROUTINE_STALE — `If-Match` did not name the current routine; nothing was written. Re-read
+            with GET and decide. `details.currentVersion` and `details.currentUpdatedAt` name the
+            current routine; both are present and null when the account has none. 409 rather than
+            RFC 9110's 412, to match the product's other stale-write refusal (COACH_DRAFT_EXISTS).
           content:
             application/json:
               schema:
@@ -2469,6 +2826,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            **EXERCISE_SYNC_IN_PROGRESS** (BUG-591) — a sync is already running, so this request
+            starts nothing: no provider call, no write. A sync runs for minutes, and a browser may
+            resend the POST on a dropped connection, which used to start a second paid pull. Do not
+            retry in a loop: wait for the running sync to finish, then check the catalog's row count
+            before syncing again. The refusal lasts while that sync runs and keeps fetching
+            exercises, however long it takes (EV-335: every exercise fetched renews it); a sync that
+            fetches no exercise for **30 minutes** (`exercises.sync.takeover-after`) is presumed hung
+            and the next request is accepted in its place. Per api instance: the api runs as one
+            instance today. The `message` is a fixed plain sentence.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: EXERCISE_SYNC_IN_PROGRESS
+                message: An exercise sync is already running. Wait for it to finish before starting another.
+        "503":
+          description: >-
+            **EXERCISE_PROVIDER_UNAVAILABLE** (EV-335, BUG-622) — the exercise provider timed out
+            (connect 10 s, answer 30 s per call by default) or could not be reached. The sync stopped,
+            saved nothing and released its claim, so a new request is accepted. Safe to retry later;
+            a retry fetches the whole catalog again. The `message` is a fixed plain sentence (timed
+            out, or could not be reached); nothing from the provider is echoed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: EXERCISE_PROVIDER_UNAVAILABLE
+                message: The exercise provider did not answer in time. The sync stopped and saved nothing; try again later.
   /me/progress/exercise/{slug}:
     get:
       summary: Exercise progress over time
@@ -2549,6 +2938,52 @@ paths:
                   - $ref: "#/components/schemas/RangeProgressSummaryResponse"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach/chat:
+    post:
+      summary: Chat with the rules coach about the caller's own day
+      description: >-
+        ADR-0028 §2.2 #13. A stub today: it consumes no AI credit. Refused for a coached account so
+        that a client bound to it opens no hole when a model is put behind it.
+
+
+        Undocumented until EV-304. Not a coach-portal route: it acts on the caller's own data.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachChatRequest"
+      responses:
+        "200":
+          description: The coach's reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachChatResponse"
+        "400":
+          description: VALIDATION_ERROR (a blank `message`) or INVALID_REQUEST (an unreadable body).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          $ref: "#/components/responses/AiNotIncluded"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
           content:
             application/json:
               schema:
@@ -3301,6 +3736,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /admin/users/{id}/support:
+    get:
+      summary: Support facts for one user (admin)
+      description: >-
+        EV-263a. The stored facts behind "why can't this person get in, and who is their coach?", for the
+        Support card on the admin user page. A separate read so the list payload does not grow.
+        emailVerified and emailVerifiedAt are users.email_verified / email_verified_at as stored.
+        secondFactor lists the enabled methods in the order login offers them (TOTP, then EMAIL_OTP) and
+        counts the unused recovery codes. coach is present only for an account holding COACH with a
+        coach_profiles row; COACH without a profile reads null (the broken state is made visible), and
+        a revoked coach (profile row, no COACH role) also reads null. coachLinks are the links where this
+        account is the TRAINEE, ACTIVE and REVOKED, newest first by when the link began, at most 20.
+        The key set at every level is closed; nullable values are sent as null, never omitted.
+        No TOTP secret, recovery code, code hash, device token or password hash is returned.
+        Read-only and not logged. ADMIN is granted only to a session that proved a second factor (BUG-165).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The support facts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserSupport"
+        "400":
+          description: INVALID_REQUEST — the id is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: USER_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /admin/users/{id}/role:
     patch:
       summary: Replace a user's role (admin)
@@ -3797,6 +4289,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /admin/metrics/summary:
+    get:
+      summary: Dashboard counts (admin)
+      description: >-
+        EV-264a. The admin dashboard's and Users page's numbers, each a SQL count over the whole table,
+        so they are true at any number of users (the console no longer derives them from
+        /admin/users?size=100). users buckets every account by the same primary-role resolution as
+        AdminUserResponse.role (PENDING > ADMIN > COACH > USER; an account with no role row is a
+        member), so admins + coaches + members + pending = total. signupsLast30Days counts accounts
+        created at or after now minus 30 days. signupsByMonth is exactly 12 UTC calendar months, oldest
+        first, the current month last, each present even at 0. coaching.coaches counts coach_profiles
+        rows (the Coaches page's total, so revoked and pending coach profiles are included and it can
+        differ from users.coaches); activeLinks counts ACTIVE coach-trainee links; pendingInvites counts
+        coach invites neither used nor expired. feedback.new counts feedback with status NEW.
+        ADMIN is granted only to a session that proved a second factor (BUG-165).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminMetricsSummary"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Forbidden — not ROLE_ADMIN (AUTH_FORBIDDEN), or ROLE_ADMIN on a session that never
+            proved a second factor (AUTH_MFA_REQUIRED, BUG-165)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /admin/coaches:
     get:
       summary: List coach profiles, newest first (admin)
@@ -4108,21 +4638,147 @@ paths:
   #   - GET /me/nutrition/plan/meal/{mealId}/swap-options (and ?refresh=true) now answers
   #     422 NO_SAFE_MEAL_PLAN, the body below, when no candidate is safe under the account's rules
   #     (it answered 500 INTERNAL_ERROR). Nothing is cached, and a refresh's CHAT credit is refunded.
-  #   - POST /me/coach/routine (JSON and multipart) now answers 409 ROUTINE_GENERATION_IN_PROGRESS
-  #     when a routine generation for the same account is already running (a double tap). It is
-  #     refused below the coached-mode gate and the catalogue pre-flight and ABOVE the meter, so it
-  #     costs nothing; before, the second tap was charged and answered 409 DATA_INTEGRITY_VIOLATION
-  #     (no plan yet) or 200 with a second plan. Re-read the plan instead of generating again. The
-  #     refusal lasts while the first request runs and at most 10 minutes from its start; after that
-  #     the first is presumed hung and the next request is accepted (and charged) in its place.
+  #   - POST /me/coach/routine: documented since EV-304, with its 409 ROUTINE_GENERATION_IN_PROGRESS.
   #
-  # NOTE (EV-071a): POST /me/nutrition/plan/day/{dayId}/regenerate is ABSENT from this spec
-  # entirely — pre-existing (absent at 8636119 too), not introduced here. It now answers 422
-  # NO_SAFE_MEAL_PLAN like the two coach-portal operations below.
-  #
-  # Documenting the route needs its own row, and AT THE TIME OF WRITING THAT ROW IS NOT FILED —
-  # senior-qa owns filing it. Said that way on purpose: a comment that claims a row exists becomes
-  # the record instead of the row, which is the failure ruling 5.8 named about its own flag.
+  # NOTE (EV-071a): POST /me/nutrition/plan/day/{dayId}/regenerate was absent from this spec; EV-304
+  # documents it below, with its 422 NO_SAFE_MEAL_PLAN.
+  # EV-304: GET /me/nutrition/plan (read the stored plan) shares this path and is still not
+  # documented here; only the AI entry point (POST) is.
+  /me/nutrition/plan:
+    post:
+      summary: Generate a coach meal plan for the current target (the older plan path; uses one AI GENERATE credit)
+      description: >-
+        ADR-0028 §2.2 #6. Not the weekly plan (`POST /me/nutrition/plan/week`): this is the older
+        single plan, a list of meals and tips for the account's current target, and it calls a model
+        when AI is on. It replaces the stored plan.
+
+
+        Undocumented until EV-304.
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: The generated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionPlanResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          $ref: "#/components/responses/AiNotIncluded"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: AI_QUOTA_EXCEEDED — the monthly AI credit allowance is spent.
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds to wait before retrying — what is left of the fixed window that
+                refused the request (BUG-152). Always at least 1, and capped at 86400 so a
+                long reset (the monthly AI quota) is still a value a client can schedule.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: >-
+            ROUTINE_GENERATION_FAILED — the model produced no plan. The GENERATE credit is refunded
+            (BUG-283).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/nutrition/plan/day/{dayId}/regenerate:
+    post:
+      summary: Regenerate a single day of the weekly plan (free, capped per day; locked meals stay)
+      description: >-
+        ADR-0028 §2.2 #5, the trainee's own regenerate (the coach's is a coach-portal route). Uses no
+        AI credit; capped per calendar day on the service clock (`bfit.nutrition.day-regen-daily-limit`,
+        default 3). Locked meals are kept unless the account's current food rules exclude them
+        (BUG-287); every other meal on the day is replaced, and the day's eaten marks go with them.
+        A model failure falls back to the deterministic generator, so there is no 502.
+
+
+        Undocumented until EV-304.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dayId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The whole week, with the day replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyPlanResponse"
+        "400":
+          description: INVALID_REQUEST — `dayId` is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          $ref: "#/components/responses/AiNotIncluded"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
+            NUTRITION_NOT_FOUND: no such day on this account's plans (another account's day answers
+            the same, so an id cannot be probed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: >-
+            NO_SAFE_MEAL_PLAN (EV-071a) — the account's allergies and food rules rule out every
+            recipe the server can check for this day. Nothing is written: the week, and the day, stay
+            as they were.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: DAY_REGEN_LIMIT — the day's free regenerations are used up.
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds until the next midnight on the service clock, when the allowance
+                resets (BUG-152). Always at least 1.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /me/nutrition/plan/week:
     post:
       summary: Generate (or replace) the 7-day meal plan for a week (uses one AI credit)
@@ -4146,13 +4802,7 @@ paths:
               $ref: "#/components/schemas/GenerateWeekRequest"
       responses:
         "403":
-          description: >-
-            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
-            plan. Refused before any model call and before any AI credit is consumed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
+          $ref: "#/components/responses/AiNotIncluded"
         "201":
           description: The week, GENERATING
           content:
@@ -4161,6 +4811,14 @@ paths:
                 $ref: "#/components/schemas/WeeklyPlanResponse"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
           content:
             application/json:
               schema:
@@ -4176,8 +4834,16 @@ paths:
             The client should not generate again: re-read the week (`GET /me/nutrition/plan/week`)
             once the first request answers. The refusal lasts while that request is in flight, and
             **at most 10 minutes** from when it started: after that the first request is presumed
-            hung and the next request for the week is accepted (and charged) in its place. The days
-            that stream in after the first request's 201 are not covered, so a tap after the 201 is
+            hung and the next request for the week is accepted (and charged) in its place.
+
+
+            **It also lasts while the stored week is `GENERATING`** (ADR-0030): the first request
+            answers 201 while the other days are still streaming in, and a tap in that window is
+            refused the same way, uncharged, rather than regenerating over the running week. That
+            arm is read from the stored week and ends when the week leaves `GENERATING`, or **10
+            minutes** after that generation started (the same age at which a read completes a
+            stalled week's missing days), or when the server has restarted since that generation
+            started (it can no longer be running), whichever comes first. A tap after the week is `ACTIVE` is
             an ordinary regeneration. The `message` is developer-facing and is not copy.
           content:
             application/json:
@@ -4204,7 +4870,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
         "429":
-          description: AI_CREDITS_EXHAUSTED — the account's GENERATE allowance is spent
+          description: >-
+            AI_QUOTA_EXCEEDED: the account's monthly AI credit allowance is spent (EV-304 corrected
+            this from AI_CREDITS_EXHAUSTED, a code the server never sends).
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds to wait before retrying — what is left of the fixed window that
+                refused the request (BUG-152). Always at least 1, and capped at 86400 so a
+                long reset (the monthly AI quota) is still a value a client can schedule.
+              schema:
+                type: integer
+                minimum: 1
+                example: 42
           content:
             application/json:
               schema:
@@ -4303,13 +4981,7 @@ paths:
                 contentType: application/json
       responses:
         "403":
-          description: >-
-            AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
-            plan. Refused before any model call and before any AI credit is consumed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
+          $ref: "#/components/responses/AiNotIncluded"
         "202":
           description: Generation queued
           content:
@@ -4324,6 +4996,14 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            USER_NOT_FOUND (EV-304): the access token outlived its account, so there is no account to
+            refuse or to charge (TraineeAiGate fails closed).
           content:
             application/json:
               schema:
@@ -4885,6 +5565,302 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "403":
           description: Not a coach, not this coach's client, already revoked, or no such id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/intake-consent:
+    get:
+      summary: Whether the client has allowed the intake interview, and whether an ask is live
+      description: >-
+        EV-341p2 / ADR-0034a D34a.6. Exactly `{granted, pending}`; the portal polls it every 3 s
+        while its page is visible, for at most the request's 15 minutes. A decline, an expiry and a
+        cancellation all read `pending: false, granted: false`: the coach's tool stores and shows
+        no refusal. A read: no lock, no write; an open request past its expiry reads
+        `pending: false` (the TTL at read time). Gate: an ACTIVE link, no data scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachIntakeConsentStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach, not this coach's client, a REVOKED link (including
+            one revoked while this request waited for the link's lock), or no such id. One body
+            for all, the overview's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/intake-consent-request:
+    post:
+      summary: Ask the client for the intake interview consent (COACH_INTAKE)
+      description: >-
+        EV-341p2 / ADR-0034a D34a.1. « Demander l'accord »: opens a request that the client's app
+        shows on their own phone (`intakeRequest` on GET /me/my-coach), live for 15 minutes from
+        now. A prompt, never a consent: only the client's own POST /me/my-coach/intake-consent
+        writes the consent. One transaction under the link's row lock (`FOR NO KEY UPDATE`, ACTIVE
+        re-checked from it): an open request past its expiry is first closed `EXPIRED`; a live one
+        is closed `SUPERSEDED` and replaced, so a link has at most one open request. At most 3
+        requests per link per rolling 24 h, whatever became of them. Every refusal writes nothing.
+        Gate: an ACTIVE link, no data scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: The new request; `expiresAt` = `requestedAt` + 15 minutes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachIntakeRequest"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach, not this coach's client, a REVOKED link (including
+            one revoked while this request waited for the link's lock), or no such id. One body
+            for all, the overview's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: "`INTAKE_ALREADY_GRANTED` — the link already holds the consent"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: >-
+            `INTAKE_REQUEST_LIMIT` — 3 requests on this link in the last 24 h (any outcome). The
+            portal shows « Vous avez déjà demandé 3 fois en 24 heures. Vous pourrez redemander plus
+            tard. »
+          headers:
+            Retry-After:
+              description: >-
+                Whole seconds until the oldest of the three leaves the rolling 24-hour window, when
+                a request is next accepted (BUG-152). Always at least 1, at most 86400.
+              schema:
+                type: integer
+                minimum: 1
+                example: 3600
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Cancel the live intake consent request
+      description: >-
+        EV-341p2. « Annuler la demande »: under the link's row lock, closes the live open request
+        `CANCELLED` (an open one already past its expiry is closed `EXPIRED`, never `CANCELLED`).
+        With none, changes nothing and answers the same 204. Gate: an ACTIVE link, no data scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: The link has no live request
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach, not this coach's client, a REVOKED link (including
+            one revoked while this request waited for the link's lock), or no such id. One body
+            for all, the overview's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/intake:
+    get:
+      summary: The client's intake interview (READY), or GRANT_MISSING
+      description: >-
+        EV-341a / ADR-0034 Q1, Q3. One intake per coach link (`{id}` is the `coach_clients` row id);
+        a new link, the same coach's included, starts empty. When the link holds INTAKE (added only
+        by the client's own COACH_INTAKE consent): `state: READY`, the derived `status`, and all
+        eight `sections`, each with its `version` (0 until first written, every field `null` or
+        `[]`) and its `values`; `completedAt` once finished. Otherwise `state: GRANT_MISSING` and
+        NOTHING else: no `status`, no `sections`. The portal shows the interview disabled and
+        explained. With the client's own GET /me/my-coach/intake (EV-341r), the only response that
+        carries the notes back; the client can read every note written here. Gate: an ACTIVE link;
+        the sections are read under the INTAKE scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The intake, or GRANT_MISSING
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachIntake"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach, not this coach's client, a REVOKED link, or no
+            such id. One body for all, the overview's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/intake/sections/{section}:
+    put:
+      summary: Save one section of the intake interview (the portal's autosave)
+      description: >-
+        EV-341a AC2-AC5 / ADR-0034 Q5, Q6. Writes ONE section whole: `values` replaces the stored
+        answers (an absent field is cleared), compared on that section's own `version`, so two
+        sections save at once without conflict. Every field is optional; a section with every
+        field empty is a valid write and makes the status IN_PROGRESS. Lengths are counted in
+        Unicode code points (an emoji counts 1): a section's `notes` up to 1000, COACH_NOTES'
+        up to 4000. Under the link's row lock (`FOR SHARE`, ACTIVE and INTAKE re-checked from it),
+        so a write racing the client's withdraw or a revoke either commits first and is deleted
+        with the intake, or is refused 403 and stores nothing. Every refusal writes nothing.
+        No value is ever echoed in an error.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: section
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/CoachIntakeSectionName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachIntakeSectionWrite"
+      responses:
+        "200":
+          description: Stored. Send `version` back on the section's next write.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachIntakeSectionSaved"
+        "400":
+          description: >-
+            `INTAKE_FIELD_INVALID` — a value outside its field's vocabulary, bounds or length (also
+            a `section` path segment that names no section, a missing or negative `version`, a
+            missing `values`); `details.field` names the field, never the value.
+            `COACH_FIELD_NOT_ACCEPTED` — a key the body or the section does not declare, at the top
+            level or inside `values`; the message names the key. `Malformed request body.` for JSON
+            that does not parse.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach, not this coach's client, a REVOKED link, a link
+            without INTAKE (including one whose consent was withdrawn while this request waited for
+            the link's lock), or no such id. One body for all.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `INTAKE_VERSION_CONFLICT` — the section was written since `version` was read (another
+            tab or device). `details` holds the stored `version` (0 if never written) and its
+            `updatedAt` (null if never written) and nothing else; re-read the section with GET.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/intake/complete:
+    post:
+      summary: Finish the intake interview
+      description: >-
+        EV-341a AC9. « Terminer l'entretien »: the status becomes COMPLETE and stays so; the
+        sections stay editable. Idempotent: a second call answers the first `completedAt`. Under
+        the link's row lock, like a section write. No body.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Finished
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachIntakeCompleted"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach, not this coach's client, a REVOKED link, a link
+            without INTAKE, or no such id. One body for all.
           content:
             application/json:
               schema:
@@ -6640,6 +7616,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            **WEEK_GENERATION_IN_PROGRESS** (ADR-0030) — the trainee's own generation of this week
+            is still running: the stored week is `GENERATING`, that generation started less than
+            10 minutes ago, and the server has not restarted since. Nothing was generated or written, and the day's apply is NOT used up
+            (the cap is released), so the coach can apply again once the trainee's week has
+            finished. The `message` is developer-facing and is not copy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "422":
           description: >-
             **NO_SAFE_MEAL_PLAN** (EV-071) — the CLIENT's allergies and food rules rule out every
@@ -6983,6 +7970,267 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/trial-session:
+    get:
+      summary: The client's programme status and current trial session
+      description: >-
+        EV-341i. `programmeStatus` is the roster row's value, from the same rule. `trialSession` is
+        the open one (ASSIGNED, or DONE once the trainee completed it), else the latest DONE one,
+        else null (never assigned, or withdrawn before it was done). DONE is derived from a
+        completed session on the carrier workout and wins over a withdraw. Gated on WORKOUTS.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTrialSessionResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            Not a coach, not this coach's client, revoked, no such id, or the link does not carry
+            WORKOUTS — one undifferentiated body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Assign the trial session
+      description: >-
+        EV-341i I1/I2, phase two of an assign (the publish's shape). Send the body exactly as
+        previewed, plus the preview's `digest`. The guardrail is re-run against the trainee's
+        STORED injuries and equipment and the digest compared before anything is written. Writes
+        the trial session and its carrier: an inactive plan of kind TRIAL owned by the trainee, one
+        workout (filed under the ISO weekday of `plannedOn`, else of the assign date) and its
+        exercises, never scheduled, never selected, never assigned. The trainee's active plan,
+        selection, schedule and assignments do not change. No edit exists: to change a trial
+        session, withdraw it and assign a new one. One open trial session per client; a DONE one
+        stays open until withdrawn. Takes the coach link lock (EV-341o): a link revoked while this
+        request is in flight is a 403 and nothing is written.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachTrialSessionAssignRequest"
+      responses:
+        "201":
+          description: Assigned; the coach's read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTrialSessionResponse"
+        "400":
+          description: >-
+            VALIDATION_ERROR (names the field, never its value), COACH_FIELD_NOT_ACCEPTED (an
+            undeclared key, named) or COACH_DRAFT_REPS_ON_DURATION. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: See GET /coach-portal/clients/{id}/trial-session. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED (digest absent, stale, another body's, or a
+            publish's) or TRIAL_SESSION_ALREADY_OPEN. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: CATALOG_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/trial-session/preview:
+    post:
+      summary: What assigning this trial session would change
+      description: >-
+        EV-341i I2, phase one. Runs the safety guardrail over the session against the trainee's
+        STORED injuries and equipment and writes NOTHING. `digest` is domain-separated from a
+        publish's: one never acknowledges the other.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachTrialSessionRequest"
+      responses:
+        "200":
+          description: The repairs and the digest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTrialSessionPreviewResponse"
+        "400":
+          description: VALIDATION_ERROR, COACH_FIELD_NOT_ACCEPTED or COACH_DRAFT_REPS_ON_DURATION
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: See GET /coach-portal/clients/{id}/trial-session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: CATALOG_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/trial-session/withdraw:
+    post:
+      summary: Withdraw the open trial session
+      description: >-
+        EV-341i I3b/I3c. The trainee no longer sees it in GET /me/my-coach/trial-session; a session
+        already under way can still be opened and finished, and then reads DONE (DONE wins). The
+        carrier is kept. Idempotent: with nothing open it changes nothing and answers the same
+        read. Takes the coach link lock.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The coach's read after the withdraw
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachTrialSessionResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: See GET /coach-portal/clients/{id}/trial-session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/my-coach/trial-session:
+    get:
+      summary: The trial session my coach gave me, or null
+      description: >-
+        EV-341i I3. The current trial session of the caller's ACTIVE coach link: the open one
+        (status ASSIGNED, or DONE once completed), else the latest DONE one. The body is a literal
+        JSON `null` when there is none: no coach, never assigned, or withdrawn before it was done.
+        Play it with the existing player: GET /workouts/{workoutId} answers 200 for its trainee with
+        no selected plan (also after a withdraw, so a session under way can be finished; `date` is
+        `plannedOn`, else the assign date), and POST /me/workout/complete records it, which makes it
+        DONE. The per-workout editors (/me/workouts/{workoutId}/exercises…) refuse it as any workout
+        outside the selected plan.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The trial session, or null
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/TrialSessionResponse"
+                nullable: true
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/my-coach/intake:
+    get:
+      summary: The intake interview my coach recorded, or null
+      description: >-
+        EV-341r R1 (D-INTAKE-6 (r1), ADR-0034 D34.11). The trainee reads what their coach recorded
+        about them. When the caller's ACTIVE coach link holds the interview consent (INTAKE):
+        `state: READY`, the derived `status`, `completedAt` once finished, and all eight `sections`
+        as their answers, the notes included, whether or not the coach has finished. Without the
+        consent: `state: GRANT_MISSING` and nothing else. With no ACTIVE link: a literal JSON `null`,
+        as GET /me/my-coach answers. After a withdraw or a revoke the intake is deleted and the next
+        read answers GRANT_MISSING or `null`. The link and the intake are read from one snapshot, so
+        a read racing a withdraw answers either the whole intake or the state after it, never a
+        granted interview that reads as empty. A coach's token reads the coach's own (normally
+        absent) link, never a client's intake. Sent with `Cache-Control: no-store`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The intake, GRANT_MISSING, or null
+          headers:
+            Cache-Control:
+              description: "`no-store`: free text about the caller's health, never kept by a cache."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/MyCoachIntake"
+                nullable: true
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /me/my-coach:
     get:
       summary: The trainee's current coach, or null
@@ -7081,6 +8329,127 @@ paths:
       responses:
         "204":
           description: There is now no ACTIVE link
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/my-coach/intake-consent:
+    post:
+      summary: Consent to my coach recording an intake interview (COACH_INTAKE)
+      description: >-
+        EV-341p1 / ADR-0034a D34a.3. **The trainee's own act**, on the caller's own ACTIVE link
+        resolved from the authentication: nothing in the request names a person, so a coach's token
+        acts on the coach's own (normally absent) coach link, exactly as on POST /me/my-coach/revoke.
+        The only writer of a COACH_INTAKE consent row and of the INTAKE scope.
+
+        The body names the wording the screen rendered (`textVersion`, `textLocale`) and proves it:
+        `textSha256` is the lowercase hex SHA-256 of the **template** the screen rendered (`{Coach}`
+        unsubstituted), which must equal the hash of the api's published file
+        `legal/coach-intake/<textVersion>.<textLocale>.txt` (UTF-8, NFC, no BOM, no trailing
+        newline). The body carries **no source and no request id**: the server derives the source
+        (`COACH_REQUEST`, with the latest request time, if the link had a coach request in the 24 h
+        before the grant whatever became of it; `SETTINGS` otherwise), and any undeclared key is
+        refused `400 CONSENT_FIELD_NOT_ACCEPTED` naming the key.
+
+        One transaction, under the link's row lock: if the caller has no non-withdrawn
+        HEALTH_DATA_ART9 consent, one is written too (`SETTINGS`, same instant and policy version);
+        the COACH_INTAKE row is written; the link gains INTAKE; the link's open coach requests are
+        closed (`EXPIRED` at their expiry if they had lapsed, `GRANTED` otherwise). Idempotent: on a
+        link that already holds the grant it answers 200 and writes nothing. Per link, never per
+        coach: a new link starts without it.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachIntakeConsentRequest"
+      responses:
+        "200":
+          description: Granted (or already granted). The GET /me/my-coach body, `intakeGranted` true.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyCoachResponse"
+        "400":
+          description: >-
+            `VALIDATION_ERROR` — one of the four fields is missing (all four are required), `textLocale`
+            is not `fr` or `en` (only signed translations), or `textSha256` is not 64 lowercase hex
+            characters; or `CONSENT_FIELD_NOT_ACCEPTED` — the
+            body carried a key this endpoint does not declare (e.g. `source`, `requestId`), named in
+            the message. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `CONSENT_VERSION_STALE` — the privacy policy version or the wording version is present but
+            not the current one (details carry `privacyPolicyVersion`, `termsVersion` and
+            `coachIntakeTextVersion`); `CONSENT_TEXT_MISMATCH` — `textSha256` is not the published
+            file's hash for that version and language (details carry `coachIntakeTextVersion`);
+            `NO_ACTIVE_COACH_LINK` — the caller has no ACTIVE coach link. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Withdraw the COACH_INTAKE consent
+      description: >-
+        EV-341p1. Art. 7(3): as easy as giving it. Under the link's row lock, the COACH_INTAKE row
+        gets `withdrawn_at` and the link loses INTAKE. Idempotent: with no grant, or no coach, it
+        changes nothing and answers the same 204. (Ending the link withdraws it too, in the same
+        transaction as the status change.)
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: The caller's link holds no intake consent
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/my-coach/intake-request/{id}/dismiss:
+    post:
+      summary: "« Pas maintenant »: dismiss the coach's live intake consent request"
+      description: >-
+        EV-341p2 / ADR-0034a D34a.3. **The trainee's own act**, on the caller's own ACTIVE link
+        resolved from the authentication, under the link's row lock. Closes the request `DISMISSED`
+        only if `{id}` is that link's live open request. Any other id (superseded, already closed,
+        expired, another account's, unknown), no coach, or a coach's token changes nothing and
+        answers the same 204, so a stale screen can never close a newer request. Writes no consent
+        row: a decline is not a consent event, and nothing records or shows it as a refusal (the
+        coach's `GET /coach-portal/clients/{id}/intake-consent` then reads `pending: false`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The `intakeRequest.id` from GET /me/my-coach.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: The caller's link has no live request with this id
+        "400":
+          description: "`INVALID_REQUEST` — `{id}` is not a UUID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "401":
           description: Unauthorized
           content:
@@ -7660,6 +9029,22 @@ components:
       schema:
         type: string
         example: Europe/Paris
+  responses:
+    AiNotIncluded:
+      description: >-
+        AI_NOT_INCLUDED (EV-286a, ADR-0028): the account is coached, so its coach prepares its
+        plan. Refused before any model call and before any AI credit is consumed. The `message` is
+        developer-facing and is not copy: the full app renders its own sentence for the code
+        (EV-286d), and the lite app never sends these requests. Every route that answers it is an
+        `AiEntryPoint`, held to this spec by `AiEntryPointSpecContractTest`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: AI_NOT_INCLUDED
+            message: AI features are not included for this account. Your coach prepares your plan.
+            details: null
   securitySchemes:
     bearerAuth:
       type: http
@@ -7704,6 +9089,7 @@ components:
           description: The coach_clients row id — the only id the coach portal addresses.
         traineeDisplayName:
           type: string
+          nullable: true
         currentPlanName:
           type: string
           nullable: true
@@ -7761,7 +9147,7 @@ components:
             body.
           items:
             type: string
-            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS]
+            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS, INTAKE]
         routineChangedSinceYourPublish:
           type: boolean
           nullable: true
@@ -7772,7 +9158,21 @@ components:
             page cannot disagree. False when the coach's plan is live, when this coach never
             published to them, and when the author was never recorded (nothing is inferred). Edits
             made from a workout session (add, remove or reorder an exercise) are not recorded. NULL
-            when this link does not carry WORKOUTS — "not shared", like `currentPlanName`.
+            when this link does not carry WORKOUTS — "not shared", like `currentPlanName`. A
+            "publish" is a programme (`plans.kind = PROGRAMME`): a trial session the coach assigned
+            is never one (EV-341s).
+        programmeStatus:
+          type: string
+          nullable: true
+          enum: [AWAITING_PROGRAMME, TRIAL_ASSIGNED, TRIAL_DONE, PUBLISHED]
+          description: >-
+            EV-341i — where the client stands before their first programme: AWAITING_PROGRAMME
+            (nothing yet, or a trial session withdrawn before it was done), TRIAL_ASSIGNED,
+            TRIAL_DONE (the trainee completed it; DONE wins over a withdraw), or PUBLISHED (a
+            PROGRAMME plan by THIS coach created at or after this link's consent; a publish on an
+            earlier link to the same trainee does not count, and a trial session is never a
+            publish). The portal shows a pill for the first three and none for PUBLISHED. NULL when
+            this link does not carry WORKOUTS (not shared). One grouped read per roster request.
       required: [id, traineeDisplayName, status, since, scopes]
     CoachClientPageResponse:
       type: object
@@ -7898,7 +9298,7 @@ components:
           description: The scopes this link carries, verbatim from `coach_clients.scopes`.
           items:
             type: string
-            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS]
+            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS, INTAKE]
       required: [clientId, weeks, scopes]
     TraineeAdherenceSeries:
       type: object
@@ -8088,6 +9488,7 @@ components:
           format: uuid
         traineeDisplayName:
           type: string
+          nullable: true
         since:
           type: string
           format: date-time
@@ -8147,7 +9548,7 @@ components:
             which scope is missing.
           items:
             type: string
-            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS]
+            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS, INTAKE]
         progressGoal:
           allOf:
             - $ref: "#/components/schemas/TraineeProgressGoal"
@@ -8398,6 +9799,28 @@ components:
           type: string
           nullable: true
       required: [name, goal, level, daysPerWeek, trainingDays, weeklyProgression, constraints]
+    TraineeRoutineResponse:
+      type: object
+      description: >-
+        GET /me/coach/routine. The account's current saved routine and its version.
+      properties:
+        routine:
+          $ref: "#/components/schemas/Routine"
+        version:
+          type: string
+          description: >-
+            Opaque version of this routine; it changes on every write, by anyone. Echo it as
+            `If-Match` on PUT /me/coach/routine. Also sent as the ETag header.
+        updatedAt:
+          type: string
+          format: date-time
+          description: >-
+            When this routine was saved. For display: the version, not this instant, is the
+            staleness token.
+      required:
+        - routine
+        - version
+        - updatedAt
     TrainingDay:
       type: object
       properties:
@@ -9033,7 +10456,8 @@ components:
             untouched either way). False when the coach's plan is live, when this coach never
             published to this trainee, and when the author was never recorded. Edits made from a
             workout session (add, remove or reorder an exercise) are not recorded, so they never
-            set it. Publishing clears it.
+            set it. Publishing clears it. A "publish" is a programme (`plans.kind = PROGRAMME`): a
+            trial session the coach assigned is never one (EV-341s).
       required: [clientId, guardrails, hasDraft, changedSinceYourPublish]
     CoachRoutineGuardrails:
       type: object
@@ -9613,6 +11037,158 @@ components:
         label:
           type: string
           example: chicken breast
+    CoachTrialSessionRequest:
+      type: object
+      description: >-
+        EV-341i — a trial session as the coach composes it. It names no person: the subject is the
+        URL's link id, and injuries and equipment are the trainee's stored answers. Any undeclared
+        key is refused 400 COACH_FIELD_NOT_ACCEPTED.
+      properties:
+        title:
+          type: string
+          nullable: true
+          maxLength: 80
+          description: Absent or null means « Séance d'essai ». 1..80 characters after trimming, no control character.
+        plannedOn:
+          type: string
+          format: date
+          nullable: true
+          description: Optional planned date, no time and no zone; compared with nothing on the server.
+        note:
+          type: string
+          nullable: true
+          description: >-
+            Optional note to the client, 1..280 Unicode code points (an emoji counts one), with a
+            visible character. Never logged, never echoed by an error.
+        estimatedMinutes:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 600
+        exercises:
+          type: array
+          minItems: 1
+          maxItems: 30
+          description: The routine day editor's rows, in order.
+          items:
+            $ref: "#/components/schemas/RoutineExercise"
+      required: [exercises]
+    CoachTrialSessionAssignRequest:
+      description: The previewed body plus the preview's digest (EV-341i I2).
+      allOf:
+        - $ref: "#/components/schemas/CoachTrialSessionRequest"
+        - type: object
+          properties:
+            digest:
+              type: string
+              nullable: true
+              maxLength: 128
+              description: >-
+                The digest of the preview of THIS body. Absent, stale, another body's or a
+                publish's: 409 COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED, nothing stored.
+    CoachTrialSessionPreviewResponse:
+      type: object
+      properties:
+        repairs:
+          type: array
+          items:
+            type: string
+          description: One line per repair, in the engine's words and the session's order; empty when nothing changed.
+        repairCount:
+          type: integer
+        digest:
+          type: string
+          description: SHA-256, domain-separated from a publish's. Echo it to the assign with the same body.
+        equipmentChecked:
+          type: boolean
+          description: Whether a non-empty equipment list reached the policy; derived, never hardcoded.
+      required: [repairs, repairCount, digest, equipmentChecked]
+    CoachTrialSessionResponse:
+      type: object
+      properties:
+        programmeStatus:
+          type: string
+          enum: [AWAITING_PROGRAMME, TRIAL_ASSIGNED, TRIAL_DONE, PUBLISHED]
+          description: >-
+            The roster row's value, from the same rule. PUBLISHED = a PROGRAMME plan by this coach
+            created at or after this link's consent; a trial session is never a publish.
+        trialSession:
+          allOf:
+            - $ref: "#/components/schemas/TrialSessionResponse"
+          nullable: true
+          description: >-
+            The open one (ASSIGNED, or DONE once completed), else the latest DONE one; null when
+            there is none (never assigned, or withdrawn before it was done).
+      required: [programmeStatus]
+    TrialSessionResponse:
+      type: object
+      description: EV-341i — one trial session; the day is read from its carrier workout.
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ASSIGNED, WITHDRAWN, DONE]
+          description: >-
+            Derived: DONE if the trainee completed it (wins over a withdraw), else WITHDRAWN if
+            withdrawn, else ASSIGNED. The trainee's read never returns a WITHDRAWN one.
+        title:
+          type: string
+        plannedOn:
+          type: string
+          format: date
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        workoutId:
+          type: string
+          format: uuid
+          description: The carrier workout; open with GET /workouts/{workoutId}, complete with POST /me/workout/complete.
+        estimatedMinutes:
+          type: integer
+          nullable: true
+        assignedAt:
+          type: string
+          format: date-time
+        withdrawnAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedOn:
+          type: string
+          format: date
+          nullable: true
+          description: The day the first completion is filed under (workout_sessions.date), or null when not DONE.
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrialSessionExercise"
+      required: [id, status, title, workoutId, assignedAt, exercises]
+    TrialSessionExercise:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        sets:
+          type: integer
+          nullable: true
+        reps:
+          type: integer
+          nullable: true
+          description: Null for a timed exercise.
+        durationMinutes:
+          type: integer
+          nullable: true
+        restSeconds:
+          type: integer
+          nullable: true
+        orderIndex:
+          type: integer
+      required: [name, slug, orderIndex]
     CoachPublishPreviewResponse:
       type: object
       description: What publishing this draft would change, and the token that acknowledges it.
@@ -9724,11 +11300,485 @@ components:
           description: AC6's "since `<date>`" — when the trainee accepted.
         scopes:
           type: array
-          description: The four scopes granted, exactly as recorded on the link row.
+          description: >-
+            The scopes granted, exactly as recorded on the link row: the four of the invitation,
+            plus INTAKE once the trainee has given the COACH_INTAKE consent (EV-341p1).
           items:
             type: string
-            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS]
-      required: [coachId, coachDisplayName, since, scopes]
+            enum: [WORKOUTS, PROGRESS, NUTRITION, WEIGH_INS, INTAKE]
+        intakeGranted:
+          type: boolean
+          description: >-
+            EV-341p1: whether the trainee has consented to this link's coach recording an intake
+            interview (COACH_INTAKE). Per link: a new link, even with the same coach, starts false.
+        intakeRequest:
+          allOf:
+            - $ref: "#/components/schemas/CoachIntakeRequest"
+          nullable: true
+          description: >-
+            EV-341p2 (ADR-0034a D34a.2): the coach's LIVE request for the COACH_INTAKE consent, or
+            null. Live = open and not past `expiresAt` (the 15-minute TTL is applied at read time).
+            A dismissed, cancelled, superseded, granted or expired request is null here. The key is
+            always present. While non-null the app shows the consent screen with the "{Coach} is
+            asking" header, and « Pas maintenant » dismisses this `id`.
+      required: [coachId, coachDisplayName, since, scopes, intakeGranted, intakeRequest]
+    CoachIntakeRequest:
+      type: object
+      description: >-
+        EV-341p2. A coach's live request for the COACH_INTAKE consent: a prompt shown on the
+        client's own phone, never a consent. Carries no reason it might later be closed for.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The request's id; POST /me/my-coach/intake-request/{id}/dismiss names it.
+        requestedAt:
+          type: string
+          format: date-time
+          description: When the coach asked (server clock).
+        expiresAt:
+          type: string
+          format: date-time
+          description: "`requestedAt` + 15 minutes. After it the request is no longer live."
+      required: [id, requestedAt, expiresAt]
+    CoachIntakeConsentStatus:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-341p2 (ADR-0034a D34a.6). Exactly these two booleans and nothing else: a decline, an
+        expiry and a cancellation all read `pending: false, granted: false`. No refusal is stored
+        or shown, so no reason, count or timestamp is ever added here.
+      properties:
+        granted:
+          type: boolean
+          description: The link holds the COACH_INTAKE consent (INTAKE).
+        pending:
+          type: boolean
+          description: A request is open and its 15 minutes have not passed.
+      required: [granted, pending]
+    CoachIntakeSectionName:
+      type: string
+      description: >-
+        EV-341a. The eight sections of the intake interview, in the portal's order. HEALTH and
+        MEASUREMENTS hold only their note in this release (EV-341n, l and m add theirs).
+      enum: [GOALS, HISTORY, AVAILABILITY, LIFESTYLE, HEALTH, MEASUREMENTS, NUTRITION, COACH_NOTES]
+    CoachIntake:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-341a. READY: `status`, all eight `sections` and, once finished, `completedAt`.
+        GRANT_MISSING: `state` only.
+      properties:
+        state:
+          type: string
+          enum: [READY, GRANT_MISSING]
+          description: READY when the link holds INTAKE (the client's interview consent).
+        status:
+          type: string
+          enum: [NOT_STARTED, IN_PROGRESS, COMPLETE]
+          description: >-
+            READY only. Derived, never stored: COMPLETE once finished (whatever is written after),
+            IN_PROGRESS once any section was written (even with every field empty), NOT_STARTED
+            otherwise.
+        completedAt:
+          type: string
+          format: date-time
+          description: READY and COMPLETE only. When the interview was first finished.
+        sections:
+          type: object
+          additionalProperties: false
+          description: READY only. Always all eight, written or not.
+          properties:
+            GOALS:
+              $ref: "#/components/schemas/CoachIntakeGoalsSection"
+            HISTORY:
+              $ref: "#/components/schemas/CoachIntakeHistorySection"
+            AVAILABILITY:
+              $ref: "#/components/schemas/CoachIntakeAvailabilitySection"
+            LIFESTYLE:
+              $ref: "#/components/schemas/CoachIntakeLifestyleSection"
+            HEALTH:
+              $ref: "#/components/schemas/CoachIntakeHealthSection"
+            MEASUREMENTS:
+              $ref: "#/components/schemas/CoachIntakeMeasurementsSection"
+            NUTRITION:
+              $ref: "#/components/schemas/CoachIntakeNutritionSection"
+            COACH_NOTES:
+              $ref: "#/components/schemas/CoachIntakeCoachNotesSection"
+          required: [GOALS, HISTORY, AVAILABILITY, LIFESTYLE, HEALTH, MEASUREMENTS, NUTRITION, COACH_NOTES]
+      required: [state]
+    MyCoachIntake:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-341r. The trainee's read of the intake. READY: `status`, all eight `sections` (each the
+        section's answers, the same values the coach writes) and, once finished, `completedAt`.
+        GRANT_MISSING: `state` only. No section `version` or `updatedAt`: those are the coach's
+        autosave controls. The notes and GOALS' `eventLabel` are free text the coach wrote; they are
+        never logged and never in an error.
+      properties:
+        state:
+          type: string
+          enum: [READY, GRANT_MISSING]
+          description: READY when the caller's link holds INTAKE (their interview consent).
+        status:
+          type: string
+          enum: [NOT_STARTED, IN_PROGRESS, COMPLETE]
+          description: READY only. Derived as in CoachIntake.
+        completedAt:
+          type: string
+          format: date-time
+          description: READY and COMPLETE only. When the coach first finished the interview.
+        sections:
+          type: object
+          additionalProperties: false
+          description: >-
+            READY only. Always all eight, written or not; a field never answered is `null` or `[]`.
+          properties:
+            GOALS:
+              $ref: "#/components/schemas/CoachIntakeGoals"
+            HISTORY:
+              $ref: "#/components/schemas/CoachIntakeHistory"
+            AVAILABILITY:
+              $ref: "#/components/schemas/CoachIntakeAvailability"
+            LIFESTYLE:
+              $ref: "#/components/schemas/CoachIntakeLifestyle"
+            HEALTH:
+              $ref: "#/components/schemas/CoachIntakeNoteOnly"
+            MEASUREMENTS:
+              $ref: "#/components/schemas/CoachIntakeNoteOnly"
+            NUTRITION:
+              $ref: "#/components/schemas/CoachIntakeNutrition"
+            COACH_NOTES:
+              $ref: "#/components/schemas/CoachIntakeCoachNotes"
+          required: [GOALS, HISTORY, AVAILABILITY, LIFESTYLE, HEALTH, MEASUREMENTS, NUTRITION, COACH_NOTES]
+      required: [state]
+    CoachIntakeGoalsSection:
+      type: object
+      properties:
+        version: {$ref: "#/components/schemas/CoachIntakeSectionVersion"}
+        updatedAt: {$ref: "#/components/schemas/CoachIntakeSectionUpdatedAt"}
+        values: {$ref: "#/components/schemas/CoachIntakeGoals"}
+      required: [version, updatedAt, values]
+    CoachIntakeHistorySection:
+      type: object
+      properties:
+        version: {$ref: "#/components/schemas/CoachIntakeSectionVersion"}
+        updatedAt: {$ref: "#/components/schemas/CoachIntakeSectionUpdatedAt"}
+        values: {$ref: "#/components/schemas/CoachIntakeHistory"}
+      required: [version, updatedAt, values]
+    CoachIntakeAvailabilitySection:
+      type: object
+      properties:
+        version: {$ref: "#/components/schemas/CoachIntakeSectionVersion"}
+        updatedAt: {$ref: "#/components/schemas/CoachIntakeSectionUpdatedAt"}
+        values: {$ref: "#/components/schemas/CoachIntakeAvailability"}
+      required: [version, updatedAt, values]
+    CoachIntakeLifestyleSection:
+      type: object
+      properties:
+        version: {$ref: "#/components/schemas/CoachIntakeSectionVersion"}
+        updatedAt: {$ref: "#/components/schemas/CoachIntakeSectionUpdatedAt"}
+        values: {$ref: "#/components/schemas/CoachIntakeLifestyle"}
+      required: [version, updatedAt, values]
+    CoachIntakeHealthSection:
+      type: object
+      properties:
+        version: {$ref: "#/components/schemas/CoachIntakeSectionVersion"}
+        updatedAt: {$ref: "#/components/schemas/CoachIntakeSectionUpdatedAt"}
+        values: {$ref: "#/components/schemas/CoachIntakeNoteOnly"}
+      required: [version, updatedAt, values]
+    CoachIntakeMeasurementsSection:
+      type: object
+      properties:
+        version: {$ref: "#/components/schemas/CoachIntakeSectionVersion"}
+        updatedAt: {$ref: "#/components/schemas/CoachIntakeSectionUpdatedAt"}
+        values: {$ref: "#/components/schemas/CoachIntakeNoteOnly"}
+      required: [version, updatedAt, values]
+    CoachIntakeNutritionSection:
+      type: object
+      properties:
+        version: {$ref: "#/components/schemas/CoachIntakeSectionVersion"}
+        updatedAt: {$ref: "#/components/schemas/CoachIntakeSectionUpdatedAt"}
+        values: {$ref: "#/components/schemas/CoachIntakeNutrition"}
+      required: [version, updatedAt, values]
+    CoachIntakeCoachNotesSection:
+      type: object
+      properties:
+        version: {$ref: "#/components/schemas/CoachIntakeSectionVersion"}
+        updatedAt: {$ref: "#/components/schemas/CoachIntakeSectionUpdatedAt"}
+        values: {$ref: "#/components/schemas/CoachIntakeCoachNotes"}
+      required: [version, updatedAt, values]
+    CoachIntakeSectionVersion:
+      type: integer
+      minimum: 0
+      description: 0 until the section is first written; send it back on the section's next PUT.
+    CoachIntakeSectionUpdatedAt:
+      type: string
+      format: date-time
+      nullable: true
+      description: When the section was last written; null until then.
+    CoachIntakeSectionNote:
+      type: string
+      nullable: true
+      description: >-
+        The section note, free text about a named person: never logged, never echoed in an error,
+        never sent to a model (EV-341 Ruling 2). At most 1000 Unicode code points (an emoji counts
+        1); no control character but tab, line feed and carriage return (EV-341i's rule for coach
+        text). Stored and returned exactly as sent.
+    CoachIntakeSectionWrite:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-341a. One section, whole. Any key not declared here, or not declared by the section's
+        values (CoachIntakeGoals, …, by `{section}`), is refused 400 COACH_FIELD_NOT_ACCEPTED; a
+        declared field with a value it does not accept is 400 INTAKE_FIELD_INVALID. Types are
+        exact: an integer field takes a JSON integer, never "4" or 4.5.
+      properties:
+        version:
+          type: integer
+          minimum: 0
+          description: The section's version as last read (0 if it was never written).
+        values:
+          description: >-
+            The section's answers; its schema is the one `{section}` names. anyOf, not oneOf:
+            every field is optional, so a note-only body matches all eight section schemas.
+          anyOf:
+            - $ref: "#/components/schemas/CoachIntakeGoals"
+            - $ref: "#/components/schemas/CoachIntakeHistory"
+            - $ref: "#/components/schemas/CoachIntakeAvailability"
+            - $ref: "#/components/schemas/CoachIntakeLifestyle"
+            - $ref: "#/components/schemas/CoachIntakeNoteOnly"
+            - $ref: "#/components/schemas/CoachIntakeNutrition"
+            - $ref: "#/components/schemas/CoachIntakeCoachNotes"
+      required: [version, values]
+    CoachIntakeGoals:
+      type: object
+      additionalProperties: false
+      description: Section 1, « Objectifs et motivation ». Every field optional.
+      properties:
+        primaryGoal:
+          type: string
+          nullable: true
+          enum: [LOSE_WEIGHT, BUILD_MUSCLE, GET_STRONGER, ENDURANCE, MOBILITY]
+          description: >-
+            The client's statement of what they want (the profile's PrimaryGoal values; the app's
+            "General fitness" is MOBILITY). It reaches the trainee's record only through a GOAL
+            proposal the trainee confirms (EV-341e/f), never from here.
+        motivations:
+          type: array
+          maxItems: 3
+          uniqueItems: true
+          items:
+            type: string
+            enum: [HEALTH, CONFIDENCE, APPEARANCE, PERFORMANCE, ENERGY, EVENT]
+        motivationScore:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+        eventLabel:
+          type: string
+          nullable: true
+          description: >-
+            At most 80 Unicode code points; no control character but tab and line breaks. Free text,
+            treated as the notes are: never logged, never echoed, never sent to a model.
+        eventDate:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          $ref: "#/components/schemas/CoachIntakeSectionNote"
+    CoachIntakeHistory:
+      type: object
+      additionalProperties: false
+      description: Section 2, « Historique sportif ». Every field optional.
+      properties:
+        level:
+          type: string
+          nullable: true
+          enum: [BEGINNER, INTERMEDIATE, ADVANCED]
+        trainingAge:
+          type: string
+          nullable: true
+          enum: [NONE, LT_6M, M6_24, Y2_5, GT_5Y]
+        currentSessionsPerWeek:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 14
+        activities:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [STRENGTH, RUNNING, CYCLING, SWIMMING, TEAM_SPORTS, COMBAT, YOGA_PILATES, HIIT, OTHER]
+        notes:
+          $ref: "#/components/schemas/CoachIntakeSectionNote"
+    CoachIntakeAvailability:
+      type: object
+      additionalProperties: false
+      description: >-
+        Section 3, « Disponibilités et matériel ». Every field optional. `availableDays` and
+        `timeOfDay` are information only, never a generator input (EV-190 R1).
+      properties:
+        sessionsPerWeek:
+          type: integer
+          nullable: true
+          minimum: 2
+          maximum: 6
+        sessionMinutes:
+          type: integer
+          nullable: true
+          enum: [30, 45, 60, 75, 90]
+        availableDays:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY]
+        timeOfDay:
+          type: string
+          nullable: true
+          enum: [MORNING, MIDDAY, EVENING]
+        trainingPlaces:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [GYM, HOME, OUTDOOR, COACH_STUDIO]
+        notes:
+          $ref: "#/components/schemas/CoachIntakeSectionNote"
+    CoachIntakeLifestyle:
+      type: object
+      additionalProperties: false
+      description: Section 4, « Mode de vie ». Every field optional.
+      properties:
+        workActivity:
+          type: string
+          nullable: true
+          enum: [SEDENTARY, STANDING, PHYSICAL]
+        sleepHours:
+          type: string
+          nullable: true
+          enum: [LT_6, H6_7, H7_8, GT_8]
+        stressScore:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+        notes:
+          $ref: "#/components/schemas/CoachIntakeSectionNote"
+    CoachIntakeNoteOnly:
+      type: object
+      additionalProperties: false
+      description: Sections 5 (HEALTH) and 6 (MEASUREMENTS) in EV-341a, their note only.
+      properties:
+        notes:
+          $ref: "#/components/schemas/CoachIntakeSectionNote"
+    CoachIntakeNutrition:
+      type: object
+      additionalProperties: false
+      description: >-
+        Section 7, « Alimentation » (D-INTAKE-1 (b)): eating habits only. No allergy, diet type or
+        food rule is recorded here: those stay the trainee's own entries.
+      properties:
+        usualMealsPerDay:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 6
+        snacking:
+          type: string
+          nullable: true
+          enum: [RARELY, SOMETIMES, OFTEN]
+        cooking:
+          type: string
+          nullable: true
+          enum: [RARELY, SOMETIMES, OFTEN]
+        mealsOutPerWeek:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 14
+        alcoholPerWeek:
+          type: string
+          nullable: true
+          enum: [NONE, D1_3, D4_7, GT_7]
+        waterPerDay:
+          type: string
+          nullable: true
+          enum: [LT_1L, L1_2, GT_2L]
+        notes:
+          $ref: "#/components/schemas/CoachIntakeSectionNote"
+    CoachIntakeCoachNotes:
+      type: object
+      additionalProperties: false
+      description: Section 8, « Notes du coach ».
+      properties:
+        notes:
+          type: string
+          nullable: true
+          description: >-
+            The coach's notes: at most 4000 Unicode code points; otherwise as CoachIntakeSectionNote.
+    CoachIntakeSectionSaved:
+      type: object
+      additionalProperties: false
+      description: EV-341a. The section's new version and when it was stored. Never the answers.
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        updatedAt:
+          type: string
+          format: date-time
+      required: [version, updatedAt]
+    CoachIntakeCompleted:
+      type: object
+      additionalProperties: false
+      description: EV-341a. Never the answers.
+      properties:
+        status:
+          type: string
+          enum: [COMPLETE]
+        completedAt:
+          type: string
+          format: date-time
+          description: When the interview was FIRST finished; a later call leaves it unchanged.
+      required: [status, completedAt]
+    CoachIntakeConsentRequest:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-341p1. The trainee's COACH_INTAKE grant. Carries no source and no request id: the server
+        derives both, and any other key is refused 400 CONSENT_FIELD_NOT_ACCEPTED.
+      properties:
+        textVersion:
+          type: string
+          maxLength: 32
+          example: "v1"
+          description: >-
+            The wording version the screen rendered; must be GET /legal/versions'
+            `coachIntakeTextVersion`, otherwise 409 CONSENT_VERSION_STALE.
+        textLocale:
+          type: string
+          enum: [fr, en]
+          description: The language the screen rendered. Only signed translations; anything else is 400.
+        textSha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          example: "c4c2c5c6d8b2ec72dd76d6f1825b4b49fb35ddf32f97d4ecb7ef4d72eed2033c"
+          description: >-
+            Lowercase hex SHA-256 of the template the screen rendered, `{Coach}` unsubstituted.
+            Not the published file's hash for (textVersion, textLocale): 409 CONSENT_TEXT_MISMATCH.
+        privacyPolicyVersion:
+          type: string
+          maxLength: 32
+          example: "v1.0"
+          description: >-
+            The privacy policy version the client displayed, from GET /legal/versions. A mismatch
+            is 409 CONSENT_VERSION_STALE.
+      required: [textVersion, textLocale, textSha256, privacyPolicyVersion]
     AcceptCoachInviteRequest:
       type: object
       description: >-
@@ -9758,9 +11808,113 @@ components:
           type: string
         details:
           type: object
+          nullable: true
+          description: >-
+            Null when the error carries no details: EV-304 measured `"details": null` on the
+            AI_NOT_INCLUDED and USER_NOT_FOUND bodies.
       required:
         - code
         - message
+    RoutineCoachChatRequest:
+      type: object
+      description: >-
+        `POST /me/coach/chat`'s body (`com.bfit.application.dto.routine.CoachChatRequest`; named
+        apart from the rules coach's `CoachChatRequest`).
+      properties:
+        routine:
+          $ref: "#/components/schemas/Routine"
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          example: This is too hard, can we make day 1 easier?
+        history:
+          type: array
+          description: Prior conversation turns, oldest first. Only the last few are read.
+          items:
+            $ref: "#/components/schemas/ChatTurn"
+      required:
+        - message
+    ChatTurn:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+      required:
+        - role
+        - content
+    RoutineCoachChatResponse:
+      type: object
+      description: >-
+        `POST /me/coach/chat`'s answer (`com.bfit.application.dto.routine.CoachChatResponse`).
+      properties:
+        reply:
+          type: string
+          description: Short coach-style reply
+        routine:
+          $ref: "#/components/schemas/Routine"
+        routineUpdated:
+          type: boolean
+          description: True when the coach edited the routine
+      required:
+        - routineUpdated
+    CoachChatRequest:
+      type: object
+      description: "`POST /coach/chat`'s body, the rules coach."
+      properties:
+        message:
+          type: string
+          minLength: 1
+      required:
+        - message
+    CoachChatResponse:
+      type: object
+      description: "`POST /coach/chat`'s answer, the rules coach."
+      properties:
+        reply:
+          type: string
+    NutritionPlanResponse:
+      type: object
+      description: "`POST /me/nutrition/plan`'s answer: the older single meal plan, not the weekly plan."
+      properties:
+        meals:
+          type: array
+          items:
+            $ref: "#/components/schemas/NutritionPlanMeal"
+        tips:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        target:
+          $ref: "#/components/schemas/NutritionTargetResponse"
+    NutritionPlanMeal:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        calories:
+          type: integer
+        proteinG:
+          type: integer
+        carbsG:
+          type: integer
+        fatG:
+          type: integer
+      required:
+        - calories
+        - proteinG
+        - carbsG
+        - fatG
     RoutineGenerateRequest:
       type: object
       description: Onboarding profile for routine generation (request wins, stored profile fills gaps).
@@ -10983,6 +13137,179 @@ components:
         - createdAt
         - expiresAt
         - passwordIssuedAt
+    AdminUserSupport:
+      type: object
+      description: >-
+        GET /admin/users/{id}/support (EV-263a). Closed key set; no secret material.
+      additionalProperties: false
+      properties:
+        emailVerified:
+          type: boolean
+        emailVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        secondFactor:
+          $ref: "#/components/schemas/AdminUserSecondFactor"
+        coach:
+          allOf:
+            - $ref: "#/components/schemas/AdminUserCoachBlock"
+          nullable: true
+          description: >-
+            Present only for an account holding COACH with a coach profile; null otherwise, including
+            COACH without a profile and a revoked coach
+        coachLinks:
+          type: array
+          maxItems: 20
+          description: Links where this account is the trainee, ACTIVE and REVOKED, newest first, at most 20
+          items:
+            $ref: "#/components/schemas/AdminUserCoachLink"
+      required: [emailVerified, emailVerifiedAt, secondFactor, coach, coachLinks]
+      example:
+        emailVerified: true
+        emailVerifiedAt: "2026-09-01T10:00:00Z"
+        secondFactor: { enrolled: true, methods: [TOTP], recoveryCodesRemaining: 7 }
+        coach: { tier: STARTER, capacity: 10, activeTrainees: 1 }
+        coachLinks:
+          - coachUserId: "6f1c2b9e-1d2a-4c3b-9e8f-0a1b2c3d4e5f"
+            coachDisplayName: "Coach Sam"
+            status: ACTIVE
+            since: "2026-09-10T08:00:00Z"
+            revokedAt: null
+    AdminUserSecondFactor:
+      type: object
+      additionalProperties: false
+      properties:
+        enrolled:
+          type: boolean
+          description: At least one factor is enabled
+        methods:
+          type: array
+          description: Enabled methods, TOTP first. Empty when not enrolled
+          items:
+            type: string
+            enum: [TOTP, EMAIL_OTP]
+        recoveryCodesRemaining:
+          type: integer
+          minimum: 0
+          description: Unused recovery codes (disabling the last factor deletes them)
+      required: [enrolled, methods, recoveryCodesRemaining]
+    AdminUserCoachBlock:
+      type: object
+      additionalProperties: false
+      properties:
+        tier:
+          type: string
+          enum: [STARTER]
+        capacity:
+          type: integer
+          description: ACTIVE links the tier allows (STARTER = 10)
+        activeTrainees:
+          type: integer
+          minimum: 0
+          description: ACTIVE links right now
+      required: [tier, capacity, activeTrainees]
+    AdminUserCoachLink:
+      type: object
+      additionalProperties: false
+      properties:
+        coachUserId:
+          type: string
+          format: uuid
+        coachDisplayName:
+          type: string
+          description: The coach's current display name (coach_profiles), never their email
+        status:
+          type: string
+          enum: [ACTIVE, REVOKED]
+        since:
+          type: string
+          format: date-time
+          description: When the link began (its consent)
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set exactly when status is REVOKED
+      required: [coachUserId, coachDisplayName, status, since, revokedAt]
+    AdminMetricsSummary:
+      type: object
+      description: GET /admin/metrics/summary (EV-264a). Every number is a SQL count.
+      additionalProperties: false
+      properties:
+        users:
+          type: object
+          additionalProperties: false
+          description: >-
+            Every account by primary role (PENDING > ADMIN > COACH > USER, as AdminUserResponse.role);
+            admins + coaches + members + pending = total
+          properties:
+            total: { type: integer, format: int64, minimum: 0 }
+            admins: { type: integer, format: int64, minimum: 0 }
+            coaches: { type: integer, format: int64, minimum: 0 }
+            members:
+              type: integer
+              format: int64
+              minimum: 0
+              description: Primary role USER, including an account with no role row
+            pending:
+              type: integer
+              format: int64
+              minimum: 0
+              description: Set up by someone else and not yet activated (ADR-0022)
+          required: [total, admins, coaches, members, pending]
+        signupsLast30Days:
+          type: integer
+          format: int64
+          minimum: 0
+        signupsByMonth:
+          type: array
+          minItems: 12
+          maxItems: 12
+          description: 12 UTC calendar months, oldest first, the current month last; 0 when none
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              month:
+                type: string
+                pattern: "^[0-9]{4}-[0-9]{2}$"
+                example: "2025-10"
+              count:
+                type: integer
+                format: int64
+                minimum: 0
+            required: [month, count]
+        coaching:
+          type: object
+          additionalProperties: false
+          properties:
+            coaches:
+              type: integer
+              format: int64
+              minimum: 0
+              description: coach_profiles rows (revoked and pending coach profiles included)
+            activeLinks:
+              type: integer
+              format: int64
+              minimum: 0
+            pendingInvites:
+              type: integer
+              format: int64
+              minimum: 0
+              description: Coach invites neither used nor expired
+          required: [coaches, activeLinks, pendingInvites]
+        feedback:
+          type: object
+          additionalProperties: false
+          properties:
+            new:
+              type: integer
+              format: int64
+              minimum: 0
+              description: Feedback with status NEW
+          required: [new]
+      required: [users, signupsLast30Days, signupsByMonth, coaching, feedback]
     AdminUserPageResponse:
       type: object
       properties:
@@ -11014,9 +13341,17 @@ components:
         termsVersion:
           type: string
           example: "v1.0"
+        coachIntakeTextVersion:
+          type: string
+          example: "v1"
+          description: >-
+            EV-341p1: the version of the COACH_INTAKE consent wording, published at
+            legal/coach-intake/<version>.<locale>.txt. Echo it as textVersion on
+            POST /me/my-coach/intake-consent.
       required:
         - privacyPolicyVersion
         - termsVersion
+        - coachIntakeTextVersion
     UserResponse:
       type: object
       properties:
@@ -11028,9 +13363,14 @@ components:
           format: email
         fullName:
           type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
+        emailVerified:
+          type: boolean
+          description: >-
+            Whether the account's e-mail address is verified. Always sent, never null (BUG-723).
         aiIncluded:
           type: boolean
           description: >-
@@ -11043,6 +13383,7 @@ components:
         - fullName
         - createdAt
         - aiIncluded
+        - emailVerified
     UserProfileRequest:
       type: object
       properties:
@@ -12025,17 +14366,31 @@ components:
         - trend
     PlanGenerateRequest:
       type: object
+      description: >-
+        Every field is optional and a field sent overrides the stored profile, but the body and the
+        profile TOGETHER must supply `goal`, `level`, `daysPerWeek`, `sessionMinutes` and a
+        non-empty `equipment` list, or the call is `409 ONBOARDING_REQUIRED`. So an empty body
+        (`{}`) generates from the stored profile only when that profile is complete; a body that
+        sends all five generates even for an account with no profile. (EV-304 removed a `required`
+        list the server never enforced, and the `LOSE_FAT` goal the server cannot read: an unknown
+        goal is `400 INVALID_REQUEST`.)
       properties:
         goal:
           type: string
-          enum: [GET_STRONGER, LOSE_FAT, MOBILITY]
+          enum: [LOSE_WEIGHT, BUILD_MUSCLE, GET_STRONGER, ENDURANCE, MOBILITY]
         level:
           type: string
           enum: [BEGINNER, INTERMEDIATE, ADVANCED]
         daysPerWeek:
           type: integer
+          description: >-
+            Training days per week. Clamped to 2-6 by the generator: a value outside that range is
+            not refused, it is raised or lowered to the nearest bound.
         sessionMinutes:
           type: integer
+          description: >-
+            Minutes per session. Clamped to 20-90 by the generator: a value outside that range is
+            not refused, it is raised or lowered to the nearest bound.
         equipment:
           type: array
           items:
@@ -12056,12 +14411,6 @@ components:
         equipment: ["NONE"]
         limitations: []
         focus: ["FULL_BODY"]
-      required:
-        - goal
-        - level
-        - daysPerWeek
-        - sessionMinutes
-        - equipment
     PlanGenerateResponse:
       type: object
       properties:

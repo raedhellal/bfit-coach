@@ -6,7 +6,7 @@ import { COACH_API_MODE } from "@/lib/env";
 import { mintFixtureToken } from "@/lib/fixtureToken";
 import { hasCoachRole, isPendingOnly } from "@/lib/jwt";
 import { refuseCrossOrigin } from "@/lib/sameOrigin";
-import { writeSession, type SessionTokens } from "@/lib/session";
+import { beginSessionEpoch, writeSession, type SessionTokens } from "@/lib/session";
 import { rememberCoach } from "@/lib/rememberCoach";
 
 /**
@@ -50,6 +50,8 @@ type Landing = "/" | "/activate";
 
 async function signedIn(tokens: SessionTokens, next: Landing) {
   writeSession(tokens);
+  // BUG-745 (ADR-0033 D33.14): a session starts, so every other tab of this browser must see it.
+  beginSessionEpoch();
   if (next === "/") await rememberCoach(tokens.accessToken);
   return NextResponse.json({ ok: true, next });
 }

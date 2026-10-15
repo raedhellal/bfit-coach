@@ -9,8 +9,9 @@ import { firstName } from "../src/lib/format";
  * capital only as a sentence's first word. Everywhere else it is "this trainee" / « ce client »:
  * "Nothing was changed for this trainee.", « Les objectifs de ce client … ».
  *
- * This file pins EVERY copy function the fallback reaches, found by a code trace from the six
- * `firstName()` calls (overview `page.tsx`, `routineChange.ts`, `ProgressGoalBlock`,
+ * This file pins EVERY copy function the fallback reaches, found by a code trace from the seven
+ * `firstName()` calls (overview `page.tsx` — since EV-341w also the « Entretien » card it feeds —, the routine `page.tsx` since EV-341j, the intake
+ * `page.tsx` and `/invited/[userId]` since EV-341b, `routineChange.ts`, `ProgressGoalBlock`,
  * `NutritionWeekCard` → `SwapSheet` → `refusalSentence`, `NutritionTemplateLibrary`,
  * `TemplateUseOutcome`), not by a grep of the copy files. Each row is called with what the
  * component passes for a nameless trainee: `firstName(null, locale)`.
@@ -166,6 +167,36 @@ function enRows(): Row[] {
       text: t.targetsUnknown(first),
       expected: "We couldn't confirm whether this trainee's targets changed. Check their nutrition page before you try again.",
     },
+    // EV-341w: the overview's « Entretien » card (`firstName()` in the overview page).
+    { key: "intake.noGrant", text: en.intake.noGrant(first), expected: "This trainee hasn't allowed the intake interview yet." },
+    {
+      key: "intake.waiting",
+      text: en.intake.waiting(first),
+      expected: "Ask this trainee to open Evoli Fit. If the app is already open: Preferences, then Coaching.",
+    },
+    // EV-341j: the trial session's withdraw dialog (`firstName()` in the routine page).
+    {
+      key: "trial.withdrawBody",
+      text: en.trial.withdrawBody(first),
+      expected:
+        "This trainee will no longer see it in the app. If this trainee has already started it, it can still be finished and will count as done.",
+    },
+    // EV-341b: the interview page (`firstName()` in intake/page.tsx) and /invited/[userId].
+    {
+      key: "intakePage.clientCanRead",
+      text: en.intakePage.clientCanRead(first),
+      expected: "This trainee can read this intake, notes included, in their app.",
+    },
+    {
+      key: "intakePage.grantMissing",
+      text: en.intakePage.grantMissing(first),
+      expected: "You can save the intake once this trainee has allowed it in the app.",
+    },
+    {
+      key: "intakePage.grantMissingInvited",
+      text: en.intakePage.grantMissingInvited(first),
+      expected: "You can save the intake once this trainee has activated their account and allowed the intake in the app.",
+    },
   ];
 }
 
@@ -314,6 +345,36 @@ function frRows(): Row[] {
       expected:
         "Nous n'avons pas pu confirmer si les objectifs de ce client ont changé. Vérifiez sa page nutrition avant de réessayer.",
     },
+    // EV-341w: the overview's « Entretien » card.
+    { key: "intake.noGrant", text: fr.intake.noGrant(first), expected: "Ce client n'a pas encore autorisé l'entretien." },
+    {
+      key: "intake.waiting",
+      text: fr.intake.waiting(first),
+      expected: "Demandez à ce client d'ouvrir Evoli Fit. Si l'application est déjà ouverte : Préférences, puis Coaching.",
+    },
+    // EV-341j: the trial session's withdraw dialog.
+    {
+      key: "trial.withdrawBody",
+      text: fr.trial.withdrawBody(first),
+      expected:
+        "Ce client ne la verra plus dans l'app. Si ce client l'a déjà commencée, elle pourra être terminée et comptera comme faite.",
+    },
+    // EV-341b: the interview page and /invited/[userId].
+    {
+      key: "intakePage.clientCanRead",
+      text: fr.intakePage.clientCanRead(first),
+      expected: "Ce client peut lire cet entretien, notes comprises, dans son application.",
+    },
+    {
+      key: "intakePage.grantMissing",
+      text: fr.intakePage.grantMissing(first),
+      expected: "L'entretien pourra être enregistré quand ce client l'aura autorisé dans l'app.",
+    },
+    {
+      key: "intakePage.grantMissingInvited",
+      text: fr.intakePage.grantMissingInvited(first),
+      expected: "L'entretien pourra être enregistré quand ce client aura activé son compte et autorisé l'entretien dans l'app.",
+    },
   ];
 }
 
@@ -325,10 +386,12 @@ const FALLBACK = {
 } as const;
 
 /**
- * Every copy function the trace found, by language: 31 keys each. Pinned, so a row dropped from
- * the table (and with it a call site) fails here rather than going quiet.
+ * Every copy function the trace found, by language: 37 keys each (EV-341b: +3, the interview page
+ * and the invited page's intake sentence; EV-341w: +2, the « Entretien »
+ * card; EV-341j: +1, the trial session's withdraw dialog). Pinned, so a row dropped from the table
+ * (and with it a call site) fails here rather than going quiet.
  */
-const KEYS = 31;
+const KEYS = 37;
 
 for (const lang of ["en", "fr"] as const) {
   test.describe(`BUG-720 — the fallback's case, sentence by sentence (${lang})`, () => {

@@ -168,12 +168,24 @@ export function passesFilter(view: Pick<RosterRowView, "flagged" | "inactive">, 
   return true;
 }
 
-/** Lower case, accents stripped, spaces collapsed: « Inès » is found by "ines". */
+/**
+ * Lower case, accents stripped, spaces collapsed: « Inès » is found by "ines".
+ *
+ * EV-337j2 J2.5 (ruling EV-337j2-R1), on both sides of every comparison (the roster,
+ * /templates, /recipes): the ligatures « œ » → "oe" and « æ » → "ae" (NFD does not split
+ * them, and a French keyboard has no key for them), and the typographic apostrophes
+ * ’ (U+2019) and ‘ (U+2018) → ' (U+0027) (macOS / iOS type one where the coach meant the
+ * other). Nothing else is folded: not ß, ø, ł, U+02BC, U+00B4, the backtick, hyphens or
+ * guillemets (J2.5's "Not in"). Written as escapes so no editor turns them back.
+ */
 export function searchKey(value: string | null | undefined): string {
   return (value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/\u0153/g, "oe")
+    .replace(/\u00e6/g, "ae")
+    .replace(/[\u2018\u2019]/g, "'")
     .replace(/\s+/g, " ")
     .trim();
 }

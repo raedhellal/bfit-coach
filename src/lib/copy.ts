@@ -200,6 +200,14 @@ export const en = {
     language: "Language",
     /** The switch's one-line failure: the cookie was not written, nothing changed. */
     languageFailed: "The language could not be changed. Try again.",
+    /**
+     * BUG-745 (ADR-0033 D33.14 point 4, the PO's wording): the session changed in another tab
+     * while this one holds unsaved editor work. The editor stays on screen; nothing saves or
+     * navigates but this banner's button and the controls that only open or close a section.
+     */
+    sessionEnded: "Your session has ended. Copy your changes, then sign in again.",
+    /** The banner's one action: a document load of this URL, so middleware decides. */
+    sessionEndedSignIn: "Sign in again",
   },
 
   roster: {
@@ -258,6 +266,8 @@ export const en = {
     sortLabel: "Sort",
     sortNeedsAttention: "Needs attention",
     sortRecentActivity: "Recently active",
+    /** EV-356c (F3): the toggle showed the chosen order before the server answered, and the server did not take it. */
+    sortFailed: "The sort could not be changed. Try again.", // EV-356c, verbatim
     /**
      * What the flag column says for a link that shares neither workouts nor weigh-ins.
      * The SAME sentence as every other absence on this surface (`client.notShared`),
@@ -671,8 +681,16 @@ export const en = {
     menu: "More",
     revoke: "Revoke access",
     revokeTitle: "Revoke access?",
+    /** `main`'s body, verbatim: shown while the intake is dark (EV-341b G7). */
     revokeBody: (name: string) =>
       `${name} will be removed from your roster and you will no longer see their training data. They keep their Evoli Fit account and all of their history.`,
+    /**
+     * EV-341b B12, verbatim (ADR-0034 attack point 5): a revoke deletes the link's intake at
+     * t = 0, so the dialog says so before the coach confirms. Title and buttons unchanged. Only
+     * with `COACH_INTAKE_REQUEST` on (G7): it names a feature no coach can see while it is off.
+     */
+    revokeBodyIntake: (name: string) =>
+      `${name} will be removed from your roster and you will no longer see their training data. If you recorded an intake interview with ${name}, it will be permanently deleted. They keep their Evoli Fit account and all of their training history.`,
     revokeConfirm: "Revoke access",
     revokeCancel: "Cancel",
     revoking: "Revoking…",
@@ -912,6 +930,7 @@ export const en = {
     overview: "Overview",
     routine: "Routine", // EV-184 AC1, verbatim
     nutrition: "Nutrition", // EV-185 AC1, verbatim
+    intake: "Intake", // EV-341b B1, verbatim
   },
 
   /**
@@ -1903,6 +1922,12 @@ export const en = {
     replacesDraft: (trainee: string) =>
       `This replaces your unpublished draft for ${endSentence(trainee)} That draft cannot be recovered.`,
     useIt: "Use this template",
+    /**
+     * On the pressed button (« Use this template » or « Replace the draft ») while the apply
+     * runs: the wait is the write plus a render of this page and then of the trainee's
+     * editor, and a grey button alone did not say anything was happening (fluidity F1).
+     */
+    applying: "Applying…",
     replaceAndUse: "Replace the draft",
     cancel: "Cancel",
     noTrainees: "You have no trainees who have shared their workouts with you.",
@@ -2074,6 +2099,17 @@ export const en = {
     filterLabel: "Meal time",
     filterAll: "All meal times",
     filterEmpty: "No recipe for this meal time yet.",
+    /**
+     * EV-337j2 J2.2, verbatim — the library's name search (in the browser: nothing is sent).
+     * Also its placeholder. Not `searchLabel`, which is the editor's ingredient search.
+     */
+    librarySearch: "Search recipes",
+    /** J2.2, verbatim. The query as the coach typed it, trimmed. */
+    noMatch: (text: string) => `No recipe matches “${text}”.`,
+    /** J2.6 (ruling EV-337j2-R2), verbatim: what a search left, for a screen reader only. */
+    shown: (count: number) => `${count} recipe${count === 1 ? "" : "s"} shown`,
+    /** The no-match card's control (same words as `templateLibrary.clearSearch`; staff N3). */
+    clearSearch: "Clear the search",
     edit: "Edit",
     remove: "Delete",
 
@@ -2288,8 +2324,10 @@ export const en = {
     pickSub: (template: string) => `Choose who gets “${template}”.`,
     /** AC3: only ACTIVE links with NUTRITION are offered, so nobody is refused after. */
     noTrainees: "You have no trainees who have shared their nutrition with you.",
-    /** The roster read failed: nobody is offered, and "no trainees" would be false. */
-    traineesLoadError: "Your trainees could not be loaded. Close this and try again.",
+    /*
+     * The roster read failed: the picker says `challenges.clientsLoadError` (EV-356g). Its own
+     * "Close this and try again." was untrue: closing the dialog re-reads nothing.
+     */
     /** AC4, verbatim. */
     confirmTitle: (template: string, first: string) => `Use “${template}” on ${mid(first)}?`,
     now: "Now",
@@ -2445,8 +2483,16 @@ export const en = {
     selectNone: "Clear",
     selected: (count: number) => `${count} selected`,
     noClients: "You have no linked clients yet. Invite a client from the roster first.",
-    /** The roster read failed — not the same fact as having no clients. */
+    /**
+     * The roster read failed — not the same fact as having no clients. Also /templates' "Use on a
+     * trainee" picker (BUG-738) and /nutrition-templates' (EV-356g).
+     */
     clientsLoadError: "Your clients could not be loaded. Reload the page to try again.",
+    /**
+     * EV-356g — the pickers' loading line: the page no longer waits for the roster, so a dialog
+     * opened before it answers says so. Also /templates' and /nutrition-templates' pickers.
+     */
+    clientsLoading: "Loading your clients…",
     submit: "Create and invite",
     submitting: "Creating…",
     cancel: "Cancel",
@@ -2747,11 +2793,231 @@ export const en = {
     } as Record<string, string>,
   },
   /**
+   * EV-341j — the trial session on the Programme tab, and its roster pill. Every string
+   * marked "J" is the story's, verbatim (QA checks them character by character). The four
+   * marked "not in the story" are failure and bound sentences no AC words: senior-po's to
+   * confirm or replace.
+   *
+   * ⛔ There is deliberately no edit control and so no "Edit" / « Modifier » string (J3,
+   * ADR-0034 Q7 (f)): a change is withdraw, then prepare a new one.
+   */
+  trial: {
+    /** J1 — the card's name (FR « Séance d'essai »). */
+    title: "Trial session",
+    /** J1, verbatim. */
+    prepare: "Prepare a trial session",
+    /** J1, verbatim: the template-day picker's button and its dialog's title. */
+    fromTemplate: "Start from a template",
+    /** J2, verbatim. */
+    assign: "Assign",
+    /** J3, verbatim. `date` is the assign instant, printed in UTC like every instant here. */
+    assignedOn: (date: string) => `Assigned on ${date}`,
+    /** J3, verbatim. */
+    withdraw: "Withdraw",
+    /** J3, verbatim. `date` is the day the completion was filed under. */
+    doneOn: (date: string) => `Done on ${date}`,
+    /** J3b, verbatim. */
+    withdrawTitle: "Withdraw the trial session?",
+    /** J3b, verbatim. Sentence-initial name first, then mid-sentence. */
+    withdrawBody: (firstName: string) =>
+      `${firstName} will no longer see it in the app. If ${mid(firstName)} has already started it, it can still be finished and will count as done.`,
+    // ⛔ No « Préparer une autre séance d'essai »: J3c was withdrawn (2026-10-12 (d), senior-po on
+    // staff's EV-341i ruling 1). TRIAL_DONE has no prepare path; do not add one back.
+    /** J4, verbatim — the roster pill, one per client, none for PUBLISHED. */
+    pills: {
+      AWAITING_PROGRAMME: "Programme to prepare",
+      TRIAL_ASSIGNED: "Trial session assigned",
+      TRIAL_DONE: "Trial session done",
+    },
+    /** Not in the story: Assign is off until the session holds an exercise. */
+    needsExercise: "Add at least one exercise.",
+    /** Not in the story: the api's bound (1..30 rows). */
+    full: "A trial session holds at most 30 exercises.",
+    /** Not in the story. Nothing was written (the api refused or did not answer). */
+    assignFailed: "The trial session could not be assigned.",
+    /** Not in the story. */
+    withdrawFailed: "The trial session could not be withdrawn.",
+    /** The card's read failed (not a 403): the overview's own block sentence. */
+    loadError: "This block could not be loaded. Reload the page to try again.",
+  },
+  /**
    * ADR-0033 follow-up (perf/coach-fast-routes-no-skeleton): the navigation progress
    * bar's accessible name. It shows only when a page change takes longer than 400 ms.
    */
   navProgress: {
     label: "Loading the page",
+  },
+  /**
+   * EV-341w — the overview's « Entretien » card: « Demander l'accord », the waiting panel and
+   * the answer. Every sentence marked "W" is the story's Copy section, verbatim; QA checks
+   * them character by character.
+   *
+   * ⛔ There is deliberately NO sentence for a refusal, a decline, an expiry or a cancel as
+   * such (W4, W9, ADR-0034a D34a.6): the api sends none, and the three read as one answer,
+   * `notNow`. Do not add one.
+   */
+  intake: {
+    /** The card's title (EV-341b's tab name, EN "Intake"). */
+    title: "Intake",
+    /** W1, verbatim. Sentence-initial: the fallback keeps its capital. */
+    noGrant: (firstName: string) => `${firstName} hasn't allowed the intake interview yet.`,
+    /** W1/W2, verbatim. */
+    ask: "Ask for consent",
+    /** W2, verbatim. */
+    waiting: (firstName: string) =>
+      `Ask ${mid(firstName)} to open Evoli Fit. If the app is already open: Preferences, then Coaching.`,
+    /** W2/W5, verbatim. */
+    cancel: "Cancel the request",
+    /** W1/W4/W7, verbatim. */
+    granted: "Consent given",
+    /** W4, verbatim: a decline, an expiry and a cancel elsewhere, all alike. */
+    notNow: "No consent for now.",
+    /** W6, verbatim. */
+    cap: "You have already asked 3 times in 24 hours. You can ask again later.",
+    /** Not in the story (no AC names this failure): the ask did not reach the api or it failed. */
+    askFailed: "The request could not be sent. Try again.",
+    /** Not in the story: the cancel did not reach the api or it failed. The wait goes on. */
+    cancelFailed: "The request could not be cancelled. Try again.",
+    /** The card's read failed (not a 403): the overview's own block sentence. */
+    loadError: "This block could not be loaded. Reload the page to try again.",
+  },
+
+  /**
+   * EV-341b — the interview page (`/clients/[id]/intake`), sections 1–4. Every sentence is the
+   * story's, verbatim (B1–B19). The field and value labels are the catalogue table's
+   * (§ "The interview, section by section"), and where that table gives a French word only,
+   * the English label is the one EV-341r R4 adopted for the trainee's read of the same
+   * record (b-fit-mobile `coaching.intakeRead`), so the coach and the client read one
+   * vocabulary.
+   *
+   * ⛔ Not here, on purpose: « Indiqué dans l'app : {goal} » (B10). No coach-portal read
+   * carries the trainee's PROFILE goal (EV-359 is not built, and the intake read has no such
+   * field), and a goal guessed from the published plan would be a claim nobody made.
+   */
+  intakePage: {
+    /** B1, verbatim: the tab's `h2` (the page's `h1` stays the client's name). */
+    title: "Intake interview",
+    /** B19, verbatim. Sentence-initial: the fallback keeps its capital. */
+    clientCanRead: (firstName: string) => `${firstName} can read this intake, notes included, in their app.`,
+    /** B11, verbatim. Mid-sentence. */
+    grantMissing: (firstName: string) => `You can save the intake once ${mid(firstName)} has allowed it in the app.`,
+    /** B11, verbatim: `/invited/[userId]`, beside the disabled « Entretien » control. */
+    grantMissingInvited: (firstName: string) =>
+      `You can save the intake once ${mid(firstName)} has activated their account and allowed the intake in the app.`,
+    /** Staff r1 N4: the section <select>'s name at 390 px (the coordinator's wording). */
+    sectionLabel: "Section",
+    /** Staff r1 N4: why the fourth motivation box rests (the api's bound of 3). */
+    motivationsHint: "Up to 3.",
+    /** B2, verbatim: a section's status in the list. */
+    notStarted: "Not started",
+    started: "Started",
+    /** B3, verbatim. */
+    saving: "Saving…",
+    saved: "Saved",
+    /** B4, verbatim: from the first failure, while the retries run. */
+    retrying: "Not saved. Retrying…",
+    /** B4, verbatim: after the last retry. */
+    failed: "Not saved. Check your connection: your answers are still on this page.",
+    /** B4 / B15, verbatim. */
+    tryAgain: "Try again",
+    /** B4a, verbatim (R2): a refused save naming a field this page labels (its B9 label). */
+    refusedField: (field: string) => `Not saved: the answer “${field}” was refused. Change it to save again.`,
+    /** B4a, verbatim (R2): a refused save naming no field, or one the page does not label. */
+    refusedSection: "Not saved: an answer in this section was refused. Change it to save again.",
+    /** B5, verbatim. */
+    conflict: "This intake was changed in another tab.",
+    reload: "Reload",
+    /** B15, verbatim. */
+    sessionEnded: "Your session has expired. Sign in again in a new tab: your answers are still on this page.",
+    /** B16, verbatim: the note's live counter, in code points. */
+    notesCounter: (count: number) => `${count.toLocaleString("en-GB")} / 1,000`,
+    /** B16, verbatim. */
+    notesTooLong: "Too long: 1,000 characters at most.",
+    /** B16a, verbatim (R4): GOALS' event over 80 code points. */
+    eventLabelTooLong: "Too long: 80 characters at most.",
+    sections: {
+      GOALS: "Goals and motivation",
+      HISTORY: "Training history",
+      AVAILABILITY: "Availability and equipment",
+      LIFESTYLE: "Lifestyle",
+    },
+    /** The catalogue's fields (EV-341r R4's adopted labels where the table names a key only). */
+    fields: {
+      primaryGoal: "Main goal",
+      motivations: "Motivations",
+      motivationScore: "Motivation",
+      eventLabel: "Event",
+      eventDate: "Event date",
+      level: "Level",
+      trainingAge: "Training experience",
+      currentSessionsPerWeek: "Current sessions per week",
+      activities: "Activities",
+      sessionsPerWeek: "Sessions per week",
+      sessionMinutes: "Session length",
+      availableDays: "Available days",
+      timeOfDay: "Preferred time of day",
+      trainingPlaces: "Training places",
+      workActivity: "Activity at work",
+      sleepHours: "Sleep per night",
+      stressScore: "Stress",
+      notes: "Notes",
+    } as Record<string, string>,
+    /** The catalogue's values, per field. */
+    values: {
+      primaryGoal: {
+        BUILD_MUSCLE: "Build muscle",
+        LOSE_WEIGHT: "Lose fat",
+        GET_STRONGER: "Get stronger",
+        MOBILITY: "General fitness",
+        ENDURANCE: "Endurance",
+      },
+      motivations: {
+        HEALTH: "Health",
+        CONFIDENCE: "Self-confidence",
+        APPEARANCE: "Appearance",
+        PERFORMANCE: "Sports performance",
+        ENERGY: "Everyday energy",
+        EVENT: "Preparing for an event",
+      },
+      level: { BEGINNER: "Beginner", INTERMEDIATE: "Intermediate", ADVANCED: "Advanced" },
+      trainingAge: {
+        NONE: "Never trained",
+        LT_6M: "Less than 6 months",
+        M6_24: "6 months to 2 years",
+        Y2_5: "2 to 5 years",
+        GT_5Y: "More than 5 years",
+      },
+      activities: {
+        STRENGTH: "Strength training",
+        RUNNING: "Running",
+        CYCLING: "Cycling",
+        SWIMMING: "Swimming",
+        TEAM_SPORTS: "Team sports",
+        COMBAT: "Combat sports",
+        YOGA_PILATES: "Yoga / Pilates",
+        HIIT: "CrossFit / HIIT",
+        OTHER: "Other",
+      },
+      availableDays: {
+        MONDAY: "Monday",
+        TUESDAY: "Tuesday",
+        WEDNESDAY: "Wednesday",
+        THURSDAY: "Thursday",
+        FRIDAY: "Friday",
+        SATURDAY: "Saturday",
+        SUNDAY: "Sunday",
+      },
+      timeOfDay: { MORNING: "Morning", MIDDAY: "Midday", EVENING: "Evening" },
+      trainingPlaces: { GYM: "Gym", HOME: "Home", OUTDOOR: "Outdoors", COACH_STUDIO: "Coach's studio" },
+      workActivity: {
+        SEDENTARY: "Sitting most of the time",
+        STANDING: "Standing or moving",
+        PHYSICAL: "Physical work",
+      },
+      sleepHours: { LT_6: "Less than 6 h", H6_7: "6 to 7 h", H7_8: "7 to 8 h", GT_8: "More than 8 h" },
+    } as Record<string, Record<string, string>>,
+    /** EV-341r R4's unit: a session length option (U+00A0 keeps the number with its unit). */
+    minutes: (value: number) => `${value}\u00a0min`,
   },
 } as const;
 

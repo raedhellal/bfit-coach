@@ -269,7 +269,7 @@ export function RoutineEditor({
     setDirty(false);
     setPreview(null);
     setConflict(null);
-    leaving.release(() => router.refresh());
+    leaving.release(() => router.refresh(), "leaves");
   }
 
   /** Every refusal of every write lands here, so none of them can be handled two ways. */
@@ -776,10 +776,11 @@ export function RoutineEditor({
         width={420}
         footer={
           <>
-            <Button variant="secondary" onClick={leaving.stay}>
+            {/* BUG-745 (ADR-0033 D33.14): both answer the question and neither posts. */}
+            <Button variant="secondary" onClick={leaving.stay} sessionSafe>
               {copy.routine.leaveStay}
             </Button>
-            <Button variant="danger" onClick={leaving.leave}>
+            <Button variant="danger" onClick={leaving.leave} sessionSafe>
               {copy.routine.leaveConfirm}
             </Button>
           </>

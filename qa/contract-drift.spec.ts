@@ -285,7 +285,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 84; // EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types; EV-204b: +4 initialisation types
+const SCHEMAS_EXPECTED = 98; // EV-341b: +7 intake types (CoachIntake, the four section value types, CoachIntakeSectionWrite, CoachIntakeSectionSaved); EV-341j: +5 trial session types; EV-341w: +2 intake consent types; EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types; EV-204b: +4 initialisation types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -401,6 +401,12 @@ const REQUEST_FACING_EXPECTED = [
   "CoachApplySwapRequest",
   "CoachApplyWeekRequest",
   "CoachChallengeCreateRequest",
+  // EV-341b: the section PUT body and the four section value types its `values` names.
+  "CoachIntakeAvailability",
+  "CoachIntakeGoals",
+  "CoachIntakeHistory",
+  "CoachIntakeLifestyle",
+  "CoachIntakeSectionWrite",
   "CoachPlaceRecipeRequest",
   "CoachProgressGoalRequest",
   "CoachRecipeIngredientRequest",
@@ -411,6 +417,7 @@ const REQUEST_FACING_EXPECTED = [
   "CoachTemplateFromRoutineRequest",
   "CoachTemplateRenameRequest",
   "CoachTemplateSaveRequest",
+  "CoachTrialSessionRequest", // EV-341j
   "InitialiseTraineeRequest",
   "NutritionTemplateSaveRequest",
   "NutritionTemplateTargetsRequest",
@@ -430,6 +437,9 @@ const REQUEST_FACING_EXPECTED = [
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
+  // EV-341 (api 95ca369d). (CoachIntakeSectionWrite was here until EV-341b tagged it.)
+  CoachTrialSessionAssignRequest:
+    "POST …/trial-session (EV-341j): an `allOf` of the TAGGED `CoachTrialSessionRequest` and `{ digest }`, which this parser cannot read (it reads a schema's own `properties`). `assignTrialSession` sends the tagged body plus `digest` inline, as `publishRoutine` does; `required` lives on the tagged half ([exercises]) and is checked there.",
 };
 
 const receivable = requestSchemas(spec);

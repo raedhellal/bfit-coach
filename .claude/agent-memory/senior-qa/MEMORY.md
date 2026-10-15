@@ -21,3 +21,13 @@
 - [coach-s3b gate](project_coach-s3b-gate.md) — 2026-10-09 fa23b84 ten bugs; forged-token live stub rig, 629-alone merge-order witness, pro-roster-states in default config, WebKit/DPR traps
 - [coach-s3c gate](project_coach-s3c-gate.md) — 2026-10-09 794bc91 PASS; EV-344 2A holds on Lina only (content-dependent); hidden-field locator trap; inventory diff
 - [coach-s3d gate](project_coach-s3d-gate.md) — 2026-10-09 75d9688 PASS (BUG-713/714); live null-name stub when Docker is down; nav-progress-ready/actionTimeout probe traps
+- [coach-s3e gate](project_coach-s3e-gate.md) — 2026-10-09 e4e3a5f PASS (EV-337g1); branch-only locator = wrong-reason base red; timed-out jobs keep running; dblclick reachability
+- [coach-s3f gate](project_coach-s3f-gate.md) — 2026-10-09 d1fed49 PASS (BUG-718/720); \b after « à » made a negative check vacuous; param-name copy sweep; facts-diff regressions
+- [coach-s3g gate](project_coach-s3g-gate.md) — 2026-10-09 83ff8e4 PASS (j2, BUG-724, BUG-730); natural-race keystroke rig, badge-at-keystroke witness, mid-flight save loss
+- [coach-s3h gate](project_coach-s3h-gate.md) — 2026-10-10 c378aea PASS (BUG-735, EV-356a/b/c); WebKit no sign-in on next start, streamed-frame recorder, HistoryUpdater-satisfied flag helpers
+- [coach-s3j gate](project_coach-s3j-gate.md) — 2026-10-11 8c29c7d FAIL (roster 349.1 red), re-gate 1d6c442 PASS; 738 PASS; WebKit prefetch-cancel console, create→New identity hole
+- [coach-s3k gate](project_coach-s3k-gate.md) — 2026-10-11 f4d6842 PASS (BUG-741/742 test-only); old-reader variants prove the false pass, M-flash timing-dependent, BUG-749 unchanged
+- [coach-s3l gate](project_coach-s3l-gate.md) — 2026-10-11 cd13f54 FAIL (start config 23/66: __Host- epoch vs secure:false helpers); W1, R1-H x guard, (c) mutants, router.push probes
+- [coach-s3i gate](project_coach-s3i-gate.md) — 2026-10-10 f303bc0 EV-356d PASS; next-start prefetch rig, DOM-vs-frame busy, MPA denial wipes router, sign-out window probe
+- [coach-s3m gate](project_coach-s3m-gate.md) — 2026-10-11 b98d780 PASS (BUG-743/744 lint bans); plants base-vs-train + build + census, outside-src hole QA-S3M-1
+- [coach-s3n gate](project_coach-s3n-gate.md) — 2026-10-11 EV-356g PASS; streamed-promise doc never ends on a socket cut (picker spins / WebKit dead), action-hold + cut proxy, mutants

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useRouter } from "next/navigation";
 import { logPortalEvent } from "./portalEvents";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
+import { isSessionLeaving } from "./sessionEpoch";
 
 /**
  * EV-190 U2 / AC2 — a coach's unsaved editor work cannot leave the page silently.
@@ -45,11 +46,31 @@ const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEff
 type Pending = { route: LeaveRoute; href: string | null };
 
 /**
+ * BUG-730 (staff B1) — what a `then` handed to `release` does once the guard's entry is gone:
+ * `"leaves"` navigates off the page (a create that opens the list, an access-ended refresh,
+ * Leave), `"stays"` keeps the coach on it (a create that becomes an edit with
+ * `replaceState`). It decides whether work typed during the step is guarded afterwards, so
+ * every caller with a `then` must say which: the overload makes it required.
+ */
+export type AfterStep = "stays" | "leaves";
+export interface Release {
+  (): void;
+  (then: () => void, after: AfterStep): void;
+}
+
+/**
  * BUG-703 — the guards armed right now (each one's `live`, see below). Read by the
  * dictionary loader (`src/lib/i18n/client.tsx`) before it reloads the page for a failed
  * dictionary chunk: a reload over unsaved work would raise this hook's `beforeunload`
  * prompt, and a coach who answers "stay" left the tab stranded on a render that could never
  * finish. With work unsaved the loader abandons the language switch instead.
+ *
+ * BUG-745 (ADR-0033 D33.14) — also read by `SessionEpochGuard`, at every event, to choose
+ * between reloading a tab whose session changed and keeping an editor's unsaved work on
+ * screen with the session-ended banner. That is why the registration is COMMIT-accurate (3a,
+ * the arming effect below): React runs the layout cleanups of components a commit unmounts in
+ * its mutation phase, before any layout effect of that commit, so the guard's post-commit check
+ * sees an editor that LEFT in the commit as gone and one that STAYED as still registered.
  */
 const armedGuards = new Set<{ current: boolean }>();
 
@@ -57,6 +78,24 @@ const armedGuards = new Set<{ current: boolean }>();
 export function hasUnsavedWork(): boolean {
   for (const live of armedGuards) if (live.current) return true;
   return false;
+}
+
+const unsavedWorkCleared = new Set<() => void>();
+
+/**
+ * BUG-745 (staff S2 on ADR-0033 D33.14) — called when the LAST armed guard deregisters, in the
+ * commit that took the work away (a save's clean commit, or the editor unmounting). The
+ * session-epoch guard re-decides there: a tab it kept on screen for unsaved work (the banner)
+ * must not stay once nothing is unsaved. Measured: in WebKit, a save answered after a sign-out
+ * in another tab hands the sentinel back (`release()` → `history.back()`) and its `popstate`
+ * reached layer (b) while `dirty` was still committed true; no URL change followed, so the
+ * banner stayed over a clean editor. Returns the unsubscribe.
+ */
+export function onUnsavedWorkCleared(listener: () => void): () => void {
+  unsavedWorkCleared.add(listener);
+  return () => {
+    unsavedWorkCleared.delete(listener);
+  };
 }
 
 export function useUnsavedChanges(dirty: boolean) {
@@ -75,6 +114,43 @@ export function useUnsavedChanges(dirty: boolean) {
    * about this hook, not about the document.
    */
   const sentinel = useRef(false);
+  /**
+   * BUG-730 — our own `history.back()` has been called and its `popstate` has not arrived yet
+   * (`releasing`), and the guard re-armed in that window (`rearm`).
+   *
+   * A save hands the sentinel back with `history.back()`; the traversal answers a few
+   * milliseconds later (2–14 ms over 280 saves, measured 2026-10-09). The form is clean by
+   * then, so a keystroke in that window re-arms the guard. Pushing the new sentinel at once put
+   * a `pushState` under a traversal still in flight, and the traversal's `popstate` then
+   * reached the re-armed guard's listener AFTER `withCleanHistory`'s listener had cleared
+   * `bypass`: it read as the coach pressing Back and opened the question over the form
+   * (`qa/form-leave-guard.spec.ts`, BUG-730). So the re-arm waits for the step to land, and
+   * that step's `popstate` is still ours for every listener it reaches.
+   */
+  const releasing = useRef(false);
+  const rearm = useRef(false);
+  /** What a release asked for while our step was already in flight: run when it lands. */
+  const afterStep = useRef<{ run: () => void; after: AfterStep }[]>([]);
+  /**
+   * The `popstate` of our own step, once it has landed. Every listener on `window` receives
+   * the same event object, so the guard's Back listener can tell this one is not the coach's
+   * Back even when it was added after ours (a re-arm inside the step).
+   */
+  const ours = useRef<Event | null>(null);
+
+  /**
+   * One extra entry for the SAME url, carrying Next's own router state so the router is not
+   * confused when it is popped. While our own step back is in flight it is pushed when that
+   * step lands instead (BUG-730, above).
+   */
+  const push = useCallback(() => {
+    if (releasing.current) {
+      rearm.current = true;
+      return;
+    }
+    window.history.pushState({ ...window.history.state, evoliUnsavedGuard: true }, "", window.location.href);
+    sentinel.current = true;
+  }, []);
   /**
    * EV-342o — `dirty` as of the last COMMIT, set before the browser paints it.
    *
@@ -99,25 +175,57 @@ export function useUnsavedChanges(dirty: boolean) {
    * reaches the layout's redirect to /clients/denied, which is EV-190 edge case 4
    * failing silently.
    */
-  const withCleanHistory = useCallback((then: () => void = () => {}) => {
-    bypass.current = true;
-    if (!sentinel.current) {
-      bypass.current = false;
-      then();
-      return;
-    }
-    const onPop = () => {
-      window.removeEventListener("popstate", onPop);
-      sentinel.current = false;
-      bypass.current = false;
-      then();
-    };
-    window.addEventListener("popstate", onPop);
-    window.history.back();
-  }, []);
+  const withCleanHistory = useCallback(
+    (then?: () => void, after: AfterStep = "leaves") => {
+      bypass.current = true;
+      if (releasing.current) {
+        // BUG-730: our step back is already in flight, and it takes out the only entry this
+        // guard holds (a re-arm since then was deferred, not pushed). A second
+        // `history.back()` would step off the page. `then` waits for that step to land.
+        // Clearing `rearm` here is UNWITNESSED: in every path constructed, the clean commit's
+        // effect cleanup clears it first. It is kept for a step that lands before that commit.
+        rearm.current = false;
+        if (then) afterStep.current.push({ run: then, after });
+        return;
+      }
+      if (!sentinel.current) {
+        bypass.current = false;
+        then?.();
+        return;
+      }
+      releasing.current = true;
+      const onPop = (event: PopStateEvent) => {
+        window.removeEventListener("popstate", onPop);
+        releasing.current = false;
+        sentinel.current = false;
+        ours.current = event;
+        bypass.current = false;
+        const steps = [...(then ? [{ run: then, after }] : []), ...afterStep.current.splice(0)];
+        const rearmed = rearm.current;
+        rearm.current = false;
+        for (const step of steps) step.run();
+        // The guard re-armed while this step was in flight (BUG-730): work typed during it is
+        // unsaved, so a new entry is pushed, AFTER the `then`s, so it carries the URL a
+        // `"stays"` step's `replaceState` gave the page. Not when a step leaves the page: its
+        // navigation would leave the entry behind.
+        if (rearmed && !steps.some((step) => step.after === "leaves")) push();
+      };
+      window.addEventListener("popstate", onPop);
+      window.history.back();
+    },
+    [push]
+  );
 
   // ── Closing the tab or reloading ────────────────────────────────────────────
-  useEffect(() => {
+  // `useCommitEffect`, not `useEffect` (BUG-745, ADR-0033 D33.14 3a): registered and removed
+  // inside the commit, so `hasUnsavedWork()` is exact for the session-epoch guard's layout
+  // effect, and the guard's `location.replace` meets no `beforeunload` prompt from an editor
+  // the same commit took away. ⚠ A layout effect is also destroyed when a Suspense boundary
+  // HIDES content already shown (React's `disappearLayoutEffects`): an editor hidden that way is
+  // deregistered while its state lives on. No such case exists today (the language switch and
+  // navigations are transitions, which keep shown content); a future non-transition suspension
+  // inside an editor (a `use()`, a lazy child) must be reviewed against this line.
+  useCommitEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!live.current) return;
@@ -142,6 +250,7 @@ export function useUnsavedChanges(dirty: boolean) {
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       armedGuards.delete(guard);
+      if (!hasUnsavedWork()) for (const listener of unsavedWorkCleared) listener();
     };
   }, [dirty]);
 
@@ -177,22 +286,12 @@ export function useUnsavedChanges(dirty: boolean) {
   useEffect(() => {
     if (!dirty) return;
     /**
-     * One extra entry for the SAME url, carrying Next's own router state so the
-     * router is not confused when it is popped. Back then lands on it, `popstate`
-     * fires, we push it again, and the coach is asked while still on the page with
-     * every edit intact.
+     * The sentinel (`push`, above). Back then lands on it, `popstate` fires, we push it
+     * again, and the coach is asked while still on the page with every edit intact.
      */
-    const push = () => {
-      window.history.pushState(
-        { ...window.history.state, evoliUnsavedGuard: true },
-        "",
-        window.location.href
-      );
-      sentinel.current = true;
-    };
     push();
-    const onPop = () => {
-      if (bypass.current) return;
+    const onPop = (event: PopStateEvent) => {
+      if (bypass.current || event === ours.current) return;
       // The browser has already stepped off the sentinel; put it back so the coach is
       // asked while still on the page, with every edit intact.
       sentinel.current = false;
@@ -202,19 +301,19 @@ export function useUnsavedChanges(dirty: boolean) {
     window.addEventListener("popstate", onPop);
     return () => {
       window.removeEventListener("popstate", onPop);
+      // Clean again before our step landed: nothing to re-arm when it does (BUG-730).
+      rearm.current = false;
       // The work was saved (or the editor unmounted): take the sentinel back out, or
       // the coach's next Back press would appear to do nothing.
       // `bypass` means a confirmed navigation is already removing it.
-      if (!bypass.current && sentinel.current) {
-        sentinel.current = false;
-        bypass.current = true;
-        window.history.back();
-        window.setTimeout(() => {
-          bypass.current = false;
-        }, 0);
-      }
+      // Through `withCleanHistory`, like every other step of ours: a keystroke that re-arms
+      // while this step is in flight is the same race as after a save (BUG-730).
+      // NOT while the session-epoch guard is replacing the document (BUG-745, ADR-0033 D33.14
+      // 3b): the sentinel goes with the document, and a `history.back()` queued behind the
+      // `location.replace` could cancel it, an ordering no engine promises.
+      if (!bypass.current && sentinel.current && !isSessionLeaving()) withCleanHistory();
     };
-  }, [dirty]);
+  }, [dirty, push, withCleanHistory]);
 
   const stay = useCallback(() => {
     if (pending) {
@@ -244,7 +343,7 @@ export function useUnsavedChanges(dirty: boolean) {
         router.push(pending.href);
       }
       else window.history.back();
-    });
+    }, "leaves");
   }, [pending, router, withCleanHistory]);
 
   /**
@@ -258,8 +357,31 @@ export function useUnsavedChanges(dirty: boolean) {
    * the action's promise resolves. A `router.refresh()` here used to render the whole
    * page a second time for nothing. Only the access-ended path still refreshes: a refused write does
    * not revalidate, so the refresh is the request that reaches the layout's redirect.
+   * A `then` comes with whether it leaves the page (`AfterStep`, BUG-730).
    */
-  const release = withCleanHistory;
+  const release: Release = withCleanHistory;
 
-  return { prompted: pending !== null, stay, leave, release };
+  /**
+   * BUG-735 — the page still holds unsaved work after a `release(then, "stays")`: the coach
+   * typed while the save's REQUEST was in flight, so the answer covers less than the screen
+   * shows. Call it right after that `release`.
+   *
+   * `dirty` never changed value (it was true when the request left and is true now), so the
+   * arming effect does not run again and nothing would put an entry back once the release's
+   * step has taken the sentinel out: Back would leave with no question. This asks for one,
+   * the way a re-arm inside the step does: pushed when the step lands, after the `then`s, so
+   * it carries the URL a `replaceState` gave the page. Not pushed if a step that leaves the
+   * page is queued with it, nor a second time over a sentinel that is still current.
+   *
+   * Also after an update whose answer leaves the form dirty: that save does not release at
+   * all, so its sentinel is normally still the current entry and this does nothing. It
+   * pushes only when the guard holds no entry while the form is dirty (BUG-736's end state:
+   * a keystroke batched with an earlier save's clean render), so the next late save re-arms.
+   * That healing is read from this code, not constructed in a test.
+   */
+  const stillUnsaved = useCallback(() => {
+    if (releasing.current || !sentinel.current) push();
+  }, [push]);
+
+  return { prompted: pending !== null, stay, leave, release, stillUnsaved };
 }

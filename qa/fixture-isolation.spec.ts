@@ -63,6 +63,7 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
   "coach-challenges.live.spec.ts": "live config, same (EV-321b)",
   "coach-nutrition-templates.live.spec.ts": "live config, same (EV-273b)",
   "coach-add-client.live.spec.ts": "live config, same (EV-204b): reads the api's mail-stub log",
+  "intake-token-expiry.live.spec.ts": "intake-live config (EV-341b B17): a real b-fit-api with a 1-minute token, no fixture store",
   "coach-legacy-api.spec.ts": "legacy config: COACH_API_MODE=live against qa/legacy-api.mjs",
   "refresh-single-flight.spec.ts": "refresh config: COACH_API_MODE=live against qa/stub-api.mjs",
   "coach-activation.stub.spec.ts": "activation config: COACH_API_MODE=live against qa/activation-stub-api.mjs; resets the stub per test",
@@ -70,6 +71,7 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
   "contract-drift.spec.ts": "reads two files from disk; never calls the dev server",
   "api-merge-condition.spec.ts": "reads git and a file from disk; never calls the dev server",
   "stale-times-config.spec.ts": "imports next.config.mjs (ADR-0033 2a); never calls the dev server",
+  "invariant-n-lint-bans.spec.ts": "runs ESLint on in-memory files (BUG-743/744); never calls the dev server",
 };
 
 test("every spec file on the fixture server uses the resetting test", () => {

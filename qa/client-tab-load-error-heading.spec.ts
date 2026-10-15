@@ -31,6 +31,7 @@ const T = {
     locale: "en-US",
     routine: "This trainee's routine could not be loaded.",
     nutrition: "This trainee's nutrition could not be loaded.",
+    overview: "This trainee could not be loaded.",
     back: "Back to roster",
     nav: "Trainee sections",
     tabs: { overview: "Overview", routine: "Routine", nutrition: "Nutrition" },
@@ -39,6 +40,7 @@ const T = {
     locale: "fr-FR",
     routine: "Le programme de ce client n'a pas pu être chargé.",
     nutrition: "La nutrition de ce client n'a pas pu être chargée.",
+    overview: "Ce client n'a pas pu être chargé.",
     back: "Retour aux clients",
     nav: "Sections du client",
     tabs: { overview: "Vue d'ensemble", routine: "Programme", nutrition: "Nutrition" },
@@ -136,9 +138,14 @@ for (const lang of ["en", "fr"] as const) {
       await page.waitForURL(`/clients/${LINA}/routine`);
       await expectOutageHead(page, lang, "routine");
 
-      // The overview with the read failing is BUG-629's page (its own spec checks it).
+      // The overview with the read failing is BUG-629's page (its own spec checks it). Reached
+      // by a client navigation, the error is not trusted as fresh: error.tsx reloads the
+      // document once (EV-356d D.6, ADR-0033 D33.13 point 8), and the 500 document shows the
+      // notice. Wait for it, or the next goto races that reload (ERR_ABORTED).
       await tabBar(page, lang).getByRole("link", { name: t.tabs.overview, exact: true }).click();
       await page.waitForURL(`/clients/${LINA}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText([t.overview], { timeout: 15_000 });
+      await page.waitForLoadState("load");
 
       await openHydrated(page, `/clients/${LINA}/nutrition`);
       await expectOutageHead(page, lang, "nutrition");

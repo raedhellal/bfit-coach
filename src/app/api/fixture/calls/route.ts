@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fixtureCalls, fixtureDraftPuts, fixtureReads } from "@/lib/coachApi.fixture";
+import { fixtureCalls, fixtureDraftPuts, fixtureIntakePuts, fixtureReads } from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
 import { apiJournal } from "@/lib/fixtureApiJournal";
 
@@ -20,6 +20,9 @@ import { apiJournal } from "@/lib/fixtureApiJournal";
  *   and `{ draftPuts }` (BUG-195c): every `PUT …/routine/draft` with the token it
  *         carried and the two subject lists it sent — AC3.10(i)'s witness.
  *
+ *   and `{ intakePuts }` (EV-341b): every intake section PUT the fixture received, with its
+ *         body — B5a's witness (the first save after « Recharger »).
+ *
  * It exists because the browser sees server actions, never api paths, so "no swap
  * request until Show suggestions is pressed" has no other witness in fixture mode.
  *
@@ -36,7 +39,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 export async function GET() {
   if (COACH_API_MODE !== "fixture") return new NextResponse(null, { status: 404, headers: NO_STORE });
   return NextResponse.json(
-    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), api: apiJournal() },
+    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), intakePuts: fixtureIntakePuts(), api: apiJournal() },
     { headers: NO_STORE }
   );
 }

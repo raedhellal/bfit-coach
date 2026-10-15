@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { Logo } from "@/components/ui/brand";
 import { UiIcon } from "@/components/ui/icons";
 import type { Copy } from "@/lib/copy";

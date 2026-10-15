@@ -1,5 +1,11 @@
 import "server-only";
 import type {
+  CoachTrialSessionRequest,
+  RoutineExercise,
+  CoachTrialSessionResponse,
+  CoachTrialSessionPreview,
+  ProgrammeStatus,
+  TrialSession,
   ActivateAccountRequest,
   ActivationStatus,
   AccountRole,
@@ -78,6 +84,13 @@ import type {
   InitialisedAccountPage,
   InitialiseTraineeRequest,
   ResendInvitationRequest,
+  CoachIntakeConsentStatus,
+  CoachIntakeRequest,
+  CoachIntake,
+  CoachIntakeSection,
+  CoachIntakeSectionName,
+  CoachIntakeSectionSaved,
+  CoachIntakeSectionWrite,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -1351,6 +1364,9 @@ function inactivityBoundaryRows(): RosterClient[] {
     status: "ACTIVE" as const,
     since: isoInstant(40),
     routineChangedSinceYourPublish: false,
+    // EV-341j: established clients on a programme this coach published (no pill, J4). They are
+    // roster-only rows (no plan record), so `withProgrammeStatus` keeps this value.
+    programmeStatus: "PUBLISHED" as const,
   }));
 }
 
@@ -1864,6 +1880,32 @@ function seedCapRecipes(): StoredRecipe[] {
 }
 
 /**
+ * EV-337j2 J2.5 (ruling EV-337j2-R1) — the four names the ligature / apostrophe fold is
+ * tried on, and nothing else, so each J2.5 query can match only its own recipe:
+ * « Canard à l\u2019orange » holds U+2019 and « Salade d'été » the ASCII U+0027. Signed in as
+ * `coach.fold@evoli.fit` (see `COACH_LIBRARIES`).
+ */
+function seedFoldRecipes(): StoredRecipe[] {
+  const rows: Array<[string, RecipeUnit, string]> = [
+    ["B\u0153uf bourguignon", "g", "lean_beef"],
+    ["\u0152ufs brouill\u00e9s", "piece", "egg"],
+    ["Canard \u00e0 l\u2019orange", "g", "chicken_breast"],
+    ["Salade d'\u00e9t\u00e9", "g", "spinach"],
+  ];
+  return rows.map(([name, unit, key], i) => ({
+    id: `8e3f1b22-0000-4000-8000-0000003370f${i}`,
+    name,
+    kcal: 500,
+    proteinG: 40,
+    carbsG: 50,
+    fatG: 16,
+    ingredients: [{ key, quantity: unit === "piece" ? 3 : 150, unit }],
+    steps: ["Cook and serve."],
+    mealSlots: null,
+  }));
+}
+
+/**
  * EV-272 — ⚠ a FIXTURE AFFORDANCE, not an api shape. The api keys a library by the
  * signed-in coach's user id (`listByCoachId`). The fixture has one coach identity for
  * everything else (one roster, one link per trainee), so a second and third LIBRARY are
@@ -1877,6 +1919,7 @@ const COACH_LIBRARIES: Record<string, () => StoredRecipe[]> = {
   "coach.c1@evoli.fit": seedC1Recipes,
   "coach.c0@evoli.fit": () => [],
   "coach.c100@evoli.fit": seedCapRecipes,
+  "coach.fold@evoli.fit": seedFoldRecipes,
 };
 
 function seedLibraries(): Map<string, Map<string, StoredRecipe>> {
@@ -3323,6 +3366,17 @@ async function heldDetailRead(): Promise<void> {
   if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 5_000)));
 }
 /**
+ * EV-337j2 (J2.4, J1.5's loading rule) — ⚠ fixture affordance: the same hold for a LIBRARY
+ * read, under its own cookie (`evoli_fixture_recipes_delay=<ms>` for the recipe list), capped
+ * at 5 s, one browser context. Kept apart from `evoli_fixture_read_delay` on purpose: that
+ * one is BUG-597's "the list stays on screen while the DETAIL loads", which needs the list
+ * itself to answer at once.
+ */
+async function heldListRead(cookie: string): Promise<void> {
+  const ms = Number(await fixtureSwitch(cookie));
+  if (Number.isFinite(ms) && ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 5_000)));
+}
+/**
  * EV-337f1 — ⚠ fixture affordance: `evoli_fixture_long_plan=<clientId>` (one browser
  * context) swaps that client's SEEDED published plan for `longPlan()` (6 days × 6
  * exercises) on the routine read, so « Publier » can be measured at day 1, 3 and 6 of the
@@ -4173,6 +4227,9 @@ function withPlanFlag(row: RosterClient): RosterClient {
  *                                              reads n steps (the 9,950-of-10,000 bar);
  *   `evoli_fixture_roster=fail`              → `GET /coach-portal/clients` is a 500 (the
  *                                              create dialog's roster-failure sentence);
+ *   `evoli_fixture_roster_delay=<ms>`        → EV-356g: `GET /coach-portal/clients` answers
+ *                                              <ms> later (capped at 5 s), per page read;
+ *                                              nothing else is held.
  *   `evoli_fixture_roster_extra=<n>`         → n more ACTIVE roster rows after the six
  *                                              (BUG-472: a roster past one 100-row page);
  *   `evoli_fixture_roster_boundary=1`        → three more rows, last trained 6, 7 and 8
@@ -4789,6 +4846,12 @@ interface FixtureState {
   /** EV-321b — the coach's challenges, by id, each with its participants' day rows. */
   challenges: Map<string, StoredChallenge>;
   /**
+   * EV-341j — every trial session assigned per link, oldest first (b-fit-api EV-341i's
+   * `coach_trial_sessions` and the carrier's completion). Empty at the seed: a test assigns
+   * through the portal's own editor, and completes through `POST /api/fixture/trial`.
+   */
+  trialSessions: Map<string, StoredTrialSession[]>;
+  /**
    * EV-204b — accounts a coach initialised (`POST /coach-portal/trainees`), keyed by USER
    * id. Hidden seeds only (an expired one, an activated one, another coach's): nothing is
    * LISTED until a test adds a client, so the `empty` scenario's roster stays empty.
@@ -4800,6 +4863,244 @@ interface FixtureState {
   initialiseCalls: number[];
   /** `"initialise-resend:<coach>:<user>"`'s window, per user id. */
   resendCalls: Map<string, number[]>;
+  /**
+   * EV-341w — the intake consent and its requests, per link (b-fit-api EV-341p2's
+   * `coach_intake_requests` and the link's INTAKE grant). No entry = no grant and no
+   * request ever made, which is every seeded link: a test reaches the other states through
+   * the portal's own button and `POST /api/fixture/intake` (the trainee's half).
+   */
+  intake: Map<string, FixtureIntakeLink>;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341j — THE TRIAL SESSION, ported from b-fit-api EV-341i @ 95ca369d
+ * (`CoachTrialSessionUseCase`): one open session per link, two-phase assign, derived status.
+ *
+ *   · guard: WORKOUTS on an ACTIVE link (`assertScope`), the routine endpoints' own;
+ *   · status DERIVED on read: DONE if completed (wins over a withdraw), else WITHDRAWN if
+ *     withdrawn, else ASSIGNED. OPEN = not withdrawn (a DONE one stays open until withdrawn,
+ *     EV-341i's ruling, accepted by staff);
+ *   · the coach's read: the open one, else the latest DONE one, else null;
+ *   · `programmeStatus`: PUBLISHED when THIS coach published the live plan (the EV-283a
+ *     authorship record: COACH, or a publish the trainee has since changed), else from the read;
+ *   · the digest is the preview's, of THIS body and its repairs, under a "trial" domain, so a
+ *     publish's digest never acknowledges a trial and the other way round.
+ *
+ * Fixture-only switches (one browser context each):
+ *   `evoli_fixture_trial_read=fail`     → the GET answers 500 (the card's load-error line);
+ *   `evoli_fixture_trial_read=missing`  → the GET answers 404, an api that predates EV-341i:
+ *                                         the card is not drawn at all;
+ *   `evoli_fixture_trial_assign=stale`  → every assign answers 409 COACH_PUBLISH_REPAIRS_
+ *                                         UNACKNOWLEDGED (the trainee's injuries changed
+ *                                         between the preview and the assign): the card must
+ *                                         preview again, never retry the digest.
+ *   `evoli_fixture_trial_preview=object_repair` → the preview's repairs gain one that is NOT a
+ *                                         sentence (an object), `repairCount` still equal to
+ *                                         the list and the digest still valid;
+ *   `evoli_fixture_trial_preview=count_mismatch` → the repairs are the real ones but
+ *                                         `repairCount` is one more than the list.
+ *                                         Both are a preview the card cannot show whole: the
+ *                                         action must fail it (`asTrialPreview`, staff r2 N4),
+ *                                         and with the digest valid an action that dropped the
+ *                                         odd repair would assign straight on.
+ * The trainee completing the session in the app is `fixtureTrialComplete`, reached through
+ * `POST /api/fixture/trial`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface StoredTrialSession {
+  id: string;
+  title: string;
+  plannedOn: string | null;
+  note: string | null;
+  estimatedMinutes: number | null;
+  /** The REPAIRED rows (the trainee receives what the policy returned, as a publish does). */
+  exercises: RoutineExercise[];
+  assignedAt: string;
+  withdrawnAt: string | null;
+  completedOn: string | null;
+}
+
+const TRIAL_BODY_KEYS = new Set(["title", "plannedOn", "note", "estimatedMinutes", "exercises", "digest"]);
+const TRIAL_MAX_EXERCISES = 30;
+
+function trialStatus(t: StoredTrialSession): TrialSession["status"] {
+  return t.completedOn ? "DONE" : t.withdrawnAt ? "WITHDRAWN" : "ASSIGNED";
+}
+
+function trialsOf(id: string): StoredTrialSession[] {
+  return state().trialSessions.get(id) ?? [];
+}
+
+function openTrial(id: string): StoredTrialSession | undefined {
+  return trialsOf(id).find((t) => t.withdrawnAt === null);
+}
+
+/** The coach's read: the open one, else the latest DONE one, else none. */
+function shownTrial(id: string): StoredTrialSession | undefined {
+  return openTrial(id) ?? [...trialsOf(id)].reverse().find((t) => t.completedOn !== null);
+}
+
+function publishedByThisCoach(id: string): boolean {
+  const author = state().planAuthors.get(id);
+  return !!state().plans.get(id) && !!author && (author.lastChangedBy === "COACH" || author.changedSinceYourPublish);
+}
+
+function fixtureProgrammeStatus(id: string): ProgrammeStatus {
+  if (publishedByThisCoach(id)) return "PUBLISHED";
+  const shown = shownTrial(id);
+  if (!shown) return "AWAITING_PROGRAMME";
+  return trialStatus(shown) === "DONE" ? "TRIAL_DONE" : "TRIAL_ASSIGNED";
+}
+
+/** The roster row's `programmeStatus`, from the row's own `scopes` (null without WORKOUTS). */
+function withProgrammeStatus(row: RosterClient): RosterClient {
+  // A roster-only row that states its own (the inactivity boundary rows) keeps it.
+  if (row.programmeStatus !== undefined) return row;
+  return { ...row, programmeStatus: row.scopes.includes("WORKOUTS") ? fixtureProgrammeStatus(row.id) : null };
+}
+
+function trialResponse(id: string): CoachTrialSessionResponse {
+  const shown = shownTrial(id);
+  return {
+    programmeStatus: fixtureProgrammeStatus(id),
+    trialSession: shown
+      ? {
+          id: shown.id,
+          status: trialStatus(shown),
+          title: shown.title,
+          plannedOn: shown.plannedOn,
+          note: shown.note,
+          workoutId: `workout-trial-${shown.id.slice(0, 8)}`,
+          estimatedMinutes: shown.estimatedMinutes,
+          assignedAt: shown.assignedAt,
+          withdrawnAt: shown.withdrawnAt,
+          completedOn: shown.completedOn,
+          exercises: shown.exercises.map((ex, orderIndex) => ({
+            name: ex.name,
+            slug: CATALOG.find((c) => c.name === ex.name)?.slug ?? ex.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            sets: ex.sets,
+            reps: ex.reps === null ? null : Number.parseInt(ex.reps, 10) || null,
+            durationMinutes: ex.durationSeconds === null ? null : Math.max(1, Math.round(ex.durationSeconds / 60)),
+            restSeconds: Number.parseInt(ex.rest, 10) || null,
+            orderIndex,
+          })),
+        }
+      : null,
+  };
+}
+
+/** The request's own checks, in the api's order: undeclared keys, the rows, reps on a timed row. */
+async function checkTrialBody(body: CoachTrialSessionRequest): Promise<void> {
+  const extra = Object.keys(body ?? {}).filter((k) => !TRIAL_BODY_KEYS.has(k));
+  if (extra.length > 0) await fail(400, "COACH_FIELD_NOT_ACCEPTED", `${extra[0]} is not accepted`);
+  const rows = Array.isArray(body?.exercises) ? body.exercises : null;
+  if (!rows || rows.length < 1 || rows.length > TRIAL_MAX_EXERCISES) {
+    await fail(400, "VALIDATION_ERROR", "exercises size must be between 1 and 30");
+  }
+  if ((rows as RoutineExercise[]).some((ex) => ex.trackingType === "DURATION" && ex.reps !== null)) {
+    await fail(400, "COACH_DRAFT_REPS_ON_DURATION", "A timed exercise carries no reps");
+  }
+}
+
+function trialRepairs(id: string, body: CoachTrialSessionRequest): PublishRepair[] {
+  return repairsFor(id, { ...blankTrialRoutine(), trainingDays: [{ dayOfWeek: 1, focus: "", estimatedMinutes: null, exercises: body.exercises }] });
+}
+
+function trialDigest(id: string, body: CoachTrialSessionRequest): string {
+  const { title = null, plannedOn = null, note = null, estimatedMinutes = null, exercises } = body;
+  return digestOf(
+    JSON.stringify({ domain: "trial", body: { title, plannedOn, note, estimatedMinutes, exercises }, repairs: trialRepairs(id, body) })
+  );
+}
+
+function blankTrialRoutine(): Routine {
+  return {
+    name: "",
+    goal: FIXTURE_SUBJECT.goal,
+    level: FIXTURE_SUBJECT.level,
+    daysPerWeek: 1,
+    trainingDays: [],
+    weeklyProgression: [],
+    constraints: { equipment: [], injuries: [], minutesPerSession: 45, daysPerWeek: 1 },
+    summary: null,
+  };
+}
+
+async function fixtureGetTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  const sw = await fixtureSwitch("evoli_fixture_trial_read");
+  if (sw === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+  if (sw === "missing") await fail(404, "NOT_FOUND", "No static resource");
+  return trialResponse(id);
+}
+
+async function fixturePreviewTrialSession(id: string, body: CoachTrialSessionRequest): Promise<CoachTrialSessionPreview> {
+  await assertScope(id, "WORKOUTS");
+  await checkTrialBody(body);
+  if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
+  const repairs = trialRepairs(id, body);
+  // Writes NOTHING (EV-341i I2): the digest is a function of the body, not a stored token.
+  const preview = { repairs, repairCount: repairs.length, digest: trialDigest(id, body), equipmentChecked: false };
+  const sw = await fixtureSwitch("evoli_fixture_trial_preview");
+  if (sw === "object_repair") {
+    // Off the wire type on purpose: the shape an api that structured its repairs would send.
+    const odd = { exerciseName: "Goblet Squat", change: "SWAPPED" } as unknown as PublishRepair;
+    return { ...preview, repairs: [...repairs, odd], repairCount: repairs.length + 1 };
+  }
+  if (sw === "count_mismatch") return { ...preview, repairCount: repairs.length + 1 };
+  return preview;
+}
+
+async function fixtureAssignTrialSession(
+  id: string,
+  body: CoachTrialSessionRequest,
+  digest: string
+): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  await checkTrialBody(body);
+  if (CATALOG_DOWN_IDS.has(id)) await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
+  const stale = (await fixtureSwitch("evoli_fixture_trial_assign")) === "stale";
+  if (stale || typeof digest !== "string" || digest !== trialDigest(id, body)) {
+    await fail(409, "COACH_PUBLISH_REPAIRS_UNACKNOWLEDGED", "Repairs not acknowledged");
+  }
+  if (openTrial(id)) await fail(409, "TRIAL_SESSION_ALREADY_OPEN", "A trial session is already open");
+  const repaired = applyRepairs(id, {
+    ...blankTrialRoutine(),
+    trainingDays: [{ dayOfWeek: 1, focus: "", estimatedMinutes: null, exercises: body.exercises }],
+  }).trainingDays[0].exercises;
+  const stored: StoredTrialSession = {
+    id: crypto.randomUUID(),
+    title: body.title?.trim() || "Séance d'essai",
+    plannedOn: body.plannedOn ?? null,
+    note: body.note ?? null,
+    estimatedMinutes: body.estimatedMinutes ?? null,
+    exercises: repaired,
+    assignedAt: new Date().toISOString(),
+    withdrawnAt: null,
+    completedOn: null,
+  };
+  state().trialSessions.set(id, [...trialsOf(id), stored]);
+  return trialResponse(id);
+}
+
+async function fixtureWithdrawTrialSession(id: string): Promise<CoachTrialSessionResponse> {
+  await assertScope(id, "WORKOUTS");
+  const open = openTrial(id);
+  if (open) open.withdrawnAt = new Date().toISOString();
+  return trialResponse(id);
+}
+
+/**
+ * ⚠ TEST AFFORDANCE — the TRAINEE finishing the session in the app's player
+ * (`POST /me/workout/complete` on the carrier workout): the latest session not yet done,
+ * withdrawn or not (I3b: a player already open can still finish a withdrawn one), is DONE
+ * today. Answers whether there was one.
+ */
+export function fixtureTrialComplete(id: string): boolean {
+  const target = [...trialsOf(id)].reverse().find((t) => t.completedOn === null);
+  if (!target) return false;
+  target.completedOn = new Date().toISOString().slice(0, 10);
+  return true;
 }
 
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
@@ -4885,10 +5186,12 @@ function freshState(): FixtureState {
     legalVersions: { privacyPolicyVersion: "v1.0", termsVersion: "v1.0" },
     activations: [],
     challenges: seedChallenges(),
+    trialSessions: new Map(),
     invited: seedInvited(),
     invitationMails: [],
     initialiseCalls: [],
     resendCalls: new Map(),
+    intake: new Map(),
   };
 }
 
@@ -5056,6 +5359,7 @@ export function resetFixtureState(): void {
   (globalThis as GlobalWithCalls)[CALLS_KEY] = [];
   (globalThis as GlobalWithCalls)[READS_KEY] = [];
   (globalThis as GlobalWithDraftPuts)[DRAFT_PUTS_KEY] = [];
+  resetIntakePuts();
   (globalThis as GlobalWithSwapCache)[SWAP_CACHE_KEY] = new Map();
 }
 
@@ -5404,7 +5708,16 @@ function seedPendingAccounts(): Map<string, FixturePendingAccount> {
  * account above that has not been activated, the ordinary coach otherwise. Called by
  * `/api/auth/login` in fixture mode only.
  */
+/**
+ * EV-341b (staff r1 S7) — ⚠ fixture affordance: a SECOND coach account, with its own `sub`, so a
+ * spec can sign another account in, in another tab, and watch a save refused as
+ * `SESSION_CHANGED`. Every other address signs in as the one fixture coach, as before.
+ */
+export const FIXTURE_SECOND_COACH_EMAIL = "second.coach@evoli.fit";
+const FIXTURE_SECOND_COACH_SUB = "1a2b3c4d-0000-4000-8000-00000000c0b2";
+
 export function fixtureLoginIdentity(email: string): { roles: string[]; sub?: string } {
+  if (email.trim().toLowerCase() === FIXTURE_SECOND_COACH_EMAIL) return { roles: ["USER", "COACH"], sub: FIXTURE_SECOND_COACH_SUB };
   const account = state().pendingAccounts.get(email.trim().toLowerCase());
   if (!account) return { roles: ["USER", "COACH"] };
   if (account.activated) return { roles: [account.grantedRole], sub: account.sub };
@@ -5837,6 +6150,423 @@ async function fixtureListInvited(page = 0, size = 20): Promise<InitialisedAccou
   };
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341w — THE INTAKE CONSENT REQUEST, ported from b-fit-api EV-341p2 @ 95ca369d
+ * (`CoachIntakeRequestUseCase`): one open request per link, 15 minutes, 3 per rolling 24 h.
+ *
+ *   · the guard is `requireManagedLink`: an ACTIVE link and NO data scope, so every seeded
+ *     link may ask; a revoked process or `evoli_fixture_link=ended` is the one 403;
+ *   · every write first closes an open request past its expiry as EXPIRED (the api's lazy
+ *     close, no sweeper), then applies its own reason;
+ *   · the read never writes: an open request past its expiry reads `pending: false`.
+ *
+ * Fixture-only switches (one browser context each):
+ *   `evoli_fixture_intake_ttl_ms=<ms>`  → requests made in this context live <ms> (1 s to
+ *                                         15 min) instead of 15 minutes, so W3's "no GET
+ *                                         after expiresAt" fits in a test;
+ *   `evoli_fixture_intake_read=fail`    → the GET answers 500 (a poll that failed must not
+ *                                         end the wait or show an answer).
+ * The trainee's half (grant, « Pas maintenant », or an expiry) is `fixtureIntakeAnswer`,
+ * reached through `POST /api/fixture/intake`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const INTAKE_TTL_MS = 15 * 60 * 1000; // CoachIntakeRequestUseCase.TTL
+const INTAKE_CAP = 3; // CoachIntakeRequestUseCase.MAX_PER_DAY
+const INTAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type IntakeClosedReason = "EXPIRED" | "SUPERSEDED" | "CANCELLED" | "DISMISSED" | "GRANTED";
+interface FixtureIntakeRequest {
+  id: string;
+  requestedAt: number;
+  expiresAt: number;
+  closedAt: number | null;
+  closedReason: IntakeClosedReason | null;
+}
+interface FixtureIntakeLink {
+  granted: boolean;
+  requests: FixtureIntakeRequest[];
+  /**
+   * EV-341b — the link's intake (b-fit-api EV-341a's `coach_intake_sections`), one entry per
+   * section written; an absent section reads version 0, every field empty. A plain object, not
+   * a Map, so the seed's canonical form stays one JSON shape.
+   */
+  sections?: Partial<Record<CoachIntakeSectionName, { version: number; updatedAt: string; values: Record<string, unknown> }>>;
+}
+
+function intakeLink(id: string): FixtureIntakeLink {
+  const links = state().intake;
+  let link = links.get(id);
+  if (!link) {
+    link = { granted: false, requests: [] };
+    links.set(id, link);
+  }
+  return link;
+}
+
+/** `requireManagedLink`: the overview's own guard (ACTIVE, no data scope). */
+async function assertManagedLink(id: string): Promise<void> {
+  await failIfMalformedId(id); // BUG-600: the api's 400 comes before its guard.
+  if (!OVERVIEWS[id] || state().revoked || (await linkEnded())) {
+    await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  }
+}
+
+/** The lazy close every request write starts with (PR9): EXPIRED at its own expiry. */
+function closeExpired(link: FixtureIntakeLink, now: number): void {
+  for (const r of link.requests) {
+    if (r.closedAt === null && r.expiresAt <= now) {
+      r.closedAt = r.expiresAt;
+      r.closedReason = "EXPIRED";
+    }
+  }
+}
+
+function liveRequest(link: FixtureIntakeLink, now: number): FixtureIntakeRequest | undefined {
+  return link.requests.find((r) => r.closedAt === null && r.expiresAt > now);
+}
+
+async function intakeTtlMs(): Promise<number> {
+  const raw = Number(await fixtureSwitch("evoli_fixture_intake_ttl_ms"));
+  return Number.isFinite(raw) && raw >= 1_000 ? Math.min(raw, INTAKE_TTL_MS) : INTAKE_TTL_MS;
+}
+
+async function fixtureGetIntakeConsent(id: string): Promise<CoachIntakeConsentStatus> {
+  await assertManagedLink(id);
+  if ((await fixtureSwitch("evoli_fixture_intake_read")) === "fail") {
+    await fail(500, "INTERNAL_ERROR", "Internal error");
+  }
+  const link = state().intake.get(id);
+  // Exactly two fields (PR12): nothing here can say WHY a request is no longer pending.
+  return { granted: link?.granted ?? false, pending: link ? liveRequest(link, Date.now()) !== undefined : false };
+}
+
+async function fixtureRequestIntakeConsent(id: string): Promise<CoachIntakeRequest> {
+  await assertManagedLink(id);
+  const now = Date.now();
+  const link = intakeLink(id);
+  closeExpired(link, now);
+  if (link.granted) await fail(409, "INTAKE_ALREADY_GRANTED", "The client has already allowed the intake interview");
+  const inWindow = link.requests.filter((r) => r.requestedAt > now - INTAKE_WINDOW_MS);
+  if (inWindow.length >= INTAKE_CAP) {
+    const oldest = Math.min(...inWindow.map((r) => r.requestedAt));
+    const seconds = Math.min(86_400, Math.max(1, Math.ceil((oldest + INTAKE_WINDOW_MS - now) / 1000)));
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(429, "Too many intake requests on this link", "INTAKE_REQUEST_LIMIT", null, seconds);
+  }
+  const live = liveRequest(link, now);
+  if (live) {
+    live.closedAt = now;
+    live.closedReason = "SUPERSEDED";
+  }
+  const created: FixtureIntakeRequest = {
+    id: crypto.randomUUID(),
+    requestedAt: now,
+    expiresAt: now + (await intakeTtlMs()),
+    closedAt: null,
+    closedReason: null,
+  };
+  link.requests.push(created);
+  return {
+    id: created.id,
+    requestedAt: new Date(created.requestedAt).toISOString(),
+    expiresAt: new Date(created.expiresAt).toISOString(),
+  };
+}
+
+async function fixtureCancelIntakeConsentRequest(id: string): Promise<void> {
+  await assertManagedLink(id);
+  const now = Date.now();
+  const link = state().intake.get(id);
+  if (!link) return;
+  closeExpired(link, now);
+  const live = liveRequest(link, now);
+  if (live) {
+    live.closedAt = now;
+    live.closedReason = "CANCELLED";
+  }
+}
+
+/**
+ * ⚠ TEST AFFORDANCE — the TRAINEE's half of EV-341p2, which no coach call can reach:
+ *   `grant`   → `POST /me/my-coach/intake-consent`: the link gains the grant and every open
+ *               request closes GRANTED (PR8);
+ *   `dismiss` → « Pas maintenant »: the live request closes DISMISSED (PR11); none, nothing;
+ *   `expire`  → the live request's 15 minutes pass now (its row stays open, as on the api,
+ *               until the next write: PR4).
+ * Answers whether anything changed.
+ */
+export function fixtureIntakeAnswer(id: string, answer: "grant" | "dismiss" | "expire"): boolean {
+  const now = Date.now();
+  const link = intakeLink(id);
+  if (answer === "grant") {
+    link.granted = true;
+    for (const r of link.requests) {
+      if (r.closedAt === null) {
+        r.closedAt = now;
+        r.closedReason = "GRANTED";
+      }
+    }
+    return true;
+  }
+  const live = liveRequest(link, now);
+  if (!live) return false;
+  if (answer === "dismiss") {
+    live.closedAt = now;
+    live.closedReason = "DISMISSED";
+  } else {
+    live.expiresAt = now - 1;
+  }
+  return true;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-341b — THE INTAKE INTERVIEW, ported from b-fit-api EV-341a @ 8655a2e5
+ * (`CoachIntakeUseCase`, `IntakeSectionBody`): one record per link, one version per section.
+ *
+ *   · the read's gate is the overview's (`requireManagedLink`); a link without the grant reads
+ *     `{ state: "GRANT_MISSING" }` and nothing else (AC6);
+ *   · a write needs the grant too: without it, `403 COACH_ACCESS_DENIED` and nothing stored;
+ *   · the body is `{ version, values }`, both required, any other key `400
+ *     COACH_FIELD_NOT_ACCEPTED`; each section's fields are checked as the api's reader checks
+ *     them (`400 INTAKE_FIELD_INVALID` naming the field, never the value);
+ *   · a stale `version` is `409 INTAKE_VERSION_CONFLICT` carrying the stored version and time.
+ *
+ * Fixture-only switches (one browser context each), read on the WRITE only:
+ *   `evoli_fixture_intake_extra=on`           → the api is AHEAD of this build: GOALS also
+ *                                               declares `emphasis` (EV-341y1's field, any list of
+ *                                               at most 5 strings), so a spec can store a key the
+ *                                               portal does not know and watch it survive a save
+ *                                               (staff r1 S3). Read on writes; a read returns what
+ *                                               is stored, as the api does;
+ *   `evoli_fixture_intake_save=fail`          → every section PUT answers 500 (B4);
+ *   `evoli_fixture_intake_save_delay_ms=<ms>` → every section PUT is held <ms> (≤ 15 s) before
+ *                                               it is judged, so a save can be caught in flight.
+ * Every PUT the fixture judged is recorded with its body (`fixtureIntakePuts`, through
+ * `GET /api/fixture/calls`): B5a's "the first PUT after « Recharger » carries the stored values
+ * plus that change" is read from there.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const FIXTURE_INTAKE_SECTIONS: readonly CoachIntakeSectionName[] = [
+  "GOALS",
+  "HISTORY",
+  "AVAILABILITY",
+  "LIFESTYLE",
+  "HEALTH",
+  "MEASUREMENTS",
+  "NUTRITION",
+  "COACH_NOTES",
+];
+
+type IntakeFieldRule =
+  | { kind: "one"; values: readonly string[] }
+  | { kind: "list"; values: readonly string[]; max: number }
+  | { kind: "int"; min: number; max: number }
+  | { kind: "intIn"; values: readonly number[] }
+  | { kind: "text"; max: number }
+  | { kind: "date" }
+  /** `evoli_fixture_intake_extra`'s `emphasis`: any strings, distinct, at most `max`. */
+  | { kind: "anyList"; max: number };
+
+const NOTES_RULE: IntakeFieldRule = { kind: "text", max: 1000 };
+const WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
+const ACTIVITIES = ["STRENGTH", "RUNNING", "CYCLING", "SWIMMING", "TEAM_SPORTS", "COMBAT", "YOGA_PILATES", "HIIT", "OTHER"] as const;
+const PLACES = ["GYM", "HOME", "OUTDOOR", "COACH_STUDIO"] as const;
+const FREQUENCY = ["RARELY", "SOMETIMES", "OFTEN"] as const;
+
+/** `IntakeSectionBody.values`, field by field, in the record's order. */
+const INTAKE_RULES: Record<CoachIntakeSectionName, Record<string, IntakeFieldRule>> = {
+  GOALS: {
+    primaryGoal: { kind: "one", values: ["LOSE_WEIGHT", "BUILD_MUSCLE", "GET_STRONGER", "ENDURANCE", "MOBILITY"] },
+    motivations: { kind: "list", values: ["HEALTH", "CONFIDENCE", "APPEARANCE", "PERFORMANCE", "ENERGY", "EVENT"], max: 3 },
+    motivationScore: { kind: "int", min: 1, max: 5 },
+    eventLabel: { kind: "text", max: 80 },
+    eventDate: { kind: "date" },
+    notes: NOTES_RULE,
+  },
+  HISTORY: {
+    level: { kind: "one", values: ["BEGINNER", "INTERMEDIATE", "ADVANCED"] },
+    trainingAge: { kind: "one", values: ["NONE", "LT_6M", "M6_24", "Y2_5", "GT_5Y"] },
+    currentSessionsPerWeek: { kind: "int", min: 0, max: 14 },
+    activities: { kind: "list", values: ACTIVITIES, max: ACTIVITIES.length },
+    notes: NOTES_RULE,
+  },
+  AVAILABILITY: {
+    sessionsPerWeek: { kind: "int", min: 2, max: 6 },
+    sessionMinutes: { kind: "intIn", values: [30, 45, 60, 75, 90] },
+    availableDays: { kind: "list", values: WEEKDAYS, max: WEEKDAYS.length },
+    timeOfDay: { kind: "one", values: ["MORNING", "MIDDAY", "EVENING"] },
+    trainingPlaces: { kind: "list", values: PLACES, max: PLACES.length },
+    notes: NOTES_RULE,
+  },
+  LIFESTYLE: {
+    workActivity: { kind: "one", values: ["SEDENTARY", "STANDING", "PHYSICAL"] },
+    sleepHours: { kind: "one", values: ["LT_6", "H6_7", "H7_8", "GT_8"] },
+    stressScore: { kind: "int", min: 1, max: 5 },
+    notes: NOTES_RULE,
+  },
+  HEALTH: { notes: NOTES_RULE },
+  MEASUREMENTS: { notes: NOTES_RULE },
+  NUTRITION: {
+    usualMealsPerDay: { kind: "int", min: 1, max: 6 },
+    snacking: { kind: "one", values: FREQUENCY },
+    cooking: { kind: "one", values: FREQUENCY },
+    mealsOutPerWeek: { kind: "int", min: 0, max: 14 },
+    alcoholPerWeek: { kind: "one", values: ["NONE", "D1_3", "D4_7", "GT_7"] },
+    waterPerDay: { kind: "one", values: ["LT_1L", "L1_2", "GT_2L"] },
+    notes: NOTES_RULE,
+  },
+  COACH_NOTES: { notes: { kind: "text", max: 4000 } },
+};
+
+/** `IntakeSectionBody.storable`: no control character but tab and line breaks, lone surrogates refused, code points counted. */
+function intakeStorable(text: string, max: number): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if ((c < 0x20 || (c >= 0x7f && c <= 0x9f)) && c !== 0x09 && c !== 0x0a && c !== 0x0d) return false;
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const next = text.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      i++;
+    } else if (c >= 0xdc00 && c <= 0xdfff) {
+      return false;
+    }
+  }
+  return Array.from(text).length <= max;
+}
+
+/** One field, judged as the api's reader judges it. Returns the stored value, or throws 400. */
+async function intakeFieldValue(field: string, rule: IntakeFieldRule, raw: unknown): Promise<unknown> {
+  const invalid = () => failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field });
+  if (raw === undefined || raw === null) return rule.kind === "list" || rule.kind === "anyList" ? [] : null;
+  switch (rule.kind) {
+    case "one":
+      return typeof raw === "string" && rule.values.includes(raw) ? raw : invalid();
+    case "list": {
+      if (!Array.isArray(raw) || raw.length > rule.max) return invalid();
+      const seen: string[] = [];
+      for (const item of raw) {
+        if (typeof item !== "string" || !rule.values.includes(item) || seen.includes(item)) return invalid();
+        seen.push(item);
+      }
+      return seen;
+    }
+    case "anyList":
+      return Array.isArray(raw) && raw.length <= rule.max && raw.every((v) => typeof v === "string") && new Set(raw).size === raw.length
+        ? raw
+        : invalid();
+    case "int":
+      return Number.isInteger(raw) && (raw as number) >= rule.min && (raw as number) <= rule.max ? raw : invalid();
+    case "intIn":
+      return Number.isInteger(raw) && rule.values.includes(raw as number) ? raw : invalid();
+    case "text":
+      return typeof raw === "string" && intakeStorable(raw, rule.max) ? raw : invalid();
+    case "date": {
+      if (typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return invalid();
+      const parsed = new Date(`${raw}T00:00:00Z`);
+      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === raw ? raw : invalid();
+    }
+  }
+}
+
+function emptyIntakeValues(section: CoachIntakeSectionName): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [field, rule] of Object.entries(INTAKE_RULES[section])) out[field] = rule.kind === "list" ? [] : null;
+  return out;
+}
+
+/** A section PUT as the fixture received it (the request body, re-built), for B5a's witness. */
+export interface FixtureIntakePut {
+  clientId: string;
+  section: string;
+  body: unknown;
+  at: number;
+}
+const INTAKE_PUTS_KEY = Symbol.for("evoli.coach.fixture.intakePuts");
+type GlobalWithIntakePuts = typeof globalThis & Record<symbol, FixtureIntakePut[] | undefined>;
+
+/** Every section PUT since the last reset, in arrival order (copies). */
+export function fixtureIntakePuts(): FixtureIntakePut[] {
+  return ((globalThis as GlobalWithIntakePuts)[INTAKE_PUTS_KEY] ?? []).map((entry) => structuredClone(entry));
+}
+
+function resetIntakePuts(): void {
+  (globalThis as GlobalWithIntakePuts)[INTAKE_PUTS_KEY] = [];
+}
+
+async function fixtureGetIntake(id: string): Promise<CoachIntake> {
+  await assertManagedLink(id);
+  const link = state().intake.get(id);
+  if (!link?.granted) return { state: "GRANT_MISSING" };
+  const sections: Partial<Record<CoachIntakeSectionName, CoachIntakeSection>> = {};
+  let written = false;
+  for (const name of FIXTURE_INTAKE_SECTIONS) {
+    const stored = link.sections?.[name];
+    if (stored) written = true;
+    sections[name] = stored
+      ? { version: stored.version, updatedAt: stored.updatedAt, values: structuredClone(stored.values) }
+      : { version: 0, updatedAt: null, values: emptyIntakeValues(name) };
+  }
+  return { state: "READY", status: written ? "IN_PROGRESS" : "NOT_STARTED", sections };
+}
+
+async function fixtureSaveIntakeSection(
+  id: string,
+  section: CoachIntakeSectionName,
+  body: CoachIntakeSectionWrite
+): Promise<CoachIntakeSectionSaved> {
+  const g = globalThis as GlobalWithIntakePuts;
+  (g[INTAKE_PUTS_KEY] ??= []).push({ clientId: id, section, body: structuredClone(body), at: Date.now() });
+  const delay = Number(await fixtureSwitch("evoli_fixture_intake_save_delay_ms"));
+  if (Number.isFinite(delay) && delay > 0) await new Promise((r) => setTimeout(r, Math.min(delay, 15_000)));
+  if ((await fixtureSwitch("evoli_fixture_intake_save")) === "fail") {
+    await fail(500, "INTERNAL_ERROR", "Internal error");
+  }
+  await assertManagedLink(id);
+  if (!FIXTURE_INTAKE_SECTIONS.includes(section)) {
+    await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "section" });
+  }
+  const link = state().intake.get(id);
+  // AC6: no grant, no write; the guard's one body.
+  if (!link?.granted) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  const raw = body as unknown as Record<string, unknown>;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "body" });
+  }
+  for (const key of Object.keys(raw)) {
+    if (key !== "version" && key !== "values") await fail(400, "COACH_FIELD_NOT_ACCEPTED", `Field not accepted: ${key}`);
+  }
+  const version = raw.version;
+  if (!Number.isInteger(version) || (version as number) < 0) {
+    await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "version" });
+  }
+  const values = raw.values as Record<string, unknown> | null | undefined;
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "values" });
+  }
+  const rules: Record<string, IntakeFieldRule> =
+    section === "GOALS" && (await fixtureSwitch("evoli_fixture_intake_extra")) === "on"
+      ? { ...INTAKE_RULES.GOALS, emphasis: { kind: "anyList", max: 5 } }
+      : INTAKE_RULES[section];
+  for (const key of Object.keys(values as object)) {
+    if (!Object.hasOwn(rules, key)) await fail(400, "COACH_FIELD_NOT_ACCEPTED", `Field not accepted: ${key}`);
+  }
+  const stored: Record<string, unknown> = {};
+  for (const [field, rule] of Object.entries(rules)) {
+    stored[field] = await intakeFieldValue(field, rule, (values as Record<string, unknown>)[field]);
+  }
+  const current = link!.sections?.[section];
+  const currentVersion = current?.version ?? 0;
+  if (version !== currentVersion) {
+    await failWithDetails(409, "INTAKE_VERSION_CONFLICT", "The section was changed since it was read", {
+      version: currentVersion,
+      updatedAt: current?.updatedAt ?? null,
+    });
+  }
+  const updatedAt = new Date().toISOString();
+  link!.sections = { ...(link!.sections ?? {}), [section]: { version: currentVersion + 1, updatedAt, values: stored } };
+  return { version: currentVersion + 1, updatedAt };
+}
+
 export const fixtureCoachApi: CoachApi = {
   // ── EV-278c activation ────────────────────────────────────────────────────
   getActivation: fixtureGetActivation,
@@ -5865,6 +6595,14 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async listClients(sort = "needs_attention" as RosterSort, page = 0, size = 100): Promise<RosterPage> {
+    /**
+     * EV-356g — `evoli_fixture_roster_delay=<ms>` holds THIS read alone (capped at 5 s, this
+     * browser context only), the way `evoli_fixture_recipes_delay` holds the recipe list. It
+     * stands in for the production roster read (≥ 8 s on 2026-10-11), so a test can watch the
+     * libraries paint without it. Per call: `/challenges` reads every page, so n pages hold n
+     * times. Held BEFORE the fail switch, so the two together are a slow failure.
+     */
+    await heldListRead("evoli_fixture_roster_delay");
     // EV-321b — the roster read fails (this browser context only).
     if ((await fixtureSwitch("evoli_fixture_roster")) === "fail") {
       await fail(500, "INTERNAL_ERROR", "Internal error");
@@ -5888,7 +6626,9 @@ export const fixtureCoachApi: CoachApi = {
         : sortRoster(
             await Promise.all(
               [lina(), petra(), yusuf(), sara(), tobias(), mara(), ...boundary, ...workoutsFlag].map(async (row) =>
-                withPlanFlag({ ...row, traineeDisplayName: await servedDisplayName(row.id, row.traineeDisplayName) })
+                withProgrammeStatus(
+                  withPlanFlag({ ...row, traineeDisplayName: await servedDisplayName(row.id, row.traineeDisplayName) })
+                )
               )
             ),
             sort
@@ -5985,6 +6725,15 @@ export const fixtureCoachApi: CoachApi = {
     state().revoked = true;
   },
 
+  // ── EV-341w the intake consent request (see the block above `fixtureCoachApi`) ──
+  getIntakeConsent: fixtureGetIntakeConsent,
+  requestIntakeConsent: fixtureRequestIntakeConsent,
+  cancelIntakeConsentRequest: fixtureCancelIntakeConsentRequest,
+
+  // ── EV-341b the intake interview (see the block above `fixtureCoachApi`) ──
+  getIntake: fixtureGetIntake,
+  saveIntakeSection: fixtureSaveIntakeSection,
+
   /**
    * EV-202b — `PUT /coach-portal/clients/{id}/progress-goal`.
    *
@@ -6047,6 +6796,12 @@ export const fixtureCoachApi: CoachApi = {
     // The SAME block the GET embeds, recomputed — so the portal needs no refetch.
     return progressGoalFor(id, sinceOf(id));
   },
+
+  // ── EV-341j the trial session (see the block above `fixtureCoachApi`) ──────
+  getTrialSession: fixtureGetTrialSession,
+  previewTrialSession: fixturePreviewTrialSession,
+  assignTrialSession: fixtureAssignTrialSession,
+  withdrawTrialSession: fixtureWithdrawTrialSession,
 
   // ── EV-184b routine ───────────────────────────────────────────────────────
 
@@ -6511,6 +7266,8 @@ export const fixtureCoachApi: CoachApi = {
 
   async listRecipes(): Promise<CoachRecipeList> {
     recordCall("GET /coach-portal/recipes");
+    // EV-337j2 J2.4 — `evoli_fixture_recipes_delay=<ms>` holds this read (see heldListRead).
+    await heldListRead("evoli_fixture_recipes_delay");
     // EV-272 AC7 — the library read fails (this browser context only).
     if ((await fixtureSwitch("evoli_fixture_recipes")) === "fail") {
       await fail(500, "INTERNAL_ERROR", "Internal error");

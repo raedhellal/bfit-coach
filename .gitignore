@@ -15,3 +15,7 @@ playwright-report/
 # project's real environment values (production secrets included). Never commit either.
 .vercel/
 .env*.local
+
+# BUG-751 — Claude Code provisions agent worktrees here: full checkouts with their own
+# .eslintrc.json and package.json. Never shipped, never linted by this checkout.
+.claude/worktrees/

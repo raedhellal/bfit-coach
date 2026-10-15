@@ -142,6 +142,17 @@ async function saveAndSettle(page: Page) {
 }
 
 /**
+ * Where in the session history the page stands (the Navigation API: Chromium, and
+ * Playwright's WebKit). Read right after a page load, it is the index the guard must hand
+ * the history back to: armed is `start + 1`, clean is `start`.
+ */
+async function historyIndex(page: Page): Promise<number> {
+  return page.evaluate(
+    () => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index
+  );
+}
+
+/**
  * After a save the server ACCEPTED: wait until a reload or a navigation is not a "leave".
  *
  * Since EV-342o / BUG-665 the block carries the unsaved-changes guard. A save that the
@@ -149,22 +160,36 @@ async function saveAndSettle(page: Page) {
  * `beforeunload` prompt stands down with the save's own render. A reload sent before both
  * was either cancelled by the prompt (Playwright dismisses it) or raced the traversal:
  * `net::ERR_ABORTED` at ":686 editing only the start date…", 2 of 3 runs, because "Saved."
- * from the PREVIOUS save is already on screen while this one is pending. So: the guard's
- * entry is gone, and the button is back from « Saving… » (the transition has committed).
+ * from the PREVIOUS save is already on screen while this one is pending. So: the history is
+ * back at `start` (the index read when the page loaded), and the button is back from
+ * « Saving… » (the transition has committed).
+ *
+ * BUG-741: not `!history.state.evoliUnsavedGuard`. The save's action revalidates, and Next
+ * 14.2's HistoryUpdater then `replaceState`s the CURRENT entry with `{ __NA, tree }`,
+ * dropping the flag from the guard's own entry while it is still current. That read was
+ * green under QA's mutant M-S2, where no save ever steps back (49/49).
  */
-async function savedAndSettled(page: Page) {
+async function savedAndSettled(page: Page, start: number) {
   await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
-  await page.waitForFunction(() => !window.history.state?.evoliUnsavedGuard);
+  await page.waitForFunction(
+    (i) => (window as unknown as { navigation: { currentEntry: { index: number } } }).navigation.currentEntry.index === i,
+    start
+  );
   await expect(block(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled();
 }
 
-/** Put Lina back to a known state before a write test, so the file order is not a trap. */
-async function setLina(page: Page, startedOn: string, milestone: string) {
+/**
+ * Put Lina back to a known state before a write test, so the file order is not a trap.
+ * Returns the history index her page loaded at, for `savedAndSettled` after a later save.
+ */
+async function setLina(page: Page, startedOn: string, milestone: string): Promise<number> {
   await page.goto(`/clients/${LINA}`);
+  const start = await historyIndex(page);
   await startDateField(page).fill(startedOn);
   await milestoneField(page).fill(milestone);
   await save(page);
-  await savedAndSettled(page);
+  await savedAndSettled(page, start);
+  return start;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -671,7 +696,7 @@ test.describe("AC1 and AC3 — the two values persist, and the baseline moves wi
 test.describe("🔴 the edit form always sends BOTH fields", () => {
   test("editing only the milestone leaves the start date exactly as it was", async ({ page }) => {
     await signIn(page);
-    await setLina(page, isoDate(50), "65");
+    const start = await setLina(page, isoDate(50), "65");
 
     const before = await block(page).locator("[data-provenance='startedOn']").textContent();
     const startBefore = await cell(page, "weight", "start").textContent();
@@ -681,7 +706,7 @@ test.describe("🔴 the edit form always sends BOTH fields", () => {
     // date, and the provenance line would fall back to the link-date clause.
     await milestoneField(page).fill("66");
     await saveAndSettle(page);
-    await savedAndSettled(page);
+    await savedAndSettled(page, start);
     await page.reload();
 
     await expect(startDateField(page)).toHaveValue(isoDate(50));
@@ -695,11 +720,11 @@ test.describe("🔴 the edit form always sends BOTH fields", () => {
 
   test("editing only the start date leaves the milestone exactly as it was", async ({ page }) => {
     await signIn(page);
-    await setLina(page, isoDate(50), "65");
+    const start = await setLina(page, isoDate(50), "65");
 
     await startDateField(page).fill(isoDate(22));
     await saveAndSettle(page);
-    await savedAndSettled(page);
+    await savedAndSettled(page, start);
     await page.reload();
 
     await expect(milestoneField(page)).toHaveValue("65");
@@ -829,12 +854,12 @@ test.describe("edge cases 6 and 7 — a refused number, and a deliberate clear",
 
   test("clearing the milestone is a write, and the row stops rendering", async ({ page }) => {
     await signIn(page);
-    await setLina(page, isoDate(50), "65");
+    const start = await setLina(page, isoDate(50), "65");
 
     // Edge case 7: an explicit null is a write, not a no-op.
     await milestoneField(page).fill("");
     await saveAndSettle(page);
-    await savedAndSettled(page);
+    await savedAndSettled(page, start);
     await page.reload();
 
     await expect(cell(page, "weight", "milestone")).toHaveCount(0);
@@ -849,7 +874,7 @@ test.describe("edge cases 6 and 7 — a refused number, and a deliberate clear",
     page,
   }) => {
     await signIn(page);
-    await setLina(page, isoDate(50), "65");
+    const start = await setLina(page, isoDate(50), "65");
 
     /**
      * 🔴 The one rendering that keeps a cleared start date from being invisible. The
@@ -859,7 +884,7 @@ test.describe("edge cases 6 and 7 — a refused number, and a deliberate clear",
      */
     await startDateField(page).fill("");
     await saveAndSettle(page);
-    await savedAndSettled(page);
+    await savedAndSettled(page, start);
     await page.reload();
 
     await expect(block(page).locator("[data-provenance='startedOn']")).toHaveText(
@@ -1105,10 +1130,11 @@ test.describe("EV-274b AC3 — no body-fat reading", () => {
   }) => {
     await signIn(page);
     await page.goto(`/clients/${NILS}`);
+    const start = await historyIndex(page);
 
     await bodyFatField(page).fill("22.0");
     await saveAndSettle(page);
-    await savedAndSettled(page);
+    await savedAndSettled(page, start);
     await page.reload();
 
     // EV-274b AC3, verbatim. The api sends no `bodyFatToGoPts` here — absent, not 0.

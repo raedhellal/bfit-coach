@@ -60,9 +60,22 @@ export function weekApplyLabel(copy: Copy, traineeDisplayName: string | null): s
  * card can do what its own successful apply does to its state (no refusal, no error, no cap
  * line: an apply writes the plan row with the day-regen counter at zero).
  */
+/**
+ * What the week card's one transition is running (fluidity batch 1, F1, 4c348b6). Set in the
+ * click, before the transition starts, and read only together with `weekPending`.
+ */
+export type RunningAction =
+  | { kind: "apply" }
+  | { kind: "regenerate"; index: number }
+  | { kind: "swapOptions" }
+  | { kind: "swap" };
+
 interface ApplyScope {
   weekPending: boolean;
   startWeekTransition: TransitionStartFunction;
+  /** F1: which action `weekPending` is about, so the button says « Application… » for an apply only. */
+  weekRunning: RunningAction | null;
+  setWeekRunning: (running: RunningAction) => void;
   weekConfirming: boolean;
   setWeekConfirming: (open: boolean) => void;
   outcome: UseOutcome | null;
@@ -76,6 +89,7 @@ const ApplyScopeContext = createContext<ApplyScope | null>(null);
 /** Wraps the nutrition page below its `h2`: the outcome, the cards and the meal week. */
 export function NutritionApplyScope({ children }: { children: ReactNode }) {
   const [weekPending, startWeekTransition] = useTransition();
+  const [weekRunning, setWeekRunning] = useState<RunningAction | null>(null);
   const [weekConfirming, setWeekConfirming] = useState(false);
   const [outcome, setOutcome] = useState<UseOutcome | null>(null);
   const [weekApplied, setWeekApplied] = useState(0);
@@ -89,6 +103,8 @@ export function NutritionApplyScope({ children }: { children: ReactNode }) {
   const scope: ApplyScope = {
     weekPending,
     startWeekTransition,
+    weekRunning,
+    setWeekRunning,
     weekConfirming,
     setWeekConfirming,
     outcome,
@@ -163,6 +179,9 @@ export function NutritionApplyCard({
   const chosen = templates?.find((t) => t.id === source) ?? null;
   const value = chosen ? chosen.id : CURRENT_TARGETS;
   const dialogOpen = scope.weekConfirming || using !== null;
+  // F1 (4c348b6): « Application… » only while the week is applied; a regenerate or a swap
+  // shares the transition (so the button is disabled), but is not an apply.
+  const applying = scope.weekPending && scope.weekRunning?.kind === "apply";
 
   useEffect(() => {
     if (dialogOpen || scope.weekPending || !returnFocus.current) return;
@@ -234,7 +253,7 @@ export function NutritionApplyCard({
               paddingBottom: 6,
             }}
           >
-            {scope.weekPending ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
+            {applying ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
           </Button>
         </div>
       </Card>

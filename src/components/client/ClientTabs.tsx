@@ -2,9 +2,10 @@ import { getCopy } from "@/lib/i18n/server";
 import type { CoachAccessScope } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 import { TabBar, type TabDef } from "./TabBar";
+import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
 
 /**
- * Overview · Routine · Nutrition (EV-184 AC1, EV-185 AC1), on EVERY client page (EV-342e).
+ * Overview · Routine · Nutrition · Intake (EV-184 AC1, EV-185 AC1, EV-341b B1), on EVERY client page (EV-342e).
  *
  * Real routes, not client-side panels. Three reasons: each tab is a separate api read
  * and a panel would make the overview pay for all three; a tab must be linkable,
@@ -35,13 +36,16 @@ export const CLIENT_SECTIONS = [
   { key: "overview", path: "" },
   { key: "routine", path: "/routine", scope: "WORKOUTS" },
   { key: "nutrition", path: "/nutrition", scope: "NUTRITION" },
+  // EV-341b B1: with the release hold on, always rendered, never filtered out (D22.6a: without the
+  // grant its page says why). With `COACH_INTAKE_REQUEST` off it is not drawn at all (G2).
+  { key: "intake", path: "/intake", scope: "INTAKE" },
 ] as const satisfies readonly { key: keyof Omit<Copy["tabs"], "label">; path: string; scope?: CoachAccessScope }[];
 
 export type ClientTab = (typeof CLIENT_SECTIONS)[number]["key"];
 
 /** The client's tabs, in order, in the request's language. */
-export function clientTabs(clientId: string, copy: Copy): TabDef[] {
-  return CLIENT_SECTIONS.map((s) => ({
+export function clientTabs(clientId: string, copy: Copy, intakeOn: boolean = INTAKE_REQUEST_ENABLED): TabDef[] {
+  return CLIENT_SECTIONS.filter((s) => intakeOn || s.key !== "intake").map((s) => ({
     key: s.key,
     href: `/clients/${clientId}${s.path}`,
     label: copy.tabs[s.key],

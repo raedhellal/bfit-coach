@@ -35,6 +35,7 @@ import {
 } from "@/lib/recipeActions";
 import { settled } from "@/lib/settled";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { useEditorIdentity } from "@/lib/useEditorIdentity";
 import type { CoachIngredientOption, MealSlot, RecipeUnit } from "@/lib/coachApi";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
@@ -58,7 +59,10 @@ import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
  *    retired key and the macro consistency rule are the server's to answer.
  * 4. **No autosave; the unsaved-changes guard holds the work** — the template editor's
  *    arrangement, for the template editor's reason: a coach typing a recipe is holding
- *    state the server does not have.
+ *    state the server does not have. ⚠ BUG-745 (ADR-0033 D33.14 point 4): every write here
+ *    starts from a CLICK, which the session-epoch guard stops after a session change in
+ *    another tab; an autosave or any effect-, timer- or continuation-started write must check
+ *    `isSessionStale()` (`SessionEpochGuard`) first, and reopens that section.
  *
  * EV-320c adds the meal-slot chips. The one rule they add: **a save never untags or
  * re-tags a recipe the coach did not change.** The chips show what the fill uses (an
@@ -89,12 +93,7 @@ const FIELD = {
 
 const LABEL = { fontSize: 12, fontWeight: 600, color: "var(--ink-2)", marginBottom: 5 } as const;
 
-export function RecipeEditor({
-  recipeId: initialRecipeId,
-  initial,
-  unknownKeys = [],
-  storedMealSlots = null,
-}: {
+interface RecipeEditorProps {
   /** Null for "New recipe": the first successful save is a POST. */
   recipeId: string | null;
   initial: RecipeDraft;
@@ -102,7 +101,25 @@ export function RecipeEditor({
   unknownKeys?: string[];
   /** `CoachRecipeResponse.mealSlots` as READ (null = untagged). Ignored for a new recipe. */
   storedMealSlots?: MealSlot[] | null;
-}) {
+}
+
+/**
+ * BUG-739 — the editor, re-keyed when the RECORD changes and only then (`useEditorIdentity`).
+ * `/recipes/new` and `/recipes/{id}` are one route now, so a create's own next update arrives as
+ * new props for this same instance; a navigation to another recipe gets a fresh one.
+ */
+export function RecipeEditor(props: RecipeEditorProps) {
+  const { gen, adopt } = useEditorIdentity(props.recipeId);
+  return <RecipeEditorInner key={gen} {...props} adopt={adopt} />;
+}
+
+function RecipeEditorInner({
+  recipeId: initialRecipeId,
+  initial,
+  unknownKeys = [],
+  storedMealSlots = null,
+  adopt,
+}: RecipeEditorProps & { adopt: (id: string) => void }) {
   const copy = useCopy();
   const [recipeId, setRecipeId] = useState<string | null>(initialRecipeId);
   const [draft, setDraft] = useState<RecipeDraft>(initial);
@@ -126,6 +143,12 @@ export function RecipeEditor({
    * when the save succeeds, the chips are re-synced to the tags the server answered with.
    */
   const slotEdits = useRef(0);
+  /**
+   * BUG-735 — counts every edit, so a save can tell whether the coach typed while its request
+   * was in flight (the text fields stay open during « Saving… », above). Only an answer that
+   * covers everything on screen may clear `dirty`; `slotEdits` is the same idea for the chips.
+   */
+  const revision = useRef(0);
   const [slotBaseline, setSlotBaseline] = useState<SlotBaseline>(
     initialRecipeId === null ? { recipe: "new" } : { recipe: "stored", mealSlots: storedMealSlots }
   );
@@ -139,6 +162,7 @@ export function RecipeEditor({
    * Any edit clears the form-level one, which is about the attempt, not a field.
    */
   function edit(next: RecipeDraft, touched: (address: FieldAddress) => boolean) {
+    revision.current += 1;
     setDraft(next);
     setDirty(true);
     setNotice(null);
@@ -212,6 +236,7 @@ export function RecipeEditor({
     if (!saveable || pending) return;
     const body = forSave(draft, slotBaseline);
     const slotEditsAtSend = slotEdits.current;
+    const sent = revision.current;
     const sentLines = draft.ingredients.map((l) => ({ key: l.key, label: l.label }));
     startTransition(async () => {
       const result = await settled(
@@ -227,7 +252,10 @@ export function RecipeEditor({
       }
       setRefused([]);
       setNotice(copy.recipes.saved);
-      setDirty(false);
+      // BUG-735: an edit made after the request left is not in this answer. It stays unsaved
+      // (the badge, the guard, and the next Save sends it), as in `useCoachForm`'s forms.
+      const late = revision.current !== sent;
+      if (!late) setDirty(false);
       setSlotBaseline({ recipe: "stored", mealSlots: result.recipe.mealSlots });
       /*
        * Re-sync the chips to what the server now holds. After a save that OMITTED the key,
@@ -242,19 +270,40 @@ export function RecipeEditor({
       if (recipeId === null) {
         /**
          * A create becomes an edit WITHOUT a router navigation — the template editor's
-         * lesson: `router.replace` unmounts this island and destroys the confirmation.
+         * lesson (`router.replace` unmounted this island while `new/` and `[id]/` were two
+         * routes, and writes the history too late for a late edit's guard entry: its commit
+         * replaces the guard's entry and the page's entry underneath keeps `/new`, staff's
+         * BUG-739 review probe, Chromium).
          * The guard's sentinel is released first, then the URL is corrected, so a reload
          * lands on `/recipes/{id}` and cannot create a second recipe.
+         *
+         * BUG-739: the correction goes THROUGH Next's router. `replaceState(null, …)` is what
+         * Next's patched `replaceState` acts on; passing `history.state` (which carries its
+         * `__NA`) went past it, Next still believed the page was `/recipes/new`, and its next
+         * render wrote that URL back. `/recipes/new` and `/recipes/{id}` being one route
+         * (`next.config.mjs`) is the other half: the update's render then reaches this same
+         * instance. `adopt` tells the identity rule that `{id}` is the record it already has.
          */
         const id = result.recipe.id;
+        // "stays": the coach is still on this page, so work typed meanwhile stays guarded (BUG-730).
         leaving.release(() => {
           setRecipeId(id);
-          window.history.replaceState(window.history.state, "", `/recipes/${id}`);
-        });
+          adopt(id);
+          window.history.replaceState(null, "", `/recipes/${id}`);
+        }, "stays");
+        // The step takes the sentinel out and `dirty` never changed: ask for it back (BUG-735).
+        if (late) leaving.stillUnsaved();
         return;
       }
       // No `router.refresh()` (ADR-0033 branch 2a): `updateRecipeAction` revalidates.
-      leaving.release();
+      // With a late edit the sentinel stays where it is: Back still asks (BUG-735). The first
+      // update after a create on this page included, since BUG-739: its answer no longer
+      // re-mounts the editor.
+      // `stillUnsaved` is a no-op while that entry is current; it puts one back if a previous
+      // save's step left the form dirty with none (BUG-736's end state; read from the code,
+      // not constructed). Keyed on `late`.
+      if (!late) leaving.release();
+      else leaving.stillUnsaved();
     });
   }
 
@@ -535,10 +584,11 @@ export function RecipeEditor({
         width={420}
         footer={
           <>
-            <Button variant="secondary" onClick={leaving.stay}>
+            {/* BUG-745 (ADR-0033 D33.14): both answer the question and neither posts. */}
+            <Button variant="secondary" onClick={leaving.stay} sessionSafe>
               {copy.routine.leaveStay}
             </Button>
-            <Button variant="danger" onClick={leaving.leave}>
+            <Button variant="danger" onClick={leaving.leave} sessionSafe>
               {copy.routine.leaveConfirm}
             </Button>
           </>

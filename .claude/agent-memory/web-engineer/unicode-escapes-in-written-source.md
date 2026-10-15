@@ -18,3 +18,7 @@ error — a test string silently holds a real NBSP instead of the escape a revie
 `python3` over the text flagging `unicodedata.category` in Cc/Cf/Zl/Zp or a non-space Zs,
 and rewrite each hit as `\uXXXX`. Or build such patterns with `new RegExp("\\u2028…")`
 from a doubled-backslash string, which the tool leaves alone.
+
+EV-337j2 (2026-10-09): it happened through a Bash heredoc into `python3` too, inside an
+`r'''…'''` raw string — the tool layer converts before the shell sees it. Fix that worked:
+`s.replace(chr(0xa0), chr(92) + "u00a0")` over the file, then `grep -n u00a0` to see the escape.

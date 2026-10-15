@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { formatInstant } from "@/lib/format";
@@ -16,7 +16,12 @@ import { NUTRITION_TEMPLATE_NAME_MAX, handOffOutcome } from "@/lib/nutritionTemp
 import { settled } from "@/lib/settled";
 import type { NutritionTemplate, NutritionTemplateList } from "@/lib/coachApi";
 import { startNavigationProgress } from "@/components/shell/NavigationProgress";
+import { useRosterRead } from "@/lib/useRosterRead";
 import { TemplateUseConfirmDialog, type NutritionTarget } from "./TemplateUseConfirmDialog";
+
+// EV-356g's page (`/nutrition-templates`) types its roster read with this; EV-337g2 moved the
+// type into the shared dialog, so it is re-exported from where the page imports it.
+export type { NutritionTarget };
 
 /**
  * EV-273b AC1-AC5 — the nutrition template library, its row controls, and "Use on a
@@ -38,11 +43,14 @@ type Dialog =
 
 export function NutritionTemplateLibrary({
   library,
-  trainees,
+  roster,
 }: {
   library: NutritionTemplateList;
-  /** `null` = the roster read failed. Never collapsed to `[]`: "nobody" would be false. */
-  trainees: NutritionTarget[] | null;
+  /**
+   * EV-356g: the page's roster read, NOT awaited by the page, so the list paints without it.
+   * Resolves to `null` when it failed. Never collapsed to `[]`: "nobody" would be false.
+   */
+  roster: Promise<NutritionTarget[] | null>;
 }) {
   const copy = useCopy();
   const T = copy.nutritionTemplates;
@@ -172,7 +180,7 @@ export function NutritionTemplateLibrary({
       />
       <PickDialog
         template={dialog?.kind === "pick" ? dialog.template : null}
-        trainees={trainees}
+        roster={roster}
         onClose={close}
         onPick={(template, trainee) => setDialog({ kind: "confirm", template, trainee })}
       />
@@ -455,17 +463,19 @@ function DeleteDialog({
  */
 function PickDialog({
   template,
-  trainees,
+  roster,
   onClose,
   onPick,
 }: {
   template: NutritionTemplate | null;
-  trainees: NutritionTarget[] | null;
+  /** EV-356g: still in flight when the dialog may already be open; `null` = it failed. */
+  roster: Promise<NutritionTarget[] | null>;
   onClose: () => void;
   onPick: (template: NutritionTemplate, trainee: NutritionTarget) => void;
 }) {
   const copy = useCopy();
   const T = copy.nutritionTemplates;
+  const read = useRosterRead(roster);
   return (
     <Modal
       dirty={false}
@@ -481,13 +491,22 @@ function PickDialog({
         </Button>
       }
     >
-      {trainees === null ? (
-        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>{T.traineesLoadError}</p>
-      ) : trainees.length === 0 ? (
+      {read.state === "loading" ? (
+        // EV-356g — the page did not wait for the roster; this dialog does, and says so.
+        <p role="status" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>
+          {copy.challenges.clientsLoading}
+        </p>
+      ) : read.state === "failed" ? (
+        // EV-356g — BUG-738's sentence: closing this dialog re-reads nothing, so the old "Close this
+        // and try again." was untrue. A reload is what reads the roster again.
+        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
+          {copy.challenges.clientsLoadError}
+        </p>
+      ) : read.targets.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)" }}>{T.noTrainees}</p>
       ) : (
         <ul aria-label={T.pickTitle} style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
-          {trainees.map((trainee) => (
+          {read.targets.map((trainee) => (
             <li key={trainee.id}>
               <button
                 type="button"

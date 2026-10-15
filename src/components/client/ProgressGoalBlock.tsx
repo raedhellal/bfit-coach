@@ -192,7 +192,7 @@ export function ProgressGoalBlock({
            * never rendered as a consent sentence here. `endAccess` first, so the leave
            * guard stands down and the refresh reaches the layout's redirect.
            */
-          form.endAccess(() => router.refresh());
+          form.endAccess(() => router.refresh(), "leaves");
           return;
         }
         setError(

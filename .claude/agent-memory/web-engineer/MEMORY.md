@@ -36,7 +36,7 @@
 - [A mutant can fail the gate through the dev overlay](a-mutant-can-fail-the-gate-through-the-dev-overlay.md) — `<style>{css}</style>` breaks hydration; the overlay fails layout tests; count console errors
 - [The error boundary is a client component (BUG-689)](the-error-boundary-is-a-client-component.md) — ShellFrame not CoachShell; refresh+reset; render-error switch Proxy needs `then`
 - [Re-rooting a scan can narrow it](re-rooting-a-scan-can-narrow-it.md) — list root lost an `li` after `</ul>`; pin block-li == list-li; `content on ::after` caught BUG-218
-- [Recipe library (EV-256b)](recipe-library-portal-facts.md) — two 400 shapes (details.field vs field-leading message); a retired key is the only reachable unknown-ingredient
+- [Recipe library (EV-256b, EV-337j2)](recipe-library-portal-facts.md) — two 400 shapes; retired key = only unknown-ingredient path; j2 search + list-delay switch
 - [Unicode escapes in written source](unicode-escapes-in-written-source.md) — \uXXXX can land as the literal char; U+2028 in a regex broke tsc; scan Cc/Cf/Zl/Zp after writing
 - [The card frame trips a card-rooted scan](the-card-frame-trips-a-card-rooted-scan.md) — EV-259: Card shadow + icon <path> trip paint/geometry at the card; ruled text-only at the card
 - [Recipe placement (EV-256e)](recipe-placement-portal-facts.md) — no `eaten` on the coach wire; flag server-wide, per-trainee in fixture; fail-open read is fixture-blind; button gone since EV-272
@@ -76,12 +76,14 @@
 - [Pre-hydration adoption hook](prehydration-adoption-hook-facts.md) — every SSR field raced (2026-10-03); snapshot then replay from a task; consent NEVER adopted (Back restores ticks); Modal forms immune
 - [Day accordions (EV-337f2)](day-accordions-337f2-facts.md) — hidden not unmounted; open days held by RoutineEditor across the loads remount; role locators skip hidden fields
 - [Form hooks (EV-342o)](coach-form-hooks-342o-facts.md) — useCoachForm/useAutosave; a navigating save is saved(stored, then); a dismissed beforeunload = ERR_ABORTED reload; two "Portal" navs
+- [The guard's own step is not a Back (BUG-730)](the-guards-own-history-step-is-not-the-coachs-back.md) — re-arm inside history.back() raised the question; a then may STAY (B1); grep every caller first
 - [EV-342k/j/m (2026-10-07)](ev342-kjm-portal-facts.md) — evoli_pro_coach cookie bound to sub; one session list, weigh-ins dropped, J.3 unmet; import() per-locale dict, route table hides the async chunk; zsh `$T:q` trap
 - [Free-text label lookup hits the prototype](a-label-map-lookup-of-free-text-hits-the-prototype.md) — BUG-694: labels["constructor"] is a function; own-property check, literal keys, key by index
 - [A nested button was a spec's discriminator](removing-a-nested-button-can-break-a-spec-that-used-it.md) — BUG-616 broke pro-back-link by count; exclude by an owned data-* marker (EV-352), never a shared class
 - [A module split can grow its page](a-module-split-can-grow-the-page-it-was-for.md) — EV-348: webpack duplicated split modules, client page +0.78 kB; measure encodedBodySize first
 - [A failed preload poisons the URL in WebKit (EV-350)](a-failed-preload-poisons-the-url-in-webkit.md) — buildId-named chunk + DefinePlugin to preload an async chunk; skip on RSC/actions; evict with fetch cache:reload
 - [A route-table URL can match its file and reach another](a-route-table-url-can-match-its-file-and-reach-another.md) — EV-352: /templates/new matches [id]; resolve by Next precedence, refuse @/(.) segments
+- [Merged editor pages (EV-362)](merged-editor-pages-ev362-facts.md) — one editor/page.tsx per resource, new/ [id]/ deleted; rewritten URLs go in REWRITTEN, not ROUTE_FILES
 - [Overview at 768–1279 (EV-345)](overview-768-band-ev345-facts.md) — `.ov-pair` display:contents outside the band; probe by addStyleTag on next start; inline margins, :scope locators
 - [A first-viewport AC is about the bottom (EV-344)](a-first-viewport-ac-is-about-the-bottom.md) — row is 319 px at 1024, do floor arithmetic first; settings fold gated by `.prog-doc`; screenshot-pair method
 - [An N/A needs the whole write path](a-not-applicable-needs-the-whole-write-path.md) — EV-344 B1: a DB CHECK (session_minutes 20–90) refuses Publish; a 'known flake' needs the list entry or a base --repeat-each
@@ -96,3 +98,19 @@
 - [Apply card (EV-337g2)](apply-card-portal-facts.md) — one apply button; BUG-718 prop applyButtonDrawn; 4 reads; R1 select reset, R2 one outcome slot
 - [Playwright -g joins titles with spaces](playwright-grep-joins-titles-with-spaces.md) — "›" never matches; use .*; "No tests found" exits 1 like a red mutant
 - [Check swap in its own call](check-swap-in-its-own-call.md) — a chained check does not gate; under 1 GB sample swapouts twice before starting
+- [toHaveText hides a trim defect in French](tohavetext-hides-a-trim-defect-in-french.md) — EV-337j2 M5: «\u00a0  q \u00a0» reads « q »; assert textContent exactly
+- [A photo placeholder passes a text/img scan](a-photo-placeholder-passes-a-text-and-img-scan.md) — EV-337j2 M7b: probe blank leaf boxes + url() backgrounds for R8
+- [Mutants against one hand-started dev server](mutants-against-a-hand-started-dev-server.md) — untracked config, webServer undefined, HMR per mutant, git checkout to revert
+- [.roster-search ring (BUG-724)](roster-search-ring-fails-inside-contrast.md) — halo dropped under the keyboard ring; sweep in qa/focus-ring-sweep.ts, roster half in its own file
+- [Text fields match :focus-visible on click](text-fields-match-focus-visible-on-click.md) — EV-337j2 N1: :has(input:focus-visible) does not separate pointer from keyboard
+- [Revalidating action wipes the guard flag](a-revalidating-action-wipes-the-guard-flag.md) — BUG-735/741: flag witnesses an arm, only the history index a disarm; late edit + stays needs stillUnsaved()
+- [A shared transition labels every action](a-shared-transition-labels-every-action.md) — tag the running kind in the click; hold the action POST (qa/hold-action.ts) to test pending UI
+- [A hand-made context inherits the runner's language](a-hand-made-context-inherits-the-runners-language.md) — BUG-738: fr-FR WebKit context served EN; set evoli_pro_locale; failed roster = null on 3 pages
+- [A path-segment change always remounts](a-path-segment-change-always-remounts.md) — BUG-739: only search params keep an island; rewrites chain + merge the query; useEditorIdentity
+- [A cleared marker is a sync only if entered](a-cleared-marker-is-a-sync-only-if-it-was-entered.md) — BUG-742: busy-gone is hollow if never entered OR left early; observer + order snapshot, not a poll
+- [Intent prefetch (EV-356d)](intent-prefetch-ev356d-facts.md) — next-start-only tests; WebKit Secure cookies; cached RSC errors (R1-H reload); no AUTO prefetch (ui/Link)
+- [Session-epoch guard (BUG-745)](session-epoch-guard-bug745-facts.md) — seen seeded at first commit (Next's 500 error shell has no html attrs: reload loop); wake-off switch; W4 can't fail (revalidate clears cache), W16 layer b, M3 vs W10; TLS front for WebKit start; R9 reload target, S2 masks M5 alone (U9; M5+MS2 reds W17); R10 retry gap, W21a/b, chrome-error control; run `npm run test:e2e:session` dev+start, no CI
+- [Browser unit harness](browser-unit-harness-for-client-modules.md) — qa/unit-harness.ts: Next's compiled React in a real page, stubs by specifier, mutants read from disk
+- [Invariant N lint bans (BUG-743/744)](invariant-n-lint-bans-bug743-744-facts.md) — src/** override replaces base options; ban the NAME; let ESLint judge directives (allowInlineConfig:false); next build lints js/jsx/ts/tsx only
+- [Library roster unblocked (EV-356g)](library-roster-unblocked-ev356g-facts.md) — unresolved roster promise + useRosterRead; WebKit hydrates a streamed doc only at its end; finished() hangs on RSC
+- [Intake interview (EV-341b)](intake-interview-341b-facts.md) — autosave built from ACs; route handlers miss the middleware's rotated cookie (B17); session-subject header; test rigs

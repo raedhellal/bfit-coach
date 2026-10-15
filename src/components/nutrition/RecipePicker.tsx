@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { useId } from "react";
 import { Badge, Input, MIN_TOUCH_TARGET } from "@/components/ui/kit";
 import type { Copy } from "@/lib/copy";

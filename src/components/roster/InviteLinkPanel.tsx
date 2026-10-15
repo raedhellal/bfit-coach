@@ -30,6 +30,16 @@ export function InviteLinkPanel({ disabledReason }: { disabledReason?: string })
   const [copied, setCopied] = useState(false);
   const started = useRef(false);
 
+  /**
+   * ⚠ BUG-745 (ADR-0033 D33.14 point 4, staff r2 S4) — a WRITE started from a mount effect: it
+   * mints a 7-day invite in the CALLER's own account and carries no id, so under another coach's
+   * cookies nothing on the api would refuse it. Safe today only because every mount follows a
+   * click, which the session-epoch guard stops once the session changed in another tab:
+   * `InviteButton` remounts this panel when it opens, and `AddClientButton` reaches its invite
+   * stage only from « send an invite instead » (a Button). The rule: any write started from an
+   * effect, a timer or an action's continuation checks `isSessionStale()` (`SessionEpochGuard`)
+   * first. Mounting this panel from anything but a click reopens that section.
+   */
   useEffect(() => {
     if (started.current) return;
     started.current = true;

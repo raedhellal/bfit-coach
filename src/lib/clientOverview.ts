@@ -9,7 +9,8 @@ import {
 import { readCoachIdentity, type CoachIdentity } from "./session";
 
 /**
- * BUG-600 — the api's `{id}` is a `UUID` path variable (the shape `recipes/[id]` checks too).
+ * BUG-600 — the api's `{id}` is a `UUID` path variable (the shape `recipes/editor/page.tsx`
+ * checks too).
  * Only the CANONICAL form passes here (8-4-4-4-12 hex). Most segments that fail it are
  * answered `400 INVALID_REQUEST` by the live api, which is not a 403, so the portal must not
  * send them. Not all: Java's `UUID.fromString` is lenient, so a non-canonical id such as

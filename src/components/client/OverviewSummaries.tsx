@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { OverviewCard, OverviewNote } from "./OverviewCard";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { getCopy } from "@/lib/i18n/server";

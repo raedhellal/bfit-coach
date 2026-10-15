@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/ui/Link";
 import { useState } from "react";
 import { Avatar } from "@/components/ui/kit";
 import { StatusPill } from "@/components/ui/StatusPill";
