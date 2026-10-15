@@ -226,16 +226,16 @@ for (const lang of ["en", "fr"] as const) {
       await signInThroughForm(page, { lang });
       await page.goto(`/clients/${LINA}`);
       const nav = bar(page, lang);
-      await expect(nav.getByRole("link")).toHaveCount(3);
+      await expect(nav.getByRole("link")).toHaveCount(4);
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
-        "today's three tabs: no sideways page scroll"
+        "today's four tabs (EV-341b added « Entretien »): no sideways page scroll"
       ).toBeLessThanOrEqual(0);
-      // Today's three tabs fit; a section added later (EV-341b) may not. Two more tabs,
-      // copies of a real one, stand in for it: the bar's CSS is what is under test.
+      // A section added later may not fit. Two more tabs, copies of a real one, stand in for
+      // it: the bar's CSS is what is under test.
       await nav.evaluate((el) => {
         const last = el.lastElementChild as HTMLElement;
-        for (const label of ["Entretien initial", "Historique complet"]) {
+        for (const label of ["Mensurations et bilan", "Historique complet"]) {
           const copy = last.cloneNode(true) as HTMLElement;
           copy.textContent = label;
           el.appendChild(copy);

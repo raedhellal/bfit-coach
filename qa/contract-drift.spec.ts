@@ -401,6 +401,12 @@ const REQUEST_FACING_EXPECTED = [
   "CoachApplySwapRequest",
   "CoachApplyWeekRequest",
   "CoachChallengeCreateRequest",
+  // EV-341b: the section PUT body and the four section value types its `values` names.
+  "CoachIntakeAvailability",
+  "CoachIntakeGoals",
+  "CoachIntakeHistory",
+  "CoachIntakeLifestyle",
+  "CoachIntakeSectionWrite",
   "CoachPlaceRecipeRequest",
   "CoachProgressGoalRequest",
   "CoachRecipeIngredientRequest",
@@ -431,9 +437,7 @@ const REQUEST_FACING_EXPECTED = [
 const UNTAGGED_REQUEST_ROOTS: Record<string, string> = {
   CoachPublishRequest:
     "POST …/routine/publish: `publishRoutine` sends `{ digest }` inline. required [digest] is carried, but no type states it.",
-  // EV-341 (api 95ca369d).
-  CoachIntakeSectionWrite:
-    "PUT …/intake/sections/{n} (EV-341a): no portal call yet. EV-341b (the interview page) tags it and deletes this line.",
+  // EV-341 (api 95ca369d). (CoachIntakeSectionWrite was here until EV-341b tagged it.)
   CoachTrialSessionAssignRequest:
     "POST …/trial-session (EV-341j): an `allOf` of the TAGGED `CoachTrialSessionRequest` and `{ digest }`, which this parser cannot read (it reads a schema's own `properties`). `assignTrialSession` sends the tagged body plus `digest` inline, as `publishRoutine` does; `required` lives on the tagged half ([exercises]) and is checked there.",
 };

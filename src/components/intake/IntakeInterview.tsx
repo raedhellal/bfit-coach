@@ -98,14 +98,19 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
 
   // `form` is read inside the autosave's callbacks, which the engine calls after an await.
   const formRef = useRef<CoachForm<IntakeFormValues> | null>(null);
+  /**
+   * B14 / staff H2: access ended (a 403 on a save or on « Recharger »). Through the form, so the
+   * guard's history entry is gone before the refresh reaches the layout's redirect to
+   * /clients/denied, and leaving it asks nothing. The one refresh of this island: a refused write
+   * revalidates nothing.
+   */
+  const accessEnded = () => formRef.current?.endAccess(() => router.refresh(), "leaves");
 
   const autosave = useAutosave<IntakeFormSection, Payload>({
     versions: initial?.versions ?? EMPTY_VERSIONS,
     send: (section, version, payload) => putIntakeSection(clientId, section, version, payload.values, sessionSubject),
     onSaved: (_section, payload) => setAcked((prev) => ({ ...prev, ...payload.form })),
-    // B14 / staff H2: through the form, so the guard's history entry is gone before the refresh
-    // reaches the layout's redirect to /clients/denied, and leaving it asks nothing.
-    onAccessEnded: () => formRef.current?.endAccess(() => router.refresh(), "leaves"),
+    onAccessEnded: accessEnded,
   });
 
   const form = useCoachForm<IntakeFormValues>({ server: acked, enabled: !disabled, extraDirty: autosave.dirty });
@@ -148,7 +153,7 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
         headers: { Accept: "application/json" },
       });
       if (res.status === 403) {
-        form.endAccess(() => router.refresh(), "leaves");
+        accessEnded();
         return;
       }
       if (res.status !== 200) return; // the conflict stays on screen; « Recharger » again
