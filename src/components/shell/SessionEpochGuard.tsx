@@ -56,11 +56,16 @@ import { hasUnsavedWork, onUnsavedWorkCleared } from "@/lib/useUnsavedChanges";
  * those inside the banner and those whose NEAREST interactive ancestor carries
  * `data-session-safe` (section toggles, the unsaved prompt's Stay and Leave). A control nobody
  * marked costs a dead click while signed out, never a write under another account's cookies.
+ * ADR-0033 R12 (2026-10-15): a control that POSTS may carry the mark only under R12's three
+ * conditions; today that is the intake's « Réessayer », whose save the server refuses under
+ * another account. The intake's « Recharger » sends no account and stays UNMARKED.
  *
- * THE RULE FOR WRITES NOT STARTED BY A CLICK: there is no `fetch` wrapper. Any write started
- * from an effect, a timer or an action's continuation must check `isSessionStale()` first, and
- * reopen ADR-0033 D33.14 point 4. Today's one such write (`InviteLinkPanel`'s mount-effect
- * mint) is click-gated.
+ * THE RULE FOR WRITES NOT STARTED BY A CLICK (ADR-0033 D33.14 point 4 as amended by R11): there is
+ * no `fetch` wrapper. Any write started from an effect, a timer or an action's continuation
+ * either checks `isSessionStale()` first, or sends the page's account to a server that refuses a
+ * mismatch before any upstream call (the intake autosave: `x-evoli-session-subject`, 401
+ * `SESSION_CHANGED`, `src/lib/sessionSubject.ts`). Anything else reopens point 4.
+ * `InviteLinkPanel`'s mount-effect mint is click-gated.
  */
 
 type Layer = "a" | "b" | "c" | "d";

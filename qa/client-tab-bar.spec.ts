@@ -28,11 +28,13 @@ const PAGES = [
   { key: "overview", path: `/clients/${LINA}` },
   { key: "routine", path: `/clients/${LINA}/routine` },
   { key: "nutrition", path: `/clients/${LINA}/nutrition` },
+  // EV-341b B1: the fourth tab, always rendered.
+  { key: "intake", path: `/clients/${LINA}/intake` },
 ] as const;
 
 const LANG = {
-  en: { locale: "en-US", nav: "Trainee sections", tabs: ["Overview", "Routine", "Nutrition"] },
-  fr: { locale: "fr-FR", nav: "Sections du client", tabs: ["Vue d'ensemble", "Programme", "Nutrition"] },
+  en: { locale: "en-US", nav: "Trainee sections", tabs: ["Overview", "Routine", "Nutrition", "Intake"] },
+  fr: { locale: "fr-FR", nav: "Sections du client", tabs: ["Vue d'ensemble", "Programme", "Nutrition", "Entretien"] },
 } as const;
 
 function bar(page: Page, lang: keyof typeof LANG) {
@@ -67,7 +69,7 @@ for (const lang of ["en", "fr"] as const) {
     test.use({ locale: LANG[lang].locale });
 
     for (const width of [1440, 390] as const) {
-      test(`the same bar, in the same place, on all three pages at ${width} px; one h1; no buttons on the overview`, async ({
+      test(`the same bar, in the same place, on all four pages at ${width} px; one h1; no buttons on the overview`, async ({
         page,
       }) => {
         await page.setViewportSize({ width, height: 900 });
@@ -107,6 +109,7 @@ for (const lang of ["en", "fr"] as const) {
         }
         expect(boxes[1], "routine: same place as the overview").toEqual(boxes[0]);
         expect(boxes[2], "nutrition: same place as the overview").toEqual(boxes[0]);
+        expect(boxes[3], "intake: same place as the overview").toEqual(boxes[0]);
       });
     }
   });
@@ -153,7 +156,12 @@ for (const lang of ["en", "fr"] as const) {
         for (const width of [1440, 1024, 768, 390] as const) {
           await page.setViewportSize({ width, height: 900 });
           const tops: number[] = [];
-          for (const path of [`/clients/${client.id}`, `/clients/${client.id}/routine`, `/clients/${client.id}/nutrition`]) {
+          for (const path of [
+            `/clients/${client.id}`,
+            `/clients/${client.id}/routine`,
+            `/clients/${client.id}/nutrition`,
+            `/clients/${client.id}/intake`,
+          ]) {
             await page.goto(path);
             const where = `${path} at ${width}`;
             await expect(page.locator(".client-head"), where).toHaveCount(1);
@@ -165,6 +173,7 @@ for (const lang of ["en", "fr"] as const) {
           }
           expect(tops[1] - tops[0], `${width}: routine vs overview, px`).toBe(0);
           expect(tops[2] - tops[0], `${width}: nutrition vs overview, px`).toBe(0);
+          expect(tops[3] - tops[0], `${width}: intake vs overview, px`).toBe(0);
         }
       });
     }
@@ -217,16 +226,16 @@ for (const lang of ["en", "fr"] as const) {
       await signInThroughForm(page, { lang });
       await page.goto(`/clients/${LINA}`);
       const nav = bar(page, lang);
-      await expect(nav.getByRole("link")).toHaveCount(3);
+      await expect(nav.getByRole("link")).toHaveCount(4);
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
-        "today's three tabs: no sideways page scroll"
+        "today's four tabs (EV-341b added « Entretien »): no sideways page scroll"
       ).toBeLessThanOrEqual(0);
-      // Today's three tabs fit; a section added later (EV-341b) may not. Two more tabs,
-      // copies of a real one, stand in for it: the bar's CSS is what is under test.
+      // A section added later may not fit. Two more tabs, copies of a real one, stand in for
+      // it: the bar's CSS is what is under test.
       await nav.evaluate((el) => {
         const last = el.lastElementChild as HTMLElement;
-        for (const label of ["Entretien initial", "Historique complet"]) {
+        for (const label of ["Mensurations et bilan", "Historique complet"]) {
           const copy = last.cloneNode(true) as HTMLElement;
           copy.textContent = label;
           el.appendChild(copy);

@@ -98,6 +98,8 @@ export default async function warmRoutes(config: FullConfig): Promise<void> {
       `/clients/${LINA}`,
       `/clients/${LINA}/routine`,
       `/clients/${LINA}/nutrition`,
+      // EV-341b. A read only: the interview page writes nothing until a field changes.
+      `/clients/${LINA}/intake`,
       "/clients/denied",
       // EV-204b. A random id renders "this invitation no longer exists" and compiles the route.
       `/invited/${NOBODYS_TEMPLATE}`,

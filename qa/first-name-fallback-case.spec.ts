@@ -10,7 +10,8 @@ import { firstName } from "../src/lib/format";
  * "Nothing was changed for this trainee.", « Les objectifs de ce client … ».
  *
  * This file pins EVERY copy function the fallback reaches, found by a code trace from the seven
- * `firstName()` calls (overview `page.tsx` — since EV-341w also the « Entretien » card it feeds —, the routine `page.tsx` since EV-341j, `routineChange.ts`, `ProgressGoalBlock`,
+ * `firstName()` calls (overview `page.tsx` — since EV-341w also the « Entretien » card it feeds —, the routine `page.tsx` since EV-341j, the intake
+ * `page.tsx` and `/invited/[userId]` since EV-341b, `routineChange.ts`, `ProgressGoalBlock`,
  * `NutritionWeekCard` → `SwapSheet` → `refusalSentence`, `NutritionTemplateLibrary`,
  * `TemplateUseOutcome`), not by a grep of the copy files. Each row is called with what the
  * component passes for a nameless trainee: `firstName(null, locale)`.
@@ -180,6 +181,22 @@ function enRows(): Row[] {
       expected:
         "This trainee will no longer see it in the app. If this trainee has already started it, it can still be finished and will count as done.",
     },
+    // EV-341b: the interview page (`firstName()` in intake/page.tsx) and /invited/[userId].
+    {
+      key: "intakePage.clientCanRead",
+      text: en.intakePage.clientCanRead(first),
+      expected: "This trainee can read this intake, notes included, in their app.",
+    },
+    {
+      key: "intakePage.grantMissing",
+      text: en.intakePage.grantMissing(first),
+      expected: "You can save the intake once this trainee has allowed it in the app.",
+    },
+    {
+      key: "intakePage.grantMissingInvited",
+      text: en.intakePage.grantMissingInvited(first),
+      expected: "You can save the intake once this trainee has activated their account and allowed the intake in the app.",
+    },
   ];
 }
 
@@ -342,6 +359,22 @@ function frRows(): Row[] {
       expected:
         "Ce client ne la verra plus dans l'app. Si ce client l'a déjà commencée, elle pourra être terminée et comptera comme faite.",
     },
+    // EV-341b: the interview page and /invited/[userId].
+    {
+      key: "intakePage.clientCanRead",
+      text: fr.intakePage.clientCanRead(first),
+      expected: "Ce client peut lire cet entretien, notes comprises, dans son application.",
+    },
+    {
+      key: "intakePage.grantMissing",
+      text: fr.intakePage.grantMissing(first),
+      expected: "L'entretien pourra être enregistré quand ce client l'aura autorisé dans l'app.",
+    },
+    {
+      key: "intakePage.grantMissingInvited",
+      text: fr.intakePage.grantMissingInvited(first),
+      expected: "L'entretien pourra être enregistré quand ce client aura activé son compte et autorisé l'entretien dans l'app.",
+    },
   ];
 }
 
@@ -353,11 +386,12 @@ const FALLBACK = {
 } as const;
 
 /**
- * Every copy function the trace found, by language: 34 keys each (EV-341w: +2, the « Entretien »
+ * Every copy function the trace found, by language: 37 keys each (EV-341b: +3, the interview page
+ * and the invited page's intake sentence; EV-341w: +2, the « Entretien »
  * card; EV-341j: +1, the trial session's withdraw dialog). Pinned, so a row dropped from the table
  * (and with it a call site) fails here rather than going quiet.
  */
-const KEYS = 34;
+const KEYS = 37;
 
 for (const lang of ["en", "fr"] as const) {
   test.describe(`BUG-720 — the fallback's case, sentence by sentence (${lang})`, () => {

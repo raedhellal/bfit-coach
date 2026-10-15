@@ -85,6 +85,14 @@ const NO_SHELL: { route: string; files: RegExp; reason: string }[] = [
   { route: "/activate", files: /^activate\/page\.tsx$/, reason: "EV-278c's activation: a PENDING session only, before the coach has a portal" },
   { route: "/unavailable", files: /^unavailable\/page\.tsx$/, reason: "middleware's 503 when the api gave no session verdict: one card, no api call" },
   {
+    route: "/clients/[id]/intake",
+    files: /^clients\/\[id\]\/intake\/page\.tsx$/,
+    reason:
+      "EV-341b, dark behind COACH_INTAKE_REQUEST, which this suite's server (roster config) leaves unset: the route is " +
+      "notFound() before its shell renders (G3). With the switch on it draws CoachShell like its sibling tabs; that case " +
+      "is `intake-interview.spec.ts`'s « BUG-704 on the intake page, flag on », on the default server.",
+  },
+  {
     route: "/i/*",
     files: /^i\//,
     reason:

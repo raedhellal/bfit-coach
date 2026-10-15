@@ -20,6 +20,15 @@
  *
  * OFF means: no card on the overview, no `GET …/intake-consent` in its render, the BFF read
  * answers 404, and the two server actions refuse before calling the api.
+ *
+ * EV-341b (story R6, 2026-10-15): THE SAME SWITCH NOW HOLDS THE INTERVIEW TOO, so the name says
+ * less than it does. It is not renamed (a merged, QA-passed variable), and a second flag would add
+ * two states nobody wants (the card without the page, or the page without the card). OFF also
+ * means (G2–G7): no « Entretien » tab, `/clients/{id}/intake` is a 404 that reads no intake, consent or routine (the
+ * `[id]` layout still reads the client, as for any client URL), the save
+ * handler and `/api/bff/clients/{id}/intake` are 404 for every method before any other check, no
+ * intake section on `/invited/{userId}`, and the revoke dialog keeps `main`'s body. Every gate
+ * reads `INTAKE_REQUEST_ENABLED` (`src/lib/env.ts`, G1). Turning it on is carded as EV-369.
  */
 export const INTAKE_REQUEST_FLAG = "COACH_INTAKE_REQUEST";
 

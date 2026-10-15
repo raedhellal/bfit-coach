@@ -254,9 +254,16 @@ function refreshAccessToken(): Promise<string | null> {
  */
 export async function apiFetch<T>(
   path: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  /**
+   * EV-341b — the bearer to use instead of the request's access cookie. Only a route handler
+   * passes one (`handlerAccessToken`): in an App Router route handler, `cookies()` does not see
+   * the token the middleware rotated in this same request (see `src/lib/handlerSession.ts`).
+   * The 401 refresh-and-replay below is unchanged.
+   */
+  options: { bearer?: string } = {}
 ): Promise<T> {
-  const token = readAccessToken();
+  const token = options.bearer ?? readAccessToken();
   if (!token) throw new ApiError(401, "No session", "AUTH_UNAUTHORIZED");
 
   const method = (init.method ?? "GET").toUpperCase();

@@ -158,6 +158,16 @@ const SAME_IN_BOTH: Record<string, string> = {
   "catalog.equipment.vitruvian": "a brand name",
   "catalog.equipment.yoga": "French 'Yoga'",
   "catalog.equipment.cardio": "French 'Cardio'",
+  // EV-341b: the intake catalogue's own words (story table; EV-341r R4's adopted labels).
+  "intakePage.fields.motivations": "French 'Motivations' (b-fit-mobile coaching.intakeRead.fields)",
+  "intakePage.fields.motivationScore": "French 'Motivation' (b-fit-mobile coaching.intakeRead.fields)",
+  "intakePage.fields.stressScore": "French 'Stress' (b-fit-mobile coaching.intakeRead.fields)",
+  "intakePage.fields.notes": "French 'Notes' (the catalogue's « Notes »)",
+  "intakePage.values.primaryGoal.ENDURANCE": "French 'Endurance' (the catalogue table)",
+  "intakePage.values.activities.YOGA_PILATES": "French 'Yoga / Pilates' (the catalogue table)",
+  "intakePage.values.activities.HIIT": "French 'CrossFit / HIIT' (the catalogue table)",
+  "intakePage.sectionLabel": "French 'Section' (staff r1 N4)",
+  "intakePage.minutes": "a number and 'min', the French abbreviation too (EV-341r R4's unit)",
 };
 
 test("no French string or template output is left identical to English, outside the allowlist", () => {

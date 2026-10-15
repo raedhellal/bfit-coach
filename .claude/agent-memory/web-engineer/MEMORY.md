@@ -110,3 +110,4 @@
 - [Browser unit harness](browser-unit-harness-for-client-modules.md) — qa/unit-harness.ts: Next's compiled React in a real page, stubs by specifier, mutants read from disk
 - [Invariant N lint bans (BUG-743/744)](invariant-n-lint-bans-bug743-744-facts.md) — src/** override replaces base options; ban the NAME; let ESLint judge directives (allowInlineConfig:false); next build lints js/jsx/ts/tsx only
 - [Library roster unblocked (EV-356g)](library-roster-unblocked-ev356g-facts.md) — unresolved roster promise + useRosterRead; WebKit hydrates a streamed doc only at its end; finished() hangs on RSC
+- [Intake interview (EV-341b)](intake-interview-341b-facts.md) — autosave built from ACs; route handlers miss the middleware's rotated cookie (B17); session-subject header; test rigs
