@@ -3173,8 +3173,9 @@ const liveCoachApi = {
 
   // ── EV-341w the intake consent request (b-fit-api EV-341p2, see the block above) ──
 
-  getIntakeConsent(id: string): Promise<CoachIntakeConsentStatus> {
-    return apiFetch<CoachIntakeConsentStatus>(`${client(id)}/intake-consent`);
+  /** `bearer`: the poll route's token (`handlerAccessToken`, EV-341b staff r1 S1); a page passes none. */
+  getIntakeConsent(id: string, bearer?: string): Promise<CoachIntakeConsentStatus> {
+    return apiFetch<CoachIntakeConsentStatus>(`${client(id)}/intake-consent`, {}, { bearer });
   },
   /** Never retried: a second POST supersedes the first and spends one of the three a day. */
   requestIntakeConsent(id: string): Promise<CoachIntakeRequest> {

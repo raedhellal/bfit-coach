@@ -421,6 +421,8 @@ export const fr = {
     revoke: "Révoquer l'accès",
     revokeTitle: "Révoquer l'accès ?",
     revokeBody: (name: string) =>
+      `${name} sera retiré de votre liste de clients et vous ne verrez plus ses données d'entraînement. Son compte Evoli Fit et tout son historique sont conservés.`,
+    revokeBodyIntake: (name: string) =>
       `${name} sera retiré de votre liste de clients et vous ne verrez plus ses données d'entraînement. Si vous avez mené un entretien avec ${name}, il sera supprimé définitivement. Son compte Evoli Fit et tout son historique d'entraînement sont conservés.`,
     revokeConfirm: "Révoquer l'accès",
     revokeCancel: "Annuler",
@@ -1622,6 +1624,8 @@ export const fr = {
     grantMissing: (firstName: string) => `L'entretien pourra être enregistré quand ${mid(firstName)} l'aura autorisé dans l'app.`,
     grantMissingInvited: (firstName: string) =>
       `L'entretien pourra être enregistré quand ${mid(firstName)} aura activé son compte et autorisé l'entretien dans l'app.`,
+    sectionLabel: "Section",
+    motivationsHint: "3 au maximum.",
     notStarted: "À faire",
     started: "Commencé",
     saving: "Enregistrement…",
@@ -1629,12 +1633,16 @@ export const fr = {
     retrying: "Non enregistré. Nouvelle tentative…",
     failed: "Non enregistré. Vérifiez votre connexion\u00a0: vos réponses restent sur cette page.",
     tryAgain: "Réessayer",
+    refusedField: (field: string) =>
+      `Non enregistré\u00a0: la réponse ${q(field)} a été refusée. Modifiez-la pour enregistrer à nouveau.`,
+    refusedSection: "Non enregistré\u00a0: une réponse de cette section a été refusée. Modifiez-la pour enregistrer à nouveau.",
     conflict: "Cet entretien a été modifié dans un autre onglet.",
     reload: "Recharger",
     sessionEnded: "Votre session a expiré. Reconnectez-vous dans un nouvel onglet\u00a0: vos réponses restent sur cette page.",
     /** « 1 000 »: French groups thousands with a no-break space (U+202F, as `formatKcal`). */
     notesCounter: (count: number) => `${n(count)} / ${n(1000)}`,
     notesTooLong: "Trop long\u00a0: 1\u202f000 caractères au maximum.",
+    eventLabelTooLong: "Trop long\u00a0: 80 caractères au maximum.",
     sections: {
       GOALS: "Objectifs et motivation",
       HISTORY: "Historique sportif",

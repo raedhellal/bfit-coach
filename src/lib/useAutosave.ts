@@ -35,6 +35,7 @@ export interface Autosave<K extends string, P> extends AutosaveSnapshot<K> {
   flush(key: K): void;
   retry(): void;
   reload(key: K, version: number): void;
+  endSession(): void;
 }
 
 export function useAutosave<K extends string, P>(options: UseAutosaveOptions<K, P>): Autosave<K, P> {
@@ -74,5 +75,6 @@ export function useAutosave<K extends string, P>(options: UseAutosaveOptions<K, 
     flush: (key) => engine.flush(key),
     retry: () => engine.retry(),
     reload: (key, version) => engine.reload(key, version),
+    endSession: () => engine.endSession(),
   };
 }

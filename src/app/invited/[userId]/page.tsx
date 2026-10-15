@@ -1,4 +1,5 @@
 import { BackLink } from "@/components/ui/BackLink";
+import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientNotice } from "@/components/client/ClientNotice";
 import { InvitedPageActions } from "@/components/invited/InvitedPageActions";
@@ -133,25 +134,27 @@ export default async function InvitedPage({ params }: { params: { userId: string
       {/*
         EV-341b B11: the intake, visible and disabled, with the reason beside it and wired to it.
         No button and no request (B11a, ADR-0034a F7): an invited client has no link, so no
-        consent request can exist.
+        consent request can exist. Dark behind COACH_INTAKE_REQUEST (G6).
       */}
-      <section className="ov-card ov-section" aria-labelledby="invited-intake-title" data-invited-intake="">
-        <div className="ov-card-head">
-          <h2 id="invited-intake-title" className="ov-card-title">
-            {copy.intake.title}
-          </h2>
-        </div>
-        <p id="invited-intake-why" className="ov-note">
-          {copy.intakePage.grantMissingInvited(firstName(row.fullName, copy.locale))}
-        </p>
-        <div style={{ marginTop: 14 }}>
-          <span style={{ display: "inline-flex" }} data-invited-intake-control="">
-            <Button variant="secondary" disabled ariaDescribedBy="invited-intake-why">
-              {copy.tabs.intake}
-            </Button>
-          </span>
-        </div>
-      </section>
+      {INTAKE_REQUEST_ENABLED && (
+        <section className="ov-card ov-section" aria-labelledby="invited-intake-title" data-invited-intake="">
+          <div className="ov-card-head">
+            <h2 id="invited-intake-title" className="ov-card-title">
+              {copy.intake.title}
+            </h2>
+          </div>
+          <p id="invited-intake-why" className="ov-note">
+            {copy.intakePage.grantMissingInvited(firstName(row.fullName, copy.locale))}
+          </p>
+          <div style={{ marginTop: 14 }}>
+            <span style={{ display: "inline-flex" }} data-invited-intake-control="">
+              <Button variant="secondary" disabled ariaDescribedBy="invited-intake-why">
+                {copy.tabs.intake}
+              </Button>
+            </span>
+          </div>
+        </section>
+      )}
     </CoachShell>
   );
 }

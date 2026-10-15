@@ -46,8 +46,8 @@ const T = {
     more: "More",
     revoke: "Revoke access",
     revokeBody:
-      // EV-341b B12: the intake's deletion is named.
-      "Unnamed client will be removed from your roster and you will no longer see their training data. If you recorded an intake interview with Unnamed client, it will be permanently deleted. They keep their Evoli Fit account and all of their training history.",
+      // The roster config runs with COACH_INTAKE_REQUEST unset: main's body (EV-341b G7).
+      "Unnamed client will be removed from your roster and you will no longer see their training data. They keep their Evoli Fit account and all of their history.",
     noDataBody:
       "Unnamed client has not shared their sessions, progress, weigh-ins or nutrition with you. This is not a zero: it is what they chose to share.",
     routineError: "This trainee's routine could not be loaded.",
@@ -72,7 +72,7 @@ const T = {
     more: "Plus",
     revoke: "Révoquer l'accès",
     revokeBody:
-      "Client sans nom sera retiré de votre liste de clients et vous ne verrez plus ses données d'entraînement. Si vous avez mené un entretien avec Client sans nom, il sera supprimé définitivement. Son compte Evoli Fit et tout son historique d'entraînement sont conservés.",
+      "Client sans nom sera retiré de votre liste de clients et vous ne verrez plus ses données d'entraînement. Son compte Evoli Fit et tout son historique sont conservés.",
     noDataBody:
       "Client sans nom n'a partagé ni ses séances, ni sa progression, ni ses pesées, ni sa nutrition avec vous. Ce n'est pas un zéro : c'est son choix de partage.",
     routineError: "Le programme de ce client n'a pas pu être chargé.",

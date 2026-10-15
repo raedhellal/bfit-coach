@@ -5708,7 +5708,16 @@ function seedPendingAccounts(): Map<string, FixturePendingAccount> {
  * account above that has not been activated, the ordinary coach otherwise. Called by
  * `/api/auth/login` in fixture mode only.
  */
+/**
+ * EV-341b (staff r1 S7) — ⚠ fixture affordance: a SECOND coach account, with its own `sub`, so a
+ * spec can sign another account in, in another tab, and watch a save refused as
+ * `SESSION_CHANGED`. Every other address signs in as the one fixture coach, as before.
+ */
+export const FIXTURE_SECOND_COACH_EMAIL = "second.coach@evoli.fit";
+const FIXTURE_SECOND_COACH_SUB = "1a2b3c4d-0000-4000-8000-00000000c0b2";
+
 export function fixtureLoginIdentity(email: string): { roles: string[]; sub?: string } {
+  if (email.trim().toLowerCase() === FIXTURE_SECOND_COACH_EMAIL) return { roles: ["USER", "COACH"], sub: FIXTURE_SECOND_COACH_SUB };
   const account = state().pendingAccounts.get(email.trim().toLowerCase());
   if (!account) return { roles: ["USER", "COACH"] };
   if (account.activated) return { roles: [account.grantedRole], sub: account.sub };
@@ -6323,6 +6332,12 @@ export function fixtureIntakeAnswer(id: string, answer: "grant" | "dismiss" | "e
  *   · a stale `version` is `409 INTAKE_VERSION_CONFLICT` carrying the stored version and time.
  *
  * Fixture-only switches (one browser context each), read on the WRITE only:
+ *   `evoli_fixture_intake_extra=on`           → the api is AHEAD of this build: GOALS also
+ *                                               declares `emphasis` (EV-341y1's field, any list of
+ *                                               at most 5 strings), so a spec can store a key the
+ *                                               portal does not know and watch it survive a save
+ *                                               (staff r1 S3). Read on writes; a read returns what
+ *                                               is stored, as the api does;
  *   `evoli_fixture_intake_save=fail`          → every section PUT answers 500 (B4);
  *   `evoli_fixture_intake_save_delay_ms=<ms>` → every section PUT is held <ms> (≤ 15 s) before
  *                                               it is judged, so a save can be caught in flight.
@@ -6348,7 +6363,9 @@ type IntakeFieldRule =
   | { kind: "int"; min: number; max: number }
   | { kind: "intIn"; values: readonly number[] }
   | { kind: "text"; max: number }
-  | { kind: "date" };
+  | { kind: "date" }
+  /** `evoli_fixture_intake_extra`'s `emphasis`: any strings, distinct, at most `max`. */
+  | { kind: "anyList"; max: number };
 
 const NOTES_RULE: IntakeFieldRule = { kind: "text", max: 1000 };
 const WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
@@ -6420,7 +6437,7 @@ function intakeStorable(text: string, max: number): boolean {
 /** One field, judged as the api's reader judges it. Returns the stored value, or throws 400. */
 async function intakeFieldValue(field: string, rule: IntakeFieldRule, raw: unknown): Promise<unknown> {
   const invalid = () => failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field });
-  if (raw === undefined || raw === null) return rule.kind === "list" ? [] : null;
+  if (raw === undefined || raw === null) return rule.kind === "list" || rule.kind === "anyList" ? [] : null;
   switch (rule.kind) {
     case "one":
       return typeof raw === "string" && rule.values.includes(raw) ? raw : invalid();
@@ -6433,6 +6450,10 @@ async function intakeFieldValue(field: string, rule: IntakeFieldRule, raw: unkno
       }
       return seen;
     }
+    case "anyList":
+      return Array.isArray(raw) && raw.length <= rule.max && raw.every((v) => typeof v === "string") && new Set(raw).size === raw.length
+        ? raw
+        : invalid();
     case "int":
       return Number.isInteger(raw) && (raw as number) >= rule.min && (raw as number) <= rule.max ? raw : invalid();
     case "intIn":
@@ -6522,7 +6543,10 @@ async function fixtureSaveIntakeSection(
   if (!values || typeof values !== "object" || Array.isArray(values)) {
     await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "values" });
   }
-  const rules = INTAKE_RULES[section];
+  const rules: Record<string, IntakeFieldRule> =
+    section === "GOALS" && (await fixtureSwitch("evoli_fixture_intake_extra")) === "on"
+      ? { ...INTAKE_RULES.GOALS, emphasis: { kind: "anyList", max: 5 } }
+      : INTAKE_RULES[section];
   for (const key of Object.keys(values as object)) {
     if (!Object.hasOwn(rules, key)) await fail(400, "COACH_FIELD_NOT_ACCEPTED", `Field not accepted: ${key}`);
   }

@@ -118,10 +118,12 @@ test("B17: 3 minutes of typing in section 1 with a 1-minute token, then sections
 }) => {
   test.setTimeout(8 * 60 * 1000);
 
-  const saves: { section: string; status: number; at: number }[] = [];
+  const saves: { section: string; status: number; at: number; source: string | null }[] = [];
   page.on("response", (res: Response) => {
     const m = /\/api\/clients\/[^/]+\/intake\/([A-Z_]+)$/.exec(new URL(res.url()).pathname);
-    if (m && res.request().method() === "PUT") saves.push({ section: m[1], status: res.status(), at: Date.now() });
+    if (m && res.request().method() === "PUT") {
+      saves.push({ section: m[1], status: res.status(), at: Date.now(), source: res.headers()["x-evoli-token-source"] ?? null });
+    }
   });
 
   // Sign in through the form, as a coach does.
@@ -158,6 +160,8 @@ test("B17: 3 minutes of typing in section 1 with a 1-minute token, then sections
   expect(page.url(), "no navigation in 3 minutes").toBe(url);
   const typingSaves = saves.filter((s) => s.section === "GOALS");
   const elapsed = Math.round((Date.now() - started) / 1000);
+  const sources = [...new Set(typingSaves.map((s) => s.source))].sort();
+  report(`B17 typing token sources (C1): ${JSON.stringify(sources)}`);
   report(
     `B17 typing: ${elapsed}s, ${typed} characters, ${typingSaves.length} saves, statuses ${JSON.stringify(
       [...new Set(typingSaves.map((s) => s.status))]
@@ -200,8 +204,12 @@ test("B17: 3 minutes of typing in section 1 with a 1-minute token, then sections
   await Promise.all(held.map((h) => h.go()));
   await expect.poll(() => saves.length - before, { timeout: 20_000 }).toBe(2);
   const concurrent = saves.slice(before);
-  report(`B17 concurrent across an expiry: ${JSON.stringify(concurrent.map((s) => ({ section: s.section, status: s.status })))}`);
+  report(
+    `B17 concurrent across an expiry: ${JSON.stringify(concurrent.map((s) => ({ section: s.section, status: s.status, tokenSource: s.source })))}`
+  );
   expect(concurrent.map((s) => s.status)).toEqual([200, 200]);
+  // ADR-0034 A34.1 (C1): with no live access cookie, the bearer is the one the middleware rotated.
+  expect(concurrent.map((s) => s.source)).toEqual(["rotated", "rotated"]);
   const rotated = await accessCookie(page);
   expect(rotated, "the expired token was rotated by those saves").not.toBe(stale);
   await page.unroute(/\/api\/clients\/[^/]+\/intake\/(GOALS|HISTORY)$/);

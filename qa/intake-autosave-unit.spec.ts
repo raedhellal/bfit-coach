@@ -253,6 +253,55 @@ test.describe("B18 — the autosave engine", () => {
     expect(engine.snapshot().dirty).toBe(true);
   });
 
+  test("B4 (staff r1 B2): after a 4xx, a blur with no change re-sends nothing; a change does", async () => {
+    const { clock, sent, engine } = rig();
+    engine.change("GOALS", "refused");
+    await clock.advance(1_500);
+    sent[0].answer({ kind: "invalid", field: "notes" });
+    await clock.advance(0);
+    engine.flush("GOALS");
+    await clock.advance(60_000);
+    expect(sent, "the refused body is not sent again on a blur").toHaveLength(1);
+    expect(engine.snapshot().statuses.GOALS).toBe("invalid");
+    engine.change("GOALS", "fixed");
+    await clock.advance(1_500);
+    expect(sent.map((s) => s.payload)).toEqual(["refused", "fixed"]);
+    // B4a: the refusal (and its field) outlives the change that re-arms the save, until a 2xx.
+    expect(engine.snapshot().refused.GOALS).toEqual({ field: "notes" });
+    sent[1].answer(ok(1));
+    await clock.advance(0);
+    expect(engine.snapshot().refused.GOALS).toBeNull();
+  });
+
+  test("B15 from outside a save (staff r1 S5): endSession stops every queue and keeps the work dirty; retry() leaves it", async () => {
+    const { clock, sent, engine } = rig();
+    engine.change("GOALS", "g");
+    engine.endSession();
+    await clock.advance(60_000);
+    expect(sent).toHaveLength(0);
+    expect(engine.snapshot().signedOut).toBe(true);
+    expect(engine.snapshot().dirty).toBe(true);
+    engine.retry();
+    expect(sent.map((s) => s.payload)).toEqual(["g"]);
+  });
+
+  test("B4 (staff r1 B2): after the 4th failure, a blur with no change sends no 5th PUT; « Réessayer » does", async () => {
+    const { clock, sent, engine } = rig();
+    engine.change("GOALS", "v");
+    await clock.advance(1_500);
+    for (let i = 0; i < 4; i++) {
+      sent[i].answer({ kind: "failed" });
+      await clock.advance(5_000);
+    }
+    expect(sent).toHaveLength(4);
+    expect(engine.snapshot().statuses.GOALS).toBe("failed");
+    engine.flush("GOALS");
+    await clock.advance(60_000);
+    expect(sent, "no 5th PUT on a blur").toHaveLength(4);
+    engine.retry();
+    expect(sent).toHaveLength(5);
+  });
+
   test("B14: a 403 ends access for every section, once; nothing is dirty and nothing more is sent", async () => {
     const { clock, sent, engine, ended } = rig();
     engine.change("GOALS", "g");

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { coachApi, isForbidden } from "@/lib/coachApi";
 import { isClientId } from "@/lib/clientOverview";
 import { INTAKE_FORM_SECTIONS } from "@/lib/intakeForm";
-import { handlerAccessToken } from "@/lib/handlerSession";
+import { handlerAccessToken, withTokenSource } from "@/lib/handlerSession";
+import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
 
 /**
  * EV-341b B5 — « Recharger »: the intake as the api holds it now, through the BFF, so the page
@@ -23,6 +24,7 @@ import { handlerAccessToken } from "@/lib/handlerSession";
  *   403 `{ code: "CROSS_ORIGIN" }`
  *   401 `{ code: "SESSION_EXPIRED" }` — no session to continue
  *   502 `{ code: "UPSTREAM" }`
+ * Once a bearer is found, every answer carries `x-evoli-token-source` (ADR-0034 A34.1, C1).
  * A session that cannot be continued is the middleware's 307 to /login (the page reads it with
  * `redirect: "manual"`).
  */
@@ -31,7 +33,20 @@ export const revalidate = 0;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
+/** EV-341b G5: off, the route does not exist for any method; on, only GET is served. */
+function notGet(): NextResponse {
+  return INTAKE_REQUEST_ENABLED
+    ? new NextResponse(null, { status: 405, headers: { ...NO_STORE, Allow: "GET" } })
+    : new NextResponse(null, { status: 404, headers: NO_STORE });
+}
+export const POST = notGet;
+export const PUT = notGet;
+export const PATCH = notGet;
+export const DELETE = notGet;
+export const OPTIONS = notGet;
+
 export async function GET(request: Request, { params }: { params: { id: string } }) {
+  if (!INTAKE_REQUEST_ENABLED) return new NextResponse(null, { status: 404, headers: NO_STORE });
   const site = request.headers.get("sec-fetch-site");
   if (site === "cross-site" || site === "same-site") {
     return NextResponse.json({ code: "CROSS_ORIGIN" }, { status: 403, headers: NO_STORE });
@@ -49,23 +64,23 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
   try {
     const intake = await coachApi.getIntake(params.id, session.accessToken);
-    if (intake?.state === "GRANT_MISSING") return NextResponse.json({ state: "GRANT_MISSING" }, { headers: NO_STORE });
+    if (intake?.state === "GRANT_MISSING") return withTokenSource(NextResponse.json({ state: "GRANT_MISSING" }, { headers: NO_STORE }), session);
     if (intake?.state !== "READY" || !intake.sections) {
-      return NextResponse.json({ code: "UPSTREAM" }, { status: 502, headers: NO_STORE });
+      return withTokenSource(NextResponse.json({ code: "UPSTREAM" }, { status: 502, headers: NO_STORE }), session);
     }
     const sections: Record<string, { version: number; values: Record<string, unknown> }> = {};
     for (const name of INTAKE_FORM_SECTIONS) {
       const section = intake.sections[name];
       if (!section || typeof section.version !== "number" || !section.values || typeof section.values !== "object") {
-        return NextResponse.json({ code: "UPSTREAM" }, { status: 502, headers: NO_STORE });
+        return withTokenSource(NextResponse.json({ code: "UPSTREAM" }, { status: 502, headers: NO_STORE }), session);
       }
       sections[name] = { version: section.version, values: section.values };
     }
-    return NextResponse.json({ state: "READY", sections }, { headers: NO_STORE });
+    return withTokenSource(NextResponse.json({ state: "READY", sections }, { headers: NO_STORE }), session);
   } catch (err) {
     if (isForbidden(err)) {
-      return NextResponse.json({ code: "COACH_ACCESS_DENIED" }, { status: 403, headers: NO_STORE });
+      return withTokenSource(NextResponse.json({ code: "COACH_ACCESS_DENIED" }, { status: 403, headers: NO_STORE }), session);
     }
-    return NextResponse.json({ code: "UPSTREAM" }, { status: 502, headers: NO_STORE });
+    return withTokenSource(NextResponse.json({ code: "UPSTREAM" }, { status: 502, headers: NO_STORE }), session);
   }
 }

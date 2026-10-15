@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CoachShell } from "@/components/shell/CoachShell";
 import { ClientHeader, headerHasName } from "@/components/client/ClientHeader";
 import { ClientNotice } from "@/components/client/ClientNotice";
@@ -51,6 +51,8 @@ function settle<T>(read: Promise<T>): Promise<Read<T>> {
 const REASON_ID = "intake-grant-missing";
 
 export default async function IntakePage({ params }: { params: { id: string } }) {
+  // EV-341b G3: dark behind the release hold. Off, the page does not exist (404) and reads nothing.
+  if (!INTAKE_REQUEST_ENABLED) notFound();
   const copy = getCopy();
   const c = copy.intakePage;
   // BUG-600: a segment that is not a UUID asks the api nothing (the layout denies it).
@@ -87,6 +89,13 @@ export default async function IntakePage({ params }: { params: { id: string } })
           INTAKE_FORM_SECTIONS.map((s) => [s, read!.sections![s]?.version ?? 0])
         ) as Record<IntakeFormSection, number>,
         values: formFromApi(read!.sections),
+        // Every key the api stored, so a save never clears one this build does not know (S3).
+        raw: Object.fromEntries(
+          INTAKE_FORM_SECTIONS.map((s) => {
+            const values = read!.sections![s]?.values;
+            return [s, values && typeof values === "object" && !Array.isArray(values) ? values : {}];
+          })
+        ) as Record<IntakeFormSection, Record<string, unknown>>,
       }
     : null;
 

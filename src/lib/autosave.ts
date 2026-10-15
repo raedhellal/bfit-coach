@@ -16,7 +16,8 @@
  *   · B4 — a network failure or a 5xx is retried 3 times (4 attempts in all) after 1, 2 and
  *     4 s; from the first failure the section is `retrying`, after the fourth `failed`
  *     (« Réessayer » = `retry()`). The values are never touched: they are the form's. A 4xx
- *     other than the four below is `invalid` and is NOT retried (one request only).
+ *     other than the four below is `invalid` and is NOT retried (one request only). Neither a
+ *     `failed` nor an `invalid` section is re-sent by a blur: only a change or `retry()` re-arms it.
  *   · B5 / B5a — a 409 stops that section: no save of it is sent, and no change is even
  *     queued, until `reload(section, version)` (« Recharger »). `reload` drops anything that
  *     was waiting, so the first save after it is built from the values the form holds THEN
@@ -91,6 +92,12 @@ export interface AutosaveOptions<K extends string, P> {
 
 export interface AutosaveSnapshot<K extends string> {
   statuses: Record<K, SectionStatus>;
+  /**
+   * B4a: a section whose last answered save was refused (a 4xx), with the field the answer named
+   * (`null` when it named none). It stays until a save of that section answers 2xx, so the line
+   * outlives the change that re-arms the save; `null` when the section is not refused.
+   */
+  refused: Record<K, { field: string | null } | null>;
   dirty: boolean;
   accessEnded: boolean;
   signedOut: boolean;
@@ -107,6 +114,8 @@ interface Section<P> {
   retryTimer: unknown;
   /** Failed attempts of the current values (B4). */
   failures: number;
+  /** B4a: the last answered save was refused, naming this field (or none). */
+  refused: { field: string | null } | null;
   status: SectionStatus;
 }
 
@@ -144,6 +153,7 @@ export class AutosaveEngine<K extends string, P> {
         idleTimer: null,
         retryTimer: null,
         failures: 0,
+        refused: null,
         status: "idle",
       });
     }
@@ -151,12 +161,14 @@ export class AutosaveEngine<K extends string, P> {
 
   snapshot(): AutosaveSnapshot<K> {
     const statuses = {} as Record<K, SectionStatus>;
+    const refused = {} as Record<K, { field: string | null } | null>;
     let dirty = false;
     for (const [key, s] of this.sections) {
       statuses[key] = s.status;
+      refused[key] = s.refused;
       if (s.pending !== null || s.inFlight || DIRTY.has(s.status)) dirty = true;
     }
-    return { statuses, dirty: !this.accessEnded && (dirty || this.signedOut), accessEnded: this.accessEnded, signedOut: this.signedOut };
+    return { statuses, refused, dirty: !this.accessEnded && (dirty || this.signedOut), accessEnded: this.accessEnded, signedOut: this.signedOut };
   }
 
   /** The section's version as the engine will send it next (for a test, and for a reload's caller). */
@@ -207,6 +219,9 @@ export class AutosaveEngine<K extends string, P> {
     if (this.stopped() || this.signedOut) return;
     const s = this.section(key);
     if (s.pending === null || s.status === "conflict" || s.status === "blocked") return;
+    // B4: a refused (4xx) or finally failed save is re-armed only by a CHANGE or by « Réessayer »
+    // (`retry()`), never by a blur: a blur would re-send the refused body (staff r1 B2).
+    if (s.status === "invalid" || s.status === "failed") return;
     if (s.retryTimer !== null) return; // a retry is already scheduled for these values
     this.clearIdle(s);
     this.fire(key);
@@ -241,9 +256,26 @@ export class AutosaveEngine<K extends string, P> {
     s.pending = null;
     s.queued = false;
     s.failures = 0;
+    s.refused = null;
     this.clearIdle(s);
     this.clearRetry(s);
     s.status = s.inFlight ? "saving" : "idle";
+    this.emit();
+  }
+
+  /**
+   * B15 from outside a save (staff r1 S5: « Recharger »'s read was sent to /login): the session
+   * ended. The same state a save's `signedOut` puts the page in; `retry()` leaves it.
+   */
+  endSession(): void {
+    if (this.stopped()) return;
+    this.signedOut = true;
+    for (const s of this.sections.values()) {
+      this.clearIdle(s);
+      this.clearRetry(s);
+      s.queued = false;
+      if (s.pending !== null || s.inFlight) s.status = "signedOut";
+    }
     this.emit();
   }
 
@@ -321,6 +353,7 @@ export class AutosaveEngine<K extends string, P> {
       case "saved": {
         s.version = outcome.version;
         s.failures = 0;
+        s.refused = null;
         this.options.onSaved?.(key, payload, outcome.version);
         if (s.status === "conflict" || s.status === "blocked") break;
         if (s.pending !== null) {
@@ -336,6 +369,7 @@ export class AutosaveEngine<K extends string, P> {
       }
       case "conflict":
         // B5a: everything that was waiting for this section is dropped, nothing is re-armed.
+        s.refused = null;
         s.pending = null;
         s.queued = false;
         s.failures = 0;
@@ -344,6 +378,7 @@ export class AutosaveEngine<K extends string, P> {
         s.status = "conflict";
         break;
       case "invalid":
+        s.refused = { field: outcome.field };
         if (s.status === "blocked") break;
         if (s.pending === null) s.pending = { payload };
         s.queued = false;

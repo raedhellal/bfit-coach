@@ -52,7 +52,16 @@ export interface IntakeInterviewProps {
   /** The account this page was rendered for (`sessionSubjectTag`), sent with every save. */
   sessionSubject: string;
   /** The page's read: each section's version and answers. Null when the grant is missing (B11). */
-  initial: { versions: Record<IntakeFormSection, number>; values: IntakeFormValues } | null;
+  initial: {
+    versions: Record<IntakeFormSection, number>;
+    values: IntakeFormValues;
+    /**
+     * Each section's stored values AS THE API SENT THEM, every key (staff r1 S3). A save writes the
+     * whole section, so a key this build does not know (EV-341y1's `emphasis`, … once the api
+     * has them) is sent back as it was stored rather than cleared.
+     */
+    raw: Record<IntakeFormSection, Record<string, unknown>>;
+  } | null;
   /** B11: the id of the sentence that says why every field is disabled. */
   disabledReasonId?: string;
   /** B10: section 3's read-only equipment, rendered by the page. */
@@ -78,8 +87,8 @@ type Aggregate = "signedOut" | "failed" | "retrying" | "saving" | "saved" | null
 function aggregate(statuses: Record<IntakeFormSection, SectionStatus>, signedOut: boolean): Aggregate {
   const all = INTAKE_FORM_SECTIONS.map((s) => statuses[s]);
   if (signedOut || all.includes("signedOut")) return "signedOut";
-  // A refused request (a 4xx) is not retried (B4): it is shown as the terminal failure, with « Réessayer ».
-  if (all.includes("failed") || all.includes("invalid")) return "failed";
+  // A refused request (a 4xx) is not B4's failure: it has its own line per section (B4a).
+  if (all.includes("failed")) return "failed";
   if (all.includes("retrying")) return "retrying";
   if (all.includes("saving") || all.includes("pending")) return "saving";
   if (all.includes("saved")) return "saved";
@@ -91,10 +100,20 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
   const c = copy.intakePage;
   const router = useRouter();
   const uid = useId();
-  const disabled = initial === null;
+  /** B11: no grant, so nothing can be saved. */
+  const grantMissing = initial === null;
 
   const [acked, setAcked] = useState<IntakeFormValues>(() => initial?.values ?? emptyValues());
   const [open, setOpen] = useState<IntakeFormSection>(() => (initial ? firstUnanswered(initial.values) : "GOALS"));
+
+  /**
+   * S3: what the api last held for each section, every key. A save merges the catalogue's fields
+   * over it (`withStored`); a landed save, and « Recharger », replace it.
+   */
+  const rawRef = useRef<Record<IntakeFormSection, Record<string, unknown>>>(
+    initial?.raw ?? { GOALS: {}, HISTORY: {}, AVAILABILITY: {}, LIFESTYLE: {} }
+  );
+  const withStored = (section: IntakeFormSection, values: Record<string, unknown>) => ({ ...rawRef.current[section], ...values });
 
   // `form` is read inside the autosave's callbacks, which the engine calls after an await.
   const formRef = useRef<CoachForm<IntakeFormValues> | null>(null);
@@ -109,11 +128,16 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
   const autosave = useAutosave<IntakeFormSection, Payload>({
     versions: initial?.versions ?? EMPTY_VERSIONS,
     send: (section, version, payload) => putIntakeSection(clientId, section, version, payload.values, sessionSubject),
-    onSaved: (_section, payload) => setAcked((prev) => ({ ...prev, ...payload.form })),
+    onSaved: (section, payload) => {
+      rawRef.current = { ...rawRef.current, [section]: payload.values };
+      setAcked((prev) => ({ ...prev, ...payload.form }));
+    },
     onAccessEnded: accessEnded,
   });
+  /** B11, and B14 (staff r1 S2): after access ended nothing can be saved, so nothing can be typed. */
+  const disabled = grantMissing || autosave.accessEnded;
 
-  const form = useCoachForm<IntakeFormValues>({ server: acked, enabled: !disabled, extraDirty: autosave.dirty });
+  const form = useCoachForm<IntakeFormValues>({ server: acked, enabled: !grantMissing, extraDirty: autosave.dirty });
   formRef.current = form;
 
   /** The values as of the last change, ahead of the render that will show them. */
@@ -129,7 +153,7 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
     const { values, problems } = sectionToApi(section, next);
     // B16: nothing of this section is sent while a field would be refused.
     if (problems.length > 0) autosave.block(section);
-    else autosave.change(section, { values, form: sectionSlice(section, next) });
+    else autosave.change(section, { values: withStored(section, values), form: sectionSlice(section, next) });
   }
 
   /** B3: a field (or a group of choices) lost focus to something outside it — save now. */
@@ -140,10 +164,14 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
   };
 
   const [reloading, setReloading] = useState(false);
+  /** S5: « Recharger » did not get the intake (not a 403, not a session end): the block's load sentence. */
+  const [reloadFailed, setReloadFailed] = useState(false);
   /** B5 « Recharger »: the stored values replace the conflicted sections', with no navigation. */
   async function reload() {
     if (reloading) return;
     setReloading(true);
+    setReloadFailed(false);
+    let failed = true;
     try {
       const res = await fetch(intakeReadPath(clientId), {
         method: "GET",
@@ -153,10 +181,17 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
         headers: { Accept: "application/json" },
       });
       if (res.status === 403) {
+        failed = false;
         accessEnded();
         return;
       }
-      if (res.status !== 200) return; // the conflict stays on screen; « Recharger » again
+      // S5: a session that ended is B15's state (its sentence and « Réessayer »), not a silence.
+      if (res.type === "opaqueredirect" || res.status === 401 || (res.status >= 300 && res.status < 400)) {
+        failed = false;
+        autosave.endSession();
+        return;
+      }
+      if (res.status !== 200) return;
       const body = (await res.json().catch(() => null)) as {
         state?: string;
         sections?: Partial<Record<IntakeFormSection, { version?: unknown; values?: Record<string, unknown> }>>;
@@ -164,13 +199,17 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
       if (body?.state !== "READY" || !body.sections) return;
       const stored: IntakeFormValues = {};
       const versions: Partial<Record<IntakeFormSection, number>> = {};
+      const raws: Partial<Record<IntakeFormSection, Record<string, unknown>>> = {};
       for (const section of INTAKE_FORM_SECTIONS) {
         if (autosave.statuses[section] !== "conflict") continue;
         const read = body.sections[section];
         if (!read || typeof read.version !== "number") return;
         Object.assign(stored, sectionFromApi(section, read.values));
         versions[section] = read.version;
+        raws[section] = read.values && typeof read.values === "object" ? read.values : {};
       }
+      rawRef.current = { ...rawRef.current, ...raws };
+      failed = false;
       const next = { ...valuesRef.current, ...stored };
       valuesRef.current = next;
       for (const [key, value] of Object.entries(stored)) form.set(key, value);
@@ -182,6 +221,7 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
       // A lost answer: the conflict stays, and « Recharger » can be pressed again.
     } finally {
       setReloading(false);
+      setReloadFailed(failed);
     }
   }
 
@@ -226,10 +266,32 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
             </Button>
           </div>
         )}
+        {/* B4a: one line per refused section, in section order; no « Réessayer » (the next change
+            saves it). B15's sentence replaces them. */}
+        {status !== "signedOut" &&
+          INTAKE_FORM_SECTIONS.map((section) => {
+            const refused = autosave.refused[section];
+            if (!refused) return null;
+            const label = refused.field && INTAKE_CATALOGUE[section].some((f) => f.field === refused.field) ? c.fields[refused.field] : null;
+            return (
+              <div key={section} className="intake-alert" role="alert" data-intake-alert="refused" data-intake-refused={section}>
+                <p className="intake-alert-text">{label ? c.refusedField(label) : c.refusedSection}</p>
+              </div>
+            );
+          })}
         {conflicted && (
           <div className="intake-alert" role="alert" data-intake-alert="conflict">
-            <p className="intake-alert-text">{c.conflict}</p>
-            <Button variant="secondary" onClick={reload}>
+            <p className="intake-alert-text">
+              {c.conflict}
+              {reloadFailed && (
+                <>
+                  {" "}
+                  <span data-intake-reload-failed="">{copy.intake.loadError}</span>
+                </>
+              )}
+            </p>
+            {/* S5: busy while the read is out, so a second press cannot send a second one. */}
+            <Button variant="secondary" onClick={reload} disabled={reloading}>
               {c.reload}
             </Button>
           </div>
@@ -241,7 +303,7 @@ export function IntakeInterview({ clientId, sessionSubject, initial, disabledRea
         <div className="intake-picker">
           <select
             className="intake-select"
-            aria-label={c.title}
+            aria-label={c.sectionLabel}
             value={open}
             onChange={(e) => setOpen(e.target.value as IntakeFormSection)}
             data-adopt="never"
@@ -390,9 +452,17 @@ function FieldControl({
 
   if (field.kind === "multi") {
     const full = field.max !== undefined && list.length >= field.max;
+    const hintId = `${id}-hint`;
+    const hint = field.field === "motivations" ? c.motivationsHint : null;
     return (
-      <fieldset className="intake-field" data-intake-field={key} onBlur={onLeave}>
+      <fieldset className="intake-field" data-intake-field={key} onBlur={onLeave} aria-describedby={hint ? hintId : undefined}>
         <legend className="intake-label">{label}</legend>
+        {/* B8a: why the unticked boxes rest once 3 are ticked, always shown, wired to the group. */}
+        {hint && (
+          <p id={hintId} className="intake-hint" data-intake-hint={field.field}>
+            {hint}
+          </p>
+        )}
         <div className="intake-choices">
           {field.options.map((option) => {
             const checked = list.includes(option);
@@ -404,7 +474,7 @@ function FieldControl({
                   checked={checked}
                   // At the api's bound (3 motivations), the unticked boxes rest until one is unticked.
                   disabled={disabled || (full && !checked)}
-                  aria-describedby={describe(describedBy)}
+                  aria-describedby={describe(hint && hintId, describedBy)}
                   onChange={(e) =>
                     onChange(
                       key,
@@ -458,8 +528,14 @@ function FieldControl({
     );
   }
 
+  // S4: GOALS' event over its 80 code points shows the problem `sectionToApi` already blocks the
+  // save on (no `maxLength`: it counts UTF-16 units, as B16 says of the notes).
   const error =
-    problem?.kind === "range" ? copy.recipes.numberRange(label, problem.min, problem.max) : null;
+    problem?.kind === "range"
+      ? copy.recipes.numberRange(label, problem.min, problem.max)
+      : problem?.kind === "tooLong"
+        ? c.eventLabelTooLong
+        : null;
   return (
     <div className="intake-field" data-intake-field={key}>
       <label className="intake-label" htmlFor={id}>
@@ -473,7 +549,6 @@ function FieldControl({
           inputMode={field.kind === "integer" ? "numeric" : undefined}
           autoComplete="off"
           value={text}
-          maxLength={field.kind === "text" ? field.maxCodePoints : undefined}
           disabled={disabled}
           aria-describedby={describe(error && errorId, describedBy)}
           aria-invalid={error ? true : undefined}

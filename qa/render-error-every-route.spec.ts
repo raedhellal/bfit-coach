@@ -68,7 +68,6 @@ const ROUTE_FILES: Record<string, string> = {
   "clients/[id]/page.tsx": `/clients/${LINA}`,
   "clients/[id]/routine/page.tsx": `/clients/${LINA}/routine`,
   "clients/[id]/nutrition/page.tsx": `/clients/${LINA}/nutrition`,
-  "clients/[id]/intake/page.tsx": `/clients/${LINA}/intake`,
   "clients/denied/page.tsx": "/clients/denied",
   "invited/[userId]/page.tsx": `/invited/${LAPSED_INVITATION}`,
   "templates/page.tsx": "/templates",
@@ -85,6 +84,13 @@ const NO_SHELL: { route: string; files: RegExp; reason: string }[] = [
   { route: "/login", files: /^login\/page\.tsx$/, reason: "the sign-in form: no session yet, so no shell" },
   { route: "/activate", files: /^activate\/page\.tsx$/, reason: "EV-278c's activation: a PENDING session only, before the coach has a portal" },
   { route: "/unavailable", files: /^unavailable\/page\.tsx$/, reason: "middleware's 503 when the api gave no session verdict: one card, no api call" },
+  {
+    route: "/clients/[id]/intake",
+    files: /^clients\/\[id\]\/intake\/page\.tsx$/,
+    reason:
+      "EV-341b, dark behind COACH_INTAKE_REQUEST, which this suite's server (roster config) leaves unset: the route is " +
+      "notFound() before its shell renders (G3). With the switch on it draws CoachShell like its sibling tabs.",
+  },
   {
     route: "/i/*",
     files: /^i\//,

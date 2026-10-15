@@ -254,7 +254,7 @@ test.describe("B2 the section list", () => {
     await grant(page);
     await openIntake(page);
     await expect(page.getByRole("tablist")).toBeHidden();
-    const select = page.getByRole("combobox", { name: T.en.h2, exact: true });
+    const select = page.getByRole("combobox", { name: "Section", exact: true });
     await expect(select).toBeVisible();
     expect(await select.evaluate((el) => el.tagName)).toBe("SELECT");
     const seen = recordRequests(page);
@@ -408,7 +408,7 @@ test.describe("B4 failure, the other two causes", () => {
     await expect(notes(page, "GOALS")).toHaveValue("Offline");
   });
 
-  test("a 400 is not retried: one request only", async ({ page }) => {
+  test("a 400 is not retried: one request only, and a blur does not re-send it (staff r1 B2)", async ({ page }) => {
     await signIn(page);
     await grant(page);
     await openIntake(page);
@@ -419,12 +419,70 @@ test.describe("B4 failure, the other two causes", () => {
     });
     await notes(page, "GOALS").fill("Refused");
     await notes(page, "GOALS").press("Tab");
-    await expect(alertOf(page, "failed")).toBeVisible();
+    await expect(page.locator('[data-intake-refused="GOALS"]')).toBeVisible();
+    // A later blur with no change sends nothing.
+    await notes(page, "GOALS").focus();
+    await notes(page, "GOALS").press("Tab");
     await page.waitForTimeout(9_000);
     expect(attempts).toBe(1);
     await expect(notes(page, "GOALS")).toHaveValue("Refused");
   });
 });
+
+const REFUSED = {
+  en: {
+    field: (label: string) => `Not saved: the answer “${label}” was refused. Change it to save again.`,
+    section: "Not saved: an answer in this section was refused. Change it to save again.",
+    event: "Event",
+  },
+  fr: {
+    field: (label: string) => `Non enregistré : la réponse « ${label} » a été refusée. Modifiez-la pour enregistrer à nouveau.`,
+    section: "Non enregistré : une réponse de cette section a été refusée. Modifiez-la pour enregistrer à nouveau.",
+    event: "Événement",
+  },
+} as const;
+
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`B4a a refused save (${lang.toUpperCase()})`, () => {
+    test.use({ locale: T[lang].locale });
+
+    test("its own sentence per section (the field's B9 label, or the section's), no B4 sentence, no « Réessayer »; the next change saves and the line goes on its 2xx; the guard asks meanwhile", async ({
+      page,
+    }) => {
+      test.setTimeout(90_000);
+      await signIn(page, lang);
+      await grant(page);
+      await openIntake(page);
+      let refuse = true;
+      await page.route(`**/api/clients/${LINA}/intake/GOALS`, (route) =>
+        refuse
+          ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "INTAKE_FIELD_INVALID", field: "eventLabel" }) })
+          : route.continue()
+      );
+      await page.route(`**/api/clients/${LINA}/intake/HISTORY`, (route) =>
+        refuse ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: "COACH_FIELD_NOT_ACCEPTED" }) }) : route.continue()
+      );
+      await panel(page, "GOALS").getByRole("textbox", { name: REFUSED[lang].event, exact: true }).fill("Semi");
+      await panel(page, "GOALS").getByRole("textbox", { name: REFUSED[lang].event, exact: true }).press("Tab");
+      await tab(page, "HISTORY").click();
+      await panel(page, "HISTORY").getByRole("radio").first().check();
+      await tab(page, "LIFESTYLE").click(); // HISTORY loses focus: saved at once, and refused
+      const lines = page.locator('[data-intake-alert="refused"]');
+      await expect(lines).toHaveCount(2);
+      expect((await lines.allTextContents()).map(plain)).toEqual([plain(REFUSED[lang].field(REFUSED[lang].event)), plain(REFUSED[lang].section)]);
+      await expect(alertOf(page, "failed"), "never B4's sentences").toHaveCount(0);
+      await expect(lines.getByRole("button"), "no « Réessayer » for a refusal").toHaveCount(0);
+      expect(await page.evaluate(() => window.history.state?.evoliUnsavedGuard === true), "the leave guard asks while refused").toBe(true);
+      // The next change to GOALS saves it; its line goes when that save answers 2xx.
+      refuse = false;
+      await tab(page, "GOALS").click();
+      await panel(page, "GOALS").getByRole("textbox", { name: REFUSED[lang].event, exact: true }).fill("Semi-marathon");
+      await panel(page, "GOALS").getByRole("textbox", { name: REFUSED[lang].event, exact: true }).press("Tab");
+      await expect(page.locator('[data-intake-refused="GOALS"]')).toHaveCount(0);
+      await expect(page.locator('[data-intake-refused="HISTORY"]'), "the other section's line stays until its own save").toHaveCount(1);
+    });
+  });
+}
 
 // ── B5 / B5a conflict ────────────────────────────────────────────────────────
 
@@ -997,6 +1055,30 @@ test.describe("B13 / B13a the route handler", () => {
     expect((await puts(page)).length).toBe(0);
   });
 
+  test("N1-N3: a section this page does not save is 400, a body over 64 KB is 413, both before any session work or api call", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await grant(page);
+    const before = await saveOps(page);
+    const subject = await subjectHeader(page);
+    const health = await page.request.put(`/api/clients/${LINA}/intake/HEALTH`, {
+      data: BODY,
+      headers: { "Content-Type": "application/json", ...subject },
+    });
+    expect(health.status()).toBe(400);
+    expect(await health.json()).toEqual({ code: "INVALID_REQUEST", field: "section" });
+    const big = await page.request.put(PATH, {
+      data: { version: 0, values: { notes: "x".repeat(70 * 1024) } },
+      headers: { "Content-Type": "application/json", ...subject },
+    });
+    expect(big.status()).toBe(413);
+    // Refused on its own, even with no account named: the session is resolved only after.
+    const noSubject = await page.request.put(`/api/clients/not-a-uuid/intake/GOALS`, { data: BODY, headers: { "Content-Type": "application/json" } });
+    expect(noSubject.status()).toBe(403);
+    expect(await saveOps(page)).toBe(before);
+  });
+
   test("every 2xx is application/json with exactly { version, updatedAt }", async ({ page }) => {
     await signIn(page);
     await grant(page);
@@ -1012,7 +1094,27 @@ test.describe("B13 / B13a the route handler", () => {
       expect(Object.keys(body).sort()).toEqual(["updatedAt", "version"]);
       expect(body.version).toBe(version + 1);
       expect(typeof body.updatedAt).toBe("string");
+      // ADR-0034 A34.1 (C1): the step that served the bearer; a live access cookie is "cookie".
+      expect(res.headers()["x-evoli-token-source"]).toBe("cookie");
     }
+  });
+
+  test("C1 (ADR-0034 A34.1): the BFF read and the consent poll name the step too; a request refused before the session names none", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await grant(page);
+    for (const path of [`/api/bff/clients/${LINA}/intake`, `/api/bff/clients/${LINA}/intake-consent`]) {
+      const res = await page.request.get(path);
+      expect(res.status(), path).toBe(200);
+      expect(res.headers()["x-evoli-token-source"], path).toBe("cookie");
+      expect(res.headers()["x-evoli-token-source"]).not.toMatch(/ey[A-Za-z0-9_-]{10,}/);
+    }
+    const refused = await page.request.put(`/api/clients/${LINA}/intake/HEALTH`, { data: BODY, headers: { "Content-Type": "application/json" } });
+    expect(refused.status()).toBe(400);
+    expect(refused.headers()["x-evoli-token-source"]).toBeUndefined();
+    // "refreshed" needs a refresh the fixture cannot answer (the middleware's own rotation calls the
+    // real api): it is read live, in the B17 run (`rotated`), and by A34.1's post-deploy check.
   });
 
   test("a stale version is 409 with the stored version, and never a value", async ({ page }) => {
@@ -1074,9 +1176,10 @@ test.describe("B14 access ended", () => {
     await notes(page, "GOALS").press("Tab");
     await settledSaved(page);
     await setSwitch(page.context(), page, "evoli_fixture_link", "ended");
+    // ONE save meets the 403 (the blur sends it at once); nothing else is touched until the
+    // denied page (staff r1 B1: a second interaction raced the 403's navigation).
     await notes(page, "GOALS").fill("After the revoke");
-    await tab(page, "HISTORY").click();
-    await panel(page, "HISTORY").getByRole("radio", { name: "Beginner", exact: true }).check();
+    await notes(page, "GOALS").press("Tab");
     await page.waitForURL("/clients/denied", { timeout: 15_000 });
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(T.en.denied);
     const count = (await puts(page)).length;
@@ -1091,6 +1194,32 @@ test.describe("B14 access ended", () => {
     expect(dialogs).toBe(0);
     await page.waitForTimeout(2_000);
     expect((await puts(page)).length, "no save after access ended").toBe(count);
+  });
+});
+
+test.describe("B14 access ended, before the denied page lands (staff r1 S2)", () => {
+  test("the fields are disabled the moment access ends, and typing cannot make the form unsaved again", async ({ page }) => {
+    await signIn(page);
+    await grant(page);
+    await openIntake(page);
+    // Hold the refresh that carries the page to /clients/denied, so the ended page can be read.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(`**${INTAKE}**`, async (route) => {
+      if (route.request().headers()["rsc"] === "1") await held;
+      await route.continue();
+    });
+    await setSwitch(page.context(), page, "evoli_fixture_link", "ended");
+    await notes(page, "GOALS").fill("After the revoke");
+    await notes(page, "GOALS").press("Tab");
+    await expect(page.locator('[data-intake-ready="disabled"]')).toHaveCount(1);
+    await expect(notes(page, "GOALS")).toBeDisabled();
+    await expect(panel(page, "GOALS").getByRole("radio").first()).toBeDisabled();
+    expect(await page.evaluate(() => window.history.state?.evoliUnsavedGuard === true), "no guard entry").toBe(false);
+    release();
+    await page.waitForURL("/clients/denied", { timeout: 15_000 });
   });
 });
 
@@ -1180,3 +1309,169 @@ for (const lang of ["en", "fr"] as const) {
     });
   });
 }
+
+// ── Staff round 1 ────────────────────────────────────────────────────────────
+
+test.describe("staff r1 S3: a key the portal does not know is never cleared by its whole-section save", () => {
+  test("a stored unknown key (EV-341y1's emphasis, an api ahead of this build) survives a save, and « Recharger » refreshes it", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await signIn(page);
+    await grant(page);
+    await setSwitch(page.context(), page, "evoli_fixture_intake_extra", "on");
+    await putFromElsewhere(page, "GOALS", 0, { primaryGoal: "LOSE_WEIGHT", emphasis: ["glutes"] });
+    await openIntake(page);
+    await tab(page, "GOALS").click();
+    await notes(page, "GOALS").fill("Mine");
+    await notes(page, "GOALS").press("Tab");
+    await settledSaved(page);
+    const sent = (await puts(page, "GOALS")).at(-1)!;
+    expect(sent.body.values.emphasis, "sent back as stored").toEqual(["glutes"]);
+    expect(sent.body.values.notes).toBe("Mine");
+    const read = await page.request.get(`/api/bff/clients/${LINA}/intake`);
+    expect(((await read.json()) as { sections: { GOALS: { values: Record<string, unknown> } } }).sections.GOALS.values.emphasis).toEqual([
+      "glutes",
+    ]);
+
+    // Another tab changes it; this tab's next save conflicts; « Recharger » takes the new stored keys too.
+    await putFromElsewhere(page, "GOALS", 2, { primaryGoal: "LOSE_WEIGHT", notes: "Mine", emphasis: ["hamstrings"] });
+    await notes(page, "GOALS").fill("Mine, again");
+    await notes(page, "GOALS").press("Tab");
+    await expect(alertOf(page, "conflict")).toBeVisible();
+    await alertOf(page, "conflict").getByRole("button", { name: T.en.reload, exact: true }).click();
+    await expect(alertOf(page, "conflict")).toHaveCount(0);
+    const before = (await puts(page, "GOALS")).length;
+    await panel(page, "GOALS").getByRole("checkbox", { name: "Health", exact: true }).check();
+    await waitForPuts(page, "GOALS", before + 1);
+    expect((await puts(page, "GOALS")).at(-1)!.body.values.emphasis, "the stored value after « Recharger »").toEqual(["hamstrings"]);
+  });
+});
+
+test.describe("B16a (staff r1 S4): GOALS' event, counted in code points", () => {
+  test("no maxLength; over 80 code points the sentence shows and the section is not sent", async ({ page }) => {
+    await signIn(page);
+    await grant(page);
+    await openIntake(page);
+    const field = panel(page, "GOALS").getByRole("textbox", { name: "Event", exact: true });
+    expect(await field.getAttribute("maxlength")).toBeNull();
+    await field.fill("\u{1F600}".repeat(80));
+    await field.press("Tab");
+    await waitForPuts(page, "GOALS", 1);
+    expect((await puts(page, "GOALS"))[0].body.values.eventLabel, "80 emoji are 80 code points").toBe("\u{1F600}".repeat(80));
+    await settledSaved(page);
+    await field.fill("\u{1F600}".repeat(81));
+    await expect(panel(page, "GOALS").locator('[data-intake-error="eventLabel"]')).toHaveText("Too long: 80 characters at most.");
+    await expect(field).toHaveAccessibleDescription("Too long: 80 characters at most.");
+    await expect(panel(page, "GOALS").locator(".intake-counter"), "no counter on the event (B16a)").toHaveCount(1); // the notes' own
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    await field.press("Tab");
+    await page.waitForTimeout(3_000);
+    expect((await puts(page, "GOALS")).length, "nothing sent over 80").toBe(1);
+  });
+});
+
+test.describe("staff r1 S5: « Recharger » never fails in silence", () => {
+  async function conflict(page: Page) {
+    await signIn(page);
+    await grant(page);
+    await openIntake(page);
+    await notes(page, "GOALS").fill("Mine");
+    await notes(page, "GOALS").press("Tab");
+    await settledSaved(page);
+    await putFromElsewhere(page, "GOALS", 1, { notes: "Theirs" });
+    await notes(page, "GOALS").fill("Mine again");
+    await notes(page, "GOALS").press("Tab");
+    await expect(alertOf(page, "conflict")).toBeVisible();
+  }
+
+  test("busy while the read is out; a failed read says so with the block's load sentence, and the conflict stays", async ({ page }) => {
+    await conflict(page);
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(`**/api/bff/clients/${LINA}/intake`, async (route) => {
+      await held;
+      await route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ code: "UPSTREAM" }) });
+    });
+    const button = alertOf(page, "conflict").getByRole("button", { name: T.en.reload, exact: true });
+    await button.click();
+    await expect(button, "busy while the read is out").toBeDisabled();
+    release();
+    await expect(alertOf(page, "conflict").locator("[data-intake-reload-failed]")).toHaveText(
+      "This block could not be loaded. Reload the page to try again."
+    );
+    await expect(button).toBeEnabled();
+    await expect(notes(page, "GOALS")).toHaveValue("Mine again");
+  });
+
+  test("a read sent to /login is B15's state: the session sentence and « Try again »", async ({ page }) => {
+    await conflict(page);
+    await page.route(`**/api/bff/clients/${LINA}/intake`, (route) =>
+      route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ code: "SESSION_EXPIRED" }) })
+    );
+    await alertOf(page, "conflict").getByRole("button", { name: T.en.reload, exact: true }).click();
+    await expect(alertOf(page, "signedOut")).toBeVisible();
+    expect(plain(await alertOf(page, "signedOut").locator("p").textContent())).toBe(plain(T.en.sessionEnded));
+  });
+});
+
+test.describe("staff r1 S7: another account signs in, in another tab", () => {
+  test("the next save is refused SESSION_CHANGED: B15's state stays, « Try again » cannot write, and the fixture records no write", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(90_000);
+    await signIn(page);
+    await grant(page);
+    await openIntake(page);
+    await notes(page, "GOALS").fill("Coach A");
+    await notes(page, "GOALS").press("Tab");
+    await settledSaved(page);
+    const written = (await puts(page)).length;
+    // Tab 1 holds unsaved work when the account changes (a note over 1,000: blocked, nothing sent),
+    // so SessionEpochGuard keeps it on screen rather than reloading it under coach B (D33.14 point 4).
+    await notes(page, "GOALS").fill("\u{1F600}".repeat(1001));
+    await page.waitForFunction(() => window.history.state?.evoliUnsavedGuard === true);
+
+    // Another tab signs coach B in: the browser's cookies are now B's (a signed-in /login page
+    // would send that tab to the roster, so the sign-in is the auth route's own POST).
+    const login = await context.request.post("/api/auth/login", {
+      data: { email: "second.coach@evoli.fit", password: "Password123!" },
+      maxRedirects: 0,
+    });
+    expect(login.status()).toBe(200);
+
+    const answers: { status: number; code: string | null }[] = [];
+    page.on("response", async (res) => {
+      if (res.request().method() === "PUT" && new URL(res.url()).pathname.includes("/intake/")) {
+        answers.push({ status: res.status(), code: ((await res.json().catch(() => null)) as { code?: string } | null)?.code ?? null });
+      }
+    });
+    await notes(page, "GOALS").fill("Typed under coach B's cookies");
+    await notes(page, "GOALS").press("Tab");
+    await expect(alertOf(page, "signedOut")).toBeVisible();
+    await alertOf(page, "signedOut").getByRole("button", { name: T.en.tryAgain, exact: true }).click();
+    await expect.poll(() => answers.length).toBe(2);
+    expect(answers).toEqual([
+      { status: 401, code: "SESSION_CHANGED" },
+      { status: 401, code: "SESSION_CHANGED" },
+    ]);
+    await expect(alertOf(page, "signedOut")).toBeVisible();
+    await expect(notes(page, "GOALS")).toHaveValue("Typed under coach B's cookies");
+    expect((await puts(page)).length, "no write reached the fixture").toBe(written);
+  });
+});
+
+test.describe("staff r1 N4: the section select's name and the motivations limit", () => {
+  test("the select is « Section »; « 3 au maximum. » describes the motivation boxes (EN and FR)", async ({ page }) => {
+    await signIn(page);
+    await grant(page);
+    await openIntake(page);
+    const hint = panel(page, "GOALS").locator('[data-intake-hint="motivations"]');
+    await expect(hint).toHaveText("Up to 3.");
+    await expect(panel(page, "GOALS").getByRole("checkbox", { name: "Health", exact: true })).toHaveAccessibleDescription("Up to 3.");
+    expect(await page.locator("select.intake-select").getAttribute("aria-label")).toBe("Section");
+  });
+});

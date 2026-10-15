@@ -250,7 +250,9 @@ export default async function ClientPage({ params }: { params: { id: string } })
         trainee={overview}
         since={overview.since}
         active="overview"
-        action={<RevokeMenu clientId={overview.clientId} displayName={overview.traineeDisplayName} />}
+        action={
+          <RevokeMenu clientId={overview.clientId} displayName={overview.traineeDisplayName} intakeOn={INTAKE_REQUEST_ENABLED} />
+        }
       />
 
       {/* BUG-701 (senior-po ruling): the injury chips sit under the tab bar, above the first

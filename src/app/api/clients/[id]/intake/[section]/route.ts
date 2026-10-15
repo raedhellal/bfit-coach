@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { ApiError } from "@/lib/apiFetch";
-import { INTAKE_SECTION_NAMES, coachApi, isForbidden, isIntakeVersionConflict, type CoachIntakeSectionName } from "@/lib/coachApi";
+import { coachApi, isForbidden, isIntakeVersionConflict, type CoachIntakeSectionName } from "@/lib/coachApi";
+import { INTAKE_FORM_SECTIONS, type IntakeFormSection } from "@/lib/intakeForm";
 import { isClientId } from "@/lib/clientOverview";
 import { refuseCrossOrigin } from "@/lib/sameOrigin";
 import { SESSION_SUBJECT_HEADER } from "@/lib/autosaveTransport";
 import { sessionSubjectTag } from "@/lib/sessionSubject";
-import { handlerAccessToken } from "@/lib/handlerSession";
+import { handlerAccessToken, withTokenSource } from "@/lib/handlerSession";
+import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
 
 /**
  * EV-341b B3, B13, B13a (ADR-0034 D34.10 (1)) — the intake's autosave transport:
@@ -25,13 +27,16 @@ import { handlerAccessToken } from "@/lib/handlerSession";
  * ⚠ THE PORTAL'S FIRST COOKIE-AUTHENTICATED WRITE HANDLER OUTSIDE `/api/auth`, so it owns CSRF
  * itself (B13): a server action gets Next's origin check for free, a route handler does not.
  * In this order, and each refusal reaches the api with NOTHING:
- *   1. any method but PUT — Next answers 405 itself (only `PUT` is exported);
+ *   0. the release hold off (`COACH_INTAKE_REQUEST`, G4) — 404 for every method;
+ *   1. any method but PUT — 405 (`notPut`);
  *   2. a foreign `Origin` (or `Origin: null`, or `Sec-Fetch-Site` naming another site) — 403
  *      `CROSS_ORIGIN`, `refuseCrossOrigin`, the `/api/auth/*` handlers' rule;
  *   3. a body that is not `Content-Type: application/json` — 415 (a cross-site form can only
  *      send the three "simple" content types without a preflight nothing here answers);
  *   4. an id that is not a UUID — 403 `COACH_ACCESS_DENIED`, the layout's rule (BUG-600);
- *   5. a section the api does not name, or a body that is not `{ version, values }` — 400.
+ *   5. a section this page does not save (1–4), or a body that is not `{ version, values }` — 400;
+ *      a body over 64 KB, with or without a Content-Length — 413;
+ *   6. only then the session (a rotation is never spent on a refused request), then the account.
  * The cookies stay `SameSite=Lax`.
  *
  * ADR-0033 D33.14 point 4 (a write started by a timer must not land under another account's
@@ -54,8 +59,11 @@ import { handlerAccessToken } from "@/lib/handlerSession";
  *   403 `{ code: "COACH_ACCESS_DENIED" }` — revoked, consent withdrawn, not this coach's (B14)
  *   403 `{ code: "CROSS_ORIGIN" }`
  *   409 `{ code: "INTAKE_VERSION_CONFLICT", version, updatedAt }` — never a value (B5)
+ *   413 `{ code: "PAYLOAD_TOO_LARGE" }`
  *   415 `{ code: "UNSUPPORTED_MEDIA_TYPE" }`
  *   502 `{ code: "UPSTREAM" }` — the api failed, did not answer, or answered something else
+ * Once a bearer is found, every answer carries `x-evoli-token-source: rotated | cookie | refreshed`
+ * (ADR-0034 A34.1, C1: the post-deploy check of which step served it; no token data).
  */
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -68,8 +76,9 @@ function json(body: Record<string, unknown>, status: number) {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-function isSection(value: string): value is CoachIntakeSectionName {
-  return (INTAKE_SECTION_NAMES as readonly string[]).includes(value);
+/** N1: the sections this slice's page saves (EV-341b: 1–4). EV-341c widens it with its own. */
+function isSection(value: string): value is IntakeFormSection & CoachIntakeSectionName {
+  return (INTAKE_FORM_SECTIONS as readonly string[]).includes(value);
 }
 
 function isJsonContentType(raw: string | null): boolean {
@@ -77,7 +86,52 @@ function isJsonContentType(raw: string | null): boolean {
   return type === "application/json";
 }
 
+/**
+ * N2: the body, read up to `MAX_BODY_BYTES` whatever `Content-Length` says (or does not say: a
+ * chunked request has none). `null` = over the cap, and the rest is never read.
+ */
+async function readCapped(request: Request): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
+/**
+ * EV-341b G4: dark behind the release hold. Off, the route does not exist for ANY method, before
+ * any of B13's checks and with no upstream call. On, every method but PUT is refused (B13).
+ */
+function notPut(): NextResponse {
+  return INTAKE_REQUEST_ENABLED
+    ? new NextResponse(null, { status: 405, headers: { ...NO_STORE, Allow: "PUT" } })
+    : new NextResponse(null, { status: 404, headers: NO_STORE });
+}
+export const GET = notPut;
+export const HEAD = notPut;
+export const POST = notPut;
+export const PATCH = notPut;
+export const DELETE = notPut;
+export const OPTIONS = notPut;
+
 export async function PUT(request: Request, { params }: { params: { id: string; section: string } }) {
+  if (!INTAKE_REQUEST_ENABLED) return new NextResponse(null, { status: 404, headers: NO_STORE });
   const foreign = refuseCrossOrigin(request);
   if (foreign) {
     foreign.headers.set("Cache-Control", "no-store");
@@ -86,26 +140,20 @@ export async function PUT(request: Request, { params }: { params: { id: string; 
   if (!isJsonContentType(request.headers.get("content-type"))) {
     return json({ code: "UNSUPPORTED_MEDIA_TYPE" }, 415);
   }
-  // B17: the token the middleware rotated for THIS request, which `cookies()` does not show a
-  // route handler (src/lib/handlerSession.ts).
-  const session = await handlerAccessToken(request);
-  if (session.kind === "expired") return json({ code: "SESSION_EXPIRED" }, 401);
-  if (session.kind === "unavailable") return json({ code: "UPSTREAM" }, 502);
-  const subject = request.headers.get(SESSION_SUBJECT_HEADER);
-  const current = sessionSubjectTag(session.accessToken);
-  if (!subject || !current || subject !== current) return json({ code: "SESSION_CHANGED" }, 401);
+  // N3: the request is judged on its own before the session is resolved (no refresh is spent on
+  // a request that would be refused anyway).
   if (!isClientId(params.id)) return json({ code: "COACH_ACCESS_DENIED" }, 403);
   if (!isSection(params.section)) return json({ code: "INVALID_REQUEST", field: "section" }, 400);
 
   const length = Number(request.headers.get("content-length"));
-  if (Number.isFinite(length) && length > MAX_BODY_BYTES) return json({ code: "INVALID_REQUEST", field: "body" }, 400);
-  let text: string;
+  if (Number.isFinite(length) && length > MAX_BODY_BYTES) return json({ code: "PAYLOAD_TOO_LARGE" }, 413);
+  let text: string | null;
   try {
-    text = await request.text();
+    text = await readCapped(request);
   } catch {
     return json({ code: "INVALID_REQUEST", field: "body" }, 400);
   }
-  if (text.length > MAX_BODY_BYTES) return json({ code: "INVALID_REQUEST", field: "body" }, 400);
+  if (text === null) return json({ code: "PAYLOAD_TOO_LARGE" }, 413);
   let body: unknown;
   try {
     body = JSON.parse(text);
@@ -122,6 +170,17 @@ export async function PUT(request: Request, { params }: { params: { id: string; 
     return json({ code: "INVALID_REQUEST", field: "values" }, 400);
   }
 
+  // B17: the token the middleware rotated for THIS request, which `cookies()` does not show a
+  // route handler (src/lib/handlerSession.ts).
+  const session = await handlerAccessToken(request);
+  if (session.kind === "expired") return json({ code: "SESSION_EXPIRED" }, 401);
+  if (session.kind === "unavailable") return json({ code: "UPSTREAM" }, 502);
+  // ADR-0034 A34.1 (C1): every answer from here on names the step that served the bearer.
+  const reply = (body: Record<string, unknown>, status: number) => withTokenSource(json(body, status), session);
+  const subject = request.headers.get(SESSION_SUBJECT_HEADER);
+  const current = sessionSubjectTag(session.accessToken);
+  if (!subject || !current || subject !== current) return reply({ code: "SESSION_CHANGED" }, 401);
+
   try {
     // `values` is forwarded as sent: the api's reader is the vocabulary's one judge (an
     // undeclared key is its 400 COACH_FIELD_NOT_ACCEPTED, never dropped here in silence).
@@ -137,14 +196,14 @@ export async function PUT(request: Request, { params }: { params: { id: string; 
       saved.version < 1 ||
       typeof saved?.updatedAt !== "string"
     ) {
-      return json({ code: "UPSTREAM" }, 502);
+      return reply({ code: "UPSTREAM" }, 502);
     }
-    return json({ version: saved.version, updatedAt: saved.updatedAt }, 200);
+    return reply({ version: saved.version, updatedAt: saved.updatedAt }, 200);
   } catch (err) {
-    if (isForbidden(err)) return json({ code: "COACH_ACCESS_DENIED" }, 403);
+    if (isForbidden(err)) return reply({ code: "COACH_ACCESS_DENIED" }, 403);
     if (isIntakeVersionConflict(err)) {
       const details = (err as ApiError).details ?? {};
-      return json(
+      return reply(
         {
           code: "INTAKE_VERSION_CONFLICT",
           version: typeof details.version === "number" ? details.version : null,
@@ -153,11 +212,11 @@ export async function PUT(request: Request, { params }: { params: { id: string; 
         409
       );
     }
-    if (err instanceof ApiError && err.status === 401) return json({ code: "SESSION_EXPIRED" }, 401);
+    if (err instanceof ApiError && err.status === 401) return reply({ code: "SESSION_EXPIRED" }, 401);
     if (err instanceof ApiError && err.status === 400) {
       const field = err.details?.field;
-      return json({ code: err.code ?? "INVALID_REQUEST", field: typeof field === "string" ? field : null }, 400);
+      return reply({ code: err.code ?? "INVALID_REQUEST", field: typeof field === "string" ? field : null }, 400);
     }
-    return json({ code: "UPSTREAM" }, 502);
+    return reply({ code: "UPSTREAM" }, 502);
   }
 }

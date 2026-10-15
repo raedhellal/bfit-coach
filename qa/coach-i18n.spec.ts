@@ -166,6 +166,7 @@ const SAME_IN_BOTH: Record<string, string> = {
   "intakePage.values.primaryGoal.ENDURANCE": "French 'Endurance' (the catalogue table)",
   "intakePage.values.activities.YOGA_PILATES": "French 'Yoga / Pilates' (the catalogue table)",
   "intakePage.values.activities.HIIT": "French 'CrossFit / HIIT' (the catalogue table)",
+  "intakePage.sectionLabel": "French 'Section' (staff r1 N4)",
   "intakePage.minutes": "a number and 'min', the French abbreviation too (EV-341r R4's unit)",
 };
 

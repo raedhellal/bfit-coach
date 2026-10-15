@@ -681,11 +681,15 @@ export const en = {
     menu: "More",
     revoke: "Revoke access",
     revokeTitle: "Revoke access?",
+    /** `main`'s body, verbatim: shown while the intake is dark (EV-341b G7). */
+    revokeBody: (name: string) =>
+      `${name} will be removed from your roster and you will no longer see their training data. They keep their Evoli Fit account and all of their history.`,
     /**
      * EV-341b B12, verbatim (ADR-0034 attack point 5): a revoke deletes the link's intake at
-     * t = 0, so the dialog says so before the coach confirms. Title and buttons unchanged.
+     * t = 0, so the dialog says so before the coach confirms. Title and buttons unchanged. Only
+     * with `COACH_INTAKE_REQUEST` on (G7): it names a feature no coach can see while it is off.
      */
-    revokeBody: (name: string) =>
+    revokeBodyIntake: (name: string) =>
       `${name} will be removed from your roster and you will no longer see their training data. If you recorded an intake interview with ${name}, it will be permanently deleted. They keep their Evoli Fit account and all of their training history.`,
     revokeConfirm: "Revoke access",
     revokeCancel: "Cancel",
@@ -2890,6 +2894,10 @@ export const en = {
     /** B11, verbatim: `/invited/[userId]`, beside the disabled « Entretien » control. */
     grantMissingInvited: (firstName: string) =>
       `You can save the intake once ${mid(firstName)} has activated their account and allowed the intake in the app.`,
+    /** Staff r1 N4: the section <select>'s name at 390 px (the coordinator's wording). */
+    sectionLabel: "Section",
+    /** Staff r1 N4: why the fourth motivation box rests (the api's bound of 3). */
+    motivationsHint: "Up to 3.",
     /** B2, verbatim: a section's status in the list. */
     notStarted: "Not started",
     started: "Started",
@@ -2902,6 +2910,10 @@ export const en = {
     failed: "Not saved. Check your connection: your answers are still on this page.",
     /** B4 / B15, verbatim. */
     tryAgain: "Try again",
+    /** B4a, verbatim (R2): a refused save naming a field this page labels (its B9 label). */
+    refusedField: (field: string) => `Not saved: the answer “${field}” was refused. Change it to save again.`,
+    /** B4a, verbatim (R2): a refused save naming no field, or one the page does not label. */
+    refusedSection: "Not saved: an answer in this section was refused. Change it to save again.",
     /** B5, verbatim. */
     conflict: "This intake was changed in another tab.",
     reload: "Reload",
@@ -2911,6 +2923,8 @@ export const en = {
     notesCounter: (count: number) => `${count.toLocaleString("en-GB")} / 1,000`,
     /** B16, verbatim. */
     notesTooLong: "Too long: 1,000 characters at most.",
+    /** B16a, verbatim (R4): GOALS' event over 80 code points. */
+    eventLabelTooLong: "Too long: 80 characters at most.",
     sections: {
       GOALS: "Goals and motivation",
       HISTORY: "Training history",

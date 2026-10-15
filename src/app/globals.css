@@ -1870,3 +1870,4 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
     font: 600 13.5px var(--font-body); color: var(--ink);
   }
 }
+.intake-hint { margin: -4px 0 8px; font-size: var(--fs-label); line-height: 16px; color: var(--ink-3); }
