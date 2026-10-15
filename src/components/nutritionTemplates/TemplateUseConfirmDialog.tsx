@@ -113,8 +113,10 @@ export function TemplateUseConfirmDialog({
      * RENDER: two clicks in one JS task both run before React re-renders, and each started
      * its own targets → week chain. A ref is read synchronously, so the second click
      * returns here. It is never released: every path out of the chain either navigates away
-     * or lands, and both callers close (unmount) the dialog on landing, so a new chain is
-     * always a new mount with a new latch.
+     * or lands, and neither caller lets a landed dialog run again. The library's `onLand`
+     * navigates to the trainee's nutrition page (the dialog goes with the library), and the
+     * apply card's `onLand` closes (unmounts) it. So a new chain is always a new mount with a
+     * new latch.
      */
     if (inFlight.current) return;
     inFlight.current = true;
