@@ -52,6 +52,12 @@ interface Case {
   via?: (page: Page) => Locator;
   /** The element focus must land on when the dialog opens (default: anywhere inside it). */
   initial?: (dialog: Locator) => Locator;
+  /**
+   * A control that is enabled only once the dialog's request has settled. Only the publish
+   * preview needs one: it can appear before its transition settles, and its onClose refuses
+   * while pending (K6's refusal, correct and not what K4 asks).
+   */
+  settled?: (dialog: Locator) => Locator;
 }
 
 async function saveADraft(page: Page) {
@@ -84,6 +90,7 @@ const CASES: Case[] = [
     label: "publish preview",
     path: `/clients/${LINA}/routine`,
     opener: (p) => p.getByRole("button", { name: "Publish", exact: true }),
+    settled: (d) => d.getByRole("button", { name: /^Publish/ }),
   },
   {
     label: "« Discard draft? »",
@@ -253,15 +260,10 @@ for (const size of WIDTHS) {
         await cycles(page, dialog, "Tab");
         await cycles(page, dialog, "Shift+Tab");
 
-        // K4 — Escape closes it. A dialog may still be busy when it appears: the publish preview
-        // shows before its transition settles, and « No changes were needed » has no Cancel to
-        // watch — only « Publish », disabled while pending. Escape is then refused, which is right
-        // (K6 pins the refusal) and not what K4 asks; so K4 presses again until the request has
-        // settled. A dialog that never closes on Escape still fails here, at the toPass timeout.
-        await expect(async () => {
-          await page.keyboard.press("Escape");
-          await expect(dialog).toHaveCount(0, { timeout: 1_000 });
-        }, "Escape closes the dialog once it is not busy").toPass({ timeout: 15_000 });
+        // K4 — one Escape closes it, once the dialog is not busy (`settled`, publish preview only).
+        if (c.settled) await expect(c.settled(dialog), "the dialog's request has settled").toBeEnabled();
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
 
         // K5 — focus is back where the coach was.
         const back = (c.returnsTo ?? c.opener)(page);
