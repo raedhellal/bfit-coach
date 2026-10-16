@@ -420,8 +420,12 @@ test.describe("AC-P9 — the temporary password is on no coach surface", () => {
 
     const passwords = (await mails(page)).map((m) => m.temporaryPassword);
     expect(passwords).toHaveLength(2);
-    // The capture works: the server action's answer carrying the address was seen.
-    expect(bodies.some((b) => b.body.includes("amal@example.com") && b.body.includes("expiresAt"))).toBe(true);
+    // The capture works: the server action's answer carrying the address was seen. POLLED: the
+    // `response` handler awaits `res.text()`, so a body can still be in flight here (EV-186b: a
+    // larger copy chunk made the read lose that race; measured on 186b, the "/" body arrives late).
+    await expect
+      .poll(() => bodies.some((b) => b.body.includes("amal@example.com") && b.body.includes("expiresAt")))
+      .toBe(true);
     for (const password of passwords) {
       expect(password.length).toBeGreaterThan(8);
       for (const b of bodies) expect(b.body.includes(password), `password in ${b.url}`).toBe(false);
