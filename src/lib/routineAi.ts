@@ -11,19 +11,14 @@
  *   · `routineAiSentence` — B4: every refusal CODE renders its sentence from the story's copy
  *     table; an unknown code renders the generic Failed sentence; the server's `message` is
  *     never read, so it can never be shown.
- *   · `routineDiff` — EV-186n N1: the per-day comparison of `baseDocument` and `proposal`,
- *     computed here and never taken from the model's prose.
  *   · `pollDelayMs` — how often the running state asks again.
  */
 import type { Copy } from "./copy";
 import type {
   CoachRoutineAiProposalRequest,
-  CoachRoutineAiRepairMark,
   Routine,
   RoutineAiGoal,
-  RoutineExercise,
 } from "./coachApi";
-import { injuryLabels } from "./guardrailLabels";
 
 // ── B1: the capability ───────────────────────────────────────────────────────
 
@@ -199,15 +194,6 @@ export function heldUntil(failure: RoutineAiFailure, now: number): number | null
   return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? now + seconds * 1000 : null;
 }
 
-/** EV-186 P5: « Sera remplacé à la publication : {blessure} de {prénom} ». */
-export function repairMarkSentence(mark: CoachRoutineAiRepairMark, first: string, copy: Copy): string {
-  const raw = typeof mark.injury === "string" ? mark.injury.trim() : "";
-  // A mark with no injury named still says it will be swapped, and names nothing it was not told.
-  if (raw === "") return copy.routineAi.repairMarkNoInjury;
-  const [label] = injuryLabels([raw], copy);
-  return copy.routineAi.repairMark(first, label ?? raw);
-}
-
 // ── polling ──────────────────────────────────────────────────────────────────
 
 /**
@@ -222,197 +208,4 @@ export const POLL_FAST_WINDOW_MS = 130_000;
 
 export function pollDelayMs(runningForMs: number): number {
   return runningForMs < POLL_FAST_WINDOW_MS ? POLL_FAST_MS : POLL_SLOW_MS;
-}
-
-// ── N1: the diff ─────────────────────────────────────────────────────────────
-
-/** The prescription fields a row compares, in display order. `name` is identity, not a field. */
-export const PRESCRIPTION_FIELDS = [
-  "sets",
-  "reps",
-  "rest",
-  "weight",
-  "tempo",
-  "trackingType",
-  "durationSeconds",
-  "notes",
-] as const;
-export type PrescriptionField = (typeof PRESCRIPTION_FIELDS)[number];
-
-export type ExerciseChange =
-  | { kind: "unchanged"; after: RoutineExercise; afterIndex: number }
-  | { kind: "prescription"; before: RoutineExercise; after: RoutineExercise; afterIndex: number; fields: PrescriptionField[] }
-  | { kind: "replaced"; before: RoutineExercise; after: RoutineExercise; afterIndex: number }
-  | { kind: "added"; after: RoutineExercise; afterIndex: number }
-  | { kind: "removed"; before: RoutineExercise };
-
-export interface DayDiff {
-  dayOfWeek: number;
-  /** `added`: a session on a weekday the base rests; `removed`: the reverse. */
-  kind: "added" | "removed" | "changed" | "unchanged";
-  focusBefore: string | null;
-  focusAfter: string | null;
-  rows: ExerciseChange[];
-}
-
-/** A plan-level field that differs. Equipment and injuries are never rows (N5, below). */
-export interface SettingChange {
-  field: "name" | "minutesPerSession" | "goal" | "level";
-  before: string | number;
-  after: string | number;
-}
-
-export interface RoutineDiff {
-  days: DayDiff[];
-  settings: SettingChange[];
-  /** True when nothing at all differs: the panel says so rather than drawing an empty list. */
-  identical: boolean;
-}
-
-const nameKey = (exercise: RoutineExercise) => exercise.name.trim().toLowerCase();
-
-const norm = (value: unknown) => (value === undefined || value === "" ? null : value);
-
-function changedFields(before: RoutineExercise, after: RoutineExercise): PrescriptionField[] {
-  return PRESCRIPTION_FIELDS.filter((field) => norm(before[field]) !== norm(after[field]));
-}
-
-/** Longest common subsequence of two name lists, as index pairs in order. */
-function lcsPairs(a: string[], b: string[]): [number, number][] {
-  const table: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
-  for (let i = a.length - 1; i >= 0; i--) {
-    for (let j = b.length - 1; j >= 0; j--) {
-      table[i][j] = a[i] === b[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
-    }
-  }
-  const pairs: [number, number][] = [];
-  let i = 0;
-  let j = 0;
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) {
-      pairs.push([i, j]);
-      i++;
-      j++;
-    } else if (table[i + 1][j] >= table[i][j + 1]) i++;
-    else j++;
-  }
-  return pairs;
-}
-
-/**
- * One day's rows, in the PROPOSAL's order. Exercises are matched by name (trimmed, case
- * ignored) along their longest common subsequence: a match is `unchanged` or `prescription`.
- * Between two matches, the base's leftovers and the proposal's leftovers are paired in order
- * as `replaced`; what remains is `removed` / `added`. A removed row is placed where it stood,
- * before the proposal row that followed it.
- */
-export function dayRows(before: RoutineExercise[], after: RoutineExercise[]): ExerciseChange[] {
-  const pairs = lcsPairs(before.map(nameKey), after.map(nameKey));
-  const rows: ExerciseChange[] = [];
-  let bi = 0;
-  let ai = 0;
-  const flushGap = (bEnd: number, aEnd: number) => {
-    const removed = before.slice(bi, bEnd);
-    const added = after.slice(ai, aEnd);
-    const paired = Math.min(removed.length, added.length);
-    for (let k = 0; k < paired; k++) {
-      rows.push({ kind: "replaced", before: removed[k], after: added[k], afterIndex: ai + k });
-    }
-    for (let k = paired; k < removed.length; k++) rows.push({ kind: "removed", before: removed[k] });
-    for (let k = paired; k < added.length; k++) rows.push({ kind: "added", after: added[k], afterIndex: ai + k });
-  };
-  for (const [bm, am] of pairs) {
-    flushGap(bm, am);
-    const fields = changedFields(before[bm], after[am]);
-    rows.push(
-      fields.length === 0
-        ? { kind: "unchanged", after: after[am], afterIndex: am }
-        : { kind: "prescription", before: before[bm], after: after[am], afterIndex: am, fields }
-    );
-    bi = bm + 1;
-    ai = am + 1;
-  }
-  flushGap(before.length, after.length);
-  return rows;
-}
-
-/**
- * EV-186n N1 — `baseDocument` vs `proposal`, per weekday (1–7), Monday first.
- *
- * `base` is null when the trainee had neither a draft nor a published plan (`baseSource`
- * NONE): every proposal day is then `added`.
- *
- * N5: on a LIVE base the stored proposal carries the trainee's profile subject fields, while
- * `baseDocument` is coach-shaped (both constraint lists `[]`). So equipment and injuries are
- * NEVER compared — they are the trainee's, shown read-only on this page, and a difference there
- * is an artefact of the two shapes, not a change the coach would keep. Goal and level are rows
- * only when they actually differ.
- */
-export function routineDiff(base: Routine | null, proposal: Routine): RoutineDiff {
-  const beforeDays = new Map((base?.trainingDays ?? []).map((day) => [day.dayOfWeek, day]));
-  const afterDays = new Map(proposal.trainingDays.map((day) => [day.dayOfWeek, day]));
-  const weekdays = Array.from(new Set([...beforeDays.keys(), ...afterDays.keys()])).sort((a, b) => a - b);
-
-  const days: DayDiff[] = weekdays.map((dayOfWeek) => {
-    const b = beforeDays.get(dayOfWeek) ?? null;
-    const a = afterDays.get(dayOfWeek) ?? null;
-    if (!b && a) {
-      return {
-        dayOfWeek,
-        kind: "added",
-        focusBefore: null,
-        focusAfter: a.focus,
-        rows: a.exercises.map((after, afterIndex) => ({ kind: "added", after, afterIndex })),
-      };
-    }
-    if (b && !a) {
-      return {
-        dayOfWeek,
-        kind: "removed",
-        focusBefore: b.focus,
-        focusAfter: null,
-        rows: b.exercises.map((before) => ({ kind: "removed", before })),
-      };
-    }
-    const before = b as NonNullable<typeof b>;
-    const after = a as NonNullable<typeof a>;
-    const rows = dayRows(before.exercises, after.exercises);
-    const same = before.focus.trim() === after.focus.trim() && rows.every((row) => row.kind === "unchanged");
-    return {
-      dayOfWeek,
-      kind: same ? "unchanged" : "changed",
-      focusBefore: before.focus,
-      focusAfter: after.focus,
-      rows,
-    };
-  });
-
-  const settings: SettingChange[] = [];
-  if (base) {
-    if (base.name.trim() !== proposal.name.trim()) settings.push({ field: "name", before: base.name, after: proposal.name });
-    if (base.constraints.minutesPerSession !== proposal.constraints.minutesPerSession) {
-      settings.push({
-        field: "minutesPerSession",
-        before: base.constraints.minutesPerSession,
-        after: proposal.constraints.minutesPerSession,
-      });
-    }
-    if (base.goal !== proposal.goal) settings.push({ field: "goal", before: base.goal, after: proposal.goal });
-    if (base.level !== proposal.level) settings.push({ field: "level", before: base.level, after: proposal.level });
-  }
-
-  return {
-    days,
-    settings,
-    identical: settings.length === 0 && days.every((day) => day.kind === "unchanged"),
-  };
-}
-
-/** N2: the api's mark for this proposal row, if any (weekday + index, as the api locates it). */
-export function repairMarkFor(
-  marks: readonly CoachRoutineAiRepairMark[],
-  dayOfWeek: number,
-  afterIndex: number
-): CoachRoutineAiRepairMark | null {
-  return marks.find((mark) => mark.dayOfWeek === dayOfWeek && mark.exerciseIndex === afterIndex) ?? null;
 }
