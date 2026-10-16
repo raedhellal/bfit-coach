@@ -36,6 +36,9 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *      RESTORE_WAIT_MS without scrolling, once — an opener enabled after that moves nothing;
  *   U6c the wait ends with NO focus move on a key press, a pointer press or a wheel turn (staff
  *      r1 S1), and never takes focus out of a dialog opened meanwhile;
+ *   U4b the opt-in `escapeIgnoresDirty`: by default a dirty dialog refuses Escape; with the prop
+ *      a dirty dialog closes on Escape; with the prop its backdrop STILL refuses a dirty dialog
+ *      (BUG-699 unchanged) — the catalogue picker's ruling;
  *   U7 a dialog opened from a dialog takes Escape and the trap for itself and hands both back;
  *   U8 the stand-ins for an opener when nothing is focused at open: a Safari press (pointerdown
  *      + click, which does not focus the button), and an opener disabled by its own request
@@ -153,7 +156,7 @@ const APP = `
         } }, "Open"),
         h("button", { id: "sibling", onFocus: log("sibling") }, "sibling")),
       h("button", { id: "other", onFocus: log("other") }, "other"),
-      h(Modal, { open: open, dirty: !!p.dirty, title: "Outer title", onClose: close,
+      h(Modal, { open: open, dirty: !!p.dirty, escapeIgnoresDirty: !!p.escapeIgnoresDirty, title: "Outer title", onClose: close,
         footer: h("button", { id: "cancel", onFocus: log("cancel"), onClick: function () { setOpen(false); } }, "Cancel") }, body));
   }
   var root = U.ReactDOMClient.createRoot(document.getElementById("root"));
@@ -279,6 +282,31 @@ test.describe("BUG-171 unit", () => {
     await expect(dialog.locator("#f1"), "and focus stays in the field").toBeFocused();
     await page.getByRole("button", { name: "Close" }).click();
     await expect(dialog, "× still closes it").toHaveCount(0);
+  });
+
+  test("U4b: escapeIgnoresDirty — default refuses, opt-in closes on Escape, backdrop still refuses", async ({ page }) => {
+    // (1) The default: dirty, no prop → Escape is refused.
+    await harness(page, { variant: "fields", dirty: true });
+    let dialog = await openIt(page);
+    await page.keyboard.press("Escape");
+    await settle(page);
+    expect(await closes(page), "default: a dirty dialog refuses Escape").toBe(0);
+    await expect(dialog).toBeVisible();
+
+    // (2) The opt-in: dirty AND escapeIgnoresDirty → Escape closes, focus back on the opener.
+    await harness(page, { variant: "fields", dirty: true, escapeIgnoresDirty: true });
+    dialog = await openIt(page);
+    await page.keyboard.press("Escape");
+    await expect(dialog, "opted in: Escape closes the dirty dialog").toHaveCount(0);
+    expect(await closes(page)).toBe(1);
+    await expect(page.locator("#opener")).toBeFocused();
+
+    // (3) The opt-in does not touch the backdrop: dirty → a backdrop click is still ignored.
+    dialog = await openIt(page);
+    await page.locator("[data-modal-backdrop]").click({ position: { x: 4, y: 4 } });
+    await settle(page);
+    expect(await closes(page), "the backdrop asked nothing: still governed by dirty").toBe(1);
+    await expect(dialog, "BUG-699: the backdrop still refuses a dirty dialog").toBeVisible();
   });
 
   test("U5: a caller that places focus itself on close keeps it — no second restore", async ({ page }) => {

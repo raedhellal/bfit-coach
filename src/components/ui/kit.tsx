@@ -554,6 +554,7 @@ export function Modal({
   icon,
   iconTone = "blue",
   dirty,
+  escapeIgnoresDirty = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -570,6 +571,14 @@ export function Modal({
    * (TS2741, "Property 'dirty' is missing"), which is the guard.
    */
   dirty: boolean;
+  /**
+   * BUG-171 — Escape closes even when `dirty`. Default false: a changed dialog ignores Escape.
+   * ONLY for a dialog whose `dirty` guards no typed data — where everything the coach did is
+   * already committed and Escape would lose nothing but view state (the catalogue picker: each
+   * pick is added at once; only the search text and filters go). The backdrop click is NOT
+   * affected: it still follows `dirty` (BUG-699), and × and Cancel close as always.
+   */
+  escapeIgnoresDirty?: boolean;
   title: ReactNode;
   sub?: ReactNode;
   children?: ReactNode;
@@ -605,15 +614,15 @@ export function Modal({
   // Read at the moment of the key press, so a `!pending && …` guard or a `dirty` flag is never one
   // render stale (staff N1): updated in the commit, not in the passive flush after it.
   const onCloseRef = useRef(onClose);
-  const dirtyRef = useRef(dirty);
+  const escapeHeldRef = useRef(dirty && !escapeIgnoresDirty);
   useCommitEffect(() => {
     onCloseRef.current = onClose;
-    dirtyRef.current = dirty;
+    escapeHeldRef.current = dirty && !escapeIgnoresDirty;
   });
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!open || !dialog) return;
-    return engageModal(dialog, opener.current, () => onCloseRef.current(), () => dirtyRef.current);
+    return engageModal(dialog, opener.current, () => onCloseRef.current(), () => escapeHeldRef.current);
   }, [open]);
   if (!open) return null;
   const tone = {

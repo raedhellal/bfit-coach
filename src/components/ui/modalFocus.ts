@@ -9,7 +9,8 @@
 //   · Escape  calls `onClose` — the same function as × — so a dialog whose `onClose` refuses
 //             while a request is in flight (`() => !pending && …`) refuses Escape too. A DIRTY
 //             dialog ignores Escape, as it ignores a backdrop click (BUG-699/702: only × and
-//             Cancel, which say what they do, may discard what the coach typed);
+//             Cancel, which say what they do, may discard what the coach typed) — unless the
+//             dialog opts out with `escapeIgnoresDirty` (the catalogue picker);
 //   · close   focus returns to the element that opened the dialog — once it is enabled again
 //             if the dialog's request left it disabled; if it is gone, to the first control of
 //             its nearest surviving container, then to `<main id="main">` — EXACTLY ONCE, and
@@ -156,7 +157,8 @@ export function engageModal(
   dialog: HTMLElement,
   opener: Opener,
   onClose: () => void,
-  isDirty: () => boolean
+  /** True while Escape must not close: the dialog is dirty and has not opted out (kit.tsx). */
+  escapeHeld: () => boolean
 ): () => void {
   // A dialog opening now owns focus: a previous dialog's wait for its disabled opener ends here.
   // Defensive — no sequence was found where the wait would otherwise act (focus inside an open
@@ -182,7 +184,7 @@ export function engageModal(
       // A control inside the dialog that uses Escape itself (and says so) keeps it.
       if (event.defaultPrevented || event.isComposing) return;
       // Changed fields: Escape is a backdrop click, not a Cancel (senior-po ruling on BUG-171).
-      if (isDirty()) return;
+      if (escapeHeld()) return;
       event.preventDefault();
       onClose();
       return;
