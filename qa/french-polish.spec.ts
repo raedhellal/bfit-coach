@@ -125,6 +125,7 @@ const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
   "client.programmeCard.changedByTrainee#0", // EV-337e: « le {date} »
   "client.programmeCard.draftSaved#0", // EV-337e: « le {date} »
   "client.programmeCard.published#0", // EV-337e: « Publié le {date} »
+  "intakePage.finishedOn#0", // EV-341c C5: « Entretien terminé le {date} » (red on origin/main feb9ccb before EV-186b registered it)
   "invited.pageExpiry#0", // EV-204b: « avant le {date} »
   "invited.resendBody#1", // EV-204b: « expire toujours le {date} »
   "invited.resent#1", // EV-204b: same
@@ -142,6 +143,7 @@ const DATE_NUMBER_OR_WEEKDAY_POSITIONS = [
   "recipes.numberRange#1",
   "routine.repsOnDuration#0", // weekday
   "routine.traineeChanged#1",
+  "routineAi.disclosure#0", // EV-186n: « Préparé avec l'IA le {date} »
   "templates.updatedAt#0",
   "trial.assignedOn#0", // EV-341j J3: « Assignée le {date} »
   "trial.doneOn#0", // EV-341j J3: « Faite le {date} »
