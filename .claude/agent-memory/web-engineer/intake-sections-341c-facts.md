@@ -22,16 +22,30 @@ metadata:
   props.completedAt` (formatInstant, UTC); button disabled under GRANT_MISSING (aria-describedby B11).
 - Fixture: `completedAt` on the intake link; `evoli_fixture_intake_complete=fail`.
 
-**Not built — C6 (overview summary card):** the overview already has EV-341w's « Entretien » card
-(`section[aria-labelledby='ov-intake']`), and J.3's 768 px budget (≤ 2,300 px, 7 px slack FR) counts it.
-C6 as written adds a second "Intake" card and, under GRANT_MISSING, a second sentence. Raised to the
-PO; build only once ruled (one card or two, and what GRANT_MISSING shows).
+**C6 cut to EV-374** (senior-po, hub main 0d27f475), with C5's overview clause. Do not build it on
+341c. EV-374's card must print the date with `formatIntakeFinishedOn` (`src/lib/format.ts`, UTC by
+design) and owes the witness for the action's `revalidatePath` (its finished line read after a
+client-side return within 30 s) — until then the revalidation is intent, and the docstring says so.
+
+**Staff round (fb2374f → 688cad4/797b16c):**
+- « Terminer » signed out (N1): disabled while `autosave.signedOut` (describedby = the session
+  sentence's id); action maps 401 → `SIGNED_OUT`; an action that resolves with NO result (middleware
+  sent the POST to /login, or a bare 503) probes the BFF read like « Recharger » and, if the session
+  is gone, calls `autosave.endSession()`. Otherwise `finishFailed` (C5b: role=alert, button enabled,
+  cleared on retry; 403 → `accessEnded()`).
+- Mixed-scope subjects in the spec (F1): Pablo …0021 (WORKOUTS+WEIGH_INS), Sara …0003 (PROGRESS+
+  WEIGH_INS), Petra …0006 (NUTRITION). Read-witness = `/api/fixture/calls` `api[]` (`op`, `arg`).
+- C8 now also presses « Finish » after an idle expiry (server action `cookies()` path, F3).
 
 **Traps:**
 - `/api/bff/clients/{id}/intake` returns `state` + `sections` only (no `status`/`completedAt`): a spec
   cannot read the finish there; assert it through the page (line, reload).
 - A symlinked `node_modules` in a worktree shows as untracked (`.gitignore` has `node_modules/`, a dir
   pattern): stage by path, never `git add -A`.
-- C8 is the live 1-minute-token run (`--grep C8` in `qa/intake-token-expiry.live.spec.ts`).
+- C8 is the live 1-minute-token run in `qa/intake-token-expiry.live.spec.ts`; QA runs the whole file.
+- `[WebServer] failed to forward action response TypeError: fetch failed` in the N1 test is
+  expected: next dev forwarding a session-less server action that middleware redirected to /login.
+- Scope-gating specs need a mixed-scope subject: all-on/all-off cannot catch a block gated on the
+  wrong scope (verified by mutation on this branch: old tests stayed green).
 
 Related: [[intake-interview-341b-facts]], [[intake-routine-fields-341y2-facts]].
