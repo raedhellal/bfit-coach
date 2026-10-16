@@ -295,6 +295,57 @@ test.describe("B18 — the autosave engine", () => {
     expect(sent).toHaveLength(2);
   });
 
+  test("EV-370 N1: a save refused after the session ended keeps « session ended », sends nothing while signed out, and « Réessayer » sends the newer values once", async () => {
+    // With and without a blur on the newer values: a blur and a 401 both arriving while A is
+    // out is still N1 (signed out, nothing sent).
+    for (const blur of [false, true]) {
+      const label = blur ? "with a blur" : "change only";
+      const { clock, sent, engine } = rig();
+      engine.change("GOALS", "g1");
+      engine.flush("GOALS"); // A (GOALS) in flight
+      engine.change("GOALS", "g2"); // the coach changes a field of A while it is out
+      if (blur) engine.flush("GOALS");
+      engine.change("HISTORY", "h1");
+      engine.flush("HISTORY"); // B (HISTORY) in flight
+      sent[1].answer({ kind: "signedOut" }); // B: 401, the session ends
+      await clock.advance(0);
+      sent[0].answer({ kind: "invalid", field: "eventLabel" }); // then A: 400
+      await clock.advance(0);
+      expect(engine.snapshot().statuses.GOALS, `${label}: A reads session ended, not pending`).toBe("signedOut");
+      expect(engine.snapshot().signedOut, `${label}: B15's banner`).toBe(true);
+      expect(engine.snapshot().refused.GOALS, `${label}: B4a's line for A`).toEqual({ field: "eventLabel" });
+      await clock.advance(5_000);
+      expect(sent.filter((x) => x.key === "GOALS"), `${label}: no PUT for A while signed out`).toHaveLength(1);
+      engine.retry(); // signed in again, « Réessayer »
+      const goals = sent.filter((x) => x.key === "GOALS");
+      expect(goals.map((x) => x.payload), `${label}: A's newer values, in one PUT`).toEqual(["g1", "g2"]);
+      expect(engine.snapshot().refused.GOALS, `${label}: the line stays until a 2xx`).toEqual({ field: "eventLabel" });
+      goals[1].answer(ok(1));
+      await clock.advance(0);
+      expect(engine.snapshot().refused.GOALS, label).toBeNull();
+      expect(engine.snapshot().statuses.GOALS, label).toBe("saved");
+    }
+  });
+
+  test("EV-370 N2: values changed and blurred while a save is out are sent at once when it is refused, without the idle time", async () => {
+    const { clock, sent, engine } = rig();
+    engine.change("GOALS", "v1");
+    engine.flush("GOALS"); // v1 in flight
+    engine.change("GOALS", "v2");
+    engine.flush("GOALS"); // and the field lost focus while v1 is out
+    sent[0].answer({ kind: "invalid", field: "eventLabel" });
+    await settle(); // promises only: the timers are not advanced at all
+    expect(sent.map((x) => x.payload), "v2 goes at once, v1 never again").toEqual(["v1", "v2"]);
+    expect(engine.snapshot().statuses.GOALS).toBe("saving");
+    expect(engine.snapshot().refused.GOALS, "B4a: the line stays until a 2xx").toEqual({ field: "eventLabel" });
+    await clock.advance(60_000);
+    expect(sent, "one more save, not two").toHaveLength(2);
+    sent[1].answer(ok(1));
+    await clock.advance(0);
+    expect(engine.snapshot().refused.GOALS).toBeNull();
+    expect(engine.snapshot().statuses.GOALS).toBe("saved");
+  });
+
   test("B4a (staff r2 #1): « Réessayer » never re-sends a refused section, whatever else it sends", async () => {
     const { clock, sent, engine } = rig();
     engine.change("GOALS", "refused");

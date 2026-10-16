@@ -388,8 +388,20 @@ export class AutosaveEngine<K extends string, P> {
           // Staff r3 #2: the coach typed newer values while the refused body was out. They are a
           // change, not the refused body: they are sent after the idle time like any change (B3),
           // and the refusal's line stays until a save of the section answers 2xx (B4a).
-          s.queued = false;
           this.clearIdle(s);
+          if (this.signedOut) {
+            // EV-370 N1: the session ended meanwhile. Kept for « Réessayer », not sent, and the
+            // section says so, as the `saved` and `failed` branches do.
+            s.queued = false;
+            s.status = "signedOut";
+            break;
+          }
+          if (s.queued) {
+            // EV-370 N2: their time already came (a blur, or the idle timer, while the refused
+            // body was out): ONE more save, now, as the `saved` branch does.
+            this.fire(key);
+            break;
+          }
           s.idleTimer = this.timers.setTimeout(() => {
             s.idleTimer = null;
             this.fire(key);
