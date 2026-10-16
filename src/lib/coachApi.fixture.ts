@@ -6711,8 +6711,8 @@ async function fixtureSaveIntakeSection(
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
- * EV-186b — THE ROUTINE AI PROPOSAL, ported from b-fit-api `feat/ev186a-coach-routine-regenerate`
- * @ 9c3bff69 (`openapi.yaml`; NOT merged). What is reproduced is the CONTRACT the portal meets:
+ * EV-186b — THE ROUTINE AI PROPOSAL, ported from b-fit-api `openapi.yaml` (main @ 19b6696e,
+ * EV-186a). What is reproduced is the CONTRACT the portal meets:
  *
  *   · the capability block on the routine read (all false by default, as on a server with
  *     both flags off) and the routes answering 404 NOT_FOUND while it is off;

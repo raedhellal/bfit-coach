@@ -11021,6 +11021,9 @@ components:
           description: READY only — what POST …/routine/publish/preview would list for `proposal`.
         repairMarks:
           type: array
+          description: >-
+            READY only: the exercises the policy would swap or drop at publish because of an injury.
+            Injury repairs only; an equipment or volume repair appears in `repairs` with no mark.
           items:
             $ref: "#/components/schemas/CoachRoutineAiRepairMark"
         equipmentChecked:
