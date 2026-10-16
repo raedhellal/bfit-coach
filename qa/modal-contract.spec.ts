@@ -42,7 +42,25 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *   U7 a dialog opened from a dialog takes Escape and the trap for itself and hands both back;
  *   U8 the stand-ins for an opener when nothing is focused at open: a Safari press (pointerdown
  *      + click, which does not focus the button), and an opener disabled by its own request
- *      before the dialog opens (RoutineEditor's « Publish » asks for a preview first).
+ *      before the dialog opens (RoutineEditor's « Publish » asks for a preview first);
+ *   U9 BUG-838 — a confirmed delete whose list refresh removes the row AFTER the restore focused
+ *      the row's control: focus goes to the next row's first control, the previous row's for the
+ *      last row, the library's « New » once the list is empty; the same when the row is removed
+ *      BEFORE the restore; and never under a coach who pressed a key in between;
+ *   U9b BUG-839 staff S1 — while a confirm's request runs, its buttons are disabled and Chromium
+ *      drops their focus to `<body>`: it stays there (main's behaviour), never on ×, and the
+ *      restore after the close is unchanged. Red 3/3 on c990ae8 (the observer watched `disabled`);
+ *   U10 BUG-839 — a step change inside an open dialog (the pressed control is replaced) puts
+ *      focus on the new step's first control, never `<body>`, after a synchronous and after an
+ *      awaited change; a caller's own effect that places focus after an `await` (EV-341y2's
+ *      CatalogPicker moves, which act only while focus is on `<body>`) still wins — U10b, a guard
+ *      (green on main too), red 3/3 against a re-home with no delay: its step renders slowly, so
+ *      React runs the effect in a later task than the DOM change;
+ *   U11 BUG-840 — a dialog opened from a dialog that closes in the same change (pick → confirm)
+ *      returns focus on Escape to what opened the FIRST dialog.
+ *
+ * Red on `2b1ed4d` (main, before BUG-838/839/840): U9, both U10 cases and U11 — 4 of 4; U1–U8 and
+ * U10b green on both.
  */
 
 const ROOT = resolve(__dirname, "..");
@@ -126,6 +144,8 @@ const APP = `
     var c = R.useState(true), showBox = c[0], setShowBox = c[1];
     var d = R.useState(false), openerDisabled = d[0], setOpenerDisabled = d[1];
     var r = R.useState(false), refuse = r[0], setRefuse = r[1];
+    var st = R.useState(1), step = st[0], setStep = st[1];
+    var cf = R.useState(false), confirm = cf[0], setConfirm = cf[1];
     var closedOnce = R.useRef(false);
     window.__api = { setOpen: setOpen, setShowOpener: setShowOpener, setShowBox: setShowBox, setOpenerDisabled: setOpenerDisabled, setRefuse: setRefuse };
     R.useEffect(function () {
@@ -138,6 +158,12 @@ const APP = `
     else if (p.variant === "marked") body = [h("input", { key: 1, id: "f1", "aria-label": "f1" }), h("input", { key: 2, id: "f2", "aria-label": "f2", "data-autofocus": "" })];
     else if (p.variant === "autoFocus") body = [h("input", { key: 1, id: "f1", "aria-label": "f1" }), h("input", { key: 2, id: "f2", "aria-label": "f2", autoFocus: true })];
     else if (p.variant === "ownsEscape") body = h("input", { id: "f1", "aria-label": "f1", onKeyDown: function (e) { if (e.key === "Escape") e.preventDefault(); } });
+    else if (p.variant === "steps") body = step === 1
+      ? [h("p", { key: 0 }, "Step one."), h("button", { key: 1, id: "next", onClick: function () {
+          if (p.async) setTimeout(function () { setStep(2); }, 30); else setStep(2);
+        } }, "Next")]
+      : h(Step2, { callerFocus: !!p.callerFocus });
+    else if (p.variant === "chain") body = h("button", { id: "pick", onClick: function () { setOpen(false); setConfirm(true); } }, "Pick");
     else if (p.variant === "nested") body = [
       h("button", { key: 1, id: "openInner", onFocus: log("openInner"), onClick: function () { setInner(true); } }, "inner"),
       h(Modal, { key: 2, open: inner, dirty: false, title: "Inner", onClose: function () { setInner(false); },
@@ -157,8 +183,67 @@ const APP = `
         h("button", { id: "sibling", onFocus: log("sibling") }, "sibling")),
       h("button", { id: "other", onFocus: log("other") }, "other"),
       h(Modal, { open: open, dirty: !!p.dirty, escapeIgnoresDirty: !!p.escapeIgnoresDirty, title: "Outer title", onClose: close,
-        footer: h("button", { id: "cancel", onFocus: log("cancel"), onClick: function () { setOpen(false); } }, "Cancel") }, body));
+        footer: h("button", { id: "cancel", onFocus: log("cancel"), onClick: function () { setOpen(false); } }, "Cancel") }, body),
+      h(Modal, { open: confirm, dirty: false, title: "Confirm title", onClose: function () { setConfirm(false); } },
+        h("button", { id: "yes" }, "Yes")));
   }
+  // BUG-839: the second step; with callerFocus, an effect that places focus itself only while
+  // focus is on <body> — CatalogPicker's EV-341y2 moves. Its render is SLOW (20 ms): React's
+  // scheduler then yields after the commit, so the effect runs in a LATER task than the DOM
+  // change — after the dialog's MutationObserver — which is the order a heavy page produces.
+  // With a fast render the effect runs in the commit's own task and no re-home could race it.
+  function Step2(p) {
+    if (p.callerFocus) { var t0 = performance.now(); while (performance.now() - t0 < 20) { /* busy */ } }
+    R.useEffect(function () {
+      if (!p.callerFocus) return;
+      var a = document.activeElement;
+      if (a && a !== document.body) return;
+      document.getElementById("s2b").focus();
+    }, []);
+    return [h("input", { key: 1, id: "s2a", "aria-label": "s2a" }), h("input", { key: 2, id: "s2b", "aria-label": "s2b" })];
+  }
+  // BUG-838: a library — « New », then one row per item (a link, then « Delete », which opens the
+  // confirm). The confirm closes the dialog, and the row goes "lag" ms later, as the list
+  // refresh after the action does; "lag: -1" removes it in the same change as the close.
+  // With "pending: N" the confirm is TemplateLibrary's: both footer buttons are disabled for the
+  // N ms its request runs (TemplateLibrary.tsx:508-513), then the dialog closes.
+  function Rows(p) {
+    var s = R.useState(p.rows || ["a", "b", "c"]), rows = s[0], setRows = s[1];
+    var t = R.useState(null), target = t[0], setTarget = t[1];
+    var b = R.useState(false), busy = b[0], setBusy = b[1];
+    function confirm() {
+      var id = target;
+      var drop = function () { setRows(function (r) { return r.filter(function (x) { return x !== id; }); }); };
+      var done = function () {
+        setBusy(false);
+        setTarget(null);
+        if (p.lag < 0) drop(); else setTimeout(drop, p.lag);
+      };
+      if (p.pending) { setBusy(true); setTimeout(done, p.pending); } else done();
+    }
+    return h("main", { id: "main", tabIndex: -1 },
+      h("div", { id: "lib" },
+        h("button", { id: "new" }, "New"),
+        rows.length
+          ? h("ul", { id: "list" }, rows.map(function (id) {
+              return h("li", { key: id, id: "row-" + id },
+                h("a", { href: "#" + id, id: "edit-" + id }, "Edit " + id),
+                h("button", { id: "del-" + id, onClick: function () { setTarget(id); } }, "Delete " + id));
+            }))
+          : h("p", null, "No items yet.")),
+      h(Modal, { open: target !== null, dirty: false, title: "Delete?", onClose: function () { if (!busy) setTarget(null); },
+        footer: [
+          p.pending && h("button", { key: 0, id: "keep", disabled: busy, onClick: function () { setTarget(null); } }, "Cancel"),
+          h("button", { key: 1, id: "confirm", disabled: busy, onClick: confirm }, "Delete"),
+        ] }, h("p", null, "Sure?")));
+  }
+  // Every focus move while a Rows page is up, in order — by id, or the aria-label for the ×.
+  window.__seq = [];
+  document.addEventListener("focusin", function (e) {
+    var el = e.target;
+    window.__seq.push(el.id || el.getAttribute("aria-label") || el.tagName);
+  });
+  window.__showRows = function (props) { root.render(h(R.StrictMode, null, h(Rows, props))); };
   var root = U.ReactDOMClient.createRoot(document.getElementById("root"));
   window.__show = function (props) { root.render(h(R.StrictMode, null, h(Harness, props))); };
 })();
@@ -478,5 +563,131 @@ test.describe("BUG-171 unit", () => {
     await page.keyboard.press("Escape");
     await expect(outer).toHaveCount(0);
     await expect(page.locator("#opener")).toBeFocused();
+  });
+});
+
+async function rows(page: Page, props: Record<string, unknown>) {
+  await loadUnitPage(page, bundle(ENTRIES, STUBS) + "\n" + APP);
+  await page.evaluate((p) => (window as unknown as { __showRows: (p: unknown) => void }).__showRows(p), props);
+  await expect(page.locator("#list, #lib p")).toBeVisible();
+}
+
+/** Delete row `id` from the keyboard: Enter on its « Delete », Enter on the dialog's « Delete ». */
+async function deleteRow(page: Page, id: string) {
+  await page.locator(`#del-${id}`).focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Delete?" });
+  await expect(dialog).toBeVisible();
+  await dialog.locator("#confirm").focus();
+  await resetSeq(page);
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+}
+
+/** The focus moves recorded since the last `resetSeq` (the Rows harness's `focusin` log). */
+const seq = (page: Page) => page.evaluate(() => (window as unknown as { __seq: string[] }).__seq.slice());
+const resetSeq = (page: Page) => page.evaluate(() => ((window as unknown as { __seq: string[] }).__seq.length = 0));
+
+const activeId = (page: Page) =>
+  page.evaluate(() => {
+    const a = document.activeElement;
+    return !a || a === document.body ? "BODY" : a.id || a.tagName;
+  });
+
+test.describe("BUG-838/839/840 unit", () => {
+  test("U9: the row the restore focused is removed after it — next row, previous row, « New »; also when removed before; never after a key", async ({ page }) => {
+    // The QA timeline: the restore focuses the row's « Delete », the refresh removes the row later.
+    // The order is read from the focusin log once it has settled, not sampled live: under load
+    // the 120 ms the row survives can pass before Playwright first looks (staff N1).
+    await rows(page, { lag: 120 });
+    await deleteRow(page, "b");
+    await expect(page.locator("#row-b")).toHaveCount(0);
+    await expect(page.locator("#edit-c"), "the next row's first control").toBeFocused();
+    expect(await seq(page), "the restore lands first on the row's « Delete », then the next row's first control").toEqual(["del-b", "edit-c"]);
+
+    await deleteRow(page, "c");
+    await expect(page.locator("#row-c")).toHaveCount(0);
+    await expect(page.locator("#edit-a"), "the last row went: the previous row's first control").toBeFocused();
+
+    await deleteRow(page, "a");
+    await expect(page.locator("#list")).toHaveCount(0);
+    await expect(page.locator("#new"), "the list is empty: the library's first control, « New »").toBeFocused();
+
+    // Removed in the same change as the close: the restore's own fallback picks the next row too
+    // (before BUG-838 it took the list's FIRST control, « Edit a »).
+    await rows(page, { lag: -1 });
+    await deleteRow(page, "b");
+    await expect(page.locator("#edit-c")).toBeFocused();
+
+    // A coach who pressed a key in between has acted: nothing moves under them.
+    await rows(page, { lag: 600 });
+    await deleteRow(page, "b");
+    await expect(page.locator("#del-b")).toBeFocused();
+    await page.keyboard.press("Shift");
+    await expect(page.locator("#row-b")).toHaveCount(0);
+    await settle(page);
+    expect(await activeId(page), "the watch ended on the key press").toBe("BODY");
+  });
+
+  test("U9b: while a confirm's request runs, its disabled buttons do not send focus to × — and the restore after it is unchanged", async ({ page }) => {
+    // TemplateLibrary's delete confirm: Cancel and « Delete » are disabled while pending. Chromium
+    // drops focus from a button that becomes disabled to <body>; that is where it stays until the
+    // dialog closes (as on main, before BUG-839). The step-change regain must not read the
+    // `disabled` change as a step change and land on × (staff S1: "mid-request focus: Close").
+    await rows(page, { lag: 120, pending: 600 });
+    await page.locator("#del-b").focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Delete?" });
+    await expect(dialog).toBeVisible();
+    await dialog.locator("#confirm").focus();
+    await resetSeq(page);
+    await page.keyboard.press("Enter");
+    await expect(dialog.locator("#confirm"), "the request is running").toBeDisabled();
+    await page.waitForTimeout(200); // well past REGAIN_DELAY_MS, well inside the 600 ms request
+    await expect(dialog.locator("#confirm"), "still running when sampled").toBeDisabled();
+    expect(await activeId(page), "mid-request: focus is not moved anywhere — least of all to ×").toBe("BODY");
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator("#row-b")).toHaveCount(0);
+    await expect(page.locator("#edit-c"), "after the close: the restore, then the next row's first control").toBeFocused();
+    expect(await seq(page), "no focus move before the close; then « Delete », then the next row").toEqual(["del-b", "edit-c"]);
+  });
+
+  for (const async of [false, true]) {
+    test(`U10: a step change inside an open dialog keeps focus inside it (${async ? "after an await" : "synchronous"})`, async ({ page }) => {
+      await harness(page, { variant: "steps", async });
+      const dialog = await openIt(page);
+      await dialog.locator("#next").focus();
+      await page.keyboard.press("Enter");
+      await expect(dialog.locator("#s2a")).toBeVisible();
+      await expect(dialog.locator("#s2a"), "the new step's first control").toBeFocused();
+      // The rest of the contract still holds after the step: Escape closes, focus goes back.
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(page.locator("#opener")).toBeFocused();
+    });
+  }
+
+  test("U10b: a caller that places focus itself after an awaited step change keeps it (EV-341y2)", async ({ page }) => {
+    await harness(page, { variant: "steps", async: true, callerFocus: true });
+    const dialog = await openIt(page);
+    await dialog.locator("#next").focus();
+    await page.keyboard.press("Enter");
+    await expect(dialog.locator("#s2b"), "the caller's target, not the dialog's first control").toBeFocused();
+    await settle(page);
+    await page.waitForTimeout(100);
+    await expect(dialog.locator("#s2b")).toBeFocused();
+  });
+
+  test("U11: a dialog opened from a dialog that closed in the same change returns focus to the first dialog's opener", async ({ page }) => {
+    await harness(page, { variant: "chain" });
+    const outer = await openIt(page);
+    await outer.locator("#pick").focus();
+    await page.keyboard.press("Enter");
+    const confirm = page.getByRole("dialog", { name: "Confirm title" });
+    await expect(confirm.locator("#yes")).toBeFocused();
+    await expect(outer).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(confirm).toHaveCount(0);
+    await expect(page.locator("#opener"), "back where the flow started, not the page's first control").toBeFocused();
   });
 });

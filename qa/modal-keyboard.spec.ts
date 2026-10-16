@@ -390,3 +390,160 @@ test.describe("BUG-171 K8", () => {
     });
   }
 });
+
+// ─────────────────────── BUG-838 / BUG-839 (QA-1, QA-2 of BUG-171's gate) ───────────────────────
+//
+// Red on `2b1ed4d` (main, BUG-171 merged), green on `fix/bug-838-840-modal-focus-followups`:
+//   BUG-838 focus fell to <body> once the list refresh removed the row the Modal had just
+//           restored focus to; it now goes to the next row's first control;
+//   BUG-839 a step change inside an open dialog dropped focus to <body>; it stays inside.
+// BUG-838's nutrition-template delete and BUG-840 need the POPULATED scenario (seeded nutrition
+// templates; a trainee to pick): `qa/modal-keyboard-roster.spec.ts`, under the roster config.
+
+const NILS = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0002";
+type Lang = "en" | "fr";
+const LOCALES: Record<Lang, string> = { en: "en-US", fr: "fr-FR" };
+const T = <V,>(en: V, fr: V): Record<Lang, V> => ({ en, fr });
+
+/** Where focus is, for a failure message: "BODY" or "<tag> name". */
+async function where(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const a = document.activeElement as HTMLElement | null;
+    if (!a || a === document.body) return "BODY";
+    return `<${a.tagName.toLowerCase()}> ${(a.getAttribute("aria-label") || a.textContent || "").trim().slice(0, 50)}`;
+  });
+}
+
+/** Marks the `<li>` after the one holding `control`: the row focus must reach once it is deleted. */
+async function markNextRow(control: Locator) {
+  const marked = await control.evaluate((el) => {
+    const next = el.closest("li")?.nextElementSibling;
+    next?.setAttribute("data-b838", "next");
+    return !!next;
+  });
+  expect(marked, "the deleted row has a row after it").toBe(true);
+}
+
+/** Focus is on the first control of the marked row. */
+async function onNextRowFirstControl(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const row = document.querySelector("[data-b838=next]");
+    const first = row?.querySelector('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])');
+    return !!first && document.activeElement === first;
+  });
+}
+
+async function holdsAt2And13s(page: Page) {
+  const start = Date.now();
+  await page.waitForTimeout(2_000);
+  expect(await onNextRowFirstControl(page), `2 s after the confirm, focus is on the next row's first control (it is on ${await where(page)})`).toBe(true);
+  // Past RESTORE_WAIT_MS: nothing later moves it, and nothing drops it.
+  await page.waitForTimeout(Math.max(0, 13_000 - (Date.now() - start)));
+  expect(await onNextRowFirstControl(page), `13 s after the confirm, focus is still there (it is on ${await where(page)})`).toBe(true);
+}
+
+test.describe("BUG-838: a confirmed delete or withdraw leaves focus on the next row, not <body>", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const LIBRARIES = [
+    { id: "templates", path: "/templates", more: true, title: "Delete template?" },
+    { id: "recipes", path: "/recipes", more: false, title: "Delete recipe?" },
+  ];
+  for (const lib of LIBRARIES) {
+    test(`${lib.id}: Enter on « Delete » in « ${lib.title} » → the next row's first control, at 2 s and 13 s`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await signInThroughForm(page);
+      await page.goto(lib.path);
+      const del = page.getByRole("button", { name: "Delete", exact: true }).first();
+      if (lib.more) await pressUntil(page, page.getByRole("button", { name: "More actions", exact: true }).first(), del);
+      await markNextRow(lib.more ? page.getByRole("button", { name: "More actions", exact: true }).first() : del);
+      const dialog = page.getByRole("dialog", { name: lib.title });
+      await pressUntil(page, del, dialog);
+      await dialog.getByRole("button", { name: "Delete", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect(dialog).toHaveCount(0, { timeout: 20_000 });
+      await holdsAt2And13s(page);
+    });
+  }
+
+  test("roster « Withdraw … invitation? » confirmed → the next invited row's first control, at 2 s and 13 s", async ({ page }) => {
+    test.setTimeout(120_000);
+    await signInThroughForm(page);
+    await page.goto("/");
+    const dialog = page.getByRole("dialog");
+    for (const [name, email] of [
+      ["Amal Haddad", "amal.b838@example.com"],
+      ["Bruno Lefort", "bruno.b838@example.com"],
+    ]) {
+      await pressUntil(page, page.getByRole("button", { name: "Add a client", exact: true }), dialog);
+      await dialog.getByLabel("Name", { exact: true }).fill(name);
+      await dialog.getByLabel("Email address", { exact: true }).fill(email);
+      await dialog.getByRole("button", { name: "Add client", exact: true }).click();
+      await page.getByRole("dialog", { name: "Account set up" }).getByRole("button", { name: "Done" }).click();
+      await expect(dialog).toHaveCount(0);
+    }
+    // The first of the two invited rows: the other one follows it.
+    const withdraw = page.getByRole("button", { name: /^Withdraw (Amal Haddad|Bruno Lefort)'s invitation$/ }).first();
+    await markNextRow(withdraw);
+    await pressUntil(page, withdraw, dialog);
+    await dialog.getByRole("button", { name: "Withdraw", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(dialog).toHaveCount(0, { timeout: 20_000 });
+    await holdsAt2And13s(page);
+  });
+});
+
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`BUG-839 (${lang}): a step change inside an open dialog keeps focus inside it`, () => {
+    test.use({ viewport: { width: 1440, height: 900 }, locale: LOCALES[lang] });
+
+    test(`trial « ${T("Start from a template", "Partir d'un modèle")[lang]} »: Enter on a template → the day step`, async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await page.goto(`/clients/${NILS}/routine`);
+      const card = page.getByRole("region", { name: T("Trial session", "Séance d'essai")[lang], exact: true });
+      const prep = card.getByRole("button", { name: T("Prepare a trial session", "Préparer une séance d'essai")[lang], exact: true });
+      const from = card.getByRole("button", { name: T("Start from a template", "Partir d'un modèle")[lang], exact: true });
+      await expect(async () => {
+        if (!(await from.isVisible())) await prep.click();
+        await expect(from).toBeVisible({ timeout: 1_500 });
+      }).toPass({ timeout: 25_000 });
+      const dialog = page.getByRole("dialog");
+      await pressUntil(page, from, dialog);
+      const tpl = dialog.getByRole("button", { name: "Upper / Lower split", exact: true });
+      await expect(tpl).toBeVisible({ timeout: 15_000 });
+      await tpl.focus();
+      await page.keyboard.press("Enter");
+      await expect(tpl).toHaveCount(0);
+      await expect(dialog).toBeVisible();
+      await expect.poll(() => focusIs(page), { message: "focus is inside the dialog after the step change" }).toBe("inside");
+    });
+
+    test(`« ${T("Add a client", "Ajouter un client")[lang]} » submitted → « ${T("Account set up", "Compte créé")[lang]} »`, async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await page.goto("/");
+      const dialog = page.getByRole("dialog");
+      await pressUntil(page, page.getByRole("button", { name: T("Add a client", "Ajouter un client")[lang], exact: true }), dialog);
+      await dialog.getByLabel(T("Name", "Nom")[lang], { exact: true }).fill("Amal Steps");
+      await dialog.getByLabel(T("Email address", "Adresse e-mail")[lang], { exact: true }).fill(`amal.steps.${lang}@example.com`);
+      await dialog.getByRole("button", { name: T("Add client", "Ajouter le client")[lang], exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect(dialog).toHaveAccessibleName(T("Account set up", "Compte créé")[lang], { timeout: 20_000 });
+      await expect.poll(() => focusIs(page), { message: "focus is inside « Account set up »" }).toBe("inside");
+    });
+
+    test(`« ${T("Swap meal", "Remplacer le repas")[lang]} »: Enter on « ${T("Choose", "Choisir")[lang]} … » → the confirm step`, async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await page.goto(`/clients/${LINA}/nutrition`);
+      const dialog = page.getByRole("dialog");
+      const swap = new RegExp(`^${T("Swap meal", "Remplacer le repas")[lang]}[\\s\\u00a0\\u202f]*:`);
+      await pressUntil(page, page.getByRole("button", { name: swap }).first(), dialog);
+      const choose = dialog.getByRole("button", { name: new RegExp(`^${T("Choose", "Choisir")[lang]} `) }).first();
+      await expect(choose).toBeVisible({ timeout: 15_000 });
+      await choose.focus();
+      await page.keyboard.press("Enter");
+      await expect(dialog.getByTestId("recipe-choices")).toHaveCount(0);
+      await expect(dialog).toBeVisible();
+      await expect.poll(() => focusIs(page), { message: "focus is inside the dialog's confirm step" }).toBe("inside");
+    });
+  });
+}
