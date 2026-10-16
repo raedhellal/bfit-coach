@@ -346,6 +346,21 @@ test.describe("B18 — the autosave engine", () => {
     expect(engine.snapshot().statuses.GOALS).toBe("saved");
   });
 
+  test("EV-370 N2 (staff r1): values whose idle time ran out while a save is out are sent at once when it is refused", async () => {
+    const { clock, sent, engine } = rig();
+    engine.change("GOALS", "v1");
+    await clock.advance(1_500); // v1 in flight, by its idle time (no blur anywhere in this test)
+    engine.change("GOALS", "v2");
+    await clock.advance(1_500); // v2's idle timer fires while v1 is out: queued
+    expect(sent.map((x) => x.payload), "one save at a time").toEqual(["v1"]);
+    sent[0].answer({ kind: "invalid", field: "eventLabel" });
+    await settle(); // promises only: the timers are not advanced
+    expect(sent.map((x) => x.payload), "v2 goes at once, not after a second idle time").toEqual(["v1", "v2"]);
+    expect(engine.snapshot().statuses.GOALS).toBe("saving");
+    await clock.advance(60_000);
+    expect(sent, "one more save, not two").toHaveLength(2);
+  });
+
   test("B4a (staff r2 #1): « Réessayer » never re-sends a refused section, whatever else it sends", async () => {
     const { clock, sent, engine } = rig();
     engine.change("GOALS", "refused");

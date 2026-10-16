@@ -176,6 +176,9 @@ test.describe("EV-341w (EN)", () => {
       await page.waitForTimeout(Math.max(0, WINDOW_MS - (Date.now() - started)));
       // W3's rate: one GET per 3 s, so a 6 s window holds at most 3 (one at each end and one between).
       expect(polls.length, "no faster than W3's 3 s").toBeLessThanOrEqual(Math.floor(WINDOW_MS / 3_000) + 1);
+      // And no two GETs closer than W3's interval, less a margin for event-loop jitter.
+      const gaps = polls.slice(1).map((t, i) => t - polls[i]);
+      expect(Math.min(...gaps, Infinity), "the smallest gap between two consent GETs").toBeGreaterThanOrEqual(2_500);
       await answer(page, "dismiss");
       await expectSentence(page, T.en.notNow, "en", 4_000);
     });
