@@ -143,9 +143,17 @@ export function RoutineAiPanel({
   const [confirmKeep, setConfirmKeep] = useState(false);
   const [pending, startTransition] = useTransition();
   const mounted = useRef(true);
+  /**
+   * False until this island has hydrated. The editor loads the panel with `next/dynamic` (SSR on),
+   * so its server HTML is on screen before its chunk arrives, and a click there is lost or replayed
+   * late (measured: the open button stayed `idle` after a click in `next dev`). Every control the
+   * server can draw is therefore DISABLED until hydration: no dead click, and the coach sees it.
+   */
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     mounted.current = true;
+    setHydrated(true);
     return () => {
       mounted.current = false;
     };
@@ -333,6 +341,7 @@ export function RoutineAiPanel({
             <Button
               icon="star"
               variant="soft"
+              disabled={!hydrated}
               onClick={() => {
                 setNotice(null);
                 setView({ kind: "brief" });
@@ -498,10 +507,10 @@ export function RoutineAiPanel({
               </p>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Button type="submit" icon="star" disabled={blocked !== null || isHeld || pending}>
+              <Button type="submit" icon="star" disabled={blocked !== null || isHeld || pending || !hydrated}>
                 {t.submit}
               </Button>
-              <Button variant="ghost" onClick={() => setView({ kind: "idle" })} disabled={pending}>
+              <Button variant="ghost" onClick={() => setView({ kind: "idle" })} disabled={pending || !hydrated}>
                 {t.cancel}
               </Button>
             </div>
@@ -514,7 +523,7 @@ export function RoutineAiPanel({
               {t.running(firstName)}
             </p>
             <div style={{ marginTop: 10 }}>
-              <Button variant="secondary" onClick={discard} disabled={pending}>
+              <Button variant="secondary" onClick={discard} disabled={pending || !hydrated}>
                 {t.discard}
               </Button>
             </div>
@@ -527,10 +536,10 @@ export function RoutineAiPanel({
               {routineAiSentence({ code: view.code }, firstName, copy)}
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-              <Button onClick={retry} disabled={pending}>
+              <Button onClick={retry} disabled={pending || !hydrated}>
                 {t.retry}
               </Button>
-              <Button variant="secondary" onClick={discard} disabled={pending}>
+              <Button variant="secondary" onClick={discard} disabled={pending || !hydrated}>
                 {t.discard}
               </Button>
             </div>
@@ -564,10 +573,10 @@ export function RoutineAiPanel({
             />
             <p style={{ ...noteStyle, color: "var(--ink-3)" }}>{t.keepHint}</p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-              <Button icon="check" onClick={keep} disabled={pending}>
+              <Button icon="check" onClick={keep} disabled={pending || !hydrated}>
                 {t.keep}
               </Button>
-              <Button variant="secondary" onClick={discard} disabled={pending}>
+              <Button variant="secondary" onClick={discard} disabled={pending || !hydrated}>
                 {t.discard}
               </Button>
             </div>
@@ -580,10 +589,10 @@ export function RoutineAiPanel({
               {routineAiSentence({ code: view.code }, firstName, copy)}
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-              <Button onClick={retry} disabled={pending}>
+              <Button onClick={retry} disabled={pending || !hydrated}>
                 {t.retry}
               </Button>
-              <Button variant="secondary" onClick={discard} disabled={pending}>
+              <Button variant="secondary" onClick={discard} disabled={pending || !hydrated}>
                 {t.discard}
               </Button>
             </div>
@@ -601,10 +610,10 @@ export function RoutineAiPanel({
         width={440}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setConfirmKeep(false)} disabled={pending}>
+            <Button variant="secondary" onClick={() => setConfirmKeep(false)} disabled={pending || !hydrated}>
               {t.cancel}
             </Button>
-            <Button onClick={doKeep} disabled={pending}>
+            <Button onClick={doKeep} disabled={pending || !hydrated}>
               {t.keep}
             </Button>
           </>

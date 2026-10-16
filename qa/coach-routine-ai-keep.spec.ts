@@ -172,10 +172,10 @@ test.describe("N4 — STALE and DRAFT_EXISTS at Keep: the sentence, « Try again
     );
     await expect(panel(page).getByRole("button", { name: "Try again" })).toBeVisible();
     // Nothing was kept: still the published plan, no draft, no AI disclosure — before and after a reload.
-    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByText("Published plan", { exact: true })).toBeVisible();
     await expect(page.getByTestId("routine-ai-drafted")).toHaveCount(0);
     await page.reload();
-    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByText("Published plan", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Plan name")).toHaveValue("Republished meanwhile");
     await expect(page.getByTestId("routine-ai-drafted")).toHaveCount(0);
   });
