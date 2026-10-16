@@ -104,6 +104,13 @@ test.describe("N1 — routineDiff: per weekday", () => {
     expect(diff.days[0]).toMatchObject({ kind: "changed", focusBefore: "Upper", focusAfter: "Push" });
   });
 
+  test("a day's estimatedMinutes is never a change (publish recalculates it)", () => {
+    const stale = doc(base.trainingDays.map((d) => ({ ...d, estimatedMinutes: 99 })));
+    const diff = routineDiff(base, stale);
+    expect(diff.days.map((d) => d.kind)).toEqual(["unchanged", "unchanged", "unchanged"]);
+    expect(diff.identical).toBe(true);
+  });
+
   test("identical documents: identical, every day unchanged", () => {
     expect(routineDiff(base, structuredClone(base)).identical).toBe(true);
   });

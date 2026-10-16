@@ -349,6 +349,10 @@ export function dayRows(before: RoutineExercise[], after: RoutineExercise[]): Ex
  * NEVER compared — they are the trainee's, shown read-only on this page, and a difference there
  * is an artefact of the two shapes, not a change the coach would keep. Goal and level are rows
  * only when they actually differ.
+ *
+ * A day's `estimatedMinutes` is NEVER compared (staff ruling on EV-186e S3): after AI exercise ops
+ * the proposal's value can be stale, and publish's policy recomputes it, so a difference there is
+ * not a change the coach is keeping.
  */
 export function routineDiff(base: Routine | null, proposal: Routine): RoutineDiff {
   const beforeDays = new Map((base?.trainingDays ?? []).map((day) => [day.dayOfWeek, day]));
