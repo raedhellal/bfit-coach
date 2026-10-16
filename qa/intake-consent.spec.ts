@@ -160,12 +160,22 @@ test.describe("EV-341w (EN)", () => {
       await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
       await expectSentence(page, T.en.waiting);
       await expect(card(page).getByRole("button", { name: T.en.cancel, exact: true })).toBeVisible();
-      const before = await count(page, "getIntakeConsent");
+      // EV-370 N4: the page's own consent GETs, counted from here on. Not the fixture journal: a
+      // poll that landed between the reload and a journal read moved the baseline under load.
+      const polls: number[] = [];
+      const started = Date.now();
+      page.on("request", (r) => {
+        if (r.method() === "GET" && new URL(r.url()).pathname === `/api/bff/clients/${LINA}/intake-consent`) {
+          polls.push(Date.now());
+        }
+      });
       // One poll interval is 3 s; 6 s leaves a loaded machine room (staff r1 N2: a fixed 3.6 s
       // wait failed under load).
-      await expect
-        .poll(() => count(page, "getIntakeConsent"), { timeout: 6_000, message: "the loaded panel polls" })
-        .toBeGreaterThan(before);
+      const WINDOW_MS = 6_000;
+      await expect.poll(() => polls.length, { timeout: WINDOW_MS, message: "the loaded panel polls" }).toBeGreaterThan(0);
+      await page.waitForTimeout(Math.max(0, WINDOW_MS - (Date.now() - started)));
+      // W3's rate: one GET per 3 s, so a 6 s window holds at most 3 (one at each end and one between).
+      expect(polls.length, "no faster than W3's 3 s").toBeLessThanOrEqual(Math.floor(WINDOW_MS / 3_000) + 1);
       await answer(page, "dismiss");
       await expectSentence(page, T.en.notNow, "en", 4_000);
     });
