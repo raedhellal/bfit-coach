@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { coachApi, isForbidden, isIntakeAlreadyGranted, isIntakeRequestLimit } from "./coachApi";
 import { isClientId } from "./clientOverview";
 import { INTAKE_REQUEST_ENABLED } from "./env";
@@ -56,4 +57,36 @@ export async function cancelIntakeConsentAction(clientId: string): Promise<Cance
   } catch (err) {
     return { ok: false, code: isForbidden(err) ? "ACCESS_DENIED" : "FAILED" };
   }
+}
+
+/** EV-341c — what « Terminer l'entretien » answers the island. */
+export type FinishOutcome = { ok: true; completedAt: string } | { ok: false; code: "ACCESS_DENIED" | "FAILED" };
+
+/**
+ * EV-341c C5 — « Terminer l'entretien »: `POST …/intake/complete`, then **revalidated**, unlike the
+ * two writes above and unlike every autosave (ADR-0034 D34.10 (3): "Only « Terminer l'entretien »
+ * revalidates. It stays a server action with `revalidatePath`, because it changes the overview's
+ * summary card", which keeps ADR-0033 D33.6 literally true).
+ *
+ * The overview and the interview page are both revalidated, so « Vue d'ensemble » opened next is
+ * rendered from the api, not from the router cache's pre-finish copy: no reload (C5). The island
+ * shows the finished line from this answer and keeps its own form state: a revalidation hands it
+ * new props, which it does not re-seed from (EV-341b's `acked` is the client's own).
+ *
+ * Idempotent on the api (the first `completedAt` stays, EV-341a AC9), so a second press is harmless.
+ */
+export async function finishIntakeAction(clientId: string): Promise<FinishOutcome> {
+  if (!INTAKE_REQUEST_ENABLED) return { ok: false, code: "FAILED" };
+  if (!isClientId(clientId)) return { ok: false, code: "ACCESS_DENIED" };
+  let completedAt: string;
+  try {
+    const done = await coachApi.completeIntake(clientId);
+    if (typeof done?.completedAt !== "string") return { ok: false, code: "FAILED" };
+    completedAt = done.completedAt;
+  } catch (err) {
+    return { ok: false, code: isForbidden(err) ? "ACCESS_DENIED" : "FAILED" };
+  }
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${clientId}/intake`);
+  return { ok: true, completedAt };
 }

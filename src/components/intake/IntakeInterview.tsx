@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/kit";
 import { EmphasisControl, ExerciseListControl } from "@/components/intake/IntakeCatalogFields";
@@ -9,10 +9,12 @@ import { useCoachForm, type CoachForm } from "@/lib/useCoachForm";
 import { useAutosave } from "@/lib/useAutosave";
 import type { SectionStatus } from "@/lib/autosave";
 import { intakeReadPath, putIntakeSection } from "@/lib/autosaveTransport";
+import { formatInstant } from "@/lib/format";
+import { finishIntakeAction } from "@/lib/intakeActions";
 import {
+  COACH_NOTES_MAX_CODE_POINTS,
   INTAKE_CATALOGUE,
   INTAKE_FORM_SECTIONS,
-  NOTES_MAX_CODE_POINTS,
   codePoints,
   firstUnanswered,
   formKey,
@@ -28,10 +30,17 @@ import {
 } from "@/lib/intakeForm";
 
 /**
- * EV-341b — the interview page's island: the section list, sections 1–4 and their notes, and
- * the autosave (B2–B9, B11, B14–B16).
+ * EV-341b / EV-341c — the interview page's island: the section list, the eight sections and their
+ * notes, the autosave (B2–B9, B11, B14–B16), and « Terminer l'entretien » (EV-341c C5).
  *
- * ONE form for the four sections (`useCoachForm`: one guarded form per page). Each section is
+ * Sections 5–7's read-only parts (the injuries, the latest weight, the food facts) are rendered by
+ * the page, on the server, and handed in as `readOnly` (C1–C3); each sits above its section's note.
+ *
+ * « Terminer » is the page's one server action, and it revalidates (ADR-0034 D34.10 (3)): the
+ * revalidation hands this island new props, which it does not re-seed its fields from (`acked` is
+ * the island's own), and the finished line it shows comes from the action's answer first.
+ *
+ * ONE form for the eight sections (`useCoachForm`: one guarded form per page). Each section is
  * saved on its own (`useAutosave`, one queue per section), through the portal's route handler
  * (`putIntakeSection`): never a server action, never a `router.refresh()` after a save (B3).
  *
@@ -67,6 +76,13 @@ export interface IntakeInterviewProps {
   disabledReasonId?: string;
   /** B10: section 3's read-only equipment, rendered by the page. */
   equipment?: ReactNode;
+  /**
+   * EV-341c C1–C3: sections 5–7's read-only blocks (or their "not shared" sentence), rendered by
+   * the page, each shown above that section's note.
+   */
+  readOnly?: Partial<Record<IntakeFormSection, ReactNode>>;
+  /** EV-341c C5: when the interview was first finished (`GET …/intake`'s `completedAt`), or null. */
+  completedAt?: string | null;
   /** The client's first name as the page's sentences use it (YP3's injury line). */
   firstName?: string;
   /**
@@ -84,7 +100,11 @@ export interface IntakeCatalogue {
 
 type Payload = { values: Record<string, unknown>; form: IntakeFormValues };
 
-const EMPTY_VERSIONS: Record<IntakeFormSection, number> = { GOALS: 0, HISTORY: 0, AVAILABILITY: 0, LIFESTYLE: 0 };
+function perSection<T>(make: () => T): Record<IntakeFormSection, T> {
+  return Object.fromEntries(INTAKE_FORM_SECTIONS.map((s) => [s, make()])) as Record<IntakeFormSection, T>;
+}
+
+const EMPTY_VERSIONS: Record<IntakeFormSection, number> = perSection(() => 0);
 
 function emptyValues(): IntakeFormValues {
   const out: IntakeFormValues = {};
@@ -118,6 +138,8 @@ export function IntakeInterview({
   initial,
   disabledReasonId,
   equipment,
+  readOnly = {},
+  completedAt = null,
   firstName = "",
   catalogue = null,
 }: IntakeInterviewProps) {
@@ -136,7 +158,7 @@ export function IntakeInterview({
    * over it (`withStored`); a landed save, and « Recharger », replace it.
    */
   const rawRef = useRef<Record<IntakeFormSection, Record<string, unknown>>>(
-    initial?.raw ?? { GOALS: {}, HISTORY: {}, AVAILABILITY: {}, LIFESTYLE: {} }
+    initial?.raw ?? perSection(() => ({}))
   );
   const withStored = (section: IntakeFormSection, values: Record<string, unknown>) => ({ ...rawRef.current[section], ...values });
 
@@ -250,6 +272,38 @@ export function IntakeInterview({
     }
   }
 
+  /**
+   * C5: « Terminer l'entretien ». `finished` is the action's `completedAt`, else the page's read
+   * (a revalidation, or a load of a finished interview). Once finished the button gives way to the
+   * line; the sections stay editable (a later save keeps COMPLETE, EV-341a AC9).
+   */
+  const [finishedAt, setFinishedAt] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [finishFailed, setFinishFailed] = useState(false);
+  const finished = finishedAt ?? completedAt;
+  /** The button the coach pressed is gone once finished: the focus goes to the line that replaced it. */
+  const finishedRef = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    if (finishedAt) finishedRef.current?.focus();
+  }, [finishedAt]);
+  async function finish() {
+    if (finishing || disabled) return;
+    setFinishing(true);
+    setFinishFailed(false);
+    try {
+      const outcome = await finishIntakeAction(clientId);
+      if (outcome.ok) setFinishedAt(outcome.completedAt);
+      else if (outcome.code === "ACCESS_DENIED") accessEnded();
+      else setFinishFailed(true);
+    } catch {
+      // The action never answered (network, a deploy in between): nothing changed on the api's side
+      // that the coach cannot redo; the button stays.
+      setFinishFailed(true);
+    } finally {
+      setFinishing(false);
+    }
+  }
+
   const values = form.values;
   const status = aggregate(autosave.statuses, autosave.signedOut);
   const conflicted = INTAKE_FORM_SECTIONS.some((s) => autosave.statuses[s] === "conflict");
@@ -323,6 +377,24 @@ export function IntakeInterview({
         )}
       </div>
 
+      {/* C5: « Terminer l'entretien », or the line that says when it was. */}
+      <div className="intake-finish" data-intake-finish={finished ? "done" : "todo"}>
+        {finished ? (
+          <p ref={finishedRef} tabIndex={-1} className="ov-note intake-finished" data-intake-finished="">
+            {c.finishedOn(formatInstant(finished, copy.locale))}
+          </p>
+        ) : (
+          <Button variant="secondary" onClick={finish} disabled={disabled || finishing} ariaDescribedBy={disabledReasonId}>
+            {c.finish}
+          </Button>
+        )}
+        {finishFailed && !finished && (
+          <p className="intake-error" role="alert" data-intake-finish-failed="">
+            {c.finishFailed}
+          </p>
+        )}
+      </div>
+
       <div className="intake-layout">
         {/* B2: at 390 px the list is a <select>; above, a list of sections. Neither navigates. */}
         <div className="intake-picker">
@@ -388,21 +460,28 @@ export function IntakeInterview({
                   {c.sections[section]}
                 </h3>
                 {INTAKE_CATALOGUE[section].map((field) => (
-                  <FieldControl
-                    key={field.field}
-                    uid={uid}
-                    section={section}
-                    field={field}
-                    value={values[formKey(section, field.field)]}
-                    other={field.kind === "exercises" ? values[formKey(section, field.other)] : undefined}
-                    catalogue={catalogue}
-                    firstName={firstName}
-                    problem={problems.find((p) => p.field === field.field) ?? null}
-                    disabled={disabled}
-                    describedBy={disabledReasonId}
-                    onChange={update}
-                    onLeave={flushOnLeave(section)}
-                  />
+                  <Fragment key={field.field}>
+                    {/* C1–C3: the section's read-only block sits above its note. */}
+                    {field.kind === "notes" && readOnly[section] ? (
+                      <div className="intake-readonly" data-intake-readonly={section}>
+                        {readOnly[section]}
+                      </div>
+                    ) : null}
+                    <FieldControl
+                      uid={uid}
+                      section={section}
+                      field={field}
+                      value={values[formKey(section, field.field)]}
+                      other={field.kind === "exercises" ? values[formKey(section, field.other)] : undefined}
+                      catalogue={catalogue}
+                      firstName={firstName}
+                      problem={problems.find((p) => p.field === field.field) ?? null}
+                      disabled={disabled}
+                      describedBy={disabledReasonId}
+                      onChange={update}
+                      onLeave={flushOnLeave(section)}
+                    />
+                  </Fragment>
                 ))}
                 {section === "AVAILABILITY" && equipment ? <div className="intake-readonly">{equipment}</div> : null}
               </section>
@@ -579,8 +658,13 @@ function FieldControl({
 
   if (field.kind === "notes") {
     const count = codePoints(text);
-    const over = count > NOTES_MAX_CODE_POINTS;
+    const over = count > field.max;
     const counterId = `${id}-counter`;
+    // C4: section 8's limit is 4,000 (its own counter and sentence); every other note's is 1,000 (B16).
+    const long = field.max === COACH_NOTES_MAX_CODE_POINTS;
+    // C3b (D-INTAKE-8 (b)): under section 7's note, where a food rule is NOT recorded.
+    const helperId = `${id}-helper`;
+    const helper = section === "NUTRITION" ? c.foodRulesNotHere(firstName) : null;
     return (
       <div className="intake-field" data-intake-field={key}>
         <label className="intake-label" htmlFor={id}>
@@ -591,9 +675,9 @@ function FieldControl({
           id={id}
           className="intake-textarea"
           value={text}
-          rows={4}
+          rows={long ? 10 : 4}
           disabled={disabled}
-          aria-describedby={describe(counterId, over && errorId, describedBy)}
+          aria-describedby={describe(helper && helperId, counterId, over && errorId, describedBy)}
           aria-invalid={over ? true : undefined}
           onChange={(e) => onChange(key, e.target.value)}
           onBlur={onLeave}
@@ -601,13 +685,18 @@ function FieldControl({
         <div className="intake-counter-row">
           {over && (
             <p id={errorId} className="intake-error" data-intake-error="notes">
-              {c.notesTooLong}
+              {long ? c.coachNotesTooLong : c.notesTooLong}
             </p>
           )}
           <p id={counterId} className="intake-counter" data-over={over ? "true" : "false"}>
-            {c.notesCounter(count)}
+            {long ? c.coachNotesCounter(count) : c.notesCounter(count)}
           </p>
         </div>
+        {helper && (
+          <p id={helperId} className="intake-hint intake-helper" data-intake-helper="foodRules">
+            {helper}
+          </p>
+        )}
       </div>
     );
   }

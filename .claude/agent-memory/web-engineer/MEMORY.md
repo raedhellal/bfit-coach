@@ -115,3 +115,4 @@
 - [Library roster unblocked (EV-356g)](library-roster-unblocked-ev356g-facts.md) — unresolved roster promise + useRosterRead; WebKit hydrates a streamed doc only at its end; finished() hangs on RSC
 - [Intake interview (EV-341b)](intake-interview-341b-facts.md) — autosave built from ACs; route handlers miss the middleware's rotated cookie (B17); session-subject header; test rigs
 - [Intake routine fields (EV-341y2)](intake-routine-fields-341y2-facts.md) — emphasis/liked/avoided/split; catalogue-presence check; drop switches; held save outlived reset; COACH_PORT under shared load
+- [Intake sections 5–8 (EV-341c)](intake-sections-341c-facts.md) — read-only blocks per scope (currentWeight not weightSeries); finish action revalidates; C6 card conflict unbuilt; BFF read has no status

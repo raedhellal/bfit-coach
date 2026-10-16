@@ -3075,6 +3075,18 @@ export interface CoachIntakeSectionSaved {
   updatedAt: string;
 }
 
+/**
+ * EV-341c — `POST …/intake/complete`'s 200 (EV-341a AC9): always COMPLETE, and the instant the
+ * interview was FIRST finished (a second call leaves it unchanged). Never the answers. A section
+ * saved later keeps the status COMPLETE.
+ *
+ * @wire CoachIntakeCompleted
+ */
+export interface CoachIntakeCompleted {
+  status: "COMPLETE";
+  completedAt: string;
+}
+
 /** 409 — the section was written since `version` was read (another tab or device). */
 export function isIntakeVersionConflict(err: unknown): boolean {
   return err instanceof ApiError && err.status === 409 && err.code === "INTAKE_VERSION_CONFLICT";
@@ -3233,6 +3245,13 @@ const liveCoachApi = {
       { method: "PUT", body: JSON.stringify({ version: body.version, values: body.values }) },
       { bearer }
     );
+  },
+  /**
+   * EV-341c « Terminer l'entretien »: sets the status to COMPLETE. Idempotent (the first
+   * `completedAt` stays). Without the grant, `403 COACH_ACCESS_DENIED` (EV-341a AC6).
+   */
+  completeIntake(id: string): Promise<CoachIntakeCompleted> {
+    return apiFetch<CoachIntakeCompleted>(`${client(id)}/intake/complete`, { method: "POST" });
   },
 
   // ── EV-184b routine (PROVISIONAL paths — see the block at the top) ─────────

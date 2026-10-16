@@ -92,6 +92,7 @@ import type {
   CoachIntakeSectionName,
   CoachIntakeSectionSaved,
   CoachIntakeSectionWrite,
+  CoachIntakeCompleted,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -6229,6 +6230,8 @@ interface FixtureIntakeLink {
    * a Map, so the seed's canonical form stays one JSON shape.
    */
   sections?: Partial<Record<CoachIntakeSectionName, { version: number; updatedAt: string; values: Record<string, unknown> }>>;
+  /** EV-341c — EV-341a's `coach_intakes.completed_at`: set by the FIRST `complete`, never moved. */
+  completedAt?: string;
 }
 
 function intakeLink(id: string): FixtureIntakeLink {
@@ -6596,7 +6599,26 @@ async function fixtureGetIntake(id: string): Promise<CoachIntake> {
       ? { version: stored.version, updatedAt: stored.updatedAt, values: structuredClone(stored.values) }
       : { version: 0, updatedAt: null, values: emptyIntakeValues(name) };
   }
+  // EV-341a `CoachIntake.status`: COMPLETE once finished, whatever is saved after (AC9).
+  if (link.completedAt) return { state: "READY", status: "COMPLETE", completedAt: link.completedAt, sections };
   return { state: "READY", status: written ? "IN_PROGRESS" : "NOT_STARTED", sections };
+}
+
+/**
+ * EV-341c — `POST …/intake/complete` (EV-341a AC9, `CoachIntakeUseCase.complete`): the overview's
+ * gate, then the grant (403 without it, nothing stored), then the first `completedAt` kept.
+ *
+ *   `evoli_fixture_intake_complete=fail` → answers 500 (« Terminer »'s failure state).
+ */
+async function fixtureCompleteIntake(id: string): Promise<CoachIntakeCompleted> {
+  if ((await fixtureSwitch("evoli_fixture_intake_complete")) === "fail") {
+    await fail(500, "INTERNAL_ERROR", "Internal error");
+  }
+  await assertManagedLink(id);
+  const link = state().intake.get(id);
+  if (!link?.granted) await fail(403, "COACH_ACCESS_DENIED", "Forbidden");
+  link!.completedAt ??= new Date().toISOString();
+  return { status: "COMPLETE", completedAt: link!.completedAt };
 }
 
 async function fixtureSaveIntakeSection(
@@ -6837,6 +6859,7 @@ export const fixtureCoachApi: CoachApi = {
   // ── EV-341b the intake interview (see the block above `fixtureCoachApi`) ──
   getIntake: fixtureGetIntake,
   saveIntakeSection: fixtureSaveIntakeSection,
+  completeIntake: fixtureCompleteIntake,
 
   /**
    * EV-202b — `PUT /coach-portal/clients/{id}/progress-goal`.

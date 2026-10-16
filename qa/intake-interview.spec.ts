@@ -238,7 +238,8 @@ test.describe("B2 the section list", () => {
     await putFromElsewhere(page, "HISTORY", 0, { level: "BEGINNER" });
     await openIntake(page);
     const tabs = page.getByRole("tablist").getByRole("tab");
-    await expect(tabs).toHaveCount(4);
+    // EV-341c: eight sections since sections 5–8 (`qa/intake-sections-5-8.spec.ts` reads their titles).
+    await expect(tabs).toHaveCount(8);
     for (const [i, section] of ["GOALS", "HISTORY", "AVAILABILITY", "LIFESTYLE"].entries()) {
       await expect(tab(page, section).locator(".intake-section-name")).toHaveText(T.en.sections[i]);
     }
@@ -1123,7 +1124,8 @@ test.describe("B13 / B13a the route handler", () => {
     await grant(page);
     const before = await saveOps(page);
     const subject = await subjectHeader(page);
-    const health = await page.request.put(`/api/clients/${LINA}/intake/HEALTH`, {
+    // EV-341c: HEALTH is saved since sections 5–8; a section that does not exist is still refused.
+    const health = await page.request.put(`/api/clients/${LINA}/intake/TRIAL`, {
       data: BODY,
       headers: { "Content-Type": "application/json", ...subject },
     });
@@ -1171,7 +1173,7 @@ test.describe("B13 / B13a the route handler", () => {
       expect(res.headers()["x-evoli-token-source"], path).toBe("cookie");
       expect(res.headers()["x-evoli-token-source"]).not.toMatch(/ey[A-Za-z0-9_-]{10,}/);
     }
-    const refused = await page.request.put(`/api/clients/${LINA}/intake/HEALTH`, { data: BODY, headers: { "Content-Type": "application/json" } });
+    const refused = await page.request.put(`/api/clients/${LINA}/intake/TRIAL`, { data: BODY, headers: { "Content-Type": "application/json" } });
     expect(refused.status()).toBe(400);
     expect(refused.headers()["x-evoli-token-source"]).toBeUndefined();
     // "refreshed" needs a refresh the fixture cannot answer (the middleware's own rotation calls the

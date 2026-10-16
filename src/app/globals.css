@@ -1894,3 +1894,11 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .intake-limit { margin: 8px 0 0; color: var(--ink-2); font-weight: 600; }
 .intake-limit:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; border-radius: var(--r-sm); }
 .intake-clear { display: inline-flex; }
+/* EV-341c: « Terminer l'entretien » / its finished line; section 7's food-rules helper; sections 5–7's block sentences. */
+.intake-finish { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
+.intake-finish > .intake-error { flex-basis: 100%; margin: 0; }
+.intake-finished { margin: 0; }
+.intake-finished:focus { outline: none; }
+.intake-finished:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; border-radius: var(--r-sm); }
+.intake-helper { margin: 6px 0 0; }
+.intake-readonly-note { margin: 0; }

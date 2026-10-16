@@ -34,7 +34,7 @@ import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
  *   3. a body that is not `Content-Type: application/json` — 415 (a cross-site form can only
  *      send the three "simple" content types without a preflight nothing here answers);
  *   4. an id that is not a UUID — 403 `COACH_ACCESS_DENIED`, the layout's rule (BUG-600);
- *   5. a section this page does not save (1–4), or a body that is not `{ version, values }` — 400;
+ *   5. a section this page does not save (not one of the eight), or a body that is not `{ version, values }` — 400;
  *      a body over 64 KB, with or without a Content-Length — 413;
  *   6. only then the session (a rotation is never spent on a refused request), then the account.
  * The cookies stay `SameSite=Lax`.
@@ -76,7 +76,7 @@ function json(body: Record<string, unknown>, status: number) {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-/** N1: the sections this slice's page saves (EV-341b: 1–4). EV-341c widens it with its own. */
+/** N1: the sections the page saves (EV-341b built 1–4; EV-341c all eight, `INTAKE_FORM_SECTIONS`). */
 function isSection(value: string): value is IntakeFormSection & CoachIntakeSectionName {
   return (INTAKE_FORM_SECTIONS as readonly string[]).includes(value);
 }
