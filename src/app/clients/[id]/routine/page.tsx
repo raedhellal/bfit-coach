@@ -120,7 +120,8 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    * identical to before, and asks the api for nothing more). `proposal: null` is a failed read:
    * the panel then reads once itself. A 404 means the flag went off between the two reads.
    */
-  let ai: { proposal: CoachRoutineAiProposalResponse | null; muscles: string[] | null } | null = null;
+  let ai: { proposal: CoachRoutineAiProposalResponse | null; muscles: string[] | null; instruction: boolean } | null =
+    null;
   if (!overview) {
     message = copy.routine.loadError;
   } else if (!hasScope(overview.scopes, "WORKOUTS")) {
@@ -168,7 +169,8 @@ export default async function RoutinePage({ params }: { params: { id: string } }
         trial = isRouteNotFound(trialRead.reason) ? { state: "absent" } : { state: "failed" };
       }
       routine = routineRead.value;
-      if (routineAiCapability(routine.aiProposals).routine) {
+      const capability = routineAiCapability(routine.aiProposals);
+      if (capability.routine) {
         // One more round, flag-on only (page-read-budget: depth 3 with the panel, 2 without).
         const [proposalRead, facet] = await Promise.all([
           coachApi.getRoutineAiProposal(params.id).then(
@@ -179,7 +181,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
         ]);
         if (!proposalRead.ok && isForbidden(proposalRead.reason)) throw proposalRead.reason;
         if (proposalRead.ok || !isRouteNotFound(proposalRead.reason)) {
-          ai = { proposal: proposalRead.ok ? proposalRead.value : null, muscles: facet };
+          ai = { proposal: proposalRead.ok ? proposalRead.value : null, muscles: facet, instruction: capability.instruction };
         }
       }
       if (routine.hasDraft) {
@@ -387,6 +389,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
                   firstName: firstName(overview?.traineeDisplayName, copy.locale),
                   injuries: injuryWords,
                   equipment: guardrails?.equipmentChecked ? equipmentLabels(guardrails.equipment, copy) : null,
+                  instruction: ai.instruction,
                 }
               : null
           }

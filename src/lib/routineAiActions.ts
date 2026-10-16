@@ -11,7 +11,7 @@ import {
 import type { RoutineAiFailure } from "./routineAi";
 
 /**
- * EV-186b / EV-186n — the routine AI panel's writes (start, discard, keep) and its one poll, as server actions:
+ * EV-186b / EV-186n / EV-186f — the routine AI panel's writes (start, discard, keep) and its one poll, as server actions:
  * the bearer, the base URL and the paths stay on the server; the island sees these signatures.
  *
  * Each returns a RESULT and never throws, for the same reason as `routineActions.ts`: the
@@ -43,7 +43,11 @@ export type StartRoutineAiResult =
   | { ok: true; proposalId: string }
   | { ok: false; failure: RoutineAiActionFailure };
 
-/** « Générer » — `POST …/routine/ai-proposal`. Writes no plan and no draft (EV-186a A1). */
+/**
+ * « Générer » — `POST …/routine/ai-proposal`, for both kinds: a REGENERATE brief (EV-186b) or a
+ * REVISE request (EV-186f). The body is built by `briefRequest` / `reviseRequest` and passed
+ * through untouched. Writes no plan and no draft (EV-186a A1, EV-186e).
+ */
 export async function startRoutineAiAction(
   clientId: string,
   body: CoachRoutineAiProposalRequest
@@ -71,10 +75,17 @@ export async function readRoutineAiAction(clientId: string): Promise<ReadRoutine
 
 export type DiscardRoutineAiResult = { ok: true } | { ok: false; failure: RoutineAiActionFailure };
 
-/** « Écarter » — `DELETE …/routine/ai-proposal`, idempotent. The quota unit is not given back. */
-export async function discardRoutineAiAction(clientId: string): Promise<DiscardRoutineAiResult> {
+/**
+ * « Écarter » — `DELETE …/routine/ai-proposal`, idempotent. The quota unit is not given back.
+ * EV-376: `proposalId` is the one the panel is showing, when it knows it, so a run another tab
+ * started since is left alone (the api answers 204 and touches nothing).
+ */
+export async function discardRoutineAiAction(
+  clientId: string,
+  proposalId?: string | null
+): Promise<DiscardRoutineAiResult> {
   try {
-    await coachApi.discardRoutineAiProposal(clientId);
+    await coachApi.discardRoutineAiProposal(clientId, proposalId);
     return { ok: true };
   } catch (err) {
     return { ok: false, failure: aiFailure(err) };
@@ -92,7 +103,9 @@ export type KeepRoutineAiResult =
  * Then, best effort, the settled proposal is deleted. The api keeps a kept proposal READY until
  * it expires (a second Keep of it is `409 COACH_DRAFT_EXISTS`), so without this a reload would
  * offer the coach the suggestion they just kept, whose only possible outcome is that 409. A
- * failed delete changes nothing the coach did: the draft is written either way.
+ * failed delete changes nothing the coach did: the draft is written either way. The delete names
+ * THIS proposal (EV-376, staff ruling 1b on EV-186n): a Regenerate another tab started between
+ * the Keep and the delete is no longer cancelled by it.
  *
  * Revalidated like every draft write, so the page's next render carries the kept draft and its
  * `aiDraftedAt`; the editor re-seeds from THIS response, not from that render.
@@ -104,7 +117,7 @@ export async function keepRoutineAiAction(clientId: string, proposalId: string):
   } catch (err) {
     return { ok: false, failure: aiFailure(err) };
   }
-  await coachApi.discardRoutineAiProposal(clientId).catch(() => undefined);
+  await coachApi.discardRoutineAiProposal(clientId, proposalId).catch(() => undefined);
   revalidatePath(`/clients/${clientId}/routine`);
   revalidatePath(`/clients/${clientId}`);
   return { ok: true, draft };

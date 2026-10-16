@@ -754,6 +754,27 @@ export const fr = {
       `${q("Garder")} place ce programme dans votre brouillon. Rien n'arrive au client avant que vous publiiez.`,
     keepConfirmTitle: "Remplacer votre brouillon ?",
     working: "En cours…",
+    updateOpen: "Modifier avec l'IA", // table
+    updateTitle: "Modifier avec l'IA",
+    requestLabel:
+      "Votre demande — l'IA lit ce texte. N'y mettez rien que vous ne mettriez pas dans un e-mail.", // table
+    requestPlaceholder: "Ex.\u00a0: échanger les séances de lundi et de jeudi", // table (2026-10-13)
+    painHint: (first: string) =>
+      `Les blessures que le programme doit toujours respecter viennent du profil ${de(mid(first))}. Cette note n'oriente que cette suggestion.`, // table
+    chips: {
+      MORE_UPPER_BODY: "Plus de haut du corps",
+      MORE_LOWER_BODY: "Plus de bas du corps",
+      ADD_CORE: "Ajouter du gainage",
+      SWAP_EXERCISE: "Remplacer un exercice…",
+    }, // table
+    opsNotApplied: (count: number) =>
+      count < 2
+        ? `${count} modification n'a pas pu être appliquée.`
+        : `${count} modifications n'ont pas pu être appliquées.`, // table
+    rateLimitLinkEdit: (first: string) =>
+      `Vous avez utilisé les 10 modifications IA du jour pour ${mid(first)}. Vous pouvez modifier à la main, ou réessayer demain.`, // table
+    planEmpty: (first: string) =>
+      `${first} n'a pas encore de programme à modifier. Utilisez ${q("Régénérer avec l'IA")}.`, // table
   },
 
   nutrition: {

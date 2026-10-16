@@ -1330,6 +1330,25 @@ export const en = {
     keepConfirmTitle: "Replace your draft?",
     /** OURS — announced while a press is in flight. */
     working: "Working…",
+    /* ── EV-186f: « Modifier avec l'IA », the Update request box. ── */
+    updateOpen: "Update with AI", // table: Update button
+    /** OURS — the open box's region name and heading; the button's words, so one name. */
+    updateTitle: "Update with AI",
+    requestLabel: "Your request — the AI reads this. Don't put anything here you wouldn't put in an email.", // table: Request box label
+    requestPlaceholder: "e.g. swap Monday's and Thursday's sessions", // table: Request box placeholder (2026-10-13)
+    painHint: (first: string) =>
+      `Injuries the plan must always respect come from ${mid(first)}'s profile. This note only shapes this suggestion.`, // table: Pain hint
+    /** table: Routine chips. A chip pre-fills these words in the box; it never sends on its own (U1). */
+    chips: {
+      MORE_UPPER_BODY: "More upper body",
+      MORE_LOWER_BODY: "More lower body",
+      ADD_CORE: "Add core",
+      SWAP_EXERCISE: "Swap an exercise…",
+    },
+    opsNotApplied: (n: number) => (n === 1 ? "1 change could not be applied." : `${n} changes could not be applied.`), // table: Ops not applied
+    rateLimitLinkEdit: (first: string) =>
+      `You've used today's 10 AI edits for ${mid(first)}. You can still edit by hand, or try again tomorrow.`, // table: 429 scope=link (EDIT)
+    planEmpty: (first: string) => `${first} has no programme to change yet. Use “Regenerate with AI”.`, // table: 400 COACH_PLAN_EMPTY on Update
   },
 
   /**

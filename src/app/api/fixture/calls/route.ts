@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { fixtureAiPosts, fixtureCalls, fixtureDraftPuts, fixtureIntakePuts, fixtureReads } from "@/lib/coachApi.fixture";
+import {
+  fixtureAiDiscards,
+  fixtureAiPosts,
+  fixtureCalls,
+  fixtureDraftPuts,
+  fixtureIntakePuts,
+  fixtureReads,
+} from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
 import { apiJournal } from "@/lib/fixtureApiJournal";
 
@@ -20,6 +27,10 @@ import { apiJournal } from "@/lib/fixtureApiJournal";
  *   and `{ draftPuts }` (BUG-195c): every `PUT …/routine/draft` with the token it
  *         carried and the two subject lists it sent — AC3.10(i)'s witness.
  *
+ *   and `{ aiPosts }` / `{ aiDiscards }` (EV-186b / EV-186f, EV-376): every routine AI POST by key
+ *         (never the notes or the instruction), and every routine AI DELETE with the
+ *         `proposalId` it named and whether it touched the link's proposal.
+ *
  *   and `{ intakePuts }` (EV-341b): every intake section PUT the fixture received, with its
  *         body — B5a's witness (the first save after « Recharger »).
  *
@@ -39,7 +50,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 export async function GET() {
   if (COACH_API_MODE !== "fixture") return new NextResponse(null, { status: 404, headers: NO_STORE });
   return NextResponse.json(
-    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), intakePuts: fixtureIntakePuts(), aiPosts: fixtureAiPosts(), api: apiJournal() },
+    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), intakePuts: fixtureIntakePuts(), aiPosts: fixtureAiPosts(), aiDiscards: fixtureAiDiscards(), api: apiJournal() },
     { headers: NO_STORE }
   );
 }

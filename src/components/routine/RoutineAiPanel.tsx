@@ -9,20 +9,27 @@ import { muscleLabel } from "@/lib/catalogLabels";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { settled } from "@/lib/settled";
 import {
+  ROUTINE_AI_CHIPS,
   ROUTINE_AI_DAYS,
   ROUTINE_AI_EMPHASIS_MAX,
   ROUTINE_AI_GOALS,
+  ROUTINE_AI_INSTRUCTION_MAX,
   ROUTINE_AI_NOTES_MAX,
   ROUTINE_AI_SESSION_LENGTHS,
   briefBlocked,
   briefRequest,
+  chipsIn,
   heldUntil,
   initialBriefForm,
   isRoutineAiGoal,
   notesLength,
+  opsRejectedCount,
   pollDelayMs,
+  reviseRequest,
   routineAiSentence,
   routineDiff,
+  updateBlocked,
+  withChip,
   type RoutineAiBriefForm,
   type RoutineAiFailure,
 } from "@/lib/routineAi";
@@ -57,36 +64,71 @@ import type {
  * editor re-seeds from the kept draft (`onKept`). A Keep refused because the draft or the plan
  * moved (409 COACH_DRAFT_EXISTS / COACH_PROPOSAL_STALE), and an EXPIRED proposal, show their
  * sentence with « Réessayer », which starts a new Regenerate with the same brief (N4).
- * « Modifier avec l'IA » (EV-186f) is not drawn: the vendored contract's `kind` is REGENERATE only.
+ *
+ * EV-186f: « Modifier avec l'IA » opens the request box (a REVISE) beside « Régénérer avec
+ * l'IA », only when the read's `aiProposals.instruction` is true AND the trainee has a draft or
+ * a published routine to change (`canUpdate`, U6). The box has the table's label, placeholder,
+ * counter and pain hint, and the four chips, which only pre-fill words (U1). Nothing typed is
+ * refused here — no pain word, no length truncation (U2, U4): the api is the judge. A REVISE that
+ * applied nothing fails with COACH_AI_NOTHING_APPLIED and the box comes back with the coach's
+ * text in it (U5); a READY one that dropped some ops says how many above the comparison (U3).
+ * The text lives in this island's state only: never stored, here or by the api (Ruling 6).
  */
+
+type ProposalKind = "REGENERATE" | "REVISE";
 
 type View =
   | { kind: "idle" }
   | { kind: "brief" }
-  | { kind: "running"; proposalId: string | null; startedAt: number }
+  /** EV-186f — the Update request box. */
+  | { kind: "update" }
+  | { kind: "running"; proposalId: string | null; startedAt: number; proposalKind: ProposalKind }
   | { kind: "ready"; proposal: CoachRoutineAiProposalResponse }
-  | { kind: "failed"; code: string }
+  | { kind: "failed"; code: string; proposalId: string | null; proposalKind: ProposalKind }
   /** N4 — Keep was refused because something moved, or the proposal expired. */
-  | { kind: "stale"; code: string };
+  | { kind: "stale"; code: string; proposalId: string | null; proposalKind: ProposalKind };
 
 const FAILED_RESULT: { ok: false; failure: RoutineAiActionFailure } = { ok: false, failure: { code: "FAILED" } };
 
 /** What the page read, turned into the panel's first view. A failed read starts idle and reads again. */
 function viewOf(proposal: CoachRoutineAiProposalResponse | null, now: number): View {
+  const proposalId = proposal?.proposalId ?? null;
+  const proposalKind = kindOf(proposal);
   switch (proposal?.status) {
     case "RUNNING": {
       const created = proposal.createdAt ? Date.parse(proposal.createdAt) : NaN;
-      return { kind: "running", proposalId: proposal.proposalId ?? null, startedAt: Number.isNaN(created) ? now : created };
+      return { kind: "running", proposalId, startedAt: Number.isNaN(created) ? now : created, proposalKind };
     }
     case "READY":
-      return proposal.proposal ? { kind: "ready", proposal } : { kind: "failed", code: "FAILED" };
+      return proposal.proposal
+        ? { kind: "ready", proposal }
+        : { kind: "failed", code: "FAILED", proposalId, proposalKind };
     case "FAILED":
-      return { kind: "failed", code: proposal.errorCode ?? "FAILED" };
+      return { kind: "failed", code: proposal.errorCode ?? "FAILED", proposalId, proposalKind };
     // Edge case 6: past `expiresAt` (24 h) it reads EXPIRED, and Keep would be STALE.
     case "EXPIRED":
-      return { kind: "stale", code: "COACH_PROPOSAL_STALE" };
+      return { kind: "stale", code: "COACH_PROPOSAL_STALE", proposalId, proposalKind };
     default:
       return { kind: "idle" };
+  }
+}
+
+/** The proposal's kind as the api served it; absent or unknown reads as a Regenerate (186b's only kind). */
+function kindOf(proposal: { kind?: string | null } | null | undefined): ProposalKind {
+  return proposal?.kind === "REVISE" ? "REVISE" : "REGENERATE";
+}
+
+/** The kind and id of what the panel is showing, for a discard and its log line. */
+function shownProposal(view: View): { proposalKind: ProposalKind; proposalId: string | null } {
+  switch (view.kind) {
+    case "ready":
+      return { proposalKind: kindOf(view.proposal), proposalId: view.proposal.proposalId ?? null };
+    case "running":
+    case "failed":
+    case "stale":
+      return { proposalKind: view.proposalKind, proposalId: view.proposalId };
+    default:
+      return { proposalKind: "REGENERATE", proposalId: null };
   }
 }
 
@@ -101,6 +143,7 @@ export function RoutineAiPanel({
   traineeName,
   hasDraft,
   dirty,
+  canUpdate = false,
   onKept,
 }: {
   clientId: string;
@@ -122,6 +165,11 @@ export function RoutineAiPanel({
   hasDraft: boolean;
   /** The editor holds unsaved edits: Keep replaces them too, so it asks first. */
   dirty: boolean;
+  /**
+   * EV-186f — « Modifier avec l'IA » is offered: `aiProposals.instruction` is true AND there is a
+   * saved draft or a published routine for the api to change (U6). False draws exactly 186n's panel.
+   */
+  canUpdate?: boolean;
   /** Keep landed: the editor takes the kept draft (and its token) from this response. */
   onKept: (draft: CoachRoutineDraftResponse) => void;
 }) {
@@ -131,6 +179,10 @@ export function RoutineAiPanel({
   const titleId = useId();
   const notesId = useId();
   const counterId = useId();
+  const requestId = useId();
+  const requestCounterId = useId();
+  const painHintId = useId();
+  const requestRef = useRef<HTMLTextAreaElement>(null);
   const [view, setView] = useState<View>(() => viewOf(initial, Date.now()));
   const [form, setForm] = useState<RoutineAiBriefForm>(() => initialBriefForm(document));
   /** The refusal sentence for the last press, shown in the panel until the next one. */
@@ -138,8 +190,13 @@ export function RoutineAiPanel({
   /** A spent quota holds « Générer » until the api's Retry-After (the next midnight). */
   const [held, setHeld] = useState<number | null>(null);
   const [hidden, setHidden] = useState(false);
-  /** The brief of the last run this panel started, for N4's « Réessayer » (kept for the session only). */
+  /** The body of the last run this panel started, for N4's « Réessayer » (kept for the session only). */
   const [lastBrief, setLastBrief] = useState<CoachRoutineAiProposalRequest | null>(null);
+  /**
+   * EV-186f — the Update box's text. Island state only, for the session (never stored): it
+   * survives a refusal and a FAILED run, so the coach can rephrase (U5).
+   */
+  const [request, setRequest] = useState("");
   const [confirmKeep, setConfirmKeep] = useState(false);
   const [pending, startTransition] = useTransition();
   const mounted = useRef(true);
@@ -164,9 +221,9 @@ export function RoutineAiPanel({
     router.refresh();
   }
 
-  function refused(failure: RoutineAiActionFailure): void {
+  function refused(failure: RoutineAiActionFailure, kind: ProposalKind = "REGENERATE"): void {
     if (failure.code === "ACCESS_DENIED") return accessEnded();
-    const f = failure as RoutineAiFailure;
+    const f: RoutineAiFailure = { ...(failure as RoutineAiFailure), kind };
     setNotice(routineAiSentence(f, firstName, copy));
     const until = heldUntil(f, Date.now());
     if (until !== null) setHeld(until);
@@ -241,10 +298,10 @@ export function RoutineAiPanel({
       if (!mounted.current) return;
       if (result.ok) {
         setLastBrief(body);
-        setView({ kind: "running", proposalId: result.proposalId, startedAt: Date.now() });
+        setView({ kind: "running", proposalId: result.proposalId, startedAt: Date.now(), proposalKind: body.kind });
         return;
       }
-      refused(result.failure);
+      refused(result.failure, body.kind);
       // 409 COACH_AI_PROPOSAL_RUNNING: say so, then wait on the run that is already going.
       if (result.failure.code === "COACH_AI_PROPOSAL_RUNNING") {
         const read = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
@@ -253,11 +310,26 @@ export function RoutineAiPanel({
     });
   }
 
-  /** N4: a new Regenerate with the same brief; without one in this session, the brief form. */
+  /** EV-186f — « Générer » from the request box: a REVISE with the text as typed. */
+  function update() {
+    const body = reviseRequest(request, t.chips);
+    if (body) generate(body);
+  }
+
+  /** U1 — a chip press pre-fills its words in the box; it never sends anything. */
+  function pressChip(label: string) {
+    setRequest((text) => withChip(text, label));
+    requestRef.current?.focus();
+  }
+
+  /**
+   * N4: a new run with the same body (a Regenerate's brief, or an Update's request); without one in
+   * this session, the form it came from.
+   */
   function retry() {
     setNotice(null);
     if (lastBrief) return generate(lastBrief);
-    setView({ kind: "brief" });
+    setView({ kind: shownProposal(view).proposalKind === "REVISE" && canUpdate ? "update" : "brief" });
   }
 
   function keep() {
@@ -269,7 +341,7 @@ export function RoutineAiPanel({
   function doKeep() {
     if (view.kind !== "ready" || !view.proposal.proposalId) return;
     const proposalId = view.proposal.proposalId;
-    const kind = view.proposal.kind ?? "REGENERATE";
+    const kind = kindOf(view.proposal);
     setNotice(null);
     startTransition(async () => {
       const result = await settled(keepRoutineAiAction(clientId, proposalId), FAILED_RESULT);
@@ -279,24 +351,28 @@ export function RoutineAiPanel({
         const code = result.failure.code;
         if (code === "ACCESS_DENIED") return accessEnded();
         if (code === "NOT_FOUND") return setHidden(true);
-        if (code === "COACH_DRAFT_EXISTS" || code === "COACH_PROPOSAL_STALE") return setView({ kind: "stale", code });
-        return refused(result.failure);
+        if (code === "COACH_DRAFT_EXISTS" || code === "COACH_PROPOSAL_STALE") {
+          return setView({ kind: "stale", code, proposalId, proposalKind: kind });
+        }
+        return refused(result.failure, kind);
       }
       logPortalEvent({ event: "coach_ai_proposal_kept", kind });
       setView({ kind: "idle" });
+      setRequest("");
       onKept(result.draft);
     });
   }
 
   function discard() {
-    const kind = view.kind === "ready" ? (view.proposal.kind ?? "REGENERATE") : "REGENERATE";
+    // EV-376: the DELETE names the proposal on screen, so a run another tab started is left alone.
+    const { proposalKind: kind, proposalId } = shownProposal(view);
     setNotice(null);
     startTransition(async () => {
-      const result = await settled(discardRoutineAiAction(clientId), FAILED_RESULT);
+      const result = await settled(discardRoutineAiAction(clientId, proposalId), FAILED_RESULT);
       if (!mounted.current) return;
       if (!result.ok) {
         if (result.failure.code === "NOT_FOUND") return setHidden(true);
-        return refused(result.failure);
+        return refused(result.failure, kind);
       }
       logPortalEvent({ event: "coach_ai_proposal_discarded", kind });
       setView({ kind: "idle" });
@@ -308,6 +384,10 @@ export function RoutineAiPanel({
   const blocked = briefBlocked(form);
   const isHeld = held !== null && held > Date.now();
   const count = notesLength(form.notes);
+  const requestCount = notesLength(request);
+  const pressedChips = chipsIn(request, t.chips);
+  /** The flow on screen, for the heading: an Update's views are titled « Modifier avec l'IA ». */
+  const flow: ProposalKind = view.kind === "update" ? "REVISE" : shownProposal(view).proposalKind;
   const fieldStyle: CSSProperties = {
     display: "block",
     marginTop: 6,
@@ -324,6 +404,86 @@ export function RoutineAiPanel({
   const labelStyle: CSSProperties = { fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" };
   const noteStyle: CSSProperties = { margin: "8px 0 0", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" };
 
+  /**
+   * EV-186f — the request box: the table's label, placeholder and counter, the pain hint, the four
+   * chips, « Générer ». `fresh` is the plain Update view (« Annuler » goes back to the buttons);
+   * after a FAILED Update it is drawn with the coach's text and « Écarter » clears the run (U5).
+   */
+  function updateForm(fresh: boolean) {
+    const sendBlocked = updateBlocked(request);
+    return (
+      <form
+        data-testid="routine-ai-update"
+        onSubmit={(e) => {
+          e.preventDefault();
+          update();
+        }}
+        style={{ display: "grid", gap: 10, marginTop: 4 }}
+      >
+        <div>
+          <label htmlFor={requestId} style={labelStyle}>
+            {t.requestLabel}
+          </label>
+          <textarea
+            id={requestId}
+            ref={requestRef}
+            value={request}
+            placeholder={t.requestPlaceholder}
+            aria-describedby={`${requestCounterId} ${painHintId}`}
+            onChange={(e) => setRequest(e.target.value)}
+            rows={3}
+            style={{ ...fieldStyle, maxWidth: 560, padding: "8px 12px", resize: "vertical" }}
+          />
+          {/* U2: counted as the api counts (NFC code points); over 500 it says so, nothing is cut. */}
+          <p
+            id={requestCounterId}
+            data-testid="routine-ai-update-counter"
+            style={{
+              margin: "4px 0 0",
+              fontSize: 12.5,
+              color: requestCount > ROUTINE_AI_INSTRUCTION_MAX ? "var(--err-ink)" : "var(--ink-3)",
+            }}
+          >
+            {t.counter(requestCount)}
+          </p>
+          {/* D36.6 item 5 / P7: no pain word is refused; the hint says where injuries come from. */}
+          <p id={painHintId} data-testid="routine-ai-pain-hint" style={{ ...noteStyle, marginTop: 4 }}>
+            {t.painHint(firstName)}
+          </p>
+        </div>
+        {/* U1: content chips — each pre-fills its words; pressed while those words are in the box. */}
+        <div data-testid="routine-ai-chips" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {ROUTINE_AI_CHIPS.map((chip) => (
+            <Button
+              key={chip}
+              size="sm"
+              variant={pressedChips.includes(chip) ? "soft" : "secondary"}
+              ariaPressed={pressedChips.includes(chip)}
+              disabled={!hydrated}
+              onClick={() => pressChip(t.chips[chip])}
+            >
+              {t.chips[chip]}
+            </Button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Button type="submit" icon="star" disabled={sendBlocked !== null || isHeld || pending || !hydrated}>
+            {t.submit}
+          </Button>
+          {fresh ? (
+            <Button variant="ghost" onClick={() => setView({ kind: "idle" })} disabled={pending || !hydrated}>
+              {t.cancel}
+            </Button>
+          ) : (
+            <Button variant="secondary" onClick={discard} disabled={pending || !hydrated}>
+              {t.discard}
+            </Button>
+          )}
+        </div>
+      </form>
+    );
+  }
+
   return (
     <section
       aria-labelledby={titleId}
@@ -338,21 +498,37 @@ export function RoutineAiPanel({
             <h3 id={titleId} className="sr-only">
               {t.title}
             </h3>
-            <Button
-              icon="star"
-              variant="soft"
-              disabled={!hydrated}
-              onClick={() => {
-                setNotice(null);
-                setView({ kind: "brief" });
-              }}
-            >
-              {t.open}
-            </Button>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Button
+                icon="star"
+                variant="soft"
+                disabled={!hydrated}
+                onClick={() => {
+                  setNotice(null);
+                  setView({ kind: "brief" });
+                }}
+              >
+                {t.open}
+              </Button>
+              {/* EV-186f U1/U6: only with the capability AND a draft or published routine to change. */}
+              {canUpdate && (
+                <Button
+                  icon="edit"
+                  variant="soft"
+                  disabled={!hydrated}
+                  onClick={() => {
+                    setNotice(null);
+                    setView({ kind: "update" });
+                  }}
+                >
+                  {t.updateOpen}
+                </Button>
+              )}
+            </div>
           </>
         ) : (
           <h3 id={titleId} style={{ margin: "0 0 10px", fontSize: 15.5, fontWeight: 600, color: "var(--ink)" }}>
-            {t.title}
+            {flow === "REVISE" ? t.updateTitle : t.title}
           </h3>
         )}
 
@@ -517,6 +693,8 @@ export function RoutineAiPanel({
           </form>
         )}
 
+        {view.kind === "update" && updateForm(true)}
+
         {view.kind === "running" && (
           <>
             <p role="status" style={noteStyle}>
@@ -530,10 +708,20 @@ export function RoutineAiPanel({
           </>
         )}
 
-        {view.kind === "failed" && (
+        {view.kind === "failed" && view.proposalKind === "REVISE" && canUpdate && (
           <>
-            <p role="alert" style={{ ...noteStyle, color: "var(--err-ink)" }}>
-              {routineAiSentence({ code: view.code }, firstName, copy)}
+            {/* U5: the code's sentence, then the box again with the coach's text, to rephrase. */}
+            <p role="alert" data-testid="routine-ai-failed" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+              {routineAiSentence({ code: view.code, kind: "REVISE" }, firstName, copy)}
+            </p>
+            {updateForm(false)}
+          </>
+        )}
+
+        {view.kind === "failed" && !(view.proposalKind === "REVISE" && canUpdate) && (
+          <>
+            <p role="alert" data-testid="routine-ai-failed" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+              {routineAiSentence({ code: view.code, kind: view.proposalKind }, firstName, copy)}
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
               <Button onClick={retry} disabled={pending || !hydrated}>
@@ -565,6 +753,16 @@ export function RoutineAiPanel({
                 {t.stubBanner}
               </p>
             )}
+            {/* U3: the reviser's ops that were not applied, counted from `outcome`, above the comparison. */}
+            {opsRejectedCount(view.proposal) > 0 && (
+              <p
+                role="note"
+                data-testid="routine-ai-ops-rejected"
+                style={{ ...noteStyle, margin: "0 0 10px", color: "var(--warn-ink)" }}
+              >
+                {t.opsNotApplied(opsRejectedCount(view.proposal))}
+              </p>
+            )}
             <RoutineAiDiff
               diff={routineDiff(view.proposal.baseDocument ?? null, view.proposal.proposal)}
               marks={Array.isArray(view.proposal.repairMarks) ? view.proposal.repairMarks : []}
@@ -586,7 +784,7 @@ export function RoutineAiPanel({
         {view.kind === "stale" && (
           <>
             <p role="alert" style={{ ...noteStyle, color: "var(--err-ink)" }}>
-              {routineAiSentence({ code: view.code }, firstName, copy)}
+              {routineAiSentence({ code: view.code, kind: view.proposalKind }, firstName, copy)}
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
               <Button onClick={retry} disabled={pending || !hydrated}>

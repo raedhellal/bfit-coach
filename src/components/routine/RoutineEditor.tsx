@@ -103,6 +103,8 @@ export interface RoutineAiSetup {
   firstName: string;
   injuries: string[];
   equipment: string[] | null;
+  /** EV-186f — `aiProposals.instruction === true` (never true while `routine` is false). */
+  instruction?: boolean;
 }
 
 /** The 409's two facts: what to echo if the coach confirms, and which press it answered. */
@@ -535,6 +537,9 @@ export function RoutineEditor({
       traineeName={traineeName}
       hasDraft={isDraft && token.current !== null}
       dirty={dirty}
+      // EV-186f U6: « Modifier avec l'IA » needs a SAVED draft or a published routine — what the
+      // api revises. A blank plan begun on this page and not yet saved is neither.
+      canUpdate={ai.instruction === true && ((isDraft && token.current !== null) || activePlan !== null)}
       onKept={kept}
     />
   ) : null;
