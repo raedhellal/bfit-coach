@@ -2950,11 +2950,41 @@ export const en = {
       `Don't record an injury or pain here: the plan always respects the injuries in ${mid(firstName)}'s profile.`,
     /** EV-341y2 YP4, verbatim: undo the split choice. */
     clearChoice: "Clear",
+    /** EV-341c C1, verbatim: section 5's read-only injuries, when the trainee recorded none. */
+    noInjuries: "No injuries recorded.",
+    /** EV-341c C1, verbatim: section 5 without WORKOUTS. Sentence-initial: the fallback keeps its capital. */
+    trainingNotShared: (firstName: string) => `${firstName} doesn't share their training.`,
+    /** EV-341c C2, verbatim: section 6, WEIGH_INS held and no weight ever recorded. */
+    noMeasurements: "No measurements yet.",
+    /** EV-341c C2, verbatim: section 6 without WEIGH_INS. Sentence-initial. */
+    measurementsNotShared: (firstName: string) => `${firstName} doesn't share their measurements.`,
+    /** EV-341c C3, verbatim: section 7's read-only food facts without NUTRITION. Sentence-initial. */
+    nutritionNotShared: (firstName: string) => `${firstName} doesn't share their nutrition.`,
+    /** EV-341c C3b, verbatim (D-INTAKE-8 (b), the default): under section 7's note. Mid-sentence. */
+    foodRulesNotHere: (firstName: string) => `Food rules (halal, kosher…) are entered by ${mid(firstName)} in the app, not here.`,
+    /** EV-341c C4, verbatim: section 8's live counter, in code points. */
+    coachNotesCounter: (count: number) => `${count.toLocaleString("en-GB")} / 4,000`,
+    /** EV-341c C4, verbatim (B16's sentence at 4,000). */
+    coachNotesTooLong: "Too long: 4,000 characters at most.",
+    /** EV-341c C5, verbatim: the finish action. */
+    finish: "Finish the intake",
+    /** EV-341c C5 / C6, verbatim: the date is the day the interview was FIRST finished. */
+    finishedOn: (date: string) => `Intake finished on ${date}`,
+    /**
+     * Not in the story (no AC names this failure): « Terminer » did not reach the api, or the api
+     * failed. Worded on EV-341w's adopted `askFailed` (flagged for `senior-po` / EV-138).
+     */
+    finishFailed: "The intake could not be finished. Try again.",
     sections: {
       GOALS: "Goals and motivation",
       HISTORY: "Training history",
       AVAILABILITY: "Availability and equipment",
       LIFESTYLE: "Lifestyle",
+      // EV-341c: the catalogue's titles (the same words as EV-341r's read in the app).
+      HEALTH: "Health",
+      MEASUREMENTS: "Measurements and assessment",
+      NUTRITION: "Nutrition",
+      COACH_NOTES: "Coach's notes",
     },
     /** The catalogue's fields (EV-341r R4's adopted labels where the table names a key only). */
     fields: {
@@ -2980,6 +3010,13 @@ export const en = {
       likedExercises: "Liked exercises",
       avoidedExercises: "Exercises to avoid",
       splitPreference: "Session split",
+      // EV-341c section 7: EV-341r R4's adopted labels (b-fit-mobile `coaching.intakeRead.fields`).
+      usualMealsPerDay: "Meals per day",
+      snacking: "Snacking",
+      cooking: "Home cooking",
+      mealsOutPerWeek: "Meals out per week",
+      alcoholPerWeek: "Alcohol per week",
+      waterPerDay: "Water per day",
       notes: "Notes",
     } as Record<string, string>,
     /** The catalogue's values, per field. */
@@ -3042,6 +3079,11 @@ export const en = {
         PUSH_PULL_LEGS: "Push / pull / legs",
         NO_PREFERENCE: "No preference",
       },
+      // EV-341c section 7: EV-341r R4's adopted values (`coaching.intakeRead.values`).
+      snacking: { RARELY: "Rarely", SOMETIMES: "Sometimes", OFTEN: "Often" },
+      cooking: { RARELY: "Rarely", SOMETIMES: "Sometimes", OFTEN: "Often" },
+      alcoholPerWeek: { NONE: "None", D1_3: "1 to 3 drinks", D4_7: "4 to 7 drinks", GT_7: "More than 7 drinks" },
+      waterPerDay: { LT_1L: "Less than 1 L", L1_2: "1 to 2 L", GT_2L: "More than 2 L" },
     } as Record<string, Record<string, string>>,
     /** EV-341r R4's unit: a session length option (U+00A0 keeps the number with its unit). */
     minutes: (value: number) => `${value}\u00a0min`,

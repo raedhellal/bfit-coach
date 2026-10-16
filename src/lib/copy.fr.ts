@@ -1657,11 +1657,30 @@ export const fr = {
     injuryNotHere: (firstName: string) =>
       `Une blessure ou une douleur ne se note pas ici\u00a0: le programme respecte toujours les blessures du profil ${de(mid(firstName))}.`,
     clearChoice: "Effacer",
+    // EV-341c — the story's French, verbatim (C1–C5).
+    noInjuries: "Aucune blessure indiquée.",
+    trainingNotShared: (firstName: string) => `${firstName} ne partage pas son programme.`,
+    noMeasurements: "Aucune mesure pour l'instant.",
+    measurementsNotShared: (firstName: string) => `${firstName} ne partage pas ses mesures.`,
+    nutritionNotShared: (firstName: string) => `${firstName} ne partage pas son alimentation.`,
+    foodRulesNotHere: (firstName: string) =>
+      `Les règles alimentaires (halal, casher…) sont saisies par ${mid(firstName)} dans l'app, pas ici.`,
+    /** « 4 000 », grouped as the notes' « 1 000 ». */
+    coachNotesCounter: (count: number) => `${n(count)} / ${n(4000)}`,
+    coachNotesTooLong: "Trop long\u00a0: 4\u202f000 caractères au maximum.",
+    finish: "Terminer l'entretien",
+    finishedOn: (date: string) => `Entretien terminé le ${date}`,
+    /** Not in the story: worded on EV-341w's `askFailed`. */
+    finishFailed: "L'entretien n'a pas pu être terminé. Réessayez.",
     sections: {
       GOALS: "Objectifs et motivation",
       HISTORY: "Historique sportif",
       AVAILABILITY: "Disponibilités et matériel",
       LIFESTYLE: "Mode de vie",
+      HEALTH: "Santé",
+      MEASUREMENTS: "Mensurations et bilan",
+      NUTRITION: "Alimentation",
+      COACH_NOTES: "Notes du coach",
     },
     fields: {
       primaryGoal: "Objectif principal",
@@ -1685,6 +1704,12 @@ export const fr = {
       likedExercises: "Exercices appréciés",
       avoidedExercises: "Exercices à éviter",
       splitPreference: "Répartition des séances",
+      usualMealsPerDay: "Repas par jour",
+      snacking: "Grignotage",
+      cooking: "Cuisine maison",
+      mealsOutPerWeek: "Repas à l'extérieur par semaine",
+      alcoholPerWeek: "Alcool par semaine",
+      waterPerDay: "Eau par jour",
       notes: "Notes",
     } as Record<string, string>,
     values: {
@@ -1745,6 +1770,11 @@ export const fr = {
         PUSH_PULL_LEGS: "Poussée / tirage / jambes",
         NO_PREFERENCE: "Pas de préférence",
       },
+      snacking: { RARELY: "Rarement", SOMETIMES: "Parfois", OFTEN: "Souvent" },
+      cooking: { RARELY: "Rarement", SOMETIMES: "Parfois", OFTEN: "Souvent" },
+      alcoholPerWeek: { NONE: "Aucun", D1_3: "1 à 3 verres", D4_7: "4 à 7 verres", GT_7: "Plus de 7 verres" },
+      // U+00A0 keeps the number with its unit, as `minutes` does (staff N5 on fb2374f).
+      waterPerDay: { LT_1L: "Moins d'1\u00a0L", L1_2: "1 à 2\u00a0L", GT_2L: "Plus de 2\u00a0L" },
     } as Record<string, Record<string, string>>,
     minutes: (value: number) => `${value}\u00a0min`,
   },

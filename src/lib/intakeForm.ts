@@ -1,5 +1,5 @@
 /**
- * EV-341b — the intake interview's sections 1–4 as data: which fields each section has, what
+ * EV-341b / EV-341c — the intake interview's eight sections as data: which fields each section has, what
  * kind of control each one is, how a stored answer becomes a form value and back, and what
  * counts as answered.
  *
@@ -15,7 +15,7 @@
  *
  * ═══ THE FORM'S TERMS ═══════════════════════════════════════════════════════════════════
  *
- * One form for the four sections (ONE guarded form per page, `useCoachForm`), so every key
+ * One form for the eight sections (ONE guarded form per page, `useCoachForm`), so every key
  * is `<SECTION>.<field>` and every value is a string or a list of strings:
  *   · a single choice is its api value, "" when unanswered;
  *   · a multiple choice is its values IN THE CATALOGUE'S ORDER (so "same answers" is "same
@@ -32,12 +32,27 @@
  */
 import { readNumber } from "./numberInput";
 
-/** The sections this slice builds (EV-341b: 1–4). EV-341c adds 5–8. */
-export const INTAKE_FORM_SECTIONS = ["GOALS", "HISTORY", "AVAILABILITY", "LIFESTYLE"] as const;
+/**
+ * The eight sections, in the api's order (EV-341b built 1–4; EV-341c adds 5–8). Sections 5 and 6
+ * hold their note only (the api's `Health` / `Measurements` records, EV-341a): their read-only
+ * parts are the page's, never a field (C1, C2). Section 8 is one free text of 4,000 (C4).
+ */
+export const INTAKE_FORM_SECTIONS = [
+  "GOALS",
+  "HISTORY",
+  "AVAILABILITY",
+  "LIFESTYLE",
+  "HEALTH",
+  "MEASUREMENTS",
+  "NUTRITION",
+  "COACH_NOTES",
+] as const;
 export type IntakeFormSection = (typeof INTAKE_FORM_SECTIONS)[number];
 
 /** B16 / EV-341a AC5: a section note is at most 1,000 Unicode code points. */
 export const NOTES_MAX_CODE_POINTS = 1000;
+/** C4 / EV-341a AC5: the coach's notes (section 8) are at most 4,000 code points. */
+export const COACH_NOTES_MAX_CODE_POINTS = 4000;
 /** EV-341a: GOALS' `eventLabel` is at most 80 code points. */
 export const EVENT_LABEL_MAX_CODE_POINTS = 80;
 /** EV-341y1 Y1 / EV-341y2 YP1: at most 5 muscle groups. */
@@ -66,12 +81,17 @@ export type IntakeField =
   | { kind: "muscles"; field: "emphasis"; max: number }
   /** YP2: catalogue exercise names, in the coach's order, at most `max`; never also in `other`. */
   | { kind: "exercises"; field: ExerciseListField; max: number; other: ExerciseListField }
-  /** The section note (B16). Always the last field of a section. */
-  | { kind: "notes"; field: "notes" };
+  /**
+   * The section note (B16), or section 8's one text (C4). Always the last field of a section.
+   * `max`: its limit in code points (1,000, or 4,000 for `COACH_NOTES`, `IntakeSection.notesLimit`).
+   */
+  | { kind: "notes"; field: "notes"; max: number };
 
 export type ExerciseListField = "likedExercises" | "avoidedExercises";
 
-const NOTES: IntakeField = { kind: "notes", field: "notes" };
+const NOTES: IntakeField = { kind: "notes", field: "notes", max: NOTES_MAX_CODE_POINTS };
+/** EV-341a `IntakeVocabulary.Frequency`: snacking and cooking share it. */
+const FREQUENCY = ["RARELY", "SOMETIMES", "OFTEN"] as const;
 const SCORE = [1, 2, 3, 4, 5] as const;
 
 /** Each section's fields, in the catalogue's order. */
@@ -126,6 +146,22 @@ export const INTAKE_CATALOGUE: Record<IntakeFormSection, readonly IntakeField[]>
     { kind: "singleInt", field: "stressScore", options: SCORE },
     NOTES,
   ],
+  // C1: the injuries are the page's read-only block; the screening questions are EV-341n's.
+  HEALTH: [NOTES],
+  // C2: the latest weight is the page's read-only block; EV-341m / l add theirs.
+  MEASUREMENTS: [NOTES],
+  // C3: the catalogue's fields (D-INTAKE-1 (b)); the trainee's food facts are read-only, the page's.
+  NUTRITION: [
+    { kind: "integer", field: "usualMealsPerDay", min: 1, max: 6 },
+    { kind: "single", field: "snacking", options: FREQUENCY },
+    { kind: "single", field: "cooking", options: FREQUENCY },
+    { kind: "integer", field: "mealsOutPerWeek", min: 0, max: 14 },
+    { kind: "single", field: "alcoholPerWeek", options: ["NONE", "D1_3", "D4_7", "GT_7"] },
+    { kind: "single", field: "waterPerDay", options: ["LT_1L", "L1_2", "GT_2L"] },
+    NOTES,
+  ],
+  // C4: one textarea, 4,000 code points.
+  COACH_NOTES: [{ kind: "notes", field: "notes", max: COACH_NOTES_MAX_CODE_POINTS }],
 };
 
 /** The form's key for one field of one section. */
@@ -209,7 +245,7 @@ export type IntakeFieldProblem =
 /**
  * One section of the form as the api's `values`: EVERY field of the section, `null` / `[]`
  * when unanswered, in the catalogue's order. `problems` lists the fields the api would refuse
- * (a number outside its bounds or unreadable, a note over 1,000 code points); while there is
+ * (a number outside its bounds or unreadable, a note over its 1,000 or 4,000 code points); while there is
  * one, the section must not be sent (B16).
  */
 export function sectionToApi(
@@ -266,7 +302,7 @@ export function sectionToApi(
       case "notes": {
         const text = typeof raw === "string" ? raw : "";
         values[f.field] = text === "" ? null : text;
-        if (codePoints(text) > NOTES_MAX_CODE_POINTS) problems.push({ field: "notes", kind: "tooLong", max: NOTES_MAX_CODE_POINTS });
+        if (codePoints(text) > f.max) problems.push({ field: "notes", kind: "tooLong", max: f.max });
         break;
       }
     }
