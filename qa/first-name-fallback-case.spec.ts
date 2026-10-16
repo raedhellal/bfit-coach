@@ -202,7 +202,14 @@ function enRows(): Row[] {
       key: "intakePage.injuryNotHere",
       text: en.intakePage.injuryNotHere(first),
       expected: "Don't record an injury or pain here: the plan always respects the injuries in this trainee's profile.",
-    },
+    },    // EV-186b: the routine page's « Régénérer avec l'IA » panel (same page, same `first`).
+    { key: "routineAi.profileLine", text: en.routineAi.profileLine(first), expected: "From this trainee's profile — applied automatically. You cannot change these here." },
+    { key: "routineAi.running", text: en.routineAi.running(first), expected: "Preparing a suggestion for this trainee… This can take up to two minutes." },
+    { key: "routineAi.alreadyRunning", text: en.routineAi.alreadyRunning(first), expected: "A suggestion is already being prepared for this trainee." },
+    { key: "routineAi.rateLimitLinkRegen", text: en.routineAi.rateLimitLinkRegen(first), expected: "You've used today's 3 AI regenerations for this trainee. You can still edit by hand, or try again tomorrow." },
+    { key: "routineAi.staleRoutine", text: en.routineAi.staleRoutine(first), expected: "This trainee's programme changed after this suggestion was made. Try again to get a fresh one." },
+    { key: "routineAi.draftChanged", text: en.routineAi.draftChanged(first), expected: "Your draft for this trainee changed after this suggestion was made. Try again to get a fresh one." },
+    { key: "routineAi.repairMark", text: en.routineAi.repairMark(first, "Shoulder"), expected: "Will be swapped at publish: this trainee's Shoulder" },
   ];
 }
 
@@ -385,7 +392,14 @@ function frRows(): Row[] {
       key: "intakePage.injuryNotHere",
       text: fr.intakePage.injuryNotHere(first),
       expected: "Une blessure ou une douleur ne se note pas ici : le programme respecte toujours les blessures du profil de ce client.",
-    },
+    },    // EV-186b
+    { key: "routineAi.profileLine", text: fr.routineAi.profileLine(first), expected: "Depuis le profil de ce client — appliqué automatiquement. Vous ne pouvez pas le modifier ici." },
+    { key: "routineAi.running", text: fr.routineAi.running(first), expected: "Préparation d'une suggestion pour ce client… Cela peut prendre jusqu'à deux minutes." },
+    { key: "routineAi.alreadyRunning", text: fr.routineAi.alreadyRunning(first), expected: "Une suggestion est déjà en préparation pour ce client." },
+    { key: "routineAi.rateLimitLinkRegen", text: fr.routineAi.rateLimitLinkRegen(first), expected: "Vous avez utilisé les 3 régénérations IA du jour pour ce client. Vous pouvez modifier à la main, ou réessayer demain." },
+    { key: "routineAi.staleRoutine", text: fr.routineAi.staleRoutine(first), expected: "Le programme de ce client a changé depuis cette suggestion. Réessayez pour en obtenir une nouvelle." },
+    { key: "routineAi.draftChanged", text: fr.routineAi.draftChanged(first), expected: "Votre brouillon pour ce client a changé depuis cette suggestion. Réessayez pour en obtenir une nouvelle." },
+    { key: "routineAi.repairMark", text: fr.routineAi.repairMark(first, "Épaule"), expected: "Sera remplacé à la publication : Épaule de ce client" },
   ];
 }
 
@@ -397,13 +411,13 @@ const FALLBACK = {
 } as const;
 
 /**
- * Every copy function the trace found, by language: 38 keys each (EV-341y2: +1, YP3's injury line;
+ * Every copy function the trace found, by language: 45 keys each (EV-186b: +7, the routine AI panel; EV-341y2: +1, YP3's injury line;
  * EV-341b: +3, the interview page
  * and the invited page's intake sentence; EV-341w: +2, the « Entretien »
  * card; EV-341j: +1, the trial session's withdraw dialog). Pinned, so a row dropped from the table
  * (and with it a call site) fails here rather than going quiet.
  */
-const KEYS = 38;
+const KEYS = 45;
 
 for (const lang of ["en", "fr"] as const) {
   test.describe(`BUG-720 — the fallback's case, sentence by sentence (${lang})`, () => {
