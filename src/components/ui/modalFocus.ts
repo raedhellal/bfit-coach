@@ -189,6 +189,14 @@ const closedOrigins = new WeakMap<HTMLElement, Candidate | null>();
  * does so from a passive effect (EV-341y2's CatalogPicker moves, which do nothing when focus is
  * no longer on `<body>`), and after an `await` React runs those effects in a later task than the
  * DOM change. The dialog must come after them, not race them.
+ *
+ * It covers effects of the commit that changed the step — about one task — and nothing later.
+ * A caller that places focus in a LATER commit (an effect keyed on data that arrives after the
+ * step change) loses: the dialog has already moved focus to the step's first control, so the
+ * caller's "only while focus is on `<body>`" check finds it taken. Focus is still inside the
+ * dialog, never lost, but it is not where the caller wanted. Such a caller should not race at
+ * all: mark the step's target with `data-autofocus`, which `initialTarget` honours whenever the
+ * regain runs (staff, BUG-838/839/840 review N2).
  */
 const REGAIN_DELAY_MS = 16;
 
@@ -279,9 +287,15 @@ export function engageModal(
    * removes the control that was pressed, and focus falls to `<body>` with no event to catch:
    * `focusin` does not fire for the body. Any change to the dialog's tree is the signal; focus
    * that is then on `<body>` — and still there REGAIN_DELAY_MS later, after the caller's own
-   * effects — goes to the dialog's initial target: the new step's first control. `disabled` is
-   * watched too: a focused button that becomes disabled loses focus the same way (observed in
-   * TrialSessionCard, whose « Assign » is kept enabled while busy for that reason).
+   * effects — goes to the dialog's initial target: the new step's first control.
+   *
+   * Only the tree is watched, not `disabled`. A focused button that becomes disabled also drops
+   * focus to `<body>` (Chromium), but that is a confirm's request running — TemplateLibrary's
+   * dialogs disable Cancel and the action while pending — not a new step: re-homing then put
+   * focus on × for the whole request, and on × after a failed one (staff S1, BUG-838/839/840
+   * review). Focus stays on `<body>` until the dialog closes and `restore` places it, as before
+   * BUG-839; a later step or an error message inserted into the dialog is a tree change and
+   * still re-homes. TrialSessionCard keeps its « Assign » enabled while busy for this reason.
    */
   let regain = 0;
   const lost = new MutationObserver(() => {
@@ -291,7 +305,7 @@ export function engageModal(
       if (isTop() && dialog.isConnected && onBody()) initialTarget(dialog).focus();
     }, REGAIN_DELAY_MS);
   });
-  lost.observe(dialog, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
+  lost.observe(dialog, { childList: true, subtree: true });
 
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("focusin", onFocusIn);

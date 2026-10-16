@@ -47,6 +47,9 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *      the row's control: focus goes to the next row's first control, the previous row's for the
  *      last row, the library's « New » once the list is empty; the same when the row is removed
  *      BEFORE the restore; and never under a coach who pressed a key in between;
+ *   U9b BUG-839 staff S1 — while a confirm's request runs, its buttons are disabled and Chromium
+ *      drops their focus to `<body>`: it stays there (main's behaviour), never on ×, and the
+ *      restore after the close is unchanged. Red 3/3 on c990ae8 (the observer watched `disabled`);
  *   U10 BUG-839 — a step change inside an open dialog (the pressed control is replaced) puts
  *      focus on the new step's first control, never `<body>`, after a synchronous and after an
  *      awaited change; a caller's own effect that places focus after an `await` (EV-341y2's
@@ -202,14 +205,21 @@ const APP = `
   // BUG-838: a library — « New », then one row per item (a link, then « Delete », which opens the
   // confirm). The confirm closes the dialog, and the row goes "lag" ms later, as the list
   // refresh after the action does; "lag: -1" removes it in the same change as the close.
+  // With "pending: N" the confirm is TemplateLibrary's: both footer buttons are disabled for the
+  // N ms its request runs (TemplateLibrary.tsx:508-513), then the dialog closes.
   function Rows(p) {
     var s = R.useState(p.rows || ["a", "b", "c"]), rows = s[0], setRows = s[1];
     var t = R.useState(null), target = t[0], setTarget = t[1];
+    var b = R.useState(false), busy = b[0], setBusy = b[1];
     function confirm() {
       var id = target;
       var drop = function () { setRows(function (r) { return r.filter(function (x) { return x !== id; }); }); };
-      setTarget(null);
-      if (p.lag < 0) drop(); else setTimeout(drop, p.lag);
+      var done = function () {
+        setBusy(false);
+        setTarget(null);
+        if (p.lag < 0) drop(); else setTimeout(drop, p.lag);
+      };
+      if (p.pending) { setBusy(true); setTimeout(done, p.pending); } else done();
     }
     return h("main", { id: "main", tabIndex: -1 },
       h("div", { id: "lib" },
@@ -221,9 +231,18 @@ const APP = `
                 h("button", { id: "del-" + id, onClick: function () { setTarget(id); } }, "Delete " + id));
             }))
           : h("p", null, "No items yet.")),
-      h(Modal, { open: target !== null, dirty: false, title: "Delete?", onClose: function () { setTarget(null); },
-        footer: h("button", { id: "confirm", onClick: confirm }, "Delete") }, h("p", null, "Sure?")));
+      h(Modal, { open: target !== null, dirty: false, title: "Delete?", onClose: function () { if (!busy) setTarget(null); },
+        footer: [
+          p.pending && h("button", { key: 0, id: "keep", disabled: busy, onClick: function () { setTarget(null); } }, "Cancel"),
+          h("button", { key: 1, id: "confirm", disabled: busy, onClick: confirm }, "Delete"),
+        ] }, h("p", null, "Sure?")));
   }
+  // Every focus move while a Rows page is up, in order — by id, or the aria-label for the ×.
+  window.__seq = [];
+  document.addEventListener("focusin", function (e) {
+    var el = e.target;
+    window.__seq.push(el.id || el.getAttribute("aria-label") || el.tagName);
+  });
   window.__showRows = function (props) { root.render(h(R.StrictMode, null, h(Rows, props))); };
   var root = U.ReactDOMClient.createRoot(document.getElementById("root"));
   window.__show = function (props) { root.render(h(R.StrictMode, null, h(Harness, props))); };
@@ -560,9 +579,14 @@ async function deleteRow(page: Page, id: string) {
   const dialog = page.getByRole("dialog", { name: "Delete?" });
   await expect(dialog).toBeVisible();
   await dialog.locator("#confirm").focus();
+  await resetSeq(page);
   await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
 }
+
+/** The focus moves recorded since the last `resetSeq` (the Rows harness's `focusin` log). */
+const seq = (page: Page) => page.evaluate(() => (window as unknown as { __seq: string[] }).__seq.slice());
+const resetSeq = (page: Page) => page.evaluate(() => ((window as unknown as { __seq: string[] }).__seq.length = 0));
 
 const activeId = (page: Page) =>
   page.evaluate(() => {
@@ -573,11 +597,13 @@ const activeId = (page: Page) =>
 test.describe("BUG-838/839/840 unit", () => {
   test("U9: the row the restore focused is removed after it — next row, previous row, « New »; also when removed before; never after a key", async ({ page }) => {
     // The QA timeline: the restore focuses the row's « Delete », the refresh removes the row later.
+    // The order is read from the focusin log once it has settled, not sampled live: under load
+    // the 120 ms the row survives can pass before Playwright first looks (staff N1).
     await rows(page, { lag: 120 });
     await deleteRow(page, "b");
-    await expect(page.locator("#del-b"), "the restore lands first on the row's « Delete »").toBeFocused();
     await expect(page.locator("#row-b")).toHaveCount(0);
     await expect(page.locator("#edit-c"), "the next row's first control").toBeFocused();
+    expect(await seq(page), "the restore lands first on the row's « Delete », then the next row's first control").toEqual(["del-b", "edit-c"]);
 
     await deleteRow(page, "c");
     await expect(page.locator("#row-c")).toHaveCount(0);
@@ -601,6 +627,29 @@ test.describe("BUG-838/839/840 unit", () => {
     await expect(page.locator("#row-b")).toHaveCount(0);
     await settle(page);
     expect(await activeId(page), "the watch ended on the key press").toBe("BODY");
+  });
+
+  test("U9b: while a confirm's request runs, its disabled buttons do not send focus to × — and the restore after it is unchanged", async ({ page }) => {
+    // TemplateLibrary's delete confirm: Cancel and « Delete » are disabled while pending. Chromium
+    // drops focus from a button that becomes disabled to <body>; that is where it stays until the
+    // dialog closes (as on main, before BUG-839). The step-change regain must not read the
+    // `disabled` change as a step change and land on × (staff S1: "mid-request focus: Close").
+    await rows(page, { lag: 120, pending: 600 });
+    await page.locator("#del-b").focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Delete?" });
+    await expect(dialog).toBeVisible();
+    await dialog.locator("#confirm").focus();
+    await resetSeq(page);
+    await page.keyboard.press("Enter");
+    await expect(dialog.locator("#confirm"), "the request is running").toBeDisabled();
+    await page.waitForTimeout(200); // well past REGAIN_DELAY_MS, well inside the 600 ms request
+    await expect(dialog.locator("#confirm"), "still running when sampled").toBeDisabled();
+    expect(await activeId(page), "mid-request: focus is not moved anywhere — least of all to ×").toBe("BODY");
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator("#row-b")).toHaveCount(0);
+    await expect(page.locator("#edit-c"), "after the close: the restore, then the next row's first control").toBeFocused();
+    expect(await seq(page), "no focus move before the close; then « Delete », then the next row").toEqual(["del-b", "edit-c"]);
   });
 
   for (const async of [false, true]) {
