@@ -933,6 +933,14 @@ export interface CoachRoutineResponse {
    * typed here so the drift guard holds the whole envelope.
    */
   changedSinceYourPublish?: boolean;
+  /**
+   * EV-186c (ADR-0036 D36.9) — the coach AI proposal controls this server offers
+   * (`AiProposalsCapability`). Optional and ADDITIVE: an older api omits it, and the flags
+   * default off in production. Typed `unknown` on purpose: EV-186b B1 says absent, null, a
+   * string or a missing field all read as false, so nothing may dereference it except
+   * `routineAiCapability` (`src/lib/routineAi.ts`), which reads each field as `=== true`.
+   */
+  aiProposals?: unknown;
 }
 
 /**
@@ -980,6 +988,13 @@ export interface CoachRoutineDraftResponse {
    * index is built over zero rows.
    */
   catalogChecked: boolean;
+  /**
+   * EV-186a (EV-186 AC2) — when this draft was kept from a coach AI proposal, for the
+   * editor's « Préparé avec l'IA le {date} » line. OMITTED (not null) for a draft the model
+   * never touched, so with the flags off the body is exactly as before. It survives the
+   * coach's own saves, is cleared by a template apply, and publish deletes it with the draft.
+   */
+  aiDraftedAt?: string;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -1023,6 +1038,123 @@ export interface CoachRoutineDraftResponse {
 export interface CoachRoutineDraftRequest {
   replacesDraftUpdatedAt: string | null;
   document: Routine;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-186b / EV-186n — « Régénérer avec l'IA » (ADR-0036 D36.1–D36.4, D36.9).
+ *
+ * Typed against b-fit-api `feat/ev186a-coach-routine-regenerate` @ 9c3bff69, NOT MERGED
+ * (`spec/b-fit-api.sha` says `on-api-main: NO`). Every route below is unregistered (404)
+ * while `bfit.coach-ai.routine.enabled` is false, which is the production default, and the
+ * portal never calls one unless the routine read's `aiProposals.routine` is literally true.
+ *
+ *   POST   /coach-portal/clients/{id}/routine/ai-proposal        ← CoachRoutineAiProposalRequest
+ *          202 {proposalId, status: RUNNING}
+ *          400 COACH_DRAFT_INPUT_FORBIDDEN · VALIDATION_ERROR · COACH_AI_INSTRUCTION_INVALID
+ *          409 COACH_AI_PROPOSAL_RUNNING
+ *          429 COACH_AI_RATE_LIMIT {scope: link|coach, resetsAt} + Retry-After
+ *          503 COACH_AI_UNAVAILABLE · CATALOG_UNAVAILABLE · COACH_AI_BUSY
+ *          (every refusal reserves nothing)
+ *   GET    same path → CoachRoutineAiProposalResponse (status NONE when there is none; no-store)
+ *   DELETE same path → 204, idempotent; RUNNING → CANCELLED, a settled one is deleted
+ *   POST   …/ai-proposal/keep ← {proposalId} → CoachRoutineDraftResponse (the kept draft)
+ *          409 COACH_DRAFT_EXISTS (details.existingUpdatedAt) · COACH_PROPOSAL_STALE
+ *
+ * **Nothing here publishes.** Keep writes the coach's DRAFT through the draft save's own
+ * write, with the token the api captured when the proposal was made (never one this surface
+ * sends); the trainee sees nothing until the coach presses Publish.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * `AiProposalsCapability` as the api publishes it. NEVER read directly off a response: the
+ * reads type the field `unknown`, and `routineAiCapability` turns it into booleans.
+ * @wire AiProposalsCapability
+ */
+export interface AiProposalsCapability {
+  routine: boolean;
+  nutrition: boolean;
+  /** « Modifier avec l'IA » (EV-186e/f). Never true while `routine` is false. */
+  instruction: boolean;
+}
+
+/** `CoachRoutineAiBrief.goal` — the api's `PrimaryGoal`. */
+export type RoutineAiGoal = "LOSE_WEIGHT" | "BUILD_MUSCLE" | "GET_STRONGER" | "ENDURANCE" | "MOBILITY";
+
+/**
+ * EV-186 AC1's five controls, and nothing else: no injury, no equipment, no id. Any key
+ * outside this list is `400 COACH_DRAFT_INPUT_FORBIDDEN` (never silently ignored).
+ * @wire CoachRoutineAiBrief
+ */
+export interface CoachRoutineAiBrief {
+  goal: RoutineAiGoal;
+  /** 2–6, the publishable plan's own bound. */
+  days: number;
+  /** One of 20, 30, 45, 60, 75, 90. */
+  sessionLength: number;
+  /** ≤ 5 values, each EXACTLY a value of the catalogue's `muscles` facet. Omitted when empty. */
+  emphasis?: string[];
+  /** ≤ 500 characters after NFC, plain text. Omitted when blank. Never stored by the api. */
+  notes?: string;
+}
+
+/**
+ * The body of `POST …/routine/ai-proposal`. `kind` is `REGENERATE` only on this contract:
+ * REVISE (« Modifier avec l'IA ») is EV-186e's and is not on the vendored spec.
+ * @wire CoachRoutineAiProposalRequest
+ */
+export interface CoachRoutineAiProposalRequest {
+  kind: "REGENERATE";
+  brief: CoachRoutineAiBrief;
+}
+
+/** @wire CoachRoutineAiProposalStartedResponse */
+export interface CoachRoutineAiProposalStartedResponse {
+  proposalId: string;
+  status: "RUNNING";
+}
+
+export type RoutineAiProposalStatus = "NONE" | "RUNNING" | "READY" | "FAILED" | "CANCELLED" | "EXPIRED";
+
+/**
+ * One exercise the publish policy WOULD swap or drop in `proposal`, located by weekday and
+ * index. A preview (EV-186 P5): the publish modal stays the only binding list.
+ * @wire CoachRoutineAiRepairMark
+ */
+export interface CoachRoutineAiRepairMark {
+  dayOfWeek: number;
+  exerciseIndex: number;
+  exerciseName: string;
+  /** The trainee's stored injury that triggers it, as the api's token or free text; may be null. */
+  injury?: string | null;
+  /** The repair line exactly as it appears in `repairs`. */
+  repair: string;
+}
+
+/**
+ * `GET …/routine/ai-proposal`. `baseDocument`, `proposal` and the repairs are READY-only;
+ * `errorCode` is FAILED-only and is rendered through the copy table, never as text.
+ * @wire CoachRoutineAiProposalResponse
+ */
+export interface CoachRoutineAiProposalResponse {
+  proposalId?: string | null;
+  status: RoutineAiProposalStatus;
+  kind?: "REGENERATE" | "REVISE" | null;
+  /** STUB only on a local/staging server with AI off: the « Suggestion de test » banner. */
+  engine?: "AI" | "ENGINE" | "STUB" | null;
+  errorCode?: string | null;
+  baseSource?: "DRAFT" | "LIVE" | "NONE" | null;
+  baseDocument?: Routine | null;
+  proposal?: Routine | null;
+  repairs: string[];
+  repairMarks: CoachRoutineAiRepairMark[];
+  equipmentChecked: boolean;
+  createdAt?: string | null;
+  expiresAt?: string | null;
+}
+
+/** @wire CoachRoutineAiKeepRequest */
+export interface CoachRoutineAiKeepRequest {
+  proposalId: string;
 }
 
 
@@ -1734,6 +1866,13 @@ export interface CoachNutritionResponse {
    * fails closed.
    */
   recipePlacementEnabled: boolean;
+  /**
+   * EV-186c (ADR-0036 D36.9) — which coach AI proposal controls this server offers. Typed
+   * here so the drift guard holds the envelope; the NUTRITION page reads nothing from it until
+   * EV-186k. `unknown`, not the capability type: the portal treats an absent object, an absent
+   * field and a malformed one as false, and only `routineAiCapability` may read it.
+   */
+  aiProposals?: unknown;
 }
 
 /**
@@ -3295,6 +3434,30 @@ const liveCoachApi = {
     return apiFetch<PublishResult>(`${client(id)}/routine/publish`, {
       method: "POST",
       body: JSON.stringify({ digest }),
+    });
+  },
+  // ── EV-186b routine AI proposal (404 while bfit.coach-ai.routine.enabled is off) ──
+
+  startRoutineAiProposal(
+    id: string,
+    body: CoachRoutineAiProposalRequest
+  ): Promise<CoachRoutineAiProposalStartedResponse> {
+    return apiFetch<CoachRoutineAiProposalStartedResponse>(`${client(id)}/routine/ai-proposal`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  getRoutineAiProposal(id: string): Promise<CoachRoutineAiProposalResponse> {
+    return apiFetch<CoachRoutineAiProposalResponse>(`${client(id)}/routine/ai-proposal`);
+  },
+  async discardRoutineAiProposal(id: string): Promise<void> {
+    // 204, idempotent.
+    await apiFetch<void>(`${client(id)}/routine/ai-proposal`, { method: "DELETE" });
+  },
+  keepRoutineAiProposal(id: string, body: CoachRoutineAiKeepRequest): Promise<CoachRoutineDraftResponse> {
+    return apiFetch<CoachRoutineDraftResponse>(`${client(id)}/routine/ai-proposal/keep`, {
+      method: "POST",
+      body: JSON.stringify(body),
     });
   },
   searchCatalog(q: string, muscle: string, equipment: string, paging?: CatalogPaging): Promise<CatalogPage> {

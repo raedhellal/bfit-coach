@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fixtureCalls, fixtureDraftPuts, fixtureIntakePuts, fixtureReads } from "@/lib/coachApi.fixture";
+import { fixtureAiPosts, fixtureCalls, fixtureDraftPuts, fixtureIntakePuts, fixtureReads } from "@/lib/coachApi.fixture";
 import { COACH_API_MODE } from "@/lib/env";
 import { apiJournal } from "@/lib/fixtureApiJournal";
 
@@ -39,7 +39,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 export async function GET() {
   if (COACH_API_MODE !== "fixture") return new NextResponse(null, { status: 404, headers: NO_STORE });
   return NextResponse.json(
-    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), intakePuts: fixtureIntakePuts(), api: apiJournal() },
+    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), intakePuts: fixtureIntakePuts(), aiPosts: fixtureAiPosts(), api: apiJournal() },
     { headers: NO_STORE }
   );
 }
