@@ -565,6 +565,28 @@ test.describe("YP8 keyboard, widths, targets", () => {
       return `${el.tagName}:${el.getAttribute("aria-label") ?? (el.textContent ?? "").trim()}`;
     });
 
+  /** Where the focus is: the element's tag, and whether it is inside the open dialog. */
+  const focusPlace = (page: Page) =>
+    page.evaluate(() => ({
+      tag: document.activeElement?.tagName ?? "",
+      inDialog: !!document.activeElement?.closest('[role="dialog"]'),
+    }));
+
+  /** Section 2 by keyboard, Tab to « Add exercise » under « Liked exercises », Enter. */
+  const openLikedSearchByKeyboard = async (page: Page) => {
+    const t = T.en;
+    await sectionTab(page, "GOALS").focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(panel(page, "HISTORY")).toBeVisible();
+    const opener = group(page, "HISTORY", t.liked).getByRole("button", { name: t.add, exact: true });
+    for (let i = 0; i < 60 && !(await opener.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("Tab");
+    await expect(opener).toBeFocused();
+    await page.keyboard.press("Enter");
+    const search = page.getByRole("dialog", { name: t.liked, exact: true });
+    await expect(search).toBeVisible();
+    return search;
+  };
+
   test("an exercise picker by Tab / Enter / Escape: open, search, pick, close back on its opener, remove", async ({ page }) => {
     test.setTimeout(120_000);
     const t = T.en;
@@ -605,6 +627,48 @@ test.describe("YP8 keyboard, widths, targets", () => {
     await expect.poll(async () => (await lastPut(page, "HISTORY")).body.values.likedExercises, { timeout: 10_000 }).toEqual([]);
   });
 
+  test("BUG-824: a keyboard pick below the limit keeps the focus in the search (the search box), so the next pick follows", async ({ page }) => {
+    test.setTimeout(120_000);
+    const t = T.en;
+    await signIn(page);
+    await grant(page);
+    await openIntake(page);
+    const search = await openLikedSearchByKeyboard(page);
+    const pickByKeyboard = async (query: string, name: string) => {
+      await search.getByRole("textbox").fill(query);
+      const row = search.locator(`[data-catalog-row="${name}"]`);
+      await expect(search.locator("[data-catalog-row]")).toHaveCount(1);
+      for (let i = 0; i < 10 && !(await row.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("Tab");
+      await expect(row).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(row).toBeDisabled();
+    };
+    await pickByKeyboard("Plank", "Plank");
+    await expect(search.getByRole("textbox")).toBeFocused();
+    expect(await focusPlace(page)).toEqual({ tag: "INPUT", inDialog: true });
+    // The next pick starts from there.
+    await pickByKeyboard("Goblet", "Goblet Squat");
+    await expect(search.getByRole("textbox")).toBeFocused();
+    await expect(group(page, "HISTORY", t.liked).locator(".intake-chip-text")).toHaveText(["Plank", "Goblet Squat"]);
+  });
+
+  test("BUG-826: the catalogue down, the search opened by keyboard: the focus goes to the refusal, never to <body>", async ({ page }) => {
+    test.setTimeout(120_000);
+    const t = T.en;
+    await signIn(page);
+    await grant(page);
+    await setSwitch(page.context(), page, "evoli_fixture_catalog", "down");
+    await openIntake(page);
+    const search = await openLikedSearchByKeyboard(page);
+    const refusal = search.locator("[data-catalog-unavailable]");
+    await expect(refusal).toHaveText("The exercise catalog is unavailable. Try again shortly.");
+    await expect(refusal).toBeFocused();
+    expect(await focusPlace(page)).toEqual({ tag: "P", inDialog: true });
+    await page.keyboard.press("Escape");
+    await expect(search).toHaveCount(0);
+    await expect(group(page, "HISTORY", t.liked).getByRole("button", { name: t.add, exact: true })).toBeFocused();
+  });
+
   for (const how of ["Escape", "Done"] as const) {
     test(`at 10, closing the search by ${how} puts the focus on « 10 exercises at most. », never on <body> (staff y2 r1 S1)`, async ({ page }) => {
       test.setTimeout(120_000);
@@ -629,6 +693,9 @@ test.describe("YP8 keyboard, widths, targets", () => {
       for (let i = 0; i < 10 && !(await row.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("Tab");
       await page.keyboard.press("Enter");
       await expect(search.locator("[data-catalog-limit]")).toHaveText(t.max10);
+      // BUG-825 (staff N6): the 10th pick's row rests; the focus goes to the search's limit line.
+      await expect(search.locator("[data-catalog-limit]")).toBeFocused();
+      expect(await focusPlace(page)).toEqual({ tag: "P", inDialog: true });
       if (how === "Escape") {
         await page.keyboard.press("Escape");
       } else {

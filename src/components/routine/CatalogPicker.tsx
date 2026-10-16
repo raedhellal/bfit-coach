@@ -172,6 +172,46 @@ export function CatalogPicker({
     return () => clearTimeout(timer);
   }, [open, q, muscle, equipment, run]);
 
+  /**
+   * EV-341y2 (BUG-824, BUG-825) — opt-in: only a picker given `rowBlock` / `limitNote` can make a
+   * row rest, so only such a picker moves the focus. A row picked with the keyboard that then
+   * RESTS (already in the list, or the list is now full) would drop the focus to <body>; it goes
+   * to the limit line when the list is full, else back to the search box for the next pick.
+   * Set by the pick, read after the parent's new props have rendered.
+   */
+  const optIn = rowBlock !== undefined || limitNote !== undefined;
+  const pickedRow = useRef<string | null>(null);
+  const searchAnchor = useRef<HTMLParagraphElement | null>(null);
+  const limitLine = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    const name = pickedRow.current;
+    if (!open || !optIn || name === null) return;
+    const dialog = searchAnchor.current?.closest<HTMLElement>('[role="dialog"]');
+    if (!dialog) return;
+    const row = Array.from(dialog.querySelectorAll<HTMLButtonElement>("[data-catalog-row]")).find(
+      (el) => el.getAttribute("data-catalog-row") === name
+    );
+    if (row && !row.disabled) return; // the row still takes picks: the focus stays on it
+    pickedRow.current = null;
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== row) return; // the coach moved on
+    if (limitNote && limitLine.current) limitLine.current.focus();
+    else dialog.querySelector<HTMLInputElement>("input")?.focus();
+  });
+
+  /**
+   * EV-341y2 (BUG-826) — opt-in with `focusSearch`: the search box that took the focus is
+   * replaced by the refusal when the catalogue answers 503, which drops the focus to <body>. It
+   * goes to the refusal, which is read out.
+   */
+  const unavailableLine = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    if (!open || !focusSearch || !unavailable) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    unavailableLine.current?.focus();
+  }, [open, focusSearch, unavailable]);
+
   return (
     <Modal
       open={open}
@@ -193,7 +233,13 @@ export function CatalogPicker({
     >
       {unavailable ? (
         // AC4, verbatim: refuse and offer nothing, rather than half a catalog.
-        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
+        <p
+          role="alert"
+          ref={unavailableLine}
+          tabIndex={focusSearch ? -1 : undefined}
+          data-catalog-unavailable=""
+          style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}
+        >
           {copy.routine.catalogUnavailable}
         </p>
       ) : (
@@ -221,7 +267,7 @@ export function CatalogPicker({
               onChange={setEquipment}
             />
           </div>
-          <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+          <p ref={searchAnchor} style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
             {copy.routine.catalogPickOnly}
           </p>
           {/*
@@ -239,7 +285,12 @@ export function CatalogPicker({
           )}
 
           {limitNote && (
-            <p data-catalog-limit="" style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-2)", fontWeight: 600 }}>
+            <p
+              data-catalog-limit=""
+              ref={limitLine}
+              tabIndex={-1}
+              style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-2)", fontWeight: 600 }}
+            >
               {limitNote}
             </p>
           )}
@@ -271,6 +322,7 @@ export function CatalogPicker({
                 data-catalog-row={item.name}
                 onClick={() => {
                   if (resting) return;
+                  if (optIn) pickedRow.current = item.name;
                   onPick(item);
                   if (keepOpen) setAdded(item.name);
                 }}
