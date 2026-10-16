@@ -6180,6 +6180,256 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/routine/ai-proposal:
+    post:
+      summary: Regenerate with AI — start a routine proposal
+      description: >-
+        EV-186a / ADR-0036 D36.1, D36.2, D36.10. `{kind: "REGENERATE", brief: {goal, days,
+        sessionLength, emphasis[], notes?}}` answers 202 `{proposalId, status: "RUNNING"}`; poll the
+        GET. The model input is the brief plus the trainee's STORED profile (age from the birth date,
+        equipment and injuries exactly as the publish policy reads them); the request can carry
+        nothing about the trainee's body. Writes no plans row and no draft row. Spends one REGEN unit
+        of the daily quota (3 per trainee, 30 per coach), given back if the run fails; a run still
+        going 120 s after it started is FAILED with COACH_AI_TIMEOUT. Refusal order: binding (400
+        COACH_DRAFT_INPUT_FORBIDDEN for any key outside the contract), the guard (403), the bounds
+        (400), engine availability (503 COACH_AI_UNAVAILABLE), the catalogue pre-flight (503
+        CATALOG_UNAVAILABLE), then the quota (429), the one-at-a-time rule (409) and the bulkhead
+        (503 COACH_AI_BUSY). Every refusal reserves nothing.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachRoutineAiProposalRequest"
+      responses:
+        "202":
+          description: Started; poll GET …/routine/ai-proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachRoutineAiProposalStartedResponse"
+        "400":
+          description: >-
+            COACH_DRAFT_INPUT_FORBIDDEN (a key outside the contract, at the top level or in brief, named in details.field — injuries, equipment, allergies, foodRules, dietaryPattern, traineeId, coachId, instruction, chips, …); VALIDATION_ERROR (brief.goal, brief.days; details.field for kind, brief, brief.sessionLength, brief.emphasis); COACH_AI_INSTRUCTION_INVALID (brief.notes over 500 characters after NFC, a control character other than a line feed, or a fence token; details {field, reason}). Nothing reserved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            See GET /coach-portal/clients/{id}/routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            The routine coach AI flag (bfit.coach-ai.routine.enabled) is off on this server: the mapping is not registered (NOT_FOUND).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            COACH_AI_PROPOSAL_RUNNING — a proposal for this trainee is still running. Nothing reserved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: >-
+            COACH_AI_RATE_LIMIT — details {scope: link|coach, resetsAt}; resetsAt is the next midnight
+            in the server zone. Nothing reserved.
+          headers:
+            Retry-After:
+              description: Seconds until resetsAt
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: >-
+            COACH_AI_UNAVAILABLE (no engine: AI off and no stub on this server), CATALOG_UNAVAILABLE (the model needs a synced catalogue), or COACH_AI_BUSY (the coach AI pool is full). Nothing reserved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    get:
+      summary: The routine AI proposal, with read-only repairs
+      description: >-
+        EV-186a / ADR-0036 D36.1, D36.4, EV-186 P5. Polled by the portal; `Cache-Control: no-store`.
+        A 200 with status NONE when the link has no routine proposal. On READY: `baseDocument` (the
+        coach's draft, else the published routine), `proposal` (exactly as Keep would store it), and
+        the read-only repairs: `repairs` is what POST …/routine/publish/preview would answer for that
+        document (same policy, the trainee's stored injuries and equipment), `repairMarks` locates
+        each exercise the policy would swap or drop. A preview: the publish modal stays the only
+        binding list. EXPIRED once past `expiresAt` (24 h) or written at another shape version.
+        Writes nothing.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The proposal, or status NONE
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachRoutineAiProposalResponse"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            See GET /coach-portal/clients/{id}/routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            The routine coach AI flag (bfit.coach-ai.routine.enabled) is off on this server: the mapping is not registered (NOT_FOUND).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      summary: Discard the routine AI proposal
+      description: >-
+        EV-186a « Écarter ». Idempotent: 204 twice in a row. A RUNNING proposal becomes CANCELLED
+        (its late result is dropped), a settled one is deleted. The quota unit is not given back
+        (EV-186 C11 (d)).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: The link has no routine proposal
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            See GET /coach-portal/clients/{id}/routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            The routine coach AI flag (bfit.coach-ai.routine.enabled) is off on this server: the mapping is not registered (NOT_FOUND).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/routine/ai-proposal/keep:
+    post:
+      summary: Keep the proposal — it becomes the coach's draft
+      description: >-
+        EV-186a / ADR-0036 D36.4. Writes the draft through the draft save's own write
+        (PUT …/routine/draft's resolution, link lock and row lock) with the draft token captured when
+        the proposal was made — never one the client sends — sets `aiDraftedAt` and clears
+        `sourceTemplateId`. The trainee sees nothing until the coach publishes (EV-184). A second Keep
+        of the same proposal is 409 COACH_DRAFT_EXISTS.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachRoutineAiKeepRequest"
+      responses:
+        "200":
+          description: The kept draft, as stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachRoutineDraftResponse"
+        "400":
+          description: >-
+            VALIDATION_ERROR (proposalId missing) or COACH_DRAFT_INPUT_FORBIDDEN (any other key)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: >-
+            Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            See GET /coach-portal/clients/{id}/routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            The routine coach AI flag (bfit.coach-ai.routine.enabled) is off on this server: the mapping is not registered (NOT_FOUND).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            COACH_DRAFT_EXISTS — the draft changed after the proposal was made (details.existingUpdatedAt); or COACH_PROPOSAL_STALE — no such current READY proposal, it expired, the published plan (live plan id or selected_at) changed, or the draft it was made from no longer exists. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /coach-portal/clients/{id}/routine/publish/preview:
     post:
       summary: What publishing this draft would change
@@ -10392,6 +10642,12 @@ components:
             EV-256c AC15 (story R5). Whether "Use one of my recipes" is available. False while
             bfit.coach.recipes.placement.enabled is off; the portal hides the action and the
             placement POST answers 404.
+        aiProposals:
+          allOf:
+            - $ref: "#/components/schemas/AiProposalsCapability"
+          description: >-
+            EV-186c (ADR-0036 D36.9) — which coach AI proposal controls this server offers. Additive
+            and optional: the portal treats an absent object, or an absent field, as false.
       required: [clientId, currentWeekStart, dietProfile, recipePlacementEnabled]
     CoachApplyWeekRequest:
       type: object
@@ -10524,7 +10780,32 @@ components:
             workout session (add, remove or reorder an exercise) are not recorded, so they never
             set it. Publishing clears it. A "publish" is a programme (`plans.kind = PROGRAMME`): a
             trial session the coach assigned is never one (EV-341s).
+        aiProposals:
+          allOf:
+            - $ref: "#/components/schemas/AiProposalsCapability"
+          description: >-
+            EV-186c (ADR-0036 D36.9) — which coach AI proposal controls this server offers. Additive
+            and optional: the portal treats an absent object, or an absent field, as false.
       required: [clientId, guardrails, hasDraft, changedSinceYourPublish]
+    AiProposalsCapability:
+      type: object
+      description: >-
+        EV-186c (ADR-0036 D36.9) — the coach AI proposal controls this server offers, folded at
+        startup from bfit.coach-ai.routine.enabled and bfit.coach-ai.nutrition.enabled (both false on
+        the merge commit). While a surface is false its ai-proposal routes are not registered (404).
+      properties:
+        routine:
+          type: boolean
+          description: The routine page's « Régénérer avec l'IA ».
+        nutrition:
+          type: boolean
+          description: The nutrition page's proposal panel.
+        instruction:
+          type: boolean
+          description: >-
+            « Modifier avec l'IA » (routine Update): true only when routine is true and the server has
+            a routine reviser. Never true while routine is false.
+      required: [routine, nutrition, instruction]
     CoachRoutineGuardrails:
       type: object
       description: >-
@@ -10621,6 +10902,156 @@ components:
             built over zero rows and a naive recompute would mark every exercise in every draft.
             This read does NOT answer 503 for that: refusing to open a draft because a background
             sync is in flight is a worse failure than an unchecked one.
+        aiDraftedAt:
+          type: string
+          format: date-time
+          description: >-
+            EV-186a (EV-186 AC2). When this draft was kept from a coach AI proposal
+            (POST /coach-portal/clients/{id}/routine/ai-proposal/keep): the editor shows "Drafted
+            with AI on {date}. Review it before you publish — you're the author." under its header.
+            It survives the coach's own saves and is cleared by a template apply; publish deletes
+            the draft and copies nothing of it onto the plan. OMITTED, not null, for a draft the
+            model never touched, so with the coach AI flags off the body is exactly as before.
+    CoachRoutineAiProposalRequest:
+      type: object
+      description: >-
+        EV-186a. A coach AI request on the routine page. Every key outside this contract, here or in
+        brief, is 400 COACH_DRAFT_INPUT_FORBIDDEN. REVISE is EV-186e's.
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [REGENERATE]
+        brief:
+          $ref: "#/components/schemas/CoachRoutineAiBrief"
+    CoachRoutineAiBrief:
+      type: object
+      description: EV-186 AC1's five controls, and nothing else.
+      required: [goal, days, sessionLength]
+      properties:
+        goal:
+          type: string
+          enum: [LOSE_WEIGHT, BUILD_MUSCLE, GET_STRONGER, ENDURANCE, MOBILITY]
+        days:
+          type: integer
+          minimum: 2
+          maximum: 6
+        sessionLength:
+          type: integer
+          enum: [20, 30, 45, 60, 75, 90]
+        emphasis:
+          type: array
+          maxItems: 5
+          uniqueItems: true
+          items:
+            type: string
+          description: >-
+            Each EXACTLY a value of the `muscles` facet of GET /coach-portal/catalog/exercises (case
+            and spaces count); anything else is 400 VALIDATION_ERROR naming brief.emphasis.
+        notes:
+          type: string
+          maxLength: 500
+          description: >-
+            "Notes for this draft — the AI reads this." At most 500 characters after NFC, plain text
+            (a line feed allowed), no fence token. Never stored.
+    CoachRoutineAiKeepRequest:
+      type: object
+      required: [proposalId]
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+    CoachRoutineAiProposalStartedResponse:
+      type: object
+      required: [proposalId, status]
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [RUNNING]
+    CoachRoutineAiProposalResponse:
+      type: object
+      description: The link's routine AI proposal (status NONE when there is none).
+      required: [status, repairs, repairMarks, equipmentChecked]
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [NONE, RUNNING, READY, FAILED, CANCELLED, EXPIRED]
+        kind:
+          type: string
+          enum: [REGENERATE, REVISE]
+          nullable: true
+        engine:
+          type: string
+          enum: [AI, ENGINE, STUB]
+          nullable: true
+          description: >-
+            STUB only on a local/staging server with AI off (the portal's « Suggestion de test »
+            banner); never STUB on a server with AI on.
+        errorCode:
+          type: string
+          nullable: true
+          description: >-
+            FAILED only: COACH_AI_TIMEOUT, COACH_AI_INVALID_OUTPUT, COACH_AI_FAILED, … The portal
+            renders the copy-table sentence for the code, the generic Failed sentence otherwise.
+        baseSource:
+          type: string
+          enum: [DRAFT, LIVE, NONE]
+          nullable: true
+        baseDocument:
+          allOf:
+            - $ref: "#/components/schemas/Routine"
+          nullable: true
+          description: READY only. Coach-shaped (the trainee's goal/level, both constraint lists []).
+        proposal:
+          allOf:
+            - $ref: "#/components/schemas/Routine"
+          nullable: true
+          description: READY only, exactly as Keep would store it.
+        repairs:
+          type: array
+          items:
+            type: string
+          description: READY only — what POST …/routine/publish/preview would list for `proposal`.
+        repairMarks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachRoutineAiRepairMark"
+        equipmentChecked:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+    CoachRoutineAiRepairMark:
+      type: object
+      required: [dayOfWeek, exerciseIndex, exerciseName, repair]
+      properties:
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+        exerciseIndex:
+          type: integer
+          minimum: 0
+        exerciseName:
+          type: string
+        injury:
+          type: string
+          nullable: true
+        repair:
+          type: string
+          description: The repair line exactly as it appears in `repairs`.
     CoachTemplateSaveRequest:
       type: object
       description: A routine template to create or replace.
