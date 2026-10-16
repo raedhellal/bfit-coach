@@ -6717,8 +6717,9 @@ async function fixtureSaveIntakeSection(
  *   · the capability block on the routine read (all false by default, as on a server with
  *     both flags off) and the routes answering 404 NOT_FOUND while it is off;
  *   · POST's refusal order: a key outside the contract (400 COACH_DRAFT_INPUT_FORBIDDEN naming
- *     it), the bounds (400 VALIDATION_ERROR / COACH_AI_INSTRUCTION_INVALID), then the switches
- *     below, then one-at-a-time (409 COACH_AI_PROPOSAL_RUNNING); every refusal stores nothing;
+ *     it), the bounds (400 VALIDATION_ERROR / COACH_AI_INSTRUCTION_INVALID), availability (503),
+ *     then — the api CODE's order — the bulkhead (503 COACH_AI_BUSY), the quota (429), and
+ *     one-at-a-time (409 COACH_AI_PROPOSAL_RUNNING); every refusal stores nothing;
  *   · RUNNING → READY | FAILED after a delay, settled LAZILY on the next read (no timers in a
  *     fixture: a test reads, the clock decides);
  *   · DELETE: RUNNING → CANCELLED, a settled one deleted, 204 twice;
@@ -7517,8 +7518,9 @@ export const fixtureCoachApi: CoachApi = {
         await failAi(400, "VALIDATION_ERROR", { field: "brief.emphasis" });
       }
       if (brief.notes !== undefined) {
+        // `CoachAiInstructionBounds`: NFC, then CODE POINTS (an astral emoji counts once).
         const notes = typeof brief.notes === "string" ? brief.notes.normalize("NFC") : null;
-        if (notes === null || notes.length > 500 || AI_NOTES_CONTROL.test(notes)) {
+        if (notes === null || [...notes].length > 500 || AI_NOTES_CONTROL.test(notes)) {
           await failAi(400, "COACH_AI_INSTRUCTION_INVALID", { field: "brief.notes", reason: "INVALID" });
         }
       }
@@ -7526,6 +7528,10 @@ export const fixtureCoachApi: CoachApi = {
       if (forced === "unavailable") await failAi(503, "COACH_AI_UNAVAILABLE");
       if (forced === "catalog") await failAi(503, "CATALOG_UNAVAILABLE");
       const now = Date.now();
+      // The api CODE's order (`CoachAiProposalService.request` @ 19b6696e, staff r2 B1): the bulkhead
+      // FIRST, then the quota, then one-at-a-time. (The openapi prose says quota → 409 → bulkhead;
+      // the code wins, and the prose is filed against b-fit-api.)
+      if (forced === "busy") await failAi(503, "COACH_AI_BUSY");
       if (forced === "rate_link" || forced === "rate_coach") {
         const seconds = secondsToUtcMidnight(now);
         await failAi(
@@ -7541,7 +7547,6 @@ export const fixtureCoachApi: CoachApi = {
       if (current?.status === "RUNNING" && now - Date.parse(current.createdAt) < 600_000) {
         await failAi(409, "COACH_AI_PROPOSAL_RUNNING");
       }
-      if (forced === "busy") await failAi(503, "COACH_AI_BUSY");
 
       const draft = state().drafts.get(id) ?? null;
       const plan = state().plans.get(id) ?? null;

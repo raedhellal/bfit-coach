@@ -37,7 +37,9 @@ import type { CoachRoutineAiProposalResponse, Routine } from "@/lib/coachApi";
  * EV-186b — « Régénérer avec l'IA » on the routine page: the brief, the running state, the
  * refusal and failure sentences, and « Écarter ». Rendered ONLY when the routine read's
  * `aiProposals.routine` is literally true (`routineAiCapability`, decided by the page): with it
- * false, absent or malformed the page does not import a byte of this (B1).
+ * false, absent or malformed the panel does not RENDER and the page makes no AI read (B1). Its
+ * module still ships in the route's client bundle on this slice (measured: +2.8 kB first-load JS
+ * on `next build`); EV-186n loads it with `next/dynamic` from the editor island.
  *
  * The work is server-side (ADR-0036 D36.2): « Générer » answers 202 and the panel POLLS the
  * api's GET. A coach who leaves and comes back gets the same proposal, because the page reads
