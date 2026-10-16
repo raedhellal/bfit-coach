@@ -160,10 +160,13 @@ test("recipe editor: a save re-renders the page title through its action, histor
  * EV-341b added one: the intake interview's access ended (`IntakeInterview` `accessEnded`, a 403
  * on an autosave or on « Recharger »), through `form.endAccess` (staff H2): a refused write
  * revalidates nothing, so the refresh is what reaches the layout's denial redirect. 13.
+ * EV-186b added one: the routine AI panel's 403 (`RoutineAiPanel` `accessEnded`, shared by its
+ * start, poll and discard), a refused action that revalidates nothing, so the refresh is what
+ * reaches the page's denial redirect (the IntakeConsentCard / TrialSessionCard precedent). 14.
  * A new call is a decision: if its action revalidates, it renders the page a
  * second time for nothing. Comment lines are not counted.
  */
-test("src holds exactly 13 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry, plus EV-341w's, EV-341j's and EV-341b's 403s)", () => {
+test("src holds exactly 14 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry, plus EV-341w's, EV-341j's, EV-341b's and EV-186b's 403s)", () => {
   const src = join(__dirname, "..", "src");
   const calls: string[] = [];
   for (const file of readdirSync(src, { recursive: true, encoding: "utf8" })) {
@@ -176,5 +179,5 @@ test("src holds exactly 13 router.refresh() calls (ADR-0033 2a's inventory, less
         if (code.includes("router.refresh()")) calls.push(`${file}:${i + 1}`);
       });
   }
-  expect(calls.length, calls.sort().join("\n")).toBe(13);
+  expect(calls.length, calls.sort().join("\n")).toBe(14);
 });

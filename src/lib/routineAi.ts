@@ -102,12 +102,14 @@ export function initialBriefForm(document: Routine | null): RoutineAiBriefForm {
 }
 
 /**
- * The counter's number. The api bounds notes at « 500 characters after NFC »; the api is Java,
- * whose `String.length()` counts UTF-16 units, which is also what JavaScript's `length` counts.
- * So: normalise, then count units. A decomposed « é » (two units) counts once, as it will there.
+ * The counter's number, counted as the api counts it: b-fit-api @ 19b6696e
+ * `CoachAiInstructionBounds.requireValid` normalises to NFC and compares
+ * `text.codePointCount(...)` with 500 (its javadoc: "an astral emoji counts once"). So: NFC, then
+ * CODE POINTS — `[...s]` iterates code points, where `.length` would count an emoji twice.
+ * A decomposed « é » (two code points) counts once after NFC, as it does there.
  */
 export function notesLength(notes: string): number {
-  return notes.normalize("NFC").length;
+  return [...notes.normalize("NFC")].length;
 }
 
 /** Why the brief cannot be sent yet, or null. The portal never truncates (EV-186f U2's rule). */

@@ -91,9 +91,18 @@ test.describe("B2 — the brief", () => {
     expect(briefBlocked({ ...ok, emphasis: ["a", "b", "c", "d", "e", "f"] })).toBe("emphasisTooMany");
   });
 
-  test("the counter counts after NFC: a decomposed é is one character", () => {
-    expect(notesLength("é")).toBe(1);
+  test("the counter counts after NFC: a decomposed é (e + U+0301) is one character", () => {
+    expect(notesLength("e\u0301")).toBe(1);
     expect(notesLength("abc")).toBe(3);
+  });
+
+  test("the counter counts CODE POINTS, as the api does: 251 emoji are 251, and 500 emoji can be sent", () => {
+    const emoji = "\u{1F4AA}"; // astral: two UTF-16 units, one code point
+    expect(emoji.length).toBe(2);
+    expect(notesLength(emoji.repeat(251))).toBe(251);
+    const ok = { goal: "BUILD_MUSCLE" as const, days: 3, sessionLength: 45, emphasis: [] };
+    expect(briefBlocked({ ...ok, notes: emoji.repeat(500) })).toBeNull();
+    expect(briefBlocked({ ...ok, notes: emoji.repeat(501) })).toBe("notesTooLong");
   });
 });
 

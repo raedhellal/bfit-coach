@@ -202,7 +202,8 @@ function enRows(): Row[] {
       key: "intakePage.injuryNotHere",
       text: en.intakePage.injuryNotHere(first),
       expected: "Don't record an injury or pain here: the plan always respects the injuries in this trainee's profile.",
-    },    // EV-186b: the routine page's « Régénérer avec l'IA » panel (same page, same `first`).
+    },
+    // EV-186b: the routine page's « Régénérer avec l'IA » panel (same page, same `first`).
     { key: "routineAi.profileLine", text: en.routineAi.profileLine(first), expected: "From this trainee's profile — applied automatically. You cannot change these here." },
     { key: "routineAi.running", text: en.routineAi.running(first), expected: "Preparing a suggestion for this trainee… This can take up to two minutes." },
     { key: "routineAi.alreadyRunning", text: en.routineAi.alreadyRunning(first), expected: "A suggestion is already being prepared for this trainee." },
@@ -392,7 +393,8 @@ function frRows(): Row[] {
       key: "intakePage.injuryNotHere",
       text: fr.intakePage.injuryNotHere(first),
       expected: "Une blessure ou une douleur ne se note pas ici : le programme respecte toujours les blessures du profil de ce client.",
-    },    // EV-186b
+    },
+    // EV-186b
     { key: "routineAi.profileLine", text: fr.routineAi.profileLine(first), expected: "Depuis le profil de ce client — appliqué automatiquement. Vous ne pouvez pas le modifier ici." },
     { key: "routineAi.running", text: fr.routineAi.running(first), expected: "Préparation d'une suggestion pour ce client… Cela peut prendre jusqu'à deux minutes." },
     { key: "routineAi.alreadyRunning", text: fr.routineAi.alreadyRunning(first), expected: "Une suggestion est déjà en préparation pour ce client." },
