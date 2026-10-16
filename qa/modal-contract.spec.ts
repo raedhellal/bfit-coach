@@ -23,7 +23,9 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *      text) or moved behind the dialog by a script comes back inside;
  *   U3 Escape calls `onClose` once and focus returns to the opener — focused ONCE;
  *   U4 an `onClose` that refuses (a request in flight) refuses Escape too; a control inside
- *      that takes Escape itself (`preventDefault`) keeps it; a dirty dialog closes like ×;
+ *      that takes Escape itself (`preventDefault`) keeps it; a DIRTY dialog ignores Escape, as
+ *      it ignores a backdrop click — every value kept, × and Cancel still close (senior-po
+ *      ruling on BUG-171, after BUG-699/702);
  *   U5 a caller that moves focus itself in an effect of the closing commit (TrialSessionCard's
  *      `refocus`, a `returnFocus` effect) keeps it: the opener is never focused a second time
  *      (staff, EV-337g2 review N6). A negative assertion: it also passes with no restore at all,
@@ -249,7 +251,7 @@ test.describe("BUG-171 unit", () => {
     await expect(page.locator("#opener")).toBeFocused();
   });
 
-  test("U4: a refusing onClose refuses Escape; a control that takes Escape keeps it; a dirty dialog closes", async ({ page }) => {
+  test("U4: a refusing onClose refuses Escape; a control that takes Escape keeps it; a dirty dialog ignores it", async ({ page }) => {
     await harness(page, { variant: "fields" });
     let dialog = await openIt(page);
     await api(page, "setRefuse", true);
@@ -270,7 +272,13 @@ test.describe("BUG-171 unit", () => {
     dialog = await openIt(page);
     await dialog.locator("#f1").fill("typed");
     await page.keyboard.press("Escape");
-    await expect(dialog, "Escape is × and Cancel, not the backdrop (BUG-699)").toHaveCount(0);
+    await settle(page);
+    expect(await closes(page), "a dirty dialog does not even ask to close").toBe(0);
+    await expect(dialog, "Escape on a changed dialog is a backdrop click (BUG-699/702)").toBeVisible();
+    await expect(dialog.locator("#f1"), "what was typed is kept").toHaveValue("typed");
+    await expect(dialog.locator("#f1"), "and focus stays in the field").toBeFocused();
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(dialog, "× still closes it").toHaveCount(0);
   });
 
   test("U5: a caller that places focus itself on close keeps it — no second restore", async ({ page }) => {

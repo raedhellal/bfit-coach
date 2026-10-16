@@ -26,6 +26,8 @@ import { signInThroughForm } from "./sign-in";
  *
  * K6 Escape is the dialog's own `onClose`, so a dialog that refuses to close while its request
  *    is in flight (« Apply this meal week? », Cancel disabled) refuses Escape too.
+ * K7 a CHANGED dialog ignores Escape, as it ignores a backdrop click (senior-po ruling on
+ *    BUG-171, after BUG-699/702: only × and Cancel may discard what the coach typed).
  *
  * Red on `bfb4164` (main, before this fix) with only these two files added: 27 of 27 here — 22
  * cases at K2 (focus stays on the opener), 4 at K3 (« Add a client » and « Swap meal » autofocus
@@ -284,4 +286,44 @@ test.describe("BUG-171 K6", () => {
     await expect(dialog).toHaveCount(0);
     await expect(opener).toBeFocused();
   });
+});
+
+test.describe("BUG-171 K7", () => {
+  for (const size of WIDTHS) {
+    test.describe(`at ${size.width} px`, () => {
+      test.use({ viewport: size });
+
+      test("Escape on « New challenge » with a typed title keeps the dialog and the title; Cancel then closes it and focus goes back", async ({
+        page,
+      }) => {
+        await signInThroughForm(page);
+        await page.goto("/challenges");
+        const opener = page.getByRole("button", { name: "New challenge", exact: true });
+        const dialog = page.getByRole("dialog", { name: "New challenge", exact: true });
+        await pressUntil(page, opener, dialog);
+        const title = dialog.getByLabel("Title", { exact: true });
+        await expect(title).toBeFocused();
+        await page.keyboard.type("Octobre en marche");
+
+        await page.keyboard.press("Escape");
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        await expect(dialog, "a changed dialog stays open on Escape").toBeVisible();
+        await expect(title, "what was typed is kept").toHaveValue("Octobre en marche");
+        await expect(title, "and the focus stays in the field").toBeFocused();
+
+        // Erased back to its opening value, it is unchanged again: Escape closes.
+        await title.fill("");
+        await page.keyboard.press("Escape");
+        await expect(dialog, "unchanged again: Escape closes").toHaveCount(0);
+        await expect(opener).toBeFocused();
+
+        // Cancel still discards a changed dialog.
+        await pressUntil(page, opener, dialog);
+        await page.keyboard.type("Octobre en marche");
+        await dialog.getByRole("button", { name: "Cancel", exact: true }).press("Enter");
+        await expect(dialog).toHaveCount(0);
+        await expect(opener).toBeFocused();
+      });
+    });
+  }
 });

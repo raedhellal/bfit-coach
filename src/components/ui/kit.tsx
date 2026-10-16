@@ -559,7 +559,8 @@ export function Modal({
   onClose: () => void;
   /**
    * BUG-699 — a field in the dialog differs from the value it had when the dialog opened.
-   * A click on the backdrop is then ignored; × and the footer's Cancel still close.
+   * A click on the backdrop is then ignored, and so is Escape (BUG-171, senior-po ruling: a
+   * one-key dismissal is a stray dismissal too); × and the footer's Cancel still close.
    *
    * BUG-702 — REQUIRED, with no default. When it was optional and defaulted to `false`, a
    * new dialog with a field whose author forgot it would close on a stray backdrop click
@@ -601,16 +602,18 @@ export function Modal({
   const opener = useRef<Opener>([]);
   if (open && !wasOpen.current) opener.current = captureOpener();
   wasOpen.current = open;
-  // Read at the moment of the key press, so a `!pending && …` guard is never one render stale
-  // (staff N1): updated in the commit, not in the passive flush after it.
+  // Read at the moment of the key press, so a `!pending && …` guard or a `dirty` flag is never one
+  // render stale (staff N1): updated in the commit, not in the passive flush after it.
   const onCloseRef = useRef(onClose);
+  const dirtyRef = useRef(dirty);
   useCommitEffect(() => {
     onCloseRef.current = onClose;
+    dirtyRef.current = dirty;
   });
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!open || !dialog) return;
-    return engageModal(dialog, opener.current, () => onCloseRef.current());
+    return engageModal(dialog, opener.current, () => onCloseRef.current(), () => dirtyRef.current);
   }, [open]);
   if (!open) return null;
   const tone = {
