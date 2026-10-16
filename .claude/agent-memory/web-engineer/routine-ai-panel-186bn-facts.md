@@ -50,3 +50,16 @@ read. `/api/fixture/calls` → `aiPosts` (body keys only). Dana's Tue « Push »
 - WebKit tests fail here with "WebKit is not installed" — on origin/main too; not a regression.
 - `pro-programme-accordions` « a publish re-seeds … day 6 at 390 » (Chromium) is FLAKY on origin/main
   (1 of 4 measured, same on 186n): not caused by the AI panel.
+
+**Staff r1 lessons (2026-10-16):**
+- `next/dynamic` (SSR on) leaves the server HTML INERT until the lazy chunk hydrates: clicks are
+  lost or replayed late (25 AI specs red in the full run). Disable every server-drawn control until
+  a `hydrated` flag flips in a mount effect. Measure route first-load before claiming a bundle fact.
+- The notes bound is CODE POINTS after NFC (`CoachAiInstructionBounds.codePointCount`), not UTF-16.
+  Read the api source at the pinned SHA, not the openapi prose; client and fixture shared the error.
+- Run the WHOLE default config (shard it: 2,404 tests ≈ 1h45 at --workers=1). Pins found only there:
+  `editor-save-no-refresh` (router.refresh() count, 14 now), PB-4's « le {date} » register.
+- Pre-existing reds on origin/main feb9ccb: 10 locale dictionary-chunk specs (`locale-bundle`,
+  `locale-chunk-preload`) in next dev; PB-4 (EV-341c finishedOn, registered on 186b).
+- `coach-add-client` AC-P9 raced `res.text()`; a bigger copy chunk lost the race. Poll, don't read once.
+- Warm-up sign-in times out at load average ~10 (other agents on the box): wait for load < 5.
