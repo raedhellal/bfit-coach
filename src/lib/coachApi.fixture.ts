@@ -7346,7 +7346,17 @@ export const fixtureCoachApi: CoachApi = {
   // ── EV-273b the coach's nutrition template library ────────────────────────
 
   async listNutritionTemplates(): Promise<NutritionTemplateList> {
-    const templates = nutritionTemplatesNewestFirst().map((t) => structuredClone(t));
+    /**
+     * EV-337g2 G2.5 — ⚠ fixture affordance: `evoli_fixture_nutrition_templates` (this browser
+     * context only). `fail`: the read fails as b-fit-api's `handleUnexpected` answers (500
+     * `INTERNAL_ERROR`). `empty`: the list is served with no template, as for a coach who never
+     * made one. Both apply to every read of the list in that context, the library page's too;
+     * the stored templates are untouched, so clearing the cookie serves them again.
+     */
+    const forced = await fixtureSwitch("evoli_fixture_nutrition_templates");
+    if (forced === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+    const templates =
+      forced === "empty" ? [] : nutritionTemplatesNewestFirst().map((t) => structuredClone(t));
     return {
       templates,
       limit: NUTRITION_TEMPLATE_LIMIT,

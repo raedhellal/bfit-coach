@@ -151,10 +151,12 @@ const ROUTES: { route: string; reads: string[]; depth: number; why?: string }[] 
     why: "the routine and draft reads wait for the overview's `scopes` to show WORKOUTS (ADR-0015 D5)",
   },
   {
+    // EV-337g2: the coach's nutrition templates (the apply card's selector), read beside the
+    // two nutrition reads, so one more read and no more depth.
     route: `/clients/${LINA}/nutrition`,
-    reads: ["getClient", "getFoodLog", "getNutrition"],
+    reads: ["getClient", "getFoodLog", "getNutrition", "listNutritionTemplates"],
     depth: 2,
-    why: "the two nutrition reads wait for NUTRITION in the overview's `scopes`",
+    why: "the nutrition reads and the template list wait for NUTRITION in the overview's `scopes`",
   },
   { route: "/templates", reads: ["listClients", "listTemplates"], depth: 1 },
   { route: "/recipes", reads: ["listRecipes"], depth: 1 },
@@ -171,12 +173,13 @@ test.describe("each main route's document render", () => {
 
   // BUG-701 guard: the rejected fix read the routine on the nutrition page for header chips.
   // The ruling is no chip in any header and no new read; this pins the nutrition page of a
-  // client who shares NUTRITION alone to its three reads, and no chip in its header. Asking
+  // client who shares NUTRITION alone to its four reads (EV-337g2 added the template list, the
+  // coach's own library), and no chip in its header. Asking
   // for a routine she withheld would not be a no-op, even if the api refused it.
   test("a NUTRITION-only client's nutrition page asks for no routine, and shows no chip", async ({ page }) => {
     await signIn(page);
     const route = `/clients/${PETRA}/nutrition`;
-    expect(ops(await documentLoad(page, route))).toEqual(["getClient", "getFoodLog", "getNutrition"]);
+    expect(ops(await documentLoad(page, route))).toEqual(["getClient", "getFoodLog", "getNutrition", "listNutritionTemplates"]);
     await expect(page.locator(".client-head")).toHaveCount(1);
     await expect(page.locator(".client-head .status-pill")).toHaveCount(0);
   });
@@ -348,7 +351,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
     expect(cost).toEqual({
       actionPosts: 1,
       rscGets: 0,
-      reads: ["getClient", "getFoodLog", "getNutrition"],
+      reads: ["getClient", "getFoodLog", "getNutrition", "listNutritionTemplates"],
       renders: 1,
     });
   });
@@ -368,7 +371,7 @@ test.describe("what one write costs (ADR-0033 branch 2a)", () => {
     expect(cost).toEqual({
       actionPosts: 1,
       rscGets: 0,
-      reads: ["getClient", "getFoodLog", "getNutrition"],
+      reads: ["getClient", "getFoodLog", "getNutrition", "listNutritionTemplates"],
       renders: 1,
     });
   });

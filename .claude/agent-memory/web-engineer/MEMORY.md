@@ -95,6 +95,9 @@
 - [Verify the base the brief names](verify-the-base-the-brief-names.md) — merge-base --is-ancestor every fix the brief says is in; 198a293 lacked BUG-713
 - [Every branch of a save callback needs a test](every-branch-of-a-save-callback-needs-a-test.md) — EV-337g1 S1: hold the action POST with page.route, fill during the hold; list branch → test before handback
 - [First-name fallback is lower case mid-sentence](first-name-fallback-is-mid-sentence-lower-case.md) — BUG-720: mid(first) via midSentence(); 6 firstName() calls -> 31 keys; table spec pins KEYS=31
+- [Apply card (EV-337g2)](apply-card-portal-facts.md) — one apply button; BUG-718 prop applyButtonDrawn; 4 reads; R1 select reset, R2 one outcome slot; F1 tag in the scope; returnFocus vs BUG-171
+- [Playwright -g joins titles with spaces](playwright-grep-joins-titles-with-spaces.md) — "›" never matches; use .*; "No tests found" exits 1 like a red mutant
+- [Check swap in its own call](check-swap-in-its-own-call.md) — a chained check does not gate; under 1 GB sample swapouts twice before starting
 - [toHaveText hides a trim defect in French](tohavetext-hides-a-trim-defect-in-french.md) — EV-337j2 M5: «\u00a0  q \u00a0» reads « q »; assert textContent exactly
 - [A photo placeholder passes a text/img scan](a-photo-placeholder-passes-a-text-and-img-scan.md) — EV-337j2 M7b: probe blank leaf boxes + url() backgrounds for R8
 - [Mutants against one hand-started dev server](mutants-against-a-hand-started-dev-server.md) — untracked config, webServer undefined, HMR per mutant, git checkout to revert

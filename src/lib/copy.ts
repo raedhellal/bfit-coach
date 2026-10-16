@@ -1383,6 +1383,16 @@ export const en = {
     weekOf: (date: string) => `Week of ${date}`,
     apply: (trainee: string) => `Apply to ${trainee}`, // AC3, verbatim
     applying: "Applying…",
+    /**
+     * EV-337g2 G2.1, verbatim — the apply card in the aside: its title, the selector's label and
+     * first option, and the cost sentence shown before any click (ruling 17: the static
+     * sentence, never « Déjà appliqué aujourd'hui »). The button keeps `apply` above, and the
+     * template-list read failure reuses `nutritionTemplates.loadError` (G2.5's own words).
+     */
+    applyCardTitle: "Apply to the week",
+    applyFrom: "Build the week from",
+    applyFromTargets: "Their current targets",
+    applyCost: "1 apply per day per client.",
     applyTitle: "Apply this meal week?",
     /** AC3: the dialog names the trainee AND the week start. */
     applyBody: (trainee: string, weekStart: string) =>
