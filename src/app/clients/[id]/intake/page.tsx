@@ -59,7 +59,13 @@ import { sessionSubjectTag } from "@/lib/sessionSubject";
  *   · section 7 (C3): the allergies, food rules and dislikes, `GET …/nutrition` (NUTRITION), with
  *     EV-185 AC1's sentence (`ProfileFacts`, as the nutrition tab draws them).
  * A failed read costs its block only (`intake.loadError`); a 403 is the link ending (denial page).
- * The finished date is the read's `completedAt` (C5).
+ * The finished date is the read's `completedAt` (C5), printed by `formatIntakeFinishedOn` (UTC).
+ *
+ * ⚠ Cost, named (staff N6 on fb2374f): section 7's three facts cost a WHOLE `GET …/nutrition`
+ * (targets and the week included) on every render of this page under NUTRITION, and on
+ * « Terminer »'s revalidation. No lighter coach read carries `dietProfile`, so there is no
+ * trivial fix in the portal; acceptable now, and the first thing to cut (an api read of the
+ * diet profile alone) if EV-342h's p90 budget for this page gets tight.
  *
  * Nothing here is cached (`force-dynamic`): a revoked link must 403 on the next request.
  */

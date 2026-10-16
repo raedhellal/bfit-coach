@@ -2,6 +2,7 @@ import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
 import { en } from "../src/lib/copy";
 import { fr } from "../src/lib/copy.fr";
+import { formatInstant, formatIntakeFinishedOn } from "../src/lib/format";
 import {
   COACH_NOTES_MAX_CODE_POINTS,
   INTAKE_CATALOGUE,
@@ -228,7 +229,25 @@ test.describe("EV-341c the story's sentences, verbatim (EN and FR)", () => {
       }
     }
     expect(f.values.alcoholPerWeek).toEqual({ NONE: "Aucun", D1_3: "1 à 3 verres", D4_7: "4 à 7 verres", GT_7: "Plus de 7 verres" });
-    expect(f.values.waterPerDay).toEqual({ LT_1L: "Moins d'1 L", L1_2: "1 à 2 L", GT_2L: "Plus de 2 L" });
+    // Staff N5 on fb2374f: U+00A0 before the unit (the number stays with it), as `minutes` does.
+    expect(f.values.waterPerDay).toEqual({ LT_1L: "Moins d'1\u00a0L", L1_2: "1 à 2\u00a0L", GT_2L: "Plus de 2\u00a0L" });
     expect(f.values.snacking).toEqual({ RARELY: "Rarement", SOMETIMES: "Parfois", OFTEN: "Souvent" });
+  });
+});
+
+test.describe("EV-341c C5 / EV-374: the finished date has ONE formatter, in UTC (staff N4 on fb2374f)", () => {
+  test("00:30 in Paris (22:30 UTC the day before) prints the UTC day, in both languages", () => {
+    // 2026-10-16T00:30+02:00 is 2026-10-15T22:30Z: the line says the 15th, by design.
+    const finish = "2026-10-15T22:30:00Z";
+    expect(plain(formatIntakeFinishedOn(finish, "en"))).toBe("15 Oct 2026");
+    expect(plain(formatIntakeFinishedOn(finish, "fr"))).toBe("15 oct. 2026");
+    expect(plain(fr.intakePage.finishedOn(formatIntakeFinishedOn(finish, "fr")))).toBe("Entretien terminé le 15 oct. 2026");
+  });
+
+  test("it is the app's instant convention, so the overview card (EV-374) and the page cannot disagree", () => {
+    for (const iso of ["2026-01-01T00:00:00Z", "2026-12-31T23:59:59.999Z", "2026-10-16T09:41:07.123456Z"]) {
+      for (const locale of ["en", "fr"] as const) expect(formatIntakeFinishedOn(iso, locale)).toBe(formatInstant(iso, locale));
+    }
+    expect(formatIntakeFinishedOn(null, "en")).toBe(formatInstant(null, "en"));
   });
 });

@@ -98,6 +98,22 @@ export function formatInstant(iso: string | null | undefined, locale: Locale): s
   return datePrinted(DATE[locale], d, locale);
 }
 
+/**
+ * EV-341c C5 / EV-374 (C6) — the day an intake interview was FIRST finished (`completedAt`), as
+ * « Entretien terminé le {date} » prints it. ONE function for the interview page's line and the
+ * overview card's (EV-374 must call this, not `formatInstant` directly), so the two lines can never
+ * print different days for the same finish.
+ *
+ * In **UTC**, deliberately (staff N4 on fb2374f): a finish at 00:30 Paris time (22:30 UTC) prints
+ * the PREVIOUS day. That is the app-wide convention for instants (`formatInstant`), and it is the
+ * same on the server and in the browser, so the island's client render cannot disagree with its
+ * server render (no hydration mismatch). Changing it to the coach's zone is a decision for both
+ * lines at once, here.
+ */
+export function formatIntakeFinishedOn(completedAt: string | null | undefined, locale: Locale): string {
+  return formatInstant(completedAt, locale);
+}
+
 /** "23 Aug" / "23 août" — the compact form the weight chart's axis uses. */
 export function formatShortDate(iso: string, locale: Locale): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);

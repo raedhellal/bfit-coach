@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
-import { formatInstant } from "../src/lib/format";
+import { formatIntakeFinishedOn } from "../src/lib/format";
 
 /**
  * EV-341c — the intake page's sections 5–8 and « Terminer l'entretien », in fixture mode with the
@@ -17,7 +17,10 @@ import { formatInstant } from "../src/lib/format";
  *   · Lina — every scope, no injury, a weight (70.4 kg yesterday), Peanuts / HALAL / Olives;
  *   · Dana — every scope, two injuries (the SHOULDER chip and a free-text sentence), no food fact;
  *   · Kaia — every scope and literally no data (no weight ever: C2's empty state);
- *   · Mara — an ACTIVE link that shares nothing (each block's own "not shared" sentence).
+ *   · Mara — an ACTIVE link that shares nothing (each block's own "not shared" sentence);
+ *   · staff F1 on fb2374f, the MIXED scopes, so that each block is witnessed on its own scope and a
+ *     block gated on the wrong one fails: Pablo (WORKOUTS + WEIGH_INS), Sara (PROGRESS + WEIGH_INS:
+ *     weigh-ins without workouts) and Petra (NUTRITION only).
  *
  * The expected sentences are LITERALS from the story, never read from `src/lib/copy.ts`. French is
  * compared with no-break spaces read as spaces.
@@ -28,6 +31,9 @@ const ID = {
   dana: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0004",
   mara: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0008",
   kaia: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0010",
+  sara: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0003",
+  petra: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0006",
+  pablo: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0021",
 } as const;
 type Who = keyof typeof ID;
 
@@ -77,6 +83,8 @@ const T = {
     finishedOn: (d: string) => `Intake finished on ${d}`,
     finishFailed: "The intake could not be finished. Try again.",
     saved: "Saved",
+    sessionEnded: "Your session has expired. Sign in again in a new tab: your answers are still on this page.",
+    denied: "This trainee is not on your roster. They may have revoked access.",
     tabs: { overview: "Overview" },
   },
   fr: {
@@ -124,6 +132,8 @@ const T = {
     finishedOn: (d: string) => `Entretien terminé le ${d}`,
     finishFailed: "L'entretien n'a pas pu être terminé. Réessayez.",
     saved: "Enregistré",
+    sessionEnded: "Votre session a expiré. Reconnectez-vous dans un nouvel onglet : vos réponses restent sur cette page.",
+    denied: "Ce client ne fait pas partie de votre liste. Il a peut-être révoqué l'accès.",
     tabs: { overview: "Vue d'ensemble" },
   },
 } as const;
@@ -139,6 +149,14 @@ async function puts(page: Page, who: Who, section?: string): Promise<IntakePut[]
   return all.filter((p) => p.clientId === ID[who] && (!section || p.section === section));
 }
 
+/** The fixture's api journal (`src/lib/fixtureApiJournal.ts`): every `CoachApi` call about `who`, by method. */
+async function apiOps(page: Page, who: Who): Promise<string[]> {
+  const res = await page.request.get("/api/fixture/calls", { maxRedirects: 0 });
+  expect(res.status(), "GET /api/fixture/calls (fixture mode only)").toBe(200);
+  const api = ((await res.json()) as { api: { op: string; arg: string | null }[] }).api;
+  return api.filter((e) => e.arg === ID[who]).map((e) => e.op);
+}
+
 async function grant(page: Page, who: Who): Promise<void> {
   const res = await page.request.post("/api/fixture/intake", { data: { clientId: ID[who], answer: "grant" }, maxRedirects: 0 });
   expect(res.status(), `${who}'s grant`).toBe(200);
@@ -151,8 +169,8 @@ async function subjectHeader(page: Page): Promise<Record<string, string>> {
   return { "x-evoli-session-subject": createHash("sha256").update(`evoli-session-subject:${sub}`).digest("hex").slice(0, 32) };
 }
 
-/** Today's date as the page prints an instant (UTC, `formatInstant`): the fixture stamps `completedAt` now. */
-const today = (lang: "en" | "fr") => formatInstant(new Date().toISOString(), lang);
+/** Today's date as the page prints the finish (UTC, `formatIntakeFinishedOn`): the fixture stamps `completedAt` now. */
+const today = (lang: "en" | "fr") => formatIntakeFinishedOn(new Date().toISOString(), lang);
 
 async function openIntake(page: Page, who: Who, ready: "ready" | "disabled" = "ready") {
   await page.goto(`/clients/${ID[who]}/intake`);
@@ -234,6 +252,53 @@ for (const lang of ["en", "fr"] as const) {
       await panel(page, "NUTRITION").getByRole("textbox", { name: t.notes, exact: true }).fill("Eats late");
       await expectSaved(page, t.saved);
       expect((await puts(page, "mara", "NUTRITION")).at(-1)?.body.values.notes).toBe("Eats late");
+    });
+
+    test("C1 / C2 / C3 (staff F1): each block reads its OWN scope — mixed-scope links, and no nutrition read without NUTRITION", async ({
+      page,
+    }) => {
+      // Pablo: WORKOUTS + WEIGH_INS, no NUTRITION. Training and measurements are drawn; food is the sentence.
+      await signIn(page);
+      await grant(page, "pablo");
+      await openIntake(page, "pablo");
+      await show(page, "HEALTH");
+      await expect(readOnly(page, "HEALTH").locator(`[data-profile-group="${t.injuries}"]`)).toContainText(t.noInjuries);
+      await expect(readOnly(page, "HEALTH")).toContainText(t.fromProfile);
+      await show(page, "MEASUREMENTS");
+      expect(plain(await readOnly(page, "MEASUREMENTS").textContent())).toBe(t.noMeasurements);
+      await show(page, "NUTRITION");
+      expect(plain(await readOnly(page, "NUTRITION").textContent())).toBe(t.nutritionNotShared("Pablo"));
+      // ADR-0015 D5: withheld data is never asked for — no `GET …/nutrition` for Pablo at all.
+      const pablo = await apiOps(page, "pablo");
+      expect(pablo, "the routine read (WORKOUTS) was made").toContain("getRoutine");
+      expect(pablo, "no nutrition read without NUTRITION").not.toContain("getNutrition");
+
+      // Sara: WEIGH_INS without WORKOUTS. Measurements are drawn; training and food are sentences.
+      await grant(page, "sara");
+      await openIntake(page, "sara");
+      await show(page, "HEALTH");
+      expect(plain(await readOnly(page, "HEALTH").textContent())).toBe(t.trainingNotShared("Sara"));
+      await show(page, "MEASUREMENTS");
+      expect(plain(await readOnly(page, "MEASUREMENTS").textContent())).toBe(t.noMeasurements);
+      await show(page, "NUTRITION");
+      expect(plain(await readOnly(page, "NUTRITION").textContent())).toBe(t.nutritionNotShared("Sara"));
+      const sara = await apiOps(page, "sara");
+      expect(sara, "no routine read without WORKOUTS").not.toContain("getRoutine");
+      expect(sara, "no nutrition read without NUTRITION").not.toContain("getNutrition");
+
+      // Petra: NUTRITION only. Food is drawn; training and measurements are sentences.
+      await grant(page, "petra");
+      await openIntake(page, "petra");
+      await show(page, "HEALTH");
+      expect(plain(await readOnly(page, "HEALTH").textContent())).toBe(t.trainingNotShared("Petra"));
+      await show(page, "MEASUREMENTS");
+      expect(plain(await readOnly(page, "MEASUREMENTS").textContent())).toBe(t.measurementsNotShared("Petra"));
+      await show(page, "NUTRITION");
+      await expect(readOnly(page, "NUTRITION")).toContainText(t.fromProfile);
+      await expect(readOnly(page, "NUTRITION").locator("[data-intake-readonly-state]")).toHaveCount(0);
+      const petra = await apiOps(page, "petra");
+      expect(petra, "the nutrition read (NUTRITION) was made: the journal sees it").toContain("getNutrition");
+      expect(petra, "no routine read without WORKOUTS").not.toContain("getRoutine");
     });
 
     test("C2: section 6 shows the latest weight and its date, or « No measurements yet. »", async ({ page }) => {
@@ -423,6 +488,47 @@ for (const lang of ["en", "fr"] as const) {
       await expect(page.locator('[data-intake-finish="todo"]')).toHaveCount(1);
     });
 
+    test("C5b: the failure sentence clears on a successful retry", async ({ page, context }) => {
+      await signIn(page);
+      await grant(page, "lina");
+      await openIntake(page, "lina");
+      await context.addCookies([{ name: "evoli_fixture_intake_complete", value: "fail", url: new URL("/", page.url()).href }]);
+      const finish = page.getByRole("button", { name: t.finish, exact: true });
+      await finish.click();
+      await expect(page.locator("[data-intake-finish-failed]")).toBeVisible();
+      // The api recovers; the same button, pressed again, finishes and the sentence is gone.
+      const kept = (await context.cookies()).filter((c) => c.name !== "evoli_fixture_intake_complete");
+      await context.clearCookies();
+      await context.addCookies(kept);
+      await finish.click();
+      await expect(page.locator("[data-intake-finished]")).toBeVisible();
+      expect(plain(await page.locator("[data-intake-finished]").textContent())).toBe(plain(t.finishedOn(today(lang))));
+      await expect(page.locator("[data-intake-finish-failed]")).toHaveCount(0);
+    });
+
+    test("C5b: a 403 on « Finish » is the access-ended path (the denied page), never the failure sentence", async ({ page, context }) => {
+      await signIn(page);
+      await grant(page, "lina");
+      await openIntake(page, "lina");
+      // Any appearance of the failure sentence, at any moment until the denied page, is recorded.
+      await page.evaluate(() => {
+        new MutationObserver(() => {
+          if (document.querySelector("[data-intake-finish-failed]")) sessionStorage.setItem("finishFailedShown", "1");
+        }).observe(document.body, { childList: true, subtree: true });
+      });
+      await context.addCookies([{ name: "evoli_fixture_link", value: "ended", url: new URL("/", page.url()).href }]);
+      await page.getByRole("button", { name: t.finish, exact: true }).click();
+      await page.waitForURL("/clients/denied", { timeout: 15_000 });
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(t.denied);
+      expect(await page.evaluate(() => sessionStorage.getItem("finishFailedShown")), "the failure sentence never appeared").toBeNull();
+      // Nothing was stored: the fixture's link still has no finish (read with the link restored).
+      const kept = (await context.cookies()).filter((c) => c.name !== "evoli_fixture_link");
+      await context.clearCookies();
+      await context.addCookies(kept);
+      await openIntake(page, "lina");
+      await expect(page.locator('[data-intake-finish="todo"]')).toHaveCount(1);
+    });
+
     test("C5: before the grant « Finish » is disabled, wired to B11's sentence", async ({ page }) => {
       await signIn(page);
       await openIntake(page, "lina", "disabled");
@@ -432,6 +538,51 @@ for (const lang of ["en", "fr"] as const) {
     });
   });
 }
+
+test.describe("EV-341c staff N1: « Finish » while signed out is B15's session state, never « Try again »", () => {
+  const t = T.en;
+  /** The session ends (signed out in another tab): every cookie but the session epoch is gone (B15's own setup). */
+  async function endSession(page: Page) {
+    const epoch = (await page.context().cookies()).filter((c) => c.name === "evoli_pro_epoch");
+    await page.context().clearCookies();
+    await page.context().addCookies(epoch);
+  }
+
+  test("pressed after the session ended: the session sentence (role=alert), no failure sentence, no finish, and the button waits", async ({
+    page,
+  }) => {
+    await signInThroughForm(page, { lang: "en" });
+    await grant(page, "lina");
+    await openIntake(page, "lina");
+    await endSession(page);
+    const finish = page.getByRole("button", { name: t.finish, exact: true });
+    await finish.click();
+    const alert = page.locator('[data-intake-alert="signedOut"]');
+    await expect(alert).toBeVisible();
+    await expect(alert).toHaveAttribute("role", "alert");
+    expect(plain(await alert.locator("p").textContent())).toBe(t.sessionEnded);
+    await expect(page.locator("[data-intake-finish-failed]")).toHaveCount(0);
+    await expect(page.locator("[data-intake-finished]")).toHaveCount(0);
+    await expect(finish).toBeDisabled();
+    // The disabled button names why: the session sentence.
+    const describedBy = await finish.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(plain(await page.locator(`[id="${describedBy}"]`).textContent())).toBe(t.sessionEnded);
+  });
+
+  test("a save that already found the session ended disables « Finish » before any press", async ({ page }) => {
+    await signInThroughForm(page, { lang: "en" });
+    await grant(page, "lina");
+    await openIntake(page, "lina");
+    await endSession(page);
+    const note = (await show(page, "HEALTH")).getByRole("textbox", { name: t.notes, exact: true });
+    await note.fill("Typed after the session ended");
+    await note.press("Tab");
+    await expect(page.locator('[data-intake-alert="signedOut"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: t.finish, exact: true })).toBeDisabled();
+    await expect(page.locator("[data-intake-finish-failed]")).toHaveCount(0);
+  });
+});
 
 test.describe("EV-341c the route handler saves sections 5–8 (and still refuses a section that does not exist)", () => {
   test("PUT HEALTH, MEASUREMENTS, NUTRITION and COACH_NOTES answer 200; an unknown section is 400 before any api call", async ({ page }) => {

@@ -1773,7 +1773,8 @@ export const fr = {
       snacking: { RARELY: "Rarement", SOMETIMES: "Parfois", OFTEN: "Souvent" },
       cooking: { RARELY: "Rarement", SOMETIMES: "Parfois", OFTEN: "Souvent" },
       alcoholPerWeek: { NONE: "Aucun", D1_3: "1 à 3 verres", D4_7: "4 à 7 verres", GT_7: "Plus de 7 verres" },
-      waterPerDay: { LT_1L: "Moins d'1 L", L1_2: "1 à 2 L", GT_2L: "Plus de 2 L" },
+      // U+00A0 keeps the number with its unit, as `minutes` does (staff N5 on fb2374f).
+      waterPerDay: { LT_1L: "Moins d'1\u00a0L", L1_2: "1 à 2\u00a0L", GT_2L: "Plus de 2\u00a0L" },
     } as Record<string, Record<string, string>>,
     minutes: (value: number) => `${value}\u00a0min`,
   },

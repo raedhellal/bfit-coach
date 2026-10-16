@@ -513,9 +513,16 @@ export interface ClientOverview {
    * ⚠ Optional in the TYPE, non-optional on the wire. An api that predates EV-202a
    * (`9218a77`) sends no such field, and the deployment this portal is pointed at is
    * not always the one this branch was written against — `progressGoal` absent must
-   * render the same as "not shared", never a crash inside a server component's render.
-   * That is the 2026-09-18 `trainingProfile` lesson applied before it costs a blank
-   * page rather than after.
+   * never crash a server component's render. That is the 2026-09-18 `trainingProfile`
+   * lesson applied before it costs a blank page rather than after.
+   *
+   * What absent RENDERS (staff N3 on EV-341c fb2374f; this comment used to say "the same
+   * as not shared", which no page does): "not shared" is decided from `scopes` alone, so
+   * absent WITHOUT `WEIGH_INS` is the scope sentence, and absent WITH `WEIGH_INS` is an
+   * api that owed the block and did not send it — that block's load-error sentence
+   * (the overview's goal block, `src/app/clients/[id]/page.tsx`, and the intake page's
+   * section 6, `src/app/clients/[id]/intake/page.tsx`). Never "not shared" about a scope
+   * the trainee granted.
    */
   progressGoal?: TraineeProgressGoal | null;
 }

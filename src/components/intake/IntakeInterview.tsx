@@ -9,8 +9,8 @@ import { useCoachForm, type CoachForm } from "@/lib/useCoachForm";
 import { useAutosave } from "@/lib/useAutosave";
 import type { SectionStatus } from "@/lib/autosave";
 import { intakeReadPath, putIntakeSection } from "@/lib/autosaveTransport";
-import { formatInstant } from "@/lib/format";
-import { finishIntakeAction } from "@/lib/intakeActions";
+import { formatIntakeFinishedOn } from "@/lib/format";
+import { finishIntakeAction, type FinishOutcome } from "@/lib/intakeActions";
 import {
   COACH_NOTES_MAX_CODE_POINTS,
   INTAKE_CATALOGUE,
@@ -281,24 +281,46 @@ export function IntakeInterview({
   const [finishing, setFinishing] = useState(false);
   const [finishFailed, setFinishFailed] = useState(false);
   const finished = finishedAt ?? completedAt;
+  const sessionEndedId = `${uid}-session-ended`;
   /** The button the coach pressed is gone once finished: the focus goes to the line that replaced it. */
   const finishedRef = useRef<HTMLParagraphElement | null>(null);
   useEffect(() => {
     if (finishedAt) finishedRef.current?.focus();
   }, [finishedAt]);
+  /**
+   * Staff N1 on fb2374f: a session that ended is B15's state (its sentence and « Réessayer »), never
+   * « Réessayez » under the button. Asked only when the action gave no answer: a server action
+   * POST with no session is sent to /login by the middleware, and the action call then resolves
+   * with no result, exactly as a bare 503 does (`src/middleware.ts` `unavailable`). The read
+   * route tells the two apart the way « Recharger » does (S5).
+   */
+  async function sessionGone(): Promise<boolean> {
+    try {
+      const res = await fetch(intakeReadPath(clientId), {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "manual",
+        headers: { Accept: "application/json" },
+      });
+      return res.type === "opaqueredirect" || res.status === 401 || (res.status >= 300 && res.status < 400);
+    } catch {
+      return false;
+    }
+  }
   async function finish() {
-    if (finishing || disabled) return;
+    if (finishing || disabled || autosave.signedOut) return;
     setFinishing(true);
     setFinishFailed(false);
     try {
-      const outcome = await finishIntakeAction(clientId);
-      if (outcome.ok) setFinishedAt(outcome.completedAt);
-      else if (outcome.code === "ACCESS_DENIED") accessEnded();
+      const outcome: FinishOutcome | undefined = await finishIntakeAction(clientId).catch(() => undefined);
+      if (outcome?.ok) setFinishedAt(outcome.completedAt);
+      else if (outcome?.code === "ACCESS_DENIED") accessEnded();
+      else if (outcome?.code === "SIGNED_OUT") autosave.endSession();
+      else if (!outcome && (await sessionGone())) autosave.endSession();
+      // The api failed, or the action never answered (network, a deploy in between): nothing
+      // changed on the api's side that the coach cannot redo; the button stays (C5b).
       else setFinishFailed(true);
-    } catch {
-      // The action never answered (network, a deploy in between): nothing changed on the api's side
-      // that the coach cannot redo; the button stays.
-      setFinishFailed(true);
     } finally {
       setFinishing(false);
     }
@@ -334,7 +356,9 @@ export function IntakeInterview({
         </p>
         {(status === "failed" || status === "signedOut") && (
           <div className="intake-alert" role="alert" data-intake-alert={status}>
-            <p className="intake-alert-text">{status === "failed" ? c.failed : c.sessionEnded}</p>
+            <p id={status === "signedOut" ? sessionEndedId : undefined} className="intake-alert-text">
+              {status === "failed" ? c.failed : c.sessionEnded}
+            </p>
             {/*
               `sessionSafe`: after a sign-in in another tab, `SessionEpochGuard` stops every click
               that is not marked (ADR-0033 D33.14), and B15 asks this one to save. It cannot write
@@ -381,10 +405,16 @@ export function IntakeInterview({
       <div className="intake-finish" data-intake-finish={finished ? "done" : "todo"}>
         {finished ? (
           <p ref={finishedRef} tabIndex={-1} className="ov-note intake-finished" data-intake-finished="">
-            {c.finishedOn(formatInstant(finished, copy.locale))}
+            {c.finishedOn(formatIntakeFinishedOn(finished, copy.locale))}
           </p>
         ) : (
-          <Button variant="secondary" onClick={finish} disabled={disabled || finishing} ariaDescribedBy={disabledReasonId}>
+          // N1: signed out, the button waits for B15's « Réessayer » (above), and names its sentence.
+          <Button
+            variant="secondary"
+            onClick={finish}
+            disabled={disabled || finishing || autosave.signedOut}
+            ariaDescribedBy={autosave.signedOut && !disabled ? sessionEndedId : disabledReasonId}
+          >
             {c.finish}
           </Button>
         )}

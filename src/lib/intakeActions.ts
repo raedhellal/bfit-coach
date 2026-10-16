@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { coachApi, isForbidden, isIntakeAlreadyGranted, isIntakeRequestLimit } from "./coachApi";
+import { ApiError, coachApi, isForbidden, isIntakeAlreadyGranted, isIntakeRequestLimit } from "./coachApi";
 import { isClientId } from "./clientOverview";
 import { INTAKE_REQUEST_ENABLED } from "./env";
 import { liveForMs, type AskOutcome, type CancelOutcome } from "./intakeConsent";
@@ -59,8 +59,14 @@ export async function cancelIntakeConsentAction(clientId: string): Promise<Cance
   }
 }
 
-/** EV-341c — what « Terminer l'entretien » answers the island. */
-export type FinishOutcome = { ok: true; completedAt: string } | { ok: false; code: "ACCESS_DENIED" | "FAILED" };
+/**
+ * EV-341c — what « Terminer l'entretien » answers the island. `SIGNED_OUT`: the api refused the
+ * bearer with a 401 (no token the portal could rotate), which the island shows as B15's session
+ * sentence rather than as « Réessayez » (staff N1 on fb2374f).
+ */
+export type FinishOutcome =
+  | { ok: true; completedAt: string }
+  | { ok: false; code: "ACCESS_DENIED" | "SIGNED_OUT" | "FAILED" };
 
 /**
  * EV-341c C5 — « Terminer l'entretien »: `POST …/intake/complete`, then **revalidated**, unlike the
@@ -68,10 +74,15 @@ export type FinishOutcome = { ok: true; completedAt: string } | { ok: false; cod
  * revalidates. It stays a server action with `revalidatePath`, because it changes the overview's
  * summary card", which keeps ADR-0033 D33.6 literally true).
  *
- * The overview and the interview page are both revalidated, so « Vue d'ensemble » opened next is
- * rendered from the api, not from the router cache's pre-finish copy: no reload (C5). The island
- * shows the finished line from this answer and keeps its own form state: a revalidation hands it
- * new props, which it does not re-seed from (EV-341b's `acked` is the client's own).
+ * The overview and the interview page are both revalidated so that the overview's summary card
+ * (C6, cut to EV-374) can read the finished line on a client-side return made within the router
+ * cache's window. That is the INTENT, and it is not yet witnessed: nothing the overview renders
+ * on this branch depends on the finish, so no test can tell these two calls from their absence.
+ * EV-374's card owes that witness (its finished line read after a client-side return within
+ * 30 s). Kept now because EV-374 depends on it; staff F2 on fb2374f.
+ *
+ * The island shows the finished line from THIS answer, not from the revalidated props, and keeps
+ * its own form state (EV-341b's `acked` is the client's own).
  *
  * Idempotent on the api (the first `completedAt` stays, EV-341a AC9), so a second press is harmless.
  */
@@ -84,7 +95,8 @@ export async function finishIntakeAction(clientId: string): Promise<FinishOutcom
     if (typeof done?.completedAt !== "string") return { ok: false, code: "FAILED" };
     completedAt = done.completedAt;
   } catch (err) {
-    return { ok: false, code: isForbidden(err) ? "ACCESS_DENIED" : "FAILED" };
+    if (isForbidden(err)) return { ok: false, code: "ACCESS_DENIED" };
+    return { ok: false, code: err instanceof ApiError && err.status === 401 ? "SIGNED_OUT" : "FAILED" };
   }
   revalidatePath(`/clients/${clientId}`);
   revalidatePath(`/clients/${clientId}/intake`);
