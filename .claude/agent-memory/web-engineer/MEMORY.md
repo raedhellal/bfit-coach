@@ -117,3 +117,4 @@
 - [Intake routine fields (EV-341y2)](intake-routine-fields-341y2-facts.md) — emphasis/liked/avoided/split; catalogue-presence check; drop switches; held save outlived reset; COACH_PORT under shared load
 - [Intake sections 5–8 (EV-341c)](intake-sections-341c-facts.md) — read-only blocks per scope (currentWeight not weightSeries); finish action revalidates; C6 card conflict unbuilt; BFF read has no status
 - [Routine AI panel (EV-186b/n)](routine-ai-panel-186bn-facts.md) — capability `=== true`, one brief builder, lazy-settling fixture + cookie switches; panel moves into RoutineEditor for Keep; drift/first-name/i18n pins to bump
+- [Routine AI Update (EV-186f)](routine-ai-update-186f-facts.md) — REVISE box; chips derived from the text; canUpdate = instruction && saved base; outcome/unbindable/catalogChecked; DELETE ?proposalId=; drift 109, first-name 48

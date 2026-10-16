@@ -211,6 +211,10 @@ function enRows(): Row[] {
     { key: "routineAi.staleRoutine", text: en.routineAi.staleRoutine(first), expected: "This trainee's programme changed after this suggestion was made. Try again to get a fresh one." },
     { key: "routineAi.draftChanged", text: en.routineAi.draftChanged(first), expected: "Your draft for this trainee changed after this suggestion was made. Try again to get a fresh one." },
     { key: "routineAi.repairMark", text: en.routineAi.repairMark(first, "Shoulder"), expected: "Will be swapped at publish: this trainee's Shoulder" },
+    // EV-186f: the Update box (same panel, same `first`).
+    { key: "routineAi.painHint", text: en.routineAi.painHint(first), expected: "Injuries the plan must always respect come from this trainee's profile. This note only shapes this suggestion." },
+    { key: "routineAi.rateLimitLinkEdit", text: en.routineAi.rateLimitLinkEdit(first), expected: "You've used today's 10 AI edits for this trainee. You can still edit by hand, or try again tomorrow." },
+    { key: "routineAi.planEmpty", text: en.routineAi.planEmpty(first), expected: "This trainee has no programme to change yet. Use “Regenerate with AI”." },
   ];
 }
 
@@ -402,6 +406,10 @@ function frRows(): Row[] {
     { key: "routineAi.staleRoutine", text: fr.routineAi.staleRoutine(first), expected: "Le programme de ce client a changé depuis cette suggestion. Réessayez pour en obtenir une nouvelle." },
     { key: "routineAi.draftChanged", text: fr.routineAi.draftChanged(first), expected: "Votre brouillon pour ce client a changé depuis cette suggestion. Réessayez pour en obtenir une nouvelle." },
     { key: "routineAi.repairMark", text: fr.routineAi.repairMark(first, "Épaule"), expected: "Sera remplacé à la publication : Épaule de ce client" },
+    // EV-186f
+    { key: "routineAi.painHint", text: fr.routineAi.painHint(first), expected: "Les blessures que le programme doit toujours respecter viennent du profil de ce client. Cette note n'oriente que cette suggestion." },
+    { key: "routineAi.rateLimitLinkEdit", text: fr.routineAi.rateLimitLinkEdit(first), expected: "Vous avez utilisé les 10 modifications IA du jour pour ce client. Vous pouvez modifier à la main, ou réessayer demain." },
+    { key: "routineAi.planEmpty", text: fr.routineAi.planEmpty(first), expected: "Ce client n'a pas encore de programme à modifier. Utilisez « Régénérer avec l'IA »." },
   ];
 }
 
@@ -413,13 +421,13 @@ const FALLBACK = {
 } as const;
 
 /**
- * Every copy function the trace found, by language: 45 keys each (EV-186b: +7, the routine AI panel; EV-341y2: +1, YP3's injury line;
+ * Every copy function the trace found, by language: 48 keys each (EV-186f: +3, the Update box; EV-186b: +7, the routine AI panel; EV-341y2: +1, YP3's injury line;
  * EV-341b: +3, the interview page
  * and the invited page's intake sentence; EV-341w: +2, the « Entretien »
  * card; EV-341j: +1, the trial session's withdraw dialog). Pinned, so a row dropped from the table
  * (and with it a call site) fails here rather than going quiet.
  */
-const KEYS = 45;
+const KEYS = 48;
 
 for (const lang of ["en", "fr"] as const) {
   test.describe(`BUG-720 — the fallback's case, sentence by sentence (${lang})`, () => {
