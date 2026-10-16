@@ -7,9 +7,10 @@ metadata:
 
 Branches (stacked, unmerged): `feat/ev186b-coach-routine-ai-panel` (panel, brief, running,
 refusals, Discard, STUB banner) → `feat/ev186n-coach-routine-ai-diff` (diff, repair marks, Keep,
-Try again, STALE). Spec vendored from b-fit-api `feat/ev186a-coach-routine-regenerate` @ 9c3bff69,
-`on-api-main: NO` — neither may merge until EV-186c + EV-186a merge on the api and the spec is
-re-vendored from api main.
+Try again, STALE). Built against b-fit-api `feat/ev186a-coach-routine-regenerate` @ 9c3bff69, then
+re-vendored from api main @ 19b6696e once EV-186c/EV-186a merged (`on-api-main: YES`; the only spec
+delta was a note that `repairMarks` are injury repairs only). EV-186e will add `kind: REVISE` and GET
+`outcome`/`unbindable`/`catalogChecked` — additive to the same routes.
 
 **Where:**
 - `src/lib/routineAi.ts` (pure, client-safe): `routineAiCapability` (own-field `=== true`),
@@ -32,7 +33,7 @@ days 2–6, sessionLength ∈ 20/30/45/60/75/90, emphasis? ≤5 exact facet valu
 → 202 `{proposalId, status}`. GET → `{status NONE|RUNNING|READY|FAILED|CANCELLED|EXPIRED,
 baseSource, baseDocument, proposal, repairs, repairMarks[{dayOfWeek, exerciseIndex, injury,
 repair}], engine, errorCode, createdAt, expiresAt}`. Keep → `CoachRoutineDraftResponse` with
-`aiDraftedAt` (OMITTED, not null, for a non-AI draft). `kind` has no REVISE on 9c3bff69, so
+`aiDraftedAt` (OMITTED, not null, for a non-AI draft). `kind` has no REVISE on api main yet, so
 EV-186f (« Modifier avec l'IA ») has no contract yet.
 
 **Fixture switches** (cookies): `evoli_fixture_ai_caps=on|instruction|absent|string|null|partial|truthy`
@@ -47,3 +48,5 @@ read. `/api/fixture/calls` → `aiPosts` (body keys only). Dana's Tue « Push »
 - A FR string equal to EN (« {n}/500 ») needs a `coach-i18n` allowlist entry.
 - The SHOULDER label is « Shoulders » / « Épaules », not the singular.
 - WebKit tests fail here with "WebKit is not installed" — on origin/main too; not a regression.
+- `pro-programme-accordions` « a publish re-seeds … day 6 at 390 » (Chromium) is FLAKY on origin/main
+  (1 of 4 measured, same on 186n): not caused by the AI panel.
