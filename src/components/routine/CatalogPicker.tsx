@@ -33,6 +33,9 @@ export function CatalogPicker({
   keepOpen,
   onClose,
   onPick,
+  rowBlock,
+  limitNote,
+  focusSearch,
 }: {
   open: boolean;
   title: string;
@@ -45,6 +48,19 @@ export function CatalogPicker({
   keepOpen?: boolean;
   onClose: () => void;
   onPick: (exercise: CatalogExercise) => void;
+  /**
+   * EV-341y2 YP2 — a row the coach cannot pick here, and why. `note` is shown on the row (the
+   * other list's « Déjà dans l'autre liste »); a row blocked with no note is one already in the
+   * list being filled. The day editor passes nothing: every row stays pickable there.
+   */
+  rowBlock?: (exercise: CatalogExercise) => { note: string | null } | null;
+  /**
+   * EV-341y2 YP2 — the list is full: every row rests and this line says why (« 10 exercices au
+   * maximum. »). Null or absent: no limit is reached.
+   */
+  limitNote?: string | null;
+  /** EV-341y2 YP8 — the search field takes the focus when the picker opens (keyboard-only use). */
+  focusSearch?: boolean;
 }) {
   const copy = useCopy();
   const [q, setQ] = useState("");
@@ -156,6 +172,46 @@ export function CatalogPicker({
     return () => clearTimeout(timer);
   }, [open, q, muscle, equipment, run]);
 
+  /**
+   * EV-341y2 (BUG-824, BUG-825) — opt-in: only a picker given `rowBlock` / `limitNote` can make a
+   * row rest, so only such a picker moves the focus. A row picked with the keyboard that then
+   * RESTS (already in the list, or the list is now full) would drop the focus to <body>; it goes
+   * to the limit line when the list is full, else back to the search box for the next pick.
+   * Set by the pick, read after the parent's new props have rendered.
+   */
+  const optIn = rowBlock !== undefined || limitNote !== undefined;
+  const pickedRow = useRef<string | null>(null);
+  const searchAnchor = useRef<HTMLParagraphElement | null>(null);
+  const limitLine = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    const name = pickedRow.current;
+    if (!open || !optIn || name === null) return;
+    const dialog = searchAnchor.current?.closest<HTMLElement>('[role="dialog"]');
+    if (!dialog) return;
+    const row = Array.from(dialog.querySelectorAll<HTMLButtonElement>("[data-catalog-row]")).find(
+      (el) => el.getAttribute("data-catalog-row") === name
+    );
+    if (row && !row.disabled) return; // the row still takes picks: the focus stays on it
+    pickedRow.current = null;
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== row) return; // the coach moved on
+    if (limitNote && limitLine.current) limitLine.current.focus();
+    else dialog.querySelector<HTMLInputElement>("input")?.focus();
+  });
+
+  /**
+   * EV-341y2 (BUG-826) — opt-in with `focusSearch`: the search box that took the focus is
+   * replaced by the refusal when the catalogue answers 503, which drops the focus to <body>. It
+   * goes to the refusal, which is read out.
+   */
+  const unavailableLine = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    if (!open || !focusSearch || !unavailable) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    unavailableLine.current?.focus();
+  }, [open, focusSearch, unavailable]);
+
   return (
     <Modal
       open={open}
@@ -177,7 +233,13 @@ export function CatalogPicker({
     >
       {unavailable ? (
         // AC4, verbatim: refuse and offer nothing, rather than half a catalog.
-        <p role="alert" style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}>
+        <p
+          role="alert"
+          ref={unavailableLine}
+          tabIndex={focusSearch ? -1 : undefined}
+          data-catalog-unavailable=""
+          style={{ margin: 0, fontSize: 13.5, color: "var(--err-ink)" }}
+        >
           {copy.routine.catalogUnavailable}
         </p>
       ) : (
@@ -188,6 +250,7 @@ export function CatalogPicker({
             icon="search"
             placeholder={copy.routine.catalogSearch}
             full
+            autoFocus={focusSearch}
             onChange={(e) => setQ(e.target.value)}
           />
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
@@ -204,7 +267,7 @@ export function CatalogPicker({
               onChange={setEquipment}
             />
           </div>
-          <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
+          <p ref={searchAnchor} style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
             {copy.routine.catalogPickOnly}
           </p>
           {/*
@@ -218,6 +281,17 @@ export function CatalogPicker({
           {keepOpen && (
             <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-3)" }}>
               {copy.routine.catalogStaysOpen}
+            </p>
+          )}
+
+          {limitNote && (
+            <p
+              data-catalog-limit=""
+              ref={limitLine}
+              tabIndex={-1}
+              style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--ink-2)", fontWeight: 600 }}
+            >
+              {limitNote}
             </p>
           )}
 
@@ -237,11 +311,18 @@ export function CatalogPicker({
                 {copy.routine.catalogNoResults}
               </p>
             )}
-            {items.map((item) => (
+            {items.map((item) => {
+              const block = rowBlock?.(item) ?? null;
+              const resting = !!limitNote || block !== null;
+              return (
               <button
                 key={item.slug}
                 type="button"
+                disabled={resting}
+                data-catalog-row={item.name}
                 onClick={() => {
+                  if (resting) return;
+                  if (optIn) pickedRow.current = item.name;
                   onPick(item);
                   if (keepOpen) setAdded(item.name);
                 }}
@@ -251,17 +332,24 @@ export function CatalogPicker({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  // Only a row with a note wraps (EV-341y2); the day editor's rows are as before.
+                  flexWrap: block?.note ? "wrap" : undefined,
                   gap: 10,
                   padding: "8px 12px",
                   borderRadius: "var(--r-md)",
                   border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  cursor: "pointer",
+                  background: resting ? "var(--surface-2)" : "var(--surface)",
+                  cursor: resting ? "default" : "pointer",
                   textAlign: "left",
                 }}
               >
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: resting ? "var(--ink-3)" : "var(--ink)" }}>
                   {truncateName(item.name)}
+                  {block?.note && (
+                    <span data-catalog-row-note="" style={{ display: "block", fontSize: 12.5, fontWeight: 500, color: "var(--ink-2)" }}>
+                      {block.note}
+                    </span>
+                  )}
                 </span>
                 <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   {/* BUG-489: words, not the catalogue's raw values ("quads,glutes", "NONE"). */}
@@ -269,7 +357,8 @@ export function CatalogPicker({
                   {item.equipment && <Badge tone="neutral">{equipmentLabel(item.equipment, copy)}</Badge>}
                 </span>
               </button>
-            ))}
+              );
+            })}
             {/*
               The day the exercise landed on is BEHIND this dialog, so without this the
               only feedback for a pick is the modal not closing. `status` announces it
