@@ -142,7 +142,7 @@ test.describe("N2 — the repair mark", () => {
   });
   test("the table's sentence, the injury as a word", () => {
     expect(repairMarkSentence(mark, "Dana", en)).toBe("Will be swapped at publish: Dana's Shoulders");
-    expect(repairMarkSentence(mark, "Inès", fr).replace(/ /g, " ")).toBe("Sera remplacé à la publication : Épaules d'Inès");
+    expect(repairMarkSentence(mark, "Inès", fr).replace(/\u00a0/g, " ")).toBe("Sera remplacé à la publication : Épaules d'Inès");
     // Free text passes through verbatim; no injury still says « at publish ».
     expect(repairMarkSentence({ ...mark, injury: "left knee" }, "Dana", en)).toBe("Will be swapped at publish: Dana's left knee");
     expect(repairMarkSentence({ ...mark, injury: null }, "Dana", en)).toBe("Will be swapped at publish.");

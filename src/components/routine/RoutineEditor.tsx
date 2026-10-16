@@ -32,7 +32,7 @@ import type {
   PublishPreview,
   Routine,
 } from "@/lib/coachApi";
-import { RoutineAiPanel } from "./RoutineAiPanel";
+import dynamic from "next/dynamic";
 import { formatInstant } from "@/lib/format";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
@@ -84,6 +84,14 @@ export interface SavedRoutineDraft {
   document: Routine;
   updatedAt: string;
 }
+
+/**
+ * EV-186n (staff S-1) — the AI panel (and the comparison it imports) is its own chunk, fetched
+ * only when `ai` is set, i.e. when the capability is true. With the flag off — the production
+ * default — the routine page's first-load JS does not carry it (measured on `next build`).
+ * SSR stays on (the `next/dynamic` default), so a flag-on page still server-renders the panel.
+ */
+const RoutineAiPanel = dynamic(() => import("./RoutineAiPanel").then((m) => m.RoutineAiPanel));
 
 /**
  * EV-186b/n — what the page read for « Régénérer avec l'IA ». Passed ONLY when the routine read's
@@ -506,7 +514,8 @@ export function RoutineEditor({
     setIsDraft(true);
     setResolved(true);
     setDirty(false);
-    setAiDraftedAt(draft.aiDraftedAt ?? new Date().toISOString());
+    // The api always sets it on Keep; if it is ever absent, no line (never a client clock).
+    setAiDraftedAt(draft.aiDraftedAt ?? null);
     setPreview(null);
     setConflict(null);
     setNotice(null);

@@ -80,7 +80,7 @@ test.describe("N1/N2/N5 — the comparison, computed in the portal", () => {
     await page.getByRole("button", { name: "Régénérer avec l'IA", exact: true }).click();
     await panel(page).getByRole("button", { name: "Générer" }).click();
     await expect(panel(page).getByTestId("routine-ai-repair-mark").first()).toHaveText(
-      "Sera remplacé à la publication : Épaules de Dana"
+      "Sera remplacé à la publication\u00a0: Épaules de Dana"
     );
   });
 });
@@ -152,6 +152,32 @@ test.describe("N4 — STALE and DRAFT_EXISTS at Keep: the sentence, « Try again
     const { aiPosts } = await calls(page);
     expect(aiPosts.filter((p) => p.outcome === "202")).toHaveLength(2);
     expect(aiPosts[1].briefKeys).toEqual(aiPosts[0].briefKeys);
+  });
+
+  test("the live plan was republished after the suggestion → 409 COACH_PROPOSAL_STALE; nothing is written", async ({
+    page,
+  }) => {
+    await ready(page, LINA);
+    // Publish a changed plan: a new `plans` row, so the proposal's live base has moved.
+    await page.getByLabel("Plan name").fill("Republished meanwhile");
+    const bar = page.getByRole("region", { name: "Routine actions", exact: true });
+    await bar.getByRole("button", { name: "Publish", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(page.getByText("Published. The trainee sees it next time they open the app.")).toBeVisible();
+    await expect(panel(page)).toHaveAttribute("data-ai-state", "ready");
+    await panel(page).getByRole("button", { name: "Keep" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0); // no draft to replace: no confirm
+    await expect(panel(page).getByRole("alert")).toHaveText(
+      "Lina's programme changed after this suggestion was made. Try again to get a fresh one."
+    );
+    await expect(panel(page).getByRole("button", { name: "Try again" })).toBeVisible();
+    // Nothing was kept: still the published plan, no draft, no AI disclosure — before and after a reload.
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByTestId("routine-ai-drafted")).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText("Published plan")).toBeVisible();
+    await expect(page.getByLabel("Plan name")).toHaveValue("Republished meanwhile");
+    await expect(page.getByTestId("routine-ai-drafted")).toHaveCount(0);
   });
 
   test("an expired proposal reads as STALE and offers « Try again »", async ({ page }) => {
