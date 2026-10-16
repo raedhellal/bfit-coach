@@ -9,7 +9,7 @@
 //   · Card uses --r-2xl (24px) with a hairline border, per the Evoli Pro look.
 //   · Button/IconButton accept `title`, `ariaLabel` and `onMouseEnter`-free props only;
 //     no behaviour was invented.
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { UiIcon } from "./icons";
 import { useCopy } from "@/lib/i18n/client";
@@ -540,6 +540,9 @@ export function Skeleton({ w = "100%", h = 14, r = 7, style = {} }: { w?: number
 }
 
 // ───────────────────────── Modal ─────────────────────────
+/** `useLayoutEffect` in the browser; nothing on the server, where it only warns. */
+const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 export function Modal({
   open,
   onClose,
@@ -598,8 +601,10 @@ export function Modal({
   const opener = useRef<Opener>([]);
   if (open && !wasOpen.current) opener.current = captureOpener();
   wasOpen.current = open;
+  // Read at the moment of the key press, so a `!pending && …` guard is never one render stale
+  // (staff N1): updated in the commit, not in the passive flush after it.
   const onCloseRef = useRef(onClose);
-  useEffect(() => {
+  useCommitEffect(() => {
     onCloseRef.current = onClose;
   });
   useEffect(() => {

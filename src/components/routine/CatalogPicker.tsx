@@ -136,6 +136,7 @@ export function CatalogPicker({
   // Escape closes the picker (edge case 14: "pressing Escape after the third keeps all
   // three"). Since BUG-171 the kit's `Modal` owns Escape for every dialog; the local
   // handler EV-190b added here would now call `onClose` a second time, so it is gone.
+  // `onCloseRef` stays: the search's ACCESS_DENIED branch still closes through it.
 
   // Debounced so a five-letter query is one request per pause, not five.
   useEffect(() => {

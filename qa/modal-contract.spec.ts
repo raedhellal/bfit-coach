@@ -24,12 +24,20 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *   U3 Escape calls `onClose` once and focus returns to the opener — focused ONCE;
  *   U4 an `onClose` that refuses (a request in flight) refuses Escape too; a control inside
  *      that takes Escape itself (`preventDefault`) keeps it; a dirty dialog closes like ×;
- *   U5 a caller that moves focus itself when its dialog closes (TrialSessionCard's `refocus`, a
- *      local `returnFocus`) keeps it: the opener is never focused a second time (staff,
- *      EV-337g2 review N6);
+ *   U5 a caller that moves focus itself in an effect of the closing commit (TrialSessionCard's
+ *      `refocus`, a `returnFocus` effect) keeps it: the opener is never focused a second time
+ *      (staff, EV-337g2 review N6). A negative assertion: it also passes with no restore at all,
+ *      so it only means something NEXT TO U3, which proves the restore happens;
  *   U6 an opener removed while the dialog was open: its surviving container's first control,
  *      then `<main>`; a disabled opener: focused as soon as it is enabled;
- *   U7 a dialog opened from a dialog takes Escape and the trap for itself and hands both back.
+ *   U6b the disabled opener's wait is bounded: never enabled, the fallback takes focus at
+ *      RESTORE_WAIT_MS without scrolling, once — an opener enabled after that moves nothing;
+ *   U6c the wait ends with NO focus move on a key press, a pointer press or a wheel turn (staff
+ *      r1 S1), and never takes focus out of a dialog opened meanwhile;
+ *   U7 a dialog opened from a dialog takes Escape and the trap for itself and hands both back;
+ *   U8 the stand-ins for an opener when nothing is focused at open: a Safari press (pointerdown
+ *      + click, which does not focus the button), and an opener disabled by its own request
+ *      before the dialog opens (RoutineEditor's « Publish » asks for a preview first).
  */
 
 const ROOT = resolve(__dirname, "..");
@@ -86,7 +94,12 @@ test.describe("BUG-171 static", () => {
   });
 });
 
-const ENTRIES = { React: "react", ReactDOMClient: "react-dom/client", kit: "@/components/ui/kit" };
+const ENTRIES = {
+  React: "react",
+  ReactDOMClient: "react-dom/client",
+  kit: "@/components/ui/kit",
+  focus: "@/components/ui/modalFocus",
+};
 const STUBS = {
   "@/lib/i18n/client": `exports.useCopy = function () { return { common: { close: "Close" } }; };`,
 };
@@ -130,7 +143,12 @@ const APP = `
     return h("main", { id: "main", tabIndex: -1 },
       h("button", { id: "before", onFocus: log("before") }, "before"),
       showBox && h("div", { id: "box" },
-        showOpener && h("button", { id: "opener", disabled: openerDisabled, onFocus: log("opener"), onClick: function () { setOpen(true); } }, "Open"),
+        showOpener && h("button", { id: "opener", disabled: openerDisabled, onFocus: log("opener"), onClick: function () {
+          if (!p.deferred) return setOpen(true);
+          // « Publish »: disabled while its request runs, the dialog opens with the answer.
+          setOpenerDisabled(true);
+          setTimeout(function () { setOpenerDisabled(false); setOpen(true); }, 50);
+        } }, "Open"),
         h("button", { id: "sibling", onFocus: log("sibling") }, "sibling")),
       h("button", { id: "other", onFocus: log("other") }, "other"),
       h(Modal, { open: open, dirty: !!p.dirty, title: "Outer title", onClose: close,
@@ -149,6 +167,7 @@ async function harness(page: Page, props: Record<string, unknown> = {}) {
 
 /** Open from the keyboard, as a keyboard user does, and return the dialog. */
 async function openIt(page: Page) {
+  await expect(page.locator("#opener")).toBeEnabled();
   await page.locator("#opener").focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Outer title" });
@@ -291,6 +310,110 @@ test.describe("BUG-171 unit", () => {
     await api(page, "setOpenerDisabled", false);
     await expect(page.locator("#opener"), "enabled again: focus goes to it").toBeFocused();
     expect(await focusLog(page)).toEqual(["opener"]);
+  });
+
+  test("U6b: never enabled — the fallback takes focus at RESTORE_WAIT_MS, unscrolled, once", async ({ page }) => {
+    await page.clock.install();
+    await harness(page, { variant: "fields" });
+    const wait = await page.evaluate(() => (window as unknown as { __unit: { focus: { RESTORE_WAIT_MS: number } } }).__unit.focus.RESTORE_WAIT_MS);
+    const dialog = await openIt(page);
+    await api(page, "setOpenerDisabled", true);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await resetLog(page);
+    // Spy on the delayed focus: it must not scroll the page.
+    await page.evaluate(() => {
+      const w = window as unknown as { __scrolling: boolean[] };
+      w.__scrolling = [];
+      const sibling = document.getElementById("sibling")!;
+      const real = sibling.focus.bind(sibling);
+      sibling.focus = (o?: FocusOptions) => {
+        w.__scrolling.push(!o?.preventScroll);
+        real(o);
+      };
+    });
+    await page.clock.runFor(wait - 100);
+    expect(await focusLog(page), "nothing moves before the bound").toEqual([]);
+    await page.clock.runFor(200);
+    await expect(page.locator("#sibling"), "the opener's container's first control").toBeFocused();
+    expect(await page.evaluate(() => (window as unknown as { __scrolling: boolean[] }).__scrolling)).toEqual([false]);
+    await api(page, "setOpenerDisabled", false);
+    await page.clock.runFor(wait);
+    expect(await focusLog(page), "enabled after the bound: nothing more moves").toEqual(["sibling"]);
+  });
+
+  test("U6c: a key, a press, a wheel or another dialog ends the wait — focus never jumps", async ({ page }) => {
+    await page.clock.install();
+    await harness(page, { variant: "fields" });
+    const wait = await page.evaluate(() => (window as unknown as { __unit: { focus: { RESTORE_WAIT_MS: number } } }).__unit.focus.RESTORE_WAIT_MS);
+    const inputs: [string, string, () => Promise<void>][] = [
+      ["a key press", "keydown", () => page.keyboard.press("Shift")],
+      ["a pointer press on the page", "pointerdown", () => page.mouse.click(5, 300)],
+      ["a wheel turn", "wheel", () => page.mouse.wheel(0, 120)],
+    ];
+    for (const [label, type, act] of inputs) {
+      const dialog = await openIt(page);
+      await api(page, "setOpenerDisabled", true);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await resetLog(page);
+      // The input is delivered to the page (a wheel turn arrives asynchronously) BEFORE the opener
+      // is enabled: otherwise the enabling would win the race and the test would test nothing.
+      await page.evaluate((t) => {
+        const w = window as unknown as { __seen: boolean };
+        w.__seen = false;
+        document.addEventListener(t, () => (w.__seen = true), { capture: true, once: true });
+      }, type);
+      await act();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __seen: boolean }).__seen)).toBe(true);
+      await api(page, "setOpenerDisabled", false);
+      await page.clock.runFor(wait + 1_000);
+      expect(await focusLog(page), `${label}: neither the enabling nor the bound moves focus`).toEqual([]);
+    }
+
+    // Another dialog opening: the old wait never takes focus out of it. NOT a witness for the
+    // cancel in `engageModal` — this block stays green without it, because focus inside an open
+    // dialog is never "lost", and that dialog's own close places focus. No sequence that needs
+    // the cancel was found; it is kept so a wait can never outlive the next dialog.
+    let dialog = await openIt(page);
+    await api(page, "setOpenerDisabled", true);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await page.evaluate(() => (window as unknown as { __api: { setOpen: (v: boolean) => void } }).__api.setOpen(true));
+    dialog = page.getByRole("dialog", { name: "Outer title" });
+    await expect(dialog.locator("#f1")).toBeFocused();
+    await resetLog(page);
+    await api(page, "setOpenerDisabled", false);
+    await page.clock.runFor(wait + 1_000);
+    expect(await focusLog(page), "the first dialog's wait did not reach past the second").toEqual([]);
+    await expect(dialog.locator("#f1")).toBeFocused();
+  });
+
+  test("U8: nothing focused at open — a Safari press, and an opener its own request disabled", async ({ page }) => {
+    await harness(page, { variant: "fields" });
+    // Safari: a press dispatches pointerdown and click but does not focus the button.
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+      const o = document.getElementById("opener")!;
+      o.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      o.click();
+    });
+    let dialog = page.getByRole("dialog", { name: "Outer title" });
+    await expect(dialog).toBeVisible();
+    expect(await focusLog(page), "the opener was never focused before the close").not.toContain("opener");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator("#opener"), "the pressed control stands in for the opener").toBeFocused();
+
+    await harness(page, { variant: "fields", deferred: true });
+    await page.locator("#opener").focus();
+    await page.keyboard.press("Enter");
+    dialog = page.getByRole("dialog", { name: "Outer title" });
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator("#opener"), "the last focused control stands in for the disabled opener").toBeFocused();
   });
 
   test("U7: a dialog opened from a dialog owns Escape and the trap, then hands them back", async ({ page }) => {
