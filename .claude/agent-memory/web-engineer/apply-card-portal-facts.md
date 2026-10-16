@@ -36,5 +36,20 @@ button out of the meal week's head into `NutritionApplyCard` (aside, under the t
 - Several ruled clauses (G2.3b, G2.3c(3), G2.3d(2), G2.1b focus) were already true at 91b60a2:
   they are pins, green before and after; their mutants are the evidence, not a red-first run.
 
+- Resume 2026-10-15 (merge of main bfb4164 as 1be91e7, not a rebase): main's F1 (4c348b6) tags
+  what the week card's ONE transition runs; that tag (`weekRunning`/`setWeekRunning`,
+  `RunningAction`) now lives in `NutritionApplyScope` beside the transition, and the button reads
+  « Application… » only for `kind === "apply"`. A naive resolution (`weekPending`) turns
+  `qa/coach-nutrition-pending-labels.spec.ts` red 4/6 (default config). `NutritionTarget` is
+  re-exported from `NutritionTemplateLibrary` for main's EV-356g page.
+- R4's local focus return is `returnFocus`/`buttonWrap` + one `useEffect` in `NutritionApplyCard`;
+  BUG-171's Modal restore makes it a double restore (staff N6): the second to merge removes one.
+- `targetsLanded` reads `TARGETS_LANDED: Record<UseOutcomeKind, boolean>` (N1): a new kind is a
+  tsc error until classified.
+- Cloud container: Playwright 1.63 wants chromium 1243, only 1194 is installed and downloads
+  are proxy-blocked; a scratch PLAYWRIGHT_BROWSERS_PATH symlinking the 1243 paths to 1194 runs
+  Chromium. WebKit cannot run there. A full default suite under 4 parallel suites exceeds the
+  2 h background cap: run it in file chunks with `--reporter=list,json`.
+
 **Why:** g3/g4/j1 all touch this page or the dialog next; each needs these facts first.
 **How to apply:** read this before changing NutritionWeekCard, TemplateUseOutcome or the template dialog.
