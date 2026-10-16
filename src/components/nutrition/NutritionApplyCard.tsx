@@ -31,6 +31,16 @@ export function weekApplyLabel(copy: Copy, traineeDisplayName: string | null): s
 }
 
 /**
+ * What the week card's one transition is running (fluidity batch 1, F1, 4c348b6). Set in the
+ * click, before the transition starts, and read only together with `weekPending`.
+ */
+export type RunningAction =
+  | { kind: "apply" }
+  | { kind: "regenerate"; index: number }
+  | { kind: "swapOptions" }
+  | { kind: "swap" };
+
+/**
  * EV-337g2 — what the apply card shares with the two islands it is not part of.
  *
  * TODAY'S APPLY STAYS IN THE MEAL WEEK. `NutritionWeekCard` keeps `applyWeek`, its confirm
@@ -38,9 +48,10 @@ export function weekApplyLabel(copy: Copy, traineeDisplayName: string | null): s
  * because G2.2 wants each of them "as at a862698" and the week card is where they are. Only
  * the BUTTON moved (G2.1: the page has exactly one apply control, in this card). So the
  * dialog's open state and the week card's transition live here, one level up, where the
- * button and the week card both read them: the button opens the week card's dialog, and it is
- * disabled and reads « Application… » while the week card is busy, exactly as it was in the
- * week card's head.
+ * button and the week card both read them: the button opens the week card's dialog, it is
+ * disabled while anything on the week card runs (an apply, a regenerate or a swap: they share
+ * one transition), and it reads « Application… » only while the week is applied (F1,
+ * `weekRunning`).
  *
  * THE TEMPLATE PATH LANDS HERE TOO. The library hands its outcome to this page through
  * `sessionStorage` and a navigation; on this page there is no navigation, so the outcome is
@@ -58,16 +69,6 @@ export function weekApplyLabel(copy: Copy, traineeDisplayName: string | null): s
  * card can do what its own successful apply does to its state (no refusal, no error, no cap
  * line: an apply writes the plan row with the day-regen counter at zero).
  */
-/**
- * What the week card's one transition is running (fluidity batch 1, F1, 4c348b6). Set in the
- * click, before the transition starts, and read only together with `weekPending`.
- */
-export type RunningAction =
-  | { kind: "apply" }
-  | { kind: "regenerate"; index: number }
-  | { kind: "swapOptions" }
-  | { kind: "swap" };
-
 interface ApplyScope {
   weekPending: boolean;
   startWeekTransition: TransitionStartFunction;

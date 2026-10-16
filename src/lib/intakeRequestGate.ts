@@ -1,6 +1,19 @@
 /**
- * EV-341w — whether « Demander l'accord » exists on this deployment. The story's RELEASE
- * HOLD, made a switch rather than a merge order.
+ * EV-341w + EV-341b — whether the coach's WHOLE INTAKE exists on this deployment: the request
+ * for consent and the interview behind it. The release hold, made a switch rather than a merge
+ * order. ONE flag holds every intake surface (EV-341b story R6, 2026-10-15):
+ *
+ *   · the EV-341w « Demander l'accord » card on the client overview, and its consent poll
+ *     (`/api/bff/clients/{id}/intake-consent`) and two server actions (`intakeActions.ts`);
+ *   · the « Entretien » tab (`ClientTabs`);
+ *   · the interview page, `/clients/{id}/intake`;
+ *   · both intake route handlers, the autosave `/api/clients/{id}/intake/{section}` and the
+ *     read `/api/bff/clients/{id}/intake`;
+ *   · the intake section of `/invited/{userId}`;
+ *   · B12's sentence in the revoke dialog (`RevokeMenu`'s `intakeOn`).
+ *
+ * Every gate reads `INTAKE_REQUEST_ENABLED` (`src/lib/env.ts`, G1). Turning it on in production
+ * is EV-369, and nothing else.
  *
  * The card may go live only in the same coach deploy as EV-341b or later, and never before
  * EV-341q (the trainee's answer screen) is in an app build Raed has shipped: before that, the
@@ -21,14 +34,14 @@
  * OFF means: no card on the overview, no `GET …/intake-consent` in its render, the BFF read
  * answers 404, and the two server actions refuse before calling the api.
  *
- * EV-341b (story R6, 2026-10-15): THE SAME SWITCH NOW HOLDS THE INTERVIEW TOO, so the name says
- * less than it does. It is not renamed (a merged, QA-passed variable), and a second flag would add
- * two states nobody wants (the card without the page, or the page without the card). OFF also
- * means (G2–G7): no « Entretien » tab, `/clients/{id}/intake` is a 404 that reads no intake, consent or routine (the
- * `[id]` layout still reads the client, as for any client URL), the save
- * handler and `/api/bff/clients/{id}/intake` are 404 for every method before any other check, no
- * intake section on `/invited/{userId}`, and the revoke dialog keeps `main`'s body. Every gate
- * reads `INTAKE_REQUEST_ENABLED` (`src/lib/env.ts`, G1). Turning it on is carded as EV-369.
+ * EV-341b (story R6, 2026-10-15): the switch holds the interview too (the list above), so the
+ * name says less than it does. It is not renamed (a merged, QA-passed variable), and a second
+ * flag would add two states nobody wants (the card without the page, or the page without the
+ * card). OFF also means (G2–G7): no « Entretien » tab, `/clients/{id}/intake` is a 404 that
+ * reads no intake, consent or routine (the `[id]` layout still reads the client, as for any
+ * client URL), the save handler and `/api/bff/clients/{id}/intake` are 404 for every method
+ * before any other check, no intake section on `/invited/{userId}`, and the revoke dialog keeps
+ * `main`'s body.
  */
 export const INTAKE_REQUEST_FLAG = "COACH_INTAKE_REQUEST";
 
