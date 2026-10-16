@@ -231,11 +231,17 @@ test("B17: 3 minutes of typing in section 1 with a 1-minute token, then sections
  *      navigating, across 1-minute expiries, and every save answers 200;
  *   2. section 8 and section 5's note (`HEALTH`) are saved CONCURRENTLY across an expiry (both
  *      held in the browser until both exist, then released together, with no live access token),
- *      and both answer 200.
- * Same link as B17 (serial, `beforeAll`). Run it alone with `--grep C8`; its output is pasted in
- * the PR. No merge without it.
+ *      and both answer 200;
+ *   3. (staff F3 on fb2374f) the coach stops typing past the token's `exp`, then presses « Finish
+ *      the intake ». The finish is a SERVER ACTION: its bearer comes from `cookies()`
+ *      (`apiFetch.ts` `readAccessToken`), not from the route handler's `handlerAccessToken` that
+ *      step 2 exercises, so this is the one witness that the middleware's rotation reaches an
+ *      action's `cookies()` with an expired access cookie. The finished line shows, no failure
+ *      sentence does, and the api's own read holds COMPLETE and `completedAt`.
+ * Same link as B17 (serial, `beforeAll`). QA runs the WHOLE file (B17 then C8) at the merge gate;
+ * its output is pasted in the PR. No merge without it.
  */
-test("C8: 3 minutes of typing in section 8 with a 1-minute token, then sections 8 and 5 saved concurrently across an expiry — every save 200", async ({
+test("C8: 3 minutes of typing in section 8 with a 1-minute token, sections 8 and 5 saved concurrently across an expiry, then « Finish » after an expiry — every save 200, finished", async ({
   page,
 }) => {
   test.setTimeout(8 * 60 * 1000);
@@ -337,4 +343,42 @@ test("C8: 3 minutes of typing in section 8 with a 1-minute token, then sections 
   expect(intake.sections.COACH_NOTES.values.notes).toBe(await coachNotes.inputValue());
   expect(intake.sections.HEALTH.values.notes).toBe("Left knee: no pain since June.");
   report(`C8 stored: COACH_NOTES v${intake.sections.COACH_NOTES.version}, HEALTH v${intake.sections.HEALTH.version}`);
+
+  // ── 3. « Finish the intake » after an expiry: the server action's `cookies()` path (F3) ──────
+  // Idle past the CURRENT token's exp: no save, no navigation, so nothing rotates it meanwhile.
+  await expect(page.locator('[data-intake-status="saved"]')).toHaveCount(1, { timeout: 15_000 });
+  const idle = await accessCookie(page);
+  const idleMs = claims(idle).exp * 1000 + 1_500 - Date.now();
+  if (idleMs > 0) await page.waitForTimeout(idleMs);
+  const jar3 = await page.context().cookies();
+  const now3 = jar3.find((c) => c.name === "evoli_pro_at")?.value;
+  expect(!now3 || claims(now3).exp * 1000 < Date.now(), "no live access token in the jar before « Finish »").toBe(true);
+  expect(jar3.some((c) => c.name === "evoli_pro_rt"), "the refresh cookie is still there").toBe(true);
+
+  const actions: { status: number }[] = [];
+  page.on("response", (res: Response) => {
+    if (res.request().method() === "POST" && res.request().headers()["next-action"]) actions.push({ status: res.status() });
+  });
+  await page.getByRole("button", { name: "Finish the intake", exact: true }).click();
+  const line = page.locator("[data-intake-finished]");
+  await expect(line).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("[data-intake-finish-failed]")).toHaveCount(0);
+  await expect(page.locator('[data-intake-alert="signedOut"]')).toHaveCount(0);
+  const rotatedByFinish = await accessCookie(page);
+  expect(rotatedByFinish, "the expired token was rotated by the action's request").not.toBe(idle);
+  expect(claims(rotatedByFinish).exp * 1000, "the jar holds a live token after « Finish »").toBeGreaterThan(Date.now());
+
+  // The api's own read (the BFF read carries no `completedAt`): COMPLETE, with the finish's instant.
+  const api = await page.request.get(`${API_ORIGIN}/coach-portal/clients/${clientId}/intake`, {
+    headers: { Authorization: `Bearer ${await bearer(page.request, COACH)}` },
+  });
+  expect(api.status()).toBe(200);
+  const finished = (await api.json()) as { status?: string; completedAt?: string | null };
+  report(
+    `C8 finish after an expiry: actions ${JSON.stringify(actions)}, line ${JSON.stringify(await line.textContent())}, api status ${finished.status}, completedAt ${finished.completedAt}`
+  );
+  expect(actions.map((a) => a.status)).toEqual([200]);
+  expect(finished.status).toBe("COMPLETE");
+  expect(typeof finished.completedAt).toBe("string");
+  expect(Date.now() - new Date(finished.completedAt!).getTime(), "finished by this press, not earlier").toBeLessThan(5 * 60 * 1000);
 });
