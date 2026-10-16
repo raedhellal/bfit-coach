@@ -151,7 +151,8 @@ export function CatalogPicker({
       onClose={onClose}
       // BUG-699 — every opening starts from an empty query and no filter (the effect above).
       dirty={!unavailable && (q !== "" || muscle !== "" || equipment !== "")}
-      // BUG-171 (senior-po ruling): a dirty dialog ignores Escape, but this one opts out. Every
+      // BUG-171 (orchestrator ruling (BUG-171 staff r2), to be recorded by senior-po on BUG-171's row):
+      // a dirty dialog ignores Escape, but this one opts out. Every
       // pick is committed to the editor the moment it is made, so Escape loses only the search
       // text and the filters — view state, not data the coach typed — and edge case 14 ("Escape
       // after the third keeps all three") holds. The backdrop still follows `dirty` (BUG-699).

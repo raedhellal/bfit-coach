@@ -317,6 +317,12 @@ export function SwapSheet({
       // BUG-699 — the search opens empty; it is on screen unless the meal is locked or a
       // recipe is chosen (the confirm step has no field).
       dirty={!target.locked && chosen === null && query !== ""}
+      // BUG-171 (orchestrator ruling (BUG-171 staff r2), to be recorded by senior-po on BUG-171's row):
+      // a dirty dialog ignores Escape, but this one opts out. Its `dirty` is only a typed search
+      // with no recipe chosen — nothing is placed until the confirm step — so Escape loses only
+      // the search text, view state and not data the coach typed. The backdrop still follows
+      // `dirty` (BUG-699).
+      escapeIgnoresDirty
       title={copy.nutrition.swapTitle}
       sub={<span title={target.mealName}>{truncateName(target.mealName)}</span>}
       icon="apple"

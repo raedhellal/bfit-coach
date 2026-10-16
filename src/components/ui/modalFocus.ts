@@ -183,7 +183,8 @@ export function engageModal(
     if (event.key === "Escape" || event.key === "Esc") {
       // A control inside the dialog that uses Escape itself (and says so) keeps it.
       if (event.defaultPrevented || event.isComposing) return;
-      // Changed fields: Escape is a backdrop click, not a Cancel (senior-po ruling on BUG-171).
+      // Changed fields: Escape is a backdrop click, not a Cancel — orchestrator ruling
+      // (BUG-171 staff r2), to be recorded by senior-po on BUG-171's row.
       if (escapeHeld()) return;
       event.preventDefault();
       onClose();

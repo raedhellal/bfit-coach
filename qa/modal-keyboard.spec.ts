@@ -26,8 +26,10 @@ import { signInThroughForm } from "./sign-in";
  *
  * K6 Escape is the dialog's own `onClose`, so a dialog that refuses to close while its request
  *    is in flight (« Apply this meal week? », Cancel disabled) refuses Escape too.
- * K7 a CHANGED dialog ignores Escape, as it ignores a backdrop click (senior-po ruling on
- *    BUG-171, after BUG-699/702: only × and Cancel may discard what the coach typed).
+ * K7 a CHANGED dialog ignores Escape, as it ignores a backdrop click (after BUG-699/702: only ×
+ *    and Cancel may discard what the coach typed; orchestrator ruling (BUG-171 staff r2), to be recorded by senior-po on BUG-171's row).
+ * K8 the two dialogs that opt out (`escapeIgnoresDirty`) — whose `dirty` is search text only —
+ *    close on Escape with a search typed, and their backdrop still ignores a click then.
  *
  * Red on `bfb4164` (main, before this fix) with only these two files added: 27 of 27 here — 22
  * cases at K2 (focus stays on the opener), 4 at K3 (« Add a client » and « Swap meal » autofocus
@@ -251,9 +253,15 @@ for (const size of WIDTHS) {
         await cycles(page, dialog, "Tab");
         await cycles(page, dialog, "Shift+Tab");
 
-        // K4 — Escape closes it.
-        await page.keyboard.press("Escape");
-        await expect(dialog).toHaveCount(0);
+        // K4 — Escape closes it. A dialog may still be busy when it appears: the publish preview
+        // shows before its transition settles, and « No changes were needed » has no Cancel to
+        // watch — only « Publish », disabled while pending. Escape is then refused, which is right
+        // (K6 pins the refusal) and not what K4 asks; so K4 presses again until the request has
+        // settled. A dialog that never closes on Escape still fails here, at the toPass timeout.
+        await expect(async () => {
+          await page.keyboard.press("Escape");
+          await expect(dialog).toHaveCount(0, { timeout: 1_000 });
+        }, "Escape closes the dialog once it is not busy").toPass({ timeout: 15_000 });
 
         // K5 — focus is back where the coach was.
         const back = (c.returnsTo ?? c.opener)(page);
@@ -324,6 +332,59 @@ test.describe("BUG-171 K7", () => {
         await expect(dialog).toHaveCount(0);
         await expect(opener).toBeFocused();
       });
+    });
+  }
+});
+
+test.describe("BUG-171 K8", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  /** A click on the backdrop beside the dialog, hit-tested as qa/dialog-backdrop.spec.ts does. */
+  async function clickBackdrop(page: Page) {
+    const x = 6;
+    const y = Math.round(page.viewportSize()!.height / 2);
+    const hit = await page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.matches("[data-modal-backdrop]") ?? false, [x, y] as const);
+    expect(hit, "the point is the backdrop").toBe(true);
+    await page.mouse.click(x, y);
+  }
+
+  const OPT_OUTS = [
+    {
+      label: "« Swap meal »",
+      path: `/clients/${LINA}/nutrition`,
+      opener: (p: Page) => p.getByRole("button", { name: /^Swap meal: / }).first(),
+      search: "Search your recipes",
+    },
+    {
+      label: "catalogue picker",
+      path: `/clients/${LINA}/routine`,
+      opener: (p: Page) => p.getByRole("button", { name: "Add exercise", exact: true }).first(),
+      search: "Search the catalog",
+    },
+  ];
+
+  for (const c of OPT_OUTS) {
+    test(`${c.label}: with a search typed, the backdrop is ignored and Escape closes; focus back on the opener`, async ({ page }) => {
+      await signInThroughForm(page);
+      await page.goto(c.path);
+      const opener = c.opener(page);
+      const dialog = page.getByRole("dialog");
+      await pressUntil(page, opener, dialog);
+      const search = dialog.getByLabel(c.search, { exact: true });
+      await expect(search).toBeFocused();
+      await page.keyboard.type("zzz");
+      await expect(search).toHaveValue("zzz");
+
+      // BUG-699 unchanged: the typed search holds the dialog against a backdrop click.
+      await clickBackdrop(page);
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      await expect(dialog, "the backdrop still ignores a dirty dialog").toBeVisible();
+      await expect(search).toHaveValue("zzz");
+
+      // The opt-out: Escape closes it anyway — only the search text is lost.
+      await page.keyboard.press("Escape");
+      await expect(dialog, "Escape closes it with a search typed").toHaveCount(0);
+      await expect(opener).toBeFocused();
     });
   }
 });

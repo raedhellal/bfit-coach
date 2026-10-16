@@ -560,8 +560,9 @@ export function Modal({
   onClose: () => void;
   /**
    * BUG-699 — a field in the dialog differs from the value it had when the dialog opened.
-   * A click on the backdrop is then ignored, and so is Escape (BUG-171, senior-po ruling: a
-   * one-key dismissal is a stray dismissal too); × and the footer's Cancel still close.
+   * A click on the backdrop is then ignored, and so is Escape (BUG-171: a one-key dismissal is
+   * a stray dismissal too — orchestrator ruling (BUG-171 staff r2), to be recorded by
+   * senior-po on BUG-171's row); × and the footer's Cancel still close.
    *
    * BUG-702 — REQUIRED, with no default. When it was optional and defaulted to `false`, a
    * new dialog with a field whose author forgot it would close on a stray backdrop click

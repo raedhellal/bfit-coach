@@ -24,8 +24,8 @@ import { bundle, loadUnitPage } from "./unit-harness";
  *   U3 Escape calls `onClose` once and focus returns to the opener — focused ONCE;
  *   U4 an `onClose` that refuses (a request in flight) refuses Escape too; a control inside
  *      that takes Escape itself (`preventDefault`) keeps it; a DIRTY dialog ignores Escape, as
- *      it ignores a backdrop click — every value kept, × and Cancel still close (senior-po
- *      ruling on BUG-171, after BUG-699/702);
+ *      it ignores a backdrop click — every value kept, × and Cancel still close (after
+ *      BUG-699/702; orchestrator ruling (BUG-171 staff r2), to be recorded by senior-po on BUG-171's row);
  *   U5 a caller that moves focus itself in an effect of the closing commit (TrialSessionCard's
  *      `refocus`, a `returnFocus` effect) keeps it: the opener is never focused a second time
  *      (staff, EV-337g2 review N6). A negative assertion: it also passes with no restore at all,
@@ -338,6 +338,8 @@ test.describe("BUG-171 unit", () => {
     await harness(page, { variant: "fields" });
     dialog = await openIt(page);
     await api(page, "setOpenerDisabled", true);
+    // Committed before the close: the restore must see a disabled opener, not race the render.
+    await expect(page.locator("#opener")).toBeDisabled();
     await resetLog(page);
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
@@ -354,6 +356,8 @@ test.describe("BUG-171 unit", () => {
     const wait = await page.evaluate(() => (window as unknown as { __unit: { focus: { RESTORE_WAIT_MS: number } } }).__unit.focus.RESTORE_WAIT_MS);
     const dialog = await openIt(page);
     await api(page, "setOpenerDisabled", true);
+    // Committed before the close: the restore must see a disabled opener, not race the render.
+    await expect(page.locator("#opener")).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await resetLog(page);
@@ -390,6 +394,8 @@ test.describe("BUG-171 unit", () => {
     for (const [label, type, act] of inputs) {
       const dialog = await openIt(page);
       await api(page, "setOpenerDisabled", true);
+      // Committed before the close: the restore must see a disabled opener, not race the render.
+      await expect(page.locator("#opener")).toBeDisabled();
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -414,6 +420,8 @@ test.describe("BUG-171 unit", () => {
     // the cancel was found; it is kept so a wait can never outlive the next dialog.
     let dialog = await openIt(page);
     await api(page, "setOpenerDisabled", true);
+    // Committed before the close: the restore must see a disabled opener, not race the render.
+    await expect(page.locator("#opener")).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await page.evaluate(() => (window as unknown as { __api: { setOpen: (v: boolean) => void } }).__api.setOpen(true));
