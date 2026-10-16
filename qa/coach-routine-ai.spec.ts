@@ -6,7 +6,7 @@ import { signInThroughForm } from "./sign-in";
  * EV-186b — « Régénérer avec l'IA » on the routine page (the panel, the brief, the running
  * state, refusal/failure copy, « Écarter », the STUB banner), in FIXTURE mode.
  *
- * The fixture ports b-fit-api `feat/ev186a-coach-routine-regenerate` @ 9c3bff69's contract
+ * The fixture ports b-fit-api main @ 19b6696e's contract (EV-186a)
  * (`src/lib/coachApi.fixture.ts`, block « EV-186b — THE ROUTINE AI PROPOSAL »). Switches are
  * cookies scoped to this browser context: `evoli_fixture_ai_caps`, `evoli_fixture_ai`,
  * `evoli_fixture_ai_error`, `evoli_fixture_ai_delay_ms`.

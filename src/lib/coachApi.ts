@@ -1043,8 +1043,8 @@ export interface CoachRoutineDraftRequest {
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-186b / EV-186n — « Régénérer avec l'IA » (ADR-0036 D36.1–D36.4, D36.9).
  *
- * Typed against b-fit-api `feat/ev186a-coach-routine-regenerate` @ 9c3bff69, NOT MERGED
- * (`spec/b-fit-api.sha` says `on-api-main: NO`). Every route below is unregistered (404)
+ * Typed against b-fit-api main @ 19b6696e (EV-186c + EV-186a merged; built against the branch
+ * tip 9c3bff69, whose spec differs only by a note on `repairMarks`). Every route below is unregistered (404)
  * while `bfit.coach-ai.routine.enabled` is false, which is the production default, and the
  * portal never calls one unless the routine read's `aiProposals.routine` is literally true.
  *
@@ -1116,8 +1116,8 @@ export interface CoachRoutineAiProposalStartedResponse {
 export type RoutineAiProposalStatus = "NONE" | "RUNNING" | "READY" | "FAILED" | "CANCELLED" | "EXPIRED";
 
 /**
- * One exercise the publish policy WOULD swap or drop in `proposal`, located by weekday and
- * index. A preview (EV-186 P5): the publish modal stays the only binding list.
+ * One exercise the publish policy WOULD swap or drop in `proposal` BECAUSE OF AN INJURY, located
+ * by weekday and index. An equipment or volume repair is in `repairs` with no mark (api spec). A preview (EV-186 P5): the publish modal stays the only binding list.
  * @wire CoachRoutineAiRepairMark
  */
 export interface CoachRoutineAiRepairMark {
