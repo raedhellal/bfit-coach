@@ -149,21 +149,10 @@ export function CatalogPicker({
     setAdded(null);
   }, [open]);
 
-  /**
-   * Escape closes the picker (edge case 14: "pressing Escape after the third keeps all
-   * three"). The kit's `Modal` has no key handling of its own, and adding it there
-   * would change every dialog in the portal in a change whose QA pass is about touch
-   * targets — so it is handled here, for the one dialog a coach now keeps open across
-   * several actions and therefore expects to dismiss with a key.
-   */
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  // Escape closes the picker (edge case 14: "pressing Escape after the third keeps all
+  // three"). Since BUG-171 the kit's `Modal` owns Escape for every dialog; the local
+  // handler EV-190b added here would now call `onClose` a second time, so it is gone.
+  // `onCloseRef` stays: the search's ACCESS_DENIED branch still closes through it.
 
   // Debounced so a five-letter query is one request per pause, not five.
   useEffect(() => {
@@ -218,6 +207,12 @@ export function CatalogPicker({
       onClose={onClose}
       // BUG-699 — every opening starts from an empty query and no filter (the effect above).
       dirty={!unavailable && (q !== "" || muscle !== "" || equipment !== "")}
+      // BUG-171 — orchestrator ruling (BUG-171 staff r2), to be recorded by senior-po on
+      // BUG-171's row: a dirty dialog ignores Escape, but this one opts out. Every pick is
+      // committed to the editor the moment it is made, so Escape loses only the search text and
+      // the filters — view state, not data the coach typed — and edge case 14 ("Escape after the
+      // third keeps all three") holds. The backdrop still follows `dirty` (BUG-699).
+      escapeIgnoresDirty
       title={title}
       icon="search"
       width={560}

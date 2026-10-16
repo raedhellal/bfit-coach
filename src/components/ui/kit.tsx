@@ -9,10 +9,11 @@
 //   · Card uses --r-2xl (24px) with a hairline border, per the Evoli Pro look.
 //   · Button/IconButton accept `title`, `ariaLabel` and `onMouseEnter`-free props only;
 //     no behaviour was invented.
-import { useId } from "react";
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { UiIcon } from "./icons";
 import { useCopy } from "@/lib/i18n/client";
+import { captureOpener, engageModal, type Opener } from "./modalFocus";
 
 type Sx = CSSProperties;
 
@@ -539,6 +540,9 @@ export function Skeleton({ w = "100%", h = 14, r = 7, style = {} }: { w?: number
 }
 
 // ───────────────────────── Modal ─────────────────────────
+/** `useLayoutEffect` in the browser; nothing on the server, where it only warns. */
+const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 export function Modal({
   open,
   onClose,
@@ -550,12 +554,15 @@ export function Modal({
   icon,
   iconTone = "blue",
   dirty,
+  escapeIgnoresDirty = false,
 }: {
   open: boolean;
   onClose: () => void;
   /**
    * BUG-699 — a field in the dialog differs from the value it had when the dialog opened.
-   * A click on the backdrop is then ignored; × and the footer's Cancel still close.
+   * A click on the backdrop is then ignored, and so is Escape (BUG-171: a one-key dismissal is
+   * a stray dismissal too — orchestrator ruling (BUG-171 staff r2), to be recorded by
+   * senior-po on BUG-171's row); × and the footer's Cancel still close.
    *
    * BUG-702 — REQUIRED, with no default. When it was optional and defaulted to `false`, a
    * new dialog with a field whose author forgot it would close on a stray backdrop click
@@ -565,6 +572,14 @@ export function Modal({
    * (TS2741, "Property 'dirty' is missing"), which is the guard.
    */
   dirty: boolean;
+  /**
+   * BUG-171 — Escape closes even when `dirty`. Default false: a changed dialog ignores Escape.
+   * ONLY for a dialog whose `dirty` guards no typed data — where everything the coach did is
+   * already committed and Escape would lose nothing but view state (the catalogue picker: each
+   * pick is added at once; only the search text and filters go). The backdrop click is NOT
+   * affected: it still follows `dirty` (BUG-699), and × and Cancel close as always.
+   */
+  escapeIgnoresDirty?: boolean;
   title: ReactNode;
   sub?: ReactNode;
   children?: ReactNode;
@@ -584,6 +599,32 @@ export function Modal({
    * The hook runs before the `open` guard because hooks may not be conditional.
    */
   const titleId = useId();
+  /**
+   * BUG-171 — the keyboard contract `aria-modal="true"` claims (modalFocus.ts): Escape closes
+   * (through `onClose`, exactly like ×), Tab is trapped, focus moves in on open and returns to
+   * the opener on close. Owned HERE, once, so no dialog implements it for itself.
+   *
+   * The opener is read DURING the render that opens the dialog: by the time any effect runs, a
+   * field's `autoFocus` inside the dialog has already taken focus from it.
+   */
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const wasOpen = useRef(false);
+  const opener = useRef<Opener>([]);
+  if (open && !wasOpen.current) opener.current = captureOpener();
+  wasOpen.current = open;
+  // Read at the moment of the key press, so a `!pending && …` guard or a `dirty` flag is never one
+  // render stale (staff N1): updated in the commit, not in the passive flush after it.
+  const onCloseRef = useRef(onClose);
+  const escapeHeldRef = useRef(dirty && !escapeIgnoresDirty);
+  useCommitEffect(() => {
+    onCloseRef.current = onClose;
+    escapeHeldRef.current = dirty && !escapeIgnoresDirty;
+  });
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!open || !dialog) return;
+    return engageModal(dialog, opener.current, () => onCloseRef.current(), () => escapeHeldRef.current);
+  }, [open]);
   if (!open) return null;
   const tone = {
     blue: ["var(--blue-50)", "var(--blue-600)"],
@@ -607,7 +648,10 @@ export function Modal({
         }}
         style={{ position: "absolute", inset: 0, background: "rgba(16,23,41,0.45)", backdropFilter: "blur(2px)" }}
       />
-      <div role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ position: "relative", width: `min(${width}px, 100vw - 24px)`, maxWidth: "100%", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: "var(--surface)", borderRadius: "var(--r-2xl)", boxShadow: "var(--e-3)", border: "1px solid var(--border)", overflow: "hidden" }}>
+      {/* BUG-171: `tabIndex={-1}` makes the dialog itself the element a click on its own text
+          focuses (rather than `<main>` behind it) and the last resort of the trap; it is never
+          a Tab stop, so it draws no ring. */}
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={{ outline: "none", position: "relative", width: `min(${width}px, 100vw - 24px)`, maxWidth: "100%", maxHeight: "90dvh", display: "flex", flexDirection: "column", background: "var(--surface)", borderRadius: "var(--r-2xl)", boxShadow: "var(--e-3)", border: "1px solid var(--border)", overflow: "hidden" }}>
         <div style={{ padding: "22px 24px 0", flexShrink: 0 }}>
           {/* EV-256e: at 320 px a title as wide as "Use one of my recipes" squeezed the
               Close button to 39 px — a flex item shrinks by default. The title block is
@@ -631,7 +675,7 @@ export function Modal({
             </button>
           </div>
         </div>
-        <div style={{ padding: "18px 24px", overflowY: "auto", flex: "1 1 auto", minHeight: 0 }}>{children}</div>
+        <div data-modal-body="" style={{ padding: "18px 24px", overflowY: "auto", flex: "1 1 auto", minHeight: 0 }}>{children}</div>
         {footer && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 10, background: "var(--surface-2)", flexShrink: 0, flexWrap: "wrap" }}>{footer}</div>}
       </div>
     </div>

@@ -43,7 +43,8 @@ button out of the meal week's head into `NutritionApplyCard` (aside, under the t
   `qa/coach-nutrition-pending-labels.spec.ts` red 4/6 (default config). `NutritionTarget` is
   re-exported from `NutritionTemplateLibrary` for main's EV-356g page.
 - R4's local focus return is `returnFocus`/`buttonWrap` + one `useEffect` in `NutritionApplyCard`;
-  BUG-171's Modal restore makes it a double restore (staff N6): the second to merge removes one.
+  BUG-171's Modal restore made it a redundant restore, removed in BUG-171 (staff N6/N3); G2.1b
+  in `qa/pro-nutrition-apply-card.spec.ts` now witnesses the Modal's restore.
 - `targetsLanded` reads `TARGETS_LANDED: Record<UseOutcomeKind, boolean>` (N1): a new kind is a
   tsc error until classified.
 - Cloud container: Playwright 1.63 wants chromium 1243, only 1194 is installed and downloads

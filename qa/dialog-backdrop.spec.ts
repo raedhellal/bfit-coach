@@ -12,7 +12,7 @@ import { signInThroughForm } from "./sign-in";
  *       every value as typed, the focus where it was, and nothing sent;
  *   (2) nothing differs (never touched, or typed and then erased back) → it closes as today;
  *   (3) × and « Annuler » / Cancel close and discard as today.
- * Escape is out of scope (the kit's `Modal` has no Escape handler).
+ * Escape is out of scope here; since BUG-171 it closes like × (qa/modal-keyboard.spec.ts).
  *
  * The three dialogs the row names: « Nouveau défi » (`CreateChallengeDialog`, built on
  * `useCoachForm`), « Ajouter un client » (`AddClientButton`) and « Enregistrer comme modèle »

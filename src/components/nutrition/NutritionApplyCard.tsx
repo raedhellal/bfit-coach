@@ -4,8 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
-  useRef,
   useState,
   useTransition,
   type ReactNode,
@@ -184,28 +182,18 @@ export function NutritionApplyCard({
   const [using, setUsing] = useState<NutritionTemplate | null>(null);
   // A template chosen before hydration is the one the state holds (BUG-686's class).
   const root = useAdoptPrehydrationInput<HTMLElement>();
-  /** The kit's `Button` takes no ref: its wrapper is how focus finds it again. */
-  const buttonWrap = useRef<HTMLDivElement>(null);
-  /** Set when a dialog opens from this button; focus returns to it once both are closed. */
-  const returnFocus = useRef(false);
 
   // A template deleted elsewhere (another tab, then a revalidation) is no longer offered; the
   // selection falls back to the first option rather than pointing at nothing.
   const chosen = templates?.find((t) => t.id === source) ?? null;
   const value = chosen ? chosen.id : CURRENT_TARGETS;
-  const dialogOpen = scope.weekConfirming || using !== null;
   // F1 (4c348b6): « Application… » only while the week is applied; a regenerate or a swap
   // shares the transition (so the button is disabled), but is not an apply.
   const applying = scope.weekPending && scope.weekRunning?.kind === "apply";
 
-  useEffect(() => {
-    if (dialogOpen || scope.weekPending || !returnFocus.current) return;
-    returnFocus.current = false;
-    buttonWrap.current?.querySelector("button")?.focus();
-  }, [dialogOpen, scope.weekPending]);
-
+  // EV-337g2 R4 (focus back on this button once its dialog closes) is the kit Modal's restore
+  // since BUG-171: it focuses the opener, waiting while the apply keeps it disabled.
   function press() {
-    returnFocus.current = true;
     if (chosen) setUsing(chosen);
     else scope.setWeekConfirming(true);
   }
@@ -255,7 +243,7 @@ export function NutritionApplyCard({
         <p style={{ margin: "12px 0", fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.55 }}>
           {copy.nutrition.applyCost}
         </p>
-        <div ref={buttonWrap}>
+        <div>
           <Button
             icon="refresh"
             onClick={press}
