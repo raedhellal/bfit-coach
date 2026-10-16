@@ -1,15 +1,17 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { ApiError } from "./apiFetch";
 import {
   coachApi,
   type CoachRoutineAiProposalRequest,
   type CoachRoutineAiProposalResponse,
+  type CoachRoutineDraftResponse,
 } from "./coachApi";
 import type { RoutineAiFailure } from "./routineAi";
 
 /**
- * EV-186b — the routine AI panel's writes and its one poll (Keep is EV-186n's), as server actions:
+ * EV-186b / EV-186n — the routine AI panel's writes (start, discard, keep) and its one poll, as server actions:
  * the bearer, the base URL and the paths stay on the server; the island sees these signatures.
  *
  * Each returns a RESULT and never throws, for the same reason as `routineActions.ts`: the
@@ -77,4 +79,33 @@ export async function discardRoutineAiAction(clientId: string): Promise<DiscardR
   } catch (err) {
     return { ok: false, failure: aiFailure(err) };
   }
+}
+
+export type KeepRoutineAiResult =
+  | { ok: true; draft: CoachRoutineDraftResponse }
+  | { ok: false; failure: RoutineAiActionFailure };
+
+/**
+ * « Garder » — `POST …/routine/ai-proposal/keep`. The kept DRAFT comes back as stored; nothing
+ * is published (the trainee's app still shows the old plan).
+ *
+ * Then, best effort, the settled proposal is deleted. The api keeps a kept proposal READY until
+ * it expires (a second Keep of it is `409 COACH_DRAFT_EXISTS`), so without this a reload would
+ * offer the coach the suggestion they just kept, whose only possible outcome is that 409. A
+ * failed delete changes nothing the coach did: the draft is written either way.
+ *
+ * Revalidated like every draft write, so the page's next render carries the kept draft and its
+ * `aiDraftedAt`; the editor re-seeds from THIS response, not from that render.
+ */
+export async function keepRoutineAiAction(clientId: string, proposalId: string): Promise<KeepRoutineAiResult> {
+  let draft: CoachRoutineDraftResponse;
+  try {
+    draft = await coachApi.keepRoutineAiProposal(clientId, { proposalId });
+  } catch (err) {
+    return { ok: false, failure: aiFailure(err) };
+  }
+  await coachApi.discardRoutineAiProposal(clientId).catch(() => undefined);
+  revalidatePath(`/clients/${clientId}/routine`);
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true, draft };
 }

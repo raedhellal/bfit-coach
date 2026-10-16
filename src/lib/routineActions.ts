@@ -140,8 +140,8 @@ export type ReloadResult =
       ok: true;
       /** The live plan, or null when there is none (or it carries no routine document). */
       published: { planId: string | null; planName: string | null; document: Routine } | null;
-      /** The saved draft, or null when there is none. */
-      draft: { document: Routine; updatedAt: string } | null;
+      /** The saved draft, or null when there is none. `aiDraftedAt`: EV-186n's disclosure, null if absent. */
+      draft: { document: Routine; updatedAt: string; aiDraftedAt: string | null } | null;
     }
   | { ok: false; failure: RoutineFailure };
 
@@ -162,7 +162,9 @@ export async function reloadRoutineAction(clientId: string): Promise<ReloadResul
     if (!routine.hasDraft) return { ok: true, published, draft: null };
     const saved = await coachApi.getRoutineDraft(clientId);
     const draft =
-      saved?.document && saved.updatedAt ? { document: saved.document, updatedAt: saved.updatedAt } : null;
+      saved?.document && saved.updatedAt
+        ? { document: saved.document, updatedAt: saved.updatedAt, aiDraftedAt: saved.aiDraftedAt ?? null }
+        : null;
     return { ok: true, published, draft };
   } catch (err) {
     return { ok: false, failure: routineFailure(err) };

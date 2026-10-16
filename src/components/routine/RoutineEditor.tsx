@@ -26,7 +26,14 @@ import {
   reloadRoutineAction,
   saveDraftAction,
 } from "@/lib/routineActions";
-import type { CoachRoutineDraftResponse, PublishPreview, Routine } from "@/lib/coachApi";
+import type {
+  CoachRoutineAiProposalResponse,
+  CoachRoutineDraftResponse,
+  PublishPreview,
+  Routine,
+} from "@/lib/coachApi";
+import { RoutineAiPanel } from "./RoutineAiPanel";
+import { formatInstant } from "@/lib/format";
 import { useAdoptPrehydrationInput } from "@/lib/useAdoptPrehydrationInput";
 
 /**
@@ -78,6 +85,18 @@ export interface SavedRoutineDraft {
   updatedAt: string;
 }
 
+/**
+ * EV-186b/n — what the page read for « Régénérer avec l'IA ». Passed ONLY when the routine read's
+ * `aiProposals.routine` is literally true; null/absent draws nothing (B1).
+ */
+export interface RoutineAiSetup {
+  initial: CoachRoutineAiProposalResponse | null;
+  muscles: string[] | null;
+  firstName: string;
+  injuries: string[];
+  equipment: string[] | null;
+}
+
 /** The 409's two facts: what to echo if the coach confirms, and which press it answered. */
 interface Conflict {
   existingUpdatedAt: string | null;
@@ -96,6 +115,8 @@ export function RoutineEditor({
   profile = null,
   aside = null,
   lead = null,
+  ai = null,
+  initialAiDraftedAt = null,
 }: {
   clientId: string;
   /** For the conflict dialog's overwrite sentence, which names whose draft it replaces. */
@@ -131,6 +152,10 @@ export function RoutineEditor({
    * could not climb past it). `qa/pro-programme-frame.spec.ts` F1.1 goes red on that.
    */
   lead?: ReactNode;
+  /** EV-186b/n — the AI panel's setup; null draws no panel (the capability is false). */
+  ai?: RoutineAiSetup | null;
+  /** EV-186n — the read draft's `aiDraftedAt` (EV-186 AC2's disclosure); null when absent. */
+  initialAiDraftedAt?: string | null;
 }) {
   const copy = useCopy();
   const publishHintId = useId();
@@ -171,6 +196,12 @@ export function RoutineEditor({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const leaving = useUnsavedChanges(dirty);
+  /**
+   * EV-186n — when the current draft was kept from an AI proposal. Set by Keep, survives the
+   * coach's saves (the api keeps it), cleared with the draft (discard, publish), and re-read by
+   * « Load the saved version ».
+   */
+  const [aiDraftedAt, setAiDraftedAt] = useState<string | null>(initialAiDraftedAt);
   /**
    * Bumped whenever the document is REPLACED by one from the server rather than edited:
    * « Load the saved version », Discard, and the re-seed after a publish. It is the `key`
@@ -352,6 +383,7 @@ export function RoutineEditor({
       }
       // AC2: "returns the page to the published plan exactly" — from the server's copy.
       setDiscarding(false);
+      setAiDraftedAt(null);
       setDocument(activePlan?.document ?? null);
       replaced();
       token.current = null;
@@ -396,6 +428,7 @@ export function RoutineEditor({
         return refused(result.failure, "publish", current);
       }
       setPreview(null);
+      setAiDraftedAt(null); // publish deletes the draft row, and copies nothing of it onto the plan
       token.current = null; // publish deletes the draft row
       setIsDraft(false);
       setDirty(false);
@@ -431,7 +464,9 @@ export function RoutineEditor({
         setDocument(editableDocument(null, result.draft.document));
         token.current = result.draft.updatedAt;
         setIsDraft(true);
+        setAiDraftedAt(result.draft.aiDraftedAt);
       } else {
+        setAiDraftedAt(null);
         // Published or discarded in the meantime: the live plan is what there is.
         setDocument(
           result.published ? editableDocument(result.published.planName, result.published.document) : null
@@ -457,11 +492,50 @@ export function RoutineEditor({
     else openPublish(existing);
   }
 
+  /**
+   * EV-186n N3 — Keep landed: the kept DRAFT is the working copy, with the token the api stored
+   * it at. The same re-seed as « Load the saved version »: rows remount (`replaced`), nothing is
+   * outstanding, and the history is handed back. The page's revalidated render carries the same
+   * draft; the re-seed is keyed on the published plan id, so it does not run a second time.
+   */
+  function kept(draft: CoachRoutineDraftResponse) {
+    revision.current += 1;
+    replaced();
+    if (draft.document) setDocument(editableDocument(null, draft.document));
+    token.current = draft.updatedAt ?? token.current;
+    setIsDraft(true);
+    setResolved(true);
+    setDirty(false);
+    setAiDraftedAt(draft.aiDraftedAt ?? new Date().toISOString());
+    setPreview(null);
+    setConflict(null);
+    setNotice(null);
+    setError(null);
+    leaving.release();
+  }
+
+  const aiPanel = ai ? (
+    <RoutineAiPanel
+      clientId={clientId}
+      firstName={ai.firstName}
+      document={document}
+      initial={ai.initial}
+      muscles={ai.muscles}
+      injuries={ai.injuries}
+      equipment={ai.equipment}
+      traineeName={traineeName}
+      hasDraft={isDraft && token.current !== null}
+      dirty={dirty}
+      onKept={kept}
+    />
+  ) : null;
+
   // AC1: no plan and no draft is an empty state with ONE primary control.
   if (!document) {
     return (
       <div className="prog-editor">
         {lead}
+        {aiPanel}
         <ProgrammeFrame profile={profile} aside={aside}>
           <Card>
             <EmptyState
@@ -502,6 +576,7 @@ export function RoutineEditor({
   return (
     <div className="prog-editor" ref={scope}>
       {lead}
+      {aiPanel}
       <ProgrammeFrame profile={profile} aside={aside}>
         <Card style={{ marginBottom: 16 }}>
           <div
@@ -575,6 +650,13 @@ export function RoutineEditor({
                 ))}
               </ul>
             </div>
+          )}
+
+          {/* EV-186 AC2 / EV-186n N3, verbatim: directly beneath the draft header. */}
+          {aiDraftedAt && isDraft && (
+            <p data-testid="routine-ai-drafted" style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-2)" }}>
+              {copy.routineAi.disclosure(formatInstant(aiDraftedAt, copy.locale))}
+            </p>
           )}
 
           {/* EV-188 AC3, verbatim. Present only while the template still exists. */}

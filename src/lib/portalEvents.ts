@@ -67,9 +67,11 @@ export type PortalEvent =
   | { event: "coach_invitation_withdrawn"; outcome: "withdrawn" | "gone" | "throttled" | "unavailable" | "unknown" }
   /**
    * EV-186 Part 2 « Analytics events », portal half: a proposal discarded from the routine panel
-   * (EV-186b) — `kind` only, no free text, no id. `coach_ai_proposal_kept` arrives with Keep (EV-186n).
+   * (EV-186b) — `kind` only, no free text, no id. `coach_ai_proposal_kept` is Keep's (EV-186n).
    */
-  | { event: "coach_ai_proposal_discarded"; kind: "REGENERATE" | "REVISE" };
+  | { event: "coach_ai_proposal_discarded"; kind: "REGENERATE" | "REVISE" }
+  /** EV-186n — a proposal kept into the coach's draft (nothing is published). `kind` only. */
+  | { event: "coach_ai_proposal_kept"; kind: "REGENERATE" | "REVISE" };
 
 export function logPortalEvent(payload: PortalEvent): void {
   if (typeof window === "undefined") return;

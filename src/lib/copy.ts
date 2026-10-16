@@ -1274,6 +1274,8 @@ export const en = {
     /** table: Disclosure after Keep (EV-186 AC2, unchanged). */
     disclosure: (date: string) => `Drafted with AI on ${date}. Review it before you publish — you're the author.`,
     repairMark: (first: string, injury: string) => `Will be swapped at publish: ${mid(first)}'s ${injury}`, // table
+    /** OURS — a repair mark the api sent without an injury: it still says « at publish ». */
+    repairMarkNoInjury: "Will be swapped at publish.",
     instructionInvalid: "This request can't be sent: 500 characters at most, in plain text.", // table
     alreadyRunning: (first: string) => `A suggestion is already being prepared for ${mid(first)}.`, // table
     staleRoutine: (first: string) =>
@@ -1286,6 +1288,47 @@ export const en = {
     unavailable: "AI suggestions are switched off on this server.", // table
     nothingApplied: "The AI found no change to apply for this request. Nothing was changed. Rephrase it or try again.", // table
     busy: "AI suggestions are busy right now. Try again in a minute.", // table
+    /* ── EV-186n: the comparison. All OURS: the story rules its shape (N1), not its words. ── */
+    diffTitle: "What this suggestion changes",
+    diffIdentical: "This suggestion is the same as the current plan.",
+    /** The base the comparison is against, by `baseSource`. */
+    diffAgainstDraft: "Compared with your unpublished draft.",
+    diffAgainstLive: "Compared with the published plan.",
+    diffAgainstNone: "There is no plan yet: every session below is new.",
+    dayHeading: (weekday: string, focus: string) => `${weekday} · ${focus}`,
+    dayAdded: "New session",
+    dayRemoved: "Session removed",
+    dayUnchanged: "Unchanged",
+    focusChanged: (before: string, after: string) => `Focus: ${before} → ${after}`,
+    unchangedDays: (n: number) => (n === 1 ? "1 session unchanged" : `${n} sessions unchanged`),
+    rowAdded: "Added",
+    rowRemoved: "Removed",
+    rowReplaced: "Replaced",
+    rowChanged: "Changed",
+    replacedLine: (before: string, after: string) => `${before} → ${after}`,
+    fieldChange: (label: string, before: string, after: string) => `${label}: ${before} → ${after}`,
+    fieldLabels: {
+      sets: "Sets",
+      reps: "Reps",
+      rest: "Rest",
+      weight: "Weight",
+      tempo: "Tempo",
+      trackingType: "Tracking",
+      durationSeconds: "Seconds",
+      notes: "Notes",
+    },
+    settingLabels: {
+      name: "Plan name",
+      minutesPerSession: "Minutes per session",
+      goal: "Goal",
+      level: "Level",
+    },
+    prescription: (sets: number, reps: string) => `${sets} × ${reps}`,
+    /** OURS — the review's reminder that nothing reaches the trainee from here. */
+    keepHint: "Keep puts this plan in your draft. Nothing reaches the trainee until you publish.",
+    /** OURS — the confirm's title before Keep replaces a draft (the sentence is `templates.replacesDraft`). */
+    keepConfirmTitle: "Replace your draft?",
+    /** OURS — announced while a press is in flight. */
     working: "Working…",
   },
 

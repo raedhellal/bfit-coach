@@ -2,10 +2,10 @@
 
 import { useEffect, useId, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, MIN_TOUCH_TARGET } from "@/components/ui/kit";
+import { Button, Card, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { RoutineAiDiff } from "./RoutineAiDiff";
 import { useCopy } from "@/lib/i18n/client";
 import { muscleLabel } from "@/lib/catalogLabels";
-import { isoWeekdayLabel } from "@/lib/format";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { settled } from "@/lib/settled";
 import {
@@ -22,16 +22,23 @@ import {
   notesLength,
   pollDelayMs,
   routineAiSentence,
+  routineDiff,
   type RoutineAiBriefForm,
   type RoutineAiFailure,
 } from "@/lib/routineAi";
 import {
   discardRoutineAiAction,
+  keepRoutineAiAction,
   readRoutineAiAction,
   startRoutineAiAction,
   type RoutineAiActionFailure,
 } from "@/lib/routineAiActions";
-import type { CoachRoutineAiProposalResponse, Routine } from "@/lib/coachApi";
+import type {
+  CoachRoutineAiProposalRequest,
+  CoachRoutineAiProposalResponse,
+  CoachRoutineDraftResponse,
+  Routine,
+} from "@/lib/coachApi";
 
 /**
  * EV-186b — « Régénérer avec l'IA » on the routine page: the brief, the running state, the
@@ -43,11 +50,12 @@ import type { CoachRoutineAiProposalResponse, Routine } from "@/lib/coachApi";
  * api's GET. A coach who leaves and comes back gets the same proposal, because the page reads
  * it on the server and seeds `initial` from it (B3).
  *
- * NOT in this slice (EV-186n): the per-day comparison, the repair marks, « Garder » and the
- * STALE copy. A READY proposal is shown here as a plain read-only list of its sessions, which
- * is what the STUB banner sits above (B5); nothing in this component can write a draft or a
- * plan. « Modifier avec l'IA » (EV-186f) is not drawn either: the vendored contract's `kind`
- * is REGENERATE only.
+ * EV-186n: a READY proposal is the per-day comparison (`RoutineAiDiff`) with the api's repair
+ * marks; « Garder » keeps it into the coach's DRAFT (never a plan: nothing is published) and the
+ * editor re-seeds from the kept draft (`onKept`). A Keep refused because the draft or the plan
+ * moved (409 COACH_DRAFT_EXISTS / COACH_PROPOSAL_STALE), and an EXPIRED proposal, show their
+ * sentence with « Réessayer », which starts a new Regenerate with the same brief (N4).
+ * « Modifier avec l'IA » (EV-186f) is not drawn: the vendored contract's `kind` is REGENERATE only.
  */
 
 type View =
@@ -55,7 +63,9 @@ type View =
   | { kind: "brief" }
   | { kind: "running"; proposalId: string | null; startedAt: number }
   | { kind: "ready"; proposal: CoachRoutineAiProposalResponse }
-  | { kind: "failed"; code: string };
+  | { kind: "failed"; code: string }
+  /** N4 — Keep was refused because something moved, or the proposal expired. */
+  | { kind: "stale"; code: string };
 
 const FAILED_RESULT: { ok: false; failure: RoutineAiActionFailure } = { ok: false, failure: { code: "FAILED" } };
 
@@ -70,9 +80,9 @@ function viewOf(proposal: CoachRoutineAiProposalResponse | null, now: number): V
       return proposal.proposal ? { kind: "ready", proposal } : { kind: "failed", code: "FAILED" };
     case "FAILED":
       return { kind: "failed", code: proposal.errorCode ?? "FAILED" };
-    // EXPIRED: nothing can be done with it in this slice; EV-186n gives it the STALE sentence.
+    // Edge case 6: past `expiresAt` (24 h) it reads EXPIRED, and Keep would be STALE.
     case "EXPIRED":
-      return { kind: "failed", code: "FAILED" };
+      return { kind: "stale", code: "COACH_PROPOSAL_STALE" };
     default:
       return { kind: "idle" };
   }
@@ -86,6 +96,10 @@ export function RoutineAiPanel({
   muscles,
   injuries,
   equipment,
+  traineeName,
+  hasDraft,
+  dirty,
+  onKept,
 }: {
   clientId: string;
   /** `firstName(traineeDisplayName, locale)` — sentence-initial form; the copy applies `mid()`. */
@@ -100,6 +114,14 @@ export function RoutineAiPanel({
   injuries: string[];
   /** Their equipment as words, or null when they never answered (read-only, never sent). */
   equipment: string[] | null;
+  /** The full display name, for the replace confirm (`templates.replacesDraft`). */
+  traineeName: string;
+  /** A draft exists on the server: Keep replaces it, so it asks first (EV-186 AC2's confirm). */
+  hasDraft: boolean;
+  /** The editor holds unsaved edits: Keep replaces them too, so it asks first. */
+  dirty: boolean;
+  /** Keep landed: the editor takes the kept draft (and its token) from this response. */
+  onKept: (draft: CoachRoutineDraftResponse) => void;
 }) {
   const copy = useCopy();
   const t = copy.routineAi;
@@ -114,6 +136,9 @@ export function RoutineAiPanel({
   /** A spent quota holds « Générer » until the api's Retry-After (the next midnight). */
   const [held, setHeld] = useState<number | null>(null);
   const [hidden, setHidden] = useState(false);
+  /** The brief of the last run this panel started, for N4's « Réessayer » (kept for the session only). */
+  const [lastBrief, setLastBrief] = useState<CoachRoutineAiProposalRequest | null>(null);
+  const [confirmKeep, setConfirmKeep] = useState(false);
   const [pending, startTransition] = useTransition();
   const mounted = useRef(true);
 
@@ -197,14 +222,15 @@ export function RoutineAiPanel({
     return () => clearTimeout(timer);
   }, [held]);
 
-  function generate() {
-    const body = briefRequest(form);
+  function generate(given?: CoachRoutineAiProposalRequest) {
+    const body = given ?? briefRequest(form);
     if (!body) return;
     setNotice(null);
     startTransition(async () => {
       const result = await settled(startRoutineAiAction(clientId, body), FAILED_RESULT);
       if (!mounted.current) return;
       if (result.ok) {
+        setLastBrief(body);
         setView({ kind: "running", proposalId: result.proposalId, startedAt: Date.now() });
         return;
       }
@@ -214,6 +240,41 @@ export function RoutineAiPanel({
         const read = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
         if (read.ok && mounted.current) adopt(read.proposal);
       }
+    });
+  }
+
+  /** N4: a new Regenerate with the same brief; without one in this session, the brief form. */
+  function retry() {
+    setNotice(null);
+    if (lastBrief) return generate(lastBrief);
+    setView({ kind: "brief" });
+  }
+
+  function keep() {
+    if (view.kind !== "ready") return;
+    if (hasDraft || dirty) return setConfirmKeep(true);
+    doKeep();
+  }
+
+  function doKeep() {
+    if (view.kind !== "ready" || !view.proposal.proposalId) return;
+    const proposalId = view.proposal.proposalId;
+    const kind = view.proposal.kind ?? "REGENERATE";
+    setNotice(null);
+    startTransition(async () => {
+      const result = await settled(keepRoutineAiAction(clientId, proposalId), FAILED_RESULT);
+      if (!mounted.current) return;
+      setConfirmKeep(false);
+      if (!result.ok) {
+        const code = result.failure.code;
+        if (code === "ACCESS_DENIED") return accessEnded();
+        if (code === "NOT_FOUND") return setHidden(true);
+        if (code === "COACH_DRAFT_EXISTS" || code === "COACH_PROPOSAL_STALE") return setView({ kind: "stale", code });
+        return refused(result.failure);
+      }
+      logPortalEvent({ event: "coach_ai_proposal_kept", kind });
+      setView({ kind: "idle" });
+      onKept(result.draft);
     });
   }
 
@@ -464,13 +525,7 @@ export function RoutineAiPanel({
               {routineAiSentence({ code: view.code }, firstName, copy)}
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-              <Button
-                onClick={() => {
-                  setNotice(null);
-                  setView({ kind: "brief" });
-                }}
-                disabled={pending}
-              >
+              <Button onClick={retry} disabled={pending}>
                 {t.retry}
               </Button>
               <Button variant="secondary" onClick={discard} disabled={pending}>
@@ -499,8 +554,33 @@ export function RoutineAiPanel({
                 {t.stubBanner}
               </p>
             )}
-            <ProposalSessions document={view.proposal.proposal} />
-            <div style={{ marginTop: 12 }}>
+            <RoutineAiDiff
+              diff={routineDiff(view.proposal.baseDocument ?? null, view.proposal.proposal)}
+              marks={Array.isArray(view.proposal.repairMarks) ? view.proposal.repairMarks : []}
+              baseSource={view.proposal.baseSource}
+              firstName={firstName}
+            />
+            <p style={{ ...noteStyle, color: "var(--ink-3)" }}>{t.keepHint}</p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+              <Button icon="check" onClick={keep} disabled={pending}>
+                {t.keep}
+              </Button>
+              <Button variant="secondary" onClick={discard} disabled={pending}>
+                {t.discard}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {view.kind === "stale" && (
+          <>
+            <p role="alert" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+              {routineAiSentence({ code: view.code }, firstName, copy)}
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+              <Button onClick={retry} disabled={pending}>
+                {t.retry}
+              </Button>
               <Button variant="secondary" onClick={discard} disabled={pending}>
                 {t.discard}
               </Button>
@@ -508,29 +588,28 @@ export function RoutineAiPanel({
           </>
         )}
       </Card>
+      {/* EV-186 AC2's confirm, at the moment the draft is actually replaced (Keep). */}
+      <Modal
+        dirty={false}
+        open={confirmKeep}
+        onClose={() => !pending && setConfirmKeep(false)}
+        title={t.keepConfirmTitle}
+        icon="alert"
+        iconTone="amber"
+        width={440}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmKeep(false)} disabled={pending}>
+              {t.cancel}
+            </Button>
+            <Button onClick={doKeep} disabled={pending}>
+              {t.keep}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5 }}>{copy.templates.replacesDraft(traineeName)}</p>
+      </Modal>
     </section>
-  );
-}
-
-/** The READY proposal, read-only, session by session (EV-186n replaces this with the comparison). */
-function ProposalSessions({ document }: { document: Routine }) {
-  const copy = useCopy();
-  return (
-    <ol data-testid="routine-ai-proposal" style={{ margin: 0, paddingLeft: 0, listStyle: "none", display: "grid", gap: 10 }}>
-      {document.trainingDays.map((day) => (
-        <li key={day.dayOfWeek}>
-          <p style={{ margin: 0, fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>
-            {`${isoWeekdayLabel(day.dayOfWeek, copy.locale)} · ${day.focus}`}
-          </p>
-          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-            {day.exercises.map((ex, index) => (
-              <li key={`${index}-${ex.name}`} style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6 }}>
-                {ex.name}
-              </li>
-            ))}
-          </ul>
-        </li>
-      ))}
-    </ol>
   );
 }

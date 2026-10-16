@@ -19,7 +19,6 @@ import {
   type CoachRoutineAiProposalResponse,
   type CoachRoutineResponse,
 } from "@/lib/coachApi";
-import { RoutineAiPanel } from "@/components/routine/RoutineAiPanel";
 import { routineAiCapability } from "@/lib/routineAi";
 import { readMuscleFacet } from "@/lib/intakeCatalog";
 import { TrialSessionCard, type TrialCardRead } from "@/components/routine/TrialSessionCard";
@@ -107,6 +106,8 @@ export default async function RoutinePage({ params }: { params: { id: string } }
   let unbindableExercises: string[] = [];
   /** EV-188 AC3's "Started from {name}", resolved from the draft's template id. */
   let sourceTemplateName: string | null = null;
+  /** EV-186n — the draft's `aiDraftedAt` (omitted by the api for a draft the model never touched). */
+  let draftAiDraftedAt: string | null = null;
   /**
    * EV-341j — the « Séance d'essai » card's read: `absent` is an api without the route (an
    * older deployment: a 404), and the card is then not drawn at all, rather than claiming a
@@ -203,6 +204,7 @@ export default async function RoutinePage({ params }: { params: { id: string } }
          * Absent reads as "no marks", which under-claims: the coach is shown no
          * warning rather than a warning about a check that never ran.
          */
+        draftAiDraftedAt = draft && typeof saved?.aiDraftedAt === "string" ? saved.aiDraftedAt : null;
         unbindableExercises = Array.isArray(saved?.unbindableExercises)
           ? saved.unbindableExercises
           : [];
@@ -372,24 +374,23 @@ export default async function RoutinePage({ params }: { params: { id: string } }
                   read={trial}
                 />
               )}
-              {/* EV-186b: above both columns, beside the trial card; absent unless the api offers it. */}
-              {ai && (
-                <RoutineAiPanel
-                  clientId={params.id}
-                  firstName={firstName(overview?.traineeDisplayName, copy.locale)}
-                  document={draft?.document ?? activePlan?.document ?? null}
-                  initial={ai.proposal}
-                  muscles={ai.muscles}
-                  injuries={injuryWords}
-                  equipment={
-                    guardrails?.equipmentChecked ? equipmentLabels(guardrails.equipment, copy) : null
-                  }
-                />
-              )}
             </>
           }
           profile={profile}
           aside={aside}
+          // EV-186b/n: drawn by the editor (Keep re-seeds its working copy); null = no panel.
+          ai={
+            ai
+              ? {
+                  initial: ai.proposal,
+                  muscles: ai.muscles,
+                  firstName: firstName(overview?.traineeDisplayName, copy.locale),
+                  injuries: injuryWords,
+                  equipment: guardrails?.equipmentChecked ? equipmentLabels(guardrails.equipment, copy) : null,
+                }
+              : null
+          }
+          initialAiDraftedAt={draftAiDraftedAt}
         />
       )}
     </CoachShell>
