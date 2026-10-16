@@ -5,6 +5,7 @@ import { ClientNotice } from "@/components/client/ClientNotice";
 import { ProfileFacts } from "@/components/client/ProfileFacts";
 import { NutritionTargetsCard } from "@/components/nutrition/NutritionTargetsCard";
 import { NutritionWeekCard } from "@/components/nutrition/NutritionWeekCard";
+import { NutritionApplyCard, NutritionApplyScope } from "@/components/nutrition/NutritionApplyCard";
 import { FoodLogCard } from "@/components/nutrition/FoodLogCard";
 import { TemplateUseOutcome } from "@/components/nutritionTemplates/TemplateUseOutcome";
 import { Card, EmptyState } from "@/components/ui/kit";
@@ -14,6 +15,7 @@ import {
   isForbidden,
   type CoachFoodLogResponse,
   type CoachNutritionResponse,
+  type NutritionTemplate,
 } from "@/lib/coachApi";
 import { readClientOverview, readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
@@ -47,6 +49,17 @@ import { recipePlacementOn } from "@/lib/recipePlacement";
  * 1280 px viewport in that order, targets first; from 1280 the main column on the left and
  * the aside beside it (`.nut-split`, globals.css). The aside comes first in the DOM, so the
  * one-column order is the reading order.
+ *
+ * EV-337g2 — « Appliquer à la semaine » (G2.1): a card in the aside under the targets card,
+ * holding the page's one apply control. Its selector needs the coach's nutrition templates:
+ * the document's FOURTH read (after the overview, the nutrition and the food log; the read
+ * budget in `qa/page-read-budget.spec.ts` lists four), made in the same `allSettled` as the
+ * two NUTRITION reads (it needs nothing they return, so it adds no round trip). So it is made
+ * whenever the overview shows NUTRITION, including when `getNutrition` then answers 403 (the
+ * redirect) or fails (the load-error notice), where no card is drawn. It is the coach's own
+ * library, not the trainee's data, so its failure is its own: the card offers the current
+ * targets alone and says the templates could not be loaded (G2.5); a 403 there is not "the
+ * link ended".
  */
 export const dynamic = "force-dynamic";
 
@@ -79,16 +92,22 @@ export default async function NutritionPage({ params }: { params: { id: string }
    */
   let foodLog: CoachFoodLogResponse | null = null;
   let foodLogFailed = false;
+  /** G2.5 — null when the list could not be read; never collapsed to `[]` ("none" would be false). */
+  let templates: NutritionTemplate[] | null = null;
   if (!overview) {
     message = copy.nutrition.loadError;
   } else if (!hasScope(overview.scopes, "NUTRITION")) {
     // Not called at all: asking for data the trainee withheld is not a no-op.
     message = copy.nutrition.scopeMissing;
   } else {
-    const [nutritionRead, logRead] = await Promise.allSettled([
+    const [nutritionRead, logRead, templatesRead] = await Promise.allSettled([
       coachApi.getNutrition(params.id),
       coachApi.getFoodLog(params.id),
+      coachApi.listNutritionTemplates(),
     ]);
+    if (templatesRead.status === "fulfilled" && Array.isArray(templatesRead.value.templates)) {
+      templates = templatesRead.value.templates;
+    }
     if (nutritionRead.status === "fulfilled") nutrition = nutritionRead.value;
     else if (isForbidden(nutritionRead.reason)) denied = true;
     else message = copy.nutrition.loadError;
@@ -111,8 +130,10 @@ export default async function NutritionPage({ params }: { params: { id: string }
   const nothingSetUp = !!nutrition && nutrition.targets === null && nutrition.week === null;
   /**
    * The read the page draws its cards from, or null when it draws the notice instead. One
-   * value decides both, so the week card (the only « Apply to … » button) and the outcome's
-   * WEEK_FAILED instruction that names it cannot disagree (BUG-718, ruling 718-R1).
+   * value decides both, so the apply card (whose button is the page's only « Apply to … »
+   * control since EV-337g2; the week card's head held it before) and the outcome's WEEK_FAILED
+   * instruction that names it cannot disagree (BUG-718, ruling 718-R1). The card is drawn on
+   * exactly the branch below where `shown` is not null, and nowhere else.
    */
   const shown: CoachNutritionResponse | null = message ? null : nutrition;
 
@@ -132,82 +153,91 @@ export default async function NutritionPage({ params }: { params: { id: string }
         the load-error split (staff review, blocker 1): a landing on the scope sentence or
         the load error still shows and consumes it, rather than leaving it for a later visit.
       */}
-      <TemplateUseOutcome clientId={params.id} trainee={trainee} weekCardDrawn={shown !== null} />
+      <NutritionApplyScope>
+        <TemplateUseOutcome clientId={params.id} trainee={trainee} applyButtonDrawn={shown !== null} />
 
-      {shown === null ? (
-        <ClientNotice
-          message={message ?? copy.nutrition.loadError}
-          // BUG-713: with no overview the header draws no name and no h1 (no avatar either), so
-          // the sentence is the page's one h1. Same predicate as the header's. The tab's h2
-          // above it stays (G1.4): the h2 then precedes the h1, accepted by the BUG-713 pointer.
-          asHeading={!headerHasName(trainee)}
-        />
-      ) : (
-        <>
-          {nothingSetUp && (
-            <Card style={{ marginBottom: 18 }}>
-              <EmptyState
-                icon="apple"
-                title={copy.nutrition.emptyTitle}
-                sub={copy.nutrition.emptyBody}
-              />
-            </Card>
-          )}
-
-          <div className="layout-split nut-split">
-            <div className="nut-aside" data-nut-column="aside">
-              <NutritionTargetsCard
-                clientId={params.id}
-                traineeDisplayName={trainee?.traineeDisplayName ?? null}
-                targets={shown.targets}
-              />
-
-              {/* `data-nut-block`: a named place for a spec to find each block of the frame. */}
-              <div data-nut-block="diet">
-                <ProfileFacts
-                  // EV-337g1-R4 (G1.4a): the tab's h2 is « Nutrition », so the card takes the name the
-                  // routine tab's profile card took for the same reason (EV-337f1): the same key, so the
-                  // two tabs cannot drift apart.
-                  title={copy.routine.profileTitle}
-                  icon="shield"
-                  groups={[
-                    // BUG-694: the app stores its presets' English labels; show them in the page's language.
-                    // BUG-706: the rules are the api's enum, labelled as the app labels them.
-                    {
-                      label: copy.nutrition.allergies,
-                      values: shown.dietProfile.allergies.map((v) => dietValueLabel(copy.nutrition.allergyPresetLabels, v)),
-                    },
-                    {
-                      label: copy.nutrition.rules,
-                      values: shown.dietProfile.rules.map((rule) => dietValueLabel(copy.nutrition.ruleLabels, rule)),
-                    },
-                    {
-                      label: copy.nutrition.dislikes,
-                      values: shown.dietProfile.dislikes.map((v) => dietValueLabel(copy.nutrition.dislikePresetLabels, v)),
-                    },
-                  ]}
-                  emptyAll={copy.nutrition.noRestrictions}
+        {shown === null ? (
+          <ClientNotice
+            message={message ?? copy.nutrition.loadError}
+            // BUG-713: with no overview the header draws no name and no h1 (no avatar either), so
+            // the sentence is the page's one h1. Same predicate as the header's. The tab's h2
+            // above it stays (G1.4): the h2 then precedes the h1, accepted by the BUG-713 pointer.
+            asHeading={!headerHasName(trainee)}
+          />
+        ) : (
+          <>
+            {nothingSetUp && (
+              <Card style={{ marginBottom: 18 }}>
+                <EmptyState
+                  icon="apple"
+                  title={copy.nutrition.emptyTitle}
+                  sub={copy.nutrition.emptyBody}
                 />
-              </div>
-            </div>
-            <div className="nut-main" data-nut-column="main">
-              <div data-nut-block="week">
-                <NutritionWeekCard
+              </Card>
+            )}
+
+            <div className="layout-split nut-split">
+              <div className="nut-aside" data-nut-column="aside">
+                <NutritionTargetsCard
                   clientId={params.id}
                   traineeDisplayName={trainee?.traineeDisplayName ?? null}
-                  week={shown.week}
-                  currentWeekStart={shown.currentWeekStart}
-                  // EV-256e AC1: only a literal `true` — an api that predates the field, or
-                  // sends anything else, hides the action (the production default).
-                  recipePlacementEnabled={recipePlacementOn(shown)}
+                  targets={shown.targets}
                 />
-              </div>
 
-              <FoodLogCard log={foodLog} failed={foodLogFailed || !foodLog} />
+                {/* EV-337g2 G2.1 — under the targets card, in the aside (after it below 1280). */}
+                <NutritionApplyCard
+                  clientId={params.id}
+                  traineeDisplayName={trainee?.traineeDisplayName ?? null}
+                  templates={templates}
+                />
+
+                {/* `data-nut-block`: a named place for a spec to find each block of the frame. */}
+                <div data-nut-block="diet">
+                  <ProfileFacts
+                    // EV-337g1-R4 (G1.4a): the tab's h2 is « Nutrition », so the card takes the name the
+                    // routine tab's profile card took for the same reason (EV-337f1): the same key, so the
+                    // two tabs cannot drift apart.
+                    title={copy.routine.profileTitle}
+                    icon="shield"
+                    groups={[
+                      // BUG-694: the app stores its presets' English labels; show them in the page's language.
+                      // BUG-706: the rules are the api's enum, labelled as the app labels them.
+                      {
+                        label: copy.nutrition.allergies,
+                        values: shown.dietProfile.allergies.map((v) => dietValueLabel(copy.nutrition.allergyPresetLabels, v)),
+                      },
+                      {
+                        label: copy.nutrition.rules,
+                        values: shown.dietProfile.rules.map((rule) => dietValueLabel(copy.nutrition.ruleLabels, rule)),
+                      },
+                      {
+                        label: copy.nutrition.dislikes,
+                        values: shown.dietProfile.dislikes.map((v) => dietValueLabel(copy.nutrition.dislikePresetLabels, v)),
+                      },
+                    ]}
+                    emptyAll={copy.nutrition.noRestrictions}
+                  />
+                </div>
+              </div>
+              <div className="nut-main" data-nut-column="main">
+                <div data-nut-block="week">
+                  <NutritionWeekCard
+                    clientId={params.id}
+                    traineeDisplayName={trainee?.traineeDisplayName ?? null}
+                    week={shown.week}
+                    currentWeekStart={shown.currentWeekStart}
+                    // EV-256e AC1: only a literal `true` — an api that predates the field, or
+                    // sends anything else, hides the action (the production default).
+                    recipePlacementEnabled={recipePlacementOn(shown)}
+                  />
+                </div>
+
+                <FoodLogCard log={foodLog} failed={foodLogFailed || !foodLog} />
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </NutritionApplyScope>
     </CoachShell>
   );
 }

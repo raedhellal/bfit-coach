@@ -744,6 +744,11 @@ export const fr = {
     weekOf: (date: string) => `Semaine du ${date}`,
     apply: (trainee: string) => `Appliquer à ${trainee}`,
     applying: "Application…",
+    // EV-337g2 G2.1, mot pour mot.
+    applyCardTitle: "Appliquer à la semaine",
+    applyFrom: "Construire la semaine à partir de",
+    applyFromTargets: "Ses objectifs actuels",
+    applyCost: "1 application par jour et par client.",
     applyTitle: "Appliquer cette semaine de repas ?",
     applyBody: (trainee: string, weekStart: string) =>
       `Cela remplace la semaine de repas ${de(trainee)} qui commence le ${weekStart}.`,
@@ -1643,6 +1648,15 @@ export const fr = {
     notesCounter: (count: number) => `${n(count)} / ${n(1000)}`,
     notesTooLong: "Trop long\u00a0: 1\u202f000 caractères au maximum.",
     eventLabelTooLong: "Trop long\u00a0: 80 caractères au maximum.",
+    emphasisHint: "Jusqu'à 5.",
+    removeChip: (name: string) => `Retirer ${name}`,
+    exercisesMax: "10 exercices au maximum.",
+    inOtherList: "Déjà dans l'autre liste",
+    droppedFromCatalogue: "(plus dans le catalogue)",
+    /** YP3: « du profil de {prénom} », elided before a vowel (« d'Inès »). */
+    injuryNotHere: (firstName: string) =>
+      `Une blessure ou une douleur ne se note pas ici\u00a0: le programme respecte toujours les blessures du profil ${de(mid(firstName))}.`,
+    clearChoice: "Effacer",
     sections: {
       GOALS: "Objectifs et motivation",
       HISTORY: "Historique sportif",
@@ -1667,6 +1681,10 @@ export const fr = {
       workActivity: "Activité au travail",
       sleepHours: "Sommeil par nuit",
       stressScore: "Stress",
+      emphasis: "Groupes musculaires à privilégier",
+      likedExercises: "Exercices appréciés",
+      avoidedExercises: "Exercices à éviter",
+      splitPreference: "Répartition des séances",
       notes: "Notes",
     } as Record<string, string>,
     values: {
@@ -1721,6 +1739,12 @@ export const fr = {
         PHYSICAL: "Travail physique",
       },
       sleepHours: { LT_6: "Moins de 6 h", H6_7: "6 à 7 h", H7_8: "7 à 8 h", GT_8: "Plus de 8 h" },
+      splitPreference: {
+        FULL_BODY: "Corps entier",
+        UPPER_LOWER: "Haut / bas du corps",
+        PUSH_PULL_LEGS: "Poussée / tirage / jambes",
+        NO_PREFERENCE: "Pas de préférence",
+      },
     } as Record<string, Record<string, string>>,
     minutes: (value: number) => `${value}\u00a0min`,
   },

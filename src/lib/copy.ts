@@ -1383,6 +1383,16 @@ export const en = {
     weekOf: (date: string) => `Week of ${date}`,
     apply: (trainee: string) => `Apply to ${trainee}`, // AC3, verbatim
     applying: "Applying…",
+    /**
+     * EV-337g2 G2.1, verbatim — the apply card in the aside: its title, the selector's label and
+     * first option, and the cost sentence shown before any click (ruling 17: the static
+     * sentence, never « Déjà appliqué aujourd'hui »). The button keeps `apply` above, and the
+     * template-list read failure reuses `nutritionTemplates.loadError` (G2.5's own words).
+     */
+    applyCardTitle: "Apply to the week",
+    applyFrom: "Build the week from",
+    applyFromTargets: "Their current targets",
+    applyCost: "1 apply per day per client.",
     applyTitle: "Apply this meal week?",
     /** AC3: the dialog names the trainee AND the week start. */
     applyBody: (trainee: string, weekStart: string) =>
@@ -2925,6 +2935,21 @@ export const en = {
     notesTooLong: "Too long: 1,000 characters at most.",
     /** B16a, verbatim (R4): GOALS' event over 80 code points. */
     eventLabelTooLong: "Too long: 80 characters at most.",
+    /** EV-341y2 YP1, verbatim: the muscle groups' helper, wired to the group. */
+    emphasisHint: "Up to 5.",
+    /** EV-341y2 YP2 / YP6b, verbatim: a chip's remove button (the exercise name, or the muscle as shown). */
+    removeChip: (name: string) => `Remove ${name}`,
+    /** EV-341y2 YP2, verbatim: a list holds 10. */
+    exercisesMax: "10 exercises at most.",
+    /** EV-341y2 YP2, verbatim: a search row already in the other list. */
+    inOtherList: "Already in the other list",
+    /** EV-341y2 YP6 / YP6b, verbatim: after a stored value the catalogue no longer has. */
+    droppedFromCatalogue: "(no longer in the catalogue)",
+    /** EV-341y2 YP3, verbatim. Mid-sentence. */
+    injuryNotHere: (firstName: string) =>
+      `Don't record an injury or pain here: the plan always respects the injuries in ${mid(firstName)}'s profile.`,
+    /** EV-341y2 YP4, verbatim: undo the split choice. */
+    clearChoice: "Clear",
     sections: {
       GOALS: "Goals and motivation",
       HISTORY: "Training history",
@@ -2950,6 +2975,11 @@ export const en = {
       workActivity: "Activity at work",
       sleepHours: "Sleep per night",
       stressScore: "Stress",
+      // EV-341y2, verbatim (YP1, YP2, YP4).
+      emphasis: "Muscle groups to emphasise",
+      likedExercises: "Liked exercises",
+      avoidedExercises: "Exercises to avoid",
+      splitPreference: "Session split",
       notes: "Notes",
     } as Record<string, string>,
     /** The catalogue's values, per field. */
@@ -3005,6 +3035,13 @@ export const en = {
         PHYSICAL: "Physical work",
       },
       sleepHours: { LT_6: "Less than 6 h", H6_7: "6 to 7 h", H7_8: "7 to 8 h", GT_8: "More than 8 h" },
+      // EV-341y2 YP4, verbatim (the same words as EV-341y3's read in the app).
+      splitPreference: {
+        FULL_BODY: "Full body",
+        UPPER_LOWER: "Upper / lower body",
+        PUSH_PULL_LEGS: "Push / pull / legs",
+        NO_PREFERENCE: "No preference",
+      },
     } as Record<string, Record<string, string>>,
     /** EV-341r R4's unit: a session length option (U+00A0 keeps the number with its unit). */
     minutes: (value: number) => `${value}\u00a0min`,

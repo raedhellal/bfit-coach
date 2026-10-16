@@ -1531,6 +1531,15 @@ export interface CatalogPage {
   equipment: string[];
 }
 
+/**
+ * EV-341y2 — `page` (from 0) and `size` (1–50, the api's clamp) of the catalogue search. Absent,
+ * the api answers its default first page of 20.
+ */
+export interface CatalogPaging {
+  page: number;
+  size: number;
+}
+
 // ── EV-185b: the nutrition contract (PROVISIONAL) ───────────────────────────
 
 /**
@@ -2954,7 +2963,11 @@ export type CoachIntakeSectionName = (typeof INTAKE_SECTION_NAMES)[number];
 
 /**
  * Section 1's values (`GOALS`). Every field is optional on the wire (null or `[]` when unanswered).
- * `emphasis` (EV-341y1) is not in the vendored spec and not built here (EV-341y2's).
+ *
+ * `emphasis` (EV-341y1 Y1, api `443ac5d8`): at most 5 values, each EXACTLY a value of the
+ * `muscles` facet of `GET /coach-portal/catalog/exercises` (case and spaces count), in the
+ * coach's order. A value already stored is accepted again even when the facet has dropped it
+ * (Y1b), so the portal sends a stored value back unchanged (EV-341y2 YP6b).
  *
  * @wire CoachIntakeGoals
  */
@@ -2964,11 +2977,17 @@ export interface CoachIntakeGoals {
   motivationScore?: number | null;
   eventLabel?: string | null;
   eventDate?: string | null;
+  emphasis?: string[];
   notes?: string | null;
 }
 
 /**
- * Section 2's values (`HISTORY`). `likedExercises` / `avoidedExercises` are EV-341y2's.
+ * Section 2's values (`HISTORY`).
+ *
+ * `likedExercises` / `avoidedExercises` (EV-341y1 Y2): at most 10 each, each EXACTLY an item
+ * `name` of `GET /coach-portal/catalog/exercises`, never typed; no name in both lists (refused
+ * naming `avoidedExercises`). A name already stored in the same list is accepted again even when
+ * the catalogue has dropped it (EV-341y2 YP6).
  *
  * @wire CoachIntakeHistory
  */
@@ -2977,11 +2996,17 @@ export interface CoachIntakeHistory {
   trainingAge?: string | null;
   currentSessionsPerWeek?: number | null;
   activities?: string[];
+  likedExercises?: string[];
+  avoidedExercises?: string[];
   notes?: string | null;
 }
 
+/** EV-341y1 Y3: `SplitPreference`, the intake's split (section 3). */
+export type SplitPreference = "FULL_BODY" | "UPPER_LOWER" | "PUSH_PULL_LEGS" | "NO_PREFERENCE";
+
 /**
- * Section 3's values (`AVAILABILITY`). `splitPreference` is EV-341y2's.
+ * Section 3's values (`AVAILABILITY`). No equipment field, on purpose (EV-341 ruling 4): the
+ * trainee's stored equipment is shown read-only beside it (B10, EV-341y2 YP7).
  *
  * @wire CoachIntakeAvailability
  */
@@ -2991,6 +3016,7 @@ export interface CoachIntakeAvailability {
   availableDays?: string[];
   timeOfDay?: string | null;
   trainingPlaces?: string[];
+  splitPreference?: SplitPreference | null;
   notes?: string | null;
 }
 
@@ -3245,8 +3271,13 @@ const liveCoachApi = {
       body: JSON.stringify({ digest }),
     });
   },
-  searchCatalog(q: string, muscle: string, equipment: string): Promise<CatalogPage> {
+  searchCatalog(q: string, muscle: string, equipment: string, paging?: CatalogPaging): Promise<CatalogPage> {
     const query = new URLSearchParams({ q, muscle, equipment });
+    // EV-341y2: only the intake's name check pages (`intakeCatalog.ts`); the picker never does.
+    if (paging) {
+      query.set("page", String(paging.page));
+      query.set("size", String(paging.size));
+    }
     return apiFetch<CatalogPage>(`/coach-portal/catalog/exercises?${query.toString()}`);
   },
 

@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Card, CardHead, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
+import { Badge, Button, Card, CardHead, Modal } from "@/components/ui/kit";
 import {
   readLibrary,
   SuggestionRow,
   SwapSheet,
   type SwapSheetTarget,
 } from "@/components/nutrition/SwapSheet";
+import { useApplyScope } from "@/components/nutrition/NutritionApplyCard";
 import { useCopy } from "@/lib/i18n/client";
 import { fullNameOf } from "@/lib/traineeName";
 import { firstName, formatDate, formatWeekday, truncateName } from "@/lib/format";
@@ -22,17 +23,6 @@ import { settled } from "@/lib/settled";
 import { logPortalEvent } from "@/lib/portalEvents";
 import { hasEngineMeal, recipeShare } from "@/lib/recipeShare";
 import type { MealWeekView, PlannedMealView, SwapCandidate } from "@/lib/coachApi";
-import type { Copy } from "@/lib/copy";
-
-/**
- * The week's apply button label, "Apply to Inès Roux" — exported because a sentence
- * elsewhere on the page sends the coach to this button by name (`TemplateUseOutcome`,
- * PB-5), and must quote it exactly as it is labelled here.
- */
-export function weekApplyLabel(copy: Copy, traineeDisplayName: string | null): string {
-  // BUG-714: a trainee with no name is "Apply to Unnamed client".
-  return copy.nutrition.apply(truncateName(fullNameOf(traineeDisplayName, copy)));
-}
 
 /**
  * EV-256e AC5's n: this week's meals placed from a coach recipe that the trainee has
@@ -95,13 +85,6 @@ function RefusalBlock({ testId, lines }: { testId: string; lines: [string, ...st
   );
 }
 
-/** What the card's one transition is running (see `running` in the card). */
-type RunningAction =
-  | { kind: "apply" }
-  | { kind: "regenerate"; index: number }
-  | { kind: "swapOptions" }
-  | { kind: "swap" };
-
 /**
  * EV-185b AC3 — the meal week.
  *
@@ -111,6 +94,12 @@ type RunningAction =
  * a staging copy is EV-092's work. So the control is "Apply to {trainee}", the confirm
  * dialog names the trainee and the week start, and it says — in the story's words —
  * that the trainee sees it straight away. Because they do.
+ *
+ * EV-337g2 G2.1: that control is no longer in this card's head. It is the button of
+ * `NutritionApplyCard` in the aside, the page's one apply control. Everything it opens and
+ * everything its answer draws is still here (G2.2, "as at a862698"): the dialog, `applyWeek`,
+ * the error line, `week-generating`, the refusal block. The dialog's open state and this
+ * card's transition are read from `useApplyScope()`, which both cards share.
  *
  * `weekStart` is always the api's `currentWeekStart`, echoed, never computed in the
  * browser: a Monday derived here would disagree with the server's for anyone whose
@@ -156,7 +145,17 @@ export function NutritionWeekCard({
    * week", and a re-fetch the card ignores is no re-fetch.
    */
   const [seenInitial, setSeenInitial] = useState<MealWeekView | null>(initialWeek);
-  const [confirming, setConfirming] = useState(false);
+  // EV-337g2: the apply card's button opens this dialog, and is busy while this card is.
+  const {
+    weekConfirming: confirming,
+    setWeekConfirming: setConfirming,
+    weekPending: pending,
+    startWeekTransition: startTransition,
+    weekRunning: running,
+    setWeekRunning: setRunning,
+    weekApplied,
+    clearOutcome,
+  } = useApplyScope();
   const [swapping, setSwapping] = useState<{ mealId: string; mealName: string } | null>(null);
   /**
    * EV-272 — the flag-on sheet's meal. Separate from `swapping` (the flag-off sheet) and
@@ -193,10 +192,9 @@ export function NutritionWeekCard({
    * Replaced by the next apply's answer, and cleared by any write that succeeds.
    */
   const [weekGenerating, setWeekGenerating] = useState(false);
-  const [pending, startTransition] = useTransition();
   /**
-   * Which write (or read) the ONE transition above is running. `pending` alone cannot say:
-   * every action on this card shares it, so the Apply button used to read « Application… »
+   * Which write (or read) the ONE transition (`pending`, from the scope above) is running.
+   * `pending` alone cannot say: every action on this card shares it, so the Apply button used to read « Application… »
    * during a day regenerate and a swap — a whole-week apply the coach had not started
    * (fluidity batch 1, F1). Set in the click, before the transition starts, and read only
    * together with `pending`, so it never needs clearing: a finished action's tag is inert.
@@ -204,9 +202,11 @@ export function NutritionWeekCard({
    * One transition, not one per kind: every control stays disabled while anything runs
    * (router actions run one at a time, `action-queue.js`), and a single `pending` is what
    * makes that true without four flags to keep in step.
+   *
+   * EV-337g2: the transition and this tag live in `useApplyScope()`, because the apply card's
+   * button (no longer in this card's head) reads both: « Application… » only while the week
+   * is applied, disabled while anything runs. Here only the regenerating day reads it.
    */
-  const [running, setRunning] = useState<RunningAction | null>(null);
-  const applying = pending && running?.kind === "apply";
   const regeneratingIndex = pending && running?.kind === "regenerate" ? running.index : null;
   // Below the refusal state on purpose: it clears them, so it must run after they exist.
   if (initialWeek !== seenInitial) {
@@ -217,6 +217,23 @@ export function NutritionWeekCard({
     setWeekRefused(false);
     setDayRefused(null);
     setWeekGenerating(false);
+  }
+  /**
+   * EV-337g2 G2.3 — a template applied from the apply card wrote a week (its WEEK step landed).
+   * Its week reaches this card as the new `week` prop (the write revalidated the page); what the
+   * prop cannot carry is this card's own memory of earlier answers. A successful apply here
+   * clears them (`applyWeek` below), and the template's week apply is the same api call
+   * (`applyMealWeek`), so it clears the same: no error line, no refusal, no generating line,
+   * and no cap line (`applyWeek`'s reason: the apply writes the counter back to zero).
+   */
+  const [seenApplied, setSeenApplied] = useState(weekApplied);
+  if (weekApplied !== seenApplied) {
+    setSeenApplied(weekApplied);
+    setError(null);
+    setWeekRefused(false);
+    setDayRefused(null);
+    setWeekGenerating(false);
+    setRegenCapped(false);
   }
 
   // The full name (or "Unnamed client", BUG-714) for the sentences that name the trainee in
@@ -261,6 +278,10 @@ export function NutritionWeekCard({
         code: "NO_ANSWER",
       } as const);
       setConfirming(false);
+      // EV-337g2-R2 (G2.3d): an apply attempt answered, so a template outcome above the page
+      // (in-page or the library's landing) no longer describes the week. Whatever this answer
+      // says is drawn here, in the week card.
+      clearOutcome();
       // Each apply's answer replaces the last one's: only the branch below sets it again.
       setWeekGenerating(false);
       if (!result.ok) {
@@ -443,29 +464,7 @@ export function NutritionWeekCard({
         title={copy.nutrition.weekTitle}
         icon="calendar"
         sub={copy.nutrition.weekOf(formatDate(week?.weekStart ?? currentWeekStart, copy.locale))}
-        // BUG-252's second leaf: "Appliquer à Lina M." is a nowrap button that pushed the
-        // page 17 px sideways at 320 px in French once the activity badge stopped doing so.
-        // The head wraps, so the button drops under the title when the two do not fit, and
-        // the label may wrap inside the button: a 40-character name ("Apply to …", 393 px)
-        // overflowed every phone width even on a line of its own. Height stays >= 44 px.
-        style={{ flexWrap: "wrap" }}
-        action={
-          <Button
-            icon="refresh"
-            onClick={() => setConfirming(true)}
-            disabled={pending}
-            style={{
-              whiteSpace: "normal",
-              height: "auto",
-              minHeight: MIN_TOUCH_TARGET,
-              maxWidth: "100%",
-              paddingTop: 6,
-              paddingBottom: 6,
-            }}
-          >
-            {applying ? copy.nutrition.applying : weekApplyLabel(copy, traineeDisplayName)}
-          </Button>
-        }
+        // EV-337g2 G2.1: no apply button here any more; it is `NutritionApplyCard`'s.
       />
 
       {/*

@@ -15,6 +15,7 @@ import type {
   CatalogExercise,
   CoachAccessScope,
   FiredRedFlag,
+  CatalogPaging,
   CatalogPage,
   ClientOverview,
   CoachApi,
@@ -2210,6 +2211,43 @@ const CATALOG: CatalogExercise[] = [
 function targetMuscle(entry: CatalogExercise): string | null {
   const first = entry.primaryMuscles?.split(",")[0]?.trim();
   return first ? first : null;
+}
+
+/**
+ * EV-341y2 — the catalogue as THIS request's browser context sees it. Two fixture-only switches
+ * stand in for a catalogue re-sync that drops rows (EV-341y1 Y1b / Y2's "kept on re-save"), each
+ * a `|`-separated, URI-encoded list:
+ *   `evoli_fixture_catalog_drop_muscle=calves`        → every row whose TARGET muscle is one of
+ *       these is gone, so the `muscles` facet (`distinctTargetMuscles`) no longer has it (YP6b);
+ *   `evoli_fixture_catalog_drop_exercise=Goblet%20Squat` → these rows are gone by exact name (YP6).
+ * `evoli_fixture_catalog=down` answers the search `503 CATALOG_UNAVAILABLE` (the routine page's
+ * Omar outage, reachable without visiting his routine).
+ *
+ * The intake's save checks against the SAME rows (`fixtureSaveIntakeSection`), as the api's
+ * `unknownEmphasis` / `existingNames` read the catalogue the search serves.
+ */
+async function fixtureSwitchList(name: string): Promise<string[]> {
+  const raw = await fixtureSwitch(name);
+  if (!raw) return [];
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    /* a raw value is its own list */
+  }
+  return decoded.split("|").filter((v) => v !== "");
+}
+
+async function fixtureCatalogRows(): Promise<CatalogExercise[]> {
+  const droppedMuscles = await fixtureSwitchList("evoli_fixture_catalog_drop_muscle");
+  const droppedNames = await fixtureSwitchList("evoli_fixture_catalog_drop_exercise");
+  if (droppedMuscles.length === 0 && droppedNames.length === 0) return CATALOG;
+  return CATALOG.filter((e) => !droppedNames.includes(e.name) && !droppedMuscles.includes(targetMuscle(e) ?? ""));
+}
+
+/** `ExerciseSearchService.targetMuscles()`: the distinct target muscles of the rows, sorted. */
+function fixtureMuscleFacet(rows: readonly CatalogExercise[]): string[] {
+  return Array.from(new Set(rows.map(targetMuscle).filter((m): m is string => !!m))).sort();
 }
 
 function catalogBySlug(slug: string): CatalogExercise | undefined {
@@ -6322,6 +6360,8 @@ export function fixtureIntakeAnswer(id: string, answer: "grant" | "dismiss" | "e
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-341b — THE INTAKE INTERVIEW, ported from b-fit-api EV-341a @ 8655a2e5
  * (`CoachIntakeUseCase`, `IntakeSectionBody`): one record per link, one version per section.
+ * EV-341y2: and EV-341y1's four fields @ 443ac5d8 (`IntakeCatalogFields`): GOALS `emphasis`,
+ * HISTORY `likedExercises` / `avoidedExercises`, AVAILABILITY `splitPreference`.
  *
  *   · the read's gate is the overview's (`requireManagedLink`); a link without the grant reads
  *     `{ state: "GRANT_MISSING" }` and nothing else (AC6);
@@ -6329,15 +6369,21 @@ export function fixtureIntakeAnswer(id: string, answer: "grant" | "dismiss" | "e
  *   · the body is `{ version, values }`, both required, any other key `400
  *     COACH_FIELD_NOT_ACCEPTED`; each section's fields are checked as the api's reader checks
  *     them (`400 INTAKE_FIELD_INVALID` naming the field, never the value);
- *   · a stale `version` is `409 INTAKE_VERSION_CONFLICT` carrying the stored version and time.
+ *   · a stale `version` is `409 INTAKE_VERSION_CONFLICT` carrying the stored version and time;
+ *   · EV-341y1: each `emphasis` value is exactly a value of the catalogue's `muscles` facet, and
+ *     each exercise name exactly a catalogue `name` — UNLESS already stored in that same field
+ *     at the version the request carries (Y1b / Y2's carry-over). These checks, like the api's,
+ *     run BEFORE the version compare, so a stale version carries nothing over (400, not 409).
+ *     The catalogue is `fixtureCatalogRows()`, the one the search serves (its drop switches).
  *
  * Fixture-only switches (one browser context each), read on the WRITE only:
  *   `evoli_fixture_intake_extra=on`           → the api is AHEAD of this build: GOALS also
- *                                               declares `emphasis` (EV-341y1's field, any list of
- *                                               at most 5 strings), so a spec can store a key the
- *                                               portal does not know and watch it survive a save
- *                                               (staff r1 S3). Read on writes; a read returns what
- *                                               is stored, as the api does;
+ *                                               declares `aheadOfThisBuild` (any list of at most
+ *                                               5 strings), so a spec can store a key the portal
+ *                                               does not know and watch it survive a save (staff
+ *                                               r1 S3). Until EV-341y2 that key was `emphasis`,
+ *                                               which this build now knows. Read on writes; a
+ *                                               read returns what is stored, as the api does;
  *   `evoli_fixture_intake_save=fail`          → every section PUT answers 500 (B4);
  *   `evoli_fixture_intake_save_delay_ms=<ms>` → every section PUT is held <ms> (≤ 15 s) before
  *                                               it is judged, so a save can be caught in flight.
@@ -6364,8 +6410,10 @@ type IntakeFieldRule =
   | { kind: "intIn"; values: readonly number[] }
   | { kind: "text"; max: number }
   | { kind: "date" }
-  /** `evoli_fixture_intake_extra`'s `emphasis`: any strings, distinct, at most `max`. */
-  | { kind: "anyList"; max: number };
+  /** `evoli_fixture_intake_extra`'s `aheadOfThisBuild`: any strings, distinct, at most `max`. */
+  | { kind: "anyList"; max: number }
+  /** EV-341y1 Y1 / Y2: distinct strings, at most `max`, each at most `length` long; the catalogue check follows. */
+  | { kind: "catalogList"; max: number; length: number };
 
 const NOTES_RULE: IntakeFieldRule = { kind: "text", max: 1000 };
 const WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
@@ -6381,6 +6429,7 @@ const INTAKE_RULES: Record<CoachIntakeSectionName, Record<string, IntakeFieldRul
     motivationScore: { kind: "int", min: 1, max: 5 },
     eventLabel: { kind: "text", max: 80 },
     eventDate: { kind: "date" },
+    emphasis: { kind: "catalogList", max: 5, length: 80 },
     notes: NOTES_RULE,
   },
   HISTORY: {
@@ -6388,6 +6437,8 @@ const INTAKE_RULES: Record<CoachIntakeSectionName, Record<string, IntakeFieldRul
     trainingAge: { kind: "one", values: ["NONE", "LT_6M", "M6_24", "Y2_5", "GT_5Y"] },
     currentSessionsPerWeek: { kind: "int", min: 0, max: 14 },
     activities: { kind: "list", values: ACTIVITIES, max: ACTIVITIES.length },
+    likedExercises: { kind: "catalogList", max: 10, length: 160 },
+    avoidedExercises: { kind: "catalogList", max: 10, length: 160 },
     notes: NOTES_RULE,
   },
   AVAILABILITY: {
@@ -6396,6 +6447,7 @@ const INTAKE_RULES: Record<CoachIntakeSectionName, Record<string, IntakeFieldRul
     availableDays: { kind: "list", values: WEEKDAYS, max: WEEKDAYS.length },
     timeOfDay: { kind: "one", values: ["MORNING", "MIDDAY", "EVENING"] },
     trainingPlaces: { kind: "list", values: PLACES, max: PLACES.length },
+    splitPreference: { kind: "one", values: ["FULL_BODY", "UPPER_LOWER", "PUSH_PULL_LEGS", "NO_PREFERENCE"] },
     notes: NOTES_RULE,
   },
   LIFESTYLE: {
@@ -6437,7 +6489,7 @@ function intakeStorable(text: string, max: number): boolean {
 /** One field, judged as the api's reader judges it. Returns the stored value, or throws 400. */
 async function intakeFieldValue(field: string, rule: IntakeFieldRule, raw: unknown): Promise<unknown> {
   const invalid = () => failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field });
-  if (raw === undefined || raw === null) return rule.kind === "list" || rule.kind === "anyList" ? [] : null;
+  if (raw === undefined || raw === null) return isListRule(rule) ? [] : null;
   switch (rule.kind) {
     case "one":
       return typeof raw === "string" && rule.values.includes(raw) ? raw : invalid();
@@ -6454,6 +6506,13 @@ async function intakeFieldValue(field: string, rule: IntakeFieldRule, raw: unkno
       return Array.isArray(raw) && raw.length <= rule.max && raw.every((v) => typeof v === "string") && new Set(raw).size === raw.length
         ? raw
         : invalid();
+    case "catalogList":
+      return Array.isArray(raw) &&
+        raw.length <= rule.max &&
+        raw.every((v) => typeof v === "string" && v.trim() !== "" && Array.from(v).length <= rule.length) &&
+        new Set(raw).size === raw.length
+        ? [...(raw as string[])]
+        : invalid();
     case "int":
       return Number.isInteger(raw) && (raw as number) >= rule.min && (raw as number) <= rule.max ? raw : invalid();
     case "intIn":
@@ -6468,10 +6527,41 @@ async function intakeFieldValue(field: string, rule: IntakeFieldRule, raw: unkno
   }
 }
 
+function isListRule(rule: IntakeFieldRule): boolean {
+  return rule.kind === "list" || rule.kind === "anyList" || rule.kind === "catalogList";
+}
+
 function emptyIntakeValues(section: CoachIntakeSectionName): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const [field, rule] of Object.entries(INTAKE_RULES[section])) out[field] = rule.kind === "list" ? [] : null;
+  for (const [field, rule] of Object.entries(INTAKE_RULES[section])) out[field] = isListRule(rule) ? [] : null;
   return out;
+}
+
+/**
+ * EV-341y1 `IntakeCatalogFields.needs` + `verify`: every value NOT already stored in the same
+ * field (at the version the request carries) must be in the catalogue; refused naming
+ * `emphasis`, then `likedExercises`, then `avoidedExercises`.
+ */
+async function verifyIntakeCatalogFields(
+  section: CoachIntakeSectionName,
+  stored: Record<string, unknown>,
+  carried: Record<string, unknown> | null
+): Promise<void> {
+  const fields =
+    section === "GOALS" ? ["emphasis"] : section === "HISTORY" ? ["likedExercises", "avoidedExercises"] : [];
+  if (fields.length === 0) return;
+  const fresh = (field: string) => {
+    const before = carried && Array.isArray(carried[field]) ? (carried[field] as unknown[]) : [];
+    return ((stored[field] as string[] | undefined) ?? []).filter((v) => !before.includes(v));
+  };
+  if (fields.every((f) => fresh(f).length === 0)) return;
+  const rows = await fixtureCatalogRows();
+  const vocabulary = section === "GOALS" ? fixtureMuscleFacet(rows) : rows.map((r) => r.name);
+  for (const field of fields) {
+    if (fresh(field).some((v) => !vocabulary.includes(v))) {
+      await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field });
+    }
+  }
 }
 
 /** A section PUT as the fixture received it (the request body, re-built), for B5a's witness. */
@@ -6516,8 +6606,13 @@ async function fixtureSaveIntakeSection(
 ): Promise<CoachIntakeSectionSaved> {
   const g = globalThis as GlobalWithIntakePuts;
   (g[INTAKE_PUTS_KEY] ??= []).push({ clientId: id, section, body: structuredClone(body), at: Date.now() });
+  const receivedIn = state();
   const delay = Number(await fixtureSwitch("evoli_fixture_intake_save_delay_ms"));
   if (Number.isFinite(delay) && delay > 0) await new Promise((r) => setTimeout(r, Math.min(delay, 15_000)));
+  // A save held past a reset (EV-223) belongs to the store it was received in, which is gone: it
+  // must not write into the NEXT test's store. Witnessed (EV-341y2): B7's "a save in flight" closes
+  // its page with a PUT held 5 s, and that PUT landed in B7a's fresh store as a GOALS answer.
+  if (state() !== receivedIn) await fail(500, "INTERNAL_ERROR", "Internal error");
   if ((await fixtureSwitch("evoli_fixture_intake_save")) === "fail") {
     await fail(500, "INTERNAL_ERROR", "Internal error");
   }
@@ -6545,7 +6640,7 @@ async function fixtureSaveIntakeSection(
   }
   const rules: Record<string, IntakeFieldRule> =
     section === "GOALS" && (await fixtureSwitch("evoli_fixture_intake_extra")) === "on"
-      ? { ...INTAKE_RULES.GOALS, emphasis: { kind: "anyList", max: 5 } }
+      ? { ...INTAKE_RULES.GOALS, aheadOfThisBuild: { kind: "anyList", max: 5 } }
       : INTAKE_RULES[section];
   for (const key of Object.keys(values as object)) {
     if (!Object.hasOwn(rules, key)) await fail(400, "COACH_FIELD_NOT_ACCEPTED", `Field not accepted: ${key}`);
@@ -6556,6 +6651,15 @@ async function fixtureSaveIntakeSection(
   }
   const current = link!.sections?.[section];
   const currentVersion = current?.version ?? 0;
+  // EV-341y1 Y2: one name never in both lists (`IntakeSectionBody`, before the catalogue).
+  if (section === "HISTORY") {
+    const liked = stored.likedExercises as string[];
+    if ((stored.avoidedExercises as string[]).some((name) => liked.includes(name))) {
+      await failWithDetails(400, "INTAKE_FIELD_INVALID", "Invalid intake field", { field: "avoidedExercises" });
+    }
+  }
+  // Y1b / Y2: carried over only from the row at the version this save replaces.
+  await verifyIntakeCatalogFields(section, stored, version === currentVersion ? (current?.values ?? null) : null);
   if (version !== currentVersion) {
     await failWithDetails(409, "INTAKE_VERSION_CONFLICT", "The section was changed since it was read", {
       version: currentVersion,
@@ -7007,33 +7111,33 @@ export const fixtureCoachApi: CoachApi = {
     };
   },
 
-  async searchCatalog(q: string, muscle: string, equipment: string): Promise<CatalogPage> {
-    if (catalogIsDown()) {
+  async searchCatalog(q: string, muscle: string, equipment: string, paging?: CatalogPaging): Promise<CatalogPage> {
+    if (catalogIsDown() || (await fixtureSwitch("evoli_fixture_catalog")) === "down") {
       await fail(503, "CATALOG_UNAVAILABLE", "Catalog unavailable");
     }
+    const rows = await fixtureCatalogRows();
     const needle = q.trim().toLowerCase();
-    const items = CATALOG.filter(
+    const items = rows.filter(
       (e) =>
         (!needle || e.name.toLowerCase().includes(needle)) &&
         // The api's match: a case-insensitive substring of the whole list (`LIKE %muscle%`).
         (!muscle || (e.primaryMuscles ?? "").toLowerCase().includes(muscle.toLowerCase())) &&
         (!equipment || (e.equipment ?? "") === equipment)
     );
-    // The api's default page size, and the api's ordinary paged envelope — there is no
-    // `truncated` boolean on the wire, so the fixture must not offer one either. "More
-    // matched than were returned" is `totalElements > items.length` (`isTruncated`).
-    const LIMIT = 20;
+    // The api's default page size (20, clamped 1–50), and the api's ordinary paged envelope —
+    // there is no `truncated` boolean on the wire, so the fixture must not offer one either.
+    // "More matched than were returned" is `totalElements > items.length` (`isTruncated`).
+    const size = paging ? Math.min(Math.max(Math.trunc(paging.size), 1), 50) : 20;
+    const page = paging ? Math.max(Math.trunc(paging.page), 0) : 0;
     return {
-      items: items.slice(0, LIMIT),
-      page: 0,
-      size: LIMIT,
+      items: items.slice(page * size, page * size + size),
+      page,
+      size,
       totalElements: items.length,
-      totalPages: items.length === 0 ? 0 : Math.ceil(items.length / LIMIT),
-      muscles: Array.from(
-        new Set(CATALOG.map(targetMuscle).filter((m): m is string => !!m))
-      ).sort(),
+      totalPages: items.length === 0 ? 0 : Math.ceil(items.length / size),
+      muscles: fixtureMuscleFacet(rows),
       equipment: Array.from(
-        new Set(CATALOG.map((e) => e.equipment).filter((m): m is string => !!m))
+        new Set(rows.map((e) => e.equipment).filter((m): m is string => !!m))
       ).sort(),
     };
   },
@@ -7346,7 +7450,17 @@ export const fixtureCoachApi: CoachApi = {
   // ── EV-273b the coach's nutrition template library ────────────────────────
 
   async listNutritionTemplates(): Promise<NutritionTemplateList> {
-    const templates = nutritionTemplatesNewestFirst().map((t) => structuredClone(t));
+    /**
+     * EV-337g2 G2.5 — ⚠ fixture affordance: `evoli_fixture_nutrition_templates` (this browser
+     * context only). `fail`: the read fails as b-fit-api's `handleUnexpected` answers (500
+     * `INTERNAL_ERROR`). `empty`: the list is served with no template, as for a coach who never
+     * made one. Both apply to every read of the list in that context, the library page's too;
+     * the stored templates are untouched, so clearing the cookie serves them again.
+     */
+    const forced = await fixtureSwitch("evoli_fixture_nutrition_templates");
+    if (forced === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+    const templates =
+      forced === "empty" ? [] : nutritionTemplatesNewestFirst().map((t) => structuredClone(t));
     return {
       templates,
       limit: NUTRITION_TEMPLATE_LIMIT,

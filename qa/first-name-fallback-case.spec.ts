@@ -197,6 +197,12 @@ function enRows(): Row[] {
       text: en.intakePage.grantMissingInvited(first),
       expected: "You can save the intake once this trainee has activated their account and allowed the intake in the app.",
     },
+    // EV-341y2 YP3: the injury line under « Exercises to avoid » (same page, same `first`).
+    {
+      key: "intakePage.injuryNotHere",
+      text: en.intakePage.injuryNotHere(first),
+      expected: "Don't record an injury or pain here: the plan always respects the injuries in this trainee's profile.",
+    },
   ];
 }
 
@@ -375,6 +381,11 @@ function frRows(): Row[] {
       text: fr.intakePage.grantMissingInvited(first),
       expected: "L'entretien pourra être enregistré quand ce client aura activé son compte et autorisé l'entretien dans l'app.",
     },
+    {
+      key: "intakePage.injuryNotHere",
+      text: fr.intakePage.injuryNotHere(first),
+      expected: "Une blessure ou une douleur ne se note pas ici : le programme respecte toujours les blessures du profil de ce client.",
+    },
   ];
 }
 
@@ -386,12 +397,13 @@ const FALLBACK = {
 } as const;
 
 /**
- * Every copy function the trace found, by language: 37 keys each (EV-341b: +3, the interview page
+ * Every copy function the trace found, by language: 38 keys each (EV-341y2: +1, YP3's injury line;
+ * EV-341b: +3, the interview page
  * and the invited page's intake sentence; EV-341w: +2, the « Entretien »
  * card; EV-341j: +1, the trial session's withdraw dialog). Pinned, so a row dropped from the table
  * (and with it a call site) fails here rather than going quiet.
  */
-const KEYS = 37;
+const KEYS = 38;
 
 for (const lang of ["en", "fr"] as const) {
   test.describe(`BUG-720 — the fallback's case, sentence by sentence (${lang})`, () => {
@@ -423,4 +435,8 @@ test("a real first name is never lower-cased, and still elides in French", () =>
   expect(en.nutritionTemplates.targetsFailed(firstName("Petra L.", "en"))).toBe("Nothing was changed for Petra. Try again.");
   expect(plain(fr.nutritionTemplates.targetsUpdated(firstName("Inès Roux", "fr")))).toBe("Les objectifs d'Inès sont mis à jour.");
   expect(plain(fr.nutritionTemplates.targetsUpdated(firstName("Ce", "fr")))).toBe("Les objectifs de Ce sont mis à jour.");
+  // EV-341y2 YP3: « du profil de {prénom} » elides too.
+  expect(plain(fr.intakePage.injuryNotHere(firstName("Inès Roux", "fr")))).toBe(
+    "Une blessure ou une douleur ne se note pas ici : le programme respecte toujours les blessures du profil d'Inès."
+  );
 });

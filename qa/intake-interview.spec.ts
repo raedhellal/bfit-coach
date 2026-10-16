@@ -305,7 +305,16 @@ test.describe("B3 autosave", () => {
     expect(put.at - typedAt, "the save left within 1.5 s of the last change").toBeLessThan(1_500 + 400);
     expect(put.body).toEqual({
       version: 0,
-      values: { primaryGoal: null, motivations: [], motivationScore: null, eventLabel: null, eventDate: null, notes: "Runs twice a week" },
+      // EV-341y2: the whole section, `emphasis` included (YP5).
+      values: {
+        primaryGoal: null,
+        motivations: [],
+        motivationScore: null,
+        eventLabel: null,
+        eventDate: null,
+        emphasis: [],
+        notes: "Runs twice a week",
+      },
     });
     await settledSaved(page);
     await page.waitForTimeout(800);
@@ -564,6 +573,7 @@ for (const lang of ["en", "fr"] as const) {
           motivationScore: null,
           eventLabel: null,
           eventDate: null,
+          emphasis: [],
           notes: "Theirs",
         },
       });
@@ -702,7 +712,14 @@ test.describe("B8 fast to fill", () => {
     await press("Tab"); // primaryGoal radio group (one stop)
     expect(await focusedName()).toBe("radio:BUILD_MUSCLE");
     await press("ArrowRight"); // LOSE_WEIGHT
-    await press("Tab"); // motivations: first checkbox
+    // EV-341y2 YP1: the muscle groups, one box per facet value, in label order (Back … Triceps).
+    await press("Tab");
+    expect(await focusedName()).toBe("checkbox:back");
+    for (let i = 0; i < 5; i++) await press("Tab");
+    expect(await focusedName()).toBe("checkbox:glutes");
+    await press("Space");
+    for (let i = 0; i < 5; i++) await press("Tab"); // hamstrings, quads, shoulders, triceps, then:
+    // motivations: first checkbox
     expect(await focusedName()).toBe("checkbox:HEALTH");
     await press("Space"); // HEALTH
     await press("Tab");
@@ -801,6 +818,7 @@ test.describe("B8 fast to fill", () => {
       motivationScore: 4,
       eventLabel: "Semi-marathon",
       eventDate: "2027-06-15",
+      emphasis: ["glutes"],
       notes: "Wants to run in spring.",
     });
     expect(body.sections.HISTORY.values).toEqual({
@@ -808,6 +826,8 @@ test.describe("B8 fast to fill", () => {
       trainingAge: "M6_24",
       currentSessionsPerWeek: 3,
       activities: ["STRENGTH", "RUNNING"],
+      likedExercises: [],
+      avoidedExercises: [],
       notes: null,
     });
     expect(body.sections.AVAILABILITY.values).toEqual({
@@ -816,6 +836,7 @@ test.describe("B8 fast to fill", () => {
       availableDays: ["MONDAY", "WEDNESDAY"],
       timeOfDay: "EVENING",
       trainingPlaces: ["GYM"],
+      splitPreference: null,
       notes: null,
     });
     expect(body.sections.LIFESTYLE.values).toEqual({
@@ -833,6 +854,8 @@ const LABELS = {
   en: {
     GOALS: [
       ["Main goal", ["Build muscle", "Lose fat", "Get stronger", "General fitness", "Endurance"]],
+      // EV-341y2 YP1: the fixture facet, labelled as the day editor's muscle filter, in label order.
+      ["Muscle groups to emphasise", ["Back", "Biceps", "Calves", "Chest", "Core", "Glutes", "Hamstrings", "Quads", "Shoulders", "Triceps"]],
       ["Motivations", ["Health", "Self-confidence", "Appearance", "Sports performance", "Everyday energy", "Preparing for an event"]],
       ["Motivation", ["1", "2", "3", "4", "5"]],
     ],
@@ -843,12 +866,16 @@ const LABELS = {
         "Activities",
         ["Strength training", "Running", "Cycling", "Swimming", "Team sports", "Combat sports", "Yoga / Pilates", "CrossFit / HIIT", "Other"],
       ],
+      // EV-341y2 YP2: picked from the catalogue, so no option of their own (empty lists here).
+      ["Liked exercises", []],
+      ["Exercises to avoid", []],
     ],
     AVAILABILITY: [
       ["Session length", ["30 min", "45 min", "60 min", "75 min", "90 min"]],
       ["Available days", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]],
       ["Preferred time of day", ["Morning", "Midday", "Evening"]],
       ["Training places", ["Gym", "Home", "Outdoors", "Coach's studio"]],
+      ["Session split", ["Full body", "Upper / lower body", "Push / pull / legs", "No preference"]],
     ],
     LIFESTYLE: [
       ["Activity at work", ["Sitting most of the time", "Standing or moving", "Physical work"]],
@@ -859,6 +886,10 @@ const LABELS = {
   fr: {
     GOALS: [
       ["Objectif principal", ["Prendre du muscle", "Perdre du gras", "Gagner en force", "Forme générale", "Endurance"]],
+      [
+        "Groupes musculaires à privilégier",
+        ["Biceps", "Dos", "Épaules", "Fessiers", "Ischio-jambiers", "Mollets", "Pectoraux", "Quadriceps", "Sangle abdominale", "Triceps"],
+      ],
       ["Motivations", ["Santé", "Confiance en soi", "Apparence", "Performance sportive", "Énergie au quotidien", "Préparer un événement"]],
       ["Motivation", ["1", "2", "3", "4", "5"]],
     ],
@@ -869,12 +900,15 @@ const LABELS = {
         "Activités",
         ["Musculation", "Course à pied", "Vélo", "Natation", "Sports collectifs", "Sports de combat", "Yoga / Pilates", "CrossFit / HIIT", "Autre"],
       ],
+      ["Exercices appréciés", []],
+      ["Exercices à éviter", []],
     ],
     AVAILABILITY: [
       ["Durée d'une séance", ["30 min", "45 min", "60 min", "75 min", "90 min"]],
       ["Jours disponibles", ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]],
       ["Moment de la journée", ["Matin", "Midi", "Soir"]],
       ["Lieux d'entraînement", ["Salle de sport", "Maison", "Extérieur", "Studio du coach"]],
+      ["Répartition des séances", ["Corps entier", "Haut / bas du corps", "Poussée / tirage / jambes", "Pas de préférence"]],
     ],
     LIFESTYLE: [
       ["Activité au travail", ["Assis·e la plupart du temps", "Debout ou en mouvement", "Travail physique"]],
@@ -1341,29 +1375,30 @@ for (const lang of ["en", "fr"] as const) {
 // ── Staff round 1 ────────────────────────────────────────────────────────────
 
 test.describe("staff r1 S3: a key the portal does not know is never cleared by its whole-section save", () => {
-  test("a stored unknown key (EV-341y1's emphasis, an api ahead of this build) survives a save, and « Recharger » refreshes it", async ({
+  // EV-341y2: `emphasis` is known now; the fixture's "api ahead of this build" key is `aheadOfThisBuild`.
+  test("a stored unknown key (an api ahead of this build) survives a save, and « Recharger » refreshes it", async ({
     page,
   }) => {
     test.setTimeout(90_000);
     await signIn(page);
     await grant(page);
     await setSwitch(page.context(), page, "evoli_fixture_intake_extra", "on");
-    await putFromElsewhere(page, "GOALS", 0, { primaryGoal: "LOSE_WEIGHT", emphasis: ["glutes"] });
+    await putFromElsewhere(page, "GOALS", 0, { primaryGoal: "LOSE_WEIGHT", aheadOfThisBuild: ["one"] });
     await openIntake(page);
     await tab(page, "GOALS").click();
     await notes(page, "GOALS").fill("Mine");
     await notes(page, "GOALS").press("Tab");
     await settledSaved(page);
     const sent = (await puts(page, "GOALS")).at(-1)!;
-    expect(sent.body.values.emphasis, "sent back as stored").toEqual(["glutes"]);
+    expect(sent.body.values.aheadOfThisBuild, "sent back as stored").toEqual(["one"]);
     expect(sent.body.values.notes).toBe("Mine");
     const read = await page.request.get(`/api/bff/clients/${LINA}/intake`);
-    expect(((await read.json()) as { sections: { GOALS: { values: Record<string, unknown> } } }).sections.GOALS.values.emphasis).toEqual([
-      "glutes",
+    expect(((await read.json()) as { sections: { GOALS: { values: Record<string, unknown> } } }).sections.GOALS.values.aheadOfThisBuild).toEqual([
+      "one",
     ]);
 
     // Another tab changes it; this tab's next save conflicts; « Recharger » takes the new stored keys too.
-    await putFromElsewhere(page, "GOALS", 2, { primaryGoal: "LOSE_WEIGHT", notes: "Mine", emphasis: ["hamstrings"] });
+    await putFromElsewhere(page, "GOALS", 2, { primaryGoal: "LOSE_WEIGHT", notes: "Mine", aheadOfThisBuild: ["two"] });
     await notes(page, "GOALS").fill("Mine, again");
     await notes(page, "GOALS").press("Tab");
     await expect(alertOf(page, "conflict")).toBeVisible();
@@ -1372,7 +1407,7 @@ test.describe("staff r1 S3: a key the portal does not know is never cleared by i
     const before = (await puts(page, "GOALS")).length;
     await panel(page, "GOALS").getByRole("checkbox", { name: "Health", exact: true }).check();
     await waitForPuts(page, "GOALS", before + 1);
-    expect((await puts(page, "GOALS")).at(-1)!.body.values.emphasis, "the stored value after « Recharger »").toEqual(["hamstrings"]);
+    expect((await puts(page, "GOALS")).at(-1)!.body.values.aheadOfThisBuild, "the stored value after « Recharger »").toEqual(["two"]);
   });
 });
 

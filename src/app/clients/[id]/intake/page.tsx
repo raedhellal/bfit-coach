@@ -12,6 +12,7 @@ import { firstName } from "@/lib/format";
 import { equipmentLabels } from "@/lib/guardrailLabels";
 import { getCopy } from "@/lib/i18n/server";
 import { asIntakeStatus, type IntakeStatus } from "@/lib/intakeConsent";
+import { droppedExerciseNames, readMuscleFacet } from "@/lib/intakeCatalog";
 import { INTAKE_FORM_SECTIONS, formFromApi, type IntakeFormSection } from "@/lib/intakeForm";
 import { sessionSubjectTag } from "@/lib/sessionSubject";
 
@@ -29,7 +30,11 @@ import { sessionSubjectTag } from "@/lib/sessionSubject";
  *   · READY and WORKOUTS held: `GET …/routine` for section 3's read-only equipment (B10), the
  *     one read that carries the trainee's stored equipment. Its failure costs that line only;
  *   · GRANT_MISSING and the release hold on: `GET …/intake-consent`, the « Entretien » card's
- *     starting state (B11a: EV-341w's card, mounted here, unchanged).
+ *     starting state (B11a: EV-341w's card, mounted here, unchanged);
+ *   · READY (EV-341y2): the catalogue's `muscles` facet, section 1's emphasis options (YP1), and
+ *     which stored liked / avoided exercise names the catalogue no longer has (YP6),
+ *     `src/lib/intakeCatalog.ts`. A failure there costs the marks and the options only; the
+ *     stored values are still shown, kept and sent back unchanged.
  *
  * B10's other half, « Indiqué dans l'app : {goal} », is NOT drawn: no coach-portal read carries
  * the trainee's PROFILE goal (the routine's goal is the published plan's, and EV-359 is not
@@ -69,9 +74,15 @@ export default async function IntakePage({ params }: { params: { id: string } })
   const ready = read?.state === "READY" && !!read.sections;
   const grantMissing = read?.state === "GRANT_MISSING";
 
-  const [routineRead, consentRead] = await Promise.all([
+  const history = ready ? read!.sections!.HISTORY?.values : undefined;
+  const storedNames = [history?.likedExercises, history?.avoidedExercises].flatMap((list) =>
+    Array.isArray(list) ? list.filter((n): n is string => typeof n === "string") : []
+  );
+  const [routineRead, consentRead, muscleFacet, droppedNames] = await Promise.all([
     ready && overview && hasScope(overview.scopes, "WORKOUTS") ? settle(coachApi.getRoutine(params.id)) : null,
     grantMissing && INTAKE_REQUEST_ENABLED ? settle(coachApi.getIntakeConsent(params.id)) : null,
+    ready ? readMuscleFacet() : null,
+    ready ? droppedExerciseNames(storedNames) : [],
   ]);
   if ((routineRead && !routineRead.ok && routineRead.forbidden) || (consentRead && !consentRead.ok && consentRead.forbidden)) {
     redirect("/clients/denied");
@@ -151,6 +162,8 @@ export default async function IntakePage({ params }: { params: { id: string } })
             initial={initial}
             disabledReasonId={grantMissing ? REASON_ID : undefined}
             equipment={equipment}
+            firstName={first}
+            catalogue={ready ? { muscles: muscleFacet, droppedExercises: droppedNames } : null}
           />
         </>
       )}
