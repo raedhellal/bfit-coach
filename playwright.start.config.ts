@@ -26,6 +26,8 @@ import { defineConfig, devices } from "@playwright/test";
  *     roster read. Its timings are a production build's (a dev server compiles on first hit).
  *   · `library-roster-dropped-load.spec.ts` — QA-S3N-1: a document load whose connection drops
  *     while the roster is pending; the picker's wait ends at its deadline. Starts its own proxy.
+ *   · `routine-ai-panel-chunk-fail.spec.ts` — staff R2-1: an aborted AI-panel chunk costs only the
+ *     panel. It finds the chunk by content, which only a production build splits that way.
  */
 const PORT = process.env.COACH_START_PORT || "3302";
 const BASE_URL = `http://localhost:${PORT}`;
@@ -33,7 +35,7 @@ const START = `npx next start -p ${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked|library-roster-dropped-load)\.spec\.ts/,
+  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked|library-roster-dropped-load|routine-ai-panel-chunk-fail)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249).
   workers: 1,

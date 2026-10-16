@@ -90,8 +90,30 @@ export interface SavedRoutineDraft {
  * only when `ai` is set, i.e. when the capability is true. With the flag off — the production
  * default — the routine page's first-load JS does not carry it (measured on `next build`).
  * SSR stays on (the `next/dynamic` default), so a flag-on page still server-renders the panel.
+ *
+ * Staff R2-1 — a chunk that fails to load (an open tab after a deploy removed its hash) costs
+ * ONLY the panel: the import's rejection is caught here and the panel's place says so, instead
+ * of reaching the route error boundary and taking the editor down with it. React logs a
+ * recoverable hydration mismatch when it swaps the server-drawn panel for this sentence.
+ * Pinned by `qa/routine-ai-panel-chunk-fail.spec.ts`.
  */
-const RoutineAiPanel = dynamic(() => import("./RoutineAiPanel").then((m) => m.RoutineAiPanel));
+function RoutineAiPanelUnavailable(): ReactNode {
+  const copy = useCopy();
+  return (
+    <p
+      role="status"
+      data-testid="routine-ai-panel-unavailable"
+      style={{ margin: "0 0 16px", fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}
+    >
+      {copy.routineAi.panelUnavailable}
+    </p>
+  );
+}
+const RoutineAiPanel = dynamic(() =>
+  import("./RoutineAiPanel")
+    .then((m) => m.RoutineAiPanel)
+    .catch(() => RoutineAiPanelUnavailable),
+);
 
 /**
  * EV-186b/n — what the page read for « Régénérer avec l'IA ». Passed ONLY when the routine read's

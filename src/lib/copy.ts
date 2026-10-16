@@ -1286,6 +1286,11 @@ export const en = {
       `You've used today's 3 AI regenerations for ${mid(first)}. You can still edit by hand, or try again tomorrow.`, // table
     rateLimitCoach: "You've used all of today's AI suggestions across your clients. Try again tomorrow.", // table
     unavailable: "AI suggestions are switched off on this server.", // table
+    /**
+     * OURS (staff R2-1) — the panel's code could not be fetched (an open tab after a deploy
+     * removed its chunk). Not `unavailable`: the server has AI on, and saying otherwise is false.
+     */
+    panelUnavailable: "AI suggestions couldn't load. Reload the page to try again. Your plan is not affected.",
     nothingApplied: "The AI found no change to apply for this request. Nothing was changed. Rephrase it or try again.", // table
     busy: "AI suggestions are busy right now. Try again in a minute.", // table
     /* ── EV-186n: the comparison. All OURS: the story rules its shape (N1), not its words. ── */
