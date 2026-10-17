@@ -53,6 +53,8 @@ export default defineConfig({
   // EV-356g: library-roster-unblocked.spec.ts times paints on a production build and needs the
   // populated roster (playwright.start.config.ts). Its hook's unit tests, roster-read-unit.spec.ts,
   // run HERE.
+  // Staff R2-1: routine-ai-panel-chunk-fail.spec.ts aborts the AI panel's chunk, found by content in
+  // a production build (playwright.start.config.ts).
   // EV-341w N3: intake-hold-off.spec.ts needs a server with COACH_INTAKE_REQUEST unset, which
   // this suite sets (playwright.roster.config.ts leaves it unset).
   // EV-341j: trial-session-roster.spec.ts reads J4's pill on the populated roster (roster config).
@@ -60,7 +62,7 @@ export default defineConfig({
   // (playwright.intake-live.config.ts).
   // pro-nutrition-apply-card.spec.ts (EV-337g2) offers the coach's nutrition templates, which
   // only the populated scenario seeds.
-  testIgnore: /(coach-live|intake-token-expiry\.live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intent-prefetch|client-load-reload|no-auto-prefetch|session-epoch|session-epoch-cookie|library-roster-unblocked|library-roster-dropped-load|intake-hold-off|trial-session-roster|pro-nutrition-apply-card|modal-keyboard-roster)\.spec\.ts/,
+  testIgnore: /(coach-live|intake-token-expiry\.live|coach-add-client\.live|coach-affordance\.live|coach-routine-draft\.live|coach-challenges\.live|coach-nutrition-templates\.live|refresh-single-flight|coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-legacy-api|coach-library-apply|coach-nutrition-templates-apply|coach-activation\.stub|api-timeout\.stub|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intent-prefetch|client-load-reload|no-auto-prefetch|session-epoch|session-epoch-cookie|library-roster-unblocked|library-roster-dropped-load|routine-ai-panel-chunk-fail|intake-hold-off|trial-session-roster|pro-nutrition-apply-card|modal-keyboard-roster)\.spec\.ts/,
   fullyParallel: false,
   /**
    * ONE worker, not one per file.

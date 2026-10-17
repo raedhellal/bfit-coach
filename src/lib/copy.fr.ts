@@ -713,6 +713,9 @@ export const fr = {
     rateLimitCoach:
       "Vous avez utilisé toutes vos suggestions IA du jour, pour l'ensemble de vos clients. Réessayez demain.", // table
     unavailable: "Les suggestions IA sont désactivées sur ce serveur.", // table
+    /** OURS (staff R2-1) — see `en.routineAi.panelUnavailable`. */
+    panelUnavailable:
+      "Les suggestions IA n'ont pas pu se charger. Rechargez la page pour réessayer. Votre programme n'est pas modifié.",
     nothingApplied:
       "L'IA n'a trouvé aucune modification à appliquer pour cette demande. Rien n'a été modifié. Reformulez-la ou réessayez.", // table
     busy: "Les suggestions IA sont très demandées en ce moment. Réessayez dans une minute.", // table
