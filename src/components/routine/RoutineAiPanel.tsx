@@ -450,6 +450,12 @@ export function RoutineAiPanel({
           <p id={painHintId} data-testid="routine-ai-pain-hint" style={{ ...noteStyle, marginTop: 4 }}>
             {t.painHint(firstName)}
           </p>
+          {/* U8: the api revises the SAVED base; unsaved edits never travel, and the coach is told so. */}
+          {dirty && (
+            <p data-testid="routine-ai-unsaved-note" style={{ ...noteStyle, marginTop: 4, color: "var(--warn-ink)" }}>
+              {t.unsavedNote}
+            </p>
+          )}
         </div>
         {/* U1: content chips — each pre-fills its words; pressed while those words are in the box. */}
         <div data-testid="routine-ai-chips" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -490,6 +496,9 @@ export function RoutineAiPanel({
       className="routine-ai"
       data-testid="routine-ai-panel"
       data-ai-state={view.kind}
+      // The id of the proposal on screen (none while idle or composing), so a spec can compare
+      // the DELETE's `proposalId` with exactly this one (EV-186f U9a / EV-377 AC1).
+      data-proposal-id={shownProposal(view).proposalId ?? undefined}
     >
       <Card style={{ marginBottom: 16 }}>
         {view.kind === "idle" ? (

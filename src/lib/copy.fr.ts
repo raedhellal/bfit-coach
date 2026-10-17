@@ -775,6 +775,8 @@ export const fr = {
       `Vous avez utilisé les 10 modifications IA du jour pour ${mid(first)}. Vous pouvez modifier à la main, ou réessayer demain.`, // table
     planEmpty: (first: string) =>
       `${first} n'a pas encore de programme à modifier. Utilisez ${q("Régénérer avec l'IA")}.`, // table
+    unsavedNote:
+      "Vos modifications non enregistrées ne sont pas incluses\u00a0: l'IA part de la dernière version enregistrée.", // table (U8)
   },
 
   nutrition: {

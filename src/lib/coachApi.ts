@@ -2,6 +2,7 @@ import "server-only";
 import { apiFetch, apiGet, apiGetAs, ApiError } from "./apiFetch";
 import { COACH_API_MODE, INVITE_BASE_URL } from "./env";
 import { fixtureCoachApi } from "./coachApi.fixture";
+import { routineAiProposalPath } from "./routineAiDiscard";
 import { journalled } from "./fixtureApiJournal";
 import { sanitiseCoachName } from "./inviteName";
 
@@ -3528,8 +3529,8 @@ const liveCoachApi = {
   async discardRoutineAiProposal(id: string, proposalId?: string | null): Promise<void> {
     // 204, idempotent. EV-376: with `proposalId`, only that proposal is discarded — a run another
     // tab started since is left alone (still 204).
-    const scoped = proposalId ? `?${new URLSearchParams({ proposalId })}` : "";
-    await apiFetch<void>(`${client(id)}/routine/ai-proposal${scoped}`, { method: "DELETE" });
+    // The path is `routineAiProposalPath` (pure, unit-tested: no id → no `?`, EV-377 AC3).
+    await apiFetch<void>(routineAiProposalPath(id, proposalId), { method: "DELETE" });
   },
   keepRoutineAiProposal(id: string, body: CoachRoutineAiKeepRequest): Promise<CoachRoutineDraftResponse> {
     return apiFetch<CoachRoutineDraftResponse>(`${client(id)}/routine/ai-proposal/keep`, {

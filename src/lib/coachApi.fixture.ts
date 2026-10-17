@@ -1,4 +1,5 @@
 import "server-only";
+import { routineAiDiscardOutcome } from "./routineAiDiscard";
 import type {
   CoachTrialSessionRequest,
   RoutineExercise,
@@ -7827,14 +7828,12 @@ export const fixtureCoachApi: CoachApi = {
     }
     await assertScope(id, "WORKOUTS");
     const row = state().aiProposals.get(id);
-    const named = proposalId ? proposalId.toLowerCase() : null;
+    if (row) settleAiProposal(row, Date.now());
     // With an id, only that proposal: another one (a run another tab started since) stays, still 204.
-    const touched = !!row && (named === null || row.proposalId.toLowerCase() === named);
-    recordAiDiscard({ clientId: id, proposalId: proposalId ?? null, touched });
-    if (!row || !touched) return;
-    settleAiProposal(row, Date.now());
-    if (row.status === "RUNNING") row.status = "CANCELLED";
-    else state().aiProposals.delete(id);
+    const outcome = routineAiDiscardOutcome(row ?? null, proposalId);
+    recordAiDiscard({ clientId: id, proposalId: proposalId ?? null, touched: outcome.touched });
+    if (outcome.effect === "cancelled" && row) row.status = "CANCELLED";
+    if (outcome.effect === "deleted") state().aiProposals.delete(id);
   },
 
   async keepRoutineAiProposal(id: string, body: CoachRoutineAiKeepRequest): Promise<CoachRoutineDraftResponse> {

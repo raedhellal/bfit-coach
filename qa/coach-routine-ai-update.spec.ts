@@ -162,6 +162,98 @@ test.describe("U1 — « Update with AI » opens the request box and the four ch
   });
 });
 
+test.describe("U1a — a chip inserts its label verbatim; deleting its words drops it from `chips`", () => {
+  test.beforeEach(async ({ page }) => {
+    await cookie(page, "evoli_fixture_ai_caps", "instruction");
+    await cookie(page, "evoli_pro_locale", "fr");
+    await page.goto(ROUTE(LINA));
+    await page.getByRole("button", { name: "Modifier avec l'IA", exact: true }).click();
+  });
+  const frBox = (page: Page) => box(page).getByRole("textbox");
+  const frChip = (page: Page, name: string) => box(page).getByRole("button", { name, exact: true });
+  const frSend = (page: Page) => box(page).getByRole("button", { name: "Générer" });
+
+  test("« Remplacer un exercice… » in an empty box: exactly its label, 22/500, nothing sent", async ({ page }) => {
+    await frChip(page, "Remplacer un exercice…").click();
+    await expect(frBox(page)).toHaveValue("Remplacer un exercice…");
+    await expect(box(page).getByTestId("routine-ai-update-counter")).toHaveText("22/500");
+    expect((await calls(page)).aiPosts).toEqual([]);
+  });
+
+  test("with the chip's words kept: chips [ADD_CORE] and the instruction is the box exactly", async ({ page }) => {
+    await frBox(page).fill("Rends-le plus dur");
+    await frChip(page, "Ajouter du gainage").click();
+    await expect(frBox(page)).toHaveValue("Rends-le plus dur\nAjouter du gainage");
+    await frChip(page, "Ajouter du gainage").click();
+    await expect(frBox(page)).toHaveValue("Rends-le plus dur\nAjouter du gainage");
+    await frSend(page).click();
+    await expect(panel(page)).not.toHaveAttribute("data-ai-state", "update");
+    const [post] = (await calls(page)).aiPosts;
+    expect(post.chips).toEqual(["ADD_CORE"]);
+    expect(post.instructionLength).toBe("Rends-le plus dur\nAjouter du gainage".length);
+  });
+
+  test("« gainage » deleted before sending: the request has no chips key", async ({ page }) => {
+    await frBox(page).fill("Rends-le plus dur");
+    await frChip(page, "Ajouter du gainage").click();
+    await expect(frChip(page, "Ajouter du gainage")).toHaveAttribute("aria-pressed", "true");
+    await frBox(page).fill("Rends-le plus dur\nAjouter du");
+    await expect(frChip(page, "Ajouter du gainage")).toHaveAttribute("aria-pressed", "false");
+    await frSend(page).click();
+    await expect(panel(page)).not.toHaveAttribute("data-ai-state", "update");
+    const [post] = (await calls(page)).aiPosts;
+    expect(post.bodyKeys).toEqual(["instruction", "kind"]);
+    expect(post.chips).toEqual([]);
+  });
+});
+
+test.describe("U8 — the unsaved edits note, only while the editor has unsaved edits", () => {
+  test.beforeEach(async ({ page }) => {
+    await cookie(page, "evoli_fixture_ai_caps", "instruction");
+  });
+  const NOTE = "Your unsaved changes aren't included: the AI starts from the last saved version.";
+
+  test("absent with nothing unsaved", async ({ page }) => {
+    await openUpdate(page);
+    await expect(request(page)).toBeVisible();
+    await expect(panel(page).getByTestId("routine-ai-unsaved-note")).toHaveCount(0);
+  });
+
+  test("shown with unsaved edits, gone after Save draft; the body stays the plain REVISE", async ({ page }) => {
+    await page.goto(ROUTE(LINA));
+    await page.getByLabel("Plan name").fill("Coach edit, not saved");
+    await updateButton(page).click();
+    await expect(panel(page).getByTestId("routine-ai-unsaved-note")).toHaveText(NOTE);
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/^Draft saved /)).toBeVisible();
+    await expect(panel(page).getByTestId("routine-ai-unsaved-note")).toHaveCount(0);
+    await expect(request(page)).toBeVisible(); // the box stayed open across the save
+
+    // Unsaved again, then send: nothing of the editor travels.
+    await page.getByLabel("Plan name").fill("Another unsaved edit");
+    await expect(panel(page).getByTestId("routine-ai-unsaved-note")).toHaveText(NOTE);
+    await request(page).fill("swap");
+    await send(page).click();
+    await expect(panel(page)).not.toHaveAttribute("data-ai-state", "update");
+    const [post] = (await calls(page)).aiPosts;
+    expect(post.bodyKeys).toEqual(["instruction", "kind"]);
+    expect(post.briefKeys).toEqual([]);
+    expect(post.instructionLength).toBe(4);
+  });
+
+  test("French: « Vos modifications non enregistrées ne sont pas incluses : … »", async ({ page }) => {
+    await cookie(page, "evoli_pro_locale", "fr");
+    await page.goto(ROUTE(LINA));
+    await page.getByLabel("Nom du plan").fill("Modif non enregistrée");
+    await page.getByRole("button", { name: "Modifier avec l'IA", exact: true }).click();
+    const note = panel(page).getByTestId("routine-ai-unsaved-note");
+    await expect(note).toBeVisible();
+    expect(((await note.textContent()) ?? "").replace(NBSP, " ")).toBe(
+      "Vos modifications non enregistrées ne sont pas incluses : l'IA part de la dernière version enregistrée."
+    );
+  });
+});
+
 test.describe("U2 — 500 sends, 501 reads « 501/500 » and cannot; nothing is truncated", () => {
   test.beforeEach(async ({ page }) => {
     await cookie(page, "evoli_fixture_ai_caps", "instruction");
@@ -370,12 +462,23 @@ test.describe("U7 — the placeholder is Raed's swap, and on the stub a swap cha
     );
     await expect(diff.getByTestId("routine-ai-settings")).toHaveCount(0); // N5: no subject-field rows
 
+    await expect(panel(page).getByTestId("routine-ai-ops-rejected")).toHaveCount(0);
+
+    // U9a (EV-377 AC1): Keep's clean-up DELETE names EXACTLY the proposal the panel showed.
+    const shown = await panel(page).getAttribute("data-proposal-id");
+    expect(shown).toMatch(/^[0-9a-f-]{36}$/);
     await panel(page).getByRole("button", { name: "Keep" }).click();
     await expect(page.getByTestId("routine-ai-drafted")).toBeVisible();
     await expect(panel(page)).toHaveAttribute("data-ai-state", "idle");
-    // Keep's clean-up DELETE names the kept proposal (EV-376).
     const { aiDiscards } = await calls(page);
-    expect(aiDiscards.at(-1)?.proposalId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(aiDiscards.at(-1)).toEqual({ clientId: LINA, proposalId: shown, touched: true });
+  });
+
+  test("U7a: « rends-le plus dur » (no swap word) is U5's NOTHING_APPLIED sentence", async ({ page }) => {
+    await cookie(page, "evoli_fixture_ai_caps", "instruction");
+    await openUpdate(page);
+    await sendAndSettle(page, "rends-le plus dur", "failed");
+    await expect(panel(page).getByTestId("routine-ai-failed")).toHaveText(NOTHING_APPLIED);
   });
 });
 

@@ -1349,6 +1349,8 @@ export const en = {
     rateLimitLinkEdit: (first: string) =>
       `You've used today's 10 AI edits for ${mid(first)}. You can still edit by hand, or try again tomorrow.`, // table: 429 scope=link (EDIT)
     planEmpty: (first: string) => `${first} has no programme to change yet. Use “Regenerate with AI”.`, // table: 400 COACH_PLAN_EMPTY on Update
+    /** table: Unsaved edits note (2026-10-17, U8; OURS, signed off by senior-po). Only while the editor has unsaved edits. */
+    unsavedNote: "Your unsaved changes aren't included: the AI starts from the last saved version.",
   },
 
   /**
