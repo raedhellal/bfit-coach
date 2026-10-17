@@ -100,7 +100,7 @@ test.describe("BUG-862 — the read runs Keep's base check", () => {
     }
   });
 
-  test("a normal Keep sends the cleanup DELETE, so a reload reads idle, not stale", async ({ page }) => {
+  test("a normal Keep removes the proposal (BUG-868), so a reload reads idle, not stale", async ({ page }) => {
     await ready(page, LINA);
     await panel(page).getByRole("button", { name: "Keep" }).click();
     await expect(page.getByTestId("routine-ai-drafted")).toBeVisible();
@@ -111,6 +111,7 @@ test.describe("BUG-862 — the read runs Keep's base check", () => {
     await expect(panel(page).getByRole("alert")).toHaveCount(0);
     const { api, aiDiscards } = await calls(page);
     expect(api.some((e) => e.op === "keepRoutineAiProposal" && e.arg === LINA)).toBe(true);
-    expect(aiDiscards.at(-1)).toMatchObject({ clientId: LINA, touched: true });
+    // BUG-868 (api main @ 4f7be130): Keep already removed it, so the cleanup DELETE touches nothing.
+    expect(aiDiscards.at(-1)).toMatchObject({ clientId: LINA, touched: false });
   });
 });

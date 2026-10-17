@@ -96,7 +96,7 @@ test.describe("N3 — « Keep » lands the draft in the editor, discloses it, pu
     await expect(page.getByText("Unsaved changes")).toHaveCount(0);
     await page.reload();
     await expect(page.getByTestId("routine-ai-drafted")).toHaveText(DISCLOSURE);
-    // The kept suggestion is not offered again (the portal deleted the settled proposal).
+    // The kept suggestion is not offered again (Keep removed it, BUG-868).
     await expect(panel(page)).toHaveAttribute("data-ai-state", "idle");
     const { api } = await calls(page);
     expect(api.some((e) => e.op === "keepRoutineAiProposal" && e.arg === LINA)).toBe(true);

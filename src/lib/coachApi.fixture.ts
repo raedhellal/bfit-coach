@@ -1,5 +1,5 @@
 import "server-only";
-import { routineAiDiscardOutcome } from "./routineAiDiscard";
+import { routineAiDiscardOutcome, routineAiKeepRemoves } from "./routineAiDiscard";
 import type {
   CoachTrialSessionRequest,
   RoutineExercise,
@@ -6725,6 +6725,8 @@ async function fixtureSaveIntakeSection(
  *   · RUNNING → READY | FAILED after a delay, settled LAZILY on the next read (no timers in a
  *     fixture: a test reads, the clock decides);
  *   · DELETE: RUNNING → CANCELLED, a settled one deleted, 204 twice;
+ *   · BUG-868 (api main @ 4f7be130): a successful Keep deletes the READY proposal it kept (that
+ *     id only; a newer one is left alone), so the next GET reads NONE and a later Keep is STALE;
  *   · Keep: the draft token captured at creation (never one the portal sends), 409
  *     COACH_DRAFT_EXISTS when the draft moved, 409 COACH_PROPOSAL_STALE when the proposal is
  *     not a current READY one or the live plan moved, `aiDraftedAt` set on the kept draft.
@@ -7903,6 +7905,12 @@ export const fixtureCoachApi: CoachApi = {
     state().pendingDigest.delete(id);
     state().draftTemplate.delete(id); // « clears sourceTemplateId »
     state().aiDraftedAt.set(id, new Date(now).toISOString());
+    // BUG-868 (b-fit-api main @ 4f7be130): the kept proposal is spent; Keep deletes it after the
+    // draft write, by id and only while READY. Re-read after the await above: a Regenerate that
+    // took the slot meanwhile (a new id) survives, exactly as the api's `id = :id` predicate does.
+    // No quota unit is released. So a reload reads NONE even if the portal's cleanup DELETE is lost.
+    const after = state().aiProposals.get(id) ?? null;
+    if (routineAiKeepRemoves(after, current.proposalId)) state().aiProposals.delete(id);
     return draftResponse(id, saved);
   },
 

@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
-import { routineAiDiscardOutcome, routineAiProposalPath } from "../src/lib/routineAiDiscard";
+import { routineAiDiscardOutcome, routineAiKeepRemoves, routineAiProposalPath } from "../src/lib/routineAiDiscard";
 
 /**
  * EV-186f U9 (b) and (c) — EV-377 AC3 and AC6, with no browser and no server.
@@ -50,5 +50,24 @@ test.describe("U9c — the fixture's discard decision (EV-377 AC6)", () => {
     expect(routineAiDiscardOutcome({ proposalId: Q, status: "RUNNING" }, null)).toEqual({ touched: true, effect: "cancelled" });
     expect(routineAiDiscardOutcome(null, P)).toEqual({ touched: false, effect: "none" });
     expect(routineAiDiscardOutcome(null, undefined)).toEqual({ touched: false, effect: "none" });
+  });
+});
+
+test.describe("BUG-868: what a successful Keep removes (b-fit-api main @ 4f7be130)", () => {
+  test("the kept id, still READY, is removed (any case)", () => {
+    expect(routineAiKeepRemoves({ proposalId: P, status: "READY" }, P)).toBe(true);
+    expect(routineAiKeepRemoves({ proposalId: P, status: "READY" }, P.toUpperCase())).toBe(true);
+  });
+
+  test("a different id (a Regenerate's Q took the slot) is left alone, READY or RUNNING", () => {
+    expect(routineAiKeepRemoves({ proposalId: Q, status: "READY" }, P)).toBe(false);
+    expect(routineAiKeepRemoves({ proposalId: Q, status: "RUNNING" }, P)).toBe(false);
+  });
+
+  test("the kept id no longer READY, or no proposal at all: nothing removed", () => {
+    for (const status of ["RUNNING", "FAILED", "CANCELLED"]) {
+      expect(routineAiKeepRemoves({ proposalId: P, status }, P)).toBe(false);
+    }
+    expect(routineAiKeepRemoves(null, P)).toBe(false);
   });
 });
