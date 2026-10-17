@@ -100,12 +100,16 @@ export type KeepRoutineAiResult =
  * « Garder » — `POST …/routine/ai-proposal/keep`. The kept DRAFT comes back as stored; nothing
  * is published (the trainee's app still shows the old plan).
  *
- * Then, best effort, the settled proposal is deleted. The api keeps a kept proposal READY until
- * it expires (a second Keep of it is `409 COACH_DRAFT_EXISTS`), so without this a reload would
- * offer the coach the suggestion they just kept, whose only possible outcome is that 409. A
- * failed delete changes nothing the coach did: the draft is written either way. The delete names
- * THIS proposal (EV-376, staff ruling 1b on EV-186n): a Regenerate another tab started between
- * the Keep and the delete is no longer cancelled by it.
+ * The api's Keep deletes the proposal it kept, in Keep's own transaction (BUG-868, b-fit-api main
+ * @ 4f7be130): after the 200 the next GET reads NONE, and a later Keep of the same id, including
+ * a retry after a lost response, is `409 COACH_PROPOSAL_STALE` (BUG-870, open). Only that id
+ * is deleted, and only while READY. A Regenerate another tab started since keeps its new proposal.
+ *
+ * Then, best effort, the cleanup DELETE below. Against an api with BUG-868 it finds nothing and
+ * answers 204. It is kept for a server without BUG-868 deployed. A failed delete changes nothing the
+ * coach did: the draft is written either way. The delete names THIS proposal (EV-376, staff ruling
+ * 1b on EV-186n): a Regenerate another tab started between the Keep and the delete is not
+ * cancelled by it.
  *
  * Revalidated like every draft write, so the page's next render carries the kept draft and its
  * `aiDraftedAt`; the editor re-seeds from THIS response, not from that render.

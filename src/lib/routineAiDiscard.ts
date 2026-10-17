@@ -38,3 +38,17 @@ export function routineAiDiscardOutcome(
   if (named && current.proposalId.toLowerCase() !== named.toLowerCase()) return { touched: false, effect: "kept" };
   return current.status === "RUNNING" ? { touched: true, effect: "cancelled" } : { touched: true, effect: "deleted" };
 }
+
+/**
+ * BUG-868 (b-fit-api main @ 4f7be130, `CoachAiProposalRepository#deleteKept`): after a successful
+ * Keep wrote the draft, Keep deletes the proposal it kept, in the same transaction, only if the
+ * link's routine proposal is still THAT id and still READY (`WHERE id = :id AND status = 'READY'`).
+ * A row another tab took over since (a Regenerate's new id Q) or discarded is left alone. No quota
+ * unit is given back. `current` is the link's proposal as it stands after the draft write, or null.
+ */
+export function routineAiKeepRemoves(
+  current: { proposalId: string; status: string } | null,
+  kept: string
+): boolean {
+  return !!current && current.status === "READY" && current.proposalId.toLowerCase() === kept.toLowerCase();
+}

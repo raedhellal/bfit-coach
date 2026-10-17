@@ -468,7 +468,8 @@ test.describe("U7 — the placeholder is Raed's swap, and on the stub a swap cha
     await expect(page.getByTestId("routine-ai-drafted")).toBeVisible();
     await expect(panel(page)).toHaveAttribute("data-ai-state", "idle");
     const { aiDiscards } = await calls(page);
-    expect(aiDiscards.at(-1)).toEqual({ clientId: LINA, proposalId: shown, touched: true });
+    // BUG-868: Keep already removed the proposal, so the DELETE names it and touches nothing.
+    expect(aiDiscards.at(-1)).toEqual({ clientId: LINA, proposalId: shown, touched: false });
   });
 
   test("U7a: « rends-le plus dur » (no swap word) is U5's NOTHING_APPLIED sentence", async ({ page }) => {
