@@ -6771,7 +6771,7 @@ interface StoredAiProposal {
   kind: "REGENERATE" | "REVISE";
   /** READY REVISE only: what the stub reviser's ops did (served once READY). */
   ops: CoachRoutineAiProposalOutcome | null;
-  /** EXPIRED is derived on read, from `expiresAt` or the `expired` switch. */
+  /** EXPIRED is derived on read, from `expiresAt`, the `expired` switch, or a moved base (BUG-862). */
   status: "RUNNING" | "READY" | "FAILED" | "CANCELLED";
   engine: "AI" | "STUB";
   baseSource: "DRAFT" | "LIVE" | "NONE";
@@ -7077,6 +7077,38 @@ function settleAiProposal(row: StoredAiProposal, now: number): void {
   }
 }
 
+/**
+ * The status the api reads BEFORE the base check: EXPIRED for ANY status past `expires_at` (24 h),
+ * or a READY one the `expired` switch expires; the row's own status otherwise. Keep gates on this.
+ */
+function aiSettledStatus(row: StoredAiProposal, now: number): CoachRoutineAiProposalResponse["status"] {
+  const expired =
+    now > Date.parse(row.expiresAt) || (row.status === "READY" && row.outcome.kind === "EXPIRED");
+  return expired ? "EXPIRED" : row.status;
+}
+
+/** Why Keep would refuse this proposal's base (D36.4); the api's reason strings. */
+type AiBaseRefusal = "live_plan_changed" | "base_draft_gone" | "draft_exists";
+
+/**
+ * D36.4's base check, ONE definition for Keep and the read — the fixture's mirror of the api's
+ * `liveBaseRefusal` then `draftBaseRefusal` (b-fit-api fix/bug862-proposal-stale-on-read @ 91ce14a7),
+ * in that order. A LIVE or NONE base: the live plan must be unchanged (the api compares plan id +
+ * `selected_at`; the fixture has no `selected_at`, and every publish writes a new plan id), and a
+ * NONE base's livePlanId is null, so "still no plan". Then the draft: a DRAFT base whose draft is
+ * gone is `base_draft_gone`, and any draft whose token is not the captured one (none for a LIVE/NONE
+ * base) is `draft_exists`. Null when Keep would pass. Reads only.
+ */
+function aiBaseRefusal(id: string, row: StoredAiProposal): AiBaseRefusal | null {
+  if (row.baseSource !== "DRAFT" && (state().plans.get(id)?.planId ?? null) !== row.livePlanId) {
+    return "live_plan_changed";
+  }
+  const existing = state().drafts.get(id) ?? null;
+  if (!existing && row.baseSource === "DRAFT") return "base_draft_gone";
+  if ((existing?.updatedAt ?? null) !== row.draftToken) return "draft_exists";
+  return null;
+}
+
 function aiResponse(id: string, row: StoredAiProposal | undefined, now: number): CoachRoutineAiProposalResponse {
   if (!row) {
     return {
@@ -7090,10 +7122,11 @@ function aiResponse(id: string, row: StoredAiProposal | undefined, now: number):
     };
   }
   settleAiProposal(row, now);
-  // The api reads EXPIRED for ANY status past `expires_at` (24 h); the switch expires a READY one.
-  const expired =
-    now > Date.parse(row.expiresAt) || (row.status === "READY" && row.outcome.kind === "EXPIRED");
-  const status = expired ? "EXPIRED" : row.status;
+  const settled = aiSettledStatus(row, now);
+  // BUG-862 (b-fit-api `CoachRoutineUseCase#proposal` @ 91ce14a7): a READY proposal whose base moved
+  // runs Keep's own base check on the read, and reads EXPIRED with COACH_PROPOSAL_STALE (row untouched).
+  const moved = settled === "READY" ? aiBaseRefusal(id, row) : null;
+  const status = moved ? "EXPIRED" : settled;
   const ready = status === "READY";
   const marks = ready ? aiRepairMarks(id, row.proposal) : [];
   return {
@@ -7101,7 +7134,7 @@ function aiResponse(id: string, row: StoredAiProposal | undefined, now: number):
     status,
     kind: row.kind,
     engine: row.engine,
-    errorCode: status === "FAILED" ? row.errorCode : null,
+    errorCode: status === "FAILED" ? row.errorCode : moved ? "COACH_PROPOSAL_STALE" : null,
     baseSource: row.baseSource,
     baseDocument: ready ? row.baseDocument : null,
     proposal: ready ? row.proposal : null,
@@ -7846,20 +7879,21 @@ export const fixtureCoachApi: CoachApi = {
     const now = Date.now();
     const row = state().aiProposals.get(id);
     if (row) settleAiProposal(row, now);
-    const view = aiResponse(id, row, now);
-    if (!row || row.proposalId !== sent.proposalId || view.status !== "READY") {
+    // The status BEFORE the base check (the api's Keep gates on expiry and readability, then runs
+    // the base check itself, so a draft saved since is DRAFT_EXISTS here, not the read's STALE).
+    if (!row || row.proposalId !== sent.proposalId || aiSettledStatus(row, now) !== "READY") {
       await failAi(409, "COACH_PROPOSAL_STALE");
     }
     const current = row as StoredAiProposal;
     const existing = state().drafts.get(id) ?? null;
-    // The api's order (`CoachRoutineUseCase#keepProposal` @ 19b6696e): the live plan's fingerprint
-    // FIRST (the api's is plan id + `selected_at`; the fixture has no `selected_at`, so plan id),
-    // then a DRAFT base that is gone (STALE), then a draft saved since (DRAFT_EXISTS).
-    if (current.baseSource !== "DRAFT" && (state().plans.get(id)?.planId ?? null) !== current.livePlanId) {
+    // The api's order (`CoachRoutineUseCase#keepProposal`): the live plan's fingerprint FIRST, then a
+    // DRAFT base that is gone (STALE), then a draft saved since (DRAFT_EXISTS) — `aiBaseRefusal`,
+    // the same check the read runs (BUG-862).
+    const refusal = aiBaseRefusal(id, current);
+    if (refusal === "live_plan_changed" || refusal === "base_draft_gone") {
       await failAi(409, "COACH_PROPOSAL_STALE");
     }
-    if (!existing && current.baseSource === "DRAFT") await failAi(409, "COACH_PROPOSAL_STALE");
-    if ((existing?.updatedAt ?? null) !== current.draftToken) {
+    if (refusal === "draft_exists") {
       await failAi(409, "COACH_DRAFT_EXISTS", { existingUpdatedAt: existing?.updatedAt ?? null });
     }
     // The draft save's own write: subject fields resolved, both lists stored [].
