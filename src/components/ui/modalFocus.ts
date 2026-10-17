@@ -283,7 +283,7 @@ export function engageModal(
 
   /**
    * BUG-839 — the step change. A dialog that replaces its content while open (trial « Start from
-   * a template » → the day, « Add a client » → « Account set up », « Swap meal » → « Choose … »)
+   * a template » → the day, the add-client form → « Account set up », « Swap meal » → « Choose … »)
    * removes the control that was pressed, and focus falls to `<body>` with no event to catch:
    * `focusin` does not fire for the body. Any change to the dialog's tree is the signal; focus
    * that is then on `<body>` — and still there REGAIN_DELAY_MS later, after the caller's own
