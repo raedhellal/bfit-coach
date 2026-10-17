@@ -12,10 +12,13 @@ import { signInThroughForm } from "./sign-in";
  * refused Discard now says its own sentence (OURS, `routineAi.discardFailed`), and no line equal to
  * the view's own sentence is drawn again.
  *
- * Staff B1 on the first cut: a refused RESTART on a FAILED view (the box's « Generate » again, or
- * « Try again ») is a new event and must be announced. It says its own sentence (OURS,
- * `routineAi.startFailed`) in a NEW role="alert" line; no press line is ever dropped because its words
- * equal the view's (that dedupe made the second failure silent: staff's probe `silent.spec.ts`).
+ * Staff B1 on the first cut: a RESTART on a FAILED view (the box's « Generate » again, or « Try
+ * again ») that does not land is a new event and must be announced, in a NEW role="alert" line; no
+ * press line is ever dropped because its words equal the view's (that dedupe made the second failure
+ * silent: staff's probe `silent.spec.ts`). BUG-871 (ADR-0036 § Amendment BUG-871): a restart with NO
+ * answer is no longer a refusal. It reconciles, and the read here shows the same FAILED run (id =
+ * knownId), so the new line is `routineAi.startUnconfirmed`, not `startFailed` (« Rien n'a été
+ * modifié » would be unproven). `startFailed` remains only for received codes without their own row.
  *
  * A11y: the held form's « Generate » carries `aria-describedby` naming the VISIBLE element that holds
  * the hold's 429 sentence; the hold's second line (`routine-ai-held-notice`) is role="status".
@@ -32,9 +35,11 @@ const FAILED = "We couldn't prepare this suggestion. Nothing was changed. Try ag
 const FAILED_FR = "Impossible de préparer cette suggestion. Rien n'a été modifié. Réessayez.";
 const DISCARD_FAILED = "We couldn't confirm this suggestion was discarded. Try again.";
 const DISCARD_FAILED_FR = "Impossible de confirmer que cette suggestion a été écartée. Réessayez.";
-const START_FAILED = "We couldn't start this suggestion. Nothing was changed. Try again.";
-const START_FAILED_FR =
-  "Impossible de lancer cette suggestion. Rien n'a été modifié. Réessayez.";
+/** BUG-871: a restart with no answer whose reconcile read shows no new run (EV-186 copy table). */
+const START_UNCONFIRMED =
+  "We couldn't confirm whether this suggestion was started. Try again: if it's already being prepared, it will show here.";
+const START_UNCONFIRMED_FR =
+  "Impossible de confirmer si cette suggestion a été lancée. Réessayez\u00a0: si elle est déjà en préparation, elle s'affichera.";
 const NOTHING_APPLIED =
   "The AI found no change to apply for this request. Nothing was changed. Rephrase it or try again.";
 const EDIT_429 = "You've used today's 10 AI edits for Lina. You can still edit by hand, or try again tomorrow.";
@@ -176,7 +181,7 @@ test.describe("Staff B1 — a refused restart on a FAILED view is announced, nev
     await expect(notice(page)).toHaveCount(0);
     await dropNextAction(page);
     await box(page).getByRole("button", { name: "Generate", exact: true }).click();
-    await expectNewAlert(page, START_FAILED);
+    await expectNewAlert(page, START_UNCONFIRMED);
     await expect(failedLine(page)).toHaveText(FAILED);
     await expect(panel(page)).toHaveAttribute("data-ai-state", "failed");
     expect(await linesReading(page, FAILED)).toBe(1);
@@ -189,17 +194,17 @@ test.describe("Staff B1 — a refused restart on a FAILED view is announced, nev
     await expect(notice(page)).toHaveCount(0);
     await dropNextAction(page);
     await panel(page).getByRole("button", { name: "Try again", exact: true }).click();
-    await expectNewAlert(page, START_FAILED);
+    await expectNewAlert(page, START_UNCONFIRMED);
     await expect(failedLine(page)).toHaveText(FAILED);
     await expect(panel(page)).toHaveAttribute("data-ai-state", "failed");
   });
 
-  test("French, failed REVISE box: « Générer » again with no answer says « Impossible de lancer cette suggestion… »", async ({ page }) => {
+  test("French, failed REVISE box: « Générer » again with no answer says « Impossible de confirmer si cette suggestion a été lancée… » (BUG-871)", async ({ page }) => {
     await cookie(page, "evoli_pro_locale", "fr");
     await failedRevise(page, { open: "Modifier avec l'IA", send: "Générer" });
     await dropNextAction(page);
     await box(page).getByRole("button", { name: "Générer", exact: true }).click();
-    await expectNewAlert(page, START_FAILED_FR);
+    await expectNewAlert(page, START_UNCONFIRMED_FR);
     await expect(failedLine(page)).toHaveText(FAILED_FR);
   });
 
@@ -211,7 +216,7 @@ test.describe("Staff B1 — a refused restart on a FAILED view is announced, nev
     await expect(failedLine(page)).toHaveText(FAILED_FR, { timeout: 20_000 });
     await dropNextAction(page);
     await panel(page).getByRole("button", { name: "Réessayer", exact: true }).click();
-    await expectNewAlert(page, START_FAILED_FR);
+    await expectNewAlert(page, START_UNCONFIRMED_FR);
   });
 });
 

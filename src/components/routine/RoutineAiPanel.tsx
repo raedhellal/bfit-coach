@@ -42,6 +42,14 @@ import {
   type RoutineAiActionFailure,
 } from "@/lib/routineAiActions";
 import { keepFailureRoute, reconcileKeep } from "@/lib/routineAiKeepReconcile";
+import {
+  nextKnownId,
+  nextMark,
+  preflightStart,
+  reconcileStart,
+  startFailureRoute,
+  type StartRead,
+} from "@/lib/routineAiStartReconcile";
 import type {
   CoachRoutineAiProposalRequest,
   CoachRoutineAiProposalResponse,
@@ -235,6 +243,18 @@ export function RoutineAiPanel({
   const [pending, startTransition] = useTransition();
   const mounted = useRef(true);
   /**
+   * BUG-871 (ADR-0036 § Amendment BUG-871, staff A1) — `knownId`: the last proposal id the panel
+   * received from the api. Set from the page's `initial` read, on every adopt, on every poll result
+   * and from a 202; moving between views never resets it. A start's `prevId` is its value at the press.
+   */
+  const knownId = useRef<string | null>(nextKnownId(null, { kind: "initial", proposal: initial }));
+  /**
+   * BUG-871 — the pre-flight mark, set when `startUnconfirmed` shows. While it is set, the next start
+   * reads first. Cleared ONLY by an adopt (any source, the poll included), a pre-flight that ran, or
+   * unmount (a ref dies with the island). Not by a view change, not by a discard (staff A2).
+   */
+  const preflightMark = useRef(false);
+  /**
    * False until this island has hydrated. The editor loads the panel with `next/dynamic` (SSR on),
    * so its server HTML is on screen before its chunk arrives, and a click there is lost or replayed
    * late (measured: the open button stayed `idle` after a click in `next dev`). Every control the
@@ -266,7 +286,18 @@ export function RoutineAiPanel({
 
   /** Apply a GET's answer to the panel. */
   function adopt(proposal: CoachRoutineAiProposalResponse): void {
+    knownId.current = nextKnownId(knownId.current, { kind: "adopt", proposal });
+    preflightMark.current = nextMark(preflightMark.current, "adopt");
     setView(viewOf(proposal, Date.now()));
+  }
+
+  /**
+   * One `GET …/routine/ai-proposal` for a reconcile (BUG-869's Keep, BUG-871's start and pre-flight):
+   * the action's result, and the same answer in the shape the pure decision modules take.
+   */
+  async function readForReconcile(): Promise<{ result: Awaited<ReturnType<typeof readRoutineAiAction>>; read: StartRead }> {
+    const result = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
+    return { result, read: result.ok ? { ok: true, proposal: result.proposal } : { ok: false, code: result.failure.code } };
   }
 
   // The page's own read failed: ask once, so a coach coming back still finds a running proposal.
@@ -303,6 +334,7 @@ export function RoutineAiPanel({
           return tick(); // no answer: ask again, nothing on screen claims a failure it did not see
         }
         const p = result.proposal;
+        knownId.current = nextKnownId(knownId.current, { kind: "poll", proposal: p }); // BUG-871: every poll result
         // A different proposal than the one being waited on (another tab replaced it): show it.
         if (p.status === "RUNNING") return tick();
         if (p.status === "CANCELLED" || p.status === "NONE") return setView({ kind: "idle" });
@@ -333,20 +365,70 @@ export function RoutineAiPanel({
     const body = given ?? briefRequest(form);
     if (!body) return;
     setNotice(null);
+    // BUG-871: the baseline is the last id the api returned, captured at the press — never the view.
+    const prevId = knownId.current;
+    const preflight = preflightMark.current;
+    // The pre-flight read, the start that may follow and its reconcile read all run inside this ONE
+    // transition, so « Générer » stays disabled until the panel has said what happened (S7).
     startTransition(async () => {
+      if (preflight) {
+        /*
+         * BUG-871 pre-flight: the last start said `startUnconfirmed`, so its run may have committed
+         * since. Read first; a run this panel had not seen is adopted and NOTHING is POSTed (no second
+         * unit). A 403 / 404 ends here too, with no POST. Anything else starts as usual.
+         */
+        const { result: pre, read } = await readForReconcile();
+        if (!mounted.current) return;
+        preflightMark.current = nextMark(preflightMark.current, "preflightRan");
+        const outcome = preflightStart(prevId, read);
+        if (outcome.kind === "accessEnded") return accessEnded();
+        if (outcome.kind === "hidden") return setHidden(true);
+        if (outcome.kind === "adopt" && pre.ok) {
+          setLastBrief(body);
+          return adopt(pre.proposal);
+        }
+      }
       const result = await settled(startRoutineAiAction(clientId, body), FAILED_RESULT);
       if (!mounted.current) return;
       if (result.ok) {
+        knownId.current = nextKnownId(knownId.current, { kind: "started", proposalId: result.proposalId });
         setLastBrief(body);
         setView({ kind: "running", proposalId: result.proposalId, startedAt: Date.now(), proposalKind: body.kind });
         return;
       }
-      // BUG-867 / staff B1: a start's own generic sentence, never a FAILED run's (a new event on a failed view).
-      refused(result.failure, body.kind, t.startFailed);
-      // 409 COACH_AI_PROPOSAL_RUNNING: say so, then wait on the run that is already going.
-      if (result.failure.code === "COACH_AI_PROPOSAL_RUNNING") {
-        const read = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
-        if (read.ok && mounted.current) adopt(read.proposal);
+      // BUG-871: classify BEFORE `refused()`. Only a refusal the start contract names may reach it.
+      if (startFailureRoute(result.failure.code).kind === "refused") {
+        // BUG-867 / staff B1: a start's own generic sentence, never a FAILED run's (a new event on a failed view).
+        refused(result.failure, body.kind, t.startFailed);
+        // 409 COACH_AI_PROPOSAL_RUNNING: say so, then wait on the run that is already going.
+        if (result.failure.code === "COACH_AI_PROPOSAL_RUNNING") {
+          const read = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
+          if (read.ok && mounted.current) adopt(read.proposal);
+        }
+        return;
+      }
+      /*
+       * BUG-871 (ADR-0036 § Amendment BUG-871): no answer, a gateway 5xx, an api 500, a 401, an
+       * undocumented or unknown code. The start may have committed (one unit spent, a run RUNNING), so
+       * nothing here may say « Rien n'a été modifié ». Read once, inside this transition.
+       */
+      const { result: rec, read } = await readForReconcile();
+      if (!mounted.current) return;
+      const outcome = reconcileStart(prevId, read);
+      switch (outcome.kind) {
+        case "accessEnded":
+          return accessEnded();
+        case "hidden":
+          return setHidden(true);
+        case "adopt":
+          if (!rec.ok) return; // unreachable: `reconcileStart` adopts only an ok read
+          setLastBrief(body);
+          return adopt(rec.proposal);
+        case "unconfirmed":
+          // A notice set directly, never through `refused()`: no 429 hold, never `startFailed`. A press
+          // line, so BUG-867's never-drop rule draws it even beside a failed view's own sentence.
+          preflightMark.current = nextMark(preflightMark.current, "unconfirmed");
+          return setNotice({ text: t.startUnconfirmed });
       }
     });
   }
@@ -403,13 +485,9 @@ export function RoutineAiPanel({
          * Keep committed is a committed Keep, so it is reconciled, never shown as a refusal
          * (see `routineAiKeepReconcile.ts`).
          */
-        const read = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
+        const { result: read, read: outcomeRead } = await readForReconcile();
         if (!mounted.current) return;
-        const outcome = reconcileKeep(
-          route.staleCode,
-          proposalId,
-          read.ok ? { ok: true, proposal: read.proposal } : { ok: false, code: read.failure.code }
-        );
+        const outcome = reconcileKeep(route.staleCode, proposalId, outcomeRead);
         switch (outcome.kind) {
           case "accessEnded":
             return accessEnded();

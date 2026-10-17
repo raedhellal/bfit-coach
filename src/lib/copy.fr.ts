@@ -792,6 +792,9 @@ export const fr = {
     showSaved: "Afficher la version enregistrée", // table
     keepUnconfirmedStillHere:
       "Impossible de confirmer que cette suggestion a été gardée. Elle est toujours là\u00a0: vous pouvez la garder.", // table (U+00A0 before « : »)
+    /* BUG-871 — OURS (EV-186 copy table, 2026-10-17 (m)), signed off by senior-po. */
+    startUnconfirmed:
+      "Impossible de confirmer si cette suggestion a été lancée. Réessayez\u00a0: si elle est déjà en préparation, elle s'affichera.", // table (U+00A0 before « : »)
   },
 
   nutrition: {

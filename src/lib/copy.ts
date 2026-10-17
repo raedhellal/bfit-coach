@@ -1279,8 +1279,10 @@ export const en = {
     discardFailed: "We couldn't confirm this suggestion was discarded. Try again.",
     /**
      * OURS (BUG-867, staff B1; words ruled by senior-po 2026-10-17) — « Generate » / « Try again »
-     * got no answer, or an error with no row of its own. Not `failed`: on a FAILED view that is the
-     * earlier run's sentence, and this is a new event.
+     * was REFUSED with a code that has no row of its own (VALIDATION_ERROR, COACH_DRAFT_INPUT_FORBIDDEN),
+     * where "Nothing was changed" is true. Not `failed`: on a FAILED view that is the earlier run's
+     * sentence, and this is a new event. Since BUG-871 a start with NO answer never says this: it
+     * reconciles, and says `startUnconfirmed` when the read shows no run it had not seen.
      */
     startFailed: "We couldn't start this suggestion. Nothing was changed. Try again.",
     /** table: Disclosure after Keep (EV-186 AC2, unchanged). */
@@ -1381,6 +1383,13 @@ export const en = {
     showSaved: "Show what's saved",
     /** table: `keepUnconfirmedStillHere` — no answer, and the read shows the same suggestion still READY. */
     keepUnconfirmedStillHere: "We couldn't confirm this suggestion was kept. It's still here, so you can keep it.",
+    /**
+     * table: `routineAi.startUnconfirmed` (2026-10-17 (m), BUG-871; OURS, signed off by senior-po) — a
+     * start that did not come back ok, is not a coded refusal, and whose reconcile read shows no run
+     * or fails. A notice on the current view; « Generate » stays enabled. Never "Nothing was changed".
+     */
+    startUnconfirmed:
+      "We couldn't confirm whether this suggestion was started. Try again: if it's already being prepared, it will show here.",
   },
 
   /**
