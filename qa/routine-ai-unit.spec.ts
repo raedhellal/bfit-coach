@@ -169,7 +169,7 @@ test.describe("429 hold and polling", () => {
 test.describe("BUG-867 — a refused Discard's sentence, and no line twice", () => {
   const FAILED = "We couldn't prepare this suggestion. Nothing was changed. Try again.";
   const DISCARD_FAILED = "We couldn't confirm this suggestion was discarded. Try again.";
-  const START_FAILED = "We couldn't confirm this request was received. Your plan was not changed. Try again.";
+  const START_FAILED = "We couldn't start this suggestion. Nothing was changed. Try again.";
   const UNAVAILABLE = "AI suggestions are switched off on this server.";
 
   test("generic codes take the given sentence; a code with its own row keeps it", () => {
@@ -184,7 +184,7 @@ test.describe("BUG-867 — a refused Discard's sentence, and no line twice", () 
     // Staff B1: a refused START has its own generic sentence too.
     expect(routineAiSentence({ code: "FAILED" }, "Lina", en, en.routineAi.startFailed)).toBe(START_FAILED);
     expect(routineAiSentence({ code: "FAILED" }, "Lina", fr, fr.routineAi.startFailed)).toBe(
-      "Impossible de confirmer que cette demande a été reçue. Votre programme n'a pas été modifié. Réessayez."
+      "Impossible de lancer cette suggestion. Rien n'a été modifié. Réessayez."
     );
   });
 

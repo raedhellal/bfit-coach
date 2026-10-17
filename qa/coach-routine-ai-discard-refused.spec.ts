@@ -23,7 +23,7 @@ import { signInThroughForm } from "./sign-in";
  * FIXTURE mode: `evoli_fixture_ai=fail` settles every run FAILED with `evoli_fixture_ai_error`'s code
  * (default COACH_AI_TIMEOUT → the generic Failed sentence); `rate_link` answers POSTs with a 429. The
  * Discard's refusal is the server-action POST aborted (connection reset), as senior-qa reproduced it.
- * Sentences are LITERALS: table copy from EV-186's FR/EN table, OURS from this fix's hand-back.
+ * Sentences are LITERALS: table copy from EV-186's FR/EN table; OURS lines as senior-po ruled them (2026-10-17).
  */
 
 const ROUTE = "/clients/6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001/routine";
@@ -32,9 +32,9 @@ const FAILED = "We couldn't prepare this suggestion. Nothing was changed. Try ag
 const FAILED_FR = "Impossible de préparer cette suggestion. Rien n'a été modifié. Réessayez.";
 const DISCARD_FAILED = "We couldn't confirm this suggestion was discarded. Try again.";
 const DISCARD_FAILED_FR = "Impossible de confirmer que cette suggestion a été écartée. Réessayez.";
-const START_FAILED = "We couldn't confirm this request was received. Your plan was not changed. Try again.";
+const START_FAILED = "We couldn't start this suggestion. Nothing was changed. Try again.";
 const START_FAILED_FR =
-  "Impossible de confirmer que cette demande a été reçue. Votre programme n'a pas été modifié. Réessayez.";
+  "Impossible de lancer cette suggestion. Rien n'a été modifié. Réessayez.";
 const NOTHING_APPLIED =
   "The AI found no change to apply for this request. Nothing was changed. Rephrase it or try again.";
 const EDIT_429 = "You've used today's 10 AI edits for Lina. You can still edit by hand, or try again tomorrow.";
@@ -194,7 +194,7 @@ test.describe("Staff B1 — a refused restart on a FAILED view is announced, nev
     await expect(panel(page)).toHaveAttribute("data-ai-state", "failed");
   });
 
-  test("French, failed REVISE box: « Générer » again with no answer says « Impossible de confirmer que cette demande… »", async ({ page }) => {
+  test("French, failed REVISE box: « Générer » again with no answer says « Impossible de lancer cette suggestion… »", async ({ page }) => {
     await cookie(page, "evoli_pro_locale", "fr");
     await failedRevise(page, { open: "Modifier avec l'IA", send: "Générer" });
     await dropNextAction(page);
