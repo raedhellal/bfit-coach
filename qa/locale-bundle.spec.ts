@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { expect, webkit, type BrowserContext, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { PROBE, probeLeaks } from "./locale-probes";
 
 /**
  * EV-342m (audit A19) — only the coach's language ships to the browser.
@@ -24,8 +25,13 @@ import { signInThroughForm } from "./sign-in";
  * `coach-i18n.spec.ts` / `coach-french.spec.ts` / `pro-shell.spec.ts` tests, unchanged.
  */
 
-const EN_PROBE = "Add a client";
-const FR_PROBE = "Ouvrir le plan";
+const EN_PROBE = PROBE.en;
+const FR_PROBE = PROBE.fr;
+
+// BUG-861: the probes mean "this chunk is a dictionary" only while no other module holds them.
+test.beforeAll(() => {
+  expect(probeLeaks(), "a locale probe appears outside its dictionary (see qa/locale-probes.ts)").toEqual([]);
+});
 
 /** Every JavaScript body the page receives while `load` runs. */
 async function javascriptDuring(page: Page, load: () => Promise<unknown>): Promise<string[]> {

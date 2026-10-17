@@ -1,5 +1,6 @@
 import { expect, type APIRequestContext } from "@playwright/test";
 import { test } from "./fixture-test";
+import { PROBE } from "./locale-probes";
 
 /**
  * EV-353 353.2 (staff's EV-350 N2) — WHEN the root layout hints the dictionary chunk, pinned
@@ -43,9 +44,6 @@ import { test } from "./fixture-test";
 
 const LANGS = { fr: "fr-FR", en: "en-US" } as const;
 type Lang = keyof typeof LANGS;
-
-/** A dictionary value found in that language's chunk only (as in `locale-chunk-preload.spec.ts`). */
-const PROBE: Record<Lang, string> = { en: "Add a client", fr: "Ouvrir le plan" };
 
 /** The value of `name` on one HTML start tag, or null. */
 function attr(tag: string, name: string): string | null {
