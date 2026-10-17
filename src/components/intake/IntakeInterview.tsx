@@ -18,6 +18,7 @@ import {
   codePoints,
   firstUnanswered,
   formKey,
+  profileGoalLabel,
   sectionAnswered,
   sectionFromApi,
   sectionSlice,
@@ -76,6 +77,13 @@ export interface IntakeInterviewProps {
   disabledReasonId?: string;
   /** B10: section 3's read-only equipment, rendered by the page. */
   equipment?: ReactNode;
+  /**
+   * EV-368: `GET …/intake`'s `profileGoal`, the goal stored on the trainee's profile, as the page
+   * read it (null: none, or no grant). It may be the default `GET_STRONGER` written by a
+   * consent-only profile PUT rather than a goal the client chose (EV-380). Drawn as read-only text under section 1's goal control; it is
+   * never a form value and never sent.
+   */
+  profileGoal?: string | null;
   /**
    * EV-341c C1–C3: sections 5–7's read-only blocks (or their "not shared" sentence), rendered by
    * the page, each shown above that section's note.
@@ -138,6 +146,7 @@ export function IntakeInterview({
   initial,
   disabledReasonId,
   equipment,
+  profileGoal = null,
   readOnly = {},
   completedAt = null,
   firstName = "",
@@ -149,6 +158,8 @@ export function IntakeInterview({
   const uid = useId();
   /** B11: no grant, so nothing can be saved. */
   const grantMissing = initial === null;
+  /** EV-368 P4/P5: the in-app goal's label, or null (no line, no placeholder). */
+  const inAppGoal = profileGoalLabel(profileGoal, c.values.primaryGoal);
 
   const [acked, setAcked] = useState<IntakeFormValues>(() => initial?.values ?? emptyValues());
   const [open, setOpen] = useState<IntakeFormSection>(() => (initial ? firstUnanswered(initial.values) : "GOALS"));
@@ -511,6 +522,12 @@ export function IntakeInterview({
                       onChange={update}
                       onLeave={flushOnLeave(section)}
                     />
+                    {/* EV-368 P4/P6: the client's in-app goal, text only, under the goal control. */}
+                    {section === "GOALS" && field.field === "primaryGoal" && inAppGoal ? (
+                      <p className="ov-note intake-profile-goal" data-intake-profile-goal="">
+                        {copy.common.labelled(c.inTheApp, inAppGoal)}
+                      </p>
+                    ) : null}
                   </Fragment>
                 ))}
                 {section === "AVAILABILITY" && equipment ? <div className="intake-readonly">{equipment}</div> : null}

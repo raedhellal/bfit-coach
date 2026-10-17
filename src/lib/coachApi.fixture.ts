@@ -6611,10 +6611,29 @@ function resetIntakePuts(): void {
   (globalThis as GlobalWithIntakePuts)[INTAKE_PUTS_KEY] = [];
 }
 
+/**
+ * EV-368 — `GET …/intake`'s `profileGoal` (b-fit-api `CoachIntakeUseCase#read` @ the vendored sha):
+ * the trainee's `user_profiles.primary_goal` at the time of the read, which in this fixture is
+ * `FIXTURE_SUBJECT.goal`, the onboarding answer every draft already resolves to.
+ *
+ * Fixture-only switch (one browser context), read on every READ, so a reload is P7's "the trainee
+ * changed it in the app":
+ *   `evoli_fixture_intake_profile_goal=<value>` → that value, as sent (a value the portal does not
+ *                                                 know included: edge case 2);
+ *   `evoli_fixture_intake_profile_goal=none`    → `null` (no profile row: P5).
+ */
+async function fixtureIntakeProfileGoal(): Promise<string | null> {
+  const raw = await fixtureSwitch("evoli_fixture_intake_profile_goal");
+  if (raw === null || raw === "") return FIXTURE_SUBJECT.goal;
+  return raw === "none" ? null : raw;
+}
+
 async function fixtureGetIntake(id: string): Promise<CoachIntake> {
   await assertManagedLink(id);
   const link = state().intake.get(id);
+  // EV-368 P2: GRANT_MISSING is `state` only, so no profileGoal key either.
   if (!link?.granted) return { state: "GRANT_MISSING" };
+  const profileGoal = await fixtureIntakeProfileGoal();
   const sections: Partial<Record<CoachIntakeSectionName, CoachIntakeSection>> = {};
   let written = false;
   for (const name of FIXTURE_INTAKE_SECTIONS) {
@@ -6625,8 +6644,10 @@ async function fixtureGetIntake(id: string): Promise<CoachIntake> {
       : { version: 0, updatedAt: null, values: emptyIntakeValues(name) };
   }
   // EV-341a `CoachIntake.status`: COMPLETE once finished, whatever is saved after (AC9).
-  if (link.completedAt) return { state: "READY", status: "COMPLETE", completedAt: link.completedAt, sections };
-  return { state: "READY", status: written ? "IN_PROGRESS" : "NOT_STARTED", sections };
+  if (link.completedAt) {
+    return { state: "READY", status: "COMPLETE", completedAt: link.completedAt, sections, profileGoal };
+  }
+  return { state: "READY", status: written ? "IN_PROGRESS" : "NOT_STARTED", sections, profileGoal };
 }
 
 /**
