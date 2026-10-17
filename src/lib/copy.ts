@@ -1271,6 +1271,12 @@ export const en = {
     retry: "Try again", // table
     stubBanner: "Test suggestion — AI is off on this server.", // table: STUB banner
     failed: "We couldn't prepare this suggestion. Nothing was changed. Try again.", // table: Failed
+    /**
+     * OURS (BUG-867) — « Discard » got no answer, or an error with no row of its own. Not `failed`:
+     * that is the FAILED run's sentence, drawn above it, and the run is not what failed. « Confirm »
+     * because a lost connection cannot say whether the DELETE landed; pressing again is safe (idempotent).
+     */
+    discardFailed: "We couldn't confirm this suggestion was discarded. Try again.",
     /** table: Disclosure after Keep (EV-186 AC2, unchanged). */
     disclosure: (date: string) => `Drafted with AI on ${date}. Review it before you publish — you're the author.`,
     repairMark: (first: string, injury: string) => `Will be swapped at publish: ${mid(first)}'s ${injury}`, // table

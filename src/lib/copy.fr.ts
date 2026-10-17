@@ -696,6 +696,8 @@ export const fr = {
     retry: "Réessayer", // table
     stubBanner: "Suggestion de test — l'IA est désactivée sur ce serveur.", // table
     failed: "Impossible de préparer cette suggestion. Rien n'a été modifié. Réessayez.", // table
+    /** OURS (BUG-867) — see `en.routineAi.discardFailed`. */
+    discardFailed: "Impossible de confirmer que cette suggestion a été écartée. Réessayez.",
     disclosure: (date: string) =>
       `Préparé avec l'IA le ${date}. Relisez-le avant de publier : vous en êtes l'auteur.`, // table
     repairMark: (first: string, injury: string) =>

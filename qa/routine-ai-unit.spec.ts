@@ -13,6 +13,7 @@ import {
   notesLength,
   pollDelayMs,
   routineAiCapability,
+  routineAiNoticeLines,
   routineAiSentence,
 } from "../src/lib/routineAi";
 
@@ -162,5 +163,41 @@ test.describe("429 hold and polling", () => {
     expect(pollDelayMs(129_999)).toBe(POLL_FAST_MS);
     expect(pollDelayMs(130_000)).toBe(POLL_SLOW_MS);
     expect(pollDelayMs(3_600_000)).toBe(POLL_SLOW_MS);
+  });
+});
+
+test.describe("BUG-867 — a refused Discard's sentence, and no line twice", () => {
+  const FAILED = "We couldn't prepare this suggestion. Nothing was changed. Try again.";
+  const DISCARD_FAILED = "We couldn't confirm this suggestion was discarded. Try again.";
+  const UNAVAILABLE = "AI suggestions are switched off on this server.";
+
+  test("generic codes take the given sentence; a code with its own row keeps it", () => {
+    for (const code of ["FAILED", "COACH_AI_TIMEOUT", "SOMETHING_NEW"]) {
+      expect(routineAiSentence({ code }, "Lina", en, en.routineAi.discardFailed)).toBe(DISCARD_FAILED);
+      expect(routineAiSentence({ code }, "Lina", en)).toBe(FAILED);
+    }
+    expect(routineAiSentence({ code: "COACH_AI_UNAVAILABLE" }, "Lina", en, en.routineAi.discardFailed)).toBe(UNAVAILABLE);
+    expect(routineAiSentence({ code: "FAILED" }, "Lina", fr, fr.routineAi.discardFailed)).toBe(
+      "Impossible de confirmer que cette suggestion a été écartée. Réessayez."
+    );
+  });
+
+  test("the Discard's sentence is not the run's, in either language", () => {
+    expect(en.routineAi.discardFailed).not.toBe(en.routineAi.failed);
+    expect(fr.routineAi.discardFailed).not.toBe(fr.routineAi.failed);
+  });
+
+  test("a press line equal to the view's own sentence is not drawn again", () => {
+    expect(routineAiNoticeLines(UNAVAILABLE, null, UNAVAILABLE)).toEqual({ shown: null, extra: null });
+    expect(routineAiNoticeLines(DISCARD_FAILED, null, FAILED)).toEqual({ shown: DISCARD_FAILED, extra: null });
+  });
+
+  test("hold lines: alone it is the alert; beside another press it is second; equal to the press, once", () => {
+    expect(routineAiNoticeLines(null, "HOLD", null)).toEqual({ shown: "HOLD", extra: null });
+    expect(routineAiNoticeLines("PRESS", "HOLD", FAILED)).toEqual({ shown: "PRESS", extra: "HOLD" });
+    expect(routineAiNoticeLines("HOLD", "HOLD", null)).toEqual({ shown: "HOLD", extra: null });
+    // The press equals the view, the hold does not: the hold moves up to the alert line.
+    expect(routineAiNoticeLines(FAILED, "HOLD", FAILED)).toEqual({ shown: "HOLD", extra: null });
+    expect(routineAiNoticeLines(null, null, FAILED)).toEqual({ shown: null, extra: null });
   });
 });

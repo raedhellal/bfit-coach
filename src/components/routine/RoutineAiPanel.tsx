@@ -26,6 +26,7 @@ import {
   opsRejectedCount,
   pollDelayMs,
   reviseRequest,
+  routineAiNoticeLines,
   routineAiSentence,
   routineDiff,
   updateBlocked,
@@ -182,6 +183,9 @@ export function RoutineAiPanel({
   const requestId = useId();
   const requestCounterId = useId();
   const painHintId = useId();
+  const noticeId = useId();
+  const heldNoticeId = useId();
+  const failedId = useId();
   const requestRef = useRef<HTMLTextAreaElement>(null);
   const [view, setView] = useState<View>(() => viewOf(initial, Date.now()));
   const [form, setForm] = useState<RoutineAiBriefForm>(() => initialBriefForm(document));
@@ -232,11 +236,12 @@ export function RoutineAiPanel({
     router.refresh();
   }
 
-  function refused(failure: RoutineAiActionFailure, kind: ProposalKind = "REGENERATE"): void {
+  /** `generic`: the sentence for a code with no row of its own (BUG-867: a Discard's is not a run's). */
+  function refused(failure: RoutineAiActionFailure, kind: ProposalKind = "REGENERATE", generic?: string): void {
     if (failure.code === "ACCESS_DENIED") return accessEnded();
     const f: RoutineAiFailure = { ...(failure as RoutineAiFailure), kind };
     const until = heldUntil(f, Date.now());
-    setNotice({ text: routineAiSentence(f, firstName, copy), ...(until !== null ? { heldKind: kind } : {}) });
+    setNotice({ text: routineAiSentence(f, firstName, copy, generic), ...(until !== null ? { heldKind: kind } : {}) });
     if (until !== null) setHeld((h) => ({ ...h, [kind]: { until, failure: f } }));
   }
 
@@ -390,7 +395,7 @@ export function RoutineAiPanel({
       if (!mounted.current) return;
       if (!result.ok) {
         if (result.failure.code === "NOT_FOUND") return setHidden(true);
-        return refused(result.failure, kind);
+        return refused(result.failure, kind, t.discardFailed);
       }
       logPortalEvent({ event: "coach_ai_proposal_discarded", kind });
       setView({ kind: "idle" });
@@ -412,9 +417,31 @@ export function RoutineAiPanel({
   /** BUG-865/866: a held form always shows its kind's 429 sentence, re-derived from the hold. */
   const heldSentence = formHold ? routineAiSentence(formHold.failure, firstName, copy) : null;
   const pressNotice = notice && (notice.heldKind === undefined || isHeld(notice.heldKind)) ? notice.text : null;
-  const shownNotice = pressNotice ?? heldSentence;
-  /** Another refusal (e.g. a discard's) on a held form: both sentences, the hold's second. */
-  const extraHeldSentence = pressNotice !== null && heldSentence !== null && heldSentence !== pressNotice ? heldSentence : null;
+  /** The sentence a FAILED or stale view draws itself (`routine-ai-failed` / the stale alert). */
+  const viewSentence =
+    view.kind === "failed" || view.kind === "stale"
+      ? routineAiSentence({ code: view.code, kind: view.proposalKind }, firstName, copy)
+      : null;
+  /**
+   * BUG-867: never the same sentence twice. Another refusal (e.g. a discard's) on a held form shows
+   * both sentences, the hold's second; a line equal to the view's own sentence is not drawn again.
+   */
+  const { shown: shownNotice, extra: extraHeldSentence } = routineAiNoticeLines(pressNotice, heldSentence, viewSentence);
+  /**
+   * Staff a11y nit (EV-204b AC-P11): the held « Générer » is described by the element that shows
+   * WHY it is disabled — the alert line, the hold's second line, or the view's own sentence when
+   * that is the same words (then the hold's line is not drawn, by BUG-867).
+   */
+  const heldSentenceId =
+    heldSentence === null
+      ? undefined
+      : heldSentence === shownNotice
+        ? noticeId
+        : heldSentence === extraHeldSentence
+          ? heldNoticeId
+          : heldSentence === viewSentence && view.kind === "failed"
+            ? failedId
+            : undefined;
   const count = notesLength(form.notes);
   const requestCount = notesLength(request);
   const pressedChips = chipsIn(request, t.chips);
@@ -508,7 +535,12 @@ export function RoutineAiPanel({
           ))}
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Button type="submit" icon="star" disabled={sendBlocked !== null || isHeld("REVISE") || pending || !hydrated}>
+          <Button
+            type="submit"
+            icon="star"
+            disabled={sendBlocked !== null || isHeld("REVISE") || pending || !hydrated}
+            ariaDescribedBy={formKind === "REVISE" ? heldSentenceId : undefined}
+          >
             {t.submit}
           </Button>
           {fresh ? (
@@ -577,12 +609,14 @@ export function RoutineAiPanel({
         )}
 
         {shownNotice && (
-          <p role="alert" data-testid="routine-ai-notice" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+          <p id={noticeId} role="alert" data-testid="routine-ai-notice" style={{ ...noteStyle, color: "var(--err-ink)" }}>
             {shownNotice}
           </p>
         )}
+        {/* role="status", not a second alert: the standing reason for the disabled « Générer », shown
+            beside a fresh refusal that already holds the assertive alert. */}
         {extraHeldSentence && (
-          <p data-testid="routine-ai-held-notice" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+          <p id={heldNoticeId} role="status" data-testid="routine-ai-held-notice" style={{ ...noteStyle, color: "var(--err-ink)" }}>
             {extraHeldSentence}
           </p>
         )}
@@ -732,7 +766,12 @@ export function RoutineAiPanel({
               </p>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Button type="submit" icon="star" disabled={blocked !== null || isHeld("REGENERATE") || pending || !hydrated}>
+              <Button
+                type="submit"
+                icon="star"
+                disabled={blocked !== null || isHeld("REGENERATE") || pending || !hydrated}
+                ariaDescribedBy={formKind === "REGENERATE" ? heldSentenceId : undefined}
+              >
                 {t.submit}
               </Button>
               <Button variant="ghost" onClick={() => setView({ kind: "idle" })} disabled={pending || !hydrated}>
@@ -760,8 +799,8 @@ export function RoutineAiPanel({
         {view.kind === "failed" && view.proposalKind === "REVISE" && canUpdate && (
           <>
             {/* U5: the code's sentence, then the box again with the coach's text, to rephrase. */}
-            <p role="alert" data-testid="routine-ai-failed" style={{ ...noteStyle, color: "var(--err-ink)" }}>
-              {routineAiSentence({ code: view.code, kind: "REVISE" }, firstName, copy)}
+            <p id={failedId} role="alert" data-testid="routine-ai-failed" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+              {viewSentence}
             </p>
             {updateForm(false)}
           </>
@@ -769,8 +808,8 @@ export function RoutineAiPanel({
 
         {view.kind === "failed" && !(view.proposalKind === "REVISE" && canUpdate) && (
           <>
-            <p role="alert" data-testid="routine-ai-failed" style={{ ...noteStyle, color: "var(--err-ink)" }}>
-              {routineAiSentence({ code: view.code, kind: view.proposalKind }, firstName, copy)}
+            <p id={failedId} role="alert" data-testid="routine-ai-failed" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+              {viewSentence}
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
               <Button onClick={retry} disabled={pending || !hydrated}>
@@ -833,7 +872,7 @@ export function RoutineAiPanel({
         {view.kind === "stale" && (
           <>
             <p role="alert" style={{ ...noteStyle, color: "var(--err-ink)" }}>
-              {routineAiSentence({ code: view.code, kind: view.proposalKind }, firstName, copy)}
+              {viewSentence}
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
               <Button onClick={retry} disabled={pending || !hydrated}>
