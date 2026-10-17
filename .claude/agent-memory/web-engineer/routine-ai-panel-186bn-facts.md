@@ -63,3 +63,12 @@ read. `/api/fixture/calls` → `aiPosts` (body keys only). Dana's Tue « Push »
   `locale-chunk-preload`) in next dev; PB-4 (EV-341c finishedOn, registered on 186b).
 - `coach-add-client` AC-P9 raced `res.text()`; a bigger copy chunk lost the race. Poll, don't read once.
 - Warm-up sign-in times out at load average ~10 (other agents on the box): wait for load < 5.
+
+**Staff R2-1 (2026-10-16):**
+- A `next/dynamic` import that REJECTS (deploy skew: the chunk hash is gone) reaches the route
+  error boundary and takes the whole page down. Catch it in the loader:
+  `.then((m) => m.X).catch(() => Fallback)`; props stay strictly typed (checked with a bogus prop).
+- Do not reuse `routineAi.unavailable` for it: that sentence says the server switched AI off.
+- Abort a chunk BY CONTENT (`route.fetch()` then grep for the test id), never by hash, and assert
+  something was aborted. Only a production build splits it: the spec lives in the start config and
+  is in the default config's `testIgnore`.
