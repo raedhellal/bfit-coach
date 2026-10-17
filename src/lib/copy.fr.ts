@@ -700,6 +700,7 @@ export const fr = {
       `Préparé avec l'IA le ${date}. Relisez-le avant de publier : vous en êtes l'auteur.`, // table
     repairMark: (first: string, injury: string) =>
       `Sera remplacé à la publication : ${injury} ${de(mid(first))}`, // table
+    repairMarkNoInjury: "Sera remplacé à la publication.",
     instructionInvalid:
       "Cette demande ne peut pas être envoyée : 500 caractères au maximum, en texte simple.", // table
     alreadyRunning: (first: string) => `Une suggestion est déjà en préparation pour ${mid(first)}.`, // table
@@ -715,6 +716,43 @@ export const fr = {
     nothingApplied:
       "L'IA n'a trouvé aucune modification à appliquer pour cette demande. Rien n'a été modifié. Reformulez-la ou réessayez.", // table
     busy: "Les suggestions IA sont très demandées en ce moment. Réessayez dans une minute.", // table
+    diffTitle: "Ce que cette suggestion change",
+    diffIdentical: "Cette suggestion est identique au programme actuel.",
+    diffAgainstDraft: "Comparé à votre brouillon non publié.",
+    diffAgainstLive: "Comparé au programme publié.",
+    diffAgainstNone: "Il n'y a pas encore de programme : toutes les séances ci-dessous sont nouvelles.",
+    dayHeading: (weekday: string, focus: string) => `${weekday} · ${focus}`,
+    dayAdded: "Nouvelle séance",
+    dayRemoved: "Séance retirée",
+    dayUnchanged: "Inchangée",
+    focusChanged: (before: string, after: string) => `Thème : ${before} → ${after}`,
+    unchangedDays: (n: number) => (n === 1 ? "1 séance inchangée" : `${n} séances inchangées`),
+    rowAdded: "Ajouté",
+    rowRemoved: "Retiré",
+    rowReplaced: "Remplacé",
+    rowChanged: "Modifié",
+    replacedLine: (before: string, after: string) => `${before} → ${after}`,
+    fieldChange: (label: string, before: string, after: string) => `${label} : ${before} → ${after}`,
+    fieldLabels: {
+      sets: "Séries",
+      reps: "Répétitions",
+      rest: "Repos",
+      weight: "Charge",
+      tempo: "Tempo",
+      trackingType: "Suivi",
+      durationSeconds: "Secondes",
+      notes: "Notes",
+    },
+    settingLabels: {
+      name: "Nom du programme",
+      minutesPerSession: "Minutes par séance",
+      goal: "Objectif",
+      level: "Niveau",
+    },
+    prescription: (sets: number, reps: string) => `${sets} × ${reps}`,
+    keepHint:
+      `${q("Garder")} place ce programme dans votre brouillon. Rien n'arrive au client avant que vous publiiez.`,
+    keepConfirmTitle: "Remplacer votre brouillon ?",
     working: "En cours…",
   },
 

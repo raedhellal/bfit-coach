@@ -7007,7 +7007,9 @@ function aiResponse(id: string, row: StoredAiProposal | undefined, now: number):
     return { proposalId: null, status: "NONE", repairs: [], repairMarks: [], equipmentChecked: false };
   }
   settleAiProposal(row, now);
-  const expired = row.status === "READY" && (now > Date.parse(row.expiresAt) || row.outcome.kind === "EXPIRED");
+  // The api reads EXPIRED for ANY status past `expires_at` (24 h); the switch expires a READY one.
+  const expired =
+    now > Date.parse(row.expiresAt) || (row.status === "READY" && row.outcome.kind === "EXPIRED");
   const status = expired ? "EXPIRED" : row.status;
   const ready = status === "READY";
   const marks = ready ? aiRepairMarks(id, row.proposal) : [];
@@ -7621,13 +7623,15 @@ export const fixtureCoachApi: CoachApi = {
     }
     const current = row as StoredAiProposal;
     const existing = state().drafts.get(id) ?? null;
-    if ((existing?.updatedAt ?? null) !== current.draftToken) {
-      // A draft that disappeared since a DRAFT-base proposal is the api's STALE, not EXISTS.
-      if (!existing && current.baseSource === "DRAFT") await failAi(409, "COACH_PROPOSAL_STALE");
-      await failAi(409, "COACH_DRAFT_EXISTS", { existingUpdatedAt: existing?.updatedAt ?? null });
-    }
+    // The api's order (`CoachRoutineUseCase#keepProposal` @ 19b6696e): the live plan's fingerprint
+    // FIRST (the api's is plan id + `selected_at`; the fixture has no `selected_at`, so plan id),
+    // then a DRAFT base that is gone (STALE), then a draft saved since (DRAFT_EXISTS).
     if (current.baseSource !== "DRAFT" && (state().plans.get(id)?.planId ?? null) !== current.livePlanId) {
       await failAi(409, "COACH_PROPOSAL_STALE");
+    }
+    if (!existing && current.baseSource === "DRAFT") await failAi(409, "COACH_PROPOSAL_STALE");
+    if ((existing?.updatedAt ?? null) !== current.draftToken) {
+      await failAi(409, "COACH_DRAFT_EXISTS", { existingUpdatedAt: existing?.updatedAt ?? null });
     }
     // The draft save's own write: subject fields resolved, both lists stored [].
     const document = await resolveDraftDocument(coachShaped(current.proposal));

@@ -168,7 +168,7 @@ test.describe("B3 — running, leaving and coming back, and « Écarter »", () 
     await page.goto(ROUTE(LINA));
     await expect(panel(page).getByText(running)).toBeVisible();
     await expect(panel(page)).toHaveAttribute("data-ai-state", "ready", { timeout: 15_000 });
-    await expect(panel(page).getByTestId("routine-ai-proposal")).toBeVisible();
+    await expect(panel(page).getByTestId("routine-ai-diff")).toBeVisible();
     // One POST only: the reload resumed, it did not start a second run.
     expect((await calls(page)).aiPosts).toHaveLength(1);
   });
@@ -258,9 +258,11 @@ test.describe("B4 — each refusal renders its sentence; the server message neve
       await expect(panel(page)).toHaveAttribute("data-ai-state", "failed", { timeout: 10_000 });
       await expect(panel(page).getByRole("alert")).toHaveText(sentence);
       await expect(page.getByText(code)).toHaveCount(0);
-      // « Try again » re-opens the brief with what the coach chose.
+      // EV-186n N4: « Try again » starts a new Regenerate with the same brief.
       await panel(page).getByRole("button", { name: "Try again" }).click();
-      await expect(panel(page).getByLabel("Goal")).toHaveValue("BUILD_MUSCLE");
+      await expect
+        .poll(async () => (await calls(page)).aiPosts.filter((p) => p.outcome === "202").length)
+        .toBe(2);
     });
   }
 });
@@ -275,7 +277,7 @@ test.describe("B5 — the STUB banner sits above the proposal", () => {
     await panel(page).getByRole("button", { name: "Generate" }).click();
     const banner = panel(page).getByTestId("routine-ai-stub-banner");
     await expect(banner).toHaveText("Test suggestion — AI is off on this server.", { timeout: 10_000 });
-    const proposal = panel(page).getByTestId("routine-ai-proposal");
+    const proposal = panel(page).getByTestId("routine-ai-diff");
     const [b, p] = [await banner.boundingBox(), await proposal.boundingBox()];
     expect(b && p && b.y + b.height <= p.y).toBe(true);
   });
@@ -286,7 +288,7 @@ test.describe("B5 — the STUB banner sits above the proposal", () => {
     await cookie(page, "evoli_fixture_ai_delay_ms", "0");
     await openBrief(page);
     await panel(page).getByRole("button", { name: "Generate" }).click();
-    await expect(panel(page).getByTestId("routine-ai-proposal")).toBeVisible({ timeout: 10_000 });
+    await expect(panel(page).getByTestId("routine-ai-diff")).toBeVisible({ timeout: 10_000 });
     await expect(panel(page).getByTestId("routine-ai-stub-banner")).toHaveCount(0);
   });
 });
