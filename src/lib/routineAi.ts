@@ -243,8 +243,18 @@ export interface RoutineAiFailure {
  * table names for the routine surface has its row; anything else — including COACH_AI_TIMEOUT,
  * COACH_AI_INVALID_OUTPUT, COACH_AI_FAILED, VALIDATION_ERROR and a lost connection — renders
  * the Failed sentence. `first` is the trainee's first name as `firstName` returns it.
+ *
+ * `generic` replaces the Failed sentence for a PRESS, which is not a run (BUG-867: a refused
+ * « Écarter » says `discardFailed`, a refused « Générer » / « Réessayer » `startFailed`, never
+ * « We couldn't prepare this suggestion », which is a FAILED run's own sentence). A code with its
+ * own row keeps that row whatever `generic` is.
  */
-export function routineAiSentence(failure: RoutineAiFailure, first: string, copy: Copy): string {
+export function routineAiSentence(
+  failure: RoutineAiFailure,
+  first: string,
+  copy: Copy,
+  generic: string = copy.routineAi.failed
+): string {
   const t = copy.routineAi;
   switch (failure.code) {
     case "COACH_AI_RATE_LIMIT":
@@ -274,8 +284,33 @@ export function routineAiSentence(failure: RoutineAiFailure, first: string, copy
     case "CATALOG_UNAVAILABLE":
       return copy.routine.catalogUnavailable;
     default:
-      return t.failed;
+      return generic;
   }
+}
+
+/**
+ * BUG-867 — the panel's refusal lines.
+ *
+ * `press` is the last press's refusal (null when none, or when its hold lifted), `held` the open
+ * form's 429 sentence re-derived from its hold (BUG-865/866), `view` the sentence the FAILED or
+ * stale view already draws. `shown` is the alert line (`routine-ai-notice`), `extra` the hold's
+ * second line (`routine-ai-held-notice`) when a different press refusal holds the first.
+ *
+ * The press line is NEVER dropped (staff B1): it is a new event, and hiding it because its words
+ * equal the view's would leave a failed second attempt unannounced. The duplicate BUG-867 saw is
+ * prevented upstream, by a press's own generic sentence (`discardFailed`, `startFailed`). Only the
+ * HOLD's line, which is standing state, is dropped when the press or the view already says it.
+ */
+export function routineAiNoticeLines(
+  press: string | null,
+  held: string | null,
+  view: string | null
+): { shown: string | null; extra: string | null } {
+  const heldLine = held !== null && held !== view ? held : null;
+  return {
+    shown: press ?? heldLine,
+    extra: press !== null && heldLine !== null && heldLine !== press ? heldLine : null,
+  };
 }
 
 /**
