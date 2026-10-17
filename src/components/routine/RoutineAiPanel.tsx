@@ -226,6 +226,12 @@ export function RoutineAiPanel({
    */
   const [request, setRequest] = useState("");
   const [confirmKeep, setConfirmKeep] = useState(false);
+  /**
+   * BUG-869/870 (staff N3, the BUG-867 B1 pattern) — the `unconfirmed` alert's key. Bumped when a
+   * « Show what's saved » press gets no answer from its re-read, so the same alert REMOUNTS and is
+   * announced again: a press is never silent, even when its words are unchanged.
+   */
+  const [unconfirmedPress, setUnconfirmedPress] = useState(0);
   const [pending, startTransition] = useTransition();
   const mounted = useRef(true);
   /**
@@ -442,7 +448,9 @@ export function RoutineAiPanel({
       if (read.ok) return adopt(read.proposal);
       if (read.failure.code === "ACCESS_DENIED") return accessEnded();
       if (read.failure.code === "NOT_FOUND") return setHidden(true);
-      // No answer: stay `unconfirmed`; the press is still there, and nothing claims what it did not see.
+      // No answer: stay `unconfirmed` (the press is still there, nothing claims what it did not see),
+      // and remount the alert so this press is announced (staff N3).
+      setUnconfirmedPress((n) => n + 1);
     });
   }
 
@@ -932,7 +940,12 @@ export function RoutineAiPanel({
         {view.kind === "unconfirmed" && (
           <>
             {/* BUG-869/870: one alert (plus the unsaved-edits sentence on a dirty editor), one button. */}
-            <p role="alert" data-testid="routine-ai-unconfirmed" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+            <p
+              key={unconfirmedPress}
+              role="alert"
+              data-testid="routine-ai-unconfirmed"
+              style={{ ...noteStyle, color: "var(--err-ink)" }}
+            >
               {t.keepUnconfirmed}
               {dirty && ` ${t.keepUnconfirmedUnsaved}`}
             </p>
