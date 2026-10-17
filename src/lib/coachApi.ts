@@ -1150,7 +1150,10 @@ export interface CoachRoutineAiRepairMark {
 
 /**
  * `GET …/routine/ai-proposal`. `baseDocument`, `proposal` and the repairs are READY-only;
- * `errorCode` is FAILED-only and is rendered through the copy table, never as text.
+ * `errorCode` is FAILED's reason, rendered through the copy table, never as text. BUG-862
+ * (b-fit-api fix/bug862-proposal-stale-on-read @ 91ce14a7, not yet merged or vendored): a READY
+ * proposal whose base moved reads EXPIRED with `errorCode` COACH_PROPOSAL_STALE; the panel maps
+ * every EXPIRED to its stale view, whatever the code.
  * @wire CoachRoutineAiProposalResponse
  */
 export interface CoachRoutineAiProposalResponse {
