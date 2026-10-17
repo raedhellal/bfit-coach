@@ -4832,6 +4832,8 @@ interface FixtureState {
   revoked: boolean;
   /** BUG-689 — how many forced render errors `evoli_fixture_render_error=once` has served. */
   renderErrorsServed: number;
+  /** BUG-869/870 — `evoli_fixture_ai_keep_lost` has lost one Keep's answer since the last reset. */
+  aiKeepLostServed: boolean;
   /**
    * The trainee whose routine page was rendered last, so the catalog outage is
    * reachable. `GET /coach-portal/catalog/exercises` carries no trainee id — rightly,
@@ -5165,6 +5167,7 @@ function freshState(): FixtureState {
   return {
     revoked: false,
     renderErrorsServed: 0,
+    aiKeepLostServed: false,
     lastRoutineClient: null,
     plans: new Map<string, StoredPlan | null>([
       [LINA_ID, seededPlan(LINA_ID, linaPlan())],
@@ -6859,6 +6862,39 @@ async function aiCapabilityField(): Promise<{ aiProposals?: unknown }> {
 }
 
 /** The mapping is not registered while the flag is off: the api's plain 404. */
+/**
+ * BUG-869 / BUG-870 — ⚠ fixture affordance: `evoli_fixture_ai_keep_lost=<mode>` (one browser
+ * context) loses the answer of ONE `POST …/routine/ai-proposal/keep`, the first one after the
+ * fixture's reset (each test), as ADR-0036 § Amendment BUG-869/870 specifies. The retry goes through.
+ *
+ *   `thrown_before` — `TypeError("fetch failed")` BEFORE Keep checks or writes anything, as BUG-711's
+ *                     `evoli_fixture_nutrition_lost` does: the request never reached b-fit-api (W3).
+ *   `thrown`        — Keep writes the draft and deletes P (BUG-868), THEN the connection is lost:
+ *                     `TypeError("fetch failed")` (W1).
+ *   `502|503|504`   — the same committed Keep, then the code-less `ApiError` `apiFetch` builds from a
+ *                     bare gateway answer (W5).
+ *   `500`           — the same committed Keep, then b-fit-api's own `INTERNAL_ERROR` (not in the ADR's
+ *                     list; added so CI witnesses A3's "a plain 500 also reconciles").
+ *
+ * The after-commit modes fire only on a Keep that reached its write: a Keep refused earlier (409,
+ * 400, 403, 404) answers as usual and leaves the switch armed.
+ */
+type AiKeepLost = "thrown_before" | "thrown" | "500" | "502" | "503" | "504";
+async function aiKeepLostMode(): Promise<AiKeepLost | null> {
+  if (state().aiKeepLostServed) return null;
+  const raw = await fixtureSwitch("evoli_fixture_ai_keep_lost");
+  return raw === "thrown_before" || raw === "thrown" || raw === "500" || raw === "502" || raw === "503" || raw === "504"
+    ? raw
+    : null;
+}
+async function loseAiKeepAnswer(mode: AiKeepLost): Promise<never> {
+  state().aiKeepLostServed = true;
+  if (mode === "thrown_before" || mode === "thrown") throw new TypeError("fetch failed");
+  if (mode === "500") await fail(500, "INTERNAL_ERROR", "Something went wrong. Please try again.");
+  await failAsGateway(`gateway_${mode}`);
+  throw new TypeError("unreachable"); // failAsGateway threw: every remaining mode is 502/503/504
+}
+
 async function assertAiRoutesRegistered(): Promise<void> {
   const caps = await aiCapabilityField();
   const routine = (caps.aiProposals as { routine?: unknown } | undefined)?.routine === true;
@@ -7094,7 +7130,7 @@ type AiBaseRefusal = "live_plan_changed" | "base_draft_gone" | "draft_exists";
 
 /**
  * D36.4's base check, ONE definition for Keep and the read — the fixture's mirror of the api's
- * `liveBaseRefusal` then `draftBaseRefusal` (b-fit-api fix/bug862-proposal-stale-on-read @ 91ce14a7),
+ * `liveBaseRefusal` then `draftBaseRefusal` (b-fit-api main @ 5be62d28),
  * in that order. A LIVE or NONE base: the live plan must be unchanged (the api compares plan id +
  * `selected_at`; the fixture has no `selected_at`, and every publish writes a new plan id), and a
  * NONE base's livePlanId is null, so "still no plan". Then the draft: a DRAFT base whose draft is
@@ -7125,7 +7161,7 @@ function aiResponse(id: string, row: StoredAiProposal | undefined, now: number):
   }
   settleAiProposal(row, now);
   const settled = aiSettledStatus(row, now);
-  // BUG-862 (b-fit-api `CoachRoutineUseCase#proposal` @ 91ce14a7): a READY proposal whose base moved
+  // BUG-862 (b-fit-api `CoachRoutineUseCase#proposal`, main @ 5be62d28): a READY proposal whose base moved
   // runs Keep's own base check on the read, and reads EXPIRED with COACH_PROPOSAL_STALE (row untouched).
   const moved = settled === "READY" ? aiBaseRefusal(id, row) : null;
   const status = moved ? "EXPIRED" : settled;
@@ -7872,6 +7908,8 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   async keepRoutineAiProposal(id: string, body: CoachRoutineAiKeepRequest): Promise<CoachRoutineDraftResponse> {
+    const lost = await aiKeepLostMode();
+    if (lost === "thrown_before") await loseAiKeepAnswer(lost); // never reached b-fit-api: nothing checked, nothing written
     await assertAiRoutesRegistered();
     const sent = body as unknown as Record<string, unknown>;
     const extra = Object.keys(sent).find((key) => key !== "proposalId");
@@ -7909,8 +7947,12 @@ export const fixtureCoachApi: CoachApi = {
     // draft write, by id and only while READY. Re-read after the await above: a Regenerate that
     // took the slot meanwhile (a new id) survives, exactly as the api's `id = :id` predicate does.
     // No quota unit is released. So a reload reads NONE even if the portal's cleanup DELETE is lost.
+    // The after/current re-read (a Regenerate completed inside Keep's window keeps its new proposal) is
+    // the api's own race test: `CoachRoutineAiProposalIntegrationTest.bug868_aRegenerateCompletedReadyInsideKeepsWindowKeepsItsNewProposal`.
     const after = state().aiProposals.get(id) ?? null;
     if (routineAiKeepRemoves(after, current.proposalId)) state().aiProposals.delete(id);
+    // BUG-869/870: Keep committed (draft written, P deleted); now lose its answer, once.
+    if (lost) await loseAiKeepAnswer(lost);
     return draftResponse(id, saved);
   },
 

@@ -780,6 +780,13 @@ export const fr = {
       `${first} n'a pas encore de programme à modifier. Utilisez ${q("Régénérer avec l'IA")}.`, // table
     unsavedNote:
       "Vos modifications non enregistrées ne sont pas incluses\u00a0: l'IA part de la dernière version enregistrée.", // table (U8)
+    /* BUG-869/870 — the four OURS rows (EV-186 copy table, 2026-10-17 (m)). The panel's « Impossible de … » family. */
+    keepUnconfirmed:
+      "Impossible de confirmer si cette suggestion a été gardée. Affichez la version enregistrée avant toute autre action.", // table
+    keepUnconfirmedUnsaved: "Afficher la version enregistrée remplace vos modifications non enregistrées.", // table
+    showSaved: "Afficher la version enregistrée", // table
+    keepUnconfirmedStillHere:
+      "Impossible de confirmer que cette suggestion a été gardée. Elle est toujours là\u00a0: vous pouvez la garder.", // table (U+00A0 before « : »)
   },
 
   nutrition: {

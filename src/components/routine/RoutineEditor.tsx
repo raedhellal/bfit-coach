@@ -482,36 +482,43 @@ export function RoutineEditor({
 
   /** The conflict dialog's non-destructive answer: show what the server holds now. */
   function loadSaved() {
-    startTransition(async () => {
-      const result = await settled(reloadRoutineAction(clientId), FAILED);
-      if (!result.ok) {
-        if (result.failure.code === "ACCESS_DENIED") return accessEnded();
-        setConflict(null);
-        setError(copy.routine.conflictLoadFailed);
-        return;
-      }
-      revision.current += 1;
-      replaced();
-      if (result.draft) {
-        setDocument(editableDocument(null, result.draft.document));
-        token.current = result.draft.updatedAt;
-        setIsDraft(true);
-        setAiDraftedAt(result.draft.aiDraftedAt);
-      } else {
-        setAiDraftedAt(null);
-        // Published or discarded in the meantime: the live plan is what there is.
-        setDocument(
-          result.published ? editableDocument(result.published.planName, result.published.document) : null
-        );
-        token.current = null;
-        setIsDraft(false);
-      }
-      setResolved(true);
-      setDirty(false);
+    startTransition(() => reseedFromSaved(copy.routine.conflictLoaded));
+  }
+
+  /**
+   * Re-seed the working copy from what the server holds (draft, else published). `loadSaved`'s body,
+   * shared with the AI panel's « Show what's saved » (BUG-869/870), which runs it inside its OWN
+   * transition and with no notice (`null`): its own alert is what the coach is reading.
+   */
+  async function reseedFromSaved(loadedNotice: string | null): Promise<void> {
+    const result = await settled(reloadRoutineAction(clientId), FAILED);
+    if (!result.ok) {
+      if (result.failure.code === "ACCESS_DENIED") return accessEnded();
       setConflict(null);
-      setError(null);
-      setNotice(copy.routine.conflictLoaded);
-    });
+      setError(copy.routine.conflictLoadFailed);
+      return;
+    }
+    revision.current += 1;
+    replaced();
+    if (result.draft) {
+      setDocument(editableDocument(null, result.draft.document));
+      token.current = result.draft.updatedAt;
+      setIsDraft(true);
+      setAiDraftedAt(result.draft.aiDraftedAt);
+    } else {
+      setAiDraftedAt(null);
+      // Published or discarded in the meantime: the live plan is what there is.
+      setDocument(
+        result.published ? editableDocument(result.published.planName, result.published.document) : null
+      );
+      token.current = null;
+      setIsDraft(false);
+    }
+    setResolved(true);
+    setDirty(false);
+    setConflict(null);
+    setError(null);
+    setNotice(loadedNotice);
   }
 
   /** The conflict dialog's destructive answer — only on a press, only with the 409's token. */
@@ -563,6 +570,7 @@ export function RoutineEditor({
       // api revises. A blank plan begun on this page and not yet saved is neither.
       canUpdate={ai.instruction === true && ((isDraft && token.current !== null) || activePlan !== null)}
       onKept={kept}
+      onShowSaved={() => reseedFromSaved(null)}
     />
   ) : null;
 
