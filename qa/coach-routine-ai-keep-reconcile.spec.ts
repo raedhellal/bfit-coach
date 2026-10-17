@@ -20,7 +20,7 @@ import { signInThroughForm } from "./sign-in";
  * Journal checks stand in for the DB: `keepRoutineAiProposal`, `getRoutineAiProposal` in the api
  * journal, and `aiPosts` for "no paid start" (the counters).
  *
- * Sentences are LITERALS from the EV-186 copy table (senior-po, hub b6be4c95), never imported from
+ * Sentences are LITERALS from the EV-186 copy table (senior-po, hub main @ 2fe1581d), never imported from
  * `src/lib/copy.ts`. FR keeps U+00A0 before « : ».
  */
 
@@ -76,11 +76,26 @@ async function cookie(page: Page, name: string, value: string) {
 }
 const panel = (page: Page) => page.getByTestId("routine-ai-panel");
 
-type Journal = { api: { op: string; arg: string | null }[]; aiPosts: { outcome: string }[] };
+type Journal = { api: { op: string; arg: string | null; request: string }[]; aiPosts: { outcome: string }[] };
 async function calls(page: Page): Promise<Journal> {
   const res = await page.request.get("/api/fixture/calls", { maxRedirects: 0 });
   return res.json();
 }
+/**
+ * The PANEL's own proposal GETs after the last Keep: server-action reads. A server action has no
+ * React request scope, so each of its calls has a journal `request` tag of its own, while a page
+ * render's reads share one tag with the render's other calls (`src/lib/fixtureApiJournal.ts`).
+ */
+function panelReadsAfterLastKeep(j: Journal): number {
+  const at = j.api.map((e) => e.op).lastIndexOf("keepRoutineAiProposal");
+  expect(at, "a Keep reached the fixture").toBeGreaterThanOrEqual(0);
+  const perTag = new Map<string, number>();
+  for (const e of j.api) perTag.set(e.request, (perTag.get(e.request) ?? 0) + 1);
+  return j.api
+    .slice(at + 1)
+    .filter((e) => e.op === "getRoutineAiProposal" && e.arg === LINA && perTag.get(e.request) === 1).length;
+}
+
 /** The proposal GETs after the LAST Keep in the journal. */
 function readsAfterLastKeep(j: Journal): number {
   const at = j.api.map((e) => e.op).lastIndexOf("keepRoutineAiProposal");
@@ -103,6 +118,35 @@ async function ready(page: Page, lang: Lang, navigate = true): Promise<string> {
   const p = await panel(page).getAttribute("data-proposal-id");
   expect(p).toMatch(/^[0-9a-f-]{36}$/);
   return p as string;
+}
+
+/**
+ * `ready`, also returning N = `proposal.name` exactly as the READY read served it (staff N5). The read
+ * is a server action, so N is taken from that action's response body, never recomputed here.
+ */
+async function readyWithN(page: Page, lang: Lang, navigate = true): Promise<{ p: string; n: string }> {
+  // Through `page.route`, not `response.text()`: Chromium can evict a server action's response body
+  // before the runner asks for it (measured: the READY read's body came back empty).
+  const bodies: string[] = [];
+  const matcher = (url: URL) => url.pathname === ROUTE(LINA);
+  const handler = async (route: Route) => {
+    const req = route.request();
+    if (req.method() !== "POST" || !req.headers()["next-action"]) return route.continue();
+    const response = await route.fetch();
+    const body = await response.text();
+    bodies.push(body);
+    await route.fulfill({ response, body });
+  };
+  await page.route(matcher, handler);
+  const p = await ready(page, lang, navigate);
+  await page.unroute(matcher, handler);
+  const names = bodies.flatMap((body) =>
+    [...body.matchAll(/"proposalId":"([0-9a-f-]{36})"[^]*?"status":"READY"[^]*?"proposal":\{"name":"((?:[^"\\]|\\.)*)"/g)]
+      .filter((m) => m[1] === p)
+      .map((m) => JSON.parse(`"${m[2]}"`) as string)
+  );
+  expect(names.length, "the READY read's response carried P's plan").toBeGreaterThan(0);
+  return { p, n: names[names.length - 1] };
 }
 
 /** "Press Keep": the panel's button, then the dialog's when it asks (a saved draft or unsaved edits). */
@@ -139,11 +183,19 @@ async function expectUnconfirmed(page: Page, lang: Lang, dirty = false) {
 }
 
 /** « Show what's saved »: the editor shows the kept draft's disclosure, and the panel is idle (GET NONE). */
-async function showSavedLandsKept(page: Page, lang: Lang) {
+async function showSavedLandsKept(page: Page, lang: Lang, n?: string) {
   const l = L[lang];
+  const readsBefore = panelReadsAfterLastKeep(await calls(page));
   await panel(page).getByRole("button", { name: l.showSaved, exact: true }).click();
   await expect(page.getByTestId("routine-ai-drafted")).toHaveText(l.disclosure);
   await expect(panel(page)).toHaveAttribute("data-ai-state", "idle");
+  // The press re-reads the proposal exactly once (the editor's re-seed reads the routine and draft only).
+  // Counted as the panel's reads: on a DIRTY editor the re-seed also makes the unsaved-edits guard hand
+  // its history entry back, and that traversal re-renders the page, which reads the proposal too
+  // (pre-existing, the same as the conflict dialog's « Load the saved version »).
+  expect(panelReadsAfterLastKeep(await calls(page))).toBe(readsBefore + 1);
+  // W1: the editor holds the KEPT plan: its name is N, the READY read's `proposal.name`.
+  if (n !== undefined) await expect(page.getByLabel(l.planName)).toHaveValue(n);
   const shown = await page.getByLabel(l.planName).inputValue();
   await page.reload();
   await expect(panel(page)).toHaveAttribute("data-ai-state", "idle");
@@ -182,7 +234,7 @@ test.describe("no answer, the read does not name P → unconfirmed (BUG-869)", (
       }) => {
         await setLang(page, lang);
         await base(page, lang, kind);
-        await ready(page, lang, false);
+        const { n } = await readyWithN(page, lang, false);
         const postsBefore = (await calls(page)).aiPosts.length;
         await cookie(page, "evoli_fixture_ai_keep_lost", "thrown");
         await pressKeep(page, lang, kind === "DRAFT");
@@ -190,7 +242,7 @@ test.describe("no answer, the read does not name P → unconfirmed (BUG-869)", (
         const j = await calls(page);
         expect(readsAfterLastKeep(j)).toBe(1);
         expect(j.aiPosts.length).toBe(postsBefore); // no paid start
-        await showSavedLandsKept(page, lang);
+        await showSavedLandsKept(page, lang, n);
         expect((await calls(page)).aiPosts.length).toBe(postsBefore);
       });
     }
@@ -312,6 +364,37 @@ test.describe("the reconcile read fails too", () => {
     await expectUnconfirmed(page, "en");
     await showSavedLandsKept(page, "en");
   });
+
+  for (const lang of LANGS) {
+    test(`N3 ${lang}: a « Show what's saved » whose re-read gets no answer is announced again (the alert remounts)`, async ({
+      page,
+    }) => {
+      const l = L[lang];
+      await setLang(page, lang);
+      await ready(page, lang);
+      await cookie(page, "evoli_fixture_ai_keep_lost", "thrown");
+      // 0 Keep, 1 its reconcile read; 2 the press's editor re-seed, 3 the press's re-read (reset).
+      await onActions(page, [
+        (route) => route.continue(),
+        (route) => route.continue(),
+        (route) => route.continue(),
+        (route) => route.abort("connectionreset"),
+      ]);
+      await pressKeep(page, lang, false);
+      await expectUnconfirmed(page, lang);
+      const before = await panel(page).getByTestId("routine-ai-unconfirmed").elementHandle();
+      expect(before).not.toBeNull();
+      await panel(page).getByRole("button", { name: l.showSaved, exact: true }).click();
+      // The old alert node is gone and a new one, same words, carries the press's announcement.
+      await expect.poll(() => before!.evaluate((el) => el.isConnected)).toBe(false);
+      await expectUnconfirmed(page, lang);
+      // The editor re-seed did run: the kept draft is on screen, even though the re-read was lost.
+      await expect(page.getByTestId("routine-ai-drafted")).toHaveText(l.disclosure);
+      // The next press (unarmed) adopts the read: idle.
+      await panel(page).getByRole("button", { name: l.showSaved, exact: true }).click();
+      await expect(panel(page)).toHaveAttribute("data-ai-state", "idle");
+    });
+  }
 
   test("en: the read is 404 (the routes went off) → the panel is hidden", async ({ page }) => {
     await ready(page, "en");

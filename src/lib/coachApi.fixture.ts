@@ -6864,11 +6864,11 @@ async function aiCapabilityField(): Promise<{ aiProposals?: unknown }> {
   }
 }
 
-/** The mapping is not registered while the flag is off: the api's plain 404. */
 /**
- * BUG-869 / BUG-870 — ⚠ fixture affordance: `evoli_fixture_ai_keep_lost=<mode>` (one browser
- * context) loses the answer of ONE `POST …/routine/ai-proposal/keep`, the first one after the
- * fixture's reset (each test), as ADR-0036 § Amendment BUG-869/870 specifies. The retry goes through.
+ * BUG-869 / BUG-870 — ⚠ fixture affordance: `evoli_fixture_ai_keep_lost=<mode>` loses the answer
+ * of ONE `POST …/routine/ai-proposal/keep`: once per fixture reset (each test), armed by this
+ * context's cookie; the served bit is process-global. ADR-0036 § Amendment BUG-869/870. The retry
+ * goes through.
  *
  *   `thrown_before` — `TypeError("fetch failed")` BEFORE Keep checks or writes anything, as BUG-711's
  *                     `evoli_fixture_nutrition_lost` does: the request never reached b-fit-api (W3).
@@ -6951,6 +6951,7 @@ const commitAiStartLate: AiStartCommit = (id, row, entry) => {
   }, AI_START_LATE_MS);
 };
 
+/** The mapping is not registered while the flag is off: the api's plain 404. */
 async function assertAiRoutesRegistered(): Promise<void> {
   const caps = await aiCapabilityField();
   const routine = (caps.aiProposals as { routine?: unknown } | undefined)?.routine === true;

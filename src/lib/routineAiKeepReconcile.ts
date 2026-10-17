@@ -1,7 +1,7 @@
 /**
  * BUG-869 / BUG-870: what the routine AI panel shows after a « Garder » (Keep) that did not come
- * back `200`. Binding design: ADR-0036 § Amendment BUG-869/870 (hub `docs/adr0036-bug869-870`),
- * its decision table, staff's A1 and A3 rules, and senior-po's copy on EV-186 (hub b6be4c95).
+ * back `200`. Binding design: ADR-0036 § Amendment BUG-869/870 (hub main @ 5706825a), its
+ * decision table, staff's A1 and A3 rules, and senior-po's copy on EV-186 (hub main @ 2fe1581d).
  *
  * A pure module (no `server-only`, no React) so `qa/routine-ai-keep-reconcile-unit.spec.ts` can
  * hold every row of the table, including the two races QA cannot drive live.

@@ -1372,7 +1372,7 @@ export const en = {
     unsavedNote: "Your unsaved changes aren't included: the AI starts from the last saved version.",
     /*
      * ── BUG-869/870 (ADR-0036 § Amendment BUG-869/870): a Keep that did not come back 200. ──
-     * All four OURS, signed off by senior-po (EV-186 copy table, 2026-10-17 (m), hub b6be4c95).
+     * All four OURS, signed off by senior-po (EV-186 copy table, 2026-10-17 (m), hub main @ 2fe1581d).
      * None of them may carry "Nothing was changed": nobody knows whether the Keep landed.
      */
     /** table: `unconfirmed` view alert — the reconcile read cannot show the suggestion still offered. */
