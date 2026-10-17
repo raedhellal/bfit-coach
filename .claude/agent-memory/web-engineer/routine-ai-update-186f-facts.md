@@ -63,3 +63,12 @@ text) and `aiDiscards` ({proposalId, touched}).
 - Folded unchanged days still render `[data-weekday]` inside `routine-ai-unchanged` <details>.
 - Merged origin/main 23c3b452 (186b, 186n, R2-1) at e091c4b: clean; R2-1's chunk `.catch` fallback
   and 186f's `canUpdate`/`instruction` coexist; chunk-fail spec runs on the start config.
+
+**BUG-865/866 (2026-10-17, fix/coach-ai-hold-notice):** opening a form cleared `notice` while the
+per-kind hold stayed → disabled « Générer », no reason. Now `held[kind] = {until, failure}`; the
+form on screen (`formKind`: brief → REGENERATE, box or FAILED-REVISE box → REVISE) re-derives its
+sentence from the hold via `routineAiSentence`, and a 429 notice carries `heldKind` and is dropped
+when that hold lifts. Spec `qa/coach-routine-ai-hold-notice.spec.ts`; expiry is driven by
+`page.clock.install()` before the goto + `fastForward(24h+1m)` (the hold is BROWSER now + the
+fixture's Retry-After to the next UTC midnight). Hub record numbers these BUG-864/865; the
+dispatch called them 865/866 — check the hub BUGS.md before quoting.
