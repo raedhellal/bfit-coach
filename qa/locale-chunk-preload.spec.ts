@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { expect, webkit, type BrowserContext, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
+import { PROBE, probeLeaks, type Lang } from "./locale-probes";
 
 /**
  * EV-350 (350.8, with 350.5's `/login` and 350.6's switch) — the dictionary chunk is
@@ -37,8 +38,10 @@ import { test } from "./fixture-test";
  *     language" in Chromium and WebKit, (B) in WebKit on "EN again switches in place".
  */
 
-const PROBE = { en: "Add a client", fr: "Ouvrir le plan" } as const;
-type Lang = keyof typeof PROBE;
+// BUG-861: the probes mean "this chunk is a dictionary" only while no other module holds them.
+test.beforeAll(() => {
+  expect(probeLeaks(), "a locale probe appears outside its dictionary (see qa/locale-probes.ts)").toEqual([]);
+});
 const other = (lang: Lang): Lang => (lang === "fr" ? "en" : "fr");
 
 interface Seen {
