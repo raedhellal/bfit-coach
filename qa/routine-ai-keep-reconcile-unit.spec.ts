@@ -61,6 +61,26 @@ test.describe("the Keep's own outcome: which ones read (rows 1-2 never reach the
   });
 });
 
+test.describe("401 and 429 are no answer for Keep: they reconcile (ADR S1)", () => {
+  test("401 (UNAUTHORIZED, or code-less FAILED) → read; P READY → stillHere, P gone → unconfirmed", () => {
+    for (const code of ["UNAUTHORIZED", "FAILED"]) {
+      const route = keepFailureRoute(code);
+      expect(route, code).toEqual({ kind: "reconcile", staleCode: null });
+      if (route.kind !== "reconcile") throw new Error("unreachable");
+      expect(reconcileKeep(route.staleCode, P, read(P, "READY"))).toEqual({ kind: "stillHere" });
+      expect(reconcileKeep(route.staleCode, P, read(null, "NONE"))).toEqual({ kind: "unconfirmed" });
+    }
+  });
+
+  test("429 (COACH_AI_RATE_LIMIT) → read, never the held quota sentence; P READY → stillHere, P gone → unconfirmed", () => {
+    const route = keepFailureRoute("COACH_AI_RATE_LIMIT");
+    expect(route).toEqual({ kind: "reconcile", staleCode: null });
+    if (route.kind !== "reconcile") throw new Error("unreachable");
+    expect(reconcileKeep(route.staleCode, P, read(P, "READY"))).toEqual({ kind: "stillHere" });
+    expect(reconcileKeep(route.staleCode, P, read(Q, "READY"))).toEqual({ kind: "unconfirmed" });
+  });
+});
+
 test.describe("the reconcile read (rows 3-10)", () => {
   for (const code of ["COACH_DRAFT_EXISTS", "COACH_PROPOSAL_STALE"] as KeepStaleCode[]) {
     test(`409 ${code}, the read names P (any status) → stale with the 409's own code`, () => {
