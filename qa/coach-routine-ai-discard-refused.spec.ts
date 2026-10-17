@@ -12,6 +12,11 @@ import { signInThroughForm } from "./sign-in";
  * refused Discard now says its own sentence (OURS, `routineAi.discardFailed`), and no line equal to
  * the view's own sentence is drawn again.
  *
+ * Staff B1 on the first cut: a refused RESTART on a FAILED view (the box's « Generate » again, or
+ * « Try again ») is a new event and must be announced. It says its own sentence (OURS,
+ * `routineAi.startFailed`) in a NEW role="alert" line; no press line is ever dropped because its words
+ * equal the view's (that dedupe made the second failure silent: staff's probe `silent.spec.ts`).
+ *
  * A11y: the held form's « Generate » carries `aria-describedby` naming the VISIBLE element that holds
  * the hold's 429 sentence; the hold's second line (`routine-ai-held-notice`) is role="status".
  *
@@ -27,6 +32,9 @@ const FAILED = "We couldn't prepare this suggestion. Nothing was changed. Try ag
 const FAILED_FR = "Impossible de préparer cette suggestion. Rien n'a été modifié. Réessayez.";
 const DISCARD_FAILED = "We couldn't confirm this suggestion was discarded. Try again.";
 const DISCARD_FAILED_FR = "Impossible de confirmer que cette suggestion a été écartée. Réessayez.";
+const START_FAILED = "We couldn't confirm this request was received. Your plan was not changed. Try again.";
+const START_FAILED_FR =
+  "Impossible de confirmer que cette demande a été reçue. Votre programme n'a pas été modifié. Réessayez.";
 const NOTHING_APPLIED =
   "The AI found no change to apply for this request. Nothing was changed. Rephrase it or try again.";
 const EDIT_429 = "You've used today's 10 AI edits for Lina. You can still edit by hand, or try again tomorrow.";
@@ -148,6 +156,62 @@ test.describe("BUG-867 — a refused Discard on a FAILED proposal", () => {
     await panel(page).getByRole("button", { name: "Écarter", exact: true }).click();
     await expect(notice(page)).toHaveText(DISCARD_FAILED_FR);
     expect(await linesReading(page, FAILED_FR)).toBe(1);
+  });
+});
+
+test.describe("Staff B1 — a refused restart on a FAILED view is announced, never silent", () => {
+  test.beforeEach(async ({ page }) => {
+    await cookie(page, "evoli_fixture_ai", "fail"); // default code COACH_AI_TIMEOUT → the Failed sentence
+  });
+
+  /** A new alert line: absent before the press, then present, role="alert", with `text`. */
+  async function expectNewAlert(page: Page, text: string) {
+    await expect(notice(page)).toHaveText(text);
+    await expect(notice(page)).toHaveAttribute("role", "alert");
+  }
+
+  test("failed REVISE box: « Generate » again with no answer puts a new alert line under the run's", async ({ page }) => {
+    await failedRevise(page);
+    await expect(failedLine(page)).toHaveText(FAILED);
+    await expect(notice(page)).toHaveCount(0);
+    await dropNextAction(page);
+    await box(page).getByRole("button", { name: "Generate", exact: true }).click();
+    await expectNewAlert(page, START_FAILED);
+    await expect(failedLine(page)).toHaveText(FAILED);
+    await expect(panel(page)).toHaveAttribute("data-ai-state", "failed");
+    expect(await linesReading(page, FAILED)).toBe(1);
+    // The coach's text survives for the next try (U5).
+    await expect(box(page).getByRole("textbox")).toHaveValue("swap");
+  });
+
+  test("failed Regenerate: « Try again » with no answer puts a new alert line under the run's", async ({ page }) => {
+    await failedRegenerate(page);
+    await expect(notice(page)).toHaveCount(0);
+    await dropNextAction(page);
+    await panel(page).getByRole("button", { name: "Try again", exact: true }).click();
+    await expectNewAlert(page, START_FAILED);
+    await expect(failedLine(page)).toHaveText(FAILED);
+    await expect(panel(page)).toHaveAttribute("data-ai-state", "failed");
+  });
+
+  test("French, failed REVISE box: « Générer » again with no answer says « Impossible de confirmer que cette demande… »", async ({ page }) => {
+    await cookie(page, "evoli_pro_locale", "fr");
+    await failedRevise(page, { open: "Modifier avec l'IA", send: "Générer" });
+    await dropNextAction(page);
+    await box(page).getByRole("button", { name: "Générer", exact: true }).click();
+    await expectNewAlert(page, START_FAILED_FR);
+    await expect(failedLine(page)).toHaveText(FAILED_FR);
+  });
+
+  test("French, failed Regenerate: « Réessayer » with no answer is announced", async ({ page }) => {
+    await cookie(page, "evoli_pro_locale", "fr");
+    await page.goto(ROUTE);
+    await page.getByRole("button", { name: "Régénérer avec l'IA", exact: true }).click();
+    await panel(page).locator("form").getByRole("button", { name: "Générer", exact: true }).click();
+    await expect(failedLine(page)).toHaveText(FAILED_FR, { timeout: 20_000 });
+    await dropNextAction(page);
+    await panel(page).getByRole("button", { name: "Réessayer", exact: true }).click();
+    await expectNewAlert(page, START_FAILED_FR);
   });
 });
 

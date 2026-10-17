@@ -698,6 +698,9 @@ export const fr = {
     failed: "Impossible de préparer cette suggestion. Rien n'a été modifié. Réessayez.", // table
     /** OURS (BUG-867) — see `en.routineAi.discardFailed`. */
     discardFailed: "Impossible de confirmer que cette suggestion a été écartée. Réessayez.",
+    /** OURS (BUG-867, staff B1) — see `en.routineAi.startFailed`. */
+    startFailed:
+      "Impossible de confirmer que cette demande a été reçue. Votre programme n'a pas été modifié. Réessayez.",
     disclosure: (date: string) =>
       `Préparé avec l'IA le ${date}. Relisez-le avant de publier : vous en êtes l'auteur.`, // table
     repairMark: (first: string, injury: string) =>

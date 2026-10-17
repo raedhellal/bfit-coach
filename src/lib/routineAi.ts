@@ -244,9 +244,10 @@ export interface RoutineAiFailure {
  * COACH_AI_INVALID_OUTPUT, COACH_AI_FAILED, VALIDATION_ERROR and a lost connection — renders
  * the Failed sentence. `first` is the trainee's first name as `firstName` returns it.
  *
- * `generic` replaces the Failed sentence for a press that is not a run (BUG-867: a refused
- * « Écarter » says `discardFailed`, never « We couldn't prepare this suggestion », which is the
- * FAILED run's own sentence). A code with its own row keeps that row whatever `generic` is.
+ * `generic` replaces the Failed sentence for a PRESS, which is not a run (BUG-867: a refused
+ * « Écarter » says `discardFailed`, a refused « Générer » / « Réessayer » `startFailed`, never
+ * « We couldn't prepare this suggestion », which is a FAILED run's own sentence). A code with its
+ * own row keeps that row whatever `generic` is.
  */
 export function routineAiSentence(
   failure: RoutineAiFailure,
@@ -288,24 +289,27 @@ export function routineAiSentence(
 }
 
 /**
- * BUG-867 — the panel's refusal lines, with no sentence on screen twice.
+ * BUG-867 — the panel's refusal lines.
  *
  * `press` is the last press's refusal (null when none, or when its hold lifted), `held` the open
  * form's 429 sentence re-derived from its hold (BUG-865/866), `view` the sentence the FAILED or
  * stale view already draws. `shown` is the alert line (`routine-ai-notice`), `extra` the hold's
- * second line (`routine-ai-held-notice`) when a different press refusal holds the first. A line
- * equal to one already drawn is dropped, whichever element would have drawn it.
+ * second line (`routine-ai-held-notice`) when a different press refusal holds the first.
+ *
+ * The press line is NEVER dropped (staff B1): it is a new event, and hiding it because its words
+ * equal the view's would leave a failed second attempt unannounced. The duplicate BUG-867 saw is
+ * prevented upstream, by a press's own generic sentence (`discardFailed`, `startFailed`). Only the
+ * HOLD's line, which is standing state, is dropped when the press or the view already says it.
  */
 export function routineAiNoticeLines(
   press: string | null,
   held: string | null,
   view: string | null
 ): { shown: string | null; extra: string | null } {
-  const pressLine = press !== null && press !== view ? press : null;
   const heldLine = held !== null && held !== view ? held : null;
   return {
-    shown: pressLine ?? heldLine,
-    extra: pressLine !== null && heldLine !== null && heldLine !== pressLine ? heldLine : null,
+    shown: press ?? heldLine,
+    extra: press !== null && heldLine !== null && heldLine !== press ? heldLine : null,
   };
 }
 

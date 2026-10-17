@@ -169,6 +169,7 @@ test.describe("429 hold and polling", () => {
 test.describe("BUG-867 — a refused Discard's sentence, and no line twice", () => {
   const FAILED = "We couldn't prepare this suggestion. Nothing was changed. Try again.";
   const DISCARD_FAILED = "We couldn't confirm this suggestion was discarded. Try again.";
+  const START_FAILED = "We couldn't confirm this request was received. Your plan was not changed. Try again.";
   const UNAVAILABLE = "AI suggestions are switched off on this server.";
 
   test("generic codes take the given sentence; a code with its own row keeps it", () => {
@@ -180,15 +181,23 @@ test.describe("BUG-867 — a refused Discard's sentence, and no line twice", () 
     expect(routineAiSentence({ code: "FAILED" }, "Lina", fr, fr.routineAi.discardFailed)).toBe(
       "Impossible de confirmer que cette suggestion a été écartée. Réessayez."
     );
+    // Staff B1: a refused START has its own generic sentence too.
+    expect(routineAiSentence({ code: "FAILED" }, "Lina", en, en.routineAi.startFailed)).toBe(START_FAILED);
+    expect(routineAiSentence({ code: "FAILED" }, "Lina", fr, fr.routineAi.startFailed)).toBe(
+      "Impossible de confirmer que cette demande a été reçue. Votre programme n'a pas été modifié. Réessayez."
+    );
   });
 
-  test("the Discard's sentence is not the run's, in either language", () => {
-    expect(en.routineAi.discardFailed).not.toBe(en.routineAi.failed);
-    expect(fr.routineAi.discardFailed).not.toBe(fr.routineAi.failed);
+  test("a press's sentences are not the run's, nor each other's, in either language", () => {
+    for (const c of [en, fr]) {
+      const lines = [c.routineAi.failed, c.routineAi.discardFailed, c.routineAi.startFailed];
+      expect(new Set(lines).size).toBe(3);
+    }
   });
 
-  test("a press line equal to the view's own sentence is not drawn again", () => {
-    expect(routineAiNoticeLines(UNAVAILABLE, null, UNAVAILABLE)).toEqual({ shown: null, extra: null });
+  test("staff B1: a press line is NEVER dropped, even when its words equal the view's (a new event)", () => {
+    expect(routineAiNoticeLines(UNAVAILABLE, null, UNAVAILABLE)).toEqual({ shown: UNAVAILABLE, extra: null });
+    expect(routineAiNoticeLines(FAILED, null, FAILED)).toEqual({ shown: FAILED, extra: null });
     expect(routineAiNoticeLines(DISCARD_FAILED, null, FAILED)).toEqual({ shown: DISCARD_FAILED, extra: null });
   });
 
@@ -196,8 +205,11 @@ test.describe("BUG-867 — a refused Discard's sentence, and no line twice", () 
     expect(routineAiNoticeLines(null, "HOLD", null)).toEqual({ shown: "HOLD", extra: null });
     expect(routineAiNoticeLines("PRESS", "HOLD", FAILED)).toEqual({ shown: "PRESS", extra: "HOLD" });
     expect(routineAiNoticeLines("HOLD", "HOLD", null)).toEqual({ shown: "HOLD", extra: null });
-    // The press equals the view, the hold does not: the hold moves up to the alert line.
-    expect(routineAiNoticeLines(FAILED, "HOLD", FAILED)).toEqual({ shown: "HOLD", extra: null });
+    // The press equals the view: still drawn, with the hold second.
+    expect(routineAiNoticeLines(FAILED, "HOLD", FAILED)).toEqual({ shown: FAILED, extra: "HOLD" });
+    // The hold is standing state: dropped when the view already says it, alone or beside a press.
+    expect(routineAiNoticeLines(null, "HOLD", "HOLD")).toEqual({ shown: null, extra: null });
+    expect(routineAiNoticeLines("PRESS", "HOLD", "HOLD")).toEqual({ shown: "PRESS", extra: null });
     expect(routineAiNoticeLines(null, null, FAILED)).toEqual({ shown: null, extra: null });
   });
 });

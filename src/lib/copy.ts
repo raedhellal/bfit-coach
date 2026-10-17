@@ -1277,6 +1277,13 @@ export const en = {
      * because a lost connection cannot say whether the DELETE landed; pressing again is safe (idempotent).
      */
     discardFailed: "We couldn't confirm this suggestion was discarded. Try again.",
+    /**
+     * OURS (BUG-867, staff B1) — « Generate » / « Try again » got no answer, or an error with no row of
+     * its own. Not `failed`: on a FAILED view that is the earlier run's sentence, and this is a new
+     * event. « Confirm » because a lost connection cannot say whether the request reached the server;
+     * if it did, pressing again is answered « already being prepared » and the panel waits on that run.
+     */
+    startFailed: "We couldn't confirm this request was received. Your plan was not changed. Try again.",
     /** table: Disclosure after Keep (EV-186 AC2, unchanged). */
     disclosure: (date: string) => `Drafted with AI on ${date}. Review it before you publish — you're the author.`,
     repairMark: (first: string, injury: string) => `Will be swapped at publish: ${mid(first)}'s ${injury}`, // table

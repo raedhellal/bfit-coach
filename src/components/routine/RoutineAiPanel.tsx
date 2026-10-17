@@ -322,7 +322,8 @@ export function RoutineAiPanel({
         setView({ kind: "running", proposalId: result.proposalId, startedAt: Date.now(), proposalKind: body.kind });
         return;
       }
-      refused(result.failure, body.kind);
+      // BUG-867 / staff B1: a start's own generic sentence, never a FAILED run's (a new event on a failed view).
+      refused(result.failure, body.kind, t.startFailed);
       // 409 COACH_AI_PROPOSAL_RUNNING: say so, then wait on the run that is already going.
       if (result.failure.code === "COACH_AI_PROPOSAL_RUNNING") {
         const read = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
@@ -423,8 +424,8 @@ export function RoutineAiPanel({
       ? routineAiSentence({ code: view.code, kind: view.proposalKind }, firstName, copy)
       : null;
   /**
-   * BUG-867: never the same sentence twice. Another refusal (e.g. a discard's) on a held form shows
-   * both sentences, the hold's second; a line equal to the view's own sentence is not drawn again.
+   * BUG-867: another refusal (e.g. a discard's) on a held form shows both sentences, the hold's
+   * second; the hold's line is not repeated. A press's line is always drawn (staff B1).
    */
   const { shown: shownNotice, extra: extraHeldSentence } = routineAiNoticeLines(pressNotice, heldSentence, viewSentence);
   /**
