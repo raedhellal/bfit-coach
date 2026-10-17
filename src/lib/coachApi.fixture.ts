@@ -4834,6 +4834,8 @@ interface FixtureState {
   renderErrorsServed: number;
   /** BUG-869/870 — `evoli_fixture_ai_keep_lost` has lost one Keep's answer since the last reset. */
   aiKeepLostServed: boolean;
+  /** BUG-871 — `evoli_fixture_ai_start_lost` has lost one start's answer since the last reset. */
+  aiStartLostServed: boolean;
   /**
    * The trainee whose routine page was rendered last, so the catalog outage is
    * reachable. `GET /coach-portal/catalog/exercises` carries no trainee id — rightly,
@@ -5168,6 +5170,7 @@ function freshState(): FixtureState {
     revoked: false,
     renderErrorsServed: 0,
     aiKeepLostServed: false,
+    aiStartLostServed: false,
     lastRoutineClient: null,
     plans: new Map<string, StoredPlan | null>([
       [LINA_ID, seededPlan(LINA_ID, linaPlan())],
@@ -6895,6 +6898,59 @@ async function loseAiKeepAnswer(mode: AiKeepLost): Promise<never> {
   throw new TypeError("unreachable"); // failAsGateway threw: every remaining mode is 502/503/504
 }
 
+/**
+ * BUG-871 — ⚠ fixture affordance: `evoli_fixture_ai_start_lost=<mode>` (one browser context) loses
+ * the answer of ONE `POST …/routine/ai-proposal` (either kind), the first one after the fixture's
+ * reset (each test), as ADR-0036 § Amendment BUG-871 specifies. Later starts go through.
+ *
+ *   `thrown_before` — `TypeError("fetch failed")` before anything is checked or written: the request
+ *                     never reached b-fit-api (S3). Not journalled in `aiPosts` (nothing reached it).
+ *   `thrown`        — the start runs to its 202 (the RUNNING row is written, the unit spent), THEN the
+ *                     connection is lost: `TypeError("fetch failed")` (S1, S2).
+ *   `late`          — `TypeError("fetch failed")` at once; the start's write lands 3 s later (the proxy's
+ *                     `delaystart`, S4). Its checks run at the press; at the write, a RUNNING row that
+ *                     appeared meanwhile makes it `409` and nothing is written, as the api's `open()`.
+ *
+ * `thrown` and `late` fire only on a start that passed its checks: a start refused earlier (400, 403,
+ * 404, 409, 429, 503) answers as usual and leaves the switch armed.
+ */
+type AiStartLost = "thrown_before" | "thrown" | "late";
+const AI_START_LATE_MS = 3_000;
+async function aiStartLostMode(): Promise<AiStartLost | null> {
+  if (state().aiStartLostServed) return null;
+  const raw = await fixtureSwitch("evoli_fixture_ai_start_lost");
+  return raw === "thrown_before" || raw === "thrown" || raw === "late" ? raw : null;
+}
+function loseAiStartAnswer(): never {
+  state().aiStartLostServed = true;
+  throw new TypeError("fetch failed");
+}
+/** The start's write, now or (for `late`) after the delay. `entry` is its `aiPosts` journal line. */
+type AiStartCommit = (id: string, row: StoredAiProposal, entry: FixtureAiPost | null) => void;
+const commitAiStartNow: AiStartCommit = (id, row) => {
+  state().aiProposals.set(id, row);
+};
+const commitAiStartLate: AiStartCommit = (id, row, entry) => {
+  const store = state();
+  const runFor = row.settlesAt - Date.parse(row.createdAt);
+  if (entry) entry.outcome = "late";
+  setTimeout(() => {
+    if (state() !== store) return; // the fixture was reset meanwhile: that test is over
+    const now = Date.now();
+    const current = store.aiProposals.get(id);
+    if (current) settleAiProposal(current, now);
+    if (current?.status === "RUNNING" && now - Date.parse(current.createdAt) < 600_000) {
+      if (entry) entry.outcome = "COACH_AI_PROPOSAL_RUNNING";
+      return;
+    }
+    row.createdAt = new Date(now).toISOString();
+    row.settlesAt = now + runFor;
+    row.expiresAt = new Date(now + 24 * 3_600_000).toISOString();
+    store.aiProposals.set(id, row);
+    if (entry) entry.outcome = "202";
+  }, AI_START_LATE_MS);
+};
+
 async function assertAiRoutesRegistered(): Promise<void> {
   const caps = await aiCapabilityField();
   const routine = (caps.aiProposals as { routine?: unknown } | undefined)?.routine === true;
@@ -7198,7 +7254,8 @@ const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  */
 async function fixtureStartRevise(
   id: string,
-  sent: Record<string, unknown>
+  sent: Record<string, unknown>,
+  commit: (row: StoredAiProposal) => void = (row) => commitAiStartNow(id, row, null)
 ): Promise<CoachRoutineAiProposalStartedResponse> {
   // A key outside the REVISE contract, `brief` included, decided once kind is known.
   const forbiddenFirst = ["injuries", "equipment", "allergies", "foodRules", "dietaryPattern", "traineeId", "coachId"];
@@ -7312,7 +7369,7 @@ async function fixtureStartRevise(
             : { kind: "READY" },
     errorCode: null,
   };
-  state().aiProposals.set(id, row);
+  commit(row);
   return { proposalId: row.proposalId, status: "RUNNING" };
 }
 
@@ -7768,6 +7825,8 @@ export const fixtureCoachApi: CoachApi = {
     id: string,
     body: CoachRoutineAiProposalRequest
   ): Promise<CoachRoutineAiProposalStartedResponse> {
+    const lost = await aiStartLostMode();
+    if (lost === "thrown_before") loseAiStartAnswer(); // never reached b-fit-api: nothing checked, nothing written
     await assertAiRoutesRegistered();
     const sent = body as unknown as Record<string, unknown>;
     const briefRaw = (sent.brief ?? null) as Record<string, unknown> | null;
@@ -7780,10 +7839,19 @@ export const fixtureCoachApi: CoachApi = {
       outcome: "pending",
     };
     recordAiPost(entry);
+    // BUG-871: the write, now or 3 s later; reached only once every check has passed (a refusal
+    // leaves the switch armed). `entry.outcome` says what the api answered, not what the browser got.
+    const commit = (row: StoredAiProposal) => {
+      if (lost === "late") return commitAiStartLate(id, row, entry);
+      commitAiStartNow(id, row, entry);
+      entry.outcome = "202";
+    };
+    let written = false;
     try {
       if (sent.kind === "REVISE") {
-        const started = await fixtureStartRevise(id, sent);
-        entry.outcome = "202";
+        const started = await fixtureStartRevise(id, sent, commit);
+        written = true;
+        if (lost) loseAiStartAnswer(); // `thrown`: written, then the answer lost; `late`: the write is on its way
         return started;
       }
       // Binding first: any key outside the contract is named, never ignored (EV-186a A9(c)).
@@ -7875,10 +7943,12 @@ export const fixtureCoachApi: CoachApi = {
               : { kind: "READY" },
         errorCode: null,
       };
-      state().aiProposals.set(id, row);
-      entry.outcome = "202";
+      commit(row);
+      written = true;
+      if (lost) loseAiStartAnswer(); // `thrown`: written, then the answer lost; `late`: the write is on its way
       return { proposalId: row.proposalId, status: "RUNNING" };
     } catch (err) {
+      if (written) throw err; // BUG-871: the api answered (202, or `late`'s pending write); only the answer was lost
       const code = (err as { code?: unknown }).code;
       entry.outcome = typeof code === "string" ? code : "ERROR";
       throw err;
