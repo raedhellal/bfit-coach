@@ -285,7 +285,7 @@ function wireInterfaces(source: string): { name: string; schema: string; fields:
  * makes this spec pass by checking nothing, which is the one way a guard fails that
  * nobody notices. Raise it deliberately when a type is added.
  */
-const SCHEMAS_EXPECTED = 99; // EV-341c: +1 (CoachIntakeCompleted); EV-341b: +7 intake types (CoachIntake, the four section value types, CoachIntakeSectionWrite, CoachIntakeSectionSaved); EV-341j: +5 trial session types; EV-341w: +2 intake consent types; EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types; EV-204b: +4 initialisation types
+const SCHEMAS_EXPECTED = 106; // EV-186b: +7 routine AI proposal types (AiProposalsCapability, CoachRoutineAiBrief, CoachRoutineAiProposalRequest, CoachRoutineAiProposalStartedResponse, CoachRoutineAiProposalResponse, CoachRoutineAiRepairMark, CoachRoutineAiKeepRequest); EV-341c: +1 (CoachIntakeCompleted); EV-341b: +7 intake types (CoachIntake, the four section value types, CoachIntakeSectionWrite, CoachIntakeSectionSaved); EV-341j: +5 trial session types; EV-341w: +2 intake consent types; EV-284b: +5 food-log types; EV-278c: +4 activation types; EV-321b: +7 challenge types; EV-273b: +5 nutrition-template types; EV-204b: +4 initialisation types
 
 const spec = readFileSync(SPEC, "utf8");
 const client = readFileSync(CLIENT, "utf8");
@@ -411,6 +411,9 @@ const REQUEST_FACING_EXPECTED = [
   "CoachProgressGoalRequest",
   "CoachRecipeIngredientRequest",
   "CoachRecipeSaveRequest",
+  "CoachRoutineAiBrief", // EV-186b
+  "CoachRoutineAiKeepRequest", // EV-186b
+  "CoachRoutineAiProposalRequest", // EV-186b
   "CoachRoutineDraftRequest",
   "CoachTargetsRequest",
   "CoachTemplateApplyRequest",

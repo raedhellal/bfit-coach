@@ -11,7 +11,17 @@ import {
 } from "@/components/routine/RoutineEditor";
 import { TraineeChangedBanner } from "@/components/routine/TraineeChangedBanner";
 import { SaveAsTemplateButton } from "@/components/templates/SaveAsTemplateButton";
-import { coachApi, hasScope, isForbidden, isRouteNotFound, type CoachRoutineResponse } from "@/lib/coachApi";
+import {
+  coachApi,
+  hasScope,
+  isForbidden,
+  isRouteNotFound,
+  type CoachRoutineAiProposalResponse,
+  type CoachRoutineResponse,
+} from "@/lib/coachApi";
+import { RoutineAiPanel } from "@/components/routine/RoutineAiPanel";
+import { routineAiCapability } from "@/lib/routineAi";
+import { readMuscleFacet } from "@/lib/intakeCatalog";
 import { TrialSessionCard, type TrialCardRead } from "@/components/routine/TrialSessionCard";
 import { asTrialRead } from "@/lib/trialSession";
 import { firstName } from "@/lib/format";
@@ -103,6 +113,13 @@ export default async function RoutinePage({ params }: { params: { id: string } }
    * load error about a feature the api does not have yet.
    */
   let trial: TrialCardRead = { state: "absent" };
+  /**
+   * EV-186b — the « Régénérer avec l'IA » panel's reads. Null = no panel. Made ONLY when the
+   * routine read says `aiProposals.routine === true` (B1: false, absent or malformed draws a page
+   * identical to before, and asks the api for nothing more). `proposal: null` is a failed read:
+   * the panel then reads once itself. A 404 means the flag went off between the two reads.
+   */
+  let ai: { proposal: CoachRoutineAiProposalResponse | null; muscles: string[] | null } | null = null;
   if (!overview) {
     message = copy.routine.loadError;
   } else if (!hasScope(overview.scopes, "WORKOUTS")) {
@@ -150,6 +167,20 @@ export default async function RoutinePage({ params }: { params: { id: string } }
         trial = isRouteNotFound(trialRead.reason) ? { state: "absent" } : { state: "failed" };
       }
       routine = routineRead.value;
+      if (routineAiCapability(routine.aiProposals).routine) {
+        // One more round, flag-on only (page-read-budget: depth 3 with the panel, 2 without).
+        const [proposalRead, facet] = await Promise.all([
+          coachApi.getRoutineAiProposal(params.id).then(
+            (value) => ({ ok: true as const, value }),
+            (reason: unknown) => ({ ok: false as const, reason })
+          ),
+          readMuscleFacet(),
+        ]);
+        if (!proposalRead.ok && isForbidden(proposalRead.reason)) throw proposalRead.reason;
+        if (proposalRead.ok || !isRouteNotFound(proposalRead.reason)) {
+          ai = { proposal: proposalRead.ok ? proposalRead.value : null, muscles: facet };
+        }
+      }
       if (routine.hasDraft) {
         if (draftRead.status === "rejected") throw draftRead.reason;
         const saved = draftRead.value;
@@ -339,6 +370,20 @@ export default async function RoutinePage({ params }: { params: { id: string } }
                   clientId={params.id}
                   firstName={firstName(overview?.traineeDisplayName, copy.locale)}
                   read={trial}
+                />
+              )}
+              {/* EV-186b: above both columns, beside the trial card; absent unless the api offers it. */}
+              {ai && (
+                <RoutineAiPanel
+                  clientId={params.id}
+                  firstName={firstName(overview?.traineeDisplayName, copy.locale)}
+                  document={draft?.document ?? activePlan?.document ?? null}
+                  initial={ai.proposal}
+                  muscles={ai.muscles}
+                  injuries={injuryWords}
+                  equipment={
+                    guardrails?.equipmentChecked ? equipmentLabels(guardrails.equipment, copy) : null
+                  }
                 />
               )}
             </>

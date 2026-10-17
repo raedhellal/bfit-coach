@@ -1236,6 +1236,60 @@ export const en = {
   },
 
   /**
+   * EV-186b / EV-186n — « Régénérer avec l'IA » on the routine page (ADR-0036). Every line
+   * marked "table" is VERBATIM from EV-186 Part 2's FR/EN copy table (hub story
+   * `EV-186-coach-draft-with-ai.md`), and "AC1"/"AC2" from Part 1; senior-qa compares them by
+   * character. Lines marked OURS are not story copy and are listed in the hand-back as open
+   * copy questions. The panel renders the sentence for the api's CODE and never the server's
+   * `message` (`routineAiSentence`, `src/lib/routineAi.ts`).
+   */
+  routineAi: {
+    open: "Regenerate with AI", // table: Regenerate button
+    /** OURS — the open panel's region name and heading; the button's words, so one name. */
+    title: "Regenerate with AI",
+    goalLabel: "Goal", // AC1 control 1
+    daysLabel: "Training days per week", // AC1 control 2
+    sessionLengthLabel: "Session length", // AC1 control 3
+    /** OURS — AC1 control 4 names the control "Emphasis" and says it is optional. */
+    emphasisLabel: "Emphasis (optional)",
+    /** OURS — the bound the api enforces (≤ 5 values, EV-186a A9(b)). */
+    emphasisHint: "Up to 5 muscle groups.",
+    /** OURS — the facet read failed, so no list can be offered (never invented here). */
+    emphasisUnavailable: "Muscle groups could not be loaded. You can generate without them.",
+    /** AC1 control 5, verbatim. */
+    notesLabel: "Notes for this draft — the AI reads this. Don't put anything here you wouldn't put in an email.",
+    counter: (n: number) => `${n}/500`, // table: Counter
+    /** OURS — the select's empty option. */
+    choose: "Choose…",
+    /** AC1, verbatim, with the trainee's first name. */
+    profileLine: (first: string) => `From ${mid(first)}'s profile — applied automatically. You cannot change these here.`,
+    submit: "Generate", // table: Brief submit
+    cancel: "Cancel",
+    running: (first: string) => `Preparing a suggestion for ${mid(first)}… This can take up to two minutes.`, // table
+    keep: "Keep", // table: Review buttons
+    discard: "Discard", // table
+    retry: "Try again", // table
+    stubBanner: "Test suggestion — AI is off on this server.", // table: STUB banner
+    failed: "We couldn't prepare this suggestion. Nothing was changed. Try again.", // table: Failed
+    /** table: Disclosure after Keep (EV-186 AC2, unchanged). */
+    disclosure: (date: string) => `Drafted with AI on ${date}. Review it before you publish — you're the author.`,
+    repairMark: (first: string, injury: string) => `Will be swapped at publish: ${mid(first)}'s ${injury}`, // table
+    instructionInvalid: "This request can't be sent: 500 characters at most, in plain text.", // table
+    alreadyRunning: (first: string) => `A suggestion is already being prepared for ${mid(first)}.`, // table
+    staleRoutine: (first: string) =>
+      `${first}'s programme changed after this suggestion was made. Try again to get a fresh one.`, // table
+    draftChanged: (first: string) =>
+      `Your draft for ${mid(first)} changed after this suggestion was made. Try again to get a fresh one.`, // table
+    rateLimitLinkRegen: (first: string) =>
+      `You've used today's 3 AI regenerations for ${mid(first)}. You can still edit by hand, or try again tomorrow.`, // table
+    rateLimitCoach: "You've used all of today's AI suggestions across your clients. Try again tomorrow.", // table
+    unavailable: "AI suggestions are switched off on this server.", // table
+    nothingApplied: "The AI found no change to apply for this request. Nothing was changed. Rephrase it or try again.", // table
+    busy: "AI suggestions are busy right now. Try again in a minute.", // table
+    working: "Working…",
+  },
+
+  /**
    * EV-185b. Slice 1 has NO nutrition draft and no "Publish" — the coach's control is
    * "Apply to {trainee}" and the confirm dialog says the trainee sees it immediately,
    * because they do (EV-185's ruling). There is no disabled Publish button anywhere.

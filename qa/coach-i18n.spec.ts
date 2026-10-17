@@ -107,6 +107,7 @@ test("French has every English key, with the same kind of value and arity — an
 const SAME_IN_BOTH: Record<string, string> = {
   brand: "product name",
   "login.passwordPlaceholder": "bullets",
+  "routineAi.counter": "EV-186 copy table: « {n}/500 » in both languages",
   "invitePage.brand": "product name",
   "roster.colPlan": "French 'plan'",
   "invited.colSent": "French 'Invitation' (EV-204b: the column label; its value says « Envoyée le … »)",

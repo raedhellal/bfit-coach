@@ -26,6 +26,11 @@ import type {
   CoachFoodLogEntry,
   CoachFoodLogMacros,
   CoachFoodLogResponse,
+  CoachRoutineAiKeepRequest,
+  CoachRoutineAiProposalRequest,
+  CoachRoutineAiProposalResponse,
+  CoachRoutineAiProposalStartedResponse,
+  CoachRoutineAiRepairMark,
   CoachRoutineDraftRequest,
   CoachRoutineDraftResponse,
   CoachRoutineGuardrails,
@@ -2667,6 +2672,8 @@ function draftResponse(id: string, draft: StoredDraft): CoachRoutineDraftRespons
     sourceTemplateId: state().draftTemplate.get(id) ?? null,
     unbindableExercises: down ? [] : unbindableNames(draft.document),
     catalogChecked: !down,
+    // EV-186a: OMITTED, not null, for a draft the model never touched.
+    ...(state().aiDraftedAt.has(id) ? { aiDraftedAt: state().aiDraftedAt.get(id) } : {}),
   };
 }
 
@@ -4909,6 +4916,13 @@ interface FixtureState {
    * the portal's own button and `POST /api/fixture/intake` (the trainee's half).
    */
   intake: Map<string, FixtureIntakeLink>;
+  /**
+   * EV-186b — the routine AI proposal per link (`coach_ai_proposals`, surface ROUTINE: one row
+   * per link). Empty at the seed: a test starts one through the portal's own panel.
+   */
+  aiProposals: Map<string, StoredAiProposal>;
+  /** EV-186a — `coach_plan_drafts.ai_drafted_at` per link; no entry = OMITTED on the read. */
+  aiDraftedAt: Map<string, string>;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -5231,6 +5245,8 @@ function freshState(): FixtureState {
     initialiseCalls: [],
     resendCalls: new Map(),
     intake: new Map(),
+    aiProposals: new Map(),
+    aiDraftedAt: new Map(),
   };
 }
 
@@ -5400,6 +5416,7 @@ export function resetFixtureState(): void {
   (globalThis as GlobalWithDraftPuts)[DRAFT_PUTS_KEY] = [];
   resetIntakePuts();
   (globalThis as GlobalWithSwapCache)[SWAP_CACHE_KEY] = new Map();
+  resetAiPosts();
 }
 
 /** True when nothing has been written (or read-with-side-effect) since the last reset. */
@@ -6693,6 +6710,325 @@ async function fixtureSaveIntakeSection(
   return { version: currentVersion + 1, updatedAt };
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-186b — THE ROUTINE AI PROPOSAL, ported from b-fit-api `openapi.yaml` (main @ 19b6696e,
+ * EV-186a). What is reproduced is the CONTRACT the portal meets:
+ *
+ *   · the capability block on the routine read (all false by default, as on a server with
+ *     both flags off) and the routes answering 404 NOT_FOUND while it is off;
+ *   · POST's refusal order: a key outside the contract (400 COACH_DRAFT_INPUT_FORBIDDEN naming
+ *     it), the bounds (400 VALIDATION_ERROR / COACH_AI_INSTRUCTION_INVALID), availability (503),
+ *     then — the api CODE's order — the bulkhead (503 COACH_AI_BUSY), the quota (429), and
+ *     one-at-a-time (409 COACH_AI_PROPOSAL_RUNNING); every refusal stores nothing;
+ *   · RUNNING → READY | FAILED after a delay, settled LAZILY on the next read (no timers in a
+ *     fixture: a test reads, the clock decides);
+ *   · DELETE: RUNNING → CANCELLED, a settled one deleted, 204 twice;
+ *   · Keep: the draft token captured at creation (never one the portal sends), 409
+ *     COACH_DRAFT_EXISTS when the draft moved, 409 COACH_PROPOSAL_STALE when the proposal is
+ *     not a current READY one or the live plan moved, `aiDraftedAt` set on the kept draft.
+ *
+ * The PROPOSAL itself is a deterministic transform of the base, not a model: day 1 unchanged,
+ * day 2 gets one exercise replaced and one prescription changed, day 3 loses its last exercise,
+ * and sessions are added or dropped to reach the brief's day count. That is exactly enough to
+ * put every row kind of EV-186n N1 on screen, and Dana's unchanged Push day carries the two
+ * exercises her SHOULDER rule swaps, so N2's marks are reachable.
+ *
+ * ⚠ Fixture affordances (cookies, one browser context — the api's flags are server-wide):
+ *   `evoli_fixture_ai_caps=on|instruction|absent|string|null|partial|truthy` — the capability
+ *       block: `on` = routine only; `instruction` = routine + instruction; `absent` omits the
+ *       key; `string` / `null` / `partial` (no `routine` field) / `truthy` (`routine: "true"`)
+ *       are B1's malformed shapes. No cookie = all three false.
+ *   `evoli_fixture_ai=unavailable|busy|catalog|rate_link|rate_coach|off|fail|stub|expired` —
+ *       POST refusals (503 COACH_AI_UNAVAILABLE / COACH_AI_BUSY / CATALOG_UNAVAILABLE, 429
+ *       COACH_AI_RATE_LIMIT with `Retry-After` to the next UTC midnight, `off` = 404 as if the flag
+ *       was switched off after the page loaded), or how the run settles (`fail` → FAILED with
+ *       `evoli_fixture_ai_error`'s code, default COACH_AI_TIMEOUT; `stub` → engine STUB;
+ *       `expired` → EXPIRED).
+ *   `evoli_fixture_ai_delay_ms=<n>` — how long a run stays RUNNING (default 1500, cap 10 min).
+ * Every refusal's `message` is a sentence no copy contains, so a spec can assert it is never shown.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface StoredAiProposal {
+  proposalId: string;
+  /** EXPIRED is derived on read, from `expiresAt` or the `expired` switch. */
+  status: "RUNNING" | "READY" | "FAILED" | "CANCELLED";
+  engine: "AI" | "STUB";
+  baseSource: "DRAFT" | "LIVE" | "NONE";
+  baseDocument: Routine | null;
+  /** Computed at creation, served only once READY (the api has nothing before then). */
+  proposal: Routine;
+  /** `drafts.get(id)?.updatedAt` when the proposal was made: what Keep compares. */
+  draftToken: string | null;
+  /** The live plan id at creation, for a LIVE base's STALE check. */
+  livePlanId: string | null;
+  createdAt: string;
+  settlesAt: number;
+  expiresAt: string;
+  /** How the run ends when it settles. */
+  outcome: { kind: "READY" } | { kind: "FAILED"; code: string } | { kind: "EXPIRED" };
+  errorCode: string | null;
+}
+
+/** What the portal POSTed, by key only (the brief's notes are never journalled). */
+export interface FixtureAiPost {
+  clientId: string;
+  bodyKeys: string[];
+  briefKeys: string[];
+  outcome: string;
+}
+const AI_POSTS_KEY = Symbol.for("evoli.coach.fixture.aiPosts");
+type GlobalWithAiPosts = typeof globalThis & Record<symbol, FixtureAiPost[] | undefined>;
+function recordAiPost(entry: FixtureAiPost): void {
+  ((globalThis as GlobalWithAiPosts)[AI_POSTS_KEY] ??= []).push(entry);
+}
+/** Every routine AI POST since the last reset, in order (copies). */
+export function fixtureAiPosts(): FixtureAiPost[] {
+  return ((globalThis as GlobalWithAiPosts)[AI_POSTS_KEY] ?? []).map((entry) => ({ ...entry }));
+}
+function resetAiPosts(): void {
+  (globalThis as GlobalWithAiPosts)[AI_POSTS_KEY] = [];
+}
+
+/** A server message the portal must never render (B4). */
+const AI_SERVER_MESSAGE = "FIXTURE SERVER MESSAGE: never shown to a coach";
+
+async function aiCapabilityField(): Promise<{ aiProposals?: unknown }> {
+  const raw = await fixtureSwitch("evoli_fixture_ai_caps");
+  switch (raw) {
+    case "on":
+      return { aiProposals: { routine: true, nutrition: false, instruction: false } };
+    case "instruction":
+      return { aiProposals: { routine: true, nutrition: false, instruction: true } };
+    case "absent":
+      return {};
+    case "string":
+      return { aiProposals: "routine" };
+    case "null":
+      return { aiProposals: null };
+    case "partial":
+      return { aiProposals: { nutrition: true, instruction: true } };
+    case "truthy":
+      return { aiProposals: { routine: "true", nutrition: false, instruction: false } };
+    default:
+      return { aiProposals: { routine: false, nutrition: false, instruction: false } };
+  }
+}
+
+/** The mapping is not registered while the flag is off: the api's plain 404. */
+async function assertAiRoutesRegistered(): Promise<void> {
+  const caps = await aiCapabilityField();
+  const routine = (caps.aiProposals as { routine?: unknown } | undefined)?.routine === true;
+  if (!routine || (await fixtureSwitch("evoli_fixture_ai")) === "off") {
+    await fail(404, "NOT_FOUND", AI_SERVER_MESSAGE);
+  }
+}
+
+async function failAi(
+  status: number,
+  code: string,
+  details: Record<string, unknown> | null = null,
+  retryAfterSeconds: number | null = null
+): Promise<never> {
+  const { ApiError } = await import("./apiFetch");
+  throw new ApiError(status, AI_SERVER_MESSAGE, code, details, retryAfterSeconds);
+}
+
+/** A C0/C1 control other than a line feed (EV-186a A2). */
+const AI_NOTES_CONTROL = new RegExp("[\\u0000-\\u0009\\u000B-\\u001F\\u007F-\\u009F]");
+const AI_BRIEF_KEYS = ["goal", "days", "sessionLength", "emphasis", "notes"];
+const AI_GOALS = ["LOSE_WEIGHT", "BUILD_MUSCLE", "GET_STRONGER", "ENDURANCE", "MOBILITY"];
+const AI_SESSION_LENGTHS = [20, 30, 45, 60, 75, 90];
+/** The catalogue's `muscles` facet, as `searchCatalog` serves it (EV-186a A9(b): exact match). */
+async function aiMuscleFacet(): Promise<string[]> {
+  return fixtureMuscleFacet(await fixtureCatalogRows());
+}
+
+/** The next UTC midnight, in whole seconds from now (`resetsAt`, `Retry-After`). */
+function secondsToUtcMidnight(now: number): number {
+  const d = new Date(now);
+  const next = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  return Math.max(1, Math.ceil((next - now) / 1000));
+}
+
+function aiExercise(slug: string, sets: number, reps: string, rest: string): RoutineExercise {
+  const entry = catalogBySlug(slug);
+  if (!entry) throw new Error(`fixture: unknown catalog slug ${slug}`);
+  return {
+    name: entry.name,
+    sets,
+    reps,
+    rest,
+    tempo: null,
+    notes: null,
+    trackingType: "WEIGHT_REPS",
+    durationSeconds: null,
+    weight: null,
+  };
+}
+
+/** Sessions a new day is drawn from, in order. Every exercise is a catalogue row. */
+const AI_SESSION_POOL: { focus: string; exercises: () => RoutineExercise[] }[] = [
+  {
+    focus: "Full Body A",
+    exercises: () => [
+      aiExercise("goblet-squat", 3, "10-12", "90s"),
+      aiExercise("dumbbell-bench-press", 3, "8-10", "90s"),
+      aiExercise("chest-supported-row", 3, "10-12", "90s"),
+    ],
+  },
+  {
+    focus: "Full Body B",
+    exercises: () => [
+      aiExercise("romanian-deadlift", 3, "8-10", "120s"),
+      aiExercise("lat-pulldown", 3, "10-12", "90s"),
+      aiExercise("hanging-knee-raise", 3, "10-12", "60s"),
+    ],
+  },
+  {
+    focus: "Lower Body",
+    exercises: () => [
+      aiExercise("leg-press", 3, "10-12", "90s"),
+      aiExercise("seated-leg-curl", 3, "10-12", "60s"),
+      aiExercise("standing-calf-raise", 3, "12-15", "60s"),
+    ],
+  },
+  {
+    focus: "Upper Body",
+    exercises: () => [
+      aiExercise("machine-chest-press", 3, "10-12", "90s"),
+      aiExercise("seated-cable-row", 3, "10-12", "90s"),
+      aiExercise("cable-lateral-raise", 3, "12-15", "60s"),
+    ],
+  },
+];
+/** Where a new session goes: the first of these weekdays the plan does not already use. */
+const AI_WEEKDAY_ORDER = [1, 3, 5, 2, 4, 6, 7];
+
+/** A same-muscle catalogue row that is not `name`, for day 2's replacement. */
+function aiAlternative(name: string): RoutineExercise {
+  const current = CATALOG.find((entry) => entry.name === name);
+  const muscle = (current?.primaryMuscles ?? "").split(",")[0];
+  const other =
+    CATALOG.find((entry) => entry.name !== name && (entry.primaryMuscles ?? "").split(",")[0] === muscle && !entry.exerciseType) ??
+    CATALOG.find((entry) => entry.name !== name && !entry.exerciseType);
+  return aiExercise((other as CatalogExercise).slug, 3, "8-12", "90s");
+}
+
+/** The deterministic « model » (see the block above). */
+function aiProposalFor(
+  id: string,
+  base: Routine | null,
+  baseSource: "DRAFT" | "LIVE" | "NONE",
+  brief: { days: number; sessionLength: number; emphasis: string[] }
+): Routine {
+  const days = (base?.trainingDays ?? []).map((day, index) => {
+    const exercises = day.exercises.map((ex) => ({ ...ex }));
+    if (index === 1 && exercises.length > 0) {
+      exercises[0] = { ...aiAlternative(exercises[0].name), sets: exercises[0].sets, reps: exercises[0].reps };
+      if (exercises[1]) exercises[1] = { ...exercises[1], sets: exercises[1].sets + 1 };
+    }
+    if (index === 2 && exercises.length > 1) exercises.pop();
+    return { ...day, exercises };
+  });
+  const trimmed = days.slice(0, brief.days);
+  let pool = 0;
+  while (trimmed.length < brief.days) {
+    const used = new Set(trimmed.map((day) => day.dayOfWeek));
+    const dayOfWeek = AI_WEEKDAY_ORDER.find((d) => !used.has(d)) as number;
+    const session = AI_SESSION_POOL[pool % AI_SESSION_POOL.length];
+    pool += 1;
+    trimmed.push({ dayOfWeek, focus: session.focus, estimatedMinutes: null, exercises: session.exercises() });
+  }
+  // One catalogue row for the first emphasis, at the end of the first session (if not there yet).
+  const emphasis = brief.emphasis[0];
+  const extra = emphasis ? CATALOG.find((entry) => targetMuscle(entry) === emphasis) : undefined;
+  if (extra && trimmed[0] && !trimmed[0].exercises.some((ex) => ex.name === extra.name)) {
+    trimmed[0] = { ...trimmed[0], exercises: [...trimmed[0].exercises, aiExercise(extra.slug, 3, "10-12", "60s")] };
+  }
+  trimmed.sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+  // N5: a LIVE-base proposal carries the trainee's profile subject fields, a DRAFT one `[]`.
+  const rails = baseSource === "LIVE" ? guardrailsFor(id) : { equipment: [] as string[], injuries: [] as string[] };
+  return {
+    name: base?.name ?? "Suggested routine",
+    goal: FIXTURE_SUBJECT.goal,
+    level: FIXTURE_SUBJECT.level,
+    daysPerWeek: trimmed.length,
+    trainingDays: trimmed,
+    weeklyProgression: base?.weeklyProgression ?? [],
+    constraints: {
+      equipment: rails.equipment,
+      injuries: rails.injuries,
+      minutesPerSession: brief.sessionLength,
+      daysPerWeek: trimmed.length,
+    },
+    summary: null,
+  };
+}
+
+/** A coach-shaped copy (both constraint lists `[]`), as `baseDocument` is served. */
+function coachShaped(document: Routine): Routine {
+  return { ...document, constraints: { ...document.constraints, equipment: [], injuries: [] } };
+}
+
+/** `previewPublish`'s policy over the proposal, located (EV-186a A6). Read-only. */
+function aiRepairMarks(id: string, proposal: Routine): CoachRoutineAiRepairMark[] {
+  const injuries = guardrailsFor(id).injuries;
+  const marks: CoachRoutineAiRepairMark[] = [];
+  for (const day of proposal.trainingDays) {
+    day.exercises.forEach((ex, exerciseIndex) => {
+      const rule = REPAIR_RULES.find((r) => r.exercise === ex.name && injuries.includes(r.injury));
+      const replacement = rule ? catalogBySlug(rule.replacement) : undefined;
+      if (!rule || !replacement) return;
+      marks.push({
+        dayOfWeek: day.dayOfWeek,
+        exerciseIndex,
+        exerciseName: ex.name,
+        injury: rule.injury,
+        repair: copy.routine.repairLine(ex.name, replacement.name, rule.rule),
+      });
+    });
+  }
+  return marks;
+}
+
+/** Settle a RUNNING row whose time has come (lazily, on the read). */
+function settleAiProposal(row: StoredAiProposal, now: number): void {
+  if (row.status !== "RUNNING" || now < row.settlesAt) return;
+  if (row.outcome.kind === "FAILED") {
+    row.status = "FAILED";
+    row.errorCode = row.outcome.code;
+  } else {
+    row.status = "READY";
+  }
+}
+
+function aiResponse(id: string, row: StoredAiProposal | undefined, now: number): CoachRoutineAiProposalResponse {
+  if (!row) {
+    return { proposalId: null, status: "NONE", repairs: [], repairMarks: [], equipmentChecked: false };
+  }
+  settleAiProposal(row, now);
+  const expired = row.status === "READY" && (now > Date.parse(row.expiresAt) || row.outcome.kind === "EXPIRED");
+  const status = expired ? "EXPIRED" : row.status;
+  const ready = status === "READY";
+  const marks = ready ? aiRepairMarks(id, row.proposal) : [];
+  return {
+    proposalId: row.proposalId,
+    status,
+    kind: "REGENERATE",
+    engine: row.engine,
+    errorCode: status === "FAILED" ? row.errorCode : null,
+    baseSource: row.baseSource,
+    baseDocument: ready ? row.baseDocument : null,
+    proposal: ready ? row.proposal : null,
+    repairs: ready ? repairsFor(id, row.proposal) : [],
+    repairMarks: marks,
+    // The fixture's policy reads injuries only (BUG-053), as `previewPublish` says.
+    equipmentChecked: false,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
+  };
+}
+
 export const fixtureCoachApi: CoachApi = {
   // ── EV-278c activation ────────────────────────────────────────────────────
   getActivation: fixtureGetActivation,
@@ -6965,6 +7301,7 @@ export const fixtureCoachApi: CoachApi = {
       lastChangedBy: author?.lastChangedBy ?? null,
       lastChangedAt: author?.lastChangedAt ?? null,
       changedSinceYourPublish: author?.changedSinceYourPublish ?? false,
+      ...(await aiCapabilityField()),
     };
   },
 
@@ -7045,6 +7382,8 @@ export const fixtureCoachApi: CoachApi = {
     // The draft row is gone, so its `source_template_id` goes with it. A later
     // hand-built draft must not inherit "Started from …" from a discarded one.
     state().draftTemplate.delete(id);
+    state().aiDraftedAt.delete(id); // EV-186a: the column is on the draft row
+
   },
 
   async previewPublish(id: string): Promise<PublishPreview> {
@@ -7124,6 +7463,8 @@ export const fixtureCoachApi: CoachApi = {
     state().drafts.delete(id);
     state().pendingDigest.delete(id);
     state().draftTemplate.delete(id);
+    // EV-186a: publish deletes the draft row and copies nothing of `ai_drafted_at` onto the plan.
+    state().aiDraftedAt.delete(id);
     // The applied repairs are identical to the acknowledged preview's — the digest
     // check above is what guarantees it, and the fixture computes both from one call.
     return {
@@ -7132,6 +7473,170 @@ export const fixtureCoachApi: CoachApi = {
       repairs,
       repairCount: repairs.length,
     };
+  },
+
+  // ── EV-186b routine AI proposal (see the block above `fixtureCoachApi`) ──────
+
+  async startRoutineAiProposal(
+    id: string,
+    body: CoachRoutineAiProposalRequest
+  ): Promise<CoachRoutineAiProposalStartedResponse> {
+    await assertAiRoutesRegistered();
+    const sent = body as unknown as Record<string, unknown>;
+    const briefRaw = (sent.brief ?? null) as Record<string, unknown> | null;
+    const entry: FixtureAiPost = {
+      clientId: id,
+      bodyKeys: Object.keys(sent).sort(),
+      briefKeys: briefRaw && typeof briefRaw === "object" ? Object.keys(briefRaw).sort() : [],
+      outcome: "pending",
+    };
+    recordAiPost(entry);
+    try {
+      // Binding first: any key outside the contract is named, never ignored (EV-186a A9(c)).
+      const extraTop = Object.keys(sent).find((key) => key !== "kind" && key !== "brief");
+      if (extraTop) await failAi(400, "COACH_DRAFT_INPUT_FORBIDDEN", { field: extraTop });
+      const extraBrief = entry.briefKeys.find((key) => !AI_BRIEF_KEYS.includes(key));
+      if (extraBrief) await failAi(400, "COACH_DRAFT_INPUT_FORBIDDEN", { field: `brief.${extraBrief}` });
+      await assertScope(id, "WORKOUTS");
+      if (sent.kind !== "REGENERATE") await failAi(400, "VALIDATION_ERROR", { field: "kind" });
+      const brief = briefRaw ?? {};
+      if (!AI_GOALS.includes(String(brief.goal))) await failAi(400, "VALIDATION_ERROR", { field: "brief.goal" });
+      const days = brief.days;
+      if (typeof days !== "number" || !Number.isInteger(days) || days < 2 || days > 6) {
+        await failAi(400, "VALIDATION_ERROR", { field: "brief.days" });
+      }
+      if (!AI_SESSION_LENGTHS.includes(brief.sessionLength as number)) {
+        await failAi(400, "VALIDATION_ERROR", { field: "brief.sessionLength" });
+      }
+      const emphasis = Array.isArray(brief.emphasis) ? (brief.emphasis as unknown[]) : [];
+      const facet = await aiMuscleFacet();
+      if (
+        (brief.emphasis !== undefined && !Array.isArray(brief.emphasis)) ||
+        emphasis.length > 5 ||
+        emphasis.some((m) => typeof m !== "string" || !facet.includes(m))
+      ) {
+        await failAi(400, "VALIDATION_ERROR", { field: "brief.emphasis" });
+      }
+      if (brief.notes !== undefined) {
+        // `CoachAiInstructionBounds`: NFC, then CODE POINTS (an astral emoji counts once).
+        const notes = typeof brief.notes === "string" ? brief.notes.normalize("NFC") : null;
+        if (notes === null || [...notes].length > 500 || AI_NOTES_CONTROL.test(notes)) {
+          await failAi(400, "COACH_AI_INSTRUCTION_INVALID", { field: "brief.notes", reason: "INVALID" });
+        }
+      }
+      const forced = await fixtureSwitch("evoli_fixture_ai");
+      if (forced === "unavailable") await failAi(503, "COACH_AI_UNAVAILABLE");
+      if (forced === "catalog") await failAi(503, "CATALOG_UNAVAILABLE");
+      const now = Date.now();
+      // The api CODE's order (`CoachAiProposalService.request` @ 19b6696e, staff r2 B1): the bulkhead
+      // FIRST, then the quota, then one-at-a-time. (The openapi prose says quota → 409 → bulkhead;
+      // the code wins, and the prose is filed against b-fit-api.)
+      if (forced === "busy") await failAi(503, "COACH_AI_BUSY");
+      if (forced === "rate_link" || forced === "rate_coach") {
+        const seconds = secondsToUtcMidnight(now);
+        await failAi(
+          429,
+          "COACH_AI_RATE_LIMIT",
+          { scope: forced === "rate_link" ? "link" : "coach", resetsAt: new Date(now + seconds * 1000).toISOString() },
+          seconds
+        );
+      }
+      const current = state().aiProposals.get(id);
+      if (current) settleAiProposal(current, now);
+      // One at a time; a RUNNING row untouched for 10 minutes may be taken over (C11(c)).
+      if (current?.status === "RUNNING" && now - Date.parse(current.createdAt) < 600_000) {
+        await failAi(409, "COACH_AI_PROPOSAL_RUNNING");
+      }
+
+      const draft = state().drafts.get(id) ?? null;
+      const plan = state().plans.get(id) ?? null;
+      const baseSource: StoredAiProposal["baseSource"] = draft ? "DRAFT" : plan ? "LIVE" : "NONE";
+      const base = draft?.document ?? plan?.document ?? null;
+      const delayRaw = Number(await fixtureSwitch("evoli_fixture_ai_delay_ms"));
+      const delay = Number.isFinite(delayRaw) && delayRaw >= 0 ? Math.min(delayRaw, 600_000) : 1500;
+      const failCode = (await fixtureSwitch("evoli_fixture_ai_error")) ?? "COACH_AI_TIMEOUT";
+      const row: StoredAiProposal = {
+        proposalId: crypto.randomUUID(),
+        status: "RUNNING",
+        engine: forced === "stub" ? "STUB" : "AI",
+        baseSource,
+        baseDocument: base ? coachShaped(base) : null,
+        proposal: aiProposalFor(id, base, baseSource, {
+          days: days as number,
+          sessionLength: brief.sessionLength as number,
+          emphasis: emphasis as string[],
+        }),
+        draftToken: draft?.updatedAt ?? null,
+        livePlanId: plan?.planId ?? null,
+        createdAt: new Date(now).toISOString(),
+        settlesAt: now + delay,
+        expiresAt: new Date(now + 24 * 3_600_000).toISOString(),
+        outcome:
+          forced === "fail"
+            ? { kind: "FAILED", code: failCode }
+            : forced === "expired"
+              ? { kind: "EXPIRED" }
+              : { kind: "READY" },
+        errorCode: null,
+      };
+      state().aiProposals.set(id, row);
+      entry.outcome = "202";
+      return { proposalId: row.proposalId, status: "RUNNING" };
+    } catch (err) {
+      const code = (err as { code?: unknown }).code;
+      entry.outcome = typeof code === "string" ? code : "ERROR";
+      throw err;
+    }
+  },
+
+  async getRoutineAiProposal(id: string): Promise<CoachRoutineAiProposalResponse> {
+    await assertAiRoutesRegistered();
+    await assertScope(id, "WORKOUTS");
+    return aiResponse(id, state().aiProposals.get(id), Date.now());
+  },
+
+  async discardRoutineAiProposal(id: string): Promise<void> {
+    await assertAiRoutesRegistered();
+    await assertScope(id, "WORKOUTS");
+    const row = state().aiProposals.get(id);
+    if (!row) return;
+    settleAiProposal(row, Date.now());
+    if (row.status === "RUNNING") row.status = "CANCELLED";
+    else state().aiProposals.delete(id);
+  },
+
+  async keepRoutineAiProposal(id: string, body: CoachRoutineAiKeepRequest): Promise<CoachRoutineDraftResponse> {
+    await assertAiRoutesRegistered();
+    const sent = body as unknown as Record<string, unknown>;
+    const extra = Object.keys(sent).find((key) => key !== "proposalId");
+    if (extra) await failAi(400, "COACH_DRAFT_INPUT_FORBIDDEN", { field: extra });
+    if (typeof sent.proposalId !== "string") await failAi(400, "VALIDATION_ERROR", { field: "proposalId" });
+    await assertScope(id, "WORKOUTS");
+    const now = Date.now();
+    const row = state().aiProposals.get(id);
+    if (row) settleAiProposal(row, now);
+    const view = aiResponse(id, row, now);
+    if (!row || row.proposalId !== sent.proposalId || view.status !== "READY") {
+      await failAi(409, "COACH_PROPOSAL_STALE");
+    }
+    const current = row as StoredAiProposal;
+    const existing = state().drafts.get(id) ?? null;
+    if ((existing?.updatedAt ?? null) !== current.draftToken) {
+      // A draft that disappeared since a DRAFT-base proposal is the api's STALE, not EXISTS.
+      if (!existing && current.baseSource === "DRAFT") await failAi(409, "COACH_PROPOSAL_STALE");
+      await failAi(409, "COACH_DRAFT_EXISTS", { existingUpdatedAt: existing?.updatedAt ?? null });
+    }
+    if (current.baseSource !== "DRAFT" && (state().plans.get(id)?.planId ?? null) !== current.livePlanId) {
+      await failAi(409, "COACH_PROPOSAL_STALE");
+    }
+    // The draft save's own write: subject fields resolved, both lists stored [].
+    const document = await resolveDraftDocument(coachShaped(current.proposal));
+    const saved: StoredDraft = { document, updatedAt: nextDraftUpdatedAt(existing?.updatedAt) };
+    state().drafts.set(id, saved);
+    state().pendingDigest.delete(id);
+    state().draftTemplate.delete(id); // « clears sourceTemplateId »
+    state().aiDraftedAt.set(id, new Date(now).toISOString());
+    return draftResponse(id, saved);
   },
 
   async searchCatalog(q: string, muscle: string, equipment: string, paging?: CatalogPaging): Promise<CatalogPage> {
@@ -7336,6 +7841,8 @@ export const fixtureCoachApi: CoachApi = {
     };
     state().drafts.set(clientId, { document: resolved, updatedAt });
     state().draftTemplate.set(clientId, template.id);
+    // EV-186a: « cleared by a template apply ».
+    state().aiDraftedAt.delete(clientId);
     // Any new draft invalidates a publish acknowledgement taken against the old one.
     state().pendingDigest.delete(clientId);
 

@@ -668,6 +668,56 @@ export const fr = {
       "Ce brouillon a changé pendant votre modification. Chargez la version enregistrée pour la voir.",
   },
 
+  /** EV-186b / EV-186n — see `en.routineAi`. "table" lines are the story's French, verbatim. */
+  routineAi: {
+    open: "Régénérer avec l'IA", // table
+    title: "Régénérer avec l'IA",
+    goalLabel: "Objectif",
+    daysLabel: "Séances par semaine",
+    sessionLengthLabel: "Durée d'une séance",
+    emphasisLabel: "Groupes musculaires à privilégier (facultatif)",
+    emphasisHint: "5 groupes musculaires au maximum.",
+    emphasisUnavailable:
+      "Les groupes musculaires n'ont pas pu être chargés. Vous pouvez générer sans eux.",
+    /** OURS (Part 1 gives no French): aligned on the table's « Request box label ». */
+    notesLabel:
+      "Notes pour cette suggestion — l'IA lit ce texte. N'y mettez rien que vous ne mettriez pas dans un e-mail.",
+    counter: (n: number) => `${n}/500`, // table
+    choose: "Choisir…",
+    /** OURS (Part 1 gives no French). */
+    profileLine: (first: string) =>
+      `Depuis le profil ${de(mid(first))} — appliqué automatiquement. Vous ne pouvez pas le modifier ici.`,
+    submit: "Générer", // table
+    cancel: "Annuler",
+    running: (first: string) =>
+      `Préparation d'une suggestion pour ${mid(first)}… Cela peut prendre jusqu'à deux minutes.`, // table
+    keep: "Garder", // table
+    discard: "Écarter", // table
+    retry: "Réessayer", // table
+    stubBanner: "Suggestion de test — l'IA est désactivée sur ce serveur.", // table
+    failed: "Impossible de préparer cette suggestion. Rien n'a été modifié. Réessayez.", // table
+    disclosure: (date: string) =>
+      `Préparé avec l'IA le ${date}. Relisez-le avant de publier : vous en êtes l'auteur.`, // table
+    repairMark: (first: string, injury: string) =>
+      `Sera remplacé à la publication : ${injury} ${de(mid(first))}`, // table
+    instructionInvalid:
+      "Cette demande ne peut pas être envoyée : 500 caractères au maximum, en texte simple.", // table
+    alreadyRunning: (first: string) => `Une suggestion est déjà en préparation pour ${mid(first)}.`, // table
+    staleRoutine: (first: string) =>
+      `Le programme ${de(mid(first))} a changé depuis cette suggestion. Réessayez pour en obtenir une nouvelle.`, // table
+    draftChanged: (first: string) =>
+      `Votre brouillon pour ${mid(first)} a changé depuis cette suggestion. Réessayez pour en obtenir une nouvelle.`, // table
+    rateLimitLinkRegen: (first: string) =>
+      `Vous avez utilisé les 3 régénérations IA du jour pour ${mid(first)}. Vous pouvez modifier à la main, ou réessayer demain.`, // table
+    rateLimitCoach:
+      "Vous avez utilisé toutes vos suggestions IA du jour, pour l'ensemble de vos clients. Réessayez demain.", // table
+    unavailable: "Les suggestions IA sont désactivées sur ce serveur.", // table
+    nothingApplied:
+      "L'IA n'a trouvé aucune modification à appliquer pour cette demande. Rien n'a été modifié. Reformulez-la ou réessayez.", // table
+    busy: "Les suggestions IA sont très demandées en ce moment. Réessayez dans une minute.", // table
+    working: "En cours…",
+  },
+
   nutrition: {
     title: "Nutrition",
     targetsTitle: "Objectifs quotidiens",
