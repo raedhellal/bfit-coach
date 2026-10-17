@@ -185,15 +185,21 @@ export function RoutineAiPanel({
   const requestRef = useRef<HTMLTextAreaElement>(null);
   const [view, setView] = useState<View>(() => viewOf(initial, Date.now()));
   const [form, setForm] = useState<RoutineAiBriefForm>(() => initialBriefForm(document));
-  /** The refusal sentence for the last press, shown in the panel until the next one. */
-  const [notice, setNotice] = useState<string | null>(null);
-  /** A spent quota holds « Générer » until the api's Retry-After (the next midnight). */
   /**
+   * The refusal sentence for the last press, shown in the panel until the next one. A 429's notice
+   * names the kind it holds (`heldKind`) and is withdrawn when that hold lifts, so a sentence never
+   * says « try again tomorrow » beside an enabled « Générer ».
+   */
+  const [notice, setNotice] = useState<{ text: string; heldKind?: ProposalKind } | null>(null);
+  /**
+   * A spent quota holds « Générer » until the api's Retry-After (the next midnight).
    * Per KIND (staff B1 on EV-186f): the api keeps separate counters — 3 regenerations and 10
    * edits per trainee, 30 and 100 per coach — so a spent EDIT quota must never hold « Générer » on
-   * the Regenerate brief, nor the reverse.
+   * the Regenerate brief, nor the reverse. The hold keeps the refusal it came from, so the form of
+   * that kind can say WHY its « Générer » is disabled every time it is opened (BUG-865/866: opening
+   * a form cleared the notice while the hold stayed, leaving a disabled button with no reason).
    */
-  const [held, setHeld] = useState<Partial<Record<ProposalKind, number>>>({});
+  const [held, setHeld] = useState<Partial<Record<ProposalKind, { until: number; failure: RoutineAiFailure }>>>({});
   const [hidden, setHidden] = useState(false);
   /** The body of the last run this panel started, for N4's « Réessayer » (kept for the session only). */
   const [lastBrief, setLastBrief] = useState<CoachRoutineAiProposalRequest | null>(null);
@@ -229,9 +235,9 @@ export function RoutineAiPanel({
   function refused(failure: RoutineAiActionFailure, kind: ProposalKind = "REGENERATE"): void {
     if (failure.code === "ACCESS_DENIED") return accessEnded();
     const f: RoutineAiFailure = { ...(failure as RoutineAiFailure), kind };
-    setNotice(routineAiSentence(f, firstName, copy));
     const until = heldUntil(f, Date.now());
-    if (until !== null) setHeld((h) => ({ ...h, [kind]: until }));
+    setNotice({ text: routineAiSentence(f, firstName, copy), ...(until !== null ? { heldKind: kind } : {}) });
+    if (until !== null) setHeld((h) => ({ ...h, [kind]: { until, failure: f } }));
   }
 
   /** Apply a GET's answer to the panel. */
@@ -287,14 +293,15 @@ export function RoutineAiPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.kind, runningId, runningSince, clientId]);
 
-  // The hold lifts by itself at the instant the api named.
+  // The hold lifts by itself at the instant the api named, and takes its sentence with it.
   useEffect(() => {
-    const next = Math.min(...Object.values(held));
+    const next = Math.min(...Object.values(held).map((h) => h.until));
     if (!Number.isFinite(next)) return;
-    const timer = setTimeout(
-      () => setHeld((h) => Object.fromEntries(Object.entries(h).filter(([, at]) => at > Date.now()))),
-      Math.max(0, next - Date.now())
-    );
+    const timer = setTimeout(() => {
+      const now = Date.now();
+      setHeld((h) => Object.fromEntries(Object.entries(h).filter(([, at]) => at.until > now)));
+      setNotice((n) => (n?.heldKind && (held[n.heldKind]?.until ?? 0) <= now ? null : n));
+    }, Math.max(0, next - Date.now()));
     return () => clearTimeout(timer);
   }, [held]);
 
@@ -393,7 +400,21 @@ export function RoutineAiPanel({
   if (hidden) return null;
 
   const blocked = briefBlocked(form);
-  const isHeld = (kind: ProposalKind) => (held[kind] ?? 0) > Date.now();
+  const isHeld = (kind: ProposalKind) => (held[kind]?.until ?? 0) > Date.now();
+  /** The kind whose « Générer » is on screen: the brief, the Update box, or a FAILED Update's box. */
+  const formKind: ProposalKind | null =
+    view.kind === "brief"
+      ? "REGENERATE"
+      : view.kind === "update" || (view.kind === "failed" && view.proposalKind === "REVISE" && canUpdate)
+        ? "REVISE"
+        : null;
+  const formHold = formKind !== null && isHeld(formKind) ? held[formKind] : undefined;
+  /** BUG-865/866: a held form always shows its kind's 429 sentence, re-derived from the hold. */
+  const heldSentence = formHold ? routineAiSentence(formHold.failure, firstName, copy) : null;
+  const pressNotice = notice && (notice.heldKind === undefined || isHeld(notice.heldKind)) ? notice.text : null;
+  const shownNotice = pressNotice ?? heldSentence;
+  /** Another refusal (e.g. a discard's) on a held form: both sentences, the hold's second. */
+  const extraHeldSentence = pressNotice !== null && heldSentence !== null && heldSentence !== pressNotice ? heldSentence : null;
   const count = notesLength(form.notes);
   const requestCount = notesLength(request);
   const pressedChips = chipsIn(request, t.chips);
@@ -555,9 +576,14 @@ export function RoutineAiPanel({
           </h3>
         )}
 
-        {notice && (
+        {shownNotice && (
           <p role="alert" data-testid="routine-ai-notice" style={{ ...noteStyle, color: "var(--err-ink)" }}>
-            {notice}
+            {shownNotice}
+          </p>
+        )}
+        {extraHeldSentence && (
+          <p data-testid="routine-ai-held-notice" style={{ ...noteStyle, color: "var(--err-ink)" }}>
+            {extraHeldSentence}
           </p>
         )}
 
