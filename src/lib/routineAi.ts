@@ -8,6 +8,9 @@
  *     `aiProposals.routine` is literally `true`. Absent, null, a string, a missing field: false.
  *   · `briefRequest` / `notesLength` — the brief's body, built in ONE place (B2), and the
  *     counter's arithmetic (the api counts « 500 characters after NFC »).
+ *   · `reviseRequest` / `updateBlocked` / `chipsIn` / `withChip` — EV-186f's « Modifier avec
+ *     l'IA » request box: its body (the other ONE builder), the send rule (U2), and the chips,
+ *     which only ever pre-fill text (U1).
  *   · `routineAiSentence` — B4: every refusal CODE renders its sentence from the story's copy
  *     table; an unknown code renders the generic Failed sentence; the server's `message` is
  *     never read, so it can never be shown.
@@ -18,7 +21,9 @@
 import type { Copy } from "./copy";
 import type {
   CoachRoutineAiProposalRequest,
+  CoachRoutineAiProposalResponse,
   CoachRoutineAiRepairMark,
+  RevisionChip,
   Routine,
   RoutineAiGoal,
   RoutineExercise,
@@ -31,9 +36,8 @@ export interface RoutineAiCapability {
   /** « Régénérer avec l'IA » (EV-186b). */
   routine: boolean;
   /**
-   * « Modifier avec l'IA » (EV-186f). Read so the rule « never true while routine is false »
-   * holds here too, and so EV-186f has one place to look. NOTHING renders from it in this
-   * slice: the vendored contract's `kind` is `REGENERATE` only.
+   * « Modifier avec l'IA » (EV-186f U1): the request box is offered only when this is true, and
+   * it is never true while `routine` is false (the api's rule, held here too).
    */
   instruction: boolean;
 }
@@ -138,6 +142,82 @@ export function briefRequest(form: RoutineAiBriefForm): CoachRoutineAiProposalRe
   return { kind: "REGENERATE", brief };
 }
 
+// ── EV-186f: the Update request box ──────────────────────────────────────────
+
+/** `RevisionChip`, in the story's order (« Plus de haut du corps » · … · « Remplacer un exercice… »). */
+export const ROUTINE_AI_CHIPS: readonly RevisionChip[] = [
+  "MORE_UPPER_BODY",
+  "MORE_LOWER_BODY",
+  "ADD_CORE",
+  "SWAP_EXERCISE",
+];
+export const ROUTINE_AI_INSTRUCTION_MAX = 500;
+
+/**
+ * Whether the text has a code point the api counts as visible. b-fit-api @ 731b1262
+ * `CoachAiInstructionBounds`: whitespace, space separators, U+200B–U+200D and U+FEFF are not
+ * visible, and a REVISE whose instruction has none (and no chip) is `400 … reason EMPTY` — so the
+ * box does not offer to send it. JS `\s` covers the whitespace and every Zs space (U+00A0,
+ * U+2000–U+200A, U+202F, U+3000…) and U+FEFF; the zero-width trio is added by hand.
+ */
+export function hasVisibleText(text: string): boolean {
+  return /[^\s\u200B-\u200D\uFEFF]/u.test(text);
+}
+
+/** Why the request cannot be sent yet, or null. Counted as the api counts (`notesLength`). U2: never truncated. */
+export function updateBlocked(text: string): "empty" | "tooLong" | null {
+  if (!hasVisibleText(text)) return "empty";
+  if (notesLength(text) > ROUTINE_AI_INSTRUCTION_MAX) return "tooLong";
+  return null;
+}
+
+/**
+ * The chips whose words are in the box, in `ROUTINE_AI_CHIPS` order. A chip only PRE-FILLS text
+ * (U1, ADR-0036 D36.3 « chips are content only »), so the text is the one source of truth: a chip
+ * travels on the wire exactly when its own words travel with it, and a coach who deletes those
+ * words has unselected it. It can never be sent on its own, without the text it stands for.
+ * `labels` are the chip labels in the coach's language (`copy.routineAi.chips`).
+ */
+export function chipsIn(text: string, labels: Record<RevisionChip, string>): RevisionChip[] {
+  const box = text.normalize("NFC");
+  return ROUTINE_AI_CHIPS.filter((chip) => box.includes(labels[chip].normalize("NFC")));
+}
+
+/**
+ * A chip press: its words go into the box — the whole box when it is blank, else on a new line
+ * after what the coach typed. Already there: unchanged (a chip is never written twice).
+ */
+export function withChip(text: string, label: string): string {
+  if (text.normalize("NFC").includes(label.normalize("NFC"))) return text;
+  if (!hasVisibleText(text)) return label;
+  return `${text.replace(/\s+$/u, "")}\n${label}`;
+}
+
+/**
+ * THE body of a REVISE — `{kind: "REVISE", instruction, chips?}` and nothing else: no brief, no
+ * injury, no id. The instruction travels exactly as typed (the api normalises and bounds it, and
+ * never stores it); `chips` are the ones `chipsIn` finds in it. Null when `updateBlocked`.
+ */
+export function reviseRequest(
+  text: string,
+  labels: Record<RevisionChip, string>
+): CoachRoutineAiProposalRequest | null {
+  if (updateBlocked(text) !== null) return null;
+  const chips = chipsIn(text, labels);
+  const body: CoachRoutineAiProposalRequest = { kind: "REVISE", instruction: text };
+  if (chips.length > 0) body.chips = chips;
+  return body;
+}
+
+/**
+ * U3: how many of the reviser's ops were not applied — `outcome.opsRejected.length` on a READY
+ * REVISE (api spec), 0 for anything else or a malformed outcome (never a guess).
+ */
+export function opsRejectedCount(proposal: CoachRoutineAiProposalResponse): number {
+  const rejected = proposal.outcome?.opsRejected;
+  return proposal.kind === "REVISE" && Array.isArray(rejected) ? rejected.length : 0;
+}
+
 // ── B4: refusals → sentences ─────────────────────────────────────────────────
 
 /**
@@ -151,6 +231,11 @@ export interface RoutineAiFailure {
   scope?: "link" | "coach" | null;
   /** 429 only: `Retry-After` in seconds (the next midnight, server zone), or null. */
   retryAfterSeconds?: number | null;
+  /**
+   * EV-186f — which request was refused, when the panel knows. A per-trainee 429 names the
+   * counter that is spent: 3 regenerations (REGEN) or 10 edits (EDIT, a REVISE).
+   */
+  kind?: "REGENERATE" | "REVISE" | null;
 }
 
 /**
@@ -163,7 +248,8 @@ export function routineAiSentence(failure: RoutineAiFailure, first: string, copy
   const t = copy.routineAi;
   switch (failure.code) {
     case "COACH_AI_RATE_LIMIT":
-      return failure.scope === "coach" ? t.rateLimitCoach : t.rateLimitLinkRegen(first);
+      if (failure.scope === "coach") return t.rateLimitCoach;
+      return failure.kind === "REVISE" ? t.rateLimitLinkEdit(first) : t.rateLimitLinkRegen(first);
     case "COACH_AI_UNAVAILABLE":
     // The routes are unregistered while the flag is off: the server switched AI off since
     // this page was drawn. The same fact as 503 COACH_AI_UNAVAILABLE, so the same sentence.
@@ -182,6 +268,9 @@ export function routineAiSentence(failure: RoutineAiFailure, first: string, copy
       return t.instructionInvalid;
     case "COACH_AI_NOTHING_APPLIED":
       return t.nothingApplied;
+    // EV-186f U6: a REVISE for a trainee with neither a draft nor a published routine.
+    case "COACH_PLAN_EMPTY":
+      return t.planEmpty(first);
     case "CATALOG_UNAVAILABLE":
       return copy.routine.catalogUnavailable;
     default:

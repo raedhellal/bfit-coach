@@ -79,7 +79,7 @@ test.describe("B2 — the brief", () => {
     const full = briefRequest({ goal: "MOBILITY", days: 2, sessionLength: 20, emphasis: ["glutes"], notes: "line 1\nline 2" });
     expect(Object.keys(full ?? {}).sort()).toEqual(["brief", "kind"]);
     expect(Object.keys(full?.brief ?? {}).sort()).toEqual(["days", "emphasis", "goal", "notes", "sessionLength"]);
-    expect(full?.brief.notes).toBe("line 1\nline 2");
+    expect(full?.brief?.notes).toBe("line 1\nline 2");
   });
 
   test("an incomplete brief, 501 characters or 6 muscle groups cannot be sent; 500 can", () => {

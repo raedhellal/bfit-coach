@@ -2,6 +2,7 @@ import "server-only";
 import { apiFetch, apiGet, apiGetAs, ApiError } from "./apiFetch";
 import { COACH_API_MODE, INVITE_BASE_URL } from "./env";
 import { fixtureCoachApi } from "./coachApi.fixture";
+import { routineAiProposalPath } from "./routineAiDiscard";
 import { journalled } from "./fixtureApiJournal";
 import { sanitiseCoachName } from "./inviteName";
 
@@ -1043,20 +1044,24 @@ export interface CoachRoutineDraftRequest {
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-186b / EV-186n — « Régénérer avec l'IA » (ADR-0036 D36.1–D36.4, D36.9).
  *
- * Typed against b-fit-api main @ 19b6696e (EV-186c + EV-186a merged; built against the branch
- * tip 9c3bff69, whose spec differs only by a note on `repairMarks`). Every route below is unregistered (404)
+ * Typed against b-fit-api main @ 731b1262 (EV-186c + EV-186a, then EV-186e's REVISE at cd57faa7
+ * and EV-376's id-scoped DELETE at 1c61d1e4). Every route below is unregistered (404)
  * while `bfit.coach-ai.routine.enabled` is false, which is the production default, and the
- * portal never calls one unless the routine read's `aiProposals.routine` is literally true.
+ * portal never calls one unless the routine read's `aiProposals.routine` is literally true
+ * (« Modifier avec l'IA », a REVISE, only when `aiProposals.instruction` is too: EV-186f).
  *
  *   POST   /coach-portal/clients/{id}/routine/ai-proposal        ← CoachRoutineAiProposalRequest
  *          202 {proposalId, status: RUNNING}
  *          400 COACH_DRAFT_INPUT_FORBIDDEN · VALIDATION_ERROR · COACH_AI_INSTRUCTION_INVALID
+ *              · COACH_PLAN_EMPTY (a REVISE with neither a draft nor a published routine)
  *          409 COACH_AI_PROPOSAL_RUNNING
  *          429 COACH_AI_RATE_LIMIT {scope: link|coach, resetsAt} + Retry-After
  *          503 COACH_AI_UNAVAILABLE · CATALOG_UNAVAILABLE · COACH_AI_BUSY
  *          (every refusal reserves nothing)
  *   GET    same path → CoachRoutineAiProposalResponse (status NONE when there is none; no-store)
- *   DELETE same path → 204, idempotent; RUNNING → CANCELLED, a settled one is deleted
+ *   DELETE same path [?proposalId=] → 204, idempotent; RUNNING → CANCELLED, a settled one is
+ *          deleted. With `proposalId` (EV-376) only that proposal is touched: another one (a run
+ *          another tab started since) is left as it is, still 204.
  *   POST   …/ai-proposal/keep ← {proposalId} → CoachRoutineDraftResponse (the kept draft)
  *          409 COACH_DRAFT_EXISTS (details.existingUpdatedAt) · COACH_PROPOSAL_STALE
  *
@@ -1097,14 +1102,27 @@ export interface CoachRoutineAiBrief {
   notes?: string;
 }
 
+/** `RevisionChip` — the four routine content chips (ADR-0036 D36.3, A3.1). Matched exactly. */
+export type RevisionChip = "MORE_UPPER_BODY" | "MORE_LOWER_BODY" | "ADD_CORE" | "SWAP_EXERCISE";
+
 /**
- * The body of `POST …/routine/ai-proposal`. `kind` is `REGENERATE` only on this contract:
- * REVISE (« Modifier avec l'IA ») is EV-186e's and is not on the vendored spec.
+ * The body of `POST …/routine/ai-proposal`. Two shapes, and a key outside the kind's own is
+ * `400 COACH_DRAFT_INPUT_FORBIDDEN` (never ignored):
+ *   · `{kind: "REGENERATE", brief}` — « Régénérer avec l'IA » (EV-186b), built by `briefRequest`;
+ *   · `{kind: "REVISE", instruction?, chips?}` — « Modifier avec l'IA » (EV-186f), built by
+ *     `reviseRequest`. At least a visible instruction or one chip; the instruction is ≤ 500 code
+ *     points after NFC, never truncated, never stored; pain words are never refused (D36.6 item 5).
+ * Each builder writes a literal naming its own keys, so neither can carry the other's.
  * @wire CoachRoutineAiProposalRequest
  */
 export interface CoachRoutineAiProposalRequest {
-  kind: "REGENERATE";
-  brief: CoachRoutineAiBrief;
+  kind: "REGENERATE" | "REVISE";
+  /** REGENERATE only. */
+  brief?: CoachRoutineAiBrief;
+  /** REVISE only: the coach's request, exactly as typed. Omitted when blank. */
+  instruction?: string | null;
+  /** REVISE only: ≤ 4, no duplicates. Omitted when none. */
+  chips?: RevisionChip[];
 }
 
 /** @wire CoachRoutineAiProposalStartedResponse */
@@ -1148,8 +1166,66 @@ export interface CoachRoutineAiProposalResponse {
   repairs: string[];
   repairMarks: CoachRoutineAiRepairMark[];
   equipmentChecked: boolean;
+  /**
+   * READY REVISE only (EV-186e): what the reviser's ops did. `opsRejected.length` is EV-186f U3's
+   * « {n} modifications n'ont pas pu être appliquées ». Null or absent on a REGENERATE.
+   */
+  outcome?: CoachRoutineAiProposalOutcome | null;
+  /**
+   * READY only: proposal exercise names that bind to no catalogue entry (EV-186 E3). Typed so the
+   * contract is honest; not drawn by the panel yet — the kept draft's own `unbindableExercises`
+   * marks them in the editor after Keep, as for any draft.
+   */
+  unbindable: string[];
+  /** READY only: whether `unbindable` was checked (false while the catalogue has no rows). */
+  catalogChecked: boolean;
   createdAt?: string | null;
   expiresAt?: string | null;
+}
+
+/**
+ * What a REVISE did with the engine's ops: counts, indexes and enums only (never the model's
+ * text). EV-186e.
+ * @wire CoachRoutineAiProposalOutcome
+ */
+export interface CoachRoutineAiProposalOutcome {
+  opsReturned: number;
+  opsApplied: number;
+  opsRejected: CoachRoutineAiRejectedOp[];
+  unbindable: CoachRoutineExercisePosition[];
+}
+
+/**
+ * One op the applier refused, by its position in the engine's list and an enum reason.
+ * @wire CoachRoutineAiRejectedOp
+ */
+export interface CoachRoutineAiRejectedOp {
+  /** 0-based position in the engine's op list. */
+  index: number;
+  op?:
+    | "REPLACE_EXERCISE"
+    | "ADD_EXERCISE"
+    | "REMOVE_EXERCISE"
+    | "SET_PRESCRIPTION"
+    | "SWAP_DAYS"
+    | "SET_DAY_FOCUS"
+    | null;
+  reason:
+    | "INVALID_OP"
+    | "DAY_NOT_FOUND"
+    | "INDEX_OUT_OF_RANGE"
+    | "EXPECT_NAME_MISMATCH"
+    | "EXPECT_FOCUS_MISMATCH"
+    | "DAY_WOULD_BE_EMPTY";
+}
+
+/**
+ * An exercise's place in a routine: ISO weekday (1 = Monday) and 0-based index.
+ * @wire CoachRoutineExercisePosition
+ */
+export interface CoachRoutineExercisePosition {
+  day: number;
+  index: number;
 }
 
 /** @wire CoachRoutineAiKeepRequest */
@@ -3450,9 +3526,11 @@ const liveCoachApi = {
   getRoutineAiProposal(id: string): Promise<CoachRoutineAiProposalResponse> {
     return apiFetch<CoachRoutineAiProposalResponse>(`${client(id)}/routine/ai-proposal`);
   },
-  async discardRoutineAiProposal(id: string): Promise<void> {
-    // 204, idempotent.
-    await apiFetch<void>(`${client(id)}/routine/ai-proposal`, { method: "DELETE" });
+  async discardRoutineAiProposal(id: string, proposalId?: string | null): Promise<void> {
+    // 204, idempotent. EV-376: with `proposalId`, only that proposal is discarded — a run another
+    // tab started since is left alone (still 204).
+    // The path is `routineAiProposalPath` (pure, unit-tested: no id → no `?`, EV-377 AC3).
+    await apiFetch<void>(routineAiProposalPath(id, proposalId), { method: "DELETE" });
   },
   keepRoutineAiProposal(id: string, body: CoachRoutineAiKeepRequest): Promise<CoachRoutineDraftResponse> {
     return apiFetch<CoachRoutineDraftResponse>(`${client(id)}/routine/ai-proposal/keep`, {
