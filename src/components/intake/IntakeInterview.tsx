@@ -78,8 +78,9 @@ export interface IntakeInterviewProps {
   /** B10: section 3's read-only equipment, rendered by the page. */
   equipment?: ReactNode;
   /**
-   * EV-368: `GET …/intake`'s `profileGoal`, the goal the client gave in the app, as the page read
-   * it (null: none, or no grant). Drawn as read-only text under section 1's goal control; it is
+   * EV-368: `GET …/intake`'s `profileGoal`, the goal stored on the trainee's profile, as the page
+   * read it (null: none, or no grant). It may be the default `GET_STRONGER` written by a
+   * consent-only profile PUT rather than a goal the client chose (EV-380). Drawn as read-only text under section 1's goal control; it is
    * never a form value and never sent.
    */
   profileGoal?: string | null;

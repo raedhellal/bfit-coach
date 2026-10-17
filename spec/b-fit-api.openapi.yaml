@@ -5781,7 +5781,9 @@ paths:
         by the client's own COACH_INTAKE consent): `state: READY`, the derived `status`, and all
         eight `sections`, each with its `version` (0 until first written, every field `null` or
         `[]`) and its `values`; `completedAt` once finished; and `profileGoal` (EV-368), the goal the
-        client gave in the app, read from their profile at the time of the read, or `null`.
+        client gave in the app (or the `GET_STRONGER` default stored when their profile row was
+        created without one; see `profileGoal`), read from their profile at the time of the read,
+        or `null`.
         Otherwise `state: GRANT_MISSING` and NOTHING else: no `status`, no `sections`, no
         `profileGoal`. The portal shows the interview disabled and
         explained. With the client's own GET /me/my-coach/intake (EV-341r), the only response that
@@ -12040,7 +12042,10 @@ components:
           description: >-
             EV-368. READY only, and always present then: the goal the client gave in the app (their
             profile's PrimaryGoal, read at the time of the read), or `null` when they have no profile
-            or no goal (never a default). Absent on GRANT_MISSING. Read-only: the intake never writes
+            or no goal. This read never substitutes a default; but a profile row created without a
+            goal (a consent-only PUT /me/profile, or POST /me/onboarding/complete for a trainee with
+            no row) stores UserProfileDefaults' GET_STRONGER, which is indistinguishable here from a
+            chosen one. Absent on GRANT_MISSING. Read-only: the intake never writes
             it (EV-341 Ruling 1); a coach's different goal goes in sections.GOALS.primaryGoal.
       required: [state]
     MyCoachIntake:

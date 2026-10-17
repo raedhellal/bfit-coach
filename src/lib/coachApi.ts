@@ -3278,8 +3278,10 @@ export interface CoachIntake {
   completedAt?: string;
   sections?: Partial<Record<CoachIntakeSectionName, CoachIntakeSection>>;
   /**
-   * EV-368 (b-fit-api @ the vendored sha): READY only — the goal the client gave in the app (their
-   * profile's `PrimaryGoal`, read at the time of the read), or `null` when they have none. Absent
+   * EV-368 (b-fit-api @ the vendored sha): READY only — the goal stored on the trainee's profile
+   * (their `PrimaryGoal`, read at the time of the read), or `null` when they have none. Not
+   * necessarily a goal the client chose: a profile row created without one (a consent-only
+   * `PUT /me/profile`) stores the default `GET_STRONGER`, indistinguishable here (EV-380). Absent
    * on GRANT_MISSING. Typed `string`, not the five names: a value this build does not know (a
    * future `PrimaryGoal`) must reach the page as data so the page can decline to show it.
    */
