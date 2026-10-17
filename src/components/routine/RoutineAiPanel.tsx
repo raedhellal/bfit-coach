@@ -41,6 +41,7 @@ import {
   startRoutineAiAction,
   type RoutineAiActionFailure,
 } from "@/lib/routineAiActions";
+import { keepFailureRoute, reconcileKeep } from "@/lib/routineAiKeepReconcile";
 import type {
   CoachRoutineAiProposalRequest,
   CoachRoutineAiProposalResponse,
@@ -87,7 +88,12 @@ type View =
   | { kind: "ready"; proposal: CoachRoutineAiProposalResponse }
   | { kind: "failed"; code: string; proposalId: string | null; proposalKind: ProposalKind }
   /** N4 — Keep was refused because something moved, or the proposal expired. */
-  | { kind: "stale"; code: string; proposalId: string | null; proposalKind: ProposalKind };
+  | { kind: "stale"; code: string; proposalId: string | null; proposalKind: ProposalKind }
+  /**
+   * BUG-869/870 — a Keep that did not come back 200, whose reconcile read cannot show the
+   * suggestion still offered. One alert and « Show what's saved »: no Keep, no paid « Try again ».
+   */
+  | { kind: "unconfirmed"; proposalId: string; proposalKind: ProposalKind };
 
 const FAILED_RESULT: { ok: false; failure: RoutineAiActionFailure } = { ok: false, failure: { code: "FAILED" } };
 
@@ -127,6 +133,7 @@ function shownProposal(view: View): { proposalKind: ProposalKind; proposalId: st
     case "running":
     case "failed":
     case "stale":
+    case "unconfirmed":
       return { proposalKind: view.proposalKind, proposalId: view.proposalId };
     default:
       return { proposalKind: "REGENERATE", proposalId: null };
@@ -146,6 +153,7 @@ export function RoutineAiPanel({
   dirty,
   canUpdate = false,
   onKept,
+  onShowSaved,
 }: {
   clientId: string;
   /** `firstName(traineeDisplayName, locale)` — sentence-initial form; the copy applies `mid()`. */
@@ -173,6 +181,11 @@ export function RoutineAiPanel({
   canUpdate?: boolean;
   /** Keep landed: the editor takes the kept draft (and its token) from this response. */
   onKept: (draft: CoachRoutineDraftResponse) => void;
+  /**
+   * BUG-869/870 — « Show what's saved »: the editor's own re-seed from the server (the conflict
+   * dialog's « Load the saved version » body, without its notice). Resolves when it has been applied.
+   */
+  onShowSaved: () => Promise<void>;
 }) {
   const copy = useCopy();
   const t = copy.routineAi;
@@ -213,6 +226,12 @@ export function RoutineAiPanel({
    */
   const [request, setRequest] = useState("");
   const [confirmKeep, setConfirmKeep] = useState(false);
+  /**
+   * BUG-869/870 (staff N3, the BUG-867 B1 pattern) — the `unconfirmed` alert's key. Bumped when a
+   * « Show what's saved » press gets no answer from its re-read, so the same alert REMOUNTS and is
+   * announced again: a press is never silent, even when its words are unchanged.
+   */
+  const [unconfirmedPress, setUnconfirmedPress] = useState(0);
   const [pending, startTransition] = useTransition();
   const mounted = useRef(true);
   /**
@@ -372,18 +391,66 @@ export function RoutineAiPanel({
       if (!mounted.current) return;
       setConfirmKeep(false);
       if (!result.ok) {
-        const code = result.failure.code;
-        if (code === "ACCESS_DENIED") return accessEnded();
-        if (code === "NOT_FOUND") return setHidden(true);
-        if (code === "COACH_DRAFT_EXISTS" || code === "COACH_PROPOSAL_STALE") {
-          return setView({ kind: "stale", code, proposalId, proposalKind: kind });
+        const route = keepFailureRoute(result.failure.code);
+        if (route.kind === "accessEnded") return accessEnded();
+        if (route.kind === "hidden") return setHidden(true);
+        if (route.kind === "refused") return refused(result.failure, kind);
+        /*
+         * BUG-869/870 (ADR-0036 § Amendment BUG-869/870): every other non-200 — a 409, a transport
+         * error, ANY 5xx including a plain 500, the `settled` fallback — reads the proposal once,
+         * INSIDE this transition, so « Garder » and « Écarter » stay disabled until the read is
+         * adopted (staff A3). For Keep this replaces `isLostAnswer` on purpose: a 500 raised after
+         * Keep committed is a committed Keep, so it is reconciled, never shown as a refusal
+         * (see `routineAiKeepReconcile.ts`).
+         */
+        const read = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
+        if (!mounted.current) return;
+        const outcome = reconcileKeep(
+          route.staleCode,
+          proposalId,
+          read.ok ? { ok: true, proposal: read.proposal } : { ok: false, code: read.failure.code }
+        );
+        switch (outcome.kind) {
+          case "accessEnded":
+            return accessEnded();
+          case "hidden":
+            return setHidden(true);
+          case "stale":
+            return setView({ kind: "stale", code: outcome.code, proposalId, proposalKind: kind });
+          case "stillHere":
+            // The same P, still READY: adopt the read when it carries the plan, else keep the view on screen.
+            if (read.ok && read.proposal.proposal) adopt(read.proposal);
+            return setNotice({ text: t.keepUnconfirmedStillHere });
+          case "unconfirmed":
+            return setView({ kind: "unconfirmed", proposalId, proposalKind: kind });
         }
-        return refused(result.failure, kind);
       }
       logPortalEvent({ event: "coach_ai_proposal_kept", kind });
       setView({ kind: "idle" });
       setRequest("");
       onKept(result.draft);
+    });
+  }
+
+  /**
+   * BUG-869/870 — the `unconfirmed` view's one press, never automatic (an automatic re-seed would
+   * drop unsaved edits when P was spent by something other than this Keep). It re-seeds the editor
+   * from the server, so a Keep that landed shows in its "Drafted with AI on …" line, then re-reads
+   * the proposal and adopts it, so a genuinely stale P reaches the honest `stale` view.
+   */
+  function showSaved() {
+    setNotice(null);
+    startTransition(async () => {
+      await onShowSaved();
+      if (!mounted.current) return;
+      const read = await settled(readRoutineAiAction(clientId), FAILED_RESULT);
+      if (!mounted.current) return;
+      if (read.ok) return adopt(read.proposal);
+      if (read.failure.code === "ACCESS_DENIED") return accessEnded();
+      if (read.failure.code === "NOT_FOUND") return setHidden(true);
+      // No answer: stay `unconfirmed` (the press is still there, nothing claims what it did not see),
+      // and remount the alert so this press is announced (staff N3).
+      setUnconfirmedPress((n) => n + 1);
     });
   }
 
@@ -865,6 +932,26 @@ export function RoutineAiPanel({
               </Button>
               <Button variant="secondary" onClick={discard} disabled={pending || !hydrated}>
                 {t.discard}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {view.kind === "unconfirmed" && (
+          <>
+            {/* BUG-869/870: one alert (plus the unsaved-edits sentence on a dirty editor), one button. */}
+            <p
+              key={unconfirmedPress}
+              role="alert"
+              data-testid="routine-ai-unconfirmed"
+              style={{ ...noteStyle, color: "var(--err-ink)" }}
+            >
+              {t.keepUnconfirmed}
+              {dirty && ` ${t.keepUnconfirmedUnsaved}`}
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+              <Button onClick={showSaved} disabled={pending || !hydrated}>
+                {t.showSaved}
               </Button>
             </div>
           </>

@@ -1368,6 +1368,19 @@ export const en = {
     planEmpty: (first: string) => `${first} has no programme to change yet. Use “Regenerate with AI”.`, // table: 400 COACH_PLAN_EMPTY on Update
     /** table: Unsaved edits note (2026-10-17, U8; OURS, signed off by senior-po). Only while the editor has unsaved edits. */
     unsavedNote: "Your unsaved changes aren't included: the AI starts from the last saved version.",
+    /*
+     * ── BUG-869/870 (ADR-0036 § Amendment BUG-869/870): a Keep that did not come back 200. ──
+     * All four OURS, signed off by senior-po (EV-186 copy table, 2026-10-17 (m), hub main @ 2fe1581d).
+     * None of them may carry "Nothing was changed": nobody knows whether the Keep landed.
+     */
+    /** table: `unconfirmed` view alert — the reconcile read cannot show the suggestion still offered. */
+    keepUnconfirmed: "We couldn't confirm whether this suggestion was kept. Show what's saved before you do anything else.",
+    /** table: `unconfirmed` view, second sentence in the same alert, only while the editor has unsaved edits. */
+    keepUnconfirmedUnsaved: "Showing what's saved replaces your unsaved changes.",
+    /** table: `unconfirmed` view button, the view's only button (re-seeds the editor, re-reads the proposal). */
+    showSaved: "Show what's saved",
+    /** table: `keepUnconfirmedStillHere` — no answer, and the read shows the same suggestion still READY. */
+    keepUnconfirmedStillHere: "We couldn't confirm this suggestion was kept. It's still here, so you can keep it.",
   },
 
   /**
