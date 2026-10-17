@@ -5,8 +5,8 @@ metadata:
   type: project
 ---
 
-Branch `feat/ev186f-coach-routine-ai-update`, stacked on `feat/ev186n-coach-routine-ai-diff`
-(87fb42cd, approved, unmerged). Spec re-vendored from b-fit-api main @ 731b1262 (EV-186e REVISE
+Branch `feat/ev186f-coach-routine-ai-update`, first stacked on 186n (87fb42cd), now on main
+23c3b452 (186b/n merged). Spec re-vendored from b-fit-api main @ 731b1262 (EV-186e REVISE
 merged at cd57faa7, EV-376 id-scoped DELETE at 1c61d1e4, BUG-860).
 
 **Where:** all inside 186b/n's files — no new component.
@@ -21,7 +21,20 @@ merged at cd57faa7, EV-376 id-scoped DELETE at 1c61d1e4, BUG-860).
   `shownProposal(view)` feeds discard's `?proposalId=` (EV-376) and the log kind.
 - `RoutineEditor.tsx` computes `canUpdate = ai.instruction && (saved draft || activePlan)` (U6:
   an unsaved blank plan is not a base). The page passes `instruction` from `routineAiCapability`.
-- `kit.tsx` `Button` gained `ariaPressed` (undefined renders nothing).
+- `src/lib/routineAiDiscard.ts` (pure): `routineAiProposalPath(clientId, proposalId?)` (no id → no
+  `?`) is the ONE URL `coachApi.discardRoutineAiProposal` requests; `routineAiDiscardOutcome` is the
+  fixture DELETE's decision (none / kept / cancelled / deleted). Extracted because `coachApi.ts` and
+  the fixture are `server-only` and cannot be imported by a node unit spec (U9b/U9c).
+- The panel section carries `data-proposal-id` (the proposal on screen) so U9a compares the
+  DELETE's id with EXACTLY that one.
+- 429 hold is PER KIND: `held: Partial<Record<ProposalKind, number>>`, set by `refused(f, kind)`;
+  the brief reads `isHeld("REGENERATE")`, the box `isHeld("REVISE")` (staff B1: the api's REGEN
+  and EDIT counters are separate; one shared hold froze both).
+- U8 `unsavedNote` under the box only while the editor is `dirty` (prop already on the panel).
+- Chips are NOT toggles (U1a): no `aria-pressed`; drawn "soft" while their words are in the box.
+  The kit `Button` `ariaPressed` prop was added then removed (kit.tsx equals main).
+- The Update textarea is `disabled={!hydrated}` (staff S1: a FAILED Update read on load is
+  server-drawn; typing before hydration was wiped).
 
 **API shapes:** POST `{kind: "REVISE", instruction?, chips?: RevisionChip[] ≤4}`; refusal order
 (`CoachRoutineAiUseCase#requestRevise`): forbidden key (brief too) → guard → bounds (TOO_LONG,
@@ -43,3 +56,10 @@ text) and `aiDiscards` ({proposalId, touched}).
 - FR placeholder « Ex. : … » (NBSP before the colon, the file's convention); planEmpty uses
   `q()` for the guillemets.
 - U6's COACH_PLAN_EMPTY is only reachable by a two-tab race (the other tab discards the draft).
+- **Mutant runs: COMMIT FIRST.** Restoring a mutant with `git checkout -- <file>` also reverts
+  every uncommitted edit in that file (it cost me the B1/S1 fixes once; re-applied by script).
+  Commit, then mutate, then `git checkout`.
+- A blank plan needs exercises on two days before « Save draft » enables (Nils specs).
+- Folded unchanged days still render `[data-weekday]` inside `routine-ai-unchanged` <details>.
+- Merged origin/main 23c3b452 (186b, 186n, R2-1) at e091c4b: clean; R2-1's chunk `.catch` fallback
+  and 186f's `canUpdate`/`instruction` coexist; chunk-fail spec runs on the start config.
