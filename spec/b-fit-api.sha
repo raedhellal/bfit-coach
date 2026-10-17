@@ -1,6 +1,6 @@
-731b1262a8b48bc70e727abfb3ac9ee228acd310
+29f13ff801e86a6da7961e56203c5434e4b79db0
 # Provenance, written by scripts/spec-sync.mjs. Line 1 is the value; these are for you.
 # on-api-main: NO means the portal is typed against an api that has NOT shipped.
 # qa/api-merge-condition.spec.ts fails when this line and b-fit-api disagree.
-ref: main
-on-api-main: YES
+ref: feat/ev368-intake-profile-goal
+on-api-main: NO

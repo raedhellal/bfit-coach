@@ -3267,8 +3267,8 @@ export interface CoachIntakeSection {
 }
 
 /**
- * `GET …/intake`. READY carries `status` and all eight `sections`; GRANT_MISSING carries
- * `state` only.
+ * `GET …/intake`. READY carries `status`, all eight `sections` and `profileGoal`; GRANT_MISSING
+ * carries `state` only.
  *
  * @wire CoachIntake
  */
@@ -3277,6 +3277,13 @@ export interface CoachIntake {
   status?: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE";
   completedAt?: string;
   sections?: Partial<Record<CoachIntakeSectionName, CoachIntakeSection>>;
+  /**
+   * EV-368 (b-fit-api @ the vendored sha): READY only — the goal the client gave in the app (their
+   * profile's `PrimaryGoal`, read at the time of the read), or `null` when they have none. Absent
+   * on GRANT_MISSING. Typed `string`, not the five names: a value this build does not know (a
+   * future `PrimaryGoal`) must reach the page as data so the page can decline to show it.
+   */
+  profileGoal?: string | null;
 }
 
 /**

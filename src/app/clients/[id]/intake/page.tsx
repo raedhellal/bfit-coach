@@ -262,6 +262,7 @@ export default async function IntakePage({ params }: { params: { id: string } })
             initial={initial}
             disabledReasonId={grantMissing ? REASON_ID : undefined}
             equipment={equipment}
+            profileGoal={ready ? (read!.profileGoal ?? null) : null}
             readOnly={readOnly}
             completedAt={ready ? (read!.completedAt ?? null) : null}
             firstName={first}

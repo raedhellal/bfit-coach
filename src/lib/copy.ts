@@ -3128,6 +3128,12 @@ export const en = {
     /** EV-341c C5 / C6, verbatim: the date is the day the interview was FIRST finished. */
     finishedOn: (date: string) => `Intake finished on ${date}`,
     /**
+     * EV-368 P4: the label of the read-only line under section 1's « Main goal », shown as
+     * `common.labelled(inTheApp, goal)` ("In the app: Lose fat"). The goal is the catalogue's
+     * `values.primaryGoal` label, the control's own words.
+     */
+    inTheApp: "In the app",
+    /**
      * Not in the story (no AC names this failure): « Terminer » did not reach the api, or the api
      * failed. Worded on EV-341w's adopted `askFailed` (flagged for `senior-po` / EV-138).
      */

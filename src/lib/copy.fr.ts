@@ -1799,6 +1799,8 @@ export const fr = {
     coachNotesTooLong: "Trop long\u00a0: 4\u202f000 caractères au maximum.",
     finish: "Terminer l'entretien",
     finishedOn: (date: string) => `Entretien terminé le ${date}`,
+    /** EV-368 P4: « Indiqué dans l'app : Perdre du gras » through `common.labelled` (U+00A0). */
+    inTheApp: "Indiqué dans l'app",
     /** Not in the story: worded on EV-341w's `askFailed`. */
     finishFailed: "L'entretien n'a pas pu être terminé. Réessayez.",
     sections: {

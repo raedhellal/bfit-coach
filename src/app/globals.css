@@ -1902,3 +1902,5 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .intake-finished:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; border-radius: var(--r-sm); }
 .intake-helper { margin: 6px 0 0; }
 .intake-readonly-note { margin: 0; }
+/* EV-368: « Indiqué dans l'app : … » under section 1's goal control: read with it (the panel's 18px gap, less 10), and wraps (P8). */
+.intake-profile-goal { margin: -10px 0 0; overflow-wrap: anywhere; }

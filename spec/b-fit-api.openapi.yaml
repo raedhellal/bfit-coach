@@ -5780,8 +5780,10 @@ paths:
         a new link, the same coach's included, starts empty. When the link holds INTAKE (added only
         by the client's own COACH_INTAKE consent): `state: READY`, the derived `status`, and all
         eight `sections`, each with its `version` (0 until first written, every field `null` or
-        `[]`) and its `values`; `completedAt` once finished. Otherwise `state: GRANT_MISSING` and
-        NOTHING else: no `status`, no `sections`. The portal shows the interview disabled and
+        `[]`) and its `values`; `completedAt` once finished; and `profileGoal` (EV-368), the goal the
+        client gave in the app, read from their profile at the time of the read, or `null`.
+        Otherwise `state: GRANT_MISSING` and NOTHING else: no `status`, no `sections`, no
+        `profileGoal`. The portal shows the interview disabled and
         explained. With the client's own GET /me/my-coach/intake (EV-341r), the only response that
         carries the notes back; the client can read every note written here. Gate: an ACTIVE link;
         the sections are read under the INTAKE scope.
@@ -6289,8 +6291,10 @@ paths:
         the read-only repairs: `repairs` is what POST …/routine/publish/preview would answer for that
         document (same policy, the trainee's stored injuries and equipment), `repairMarks` locates
         each exercise the policy would swap or drop. A preview: the publish modal stays the only
-        binding list. EXPIRED once past `expiresAt` (24 h) or written at another shape version.
-        Writes nothing.
+        binding list. EXPIRED once past `expiresAt` (24 h) or written at another shape version,
+        and (BUG-862) with errorCode COACH_PROPOSAL_STALE once a READY proposal's base moved: the
+        live plan id or selected_at changed, or the draft token is not the one captured (Keep's own
+        check, so Keep would answer 409 COACH_PROPOSAL_STALE or COACH_DRAFT_EXISTS). Writes nothing.
       security:
         - bearerAuth: []
       parameters:
@@ -6404,8 +6408,9 @@ paths:
         EV-186a / ADR-0036 D36.4. Writes the draft through the draft save's own write
         (PUT …/routine/draft's resolution, link lock and row lock) with the draft token captured when
         the proposal was made — never one the client sends — sets `aiDraftedAt` and clears
-        `sourceTemplateId`. The trainee sees nothing until the coach publishes (EV-184). A second Keep
-        of the same proposal is 409 COACH_DRAFT_EXISTS.
+        `sourceTemplateId`. The trainee sees nothing until the coach publishes (EV-184). Keep removes
+        the kept proposal (BUG-868). A later Keep of it is 409 COACH_PROPOSAL_STALE; a concurrent one
+        may be COACH_DRAFT_EXISTS.
       security:
         - bearerAuth: []
       parameters:
@@ -11101,9 +11106,12 @@ components:
           type: string
           nullable: true
           description: >-
-            FAILED only: COACH_AI_TIMEOUT, COACH_AI_INVALID_OUTPUT, COACH_AI_NOTHING_APPLIED (a REVISE
+            FAILED: COACH_AI_TIMEOUT, COACH_AI_INVALID_OUTPUT, COACH_AI_NOTHING_APPLIED (a REVISE
             whose ops applied nothing), COACH_AI_FAILED, … The portal
             renders the copy-table sentence for the code, the generic Failed sentence otherwise.
+            EXPIRED (BUG-862): COACH_PROPOSAL_STALE when a READY proposal's base moved since it was
+            made (a publish, or a draft saved or discarded), so Keep could only answer 409; null when
+            it is past its 24 h or unreadable. Null for every other status.
         baseSource:
           type: string
           enum: [DRAFT, LIVE, NONE]
@@ -11985,8 +11993,8 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        EV-341a. READY: `status`, all eight `sections` and, once finished, `completedAt`.
-        GRANT_MISSING: `state` only.
+        EV-341a. READY: `status`, all eight `sections`, `profileGoal` (EV-368) and, once finished,
+        `completedAt`. GRANT_MISSING: `state` only.
       properties:
         state:
           type: string
@@ -12025,6 +12033,15 @@ components:
             COACH_NOTES:
               $ref: "#/components/schemas/CoachIntakeCoachNotesSection"
           required: [GOALS, HISTORY, AVAILABILITY, LIFESTYLE, HEALTH, MEASUREMENTS, NUTRITION, COACH_NOTES]
+        profileGoal:
+          type: string
+          nullable: true
+          enum: [LOSE_WEIGHT, BUILD_MUSCLE, GET_STRONGER, ENDURANCE, MOBILITY]
+          description: >-
+            EV-368. READY only, and always present then: the goal the client gave in the app (their
+            profile's PrimaryGoal, read at the time of the read), or `null` when they have no profile
+            or no goal (never a default). Absent on GRANT_MISSING. Read-only: the intake never writes
+            it (EV-341 Ruling 1); a coach's different goal goes in sections.GOALS.primaryGoal.
       required: [state]
     MyCoachIntake:
       type: object

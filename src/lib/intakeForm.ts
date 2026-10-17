@@ -332,3 +332,18 @@ export function sectionAnswered(section: IntakeFormSection, form: IntakeFormValu
 export function firstUnanswered(form: IntakeFormValues): IntakeFormSection {
   return INTAKE_FORM_SECTIONS.find((s) => !sectionAnswered(s, form)) ?? INTAKE_FORM_SECTIONS[0];
 }
+
+/**
+ * EV-368 P4 / P5 / edge case 2 — the label of the client's in-app goal (`GET …/intake`'s
+ * `profileGoal`) for the line under section 1's « Objectif principal », or `null` when no line is
+ * drawn: no goal (P5), or a value that is not one of the goal control's options (a future
+ * `PrimaryGoal`: the line is hidden rather than showing a raw key). The label is the control's
+ * own (`labels` = `intakePage.values.primaryGoal`), never the nutrition page's.
+ */
+export function profileGoalLabel(goal: unknown, labels: Record<string, string> | undefined): string | null {
+  if (typeof goal !== "string") return null;
+  const control = INTAKE_CATALOGUE.GOALS.find((f) => f.field === "primaryGoal");
+  if (!control || control.kind !== "single" || !control.options.includes(goal)) return null;
+  const label = labels && Object.prototype.hasOwnProperty.call(labels, goal) ? labels[goal] : undefined;
+  return label ? label : null;
+}
