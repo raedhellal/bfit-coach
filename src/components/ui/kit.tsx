@@ -51,7 +51,6 @@ export function Button({
   title,
   ariaLabel,
   ariaDescribedBy,
-  ariaPressed,
   sessionSafe,
   style = {},
 }: {
@@ -70,11 +69,6 @@ export function Button({
   ariaLabel?: string;
   /** EV-204b — the id of the sentence that says why a disabled control is off (AC-P11). */
   ariaDescribedBy?: string;
-  /**
-   * EV-186f — a toggle's state (the routine Update chips). Undefined renders no attribute, so
-   * every existing button's markup is unchanged.
-   */
-  ariaPressed?: boolean;
   /**
    * BUG-745 (ADR-0033 D33.14 point 4): this control neither posts nor navigates, so it keeps
    * working while the session-ended banner holds an editor's unsaved work. Mark only such a
@@ -112,7 +106,6 @@ export function Button({
       title={title}
       aria-label={ariaLabel}
       aria-describedby={ariaDescribedBy}
-      aria-pressed={ariaPressed}
       data-session-safe={sessionSafe ? "" : undefined}
       style={{
         height: S.h,

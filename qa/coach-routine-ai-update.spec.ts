@@ -109,11 +109,11 @@ test.describe("U1 — « Update with AI » opens the request box and the four ch
     await cookie(page, "evoli_fixture_ai_caps", "instruction");
     await openUpdate(page);
     const chip = (name: string) => box(page).getByRole("button", { name, exact: true });
-    await expect(chip("More upper body")).toHaveAttribute("aria-pressed", "false");
 
+    // Not a toggle (U1a, staff nit): no aria-pressed.
+    expect(await chip("More upper body").getAttribute("aria-pressed")).toBeNull();
     await chip("More upper body").click();
     await expect(request(page)).toHaveValue("More upper body");
-    await expect(chip("More upper body")).toHaveAttribute("aria-pressed", "true");
     await expect(request(page)).toBeFocused();
     await chip("Add core").click();
     await expect(request(page)).toHaveValue("More upper body\nAdd core");
@@ -125,7 +125,6 @@ test.describe("U1 — « Update with AI » opens the request box and the four ch
 
     // Deleting a chip's words unselects it: only the chips whose words remain are sent.
     await request(page).fill("Add core, and keep Friday light");
-    await expect(chip("More upper body")).toHaveAttribute("aria-pressed", "false");
     await send(page).click();
     await expect(panel(page)).not.toHaveAttribute("data-ai-state", "update");
     const [post] = (await calls(page)).aiPosts;
@@ -196,9 +195,7 @@ test.describe("U1a — a chip inserts its label verbatim; deleting its words dro
   test("« gainage » deleted before sending: the request has no chips key", async ({ page }) => {
     await frBox(page).fill("Rends-le plus dur");
     await frChip(page, "Ajouter du gainage").click();
-    await expect(frChip(page, "Ajouter du gainage")).toHaveAttribute("aria-pressed", "true");
     await frBox(page).fill("Rends-le plus dur\nAjouter du");
-    await expect(frChip(page, "Ajouter du gainage")).toHaveAttribute("aria-pressed", "false");
     await frSend(page).click();
     await expect(panel(page)).not.toHaveAttribute("data-ai-state", "update");
     const [post] = (await calls(page)).aiPosts;
@@ -527,6 +524,65 @@ test.describe("Refusals on an Update", () => {
       "AI suggestions are busy right now. Try again in a minute."
     );
     await expect(send(page)).toBeEnabled(); // BUSY never holds the button
+  });
+});
+
+test.describe("Staff B1 — a 429 holds only the kind it answered (separate REGEN / EDIT counters)", () => {
+  test.beforeEach(async ({ page }) => {
+    await cookie(page, "evoli_fixture_ai_caps", "instruction");
+    await cookie(page, "evoli_fixture_ai", "rate_link");
+  });
+
+  test("an Update 429 leaves Regenerate's Generate enabled; the Update stays held", async ({ page }) => {
+    await openUpdate(page);
+    await request(page).fill("swap");
+    await send(page).click();
+    await expect(panel(page).getByTestId("routine-ai-notice")).toHaveText(
+      "You've used today's 10 AI edits for Lina. You can still edit by hand, or try again tomorrow."
+    );
+    await expect(send(page)).toBeDisabled();
+    await box(page).getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Regenerate with AI", exact: true }).click();
+    await expect(panel(page).locator("form").getByRole("button", { name: "Generate" })).toBeEnabled();
+    await panel(page).locator("form").getByRole("button", { name: "Cancel" }).click();
+    await updateButton(page).click();
+    await request(page).fill("swap");
+    await expect(send(page)).toBeDisabled(); // its own counter is still spent
+  });
+
+  test("a Regenerate 429 leaves the Update box's Generate enabled; Regenerate stays held", async ({ page }) => {
+    await page.goto(ROUTE(LINA));
+    await page.getByRole("button", { name: "Regenerate with AI", exact: true }).click();
+    const brief = panel(page).locator("form");
+    await brief.getByRole("button", { name: "Generate" }).click();
+    await expect(panel(page).getByTestId("routine-ai-notice")).toHaveText(
+      "You've used today's 3 AI regenerations for Lina. You can still edit by hand, or try again tomorrow."
+    );
+    await expect(brief.getByRole("button", { name: "Generate" })).toBeDisabled();
+    await brief.getByRole("button", { name: "Cancel" }).click();
+    await updateButton(page).click();
+    await request(page).fill("swap");
+    await expect(send(page)).toBeEnabled();
+    await box(page).getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Regenerate with AI", exact: true }).click();
+    await expect(panel(page).locator("form").getByRole("button", { name: "Generate" })).toBeDisabled();
+  });
+});
+
+test.describe("Staff S1 — a server-drawn Update box is inert until it hydrates", () => {
+  test("after a FAILED Update, the server HTML's textarea is disabled; it enables once hydrated", async ({ page }) => {
+    await cookie(page, "evoli_fixture_ai_caps", "instruction");
+    await openUpdate(page);
+    await sendAndSettle(page, "make it harder", "failed");
+    const html = await (await page.request.get(ROUTE(LINA))).text();
+    const at = html.indexOf('data-testid="routine-ai-update"');
+    expect(at, "the page server-draws the failed Update's box").toBeGreaterThan(-1);
+    const textarea = /<textarea[^>]*>/.exec(html.slice(at))?.[0] ?? "";
+    expect(textarea).toMatch(/\sdisabled(=""|\s|>)/);
+    await page.reload();
+    await expect(request(page)).toBeEnabled();
+    await request(page).fill("swap");
+    await expect(request(page)).toHaveValue("swap");
   });
 });
 

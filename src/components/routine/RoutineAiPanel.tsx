@@ -188,7 +188,12 @@ export function RoutineAiPanel({
   /** The refusal sentence for the last press, shown in the panel until the next one. */
   const [notice, setNotice] = useState<string | null>(null);
   /** A spent quota holds « Générer » until the api's Retry-After (the next midnight). */
-  const [held, setHeld] = useState<number | null>(null);
+  /**
+   * Per KIND (staff B1 on EV-186f): the api keeps separate counters — 3 regenerations and 10
+   * edits per trainee, 30 and 100 per coach — so a spent EDIT quota must never hold « Générer » on
+   * the Regenerate brief, nor the reverse.
+   */
+  const [held, setHeld] = useState<Partial<Record<ProposalKind, number>>>({});
   const [hidden, setHidden] = useState(false);
   /** The body of the last run this panel started, for N4's « Réessayer » (kept for the session only). */
   const [lastBrief, setLastBrief] = useState<CoachRoutineAiProposalRequest | null>(null);
@@ -226,7 +231,7 @@ export function RoutineAiPanel({
     const f: RoutineAiFailure = { ...(failure as RoutineAiFailure), kind };
     setNotice(routineAiSentence(f, firstName, copy));
     const until = heldUntil(f, Date.now());
-    if (until !== null) setHeld(until);
+    if (until !== null) setHeld((h) => ({ ...h, [kind]: until }));
   }
 
   /** Apply a GET's answer to the panel. */
@@ -284,8 +289,12 @@ export function RoutineAiPanel({
 
   // The hold lifts by itself at the instant the api named.
   useEffect(() => {
-    if (held === null) return;
-    const timer = setTimeout(() => setHeld(null), Math.max(0, held - Date.now()));
+    const next = Math.min(...Object.values(held));
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(
+      () => setHeld((h) => Object.fromEntries(Object.entries(h).filter(([, at]) => at > Date.now()))),
+      Math.max(0, next - Date.now())
+    );
     return () => clearTimeout(timer);
   }, [held]);
 
@@ -329,6 +338,8 @@ export function RoutineAiPanel({
   function retry() {
     setNotice(null);
     if (lastBrief) return generate(lastBrief);
+    // A failed Update whose box is no longer offered (no saved base, or the capability went off)
+    // opens the Regenerate brief instead: the one AI action still available (staff nit, EV-186f).
     setView({ kind: shownProposal(view).proposalKind === "REVISE" && canUpdate ? "update" : "brief" });
   }
 
@@ -382,7 +393,7 @@ export function RoutineAiPanel({
   if (hidden) return null;
 
   const blocked = briefBlocked(form);
-  const isHeld = held !== null && held > Date.now();
+  const isHeld = (kind: ProposalKind) => (held[kind] ?? 0) > Date.now();
   const count = notesLength(form.notes);
   const requestCount = notesLength(request);
   const pressedChips = chipsIn(request, t.chips);
@@ -429,6 +440,9 @@ export function RoutineAiPanel({
             ref={requestRef}
             value={request}
             placeholder={t.requestPlaceholder}
+            // Staff S1: a FAILED Update read on load server-draws this box; like its siblings it is
+            // inert until hydration, so nothing typed before then is wiped by the controlled value.
+            disabled={!hydrated}
             aria-describedby={`${requestCounterId} ${painHintId}`}
             onChange={(e) => setRequest(e.target.value)}
             rows={3}
@@ -457,14 +471,14 @@ export function RoutineAiPanel({
             </p>
           )}
         </div>
-        {/* U1: content chips — each pre-fills its words; pressed while those words are in the box. */}
+        {/* U1/U1a: content chips — each pre-fills its words (not a toggle, so no aria-pressed); drawn
+            "soft" while those words are in the box, which is when the chip travels in `chips`. */}
         <div data-testid="routine-ai-chips" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {ROUTINE_AI_CHIPS.map((chip) => (
             <Button
               key={chip}
               size="sm"
               variant={pressedChips.includes(chip) ? "soft" : "secondary"}
-              ariaPressed={pressedChips.includes(chip)}
               disabled={!hydrated}
               onClick={() => pressChip(t.chips[chip])}
             >
@@ -473,7 +487,7 @@ export function RoutineAiPanel({
           ))}
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Button type="submit" icon="star" disabled={sendBlocked !== null || isHeld || pending || !hydrated}>
+          <Button type="submit" icon="star" disabled={sendBlocked !== null || isHeld("REVISE") || pending || !hydrated}>
             {t.submit}
           </Button>
           {fresh ? (
@@ -692,7 +706,7 @@ export function RoutineAiPanel({
               </p>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Button type="submit" icon="star" disabled={blocked !== null || isHeld || pending || !hydrated}>
+              <Button type="submit" icon="star" disabled={blocked !== null || isHeld("REGENERATE") || pending || !hydrated}>
                 {t.submit}
               </Button>
               <Button variant="ghost" onClick={() => setView({ kind: "idle" })} disabled={pending || !hydrated}>
