@@ -212,6 +212,17 @@ test("AC5 — a swap leaves the trainee's day-regeneration counter where it was"
   // asserted, not assumed: it is this spec's proof that no paid model was called.
   let week = await request.get(`${API_ORIGIN}/me/nutrition/plan/week`, { headers: asTrainee });
   if (week.status() === 404) {
+    /**
+     * EV-385: the api refuses a self-requested week with 409 NUTRITION_PREFERENCES_REQUIRED
+     * until the trainee has saved food preferences once, and no seed writes them for this
+     * account. The body is the defaults' content (omnivore, no allergies, standard effort),
+     * so the stub week is the one this spec generated before EV-385.
+     */
+    const preferences = await request.put(`${API_ORIGIN}/me/nutrition/preferences`, {
+      headers: asTrainee,
+      data: { dietaryPattern: "OMNIVORE", cookingEffort: "STANDARD" },
+    });
+    expect(preferences.status(), await preferences.text()).toBe(200);
     const generated = await request.post(`${API_ORIGIN}/me/nutrition/plan/week`, {
       headers: asTrainee,
       data: {},
