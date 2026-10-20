@@ -530,6 +530,7 @@ export const fr = {
     routine: "Programme",
     nutrition: "Nutrition",
     intake: "Entretien",
+    messages: "Messages",
   },
 
   /** No sentence here claims the plan is safe for the client's equipment (BUG-053, see copy.ts). */
@@ -1749,6 +1750,31 @@ export const fr = {
     askFailed: "La demande n'a pas pu être envoyée. Réessayez.",
     cancelFailed: "La demande n'a pas pu être annulée. Réessayez.",
     loadError: "Ce bloc n'a pas pu être chargé. Rechargez la page pour réessayer.",
+  },
+
+  /** EV-095b — « Messages ». « Réessayer » is AC-B5's; the rest is this slice's (see copy.ts). */
+  messages: {
+    title: "Messages",
+    threadLabel: (firstName: string) => `Messages avec ${mid(firstName)}`,
+    empty: (firstName: string) => `Aucun message avec ${mid(firstName)} pour l'instant.`,
+    you: "Vous",
+    composerLabel: (firstName: string) => `Message à ${mid(firstName)}`,
+    send: "Envoyer",
+    sending: "Envoi…",
+    retry: "Réessayer",
+    sendFailed: "Le message n'a pas été envoyé.",
+    rateLimited: (minutes: number) =>
+      `Vous avez envoyé 60\u00a0messages dans cette conversation en une heure. Vous pourrez de nouveau écrire dans ${minutes}\u00a0minute${s(minutes)}.`,
+    rateLimitedNoTime: "Vous avez envoyé 60\u00a0messages dans cette conversation en une heure. Vous pourrez de nouveau écrire plus tard.",
+    idReused: "Le message n'a pas été envoyé\u00a0: il a été pris pour un message précédent. Réessayer l'envoie comme un nouveau message.",
+    invisible: "Le message contient un caractère de mise en forme invisible qui ne peut pas être envoyé. Retapez la partie collée.",
+    tooLong: (count: number) => `Le message fait ${formatKcal(count, "fr")}\u00a0caractères. La limite est de 4\u202f000.`,
+    sessionChanged: "Vous êtes connecté avec un autre compte dans ce navigateur. Rechargez la page.",
+    loadError: "Les messages n'ont pas pu être chargés. Rechargez la page pour réessayer.",
+    refreshFailed: "Les nouveaux messages n'ont pas pu être vérifiés. La page réessaie tant qu'elle reste ouverte.",
+    older: "Afficher les messages précédents",
+    olderFailed: "Les messages précédents n'ont pas pu être chargés.",
+    unreadDot: "Messages non lus",
   },
 
   /** EV-341b — the story's French, verbatim (B1–B19); labels from the catalogue table. */

@@ -118,3 +118,4 @@
 - [Intake sections 5–8 (EV-341c)](intake-sections-341c-facts.md) — read-only blocks per scope (currentWeight not weightSeries); finish action revalidates; C6 card conflict unbuilt; BFF read has no status
 - [Routine AI panel (EV-186b/n)](routine-ai-panel-186bn-facts.md) — capability `=== true`, one brief builder, lazy-settling fixture + cookie switches; panel moves into RoutineEditor for Keep; drift/first-name/i18n pins to bump
 - [Routine AI Update (EV-186f)](routine-ai-update-186f-facts.md) — REVISE box; chips derived from the text; canUpdate = instruction && saved base; per-kind 429 hold; routineAiDiscard.ts (pure path + fixture decision); data-proposal-id; U8 unsavedNote; commit before mutants; drift 109, first-name 48
+- [Messages (EV-095b)](messages-ev095b-facts.md) — BFF GET/POST + read routes, cursor only from read pages, id bound to the text, mark read only visible, roster dot read once; unmerged-api spec; WebKit blocked in cloud

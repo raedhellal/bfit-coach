@@ -100,6 +100,8 @@ export default async function warmRoutes(config: FullConfig): Promise<void> {
       `/clients/${LINA}/nutrition`,
       // EV-341b. A read only: the interview page writes nothing until a field changes.
       `/clients/${LINA}/intake`,
+      // EV-095b. A read only: the thread page writes nothing until the coach sends.
+      `/clients/${LINA}/messages`,
       "/clients/denied",
       // EV-204b. A random id renders "this invitation no longer exists" and compiles the route.
       `/invited/${NOBODYS_TEMPLATE}`,

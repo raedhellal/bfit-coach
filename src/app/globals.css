@@ -1101,6 +1101,11 @@ html { scroll-padding-top: calc(var(--shell-topbar-h) + 8px); scroll-padding-bot
 }
 .roster-name { font-weight: 600; font-size: 15px; line-height: 20px; }
 .roster-plan { font-size: var(--fs-meta); line-height: 18px; color: var(--ink-2); }
+/* EV-095b AC-B4: the unread dot beside the name (its words are .sr-only inside it). */
+.roster-name-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.roster-name-line > .roster-name { min-width: 0; }
+.roster-unread { display: inline-flex; flex: none; }
+.roster-unread-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue-500); }
 .roster-cell { display: block; min-width: 0; }
 .roster-cell-label { display: block; font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
 .roster-cell-value { display: block; font-size: var(--fs-body); line-height: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -1904,3 +1909,27 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
 .intake-readonly-note { margin: 0; }
 /* EV-368: « Indiqué dans l'app : … » under section 1's goal control: read with it (the panel's 18px gap, less 10), and wraps (P8). */
 .intake-profile-goal { margin: -10px 0 0; overflow-wrap: anywhere; }
+
+/* ── EV-095b « Messages »: the thread and its composer ─────────────────────────────── */
+.msg { display: flex; flex-direction: column; gap: 14px; }
+.msg-log {
+  max-height: min(60vh, 560px); overflow-y: auto; padding: 4px 2px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+}
+.msg-log:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; }
+.msg-older { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 12px 0; }
+.msg-empty { padding: 16px 14px; }
+.msg-list { list-style: none; margin: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.msg-item { max-width: min(85%, 560px); align-self: flex-start; padding: 8px 12px; border-radius: var(--r-md); background: var(--hover); }
+.msg-item[data-author="COACH"] { align-self: flex-end; background: var(--blue-50); }
+.msg-meta { margin: 0 0 2px; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: var(--fs-label); line-height: 16px; color: var(--ink-2); }
+.msg-author { font-weight: 600; color: var(--ink); }
+/* Bidi isolation: each body is its own direction island, line by line (dir="auto" on the element). */
+.msg-body {
+  margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink);
+  white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext;
+}
+.msg-composer { display: flex; flex-direction: column; gap: 6px; }
+.msg-input { unicode-bidi: plaintext; }
+.msg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.msg-refresh-failed { color: var(--ink-2); }

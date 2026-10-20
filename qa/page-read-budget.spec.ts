@@ -130,7 +130,9 @@ async function documentLoad(page: Page, route: string): Promise<Entry[]> {
  * in any row below is a page reading `/coach-portal/me` for its header again.
  */
 const ROUTES: { route: string; reads: string[]; depth: number; why?: string }[] = [
-  { route: "/", reads: ["getMe", "listClients", "listInvited"], depth: 1 }, // EV-204b: the Invited read, in the same round trip
+  // EV-204b: the Invited read, in the same round trip. EV-095b AC-B4 (the EV-342 perf gate's
+  // reading): exactly ONE added read, the unread dots, in the same round trip (depth stays 1).
+  { route: "/", reads: ["getMe", "listClients", "listInvited", "listMessageUnread"], depth: 1 },
   { route: "/challenges", reads: ["listChallenges", "listClients"], depth: 1 },
   { route: `/challenges/${ACTIVE_CHALLENGE}`, reads: ["getChallenge"], depth: 1 },
   {
@@ -157,6 +159,12 @@ const ROUTES: { route: string; reads: string[]; depth: number; why?: string }[] 
     reads: ["getClient", "getFoodLog", "getNutrition", "listNutritionTemplates"],
     depth: 2,
     why: "the nutrition reads and the template list wait for NUTRITION in the overview's `scopes`",
+  },
+  {
+    // EV-095b: the thread's latest page beside the overview; no scope to wait for (ADR-0038 S3).
+    route: `/clients/${LINA}/messages`,
+    reads: ["getClient", "getMessages"],
+    depth: 1,
   },
   { route: "/templates", reads: ["listClients", "listTemplates"], depth: 1 },
   { route: "/recipes", reads: ["listRecipes"], depth: 1 },
@@ -434,7 +442,7 @@ test.describe("prefetching a client page", () => {
     await page.waitForLoadState("networkidle");
 
     const entries = (await journal(page)).slice(before);
-    expect(ops(entries.filter((e) => e.document))).toEqual(["getMe", "listClients", "listInvited"]);
+    expect(ops(entries.filter((e) => e.document))).toEqual(["getMe", "listClients", "listInvited", "listMessageUnread"]);
     expect(ops(entries.filter((e) => !e.document)), "no background read").toEqual([]);
     expect(clientRequests, `production build: ${await isProductionBuild(page)}`).toEqual([]);
   });

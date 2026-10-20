@@ -79,11 +79,25 @@ export default async function RosterPage() {
    */
   let hiddenCount = 0;
 
+  /**
+   * EV-095b AC-B4 — the unread dots: `GET /coach-portal/messages/unread`, read ONCE per roster
+   * load, beside the roster in the same round trip, and never on an interval (ADR-0038 D38.1:
+   * the router's 30 s staleTimes is the only reuse). A separate read, not a roster field, so the
+   * roster read is unchanged (D38.6). Its failure costs the dots only: the roster still renders,
+   * and no row claims anything about messages (a missing dot is not "all read" — the row says
+   * nothing either way, and the thread is one click away).
+   */
+  const unreadRead = coachApi.listMessageUnread().then(
+    (rows) => new Map(Array.isArray(rows) ? rows.filter((r) => typeof r?.clientId === "string" && r.count > 0).map((r) => [r.clientId, r.count]) : []),
+    () => new Map<string, number>()
+  );
+
   try {
     const [meResult, roster] = await Promise.all([
       coachApi.getMe(),
       coachApi.listClients(sort),
       invitedRead,
+      unreadRead,
     ]);
     me = meResult;
     // Rendered in the order the api returned. Re-sorting here is the defect, not the
@@ -128,6 +142,7 @@ export default async function RosterPage() {
   }
 
   const invited = await invitedRead;
+  const unread = await unreadRead;
   const full = me.active >= me.capacity;
   // Edge case 5's sentence, built from the api's own tier and capacity so it can never
   // contradict the meter beside it.
@@ -144,7 +159,7 @@ export default async function RosterPage() {
       // BUG-714: searched by what the row SAYS, so "Unnamed client" is found by its label and
       // a null name never puts the word "null" in the key.
       search: searchKey(`${fullNameOf(c.traineeDisplayName, copy)} ${c.currentPlanName ?? ""}`),
-      node: <RosterRow client={c} view={view} idx={i} />,
+      node: <RosterRow client={c} view={view} idx={i} unread={(unread.get(c.id) ?? 0) > 0} />,
     };
   });
   const toReview = entries.filter((e) => e.group === "attention").length;

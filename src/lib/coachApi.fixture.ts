@@ -100,6 +100,14 @@ import type {
   CoachIntakeSectionSaved,
   CoachIntakeSectionWrite,
   CoachIntakeCompleted,
+  CoachClientMessage,
+  CoachClientThread,
+  CoachClientUnread,
+  CoachMessageAuthor,
+  CoachMessagesCursor,
+  MarkMessagesReadRequest,
+  SendMessageRequest,
+  SentCoachMessage,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -4929,6 +4937,8 @@ interface FixtureState {
   aiProposals: Map<string, StoredAiProposal>;
   /** EV-186a — `coach_plan_drafts.ai_drafted_at` per link; no entry = OMITTED on the read. */
   aiDraftedAt: Map<string, string>;
+  /** EV-095b — the coach↔client thread per link (`coach_message_threads` + `coach_messages`). */
+  messageThreads: Map<string, FixtureMessageThread>;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -5255,6 +5265,7 @@ function freshState(): FixtureState {
     intake: new Map(),
     aiProposals: new Map(),
     aiDraftedAt: new Map(),
+    messageThreads: seedMessageThreads(),
   };
 }
 
@@ -7395,6 +7406,258 @@ async function fixtureStartRevise(
   return { proposalId: row.proposalId, status: "RUNNING" };
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-095b — « Messages », ported from b-fit-api EV-095a @ 69697c38 (`CoachMessagingUseCase`,
+ * `MessageBody`, ADR-0038 D38.4–D38.6), coach side only:
+ *
+ *   · guard: an ACTIVE link of this coach, NO data scope (`assertManagedLink`, the overview's);
+ *   · one thread per link, `seq` 1, 2, 3, … with no gap; the body stripped, 1..4000 code points,
+ *     no control character but `\n`/`\t`, no bidi control, no unpaired surrogate, not blank-looking
+ *     (`MessageBody.of`), else 400 VALIDATION_ERROR;
+ *   · idempotent on `(sender, clientMessageId)`: the same body is the stored message (a replay,
+ *     not counted), another body 409 MESSAGE_ID_REUSED; the 61st message from one sender in a
+ *     rolling hour 429 MESSAGE_RATE_LIMIT with Retry-After;
+ *   · the coach's own send moves the coach's read position to it; mark-read is clamped and
+ *     monotonic; unread = lastSeq − the coach's read position; the unread list is ACTIVE links
+ *     with count > 0, ordered by clientId.
+ *
+ * Seeds: Yusuf (on the populated roster) has two messages, the client's one unread, so his row
+ * draws the dot. Dana has 55, all read, so her page has « Afficher les messages précédents ».
+ * Every other link has no thread.
+ *
+ * Fixture-only switches (one browser context each):
+ *   `evoli_fixture_messages_read=fail`   → every GET answers 500 (the page's notice; a poll's failure);
+ *   `evoli_fixture_messages_send=fail`   → every send answers 500 and stores nothing;
+ *   `evoli_fixture_messages_send=lost`   → every send STORES, then answers 502 (an answer lost on
+ *                                          the way back): the retry with the same id is a replay;
+ *   `evoli_fixture_messages_send=ratelimit` → every send answers 429 MESSAGE_RATE_LIMIT, Retry-After 900;
+ *   `evoli_fixture_messages_unread=fail` → the roster's unread read answers 500.
+ * The CLIENT writing on their phone is `fixtureTraineeSendsMessage`, reached through
+ * `POST /api/fixture/messages`; `GET /api/fixture/messages?clientId=` shows the stored thread.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+interface StoredCoachMessage {
+  id: string;
+  seq: number;
+  author: CoachMessageAuthor;
+  body: string;
+  sentAt: string;
+  /** The sender's idempotency key; null for a seeded message. */
+  clientMessageId: string | null;
+}
+
+interface FixtureMessageThread {
+  messages: StoredCoachMessage[];
+  coachReadSeq: number;
+  traineeReadSeq: number;
+}
+
+const MESSAGE_RATE_PER_HOUR = 60;
+
+function seedMessageThreads(): Map<string, FixtureMessageThread> {
+  const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+  const yusuf: FixtureMessageThread = {
+    messages: [
+      {
+        id: "95b00000-0000-4000-8000-000000000001",
+        seq: 1,
+        author: "COACH",
+        body: "Hi Yusuf, how did Thursday's session feel?",
+        sentAt: at(26 * 60),
+        clientMessageId: null,
+      },
+      {
+        id: "95b00000-0000-4000-8000-000000000002",
+        seq: 2,
+        author: "TRAINEE",
+        body: "Good, but the last set of rows was hard.\nShould I drop the weight?",
+        sentAt: at(90),
+        clientMessageId: null,
+      },
+    ],
+    coachReadSeq: 1,
+    traineeReadSeq: 2,
+  };
+  const dana: FixtureMessageThread = {
+    messages: Array.from({ length: 55 }, (_, i) => ({
+      id: `95b00000-0000-4000-8000-0000000004${String(i + 1).padStart(2, "0")}`,
+      seq: i + 1,
+      author: (i % 2 === 0 ? "COACH" : "TRAINEE") as CoachMessageAuthor,
+      body: `Message ${i + 1}`,
+      sentAt: at((55 - i) * 30),
+      clientMessageId: null,
+    })),
+    coachReadSeq: 55,
+    traineeReadSeq: 55,
+  };
+  return new Map([
+    [YUSUF_ID, yusuf],
+    [DANA_ID, dana],
+  ]);
+}
+
+function messageThread(id: string): FixtureMessageThread {
+  let thread = state().messageThreads.get(id);
+  if (!thread) {
+    thread = { messages: [], coachReadSeq: 0, traineeReadSeq: 0 };
+    state().messageThreads.set(id, thread);
+  }
+  return thread;
+}
+
+function lastSeqOfThread(thread: FixtureMessageThread | undefined): number {
+  return thread && thread.messages.length > 0 ? thread.messages[thread.messages.length - 1].seq : 0;
+}
+
+function wireMessage(m: StoredCoachMessage): CoachClientMessage {
+  return { id: m.id, seq: m.seq, author: m.author, body: m.body, sentAt: m.sentAt };
+}
+
+/** `MessageBody.of`: the stripped text, or a 400 naming `body` (never the text). */
+async function messageBody(raw: unknown): Promise<string> {
+  const refuse = () => failWithDetails(400, "VALIDATION_ERROR", "Invalid message body", { field: "body" });
+  if (typeof raw !== "string") return failWithDetails(400, "INVALID_REQUEST", "body must be a JSON string", { field: "body" });
+  const stripped = raw.trim();
+  if (/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(stripped)) return refuse();
+  const points = Array.from(stripped);
+  const blank = /^[\s\u00a0\u200b-\u200d\u2060\ufeff\u3164\u115f\u1160\uffa0\u2800\u180e\u034f\u00ad]$/u;
+  if (points.length < 1 || points.every((p) => blank.test(p))) return refuse();
+  if (points.length > 4000) return refuse();
+  if (/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u.test(stripped)) return refuse();
+  if (/[\u202a-\u202e\u2066-\u2069]/u.test(stripped)) return refuse();
+  return stripped;
+}
+
+function threadPage(
+  thread: FixtureMessageThread | undefined,
+  cursor: CoachMessagesCursor,
+  limit = 50
+): CoachClientThread {
+  const all = thread?.messages ?? [];
+  const lastSeq = lastSeqOfThread(thread);
+  let page: StoredCoachMessage[];
+  if (cursor && "after" in cursor) page = all.filter((m) => m.seq > cursor.after).slice(0, limit);
+  else if (cursor && "before" in cursor) page = all.filter((m) => m.seq < cursor.before).slice(-limit);
+  else page = all.slice(-limit);
+  const first = page[0]?.seq;
+  const last = page.length > 0 ? page[page.length - 1].seq : undefined;
+  return {
+    threadState: "ACTIVE",
+    canSend: true,
+    lastSeq,
+    unread: Math.max(0, lastSeq - (thread?.coachReadSeq ?? 0)),
+    hasOlder: first !== undefined && all.some((m) => m.seq < first),
+    hasMore: last !== undefined && all.some((m) => m.seq > last),
+    messages: page.map(wireMessage),
+  };
+}
+
+async function fixtureGetMessages(id: string, cursor: CoachMessagesCursor = null): Promise<CoachClientThread> {
+  await assertManagedLink(id);
+  if ((await fixtureSwitch("evoli_fixture_messages_read")) === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+  return threadPage(state().messageThreads.get(id), cursor);
+}
+
+/** One message stored by `author`, under the rules both senders share. */
+async function storeMessage(
+  id: string,
+  author: CoachMessageAuthor,
+  clientMessageId: string | null,
+  rawBody: unknown
+): Promise<SentCoachMessage> {
+  const body = await messageBody(rawBody);
+  const thread = messageThread(id);
+  if (clientMessageId !== null) {
+    const earlier = thread.messages.find((m) => m.author === author && m.clientMessageId === clientMessageId);
+    if (earlier) {
+      if (earlier.body === body) return { message: wireMessage(earlier), lastSeq: lastSeqOfThread(thread) };
+      await fail(409, "MESSAGE_ID_REUSED", "This clientMessageId was already used with another body");
+    }
+  }
+  const now = Date.now();
+  const mine = thread.messages.filter((m) => m.author === author);
+  const sixtiethNewest = mine.length >= MESSAGE_RATE_PER_HOUR ? mine[mine.length - MESSAGE_RATE_PER_HOUR] : undefined;
+  if (sixtiethNewest && Date.parse(sixtiethNewest.sentAt) > now - HOUR_MS) {
+    const seconds = Math.min(3600, Math.max(1, Math.ceil((Date.parse(sixtiethNewest.sentAt) + HOUR_MS - now) / 1000)));
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(429, "Too many messages", "MESSAGE_RATE_LIMIT", null, seconds);
+  }
+  const stored: StoredCoachMessage = {
+    id: crypto.randomUUID(),
+    seq: lastSeqOfThread(thread) + 1,
+    author,
+    body,
+    sentAt: new Date(now).toISOString(),
+    clientMessageId,
+  };
+  thread.messages.push(stored);
+  // D38.4 step 6: the sender's own read position moves to its own message.
+  if (author === "COACH") thread.coachReadSeq = stored.seq;
+  else thread.traineeReadSeq = stored.seq;
+  return { message: wireMessage(stored), lastSeq: stored.seq };
+}
+
+async function fixtureSendMessage(id: string, body: SendMessageRequest): Promise<SentCoachMessage> {
+  await assertManagedLink(id);
+  const mode = await fixtureSwitch("evoli_fixture_messages_send");
+  if (mode === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+  if (mode === "ratelimit") {
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(429, "Too many messages", "MESSAGE_RATE_LIMIT", null, 900);
+  }
+  if (typeof body?.clientMessageId !== "string") {
+    await failWithDetails(400, "VALIDATION_ERROR", "clientMessageId is required", { field: "clientMessageId" });
+  }
+  const sent = await storeMessage(id, "COACH", body.clientMessageId, body.body);
+  if (mode === "lost") {
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(502, "Request failed (502)", null);
+  }
+  return sent;
+}
+
+async function fixtureMarkMessagesRead(id: string, body: MarkMessagesReadRequest): Promise<void> {
+  await assertManagedLink(id);
+  const seq = body?.seq;
+  if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 0) {
+    await failWithDetails(400, "VALIDATION_ERROR", "seq must be a non-negative integer", { field: "seq" });
+  }
+  const thread = state().messageThreads.get(id);
+  if (!thread) return; // 204 with no thread yet
+  thread.coachReadSeq = Math.max(thread.coachReadSeq, Math.min(seq, lastSeqOfThread(thread)));
+}
+
+async function fixtureListMessageUnread(): Promise<CoachClientUnread[]> {
+  if ((await fixtureSwitch("evoli_fixture_messages_unread")) === "fail") await fail(500, "INTERNAL_ERROR", "Internal error");
+  if (state().revoked || (await linkEnded())) return [];
+  return Array.from(state().messageThreads.entries())
+    .filter(([id]) => !!OVERVIEWS[id])
+    .map(([clientId, t]) => ({ clientId, count: lastSeqOfThread(t) - t.coachReadSeq }))
+    .filter((row) => row.count > 0)
+    .sort((a, b) => (a.clientId < b.clientId ? -1 : a.clientId > b.clientId ? 1 : 0));
+}
+
+/** The CLIENT writes from their phone (`POST /me/my-coach/messages`), for the Playwright gate only. */
+export async function fixtureTraineeSendsMessage(clientId: string, body: string): Promise<CoachClientMessage> {
+  if (!OVERVIEWS[clientId]) throw new Error(`fixture: no link ${clientId}`);
+  const sent = await storeMessage(clientId, "TRAINEE", crypto.randomUUID(), body);
+  return sent.message;
+}
+
+/** The stored thread, both read positions included (the gate's witness, never a coach read). */
+export function fixtureMessageThreadRecord(clientId: string): {
+  messages: { seq: number; author: CoachMessageAuthor; body: string; clientMessageId: string | null }[];
+  coachReadSeq: number;
+  traineeReadSeq: number;
+} {
+  const t = state().messageThreads.get(clientId);
+  return {
+    messages: (t?.messages ?? []).map((m) => ({ seq: m.seq, author: m.author, body: m.body, clientMessageId: m.clientMessageId })),
+    coachReadSeq: t?.coachReadSeq ?? 0,
+    traineeReadSeq: t?.traineeReadSeq ?? 0,
+  };
+}
+
 export const fixtureCoachApi: CoachApi = {
   // ── EV-278c activation ────────────────────────────────────────────────────
   getActivation: fixtureGetActivation,
@@ -7552,6 +7815,12 @@ export const fixtureCoachApi: CoachApi = {
   async revokeClient(): Promise<void> {
     state().revoked = true;
   },
+
+  // ── EV-095b « Messages » (see its block above `fixtureCoachApi`) ──
+  getMessages: fixtureGetMessages,
+  sendMessage: fixtureSendMessage,
+  markMessagesRead: fixtureMarkMessagesRead,
+  listMessageUnread: fixtureListMessageUnread,
 
   // ── EV-341w the intake consent request (see the block above `fixtureCoachApi`) ──
   getIntakeConsent: fixtureGetIntakeConsent,

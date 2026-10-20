@@ -931,6 +931,7 @@ export const en = {
     routine: "Routine", // EV-184 AC1, verbatim
     nutrition: "Nutrition", // EV-185 AC1, verbatim
     intake: "Intake", // EV-341b B1, verbatim
+    messages: "Messages", // EV-095b AC-B1, verbatim
   },
 
   /**
@@ -3037,6 +3038,56 @@ export const en = {
     cancelFailed: "The request could not be cancelled. Try again.",
     /** The card's read failed (not a 403): the overview's own block sentence. */
     loadError: "This block could not be loaded. Reload the page to try again.",
+  },
+
+  /**
+   * EV-095b — « Messages », the coach's thread with one client (`/clients/[id]/messages`).
+   * AC-B1 gives the tab's word and AC-B5 the French « Réessayer »; every other sentence here is
+   * this slice's, NOT story text (the story has no copy table). Two rules from ADR-0038 D38.1
+   * bound them: the copy never promises delivery or speed (no "delivered", no "instantly", no
+   * "seen"), and nothing tells the coach the client has read a message (no read receipts).
+   * `MESSAGING_CLOSED` has no string here on purpose: it is the trainee's refusal only; the coach
+   * route answers 403 instead, which is the layout's denial page.
+   */
+  messages: {
+    /** The tab's `h2` (the page's `h1` stays the client's name, as on every tab). */
+    title: "Messages",
+    /** The thread's landmark name. Mid-sentence. */
+    threadLabel: (firstName: string) => `Messages with ${mid(firstName)}`,
+    /** The empty thread. Mid-sentence. */
+    empty: (firstName: string) => `No messages with ${mid(firstName)} yet.`,
+    /** The author of the coach's own messages. */
+    you: "You",
+    /** The composer's label. Mid-sentence. */
+    composerLabel: (firstName: string) => `Message to ${mid(firstName)}`,
+    send: "Send",
+    sending: "Sending…",
+    /** AC-B5: the failed message stays in the composer, with this control. */
+    retry: "Retry",
+    /** AC-B5: any failure that is not one of the sentences below. Nothing was stored. */
+    sendFailed: "The message was not sent.",
+    /** AC-B5 / AC-A6 `MESSAGE_RATE_LIMIT`, with the api's Retry-After in whole minutes. */
+    rateLimited: (minutes: number) =>
+      `You have sent 60 messages in this conversation in the last hour. You can send again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`,
+    /** The same 429 without a usable Retry-After. */
+    rateLimitedNoTime: "You have sent 60 messages in this conversation in the last hour. You can send again later.",
+    /** AC-A6 `MESSAGE_ID_REUSED`: the next try takes a new id, so Retry sends it as a new message. */
+    idReused: "The message was not sent: it was taken for an earlier one. Retry sends it as a new message.",
+    /** The api's 400, or the composer's own check: a character the api does not take. */
+    invisible: "The message contains an invisible formatting character that cannot be sent. Retype the part you pasted.",
+    /** Over the api's 4,000 characters (code points, after trimming). */
+    tooLong: (count: number) => `The message is ${count} characters long. The limit is 4,000.`,
+    /** Another account signed in in this browser: nothing was sent under it. */
+    sessionChanged: "You are signed in with another account in this browser. Reload the page.",
+    /** The page's own read failed (not a 403: the layout handles that). */
+    loadError: "The messages could not be loaded. Reload the page to try again.",
+    /** A later read failed: what is shown stays, and the page reads again on its next turn. */
+    refreshFailed: "New messages could not be checked. This page tries again while it stays open.",
+    /** `hasOlder`: the earlier page, read on demand. */
+    older: "Show earlier messages",
+    olderFailed: "Earlier messages could not be loaded.",
+    /** The roster's dot, as text (the dot itself is decoration). */
+    unreadDot: "Unread messages",
   },
 
   /**
