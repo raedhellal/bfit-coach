@@ -310,6 +310,20 @@ test.describe("EV-095b (EN)", () => {
     await expect.poll(async () => (await stored(page)).coachReadSeq, { timeout: 5_000 }).toBe(1);
   });
 
+  test("the cursor: a client message written between a poll and the coach's send is not skipped", async ({ page }) => {
+    await signInThroughForm(page);
+    await open(page);
+    // seq 1 lands before any poll has read it; the coach's send is then seq 2. A cursor taken
+    // from the send's lastSeq (2) would make every later poll ask for seq > 2, and seq 1 would
+    // never be shown.
+    await traineeWrites(page, "Written before your send");
+    await sendText(page, "Sent after it");
+    await expect(composer(page)).toHaveValue("");
+    await expect(log(page).locator("li .msg-body")).toHaveText(["Written before your send", "Sent after it"], {
+      timeout: 12_000,
+    });
+  });
+
   test("AC-B3: 15 s visible, none hidden, one at once on return, none after leaving the page", async ({ page }) => {
     test.setTimeout(150_000);
     await signInThroughForm(page);
@@ -340,6 +354,56 @@ test.describe("EV-095b (EN)", () => {
     const left = polls.length;
     await page.waitForTimeout(20_000);
     expect(polls.length - left, "GETs over 20 s after leaving").toBe(0);
+  });
+
+  test("AC-B3: hidden while a read is out — that read does not schedule another", async ({ page }) => {
+    test.setTimeout(90_000);
+    await signInThroughForm(page);
+    await open(page);
+    const polls = recordPolls(page);
+    // Hold the next poll's answer, hide the page while it is out, then let it answer.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let caught = false;
+    await page.route(`**${BFF(LINA)}?after=*`, async (route) => {
+      if (!caught) {
+        caught = true;
+        await held;
+      }
+      await route.fallback();
+    });
+    await expect.poll(() => caught, { timeout: 20_000, message: "the first poll is out" }).toBe(true);
+    await setHidden(page, true);
+    release();
+    await page.waitForTimeout(500);
+    const after = polls.length;
+    await page.waitForTimeout(20_000);
+    expect(polls.length - after, "GETs over 20 s hidden, after the held read answered").toBe(0);
+  });
+
+  test("AC-B3: leaving the page while a read is out — no poll after it", async ({ page }) => {
+    test.setTimeout(90_000);
+    await signInThroughForm(page);
+    await open(page);
+    const polls = recordPolls(page);
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let caught = false;
+    await page.route(`**${BFF(LINA)}?after=*`, async (route) => {
+      if (!caught) {
+        caught = true;
+        await held;
+      }
+      await route.fallback().catch(() => undefined);
+    });
+    await expect.poll(() => caught, { timeout: 20_000, message: "the first poll is out" }).toBe(true);
+    await page.getByRole("main").getByRole("navigation").getByRole("link", { name: "Overview", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/clients/${LINA}$`));
+    release();
+    await page.waitForTimeout(500);
+    const after = polls.length;
+    await page.waitForTimeout(20_000);
+    expect(polls.length - after, "GETs over 20 s after leaving with a read out").toBe(0);
   });
 
   test("AC-B3: every 5 s for the 60 s after a send, then 15 s again", async ({ page }) => {

@@ -63,8 +63,9 @@ const STRAY = {
   ],
 } as const;
 const TABS = {
-  en: { nav: "Trainee sections", tabs: ["Overview", "Routine", "Nutrition"], intake: "Intake", locale: "en-US" },
-  fr: { nav: "Sections du client", tabs: ["Vue d'ensemble", "Programme", "Nutrition"], intake: "Entretien", locale: "fr-FR" },
+  // EV-095b AC-B1: « Messages » is not behind the intake hold, so it stays when « Entretien » goes.
+  en: { nav: "Trainee sections", tabs: ["Overview", "Routine", "Nutrition", "Messages"], intake: "Intake", locale: "en-US" },
+  fr: { nav: "Sections du client", tabs: ["Vue d'ensemble", "Programme", "Nutrition", "Messages"], intake: "Entretien", locale: "fr-FR" },
 } as const;
 const MAIN_REVOKE_BODY = {
   en: "Lina M. will be removed from your roster and you will no longer see their training data. They keep their Evoli Fit account and all of their history.",
