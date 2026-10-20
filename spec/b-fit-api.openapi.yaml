@@ -2393,6 +2393,10 @@ paths:
         unchanged, and is not charged. At most the last few `history` turns are read.
 
 
+        Its caller is pre-EV-395e app builds: the current app no longer offers the AI chat, and
+        store builds from before EV-395e still call this endpoint until they update.
+
+
         Undocumented until EV-304.
       security:
         - bearerAuth: []
@@ -16569,15 +16573,15 @@ components:
           type: array
           description: >-
             Display lines, rendered verbatim by the client. Each one names a capability that is
-            gated at this tier: AI coach chat is PREMIUM_PLUS-only (SubscriptionBillingGateway),
-            as is the larger monthly AI credit allowance (AiCreditService). PREMIUM currently has
-            no entitlement of its own, and its single line says exactly that rather than inventing
+            gated at this tier: the larger monthly AI credit allowance is PREMIUM_PLUS-only
+            (AiCreditService). No tier lists a chat (EV-395f): the current app no longer offers
+            the AI chat. Store builds from before EV-395e still call /me/coach/chat until they
+            update, so its PREMIUM_PLUS gate stays. PREMIUM currently has no entitlement of its own, and its single line says exactly that rather than inventing
             a benefit.
           items:
             type: string
           example:
             - Everything in Premium
-            - Chat with the AI coach about your plan
             - A larger monthly AI credit allowance for AI generation
       required:
         - id
