@@ -5,10 +5,13 @@ metadata:
   type: project
 ---
 
-`feat/ev095b-coach-messages` (b-fit-coach, off 385d960), typed against the UNMERGED api branch
-`feat/ev095-coach-messaging` @ 69697c38 (`spec/b-fit-api.sha` says `on-api-main: NO`, so
-`qa/api-merge-condition.spec.ts` turns red the moment this reaches main before the api does: that
-is the merge gate, not a flake). Re-run `spec:sync` against api main once it merges.
+`feat/ev095b-coach-messages` (b-fit-coach, off 385d960). First vendored from the UNMERGED api
+branch `feat/ev095-coach-messaging` @ 69697c38 (`on-api-main: NO`); EV-095a merged to api main
+(0507b3be) the same day, `qa/api-merge-condition.spec.ts` went red on the stale NO exactly as
+designed, and the spec was re-synced from 0507b3be (`on-api-main: YES`). Merged is not deployed:
+the story's gate is still the api's `/actuator/info` (unreachable from the cloud container).
+Check `git -C b-fit-api merge-base --is-ancestor <sha> origin/main` after `git fetch` before
+trusting a NO you wrote hours ago.
 
 **Where:**
 - `src/app/clients/[id]/messages/page.tsx` (server: overview + `getMessages` in parallel, depth 1);
