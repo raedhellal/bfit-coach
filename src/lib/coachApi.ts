@@ -3328,8 +3328,7 @@ export function isIntakeVersionConflict(err: unknown): boolean {
 
 /* ════════════════════════════════════════════════════════════════════════════
  * EV-095b — « Messages », the coach's thread with one client (b-fit-api EV-095a, ADR-0038
- * D38.4–D38.6). ⚠ Vendored from the UNMERGED api branch `feat/ev095-coach-messaging` @
- * `69697c38` (spec/b-fit-api.sha says `on-api-main: NO`): re-sync once api `main` has it.
+ * D38.4–D38.6). Vendored from api `main` @ `0507b3be` (spec/b-fit-api.sha, `on-api-main: YES`).
  *
  *   GET  /coach-portal/clients/{id}/messages?after=&before=&limit=  → CoachClientThread
  *        no parameter: the latest `limit` (50); `after=n`: seq > n ascending (an empty page is

@@ -7,6 +7,8 @@ import {
   asThread,
   codePointCount,
   draftProblem,
+  javaStrip,
+  sameMessage,
   mergeMessages,
   messagesPath,
   normaliseNewlines,
@@ -113,5 +115,40 @@ test.describe("reading answers", () => {
     expect(messagesPath("a b")).toBe("/api/bff/clients/a%20b/messages");
     expect(messagesPath("x", { after: 7 })).toBe("/api/bff/clients/x/messages?after=7");
     expect(messagesPath("x", { before: 3 })).toBe("/api/bff/clients/x/messages?before=3");
+  });
+});
+
+test.describe("AC-B7 javaStrip = Java String.strip() (Character.isWhitespace)", () => {
+  test("strips what Java strips: C0 whitespace, U+001C..U+001F, Zs other than the no-break spaces, Zl, Zp", () => {
+    for (const cp of [0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x1680, 0x2000, 0x2006, 0x2008, 0x200a, 0x2028, 0x2029, 0x205f, 0x3000]) {
+      const w = String.fromCodePoint(cp);
+      expect(javaStrip(`${w}a b${w}`), cp.toString(16)).toBe("a b");
+    }
+  });
+
+  test("keeps what Java keeps and JS trim() drops: U+00A0, U+2007, U+202F, U+FEFF; and U+0085, U+200B", () => {
+    for (const cp of [0x00a0, 0x2007, 0x202f, 0xfeff, 0x0085, 0x200b]) {
+      const w = String.fromCodePoint(cp);
+      expect(javaStrip(`${w}a${w}`), cp.toString(16)).toBe(`${w}a${w}`);
+    }
+    // ...and it is not javaTrim (String.trim()): U+3000 goes, U+00A0 inside the ends stops it.
+    expect(javaStrip("\u3000 x \u00a0 ")).toBe("x \u00a0");
+    expect(javaStrip(" \n\t ")).toBe("");
+    expect(javaStrip("💪 ")).toBe("💪");
+  });
+
+  test("sameMessage: equal after the strip, and only then", () => {
+    expect(sameMessage("See you at 6.", "See you at 6. \n")).toBe(true);
+    expect(sameMessage("  See you at 6.", "See you at 6.\t")).toBe(true);
+    expect(sameMessage("See you at 6.", "See you at 6.\u00a0")).toBe(false);
+    expect(sameMessage("See you at 6.", "\ufeffSee you at 6.")).toBe(false);
+    expect(sameMessage("See you at 6.", "See you at 7.")).toBe(false);
+  });
+
+  test("draftProblem counts what the api counts: a no-break space at the end is a character", () => {
+    expect(draftProblem(`${"a".repeat(4000)}\u00a0`)).toBe("tooLong");
+    expect(draftProblem(`${"a".repeat(4000)}\u3000\n`)).toBeNull();
+    // U+001C..U+001F at the ends are Java whitespace: stripped, so not a refused control.
+    expect(draftProblem("hi\u001f")).toBeNull();
   });
 });

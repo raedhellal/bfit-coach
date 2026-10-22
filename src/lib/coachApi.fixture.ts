@@ -122,6 +122,8 @@ import { FIXTURE_RECIPE_BOUNDS as B } from "./fixtureRecipeBounds";
 import { mintFixtureToken } from "./fixtureToken";
 import { isApiBlank } from "./password";
 import { javaTrim } from "./addClient";
+// `String.strip()` — the one copy the island also uses (AC-B7), so the fixture agrees with it.
+import { javaStrip } from "./messages";
 
 /**
  * In-memory fixture for `COACH_API_MODE=fixture`.
@@ -1617,27 +1619,8 @@ function javaNormalise(raw: string): string | null {
     else if (/\p{Cf}/u.test(ch)) continue;
     else folded += ch;
   }
-  const stripped = javaStripFixture(folded);
+  const stripped = javaStrip(folded);
   return stripped === "" ? null : stripped;
-}
-
-/** `String.strip()`: `Character.isWhitespace`, which excludes U+00A0, U+2007, U+202F. */
-function javaStripFixture(value: string): string {
-  const isWs = (ch: string) => {
-    const c = ch.codePointAt(0) ?? 0;
-    if (c === 0x00a0 || c === 0x2007 || c === 0x202f) return false;
-    return (
-      (c >= 0x09 && c <= 0x0d) ||
-      (c >= 0x1c && c <= 0x1f) ||
-      /[\p{Zs}\u2028\u2029]/u.test(ch)
-    );
-  };
-  const chars = Array.from(value);
-  let start = 0;
-  let end = chars.length;
-  while (start < end && isWs(chars[start])) start += 1;
-  while (end > start && isWs(chars[end - 1])) end -= 1;
-  return chars.slice(start, end).join("");
 }
 
 /** The stored row: keys, never labels (ADR-0026 D26.1 — a label is derived on read). */
@@ -2091,7 +2074,7 @@ async function checkRecipe(body: CoachRecipeSaveRequest): Promise<Omit<StoredRec
     if (javaNormalise(body.steps[i]) === null) {
       await fieldRefusal(`steps[${i}]`, "must be between 1 and 300 characters");
     }
-    steps.push(javaStripFixture(body.steps[i]));
+    steps.push(javaStrip(body.steps[i]));
   }
   const seen = new Set<string>();
   for (let i = 0; i < body.ingredients.length; i += 1) {
@@ -7517,7 +7500,9 @@ function wireMessage(m: StoredCoachMessage): CoachClientMessage {
 async function messageBody(raw: unknown): Promise<string> {
   const refuse = () => failWithDetails(400, "VALIDATION_ERROR", "Invalid message body", { field: "body" });
   if (typeof raw !== "string") return failWithDetails(400, "INVALID_REQUEST", "body must be a JSON string", { field: "body" });
-  const stripped = raw.trim();
+  // `String.strip()`, as `MessageBody.of` (not JS `trim()`, which also drops NBSP / U+FEFF): the
+  // replay comparison below then agrees with the api (AC-B7).
+  const stripped = javaStrip(raw);
   if (/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(stripped)) return refuse();
   const points = Array.from(stripped);
   const blank = /^[\s\u00a0\u200b-\u200d\u2060\ufeff\u3164\u115f\u1160\uffa0\u2800\u180e\u034f\u00ad]$/u;
@@ -8646,7 +8631,7 @@ export const fixtureCoachApi: CoachApi = {
   async searchIngredients(q: string): Promise<CoachIngredientOption[]> {
     if (q.length > 100) await beanRefusal("q", "size must be between 0 and 100");
     // An underscore is a space: a pasted key finds itself.
-    const needle = javaStripFixture(q.replace(/_/g, " ")).toLowerCase();
+    const needle = javaStrip(q.replace(/_/g, " ")).toLowerCase();
     if (needle === "") return OPTIONS_BY_LABEL.slice(0, INGREDIENT_SEARCH_MAX);
     const prefix = OPTIONS_BY_LABEL.filter((o) => o.label.startsWith(needle));
     const inner = OPTIONS_BY_LABEL.filter(

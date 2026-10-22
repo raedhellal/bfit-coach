@@ -3064,8 +3064,12 @@ export const en = {
     sending: "Sending…",
     /** AC-B5: the failed message stays in the composer, with this control. */
     retry: "Retry",
-    /** AC-B5: any failure that is not one of the sentences below. Nothing was stored. */
-    sendFailed: "The message was not sent.",
+    /**
+     * AC-B5 / AC-B8: any failure that is not one of the sentences below — a network error, a
+     * timeout, a 5xx. The api may have stored it (the answer can be lost after the write), so the
+     * line says only what is known; the retry keeps the id, so it is a replay, never a second copy.
+     */
+    sendFailed: "We couldn't confirm the message was sent. Retrying won't send it twice.",
     /** AC-B5 / AC-A6 `MESSAGE_RATE_LIMIT`, with the api's Retry-After in whole minutes. */
     rateLimited: (minutes: number) =>
       `You have sent 60 messages in this conversation in the last hour. You can send again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`,

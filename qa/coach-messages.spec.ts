@@ -32,7 +32,7 @@ const T = {
     retry: "Retry",
     sending: "Sending…",
     you: "You",
-    failed: "The message was not sent.",
+    failed: "We couldn't confirm the message was sent. Retrying won't send it twice.",
     rate: "You have sent 60 messages in this conversation in the last hour. You can send again in 15 minutes.",
     invisible: "The message contains an invisible formatting character that cannot be sent. Retype the part you pasted.",
     loadError: "The messages could not be loaded. Reload the page to try again.",
@@ -49,7 +49,7 @@ const T = {
     retry: "Réessayer",
     sending: "Envoi…",
     you: "Vous",
-    failed: "Le message n'a pas été envoyé.",
+    failed: "L'envoi n'a pas pu être confirmé. Réessayer ne l'enverra pas deux fois.",
     rate: "Vous avez envoyé 60 messages dans cette conversation en une heure. Vous pourrez de nouveau écrire dans 15 minutes.",
     invisible: "Le message contient un caractère de mise en forme invisible qui ne peut pas être envoyé. Retapez la partie collée.",
     loadError: "Les messages n'ont pas pu être chargés. Rechargez la page pour réessayer.",
@@ -233,6 +233,77 @@ test.describe("EV-095b (EN)", () => {
     await expect(composer(page)).toHaveValue("");
     expect(ids).toHaveLength(2);
     expect(ids[1]).not.toBe(ids[0]);
+  });
+
+  /** Every POST the page sends for Lina's thread: its id and its body, in order. */
+  function recordPosts(page: Page): { clientMessageId: string; body: string }[] {
+    const posts: { clientMessageId: string; body: string }[] = [];
+    page.on("request", (r) => {
+      if (r.method() === "POST" && new URL(r.url()).pathname === BFF(LINA)) posts.push(JSON.parse(r.postData() ?? "{}"));
+    });
+    return posts;
+  }
+
+  test("AC-B7: an answer lost, then only a trailing space and line break added — « Retry » stays, same id, one message", async ({ page }) => {
+    await signInThroughForm(page);
+    await open(page);
+    const posts = recordPosts(page);
+    await setSwitch(page, "evoli_fixture_messages_send", "lost");
+    await sendText(page, "See you at 6.");
+    await expect(page.locator('[data-messages-failure="sendFailed"]')).toHaveText(T.en.failed);
+    expect((await stored(page)).messages, "the api DID store it").toHaveLength(1);
+    await setSwitch(page, "evoli_fixture_messages_send", null);
+
+    // The api would store "See you at 6. \n" as "See you at 6." (String.strip): the same message.
+    await composer(page).fill("See you at 6. \n");
+    await expect(sendButton(page, T.en.retry), "« Retry » is still offered").toBeEnabled();
+    await expect(page.locator('[data-messages-failure="sendFailed"]')).toHaveText(T.en.failed);
+    await sendButton(page, T.en.retry).click();
+    await expect(composer(page)).toHaveValue("");
+    await expect(page.locator("[data-messages-failure]")).toHaveCount(0);
+    await expect(log(page).locator("li .msg-body")).toHaveText(["See you at 6."]);
+    expect(posts.map((p) => p.body)).toEqual(["See you at 6.", "See you at 6. \n"]);
+    expect(posts[1].clientMessageId, "the retry is a replay: the same clientMessageId").toBe(posts[0].clientMessageId);
+    const s = await stored(page);
+    expect(s.messages.map((m) => m.body), "exactly one stored message").toEqual(["See you at 6."]);
+  });
+
+  test("AC-B7: a visible-character edit after a lost answer takes a new id (two messages)", async ({ page }) => {
+    await signInThroughForm(page);
+    await open(page);
+    const posts = recordPosts(page);
+    await setSwitch(page, "evoli_fixture_messages_send", "lost");
+    await sendText(page, "See you at 6.");
+    await expect(page.locator('[data-messages-failure="sendFailed"]')).toHaveText(T.en.failed);
+    await setSwitch(page, "evoli_fixture_messages_send", null);
+
+    await composer(page).fill("See you at 7. ");
+    await expect(sendButton(page, T.en.send), "a different text is not a retry").toBeEnabled();
+    await sendButton(page, T.en.send).click();
+    await expect(composer(page)).toHaveValue("");
+    expect(posts).toHaveLength(2);
+    expect(posts[1].clientMessageId).not.toBe(posts[0].clientMessageId);
+    expect((await stored(page)).messages.map((m) => m.body)).toEqual(["See you at 6.", "See you at 7."]);
+  });
+
+  test("AC-B7: a trailing no-break space is NOT the same text (Java's strip keeps U+00A0)", async ({ page }) => {
+    await signInThroughForm(page);
+    await open(page);
+    const posts = recordPosts(page);
+    await setSwitch(page, "evoli_fixture_messages_send", "lost");
+    await sendText(page, "See you at 6.");
+    await expect(page.locator('[data-messages-failure="sendFailed"]')).toHaveText(T.en.failed);
+    await setSwitch(page, "evoli_fixture_messages_send", null);
+
+    await composer(page).fill("See you at 6.\u00a0");
+    await expect(sendButton(page, T.en.send), "not « Retry »: the api would store another text").toBeEnabled();
+    await sendButton(page, T.en.send).click();
+    await expect(composer(page)).toHaveValue("");
+    await expect(page.locator("[data-messages-failure]")).toHaveCount(0);
+    expect(posts).toHaveLength(2);
+    expect(posts[1].clientMessageId, "a new id, so no 409 MESSAGE_ID_REUSED").not.toBe(posts[0].clientMessageId);
+    // The fixture stores what the api stores: the NBSP is kept.
+    expect((await stored(page)).messages.map((m) => m.body)).toEqual(["See you at 6.", "See you at 6.\u00a0"]);
   });
 
   test("AC-B5: a 429 has its own sentence, with the api's Retry-After in minutes; the text stays", async ({ page }) => {

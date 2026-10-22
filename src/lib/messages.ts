@@ -40,6 +40,40 @@ export function normaliseNewlines(text: string): string {
   return text.replace(/\r\n?/g, "\n");
 }
 
+/**
+ * Java `String.strip()` (AC-B7): drops leading and trailing code points for which
+ * `Character.isWhitespace` holds, which is how the api stores a body and compares a replay
+ * (`MessageBody.of`, api `0507b3be`). That is U+0009..U+000D, U+001C..U+001F, and the Zs / Zl / Zp
+ * characters EXCEPT the no-break spaces U+00A0, U+2007, U+202F, which Java keeps.
+ *
+ * Not JS `trim()` (it also strips U+00A0, U+2007, U+202F and U+FEFF, all kept by Java, and keeps
+ * U+001C..U+001F) and not `javaTrim` (`String.trim()`: code points <= U+0020 only).
+ */
+export function javaStrip(value: string): string {
+  const chars = Array.from(value);
+  let start = 0;
+  let end = chars.length;
+  while (start < end && isJavaWhitespace(chars[start])) start += 1;
+  while (end > start && isJavaWhitespace(chars[end - 1])) end -= 1;
+  return start === 0 && end === chars.length ? value : chars.slice(start, end).join("");
+}
+
+/** `Character.isWhitespace` for one code point (as a string of one code point). */
+function isJavaWhitespace(ch: string): boolean {
+  const c = ch.codePointAt(0) ?? 0;
+  if (c === 0x00a0 || c === 0x2007 || c === 0x202f) return false;
+  return (c >= 0x09 && c <= 0x0d) || (c >= 0x1c && c <= 0x1f) || /^[\p{Zs}\u2028\u2029]$/u.test(ch);
+}
+
+/**
+ * AC-B7: two newline-normalised drafts are the same message when the api would call them the
+ * same (it compares stripped text with stripped text, D38.4 step 4): a retry of one keeps the
+ * `clientMessageId`, and « Retry » stays offered.
+ */
+export function sameMessage(a: string, b: string): boolean {
+  return javaStrip(a) === javaStrip(b);
+}
+
 /** Code points, as the api counts (an emoji is one). */
 export function codePointCount(text: string): number {
   let n = 0;
@@ -69,7 +103,8 @@ export type DraftProblem = "empty" | "tooLong" | "invisible";
  * still the judge: a 400 from it is the same `invisible` sentence.
  */
 export function draftProblem(normalised: string): DraftProblem | null {
-  const trimmed = normalised.trim();
+  // The api's own strip (AC-B7), so the count and the checks see the text it would store.
+  const trimmed = javaStrip(normalised);
   if (trimmed.replace(FILLERS, "") === "") return "empty";
   if (codePointCount(trimmed) > MESSAGE_MAX_CODE_POINTS) return "tooLong";
   if (REFUSED_CONTROL.test(trimmed) || REFUSED_BIDI.test(trimmed) || LONE_SURROGATE.test(trimmed)) {

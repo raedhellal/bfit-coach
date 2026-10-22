@@ -1762,7 +1762,7 @@ export const fr = {
     send: "Envoyer",
     sending: "Envoi…",
     retry: "Réessayer",
-    sendFailed: "Le message n'a pas été envoyé.",
+    sendFailed: "L'envoi n'a pas pu être confirmé. Réessayer ne l'enverra pas deux fois.",
     rateLimited: (minutes: number) =>
       `Vous avez envoyé 60\u00a0messages dans cette conversation en une heure. Vous pourrez de nouveau écrire dans ${minutes}\u00a0minute${s(minutes)}.`,
     rateLimitedNoTime: "Vous avez envoyé 60\u00a0messages dans cette conversation en une heure. Vous pourrez de nouveau écrire plus tard.",

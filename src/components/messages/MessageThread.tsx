@@ -13,11 +13,13 @@ import {
   POLL_ACTIVE_MS,
   codePointCount,
   draftProblem,
+  javaStrip,
   mergeMessages,
   messagesPath,
   messagesReadPath,
   normaliseNewlines,
   pollPeriod,
+  sameMessage,
   sendOutcome,
   threadOutcome,
   type SendOutcome,
@@ -314,10 +316,12 @@ export function MessageThread({
     const body = normaliseNewlines(draft);
     const problem = draftProblem(body);
     if (problem === "empty") return;
-    if (problem === "tooLong") return setFailure({ kind: "tooLong", count: codePointCount(body.trim()) });
+    if (problem === "tooLong") return setFailure({ kind: "tooLong", count: codePointCount(javaStrip(body)) });
     if (problem === "invisible") return setFailure({ kind: "invisible" });
 
-    const id = pending.current && pending.current.body === body ? pending.current.id : newMessageId();
+    // AC-B7: the same message is the same text after the api's own `String.strip()`, so a retry
+    // that only adds or drops spaces / line breaks at the ends keeps the id (a replay, not a 409).
+    const id = pending.current && sameMessage(pending.current.body, body) ? pending.current.id : newMessageId();
     pending.current = { id, body };
     setSending(true);
     let outcome: SendOutcome;
@@ -402,7 +406,7 @@ export function MessageThread({
       : failure.kind === "tooLong"
         ? c.tooLong(failure.count)
         : c[failure.kind];
-  const canRetry = retryable(failure) && pending.current !== null && pending.current.body === normaliseNewlines(draft);
+  const canRetry = retryable(failure) && pending.current !== null && sameMessage(pending.current.body, normaliseNewlines(draft));
   const empty = draftProblem(normaliseNewlines(draft)) === "empty";
 
   return (
