@@ -36,6 +36,12 @@ POST `{clientMessageId uuid, body}` → 201 stored / 200 same-body replay `{mess
   a send's `lastSeq` as the cursor skips a client message written between the last poll and the send.
 - `clientMessageId` is bound to the TEXT: same text → same id (a lost answer retried is the api's
   replay, witnessed with `evoli_fixture_messages_send=lost`); new text or a 409 → new id.
+- "Same text" = equal after Java `String.strip()` (AC-B7): `sameMessage` / `javaStrip` in
+  `src/lib/messages.ts`, the ONE copy (the fixture imports it too). Character.isWhitespace keeps
+  U+00A0, U+2007, U+202F, U+FEFF (JS `trim()` drops them) and strips U+001C..U+001F (trim keeps
+  them); `javaTrim` (addClient.ts) is `String.trim()`, a third rule. Never `.trim()` a body.
+- AC-B8: the `failed` line says "couldn't confirm", never "not sent" — the answer can be lost
+  after the api stored it.
 - `crypto.randomUUID` is secure-context only; `newMessageId()` falls back to getRandomValues.
 - Mark read only while visible; a page loaded hidden marks on its first read after showing.
 - Bidi: body `<p dir="auto">` + `unicode-bidi: plaintext`, author/time in a separate element.
