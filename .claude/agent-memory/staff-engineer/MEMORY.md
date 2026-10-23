@@ -30,3 +30,5 @@
 - [Boot-commit reload flag needs a same-commit error](boot-commit-reload-flag-needs-same-commit-error.md) — EV-356d R1-H loops if a loading.tsx/Suspense streams the error; next/dist/client/link and `ref` slip past invariant N
 - [Request context stores what the browser refuses](request-context-stores-what-the-browser-refuses.md) — WebKit page-nav drops a `__Host-` from http, `context.request` stores it; name the writer
 - [Streamed read in WebKit: paint, not interactivity](streamed-read-in-webkit-is-paint-not-interactivity.md) — WebKit runs async scripts at doc end; EV-356g paint 0.1 s, TTI unchanged, early clicks dropped
+- [Repo-wide ratchet outside the story's specs](repo-wide-ratchet-outside-the-story-specs.md) — EV-095b added the 15th router.refresh(); editor-save-no-refresh pin red, my run missed it; grep qa for `readdirSync(src`
+- [Identity compared before the server's normalisation](identity-compared-before-the-servers-normalisation.md) — EV-095b AC-B7 raw vs Java strip(); diff the normaliser against jshell over all code points
