@@ -3067,9 +3067,11 @@ export const en = {
     /**
      * AC-B5 / AC-B8: any failure that is not one of the sentences below — a network error, a
      * timeout, a 5xx. The api may have stored it (the answer can be lost after the write), so the
-     * line says only what is known; the retry keeps the id, so it is a replay, never a second copy.
+     * line says only what is known. A retry of the unchanged text keeps the id, so it is a replay, never
+     * a second copy; a visible edit takes a new id (AC-B7) and is a new message, hence the sentence's
+     * condition (ruled 2026-10-23 (f)).
      */
-    sendFailed: "We couldn't confirm the message was sent. Retrying won't send it twice.",
+    sendFailed: "We couldn't confirm the message was sent. Retrying without changing it won't send it twice.",
     /** AC-B5 / AC-A6 `MESSAGE_RATE_LIMIT`, with the api's Retry-After in whole minutes. */
     rateLimited: (minutes: number) =>
       `You have sent 60 messages in this conversation in the last hour. You can send again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`,
