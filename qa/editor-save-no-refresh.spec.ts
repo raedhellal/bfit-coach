@@ -163,10 +163,13 @@ test("recipe editor: a save re-renders the page title through its action, histor
  * EV-186b added one: the routine AI panel's 403 (`RoutineAiPanel` `accessEnded`, shared by its
  * start, poll and discard), a refused action that revalidates nothing, so the refresh is what
  * reaches the page's denial redirect (the IntakeConsentCard / TrialSessionCard precedent). 14.
+ * EV-095b added one: the « Messages » thread's 403 (`MessageThread` `linkEndedRef`, shared by its
+ * poll, send, mark-read and older page), a refused read or write that revalidates nothing, so the
+ * refresh is what reaches the layout's denial page (the same precedent). 15.
  * A new call is a decision: if its action revalidates, it renders the page a
  * second time for nothing. Comment lines are not counted.
  */
-test("src holds exactly 14 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry, plus EV-341w's, EV-341j's, EV-341b's and EV-186b's 403s)", () => {
+test("src holds exactly 15 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry, plus EV-341w's, EV-341j's, EV-341b's, EV-186b's and EV-095b's 403s)", () => {
   const src = join(__dirname, "..", "src");
   const calls: string[] = [];
   for (const file of readdirSync(src, { recursive: true, encoding: "utf8" })) {
@@ -179,5 +182,5 @@ test("src holds exactly 14 router.refresh() calls (ADR-0033 2a's inventory, less
         if (code.includes("router.refresh()")) calls.push(`${file}:${i + 1}`);
       });
   }
-  expect(calls.length, calls.sort().join("\n")).toBe(14);
+  expect(calls.length, calls.sort().join("\n")).toBe(15);
 });

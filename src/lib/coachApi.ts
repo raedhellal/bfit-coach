@@ -3326,6 +3326,122 @@ export function isIntakeVersionConflict(err: unknown): boolean {
   return err instanceof ApiError && err.status === 409 && err.code === "INTAKE_VERSION_CONFLICT";
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-095b — « Messages », the coach's thread with one client (b-fit-api EV-095a, ADR-0038
+ * D38.4–D38.6). Vendored from api `main` @ `0507b3be` (spec/b-fit-api.sha, `on-api-main: YES`).
+ *
+ *   GET  /coach-portal/clients/{id}/messages?after=&before=&limit=  → CoachClientThread
+ *        no parameter: the latest `limit` (50); `after=n`: seq > n ascending (an empty page is
+ *        the normal answer to an up-to-date poll); `before=n`: the page ending at seq < n;
+ *        both: 400 VALIDATION_ERROR. `Cache-Control: no-store`.
+ *   POST /coach-portal/clients/{id}/messages  ← SendMessageRequest → 201 / 200 (a same-body
+ *        replay of the same `clientMessageId`) SentCoachMessage
+ *        400 VALIDATION_ERROR / INVALID_REQUEST · 409 MESSAGE_ID_REUSED ·
+ *        429 MESSAGE_RATE_LIMIT (+ `Retry-After`, 1..3600 s: 60 per sender per rolling hour)
+ *   POST /coach-portal/clients/{id}/messages/read ← MarkMessagesReadRequest → 204
+ *   GET  /coach-portal/messages/unread → CoachClientUnread[] (ACTIVE links with count > 0 only)
+ *   403 COACH_ACCESS_DENIED on the three per-client routes: one body for a foreign, revoked or
+ *   unknown id, and for a coach whose COACH role was removed (read from the database).
+ *
+ * THREE PROPERTIES THE TYPES CANNOT STATE:
+ *   1. The client's read position is NEVER on the wire (no read receipts, D38.1/D38.5).
+ *      `unread` is the COACH's own count; the portal must not draw "seen" anywhere.
+ *   2. The coach's own send marks every earlier message read for the coach (D38.4 step 6).
+ *   3. `MESSAGING_CLOSED` is the TRAINEE's refusal only: the coach route answers 403 instead.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** Who wrote a message: a role, never a person id. */
+export type CoachMessageAuthor = "COACH" | "TRAINEE";
+/** `ACTIVE` on the coach route always (an ended link is refused 403 first). */
+export type CoachMessageThreadState = "ACTIVE" | "ENDED" | "NONE";
+
+/**
+ * One immutable message, stored trimmed. No thread id, no client id and no person id.
+ *
+ * @wire CoachClientMessage
+ */
+export interface CoachClientMessage {
+  id: string;
+  /** Its place in the thread, 1, 2, 3, … with no gap and no repeat. */
+  seq: number;
+  author: CoachMessageAuthor;
+  body: string;
+  /** When the server accepted it (ISO instant). */
+  sentAt: string;
+}
+
+/**
+ * The coach's view of the thread with one client: one page, ascending `seq`.
+ *
+ * @wire CoachClientThread
+ */
+export interface CoachClientThread {
+  threadState: CoachMessageThreadState;
+  canSend: boolean;
+  /** The thread's last seq; 0 before the first message. */
+  lastSeq: number;
+  /** Messages from the client the coach has not marked read (the coach's own count only). */
+  unread: number;
+  hasOlder: boolean;
+  hasMore: boolean;
+  messages: CoachClientMessage[];
+}
+
+/**
+ * `POST …/messages`'s body. `clientMessageId` is generated once per message and reused on
+ * every retry of the SAME text (a same-body replay answers 200 and writes nothing); a new
+ * text gets a new id, or the api answers 409 MESSAGE_ID_REUSED.
+ *
+ * @wire SendMessageRequest
+ */
+export interface SendMessageRequest {
+  clientMessageId: string;
+  /** 1..4000 code points after trim; no `\r`, no other control but `\n`/`\t`, no bidi control. */
+  body: string;
+}
+
+/**
+ * `POST …/messages`'s 201 (stored) and 200 (replay).
+ *
+ * @wire SentCoachMessage
+ */
+export interface SentCoachMessage {
+  message: CoachClientMessage;
+  lastSeq: number;
+}
+
+/**
+ * `POST …/messages/read`'s body: the highest seq the coach has read (clamped by the api).
+ *
+ * @wire MarkMessagesReadRequest
+ */
+export interface MarkMessagesReadRequest {
+  seq: number;
+}
+
+/**
+ * One ACTIVE client with unread messages. Counts only, never text.
+ *
+ * @wire CoachClientUnread
+ */
+export interface CoachClientUnread {
+  /** The coach_clients id, as in /coach-portal/clients/{id}. */
+  clientId: string;
+  count: number;
+}
+
+/** Which page of the thread a read asks for (`after` and `before` are never sent together). */
+export type CoachMessagesCursor = { after: number } | { before: number } | null;
+
+/** 429 MESSAGE_RATE_LIMIT — 60 messages from this coach on this thread in the rolling hour. */
+export function isMessageRateLimited(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 429 && err.code === "MESSAGE_RATE_LIMIT";
+}
+/** 409 MESSAGE_ID_REUSED — this clientMessageId was already used with another body. */
+export function isMessageIdReused(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409 && err.code === "MESSAGE_ID_REUSED";
+}
+
 // ── the live client ──────────────────────────────────────────────────────────
 
 /**
@@ -3486,6 +3602,36 @@ const liveCoachApi = {
    */
   completeIntake(id: string): Promise<CoachIntakeCompleted> {
     return apiFetch<CoachIntakeCompleted>(`${client(id)}/intake/complete`, { method: "POST" });
+  },
+
+  // ── EV-095b « Messages » (b-fit-api EV-095a, see the block above `// ── the live client`) ──
+
+  /**
+   * One page of the thread. `bearer`: the BFF route handler's token (`handlerAccessToken`); the
+   * page's server render passes none. `cursor` null is the latest page.
+   */
+  getMessages(id: string, cursor: CoachMessagesCursor = null, bearer?: string): Promise<CoachClientThread> {
+    const query = !cursor ? "" : "after" in cursor ? `?after=${cursor.after}` : `?before=${cursor.before}`;
+    return apiFetch<CoachClientThread>(`${client(id)}/messages${query}`, {}, { bearer });
+  },
+  /**
+   * Idempotent on `clientMessageId` (a same-body replay is 200 with the stored message), so a
+   * retry of the SAME text with the SAME id is safe. Never retried here: the composer retries.
+   */
+  sendMessage(id: string, body: SendMessageRequest, bearer?: string): Promise<SentCoachMessage> {
+    return apiFetch<SentCoachMessage>(
+      `${client(id)}/messages`,
+      { method: "POST", body: JSON.stringify({ clientMessageId: body.clientMessageId, body: body.body }) },
+      { bearer }
+    );
+  },
+  async markMessagesRead(id: string, body: MarkMessagesReadRequest, bearer?: string): Promise<void> {
+    // 204 No Content, also with no thread yet.
+    await apiFetch<void>(`${client(id)}/messages/read`, { method: "POST", body: JSON.stringify({ seq: body.seq }) }, { bearer });
+  },
+  /** The roster's unread dots: read once per roster load, never on an interval (D38.1). */
+  listMessageUnread(): Promise<CoachClientUnread[]> {
+    return apiFetch<CoachClientUnread[]>("/coach-portal/messages/unread");
   },
 
   // ── EV-184b routine (PROVISIONAL paths — see the block at the top) ─────────

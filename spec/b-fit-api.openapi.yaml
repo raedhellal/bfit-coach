@@ -2393,6 +2393,10 @@ paths:
         unchanged, and is not charged. At most the last few `history` turns are read.
 
 
+        Its caller is pre-EV-395e app builds: the current app no longer offers the AI chat, and
+        store builds from before EV-395e still call this endpoint until they update.
+
+
         Undocumented until EV-304.
       security:
         - bearerAuth: []
@@ -4742,6 +4746,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            **NUTRITION_PREFERENCES_REQUIRED** (EV-385) — the trainee never saved food preferences
+            (`PUT /me/nutrition/preferences`), so there is nothing to plan around their allergies or
+            diet. Refused after the 403 and before any AI credit is consumed: nothing is generated or
+            written, and the balance is unchanged. Save the preferences, then generate again. The
+            `message` is developer-facing and is not copy.
+
+
+            Only the never-saved case: this older path still does not read the saved preferences
+            into the plan it generates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: NUTRITION_PREFERENCES_REQUIRED
+                message: Save your food preferences before generating meals.
+                details: null
         "429":
           description: AI_QUOTA_EXCEEDED — the monthly AI credit allowance is spent.
           headers:
@@ -4908,10 +4931,32 @@ paths:
             stalled week's missing days), or when the server has restarted since that generation
             started (it can no longer be running), whichever comes first. A tap after the week is `ACTIVE` is
             an ordinary regeneration. The `message` is developer-facing and is not copy.
+
+
+            **NUTRITION_PREFERENCES_REQUIRED** (EV-385) — the trainee never saved food preferences
+            (no `PUT /me/nutrition/preferences` yet), so the week would be planned on defaults that
+            exclude nothing. Refused after the 403 and before the double-tap check and any AI credit:
+            nothing is generated or written and the balance is unchanged, so a zero-balance trainee
+            is told this, not 429. Save the preferences, then generate again; the server retries
+            nothing. The coach's apply-week is not affected. The `message` is developer-facing and is
+            not copy.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+              examples:
+                weekGenerationInProgress:
+                  summary: The same week is already being generated (BUG-361, ADR-0030)
+                  value:
+                    code: WEEK_GENERATION_IN_PROGRESS
+                    message: A meal plan is already being generated for this week. Wait for it instead of generating again.
+                    details: null
+                nutritionPreferencesRequired:
+                  summary: Food preferences never saved (EV-385)
+                  value:
+                    code: NUTRITION_PREFERENCES_REQUIRED
+                    message: Save your food preferences before generating meals.
+                    details: null
         "422":
           description: >-
             **NO_SAFE_MEAL_PLAN** (EV-071) — the account's allergies and food rules rule out every
@@ -5628,6 +5673,233 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "403":
           description: Not a coach, not this coach's client, already revoked, or no such id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/messages:
+    get:
+      summary: The thread with one client, a page at a time
+      description: >-
+        EV-095a / ADR-0038 D38.6. « Messages »: the conversation between the coach and one client,
+        in ascending `seq`. HTTP polling only (D38.1): the portal polls every 5 s within 60 s of
+        activity, otherwise every 15 s, and only while its page is visible; it never promises
+        delivery or speed. No parameter: the latest `limit` messages. `after=n`: the first `limit`
+        messages with `seq > n` (an empty page is the normal answer to an up-to-date poll).
+        `before=n`: the `limit` messages ending at `seq < n`. `after` and `before` together: 400.
+        `Cache-Control: no-store`. Only the coach's own `unread` is returned; the client's read
+        position is never returned to the coach. No route, parameter or body takes a thread id: the
+        thread is the link's. Gate: an ACTIVE link of this coach, no data scope; a REVOKED link is
+        the same 403 as a stranger's, from the coach's next request on.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The coach_clients id, as in /coach-portal/clients/{id}.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/MessagesAfter"
+        - $ref: "#/components/parameters/MessagesBefore"
+        - $ref: "#/components/parameters/MessagesLimit"
+      responses:
+        "200":
+          description: The thread view. With no message yet, ACTIVE with lastSeq 0 and an empty list.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachClientThread"
+        "400":
+          description: >-
+            `VALIDATION_ERROR` — `after` and `before` together, a negative cursor, or a `limit`
+            outside 1..100; `details.field` names it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach (the COACH role is read from the database, so a
+            coach whose role was removed is refused although their token still says COACH), not
+            this coach's client, a REVOKED link, or no such id. One body for all, the overview's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Send a message to the client
+      description: >-
+        EV-095a / ADR-0038 D38.4. One transaction under a total lock order: the link (`FOR SHARE`,
+        ACTIVE and the coach re-checked from it), then the thread row (`FOR UPDATE`, created on the
+        first send), then the message. **Idempotent on `clientMessageId`**: the same id with the same
+        body (after the same trim) answers 200 with the stored message and writes nothing; the same
+        id with a different body is 409 `MESSAGE_ID_REUSED`. **At most 60 messages per sender per
+        thread per rolling hour**, counted in the database (a replay is never counted): the 61st is
+        429 `MESSAGE_RATE_LIMIT`. **Your own send marks every earlier message in the thread read for
+        you**, so `unread` is exactly `lastSeq` minus your read position. Every refusal writes
+        nothing. `Cache-Control: no-store`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The coach_clients id, as in /coach-portal/clients/{id}.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Stored. `message.seq` = `lastSeq`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SentCoachMessage"
+        "200":
+          description: A same-body replay of an earlier send. Nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SentCoachMessage"
+        "400":
+          description: >-
+            `VALIDATION_ERROR` — a missing field, a body of 0 or more than 4000 characters after
+            trim (only whitespace and invisible fillers counts as 0), a control character other
+            than a newline or a tab, a bidi override or isolate control, or an unpaired surrogate.
+            `INVALID_REQUEST` — a body that is not a JSON string, or malformed JSON.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach (the COACH role is read from the database), not this
+            coach's client, a REVOKED link (including one revoked while this send waited for the
+            link's lock), or no such id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: "`MESSAGE_ID_REUSED` — this clientMessageId was already used with another body"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: "`MESSAGE_RATE_LIMIT` — 60 messages from you on this thread in the last hour"
+          headers:
+            Retry-After:
+              $ref: "#/components/headers/MessageRetryAfter"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/clients/{id}/messages/read:
+    post:
+      summary: Mark the thread read up to a seq
+      description: >-
+        EV-095a / ADR-0038 D38.5. Moves the coach's read position to `max(current, min(seq,
+        lastSeq))` in one statement, under the link's lock: clamped and monotonic, so a stale or
+        forged value can neither move it backwards nor past the thread. 204 also with no thread yet.
+        The client is never shown it (no read receipts, D38.1).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The coach_clients id, as in /coach-portal/clients/{id}.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkMessagesReadRequest"
+      responses:
+        "204":
+          description: Done
+        "400":
+          description: >-
+            `VALIDATION_ERROR` — `seq` missing or negative; `INVALID_REQUEST` — `seq` not a JSON
+            integer (`1.9`, `"3"`, `true`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `COACH_ACCESS_DENIED` — not a coach (the COACH role is read from the database), not this
+            coach's client, a REVOKED link, or no such id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /coach-portal/messages/unread:
+    get:
+      summary: Unread counts for the coach's ACTIVE clients
+      description: >-
+        EV-095a / ADR-0038 D38.6. The roster's unread dots: one row per ACTIVE client whose thread
+        holds messages the coach has not read, and nothing for any other client. Counts only, no
+        text. One set-based read; the portal reads it once per roster load, never on an interval.
+        A separate endpoint rather than a roster field, so the roster read is unchanged. Bounded by
+        the coach's ACTIVE links (the capacity tier). `Cache-Control: no-store`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The counts, ordered by clientId; an empty array when everything is read
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CoachClientUnread"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: >-
+            `AUTH_FORBIDDEN` (the token is not a coach's) or `COACH_ACCESS_DENIED` (no coach
+            profile, or the COACH role no longer held in the database although the token still
+            says COACH)
           content:
             application/json:
               schema:
@@ -7967,7 +8239,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
         "403":
-          description: See GET /coach-portal/clients/{id}/nutrition
+          description: >-
+            See GET /coach-portal/clients/{id}/nutrition. Also answered after the week was generated,
+            when the link was revoked before the apply's single write: nothing was written, and the
+            day's apply is used up.
           content:
             application/json:
               schema:
@@ -7976,9 +8251,13 @@ paths:
           description: >-
             **WEEK_GENERATION_IN_PROGRESS** (ADR-0030) — the trainee's own generation of this week
             is still running: the stored week is `GENERATING`, that generation started less than
-            10 minutes ago, and the server has not restarted since. Nothing was generated or written, and the day's apply is NOT used up
-            (the cap is released), so the coach can apply again once the trainee's week has
-            finished. The `message` is developer-facing and is not copy.
+            10 minutes ago, and the server has not restarted since. It is checked before the week is
+            generated and again at the write. Or **COACH_WEEK_CHANGED** (BUG-759, ADR-0034 A34.6) —
+            the client's week changed while this week was being generated: it was created, replaced or
+            regenerated, or a meal the apply keeps (one the client ate or locked) was eaten, locked or
+            unlocked. Either way nothing was written and the day's apply is NOT used up (the cap is
+            released), so the coach can re-read the week and apply again. The `message` is
+            developer-facing and is not copy.
           content:
             application/json:
               schema:
@@ -7991,8 +8270,9 @@ paths:
             created — that persistence is the trainee's own path only.
 
 
-            This operation answered **500** before EV-071a. The portal decides what to show from
-            this **code**; the `message` is developer-facing and is not copy.
+            This operation answered **500** before EV-071a. A day the server cannot check refuses the
+            whole week; before BUG-759 that day was stubbed and the apply answered 200. The portal
+            decides what to show from this **code**; the `message` is developer-facing and is not copy.
           content:
             application/json:
               schema:
@@ -8813,6 +9093,175 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /me/my-coach/messages:
+    get:
+      summary: My thread with my coach, a page at a time
+      description: >-
+        EV-095a / ADR-0038 D38.6. The app's Coach tab: the conversation with the caller's coach, in
+        ascending `seq`. **Which thread:** the ACTIVE link's (`threadState: ACTIVE`, `canSend:
+        true`); otherwise the **most recently ended** link's, read-only (`ENDED`, `canSend: false`:
+        "the trainee can read but can't send"); otherwise `NONE` with an empty list. Older threads (an
+        earlier coach, or an earlier link with the same coach) are reachable through no endpoint;
+        no export endpoint exists today, so they are reachable only by a manual data request. HTTP
+        polling only (D38.1): the app polls only while the thread is on screen and the app is in the
+        foreground, every 5 s within 60 s of activity, otherwise every 15 s, every 60 s after 10
+        idle minutes, never faster than 5 s. No out-of-app notification exists, so the copy must
+        not promise delivery or speed. Paging as on the coach's route: no parameter, the latest
+        `limit`; `after=n`, `seq > n`; `before=n`, the page ending at `seq < n`; both, 400. Only the
+        caller's own `unread`; the coach's read position is never returned. No route, parameter or
+        body takes a thread id. `Cache-Control: no-store`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MessagesAfter"
+        - $ref: "#/components/parameters/MessagesBefore"
+        - $ref: "#/components/parameters/MessagesLimit"
+      responses:
+        "200":
+          description: The thread view
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyCoachThread"
+        "400":
+          description: >-
+            `VALIDATION_ERROR` — `after` and `before` together, a negative cursor, or a `limit`
+            outside 1..100; `details.field` names it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      summary: Send a message to my coach
+      description: >-
+        EV-095a / ADR-0038 D38.4. Only on an ACTIVE link: with no link, or on the read-only thread
+        of an ended one, 409 `MESSAGING_CLOSED`, also when the link ends while this send waits for
+        its lock. Otherwise as the coach's send: idempotent on `clientMessageId` (same body 200,
+        different body 409 `MESSAGE_ID_REUSED`), at most 60 messages per sender per thread per
+        rolling hour (429 `MESSAGE_RATE_LIMIT`, a replay never counted), and **your own send marks
+        every earlier message in the thread read for you**. Every refusal writes nothing.
+        `Cache-Control: no-store`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Stored. `message.seq` = `lastSeq`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SentCoachMessage"
+        "200":
+          description: A same-body replay of an earlier send. Nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SentCoachMessage"
+        "400":
+          description: >-
+            `VALIDATION_ERROR` — a missing field, a body of 0 or more than 4000 characters after
+            trim (only whitespace and invisible fillers counts as 0), a control character other
+            than a newline or a tab, a bidi override or isolate control, or an unpaired surrogate.
+            `INVALID_REQUEST` — a body that is not a JSON string, or malformed JSON.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            `MESSAGING_CLOSED` — no coach, or the thread is the read-only one of an ended link;
+            `MESSAGE_ID_REUSED` — this clientMessageId was already used with another body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: "`MESSAGE_RATE_LIMIT` — 60 messages from you on this thread in the last hour"
+          headers:
+            Retry-After:
+              $ref: "#/components/headers/MessageRetryAfter"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/my-coach/messages/read:
+    post:
+      summary: Mark my thread read up to a seq
+      description: >-
+        EV-095a / ADR-0038 D38.5. Moves the caller's read position to `max(current, min(seq,
+        lastSeq))` in one statement: clamped and monotonic. Always 204: with no thread (nothing to
+        mark), and on the read-only thread of an ended link too, whose read position is still the
+        caller's own. The coach is never shown it (no read receipts, D38.1).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkMessagesReadRequest"
+      responses:
+        "204":
+          description: Done
+        "400":
+          description: >-
+            `VALIDATION_ERROR` — `seq` missing or negative; `INVALID_REQUEST` — `seq` not a JSON
+            integer (`1.9`, `"3"`, `true`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /me/my-coach/messages/unread:
+    get:
+      summary: How many of my coach's messages I have not read
+      description: >-
+        EV-095a / ADR-0038 D38.5. The Coach tab's badge, for the same thread GET
+        /me/my-coach/messages reads. Read on app foreground and on Coach-tab focus, never on an
+        interval. 0 with no thread. `Cache-Control: no-store`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyCoachUnread"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /me/progress-goal:
     get:
       summary: The milestones (weight and body fat) the trainee's coach set for them
@@ -9385,6 +9834,36 @@ components:
       schema:
         type: string
         example: Europe/Paris
+    MessagesAfter:
+      name: after
+      in: query
+      required: false
+      description: >-
+        EV-095a. Return messages with `seq` greater than this, ascending, up to `limit`. Not with
+        `before`.
+      schema:
+        type: integer
+        minimum: 0
+    MessagesBefore:
+      name: before
+      in: query
+      required: false
+      description: >-
+        EV-095a. Return the page of up to `limit` messages ending at `seq` less than this,
+        ascending. Not with `after`.
+      schema:
+        type: integer
+        minimum: 0
+    MessagesLimit:
+      name: limit
+      in: query
+      required: false
+      description: EV-095a. Page size.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
   responses:
     AiNotIncluded:
       description: >-
@@ -9401,12 +9880,203 @@ components:
             code: AI_NOT_INCLUDED
             message: AI features are not included for this account. Your coach prepares your plan.
             details: null
+  headers:
+    MessageRetryAfter:
+      description: >-
+        EV-095a. Whole seconds until the sender's 60th-newest message on the thread leaves the
+        rolling hour, when a send is next accepted (BUG-152). Always at least 1, at most 3600.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 3600
+        example: 900
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    SendMessageRequest:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-095a / ADR-0038 D38.4. One message to the other party of the link. Text only: no
+        attachment, no formatting.
+      properties:
+        clientMessageId:
+          type: string
+          format: uuid
+          description: >-
+            The sender's own id for this message: generated once, and reused on every retry of the
+            same message. Same id and same body: a 200 replay. Same id and another body: 409
+            `MESSAGE_ID_REUSED`.
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: >-
+            1..4000 characters after trimming leading and trailing whitespace (characters are code
+            points: an emoji counts as one). No control character other than a newline or a tab.
+            No bidirectional embedding, override or isolate control (U+202A..U+202E,
+            U+2066..U+2069). A body made only of whitespace (NBSP included) and invisible fillers
+            (U+200B..U+200D, U+2060, U+FEFF, U+3164, U+115F, U+1160, U+FFA0, U+2800, U+180E,
+            U+034F, U+00AD) counts as empty. An unpaired surrogate is refused. Must be a JSON
+            string: a number or a boolean is 400 `INVALID_REQUEST`. Stored trimmed, otherwise as
+            sent.
+      required: [clientMessageId, body]
+    MarkMessagesReadRequest:
+      type: object
+      additionalProperties: false
+      description: EV-095a / ADR-0038 D38.5. The highest `seq` the caller has read.
+      properties:
+        seq:
+          type: integer
+          minimum: 0
+          description: >-
+            Clamped to the thread's `lastSeq`; a read position never moves backwards. Must be a JSON
+            integer: `1.9`, `"3"` or `true` is 400 `INVALID_REQUEST`.
+      required: [seq]
+    CoachMessageAuthor:
+      type: string
+      description: Who wrote a message.
+      enum: [COACH, TRAINEE]
+    CoachMessageThreadState:
+      type: string
+      description: >-
+        EV-095a / ADR-0038 D38.6. `ACTIVE`: the link is ACTIVE and both parties may send. `ENDED`
+        (the trainee's route only): the most recently ended link's thread, read-only. `NONE` (the
+        trainee's route only): no link, now or ever.
+      enum: [ACTIVE, ENDED, NONE]
+    CoachClientMessage:
+      type: object
+      additionalProperties: false
+      description: >-
+        One immutable message. No thread id, no client id and no person id: the author is a role.
+      properties:
+        id:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+          minimum: 1
+          description: Its place in the thread, 1, 2, 3, ... with no gap and no repeat.
+        author:
+          $ref: "#/components/schemas/CoachMessageAuthor"
+        body:
+          type: string
+          description: The text as stored (trimmed).
+        sentAt:
+          type: string
+          format: date-time
+          description: When the server accepted it.
+      required: [id, seq, author, body, sentAt]
+    CoachClientThread:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-095a / ADR-0038 D38.6. The coach's view of the thread with one client. Only the coach's
+        own `unread`: no field of this object carries the client's read position.
+      properties:
+        threadState:
+          $ref: "#/components/schemas/CoachMessageThreadState"
+        canSend:
+          type: boolean
+          description: Always true on this route (an ended link is refused 403 first).
+        lastSeq:
+          type: integer
+          minimum: 0
+          description: The thread's last seq; 0 before the first message.
+        unread:
+          type: integer
+          minimum: 0
+          description: >-
+            Messages from the client the coach has not marked read: exactly `lastSeq` minus the
+            coach's read position, because the coach's own sends move it.
+        hasOlder:
+          type: boolean
+          description: Messages below the page's first seq exist (false for an empty page).
+        hasMore:
+          type: boolean
+          description: Messages above the page's last seq exist (false for an empty page).
+        messages:
+          type: array
+          description: The page, ascending seq.
+          items:
+            $ref: "#/components/schemas/CoachClientMessage"
+      required: [threadState, canSend, lastSeq, unread, hasOlder, hasMore, messages]
+    MyCoachThread:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-095a / ADR-0038 D38.6. The trainee's view of the thread with their coach. Only the
+        trainee's own `unread`: no field of this object carries the coach's read position.
+      properties:
+        threadState:
+          $ref: "#/components/schemas/CoachMessageThreadState"
+        canSend:
+          type: boolean
+          description: True only when `threadState` is ACTIVE.
+        lastSeq:
+          type: integer
+          minimum: 0
+          description: The thread's last seq; 0 before the first message.
+        unread:
+          type: integer
+          minimum: 0
+          description: >-
+            Messages from the coach the trainee has not marked read: exactly `lastSeq` minus the
+            trainee's read position, because the trainee's own sends move it.
+        hasOlder:
+          type: boolean
+          description: Messages below the page's first seq exist (false for an empty page).
+        hasMore:
+          type: boolean
+          description: Messages above the page's last seq exist (false for an empty page).
+        coachDisplayName:
+          type: string
+          nullable: true
+          description: >-
+            The coach's display name (coach_profiles.display_name, else the account name). Null with
+            `NONE`, and when the coach's account is gone.
+        messages:
+          type: array
+          description: The page, ascending seq.
+          items:
+            $ref: "#/components/schemas/CoachClientMessage"
+      required: [threadState, canSend, lastSeq, unread, hasOlder, hasMore, coachDisplayName, messages]
+    SentCoachMessage:
+      type: object
+      additionalProperties: false
+      description: EV-095a / ADR-0038 D38.4 step 7. The stored message and the thread's last seq.
+      properties:
+        message:
+          $ref: "#/components/schemas/CoachClientMessage"
+        lastSeq:
+          type: integer
+          minimum: 1
+      required: [message, lastSeq]
+    MyCoachUnread:
+      type: object
+      additionalProperties: false
+      description: EV-095a. Messages from the coach the trainee has not read; 0 with no thread.
+      properties:
+        count:
+          type: integer
+          minimum: 0
+      required: [count]
+    CoachClientUnread:
+      type: object
+      additionalProperties: false
+      description: EV-095a. One ACTIVE client with unread messages. Counts only, no text.
+      properties:
+        clientId:
+          type: string
+          format: uuid
+          description: The coach_clients id, as in /coach-portal/clients/{id}.
+        count:
+          type: integer
+          minimum: 1
+      required: [clientId, count]
     CoachProfileResponse:
       type: object
       description: The signed-in coach's profile and capacity (EV-183 AC1).
@@ -15903,15 +16573,15 @@ components:
           type: array
           description: >-
             Display lines, rendered verbatim by the client. Each one names a capability that is
-            gated at this tier: AI coach chat is PREMIUM_PLUS-only (SubscriptionBillingGateway),
-            as is the larger monthly AI credit allowance (AiCreditService). PREMIUM currently has
-            no entitlement of its own, and its single line says exactly that rather than inventing
+            gated at this tier: the larger monthly AI credit allowance is PREMIUM_PLUS-only
+            (AiCreditService). No tier lists a chat (EV-395f): the current app no longer offers
+            the AI chat. Store builds from before EV-395e still call /me/coach/chat until they
+            update, so its PREMIUM_PLUS gate stays. PREMIUM currently has no entitlement of its own, and its single line says exactly that rather than inventing
             a benefit.
           items:
             type: string
           example:
             - Everything in Premium
-            - Chat with the AI coach about your plan
             - A larger monthly AI credit allowance for AI generation
       required:
         - id

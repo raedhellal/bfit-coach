@@ -124,6 +124,9 @@ COACH_API_MODE=fixture COACH_FIXTURE_SCENARIO=empty npm run dev
 | `POST /api/auth/activate` | EV-278c: proxies `POST /me/activate` for a PENDING session, refuses any `consentAccepted` that is not literal `true` before the api is called, and swaps both cookies to the fresh COACH tokens. |
 | `POST /api/auth/logout` | Clears both cookies. |
 | `GET /api/bff/clients/{id}/intake-consent` | EV-341w: the « Entretien » card's 3 s poll, a GET route handler (not an action: actions are dispatched one at a time). Behind middleware like a page; `{ granted, pending }` / 403 / 502, `no-store`; 404 while `COACH_INTAKE_REQUEST` is not `on`. |
+| `/clients/[id]/messages` | EV-095b « Messages »: the thread with one client and a composer. Polls only while the tab is visible (15 s; 5 s for the 60 s after the coach's own send), through the BFF routes below, never a server action (ADR-0038 D38.1). No scope gates it: messaging belongs to the ACTIVE link. |
+| `GET` / `POST /api/bff/clients/{id}/messages` | EV-095b: the thread's read (`?after=` / `?before=`) and the send `{ clientMessageId, body }`. Behind middleware like a page, `no-store`. The send checks `Origin`, `application/json` and the page's account (`x-evoli-session-subject`, 401 `SESSION_CHANGED`) before the api; 429 carries `retryAfterSeconds`. |
+| `POST /api/bff/clients/{id}/messages/read` | EV-095b: mark read `{ seq }`, sent by the page only while visible, so the roster's unread dot (`GET /coach-portal/messages/unread`, read once per roster load) clears. Same checks as the send. |
 | `GET /api/version` | **Public** deploy marker — the portal's `/actuator/info`. `{ commit, commitShort, buildTime, environment, region }`, never cached, GET/HEAD only. See below. |
 | `/i/[token]` | **Public** invite landing page — the page the QR encodes. Inside the middleware matcher, let through explicitly, **GET/HEAD only** (anything else answers 405). |
 

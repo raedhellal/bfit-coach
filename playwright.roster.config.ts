@@ -38,8 +38,9 @@ export default defineConfig({
    * trial-session-roster.spec.ts (EV-341j J4) reads the programme pill on the seeded rows.
    * pro-nutrition-apply-card.spec.ts (EV-337g2) offers the seeded nutrition templates on the
    * client's page and compares its dialog with the library's (the picker again).
+   * roster-unread-dot.spec.ts (EV-095b AC-B4) reads the unread dot on the seeded rows.
    */
-  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intake-hold-off|trial-session-roster|pro-nutrition-apply-card|modal-keyboard-roster)\.spec\.ts/,
+  testMatch: /(coach-roster-scopes|coach-roster-triage|coach-roster-plan-changed|coach-library-apply|coach-nutrition-templates-apply|coach-french-roster|coach-challenges|page-read-budget|pro-roster|pro-challenges|nav-progress|pro-overview-roster-count|coach-add-client-roster|roster-search-prehydration|render-error-every-route|roster-not-shown|pro-roster-unnamed-client|template-use-no-week-card|field-focus-ring-roster|intake-hold-off|trial-session-roster|pro-nutrition-apply-card|modal-keyboard-roster|roster-unread-dot)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249) — see
   // playwright.config.ts's `workers` note.

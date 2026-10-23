@@ -131,7 +131,18 @@ function ProgrammeStatusPill({ client, copy, id }: { client: RosterClient; copy:
   );
 }
 
-export function RosterRow({ client: c, view, idx }: { client: RosterClient; view: RosterRowView; idx: number }) {
+export function RosterRow({
+  client: c,
+  view,
+  idx,
+  unread = false,
+}: {
+  client: RosterClient;
+  view: RosterRowView;
+  idx: number;
+  /** EV-095b AC-B4: `GET /coach-portal/messages/unread` reported count > 0 for this link. */
+  unread?: boolean;
+}) {
   const copy = getCopy();
   const base = `roster-${c.id}`;
   // BUG-714: a trainee with no name is "Unnamed client" here and a glyph in the avatar.
@@ -155,14 +166,31 @@ export function RosterRow({ client: c, view, idx }: { client: RosterClient; view
       className="roster-row"
       data-group={view.group}
       aria-labelledby={`${base}-name`}
-      aria-describedby={`${base}-plan ${base}-streak ${base}-last ${base}-status`}
+      aria-describedby={`${unread ? `${base}-unread ` : ""}${base}-plan ${base}-streak ${base}-last ${base}-status`}
+      data-unread={unread ? "" : undefined}
     >
       <span className="roster-id">
         <Avatar name={name} unnamed={isUnnamed(c.traineeDisplayName)} size={40} idx={idx} />
         <span style={{ minWidth: 0, display: "block" }}>
-          <span id={`${base}-name`} className="roster-name" title={name}>
-            {name}
-          </span>
+          {unread ? (
+            // EV-095b AC-B4: the dot is decoration; its words are the row's first description.
+            // Only an unread row gets the wrapper, so every other row's markup is unchanged.
+            <span className="roster-name-line">
+              <span id={`${base}-name`} className="roster-name" title={name}>
+                {name}
+              </span>
+              <span className="roster-unread" data-roster-unread="">
+                <span className="roster-unread-dot" aria-hidden="true" />
+                <span id={`${base}-unread`} className="sr-only">
+                  {copy.messages.unreadDot}
+                </span>
+              </span>
+            </span>
+          ) : (
+            <span id={`${base}-name`} className="roster-name" title={name}>
+              {name}
+            </span>
+          )}
           <span id={`${base}-plan`} className="roster-plan" title={c.currentPlanName || undefined}>
             {c.currentPlanName || (
               <span style={{ color: "var(--ink-3)" }}>

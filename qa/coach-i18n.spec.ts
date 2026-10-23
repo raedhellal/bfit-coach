@@ -120,6 +120,8 @@ const SAME_IN_BOTH: Record<string, string> = {
   "client.adherenceValue": "numbers only",
   "progressGoal.withDate": "punctuation only",
   "tabs.nutrition": "French 'Nutrition'",
+  "tabs.messages": "French 'Messages' (EV-095b AC-B1: « Messages » / \"Messages\")",
+  "messages.title": "French 'Messages' (EV-095b AC-B1, the tab's h2)",
   "routine.repairLine": "arrows and the api's words",
   "routine.catalogMuscle": "French 'Muscle'",
   "nutrition.title": "French 'Nutrition'",

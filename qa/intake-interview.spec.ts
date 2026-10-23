@@ -24,7 +24,8 @@ const OVERVIEW = `/clients/${LINA}`;
 const T = {
   en: {
     locale: "en-US",
-    tabs: ["Overview", "Routine", "Nutrition", "Intake"],
+    // EV-095b AC-B1 added « Messages » after « Entretien »; « Entretien » stays index 3.
+    tabs: ["Overview", "Routine", "Nutrition", "Intake", "Messages"],
     nav: "Trainee sections",
     h2: "Intake interview",
     reads: "Lina can read this intake, notes included, in their app.",
@@ -47,7 +48,7 @@ const T = {
   },
   fr: {
     locale: "fr-FR",
-    tabs: ["Vue d'ensemble", "Programme", "Nutrition", "Entretien"],
+    tabs: ["Vue d'ensemble", "Programme", "Nutrition", "Entretien", "Messages"],
     nav: "Sections du client",
     h2: "Entretien initial",
     reads: "Lina peut lire cet entretien, notes comprises, dans son application.",
@@ -202,7 +203,7 @@ for (const lang of ["en", "fr"] as const) {
   test.describe(`B1 / B19 the tab and the page frame (${lang.toUpperCase()})`, () => {
     test.use({ locale: T[lang].locale });
 
-    test("four tabs in order, « Entretien » current; one h1, the h2, and B19's sentence under it", async ({ page }) => {
+    test("five tabs in order (EV-095b added « Messages »), « Entretien » current; one h1, the h2, and B19's sentence under it", async ({ page }) => {
       await signIn(page, lang);
       await grant(page);
       await openIntake(page);

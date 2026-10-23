@@ -30,11 +30,13 @@ const PAGES = [
   { key: "nutrition", path: `/clients/${LINA}/nutrition` },
   // EV-341b B1: the fourth tab, always rendered.
   { key: "intake", path: `/clients/${LINA}/intake` },
+  // EV-095b AC-B1: the fifth tab, always rendered (no scope gates messaging).
+  { key: "messages", path: `/clients/${LINA}/messages` },
 ] as const;
 
 const LANG = {
-  en: { locale: "en-US", nav: "Trainee sections", tabs: ["Overview", "Routine", "Nutrition", "Intake"] },
-  fr: { locale: "fr-FR", nav: "Sections du client", tabs: ["Vue d'ensemble", "Programme", "Nutrition", "Entretien"] },
+  en: { locale: "en-US", nav: "Trainee sections", tabs: ["Overview", "Routine", "Nutrition", "Intake", "Messages"] },
+  fr: { locale: "fr-FR", nav: "Sections du client", tabs: ["Vue d'ensemble", "Programme", "Nutrition", "Entretien", "Messages"] },
 } as const;
 
 function bar(page: Page, lang: keyof typeof LANG) {
@@ -69,7 +71,7 @@ for (const lang of ["en", "fr"] as const) {
     test.use({ locale: LANG[lang].locale });
 
     for (const width of [1440, 390] as const) {
-      test(`the same bar, in the same place, on all four pages at ${width} px; one h1; no buttons on the overview`, async ({
+      test(`the same bar, in the same place, on all five pages at ${width} px; one h1; no buttons on the overview`, async ({
         page,
       }) => {
         await page.setViewportSize({ width, height: 900 });
@@ -110,6 +112,7 @@ for (const lang of ["en", "fr"] as const) {
         expect(boxes[1], "routine: same place as the overview").toEqual(boxes[0]);
         expect(boxes[2], "nutrition: same place as the overview").toEqual(boxes[0]);
         expect(boxes[3], "intake: same place as the overview").toEqual(boxes[0]);
+        expect(boxes[4], "messages: same place as the overview").toEqual(boxes[0]);
       });
     }
   });
@@ -161,6 +164,7 @@ for (const lang of ["en", "fr"] as const) {
             `/clients/${client.id}/routine`,
             `/clients/${client.id}/nutrition`,
             `/clients/${client.id}/intake`,
+            `/clients/${client.id}/messages`,
           ]) {
             await page.goto(path);
             const where = `${path} at ${width}`;
@@ -174,6 +178,7 @@ for (const lang of ["en", "fr"] as const) {
           expect(tops[1] - tops[0], `${width}: routine vs overview, px`).toBe(0);
           expect(tops[2] - tops[0], `${width}: nutrition vs overview, px`).toBe(0);
           expect(tops[3] - tops[0], `${width}: intake vs overview, px`).toBe(0);
+          expect(tops[4] - tops[0], `${width}: messages vs overview, px`).toBe(0);
         }
       });
     }
@@ -226,10 +231,10 @@ for (const lang of ["en", "fr"] as const) {
       await signInThroughForm(page, { lang });
       await page.goto(`/clients/${LINA}`);
       const nav = bar(page, lang);
-      await expect(nav.getByRole("link")).toHaveCount(4);
+      await expect(nav.getByRole("link")).toHaveCount(5);
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
-        "today's four tabs (EV-341b added « Entretien »): no sideways page scroll"
+        "today's five tabs (EV-341b added « Entretien », EV-095b « Messages »): no sideways page scroll"
       ).toBeLessThanOrEqual(0);
       // A section added later may not fit. Two more tabs, copies of a real one, stand in for
       // it: the bar's CSS is what is under test.

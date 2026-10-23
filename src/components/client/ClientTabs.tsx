@@ -5,7 +5,8 @@ import { TabBar, type TabDef } from "./TabBar";
 import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
 
 /**
- * Overview · Routine · Nutrition · Intake (EV-184 AC1, EV-185 AC1, EV-341b B1), on EVERY client page (EV-342e).
+ * Overview · Routine · Nutrition · Intake · Messages (EV-184 AC1, EV-185 AC1, EV-341b B1, EV-095b AC-B1),
+ * on EVERY client page (EV-342e).
  *
  * Real routes, not client-side panels. Three reasons: each tab is a separate api read
  * and a panel would make the overview pay for all three; a tab must be linkable,
@@ -39,6 +40,9 @@ export const CLIENT_SECTIONS = [
   // EV-341b B1: with the release hold on, always rendered, never filtered out (D22.6a: without the
   // grant its page says why). With `COACH_INTAKE_REQUEST` off it is not drawn at all (G2).
   { key: "intake", path: "/intake", scope: "INTAKE" },
+  // EV-095b AC-B1: the thread. No data scope: messaging is a property of the ACTIVE link
+  // (ADR-0038 S3, D-CHAT-2), so no `scope` is stated, and none could hide it anyway (D5).
+  { key: "messages", path: "/messages" },
 ] as const satisfies readonly { key: keyof Omit<Copy["tabs"], "label">; path: string; scope?: CoachAccessScope }[];
 
 export type ClientTab = (typeof CLIENT_SECTIONS)[number]["key"];
