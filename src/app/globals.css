@@ -1482,8 +1482,11 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
    tabs and this masks that edge out over --tab-fade — a mask on the strip itself, not an
    overlay, so it takes no clicks; with everything fitting there is no attribute and no mask.
    A keyboard-focused tab drops the mask so its ring is never faded, and `scroll-padding`
-   keeps a tab focused by Tab clear of the edge (qa/client-tab-bar-overflow.spec.ts). */
-.client-tabs { --tab-fade: 32px; scroll-padding-inline: var(--tab-fade); }
+   keeps a tab focused by Tab clear of the edge (qa/client-tab-bar-overflow.spec.ts).
+   56 px, not less: at 390 px the last whole label ends ~31-33 px short of the edge (EN/FR;
+   the cut falls in the next tab's padding), so a narrower fade lands on nothing painted and
+   signals nothing (T2 measures that the fade covers label text). */
+.client-tabs { --tab-fade: 56px; scroll-padding-inline: var(--tab-fade); }
 .client-tabs[data-fade="end"] {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--tab-fade)), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - var(--tab-fade)), transparent);

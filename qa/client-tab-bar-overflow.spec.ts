@@ -13,7 +13,8 @@ import { signInThroughForm } from "./sign-in";
  *      mount, sideways only: the window's scrollY stays 0.
  *   T2 Nothing signalled that more tabs existed. Now, while the strip overflows, the side(s)
  *      holding hidden tabs fade out (a mask on the strip itself, so nothing sits over the
- *      tabs to catch a click), and the fade follows the scroll.
+ *      tabs to catch a click), the fade follows the scroll, and it lies over painted label
+ *      text (a fade over the gap between two tabs would signal nothing).
  *   T3 Where everything fits (1024 and 1280 px) there is no fade: the bar looks as before.
  *   T4 Keyboard: each tab, focused with Tab, is wholly inside the strip and drawn unmasked
  *      (its focus ring is never faded out).
@@ -129,6 +130,41 @@ test.describe("T2 the overflow is signalled at 390 px, FR", () => {
     expect((await measure(nav)).mask).toContain("linear-gradient");
   });
 });
+
+/*
+ * A fade over nothing is no signal. At 390 px the strip is cut inside the next tab's padding,
+ * so the last whole label ends ~31-33 px short of the edge; the first cut used a 32 px fade,
+ * passed every check above and showed nothing (seen in the screenshot). So: at least 12 px of
+ * painted label text sits in the part of the fade that is still partly opaque (its outer
+ * three quarters are the mask's 0-75 % alpha span; the outermost quarter is near transparent).
+ */
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`T2 the fade covers painted text at 390 px, ${lang.toUpperCase()}`, () => {
+    test.use({ locale: LOCALE[lang], viewport: { width: 390, height: 844 } });
+
+    test("on the overview, label text lies under the visible part of the end fade", async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      await page.goto(`/clients/${LINA}`);
+      const nav = bar(page, lang);
+      await expect.poll(async () => (await measure(nav)).fade).toBe("end");
+      const covered = await nav.evaluate((el) => {
+        const n = el.getBoundingClientRect();
+        const fadeW = parseFloat(getComputedStyle(el).getPropertyValue("--tab-fade")) || 0;
+        const from = n.right - fadeW;
+        const to = n.right - fadeW / 4;
+        let px = 0;
+        for (const a of el.querySelectorAll("a")) {
+          const range = document.createRange();
+          range.selectNodeContents(a);
+          for (const t of range.getClientRects()) px += Math.max(0, Math.min(t.right, to) - Math.max(t.left, from));
+        }
+        return { fadeW, px: Math.round(px) };
+      });
+      expect(covered.fadeW, "the fade has a width").toBeGreaterThan(0);
+      expect(covered.px, `px of label text under the partly opaque fade (fade ${covered.fadeW} px)`).toBeGreaterThanOrEqual(12);
+    });
+  });
+}
 
 for (const width of [1024, 1280] as const) {
   for (const lang of ["en", "fr"] as const) {
