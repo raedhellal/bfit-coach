@@ -67,7 +67,11 @@ export function ClientTabs({ clientId, active }: { clientId: string; active: Cli
   return (
     <>
       <TabBar tabs={clientTabs(clientId, copy)} active={active} label={copy.tabs.label} />
-      {/* Must stay the nav's NEXT sibling: the script finds the strip as its previous element. */}
+      {/* Must stay the nav's NEXT sibling: the script finds the strip as its previous element.
+          It places the strip at first paint only while ClientHeader is NOT inside a late-streaming
+          <Suspense> boundary (no loading.tsx under clients/[id] today): streamed content is parsed
+          into a hidden container, where the script measures 0 and does nothing, so the strip
+          would be placed only after hydration (TabBar's effect). */}
       <script dangerouslySetInnerHTML={{ __html: TAB_STRIP_SCRIPT }} />
     </>
   );

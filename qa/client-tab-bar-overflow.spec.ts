@@ -258,6 +258,12 @@ test.describe("T4 keyboard through the narrow strip, FR, 390 px", () => {
  * the effect and Next's runtime: whatever the strip shows at DOMContentLoaded was done by the
  * parser-run inline script, i.e. it is what the first paint shows. Sign-in happens first, with
  * JS, because the login form needs it.
+ *
+ * Also run on a PRODUCTION build (`playwright.start.config.ts`, project "chromium-first-paint"):
+ * the script is `syncTabStrip.toString()` of the minified server bundle, so a minifier or SWC
+ * change that makes it reference a helper or a renamed module name fails there, not in prod.
+ * That config leaves `COACH_INTAKE_REQUEST` unset (page-read-budget depends on it), so the
+ * Intake tab is not drawn there and its case is run only where the tab exists.
  */
 for (const lang of ["en", "fr"] as const) {
   test.describe(`T5 placed at first paint, before any JS chunk, 390 px, ${lang.toUpperCase()}`, () => {
@@ -270,12 +276,14 @@ for (const lang of ["en", "fr"] as const) {
         blocked += 1;
         return route.abort();
       });
-      const cases = [
-        { path: `/clients/${LINA}`, scrolled: false, fade: "end" },
-        // « Intake » (EN) fits at 390 px but not --tab-fade clear of the end, so it is nudged too.
-        { path: `/clients/${LINA}/intake`, scrolled: true, fade: "both" },
-        { path: `/clients/${LINA}/messages`, scrolled: true, fade: "start" },
-      ] as const;
+      const overview = { path: `/clients/${LINA}`, scrolled: false, fade: "end" };
+      // « Intake » (EN) fits at 390 px but not --tab-fade clear of the end, so it is nudged too.
+      const intake = { path: `/clients/${LINA}/intake`, scrolled: true, fade: "both" };
+      const messages = { path: `/clients/${LINA}/messages`, scrolled: true, fade: "start" };
+      await page.goto(overview.path, { waitUntil: "domcontentloaded" });
+      const intakeDrawn = (await bar(page, lang).locator(`a[href="${intake.path}"]`).count()) === 1;
+      test.info().annotations.push({ type: "intake tab", description: intakeDrawn ? "drawn" : "not drawn (release hold off)" });
+      const cases = intakeDrawn ? [overview, intake, messages] : [overview, messages];
       for (const c of cases) {
         await page.goto(c.path, { waitUntil: "domcontentloaded" });
         const nav = bar(page, lang);

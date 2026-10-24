@@ -28,6 +28,10 @@ import { defineConfig, devices } from "@playwright/test";
  *     while the roster is pending; the picker's wait ends at its deadline. Starts its own proxy.
  *   · `routine-ai-panel-chunk-fail.spec.ts` — staff R2-1: an aborted AI-panel chunk costs only the
  *     panel. It finds the chunk by content, which only a production build splits that way.
+ *   · `client-tab-bar-overflow.spec.ts`, T5 only (project "chromium-first-paint") —
+ *     fix/coach-tabbar-mobile: the client tab strip's inline script is a MINIFIED function's
+ *     `toString()` here, so this is where a serialization break shows. T1-T4 assume the Intake
+ *     tab, which this config does not draw (`COACH_INTAKE_REQUEST` unset); they run in the gate.
  */
 const PORT = process.env.COACH_START_PORT || "3302";
 const BASE_URL = `http://localhost:${PORT}`;
@@ -59,6 +63,13 @@ export default defineConfig({
       use: { ...devices["Desktop Safari"] },
       testMatch: /intent-prefetch\.spec\.ts/,
       grep: /D\.1 — pointer|D\.2: after|D\.4: hovering/,
+    },
+    /** fix/coach-tabbar-mobile: T5 (first paint, every JS chunk blocked) on the production build. */
+    {
+      name: "chromium-first-paint",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: /client-tab-bar-overflow\.spec\.ts/,
+      grep: /T5 placed at first paint/,
     },
   ],
   webServer: {
