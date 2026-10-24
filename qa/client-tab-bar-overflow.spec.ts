@@ -18,8 +18,12 @@ import { signInThroughForm } from "./sign-in";
  *   T3 Where everything fits (1024 and 1280 px) there is no fade: the bar looks as before.
  *   T4 Keyboard: each tab, focused with Tab, is wholly inside the strip and drawn unmasked
  *      (its focus ring is never faded out).
+ *   T5 At FIRST PAINT (BUG-933 criterion 2), not after hydration: with every JS chunk blocked,
+ *      only the inline script after the strip (`ClientTabs`, `src/components/client/tabStrip.ts`)
+ *      can have placed it — so the strip is already scrolled and faded when the document loads.
  *
- * Red on 34ef3d3: T1 (both pages, both languages) and T2.
+ * Red on 34ef3d3: T1 except EN « Intake » (it already fits at 390 px), T2, T4.
+ * Red on 1bc2db3 (the strip placed only after hydration): T5.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
@@ -41,6 +45,7 @@ async function measure(nav: Locator) {
     const cur = el.querySelector('[aria-current="page"]');
     const c = cur ? cur.getBoundingClientRect() : null;
     const cs = getComputedStyle(el);
+    const fadeW = parseFloat(cs.getPropertyValue("--tab-fade")) || 0;
     const mask = (cs.maskImage || cs.getPropertyValue("-webkit-mask-image") || "none").trim();
     const overlay = ["::before", "::after"].some((p) => {
       const ps = getComputedStyle(el, p);
@@ -55,10 +60,29 @@ async function measure(nav: Locator) {
       scrollY: window.scrollY,
       innerWidth: window.innerWidth,
       fade: el.getAttribute("data-fade"),
+      fadeW,
       mask,
       overlay,
     };
   });
+}
+
+type Measure = Awaited<ReturnType<typeof measure>>;
+
+/**
+ * The current tab is wholly inside the strip and the window, and at least `--tab-fade` clear of
+ * each side `data-fade` names (so no part of it is drawn faded). Returns what is wrong, or "".
+ */
+function placementFault(m: Measure): string {
+  const c = m.current;
+  if (!c) return "no current tab";
+  if (c.left < m.left - 0.5 || c.right > m.right + 0.5) return `outside the strip: ${JSON.stringify(c)} in [${m.left}, ${m.right}]`;
+  if (c.left < 0 || c.right > m.innerWidth) return `outside the window: ${JSON.stringify(c)}`;
+  const fadesStart = m.fade === "start" || m.fade === "both";
+  const fadesEnd = m.fade === "end" || m.fade === "both";
+  if (fadesStart && c.left < m.left + m.fadeW - 0.5) return `under the start fade: left ${c.left} < ${m.left} + ${m.fadeW}`;
+  if (fadesEnd && c.right > m.right - m.fadeW + 0.5) return `under the end fade: right ${c.right} > ${m.right} - ${m.fadeW}`;
+  return "";
 }
 
 for (const lang of ["en", "fr"] as const) {
@@ -74,15 +98,10 @@ for (const lang of ["en", "fr"] as const) {
         await expect(nav.locator('[aria-current="page"]')).toHaveText(CURRENT[lang][key]);
         // The strip is scrolled after hydration, so the box is polled, not sampled once.
         await expect
-          .poll(
-            async () => {
-              const m = await measure(nav);
-              const c = m.current!;
-              return c.left >= m.left - 0.5 && c.right <= m.right + 0.5 && c.left >= 0 && c.right <= m.innerWidth;
-            },
-            { message: `${key}: the current tab's box inside the strip and the 390 px window` }
-          )
-          .toBe(true);
+          .poll(async () => placementFault(await measure(nav)), {
+            message: `${key}: the current tab's box inside the strip and the 390 px window, clear of any fade`,
+          })
+          .toBe("");
         const m = await measure(nav);
         expect(m.maxScroll, "the five tabs overflow a 390 px strip (the premise)").toBeGreaterThan(0);
         expect(m.scrollY, "revealing the tab never scrolls the window").toBe(0);
@@ -166,7 +185,7 @@ for (const lang of ["en", "fr"] as const) {
   });
 }
 
-for (const width of [1024, 1280] as const) {
+for (const width of [820, 1024, 1180, 1280] as const) {
   for (const lang of ["en", "fr"] as const) {
     test.describe(`T3 no fade where the tabs fit, ${width} px, ${lang.toUpperCase()}`, () => {
       test.use({ locale: LOCALE[lang], viewport: { width, height: 900 } });
@@ -231,3 +250,49 @@ test.describe("T4 keyboard through the narrow strip, FR, 390 px", () => {
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });
 });
+
+/*
+ * T5 — first paint. Hydration places the strip 2 frames after load unthrottled and 6-8 frames
+ * (~150 ms) at 4-6x CPU (staff-engineer, production build), so a check after load cannot tell
+ * the inline script from the effect. Blocking every `/_next/static/**.js` request removes React,
+ * the effect and Next's runtime: whatever the strip shows at DOMContentLoaded was done by the
+ * parser-run inline script, i.e. it is what the first paint shows. Sign-in happens first, with
+ * JS, because the login form needs it.
+ */
+for (const lang of ["en", "fr"] as const) {
+  test.describe(`T5 placed at first paint, before any JS chunk, 390 px, ${lang.toUpperCase()}`, () => {
+    test.use({ locale: LOCALE[lang], viewport: { width: 390, height: 844 } });
+
+    test("overview, Intake and Messages: scrolled and faded by the inline script alone", async ({ page }) => {
+      await signInThroughForm(page, { lang });
+      let blocked = 0;
+      await page.route(/\/_next\/static\/.*\.js(\?|$)/, (route) => {
+        blocked += 1;
+        return route.abort();
+      });
+      const cases = [
+        { path: `/clients/${LINA}`, scrolled: false, fade: "end" },
+        // « Intake » (EN) fits at 390 px but not --tab-fade clear of the end, so it is nudged too.
+        { path: `/clients/${LINA}/intake`, scrolled: true, fade: "both" },
+        { path: `/clients/${LINA}/messages`, scrolled: true, fade: "start" },
+      ] as const;
+      for (const c of cases) {
+        await page.goto(c.path, { waitUntil: "domcontentloaded" });
+        const nav = bar(page, lang);
+        const m = await measure(nav);
+        expect(blocked, `${c.path}: the JS chunks were requested and blocked`).toBeGreaterThan(0);
+        // `window.next` is set by Next's client runtime (a chunk); its inline `__next_f` pushes still run.
+        expect(
+          await page.evaluate(() => typeof (window as unknown as { next?: unknown }).next),
+          `${c.path}: Next's runtime never started`
+        ).toBe("undefined");
+        expect(m.maxScroll, `${c.path}: the premise, five tabs overflow`).toBeGreaterThan(0);
+        expect(m.fade, `${c.path}: data-fade set before any JS chunk`).toBe(c.fade);
+        if (c.scrolled) expect(m.scrollLeft, `${c.path}: scrolled before any JS chunk`).toBeGreaterThan(0);
+        else expect(m.scrollLeft, `${c.path}: nothing to scroll`).toBe(0);
+        expect(placementFault(m), `${c.path}: the current tab placed`).toBe("");
+        expect(m.scrollY, `${c.path}: the window did not move`).toBe(0);
+      }
+    });
+  });
+}

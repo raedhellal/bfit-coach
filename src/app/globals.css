@@ -1499,6 +1499,8 @@ html:has(.action-bar) { scroll-padding-bottom: calc(var(--shell-tabbar-h) + 120p
   -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--tab-fade), #000 calc(100% - var(--tab-fade)), transparent);
   mask-image: linear-gradient(to right, transparent, #000 var(--tab-fade), #000 calc(100% - var(--tab-fade)), transparent);
 }
+/* Deliberate: while a tab has keyboard focus the strip loses its overflow cue. A faded focus
+   ring is the worse failure (WCAG 2.4.7), and moving focus along the strip scrolls it anyway. */
 .client-tabs[data-fade]:has(:focus-visible) { -webkit-mask-image: none; mask-image: none; }
 
 .ov-section { margin-bottom: 16px; }
