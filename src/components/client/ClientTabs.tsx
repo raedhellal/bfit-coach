@@ -2,6 +2,7 @@ import { getCopy } from "@/lib/i18n/server";
 import type { CoachAccessScope } from "@/lib/coachApi";
 import type { Copy } from "@/lib/copy";
 import { TabBar, type TabDef } from "./TabBar";
+import { TAB_STRIP_SCRIPT } from "./tabStrip";
 import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
 
 /**
@@ -30,8 +31,12 @@ import { INTAKE_REQUEST_ENABLED } from "@/lib/env";
  * the section's data scope, stated beside it for the reader and for EV-341b; it does NOT
  * hide the tab (D5 above), and `TabBar` (`./TabBar.tsx`) never reads it.
  *
- * Server component — the active tab is a prop, not `usePathname`, so this adds no
- * client JavaScript to a page that may otherwise need none.
+ * Server component — the active tab is a prop, not `usePathname`. `TabBar` itself is a
+ * client component since fix/coach-tabbar-mobile (it keeps the narrow strip scrolled to the
+ * current tab and its edge fade current), so the strip does ship client JavaScript. This file
+ * adds the inline `TAB_STRIP_SCRIPT` right after the `<nav>`: it places the strip during
+ * parsing, so a document load's FIRST paint already shows the current tab and the fade, before
+ * hydration (`./tabStrip.ts`; T5 in `qa/client-tab-bar-overflow.spec.ts`).
  */
 export const CLIENT_SECTIONS = [
   { key: "overview", path: "" },
@@ -59,5 +64,15 @@ export function clientTabs(clientId: string, copy: Copy, intakeOn: boolean = INT
 
 export function ClientTabs({ clientId, active }: { clientId: string; active: ClientTab }) {
   const copy = getCopy();
-  return <TabBar tabs={clientTabs(clientId, copy)} active={active} label={copy.tabs.label} />;
+  return (
+    <>
+      <TabBar tabs={clientTabs(clientId, copy)} active={active} label={copy.tabs.label} />
+      {/* Must stay the nav's NEXT sibling: the script finds the strip as its previous element.
+          It places the strip at first paint only while ClientHeader is NOT inside a late-streaming
+          <Suspense> boundary (no loading.tsx under clients/[id] today): streamed content is parsed
+          into a hidden container, where the script measures 0 and does nothing, so the strip
+          would be placed only after hydration (TabBar's effect). */}
+      <script dangerouslySetInnerHTML={{ __html: TAB_STRIP_SCRIPT }} />
+    </>
+  );
 }
