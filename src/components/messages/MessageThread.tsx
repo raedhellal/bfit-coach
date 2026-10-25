@@ -7,6 +7,7 @@ import type { CoachClientMessage, CoachClientThread } from "@/lib/coachApi";
 import { retryMinutes } from "@/lib/addClient";
 import { SESSION_SUBJECT_HEADER } from "@/lib/autosaveTransport";
 import { useCopy } from "@/lib/i18n/client";
+import { heldThread, keepThread } from "@/lib/heldThreads";
 import { MessageTime } from "./MessageTime";
 import {
   MAX_PAGES_PER_POLL,
@@ -20,6 +21,7 @@ import {
   normaliseNewlines,
   pollPeriod,
   sameMessage,
+  seedThread,
   sendOutcome,
   threadOutcome,
   type SendOutcome,
@@ -60,6 +62,16 @@ import {
  * BODIES are drawn with bidi isolation (`dir="auto"` + `unicode-bidi: plaintext`, `.msg-body`):
  * a right-to-left message cannot reorder the author or the time beside it, and each of its lines
  * takes its own direction. No read receipt and no "delivered" is drawn (D38.1).
+ *
+ * BACK TO THE TAB (BUG-938). The island is left and remounted on every tab change, and a return
+ * inside `staleTimes.dynamic` (30 s, next.config.mjs) is drawn from the client router cache with no
+ * render: `initial` is then the FIRST visit's read, without the coach's send or what the poll read
+ * since, and the first poll is 15 s away. So the island keeps what it held when it unmounted
+ * (`src/lib/heldThreads.ts`, per account and client), and its first state is that joined with the
+ * page's read (`seedThread`). No request is added: no read on mount, no `router.refresh()`. It is
+ * the tab's memory only: a reload, a session boundary (a document load, ADR-0033 D33.7) or another
+ * account's page starts from the page's read alone. Nothing is written to it on the server (an
+ * effect's cleanup never runs there), so the server render and hydration read `initial` as before.
  */
 
 type Failure =
@@ -126,23 +138,25 @@ export function MessageThread({
   const composerId = useId();
   const failureId = useId();
 
-  const [messages, setMessages] = useState<CoachClientMessage[]>(() => initial?.messages ?? []);
-  const [loaded, setLoaded] = useState(initial !== null);
+  // BUG-938: read once, on the first render (see BACK TO THE TAB).
+  const [seed] = useState(() => seedThread(initial, heldThread(sessionSubject, clientId)));
+  const [messages, setMessages] = useState<CoachClientMessage[]>(() => seed?.messages ?? []);
+  const [loaded, setLoaded] = useState(seed !== null);
   const [refreshFailed, setRefreshFailed] = useState(false);
-  const [hasOlder, setHasOlder] = useState(initial?.hasOlder ?? false);
+  const [hasOlder, setHasOlder] = useState(seed?.hasOlder ?? false);
   const [older, setOlder] = useState<"idle" | "loading" | "failed">("idle");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
 
   /** The poll's cursor (see THE CURSOR); null until a read has succeeded. */
-  const cursor = useRef<number | null>(initial ? lastSeqOf(initial.messages) ?? initial.lastSeq : null);
+  const cursor = useRef<number | null>(seed ? seed.cursor : null);
   /** When the coach's last 2xx send landed (AC-B3's 60 s), or null. */
   const lastSendAt = useRef<number | null>(null);
   /** The id bound to the text last attempted, reused on a retry of the same text (AC-A5). */
   const pending = useRef<{ id: string; body: string } | null>(null);
   /** Mark read: the highest seq the api has acknowledged, and whether a post is out. */
-  const marked = useRef(0);
+  const marked = useRef(seed?.marked ?? 0);
   const marking = useRef(false);
   /** Set by the poll effect: re-time the next poll to 5 s from now (after a send). */
   const hurry = useRef<() => void>(() => undefined);
@@ -197,6 +211,14 @@ export function MessageThread({
   }
   const applyPageRef = useRef(applyPage);
   applyPageRef.current = applyPage;
+
+  // BUG-938: what this island holds, kept when it is left (the cursor and `marked` are refs already).
+  const heldNow = useRef({ messages, hasOlder });
+  heldNow.current = { messages, hasOlder };
+  useEffect(
+    () => () => keepThread(sessionSubject, clientId, { ...heldNow.current, cursor: cursor.current, marked: marked.current }),
+    [sessionSubject, clientId]
+  );
 
   // The page's own read showed unread messages: mark them, if the coach is looking. Once, for
   // the page's read (held in a ref, so it is not a dependency); every later read marks from

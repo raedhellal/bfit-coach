@@ -13,6 +13,7 @@ import {
   messagesPath,
   normaliseNewlines,
   pollPeriod,
+  seedThread,
   sendOutcome,
   threadOutcome,
 } from "../src/lib/messages";
@@ -150,5 +151,74 @@ test.describe("AC-B7 javaStrip = Java String.strip() (Character.isWhitespace)", 
     expect(draftProblem(`${"a".repeat(4000)}\u3000\n`)).toBeNull();
     // U+001C..U+001F at the ends are Java whitespace: stripped, so not a refused control.
     expect(draftProblem("hi\u001f")).toBeNull();
+  });
+});
+
+test.describe("BUG-938 seedThread: the page's read joined with what the island held", () => {
+  const thread = (messages: ReturnType<typeof msg>[], extra: { lastSeq?: number; hasOlder?: boolean } = {}) => ({
+    threadState: "ACTIVE" as const,
+    canSend: true,
+    lastSeq: extra.lastSeq ?? messages[messages.length - 1]?.seq ?? 0,
+    unread: 0,
+    hasOlder: extra.hasOlder ?? false,
+    hasMore: false,
+    messages,
+  });
+  const seqsOf = (t: { messages: { seq: number }[] } | null) => t?.messages.map((m) => m.seq);
+
+  test("nothing held: the page's read, its cursor, nothing marked", () => {
+    const s = seedThread(thread([msg(1), msg(2)]), undefined);
+    expect(seqsOf(s)).toEqual([1, 2]);
+    expect(s).toMatchObject({ cursor: 2, hasOlder: false, marked: 0 });
+    expect(seedThread(thread([], { lastSeq: 0 }), undefined)).toMatchObject({ messages: [], cursor: 0 });
+  });
+
+  test("a router-cache return: the page's read is older than what was held — the held list wins", () => {
+    const held = { messages: [msg(1), msg(2, "COACH"), msg(3)], cursor: 3, hasOlder: false, marked: 3 };
+    const s = seedThread(thread([msg(1)]), held);
+    expect(seqsOf(s)).toEqual([1, 2, 3]);
+    expect(s).toMatchObject({ cursor: 3, marked: 3 });
+  });
+
+  test("a fresh render newer than what was held: joined, the newer cursor", () => {
+    const held = { messages: [msg(1), msg(2)], cursor: 2, hasOlder: false, marked: 1 };
+    const s = seedThread(thread([msg(1), msg(2), msg(3), msg(4)]), held);
+    expect(seqsOf(s)).toEqual([1, 2, 3, 4]);
+    expect(s).toMatchObject({ cursor: 4, marked: 1 });
+  });
+
+  test("a sent message past a gap stays held, and the cursor does not skip the gap", () => {
+    // The send was answered with seq 3 while the cursor was 1: seq 2 is for the next poll to read.
+    const held = { messages: [msg(1), msg(3, "COACH")], cursor: 1, hasOlder: false, marked: 0 };
+    const s = seedThread(thread([msg(1)]), held);
+    expect(seqsOf(s)).toEqual([1, 3]);
+    expect(s?.cursor).toBe(1);
+  });
+
+  test("older pages the coach loaded are kept, with the held list's hasOlder", () => {
+    const held = { messages: [msg(10), msg(11), msg(60)], cursor: 60, hasOlder: false, marked: 0 };
+    const s = seedThread(thread([msg(11), msg(60)], { hasOlder: true }), held);
+    expect(seqsOf(s)).toEqual([10, 11, 60]);
+    expect(s?.hasOlder).toBe(false);
+    // The page's read reaches further back: its own flag.
+    const t = seedThread(thread([msg(5), msg(60)], { hasOlder: true }), held);
+    expect(t?.hasOlder).toBe(true);
+  });
+
+  test("a page that starts after held cursor + 1 would leave a gap: the page's read alone", () => {
+    const held = { messages: [msg(1), msg(2)], cursor: 2, hasOlder: false, marked: 2 };
+    const s = seedThread(thread([msg(4), msg(5)], { hasOlder: true }), held);
+    expect(seqsOf(s)).toEqual([4, 5]);
+    expect(s).toMatchObject({ cursor: 5, hasOlder: true, marked: 2 });
+  });
+
+  test("the page's read failed: null (its load notice), whatever was held", () => {
+    expect(seedThread(null, { messages: [msg(1)], cursor: 1, hasOlder: false, marked: 1 })).toBeNull();
+  });
+
+  test("a held island that never read (cursor null): the page's read", () => {
+    const s = seedThread(thread([msg(1)]), { messages: [], cursor: null, hasOlder: false, marked: 0 });
+    expect(seqsOf(s)).toEqual([1]);
+    expect(s?.cursor).toBe(1);
   });
 });

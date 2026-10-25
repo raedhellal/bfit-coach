@@ -178,6 +178,53 @@ export function mergeMessages(held: readonly CoachClientMessage[], incoming: rea
   return Array.from(bySeq.values()).sort((a, b) => a.seq - b.seq);
 }
 
+/**
+ * BUG-938 — what a thread island held when it was left: its list, its poll cursor (see THE CURSOR
+ * in `MessageThread.tsx`), whether older messages exist before its first one, and the highest seq
+ * the api acknowledged as read.
+ */
+export interface HeldThread {
+  messages: CoachClientMessage[];
+  cursor: number | null;
+  hasOlder: boolean;
+  marked: number;
+}
+
+/**
+ * BUG-938 — the island's first state: the page's read, joined with what the island held when the
+ * coach last left this thread (same account, same tab).
+ *
+ * Why both: the page's read can be OLDER than what the island held. A return inside
+ * `staleTimes.dynamic` is served from the client router cache with no render (next.config.mjs,
+ * ADR-0033 D33.0), so `initial` is the first visit's read, from before the coach's send and the
+ * poll's reads. A fresh render is newer, and the join adds nothing to it but older pages the coach
+ * had loaded. A message is immutable (`CoachClientMessage`, coachApi.ts) and the BFF has no edit or
+ * delete route, so a join by seq is exact.
+ *
+ * Kept only while the two are contiguous: the held list covers every seq up to its `cursor`, the
+ * page's read every seq from its first to its last, so a page that starts after `cursor + 1` would
+ * leave a gap the cursor could not see. Then the page's read alone, as before this fix.
+ *
+ * `null` page read (it failed): the page's load notice, as before; the held list is not shown in
+ * its place. `marked` is kept in every case: it is the api's own acknowledgement.
+ */
+export function seedThread(initial: CoachClientThread | null, held: HeldThread | undefined): HeldThread | null {
+  if (initial === null) return null;
+  const last = initial.messages.length > 0 ? initial.messages[initial.messages.length - 1].seq : undefined;
+  const own: HeldThread = { messages: initial.messages, cursor: last ?? initial.lastSeq, hasOlder: initial.hasOlder, marked: held?.marked ?? 0 };
+  if (!held || held.cursor === null || own.cursor === null) return own;
+  const first = initial.messages[0]?.seq;
+  if (first !== undefined && first > held.cursor + 1) return own;
+  const heldFirst = held.messages[0]?.seq;
+  return {
+    messages: mergeMessages(held.messages, initial.messages),
+    cursor: Math.max(held.cursor, own.cursor),
+    // The flag belongs to whichever list reaches further back.
+    hasOlder: heldFirst !== undefined && (first === undefined || heldFirst <= first) ? held.hasOlder : initial.hasOlder,
+    marked: own.marked,
+  };
+}
+
 /** The BFF paths. The subject is the URL segment, as on every api path. */
 export function messagesPath(clientId: string, cursor?: { after: number } | { before: number }): string {
   const base = `/api/bff/clients/${encodeURIComponent(clientId)}/messages`;
