@@ -189,6 +189,30 @@ export interface HeldThread {
   hasOlder: boolean;
   marked: number;
   lastSendAt: number | null;
+  /**
+   * BUG-943 — the seq of a mark-read still out when the island was left (null or absent: none).
+   * The island mounted next posts none while it is out; its answer is folded in (`heldAfterMark`).
+   */
+  marking?: number | null;
+  /**
+   * BUG-943 — the send still out when the island was left (`failure: null`), or that failed after
+   * it (its failure). The island mounted next shows it as the page did: the text, « Envoi… » or the
+   * failure with « Réessayer », and the same `clientMessageId` (AC-B7). Absent or null: none.
+   */
+  outbox?: HeldSend | null;
+}
+
+/** BUG-943 — why a send did not go, as the composer says it (AC-B5). */
+export type SendFailure =
+  | { kind: "sendFailed" | "idReused" | "invisible" | "sessionChanged" }
+  | { kind: "rateLimited"; retryAfterSeconds: number | null }
+  | { kind: "tooLong"; count: number };
+
+/** BUG-943 — one send of the composer: its id, its text, and its failure (null: still out). */
+export interface HeldSend {
+  id: string;
+  body: string;
+  failure: SendFailure | null;
 }
 
 /**
@@ -293,4 +317,108 @@ export function sendOutcome(status: number, type: string, body: unknown): SendOu
     if (message && nonNegativeInt(record.lastSeq)) return { kind: "sent", message, lastSeq: record.lastSeq };
   }
   return { kind: "failed" };
+}
+
+/**
+ * The composer's failure for a send's outcome (AC-B5); null for the outcomes that are not one:
+ * `sent`, and `denied` / `signedOut`, which leave the page.
+ */
+export function sendFailure(outcome: SendOutcome): SendFailure | null {
+  switch (outcome.kind) {
+    case "rateLimited":
+      return { kind: "rateLimited", retryAfterSeconds: outcome.retryAfterSeconds };
+    case "idReused":
+      return { kind: "idReused" };
+    case "refused":
+      return { kind: "invisible" };
+    case "sessionChanged":
+      return { kind: "sessionChanged" };
+    case "failed":
+      // The answer may have been lost after the api stored it: the retry keeps the id (a replay).
+      return { kind: "sendFailed" };
+    default:
+      return null;
+  }
+}
+
+/**
+ * BUG-943 — a send answered AFTER its island unmounted, folded into what the island kept, exactly
+ * as the island would have applied it:
+ *   · sent: the message joins the list, the cursor moves only to `cursor + 1` (THE CURSOR), the
+ *     send's time starts AC-B3's 5 s period, and the outbox is empty;
+ *   · a failure: the outbox keeps the text with its failure, and its id (AC-B7: the retry is a
+ *     replay), or `freshId` after a 409 MESSAGE_ID_REUSED (the retry is a new message, as on the page).
+ * An outbox that is no longer this send's (it was replaced) is left alone. `denied` and `signedOut`
+ * are not folded: they leave the page (the caller forgets the entry or reloads).
+ */
+export function heldAfterSend(
+  held: HeldThread,
+  send: { id: string; body: string },
+  outcome: SendOutcome,
+  now: number,
+  freshId: string
+): HeldThread {
+  const ours = held.outbox?.id === send.id;
+  if (outcome.kind === "sent") {
+    const { message } = outcome;
+    return {
+      ...held,
+      messages: mergeMessages(held.messages, [message]),
+      cursor: applySent(held.cursor, message),
+      lastSendAt: now,
+      outbox: ours ? null : (held.outbox ?? null),
+    };
+  }
+  const failure = sendFailure(outcome);
+  if (!failure || !ours) return held;
+  return { ...held, outbox: { id: outcome.kind === "idReused" ? freshId : send.id, body: send.body, failure } };
+}
+
+/**
+ * THE CURSOR (`MessageThread.tsx`) for a message that did not come from a page read (the coach's
+ * own send): it moves only when the message is exactly `cursor + 1`, so a gap stays for the poll.
+ */
+export function applySent(cursor: number | null, message: { seq: number }): number | null {
+  return cursor !== null && message.seq === cursor + 1 ? message.seq : cursor;
+}
+
+/**
+ * BUG-943 (staff SF1) — a mounted island joins a kept entry that changed under it (a late answer of
+ * an earlier mount). Only kept messages from the island's own first seq on are taken: when the
+ * island's seed was the page's read ALONE (`seedThread`'s gap rule), the older kept ones would sit
+ * below a hole that « Show older » never fills. The cursor moves through the joined list only while
+ * it stays contiguous (`applySent`), so a kept message past a gap is shown but not skipped to.
+ */
+export function adoptKept(
+  own: { messages: readonly CoachClientMessage[]; cursor: number },
+  kept: readonly CoachClientMessage[]
+): { messages: CoachClientMessage[]; cursor: number } {
+  const first = own.messages[0]?.seq;
+  const messages = mergeMessages(own.messages, first === undefined ? kept : kept.filter((m) => m.seq >= first));
+  let cursor = own.cursor;
+  for (const m of messages) cursor = applySent(cursor, m) ?? cursor;
+  return { messages, cursor };
+}
+
+/**
+ * BUG-943 (staff SF2) — the mark-read an island counts as out once its first read has settled. One
+ * INHERITED from an earlier mount is let go: its answer still lands through `adopt` if it comes,
+ * but a request that hangs must not stop this island marking (nor be kept by every later leave).
+ * The island's own stays out until its own answer.
+ */
+export function markingAfterRead(marking: number | null, inherited: boolean): number | null {
+  return inherited ? null : marking;
+}
+
+/**
+ * BUG-943 — a mark-read answered AFTER its island unmounted: `ok` (a 204) records the seq as
+ * acknowledged, so the return posts none; either way it is no longer out. A 403 is not folded
+ * (the link ended: the caller forgets the entry).
+ */
+export function heldAfterMark(held: HeldThread, seq: number, ok: boolean): HeldThread {
+  return {
+    ...held,
+    marked: ok ? Math.max(held.marked, seq) : held.marked,
+    marking: held.marking === seq ? null : (held.marking ?? null),
+  };
 }

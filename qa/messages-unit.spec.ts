@@ -6,16 +6,23 @@ import {
   POLL_IDLE_MS,
   asThread,
   codePointCount,
+  adoptKept,
+  applySent,
   draftProblem,
+  heldAfterMark,
+  heldAfterSend,
   javaStrip,
+  markingAfterRead,
   sameMessage,
   mergeMessages,
   messagesPath,
   normaliseNewlines,
   pollPeriod,
   seedThread,
+  sendFailure,
   sendOutcome,
   threadOutcome,
+  type HeldThread,
 } from "../src/lib/messages";
 import {
   clearHeldThreads,
@@ -310,5 +317,134 @@ test.describe("BUG-942 the island's slot: a late 403 drops what the unmount kept
     noteMountedRead(null);
     clearHeldThreads();
     expect(isReplayedRead(first, undefined), "a session boundary forgets the reads").toBe(false);
+  });
+});
+
+test.describe("BUG-943 a send or a mark-read answered after the island unmounted", () => {
+  const ID = "11111111-1111-4111-8111-111111111111";
+  const FRESH = "22222222-2222-4222-8222-222222222222";
+  const out = { id: ID, body: "hi", failure: null };
+  const left = (over: Partial<HeldThread> = {}): HeldThread => ({ messages: [msg(1)], cursor: 1, hasOlder: false, marked: 1, lastSendAt: null, outbox: out, ...over });
+  const sent = (seq: number) => ({ kind: "sent" as const, message: msg(seq, "COACH"), lastSeq: seq });
+
+  test("sent: the message joins, the cursor moves only to cursor + 1, AC-B3's send time is set, the outbox empties", () => {
+    const a = heldAfterSend(left(), out, sent(2), 5_000, FRESH);
+    expect(a).toMatchObject({ cursor: 2, lastSendAt: 5_000, outbox: null });
+    expect(a.messages.map((m) => m.seq)).toEqual([1, 2]);
+    // seq 3 answered while the client wrote 2: kept, but the cursor stays so the poll reads 2.
+    const b = heldAfterSend(left(), out, sent(3), 5_000, FRESH);
+    expect(b.cursor).toBe(1);
+    expect(b.messages.map((m) => m.seq)).toEqual([1, 3]);
+    // Already there (a read brought it): once.
+    expect(heldAfterSend(left({ messages: [msg(1), msg(2, "COACH")], cursor: 2 }), out, sent(2), 1, FRESH).messages.map((m) => m.seq)).toEqual([1, 2]);
+  });
+
+  test("a failure keeps the text and the id (AC-B7); a 409 takes a new id; another send's outbox is left alone", () => {
+    expect(heldAfterSend(left(), out, { kind: "failed" }, 1, FRESH).outbox).toEqual({ id: ID, body: "hi", failure: { kind: "sendFailed" } });
+    expect(heldAfterSend(left(), out, { kind: "rateLimited", retryAfterSeconds: 60 }, 1, FRESH).outbox?.failure).toEqual({ kind: "rateLimited", retryAfterSeconds: 60 });
+    expect(heldAfterSend(left(), out, { kind: "idReused" }, 1, FRESH).outbox).toEqual({ id: FRESH, body: "hi", failure: { kind: "idReused" } });
+    const other = left({ outbox: { id: FRESH, body: "other", failure: null } });
+    expect(heldAfterSend(other, out, { kind: "failed" }, 1, FRESH)).toBe(other);
+    // denied / signedOut leave the page: not folded.
+    expect(heldAfterSend(left(), out, { kind: "denied" }, 1, FRESH)).toEqual(left());
+    expect(sendFailure({ kind: "refused" })).toEqual({ kind: "invisible" });
+    expect(sendFailure({ kind: "sessionChanged" })).toEqual({ kind: "sessionChanged" });
+    expect(sendFailure(sent(2))).toBeNull();
+  });
+
+  test("a mark-read: a 204 records its seq; any answer ends it being out", () => {
+    expect(heldAfterMark(left({ marked: 0, marking: 3 }), 3, true)).toMatchObject({ marked: 3, marking: null });
+    expect(heldAfterMark(left({ marked: 0, marking: 3 }), 3, false)).toMatchObject({ marked: 0, marking: null });
+    expect(heldAfterMark(left({ marked: 5, marking: null }), 3, true)).toMatchObject({ marked: 5, marking: null });
+  });
+
+  test("the slot folds a late answer into its own entry only, and hands it to the island mounted for that thread", () => {
+    clearHeldThreads();
+    const gone = heldThreadSlot("coachA", "c1");
+    keepThread("coachA", "c2", left({ cursor: 9 }));
+    keepThread("coachB", "c1", left({ cursor: 7 }));
+    gone.leave(left());
+    const adopted: HeldThread[] = [];
+    const back = heldThreadSlot("coachA", "c1");
+    const detach = back.attach({ adopt: (e) => adopted.push(e), linkEnded: () => undefined });
+    gone.settled((e) => heldAfterSend(e, out, sent(2), 5, FRESH));
+    expect(heldThread("coachA", "c1")).toMatchObject({ cursor: 2, outbox: null, lastSendAt: 5 });
+    expect(adopted, "the mounted island adopts the folded entry").toEqual([heldThread("coachA", "c1")]);
+    expect(heldThread("coachA", "c2")?.cursor, "another client's entry is untouched").toBe(9);
+    expect(heldThread("coachB", "c1")?.cursor, "another account's entry is untouched").toBe(7);
+    detach();
+    gone.settled((e) => heldAfterMark(e, 2, true));
+    expect(adopted, "a detached island gets nothing").toHaveLength(1);
+    expect(heldThread("coachA", "c1")?.marked).toBe(2);
+    clearHeldThreads();
+  });
+
+  test("nothing late survives a session boundary, a forgotten entry or a late 403", () => {
+    clearHeldThreads();
+    const before = heldThreadSlot("coachA", "c1");
+    before.leave(left());
+    clearHeldThreads(); // sign-out / another account (ADR-0033 D33.7)
+    before.settled((e) => heldAfterSend(e, out, sent(2), 5, FRESH));
+    before.leave(left());
+    expect(heldThread("coachA", "c1"), "a slot from before the boundary writes nothing").toBeUndefined();
+
+    const slot = heldThreadSlot("coachA", "c1");
+    slot.leave(left());
+    let ended = 0;
+    const back = heldThreadSlot("coachA", "c1");
+    back.attach({ adopt: () => undefined, linkEnded: () => (ended += 1) });
+    expect(slot.endedLate(), "the mounted island is told").toBe(true);
+    expect(ended).toBe(1);
+    expect(heldThread("coachA", "c1")).toBeUndefined();
+    slot.settled((e) => heldAfterSend(e, out, sent(2), 5, FRESH));
+    expect(heldThread("coachA", "c1"), "nothing written after the 403").toBeUndefined();
+    clearHeldThreads();
+    expect(heldThreadSlot("coachA", "c9").endedLate(), "no island mounted").toBe(false);
+  });
+});
+
+test.describe("BUG-943 staff SF1 / SF2 / nit 3: the island's join, its cursor, an inherited mark-read", () => {
+  const seqs = (l: readonly { seq: number }[]) => l.map((m) => m.seq);
+  const thread = (messages: ReturnType<typeof msg>[], extra: { hasOlder?: boolean } = {}) => ({
+    threadState: "ACTIVE" as const,
+    canSend: true,
+    lastSeq: messages[messages.length - 1]?.seq ?? 0,
+    unread: 0,
+    hasOlder: extra.hasOlder ?? false,
+    hasMore: false,
+    messages,
+  });
+
+  test("applySent: the cursor moves only to cursor + 1 (THE CURSOR), and not from null", () => {
+    expect(applySent(4, msg(5))).toBe(5);
+    expect(applySent(4, msg(6)), "a gap stays for the poll").toBe(4);
+    expect(applySent(4, msg(3))).toBe(4);
+    expect(applySent(null, msg(1))).toBeNull();
+  });
+
+  test("SF1: an island seeded from the page's read alone (the gap rule) takes no kept message below its first", () => {
+    // Kept 1..3 (cursor 3); the fresh render read 10..12, so seedThread used the page's read alone.
+    const kept = [msg(1), msg(2), msg(3), msg(13, "COACH")]; // + the late send, seq 13
+    const seed = seedThread(thread([msg(10), msg(11), msg(12)], { hasOlder: true }), { messages: kept.slice(0, 3), cursor: 3, hasOlder: false, marked: 0, lastSendAt: null });
+    expect(seqs(seed!.messages), "the gap rule").toEqual([10, 11, 12]);
+    const joined = adoptKept({ messages: seed!.messages, cursor: seed!.cursor! }, kept);
+    expect(seqs(joined.messages), "no 1..3 below the hole; the late send joins").toEqual([10, 11, 12, 13]);
+    expect(joined.cursor).toBe(13);
+  });
+
+  test("SF1: a contiguous join moves the cursor through the kept list; a message past a gap is shown, not skipped to", () => {
+    const own = { messages: [msg(1), msg(2)], cursor: 2 };
+    expect(adoptKept(own, [msg(1), msg(2), msg(3), msg(4, "COACH")])).toEqual({ messages: [msg(1), msg(2), msg(3), msg(4, "COACH")], cursor: 4 });
+    const gap = adoptKept(own, [msg(1), msg(2), msg(5, "COACH")]);
+    expect(seqs(gap.messages)).toEqual([1, 2, 5]);
+    expect(gap.cursor, "the poll still reads 3 and 4").toBe(2);
+    // An empty own list (the page read an empty thread, joined with the kept one): all kept.
+    expect(adoptKept({ messages: [], cursor: 0 }, [msg(1, "COACH")])).toEqual({ messages: [msg(1, "COACH")], cursor: 1 });
+  });
+
+  test("SF2: after the first read an inherited mark-read is let go; the island's own stays out", () => {
+    expect(markingAfterRead(3, true), "inherited: let go, a hung request cannot block marking").toBeNull();
+    expect(markingAfterRead(3, false), "the island's own, still out").toBe(3);
+    expect(markingAfterRead(null, false)).toBeNull();
   });
 });
