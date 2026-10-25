@@ -21,6 +21,9 @@ import { signInThroughForm } from "./sign-in";
  * visited in the last 30 s is served from Next's client router cache (`staleTimes.dynamic`,
  * ADR-0033) with no server render, so it still shows the stale page after the link ended.
  * Each test here visits the target tab for the first time.
+ * The « Messages » tab narrows it for itself (BUG-942): its island reads the thread at once on a
+ * router-cache return, so a revoke lands on the denial page within 1 s there
+ * (`qa/coach-messages-revoked-return.spec.ts`). Overview, Routine and Nutrition still do not.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";

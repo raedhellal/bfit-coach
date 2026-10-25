@@ -14,9 +14,15 @@ import { isProductionBuild } from "./production-build";
  * remounted `MessageThread` was seeded from the payload of the FIRST visit — the list before the
  * send — and stayed that way until its first poll, 15 s after the mount.
  *
- * Requests are counted: the fix costs no request (no read on mount, no `router.refresh()`), and
- * the poll keeps AC-B3's cadence across the return: every 5 s until 60 s after the coach's send
- * (the island keeps the send's time too), none in the first second, never faster than 5 s.
+ * Requests are counted: the held list costs no request (no `router.refresh()`), and the poll keeps
+ * AC-B3's cadence across the return: every 5 s until 60 s after the coach's send (the island keeps
+ * the send's time too), never faster than 5 s.
+ *
+ * BUG-942 changed one count, deliberately: a router-cache return now makes ONE thread GET at once
+ * (`?after=cursor`, the island's "return read"), because nothing else can tell the tab that the
+ * link ended while the coach was on another tab (`qa/coach-messages-revoked-return.spec.ts`). It
+ * was 0 here; it is exactly 1 in the first second, and the 5 s cadence runs from it. Still no
+ * mark-read on the return, and no RSC render.
  *
  * The client's half (writing from the phone) is `POST /api/fixture/messages`.
  */
@@ -83,12 +89,44 @@ async function backToMessages(page: Page): Promise<number> {
   return clicked;
 }
 
+/**
+ * BUG-942 — every frame's rows from the click back on, recorded in the page (a client transition:
+ * the window stays). The return read can add a row ~70 ms after the mount, faster than Playwright
+ * polls, so "the held rows at once, never fewer" is read from these frames, not from one sample.
+ */
+async function watchRows(page: Page): Promise<() => Promise<number[][]>> {
+  await page.evaluate(() => {
+    const frames: number[][] = [];
+    (window as unknown as { __rows: number[][] }).__rows = frames;
+    const frame = () => {
+      if (document.querySelector("section.msg")) {
+        frames.push(Array.from(document.querySelectorAll("li.msg-item"), (e) => Number(e.getAttribute("data-message-seq"))));
+      }
+      if (frames.length < 2_000) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  return () => page.evaluate(() => (window as unknown as { __rows: number[][] }).__rows);
+}
+
+/** The held rows from the first frame of the remounted thread, and never fewer after it. */
+async function heldThenThird(page: Page, frames: () => Promise<number[][]>): Promise<void> {
+  // The unseen message arrives by the return read (BUG-942), not 15 s later by a poll.
+  await expect(rows(page), "the third message by the return read, within 1 s").toHaveCount(3, { timeout: 1_000 });
+  expect(await seqs(page)).toEqual([1, 2, 3]);
+  const seen = await frames();
+  expect(seen.length, "frames of the remounted thread were recorded").toBeGreaterThan(0);
+  expect(seen[0].slice(0, 2), "the held seqs [1, 2] in the remount's first frame").toEqual([1, 2]);
+  expect(Math.min(...seen.map((f) => f.length)), "the row count never drops below 2").toBeGreaterThanOrEqual(2);
+  for (const f of seen) expect([[1, 2], [1, 2, 3]], "only the held list, then the held list and the new one").toContainEqual(f);
+}
+
 async function seqs(page: Page): Promise<number[]> {
   return rows(page).evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-message-seq"))));
 }
 
 test.describe("BUG-938: Messages after navigating away and back", () => {
-  test("the coach's just-sent message is there within 1 s of returning, with no extra request", async ({ page }) => {
+  test("the coach's just-sent message is there within 1 s of returning, with one return read and no mark-read", async ({ page }) => {
     test.setTimeout(150_000);
     await signInThroughForm(page, { lang: "en" });
     await traineeWrites(page, "seed one");
@@ -110,23 +148,26 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
     expect.soft(await seqs(page), "each message once, in order").toEqual([1, 2]);
     note("sent", `${prod ? "prod" : "dev"}: ${await rows(page).count()} rows ${Date.now() - back} ms after the click; RSC requests on return: ${req.rsc.filter((t) => t >= back).length}`);
 
-    // No request storm: nothing on the return itself, and the poll keeps AC-B3's cadence.
+    // No request storm: the one return read (BUG-942), and the poll keeps AC-B3's cadence.
     await page.waitForTimeout(1_000);
-    expect(req.polls.length - pollsBefore, "thread GETs in the 1 s after returning").toBe(0);
+    note("return-read", `${prod ? "prod" : "dev"}: thread GETs in the 1 s after returning: ${req.polls.length - pollsBefore}`);
+    expect(req.polls.length - pollsBefore, "thread GETs in the 1 s after returning: the return read (BUG-942)").toBe(1);
     // The client's message was marked read on the first visit: the return does not mark it again.
     note("mark-read", `${prod ? "prod" : "dev"}: POST /read on return: ${req.reads.filter((t) => t >= back).length}`);
     expect.soft(req.reads.filter((t) => t >= back).length, "mark-read POSTs on return").toBe(0);
-    // AC-B3: the return is inside the 60 s after the send, so 5 s from the remount, then every 5 s
-    // until 60 s after the send, then 15 s again. Watched until 85 s after the send.
+    // AC-B3: the return is inside the 60 s after the send, so the return read at once, 5 s after it
+    // the next poll, then every 5 s until 60 s after the send, then 15 s again. Watched until 85 s
+    // after the send.
     await page.waitForTimeout(Math.max(0, sentAt + 85_000 - Date.now()));
     const after = req.polls.filter((t) => t >= back);
     note(
       "cadence",
       `${prod ? "prod" : "dev"}: thread GETs after returning (ms from the return click; the send was ${back - sentAt} ms before it): ${after.map((t) => t - back).join(", ")}`
     );
-    expect(after.length, "a poll after returning").toBeGreaterThanOrEqual(1);
-    expect(after[0] - back, "the first poll ~5 s after returning (not at once, not 15 s)").toBeGreaterThanOrEqual(4_500);
-    expect(after[0] - back, "the first poll ~5 s after returning (not at once, not 15 s)").toBeLessThan(7_000);
+    expect(after.length, "the return read and a poll after it").toBeGreaterThanOrEqual(2);
+    expect(after[0] - back, "the return read, at once (BUG-942)").toBeLessThan(1_000);
+    expect(after[1] - after[0], "the next poll ~5 s after the return read (not at once, not 15 s)").toBeGreaterThanOrEqual(4_500);
+    expect(after[1] - after[0], "the next poll ~5 s after the return read (not at once, not 15 s)").toBeLessThan(7_000);
     const gaps = after.slice(1).map((t, i) => ({ at: after[i], gap: t - after[i] }));
     for (const { gap } of gaps) expect(gap, "never faster than 5 s").toBeGreaterThanOrEqual(4_500);
     // Inside the window every gap is ~5 s; a poll started after it is 15 s from the one before.
@@ -135,7 +176,7 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
       if (at >= sentAt + 61_000) expect(gap, "15 s again after the window").toBeGreaterThanOrEqual(14_000);
     }
     const fast = after.filter((t) => t < sentAt + 58_000).length;
-    const expected = Math.floor((sentAt + 58_000 - back) / 5_000);
+    const expected = 1 + Math.floor((sentAt + 58_000 - after[0]) / 5_000);
     expect(fast, `GETs from the return to 58 s after the send (~${expected})`).toBeGreaterThanOrEqual(expected - 2);
     expect(fast, `GETs from the return to 58 s after the send (~${expected})`).toBeLessThanOrEqual(expected + 1);
     expect(after.filter((t) => t >= sentAt + 66_000).length, "GETs from 66 s to 85 s after the send").toBeLessThanOrEqual(2);
@@ -162,7 +203,7 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
     note("polled", `2 rows ${Date.now() - back} ms after the click`);
   });
 
-  test("a message written while the coach is on Overview shows within one poll, and nothing held is lost", async ({ page }) => {
+  test("a message written while the coach is on Overview arrives by the return read, and nothing held is lost", async ({ page }) => {
     test.setTimeout(90_000);
     await signInThroughForm(page, { lang: "en" });
     await traineeWrites(page, "seed one");
@@ -173,15 +214,14 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
     await toOverview(page);
     await traineeWrites(page, "written while on Overview");
 
+    const frames = await watchRows(page);
     const back = await backToMessages(page);
-    // What the coach left is there at once; the unseen one comes with the first poll (15 s).
-    await expect(rows(page), "the 2 held rows within 1 s").toHaveCount(2, { timeout: 1_000 });
-    await expect(rows(page)).toHaveCount(3, { timeout: 17_000 });
-    expect(Date.now() - back, "within one 15 s poll").toBeLessThan(17_000);
-    expect(await seqs(page)).toEqual([1, 2, 3]);
+    // What the coach left is there at once; the unseen one comes with the return read (BUG-942).
+    await heldThenThird(page, frames);
+    note("return-read row", `${Date.now() - back} ms after the click: ${(await seqs(page)).join(", ")}`);
   });
 
-  test("returning after the router cache expired (a fresh page render) shows the thread once, with what arrived", async ({ page }) => {
+  test("returning after the router cache expired shows the thread once, with what arrived, within 1 s", async ({ page }) => {
     test.setTimeout(90_000);
     await signInThroughForm(page, { lang: "en" });
     await traineeWrites(page, "seed one");
@@ -195,17 +235,23 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
     // Past `staleTimes.dynamic` (30 s): the return asks the server for the page.
     await page.waitForTimeout(32_000);
 
+    const frames = await watchRows(page);
     const back = await backToMessages(page);
     if (await isProductionBuild(page)) {
       // `next start`: an expired entry is a full navigation fetch, so the page's own read is fresh.
       await expect(rows(page), "the server's fresh read, at once").toHaveCount(3, { timeout: 5_000 });
       expect(req.rsc.filter((t) => t >= back).length, "the return rendered the page on the server").toBeGreaterThanOrEqual(1);
+      // BUG-942: a fresh render is a new page-read object, so the island makes no return read: the
+      // server already read the thread with the link checked.
+      await page.waitForTimeout(1_000);
+      note("fresh-render", `prod: thread GETs in the 1 s after a fresh-render return: ${req.polls.filter((t) => t >= back).length}`);
+      expect(req.polls.filter((t) => t >= back).length, "no return read after a fresh render (BUG-942)").toBe(0);
     } else {
       // `next dev` makes every navigation an AUTO prefetch (prefetch-cache-utils.js), whose partial
       // answer re-uses the router's OLD node for the page, whatever its age: the island's held list
-      // is what keeps the return from going back in time; the unseen message comes by the poll.
-      await expect(rows(page), "the 2 held rows within 1 s").toHaveCount(2, { timeout: 1_000 });
-      await expect(rows(page)).toHaveCount(3, { timeout: 17_000 });
+      // is what keeps the return from going back in time; being the same page-read object, it is a
+      // replay, so the unseen message comes by the return read (BUG-942).
+      await heldThenThird(page, frames);
     }
     expect(await seqs(page), "each message once").toEqual([1, 2, 3]);
   });

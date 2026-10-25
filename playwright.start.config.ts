@@ -42,7 +42,7 @@ const START = `npx next start -p ${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked|library-roster-dropped-load|routine-ai-panel-chunk-fail|coach-messages-navback)\.spec\.ts/,
+  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked|library-roster-dropped-load|routine-ai-panel-chunk-fail|coach-messages-navback|coach-messages-revoked-return)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249).
   workers: 1,

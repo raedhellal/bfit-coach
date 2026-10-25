@@ -17,7 +17,15 @@ import {
   sendOutcome,
   threadOutcome,
 } from "../src/lib/messages";
-import { clearHeldThreads, forgetThread, heldThread, keepThread } from "../src/lib/heldThreads";
+import {
+  clearHeldThreads,
+  forgetThread,
+  heldThread,
+  heldThreadSlot,
+  isReplayedRead,
+  keepThread,
+  noteMountedRead,
+} from "../src/lib/heldThreads";
 
 /**
  * EV-095b — `src/lib/messages.ts`, in node: no server, no browser (like intake-consent-unit).
@@ -261,5 +269,46 @@ test.describe("BUG-938 heldThreads: per account and client, forgotten on a 403, 
     expect(heldThread("a", "c1")).toBeUndefined();
     expect(heldThread("a", "c20")?.cursor).toBe(20);
     clearHeldThreads();
+  });
+});
+
+test.describe("BUG-942 the island's slot: a late 403 drops what the unmount kept; a replay is known", () => {
+  const entry = (seq: number) => ({ messages: [msg(seq)], cursor: seq, hasOlder: false, marked: seq, lastSendAt: null });
+
+  test("a 403 that resolves AFTER the unmount (staff N1): the held entry is gone", () => {
+    clearHeldThreads();
+    const slot = heldThreadSlot("coachA", "c1");
+    keepThread("coachA", "c2", entry(9));
+    slot.leave(entry(3)); // the coach leaves Messages: the island keeps its list
+    expect(heldThread("coachA", "c1")?.cursor).toBe(3);
+    slot.linkEnded(); // then the mark-read or the send still out answers 403
+    expect(heldThread("coachA", "c1"), "the late 403 dropped the entry").toBeUndefined();
+    expect(heldThread("coachA", "c2")?.cursor, "another client's entry stays").toBe(9);
+    clearHeldThreads();
+  });
+
+  test("a 403 BEFORE the unmount: the unmount keeps nothing", () => {
+    clearHeldThreads();
+    keepThread("coachA", "c1", entry(1)); // from an earlier visit
+    const slot = heldThreadSlot("coachA", "c1");
+    slot.linkEnded();
+    expect(heldThread("coachA", "c1")).toBeUndefined();
+    slot.leave(entry(4));
+    expect(heldThread("coachA", "c1"), "nothing kept after the link ended").toBeUndefined();
+  });
+
+  test("a mount with the same page-read object is a replay; a new object is a fresh render; a boundary forgets", () => {
+    clearHeldThreads();
+    const first = { messages: [msg(1)] };
+    expect(isReplayedRead(first, undefined), "a first mount").toBe(false);
+    noteMountedRead(first);
+    expect(isReplayedRead(first, entry(1)), "the router cache's object again").toBe(true);
+    expect(isReplayedRead({ messages: [msg(1)] }, entry(1)), "an equal but new object: a server render").toBe(false);
+    // A failed page read has no identity: a replay exactly when something is held (a return).
+    expect(isReplayedRead(null, undefined)).toBe(false);
+    expect(isReplayedRead(null, entry(1))).toBe(true);
+    noteMountedRead(null);
+    clearHeldThreads();
+    expect(isReplayedRead(first, undefined), "a session boundary forgets the reads").toBe(false);
   });
 });

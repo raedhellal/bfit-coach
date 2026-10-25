@@ -7,7 +7,7 @@ import type { CoachClientMessage, CoachClientThread } from "@/lib/coachApi";
 import { retryMinutes } from "@/lib/addClient";
 import { SESSION_SUBJECT_HEADER } from "@/lib/autosaveTransport";
 import { useCopy } from "@/lib/i18n/client";
-import { forgetThread, heldThread, keepThread } from "@/lib/heldThreads";
+import { heldThread, heldThreadSlot, isReplayedRead, noteMountedRead } from "@/lib/heldThreads";
 import { MessageTime } from "./MessageTime";
 import {
   MAX_PAGES_PER_POLL,
@@ -34,7 +34,8 @@ import {
  * THE POLL (AC-B3, ADR-0038 D38.1). `GET /api/bff/clients/{id}/messages?after={cursor}`:
  *   · every 15 s while `document.visibilityState === "visible"`; every 5 s for the 60 s after
  *     the coach's own 2xx send (`pollPeriod`); never two at once, never faster than 5 s;
- *   · none while hidden; one at once on becoming visible again, then the cadence;
+ *   · none while hidden; one at once on becoming visible again, then the cadence; one at once on a
+ *     return through the router cache (BUG-942, THE RETURN READ), then the cadence;
  *   · none after the page is left (the effect's cleanup aborts the read in flight and clears the
  *     timer), after a 403 (the link ended: `router.refresh()` to the layout's denial page), or
  *     after the middleware's 307 (the session ended: the page is reloaded, which lands on /login).
@@ -69,10 +70,24 @@ import {
  * since, and the first poll is 15 s away. So the island keeps what it held when it unmounted
  * (`src/lib/heldThreads.ts`, per account and client), and its first state is that joined with the
  * page's read (`seedThread`), with the time of the coach's last send, so AC-B3's 5 s period after
- * a send holds across the return. No request is added: no read on mount, no `router.refresh()`. It is
+ * a send holds across the return. The held list adds no request (no `router.refresh()`; the one
+ * read a replayed mount makes is BUG-942's, below). It is
  * the tab's memory only: a reload, a session boundary (a document load, ADR-0033 D33.7) or another
  * account's page starts from the page's read alone. Nothing is written to it on the server (an
  * effect's cleanup never runs there), so the server render and hydration read `initial` as before.
+ *
+ * THE RETURN READ (BUG-942). A router-cache return renders nothing on the server, so the layout's
+ * 403 decision (BUG-671) is not made again either: a link that ended while the coach was on another
+ * tab went unnoticed until the first poll, 15 s later (5 s in a send window), with the old thread
+ * and an editable composer on screen. So a mount that is a REPLAY (`isReplayedRead`: the same page
+ * read object as an earlier mount) reads the thread once at once, `?after=cursor`, as a poll tick:
+ * a 403 is the denial page after its round trip and the refresh's, new messages come with it, and the cadence runs
+ * from it (AC-B3: 5 s after it inside a send window, else 15 s). It is ADR-0038 D38.1's "visible
+ * again means one immediate fetch", applied to coming back to the page; it costs one BFF GET of an
+ * usually empty page, where the return without the router cache is a server render of three api
+ * reads. A fresh render (a new object: the server read the thread with the link checked) adds no
+ * request. No mark-read is added: `marked` is carried, so only a read showing new unread messages
+ * marks them, as any poll does.
  */
 
 type Failure =
@@ -140,7 +155,12 @@ export function MessageThread({
   const failureId = useId();
 
   // BUG-938: read once, on the first render (see BACK TO THE TAB).
-  const [seed] = useState(() => seedThread(initial, heldThread(sessionSubject, clientId)));
+  const [{ seed, replayed }] = useState(() => {
+    const held = heldThread(sessionSubject, clientId);
+    return { seed: seedThread(initial, held), replayed: isReplayedRead(initial, held) };
+  });
+  /** BUG-938 / BUG-942: this island's entry in the held-thread store. */
+  const [slot] = useState(() => heldThreadSlot(sessionSubject, clientId));
   const [messages, setMessages] = useState<CoachClientMessage[]>(() => seed?.messages ?? []);
   const [loaded, setLoaded] = useState(seed !== null);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -161,8 +181,6 @@ export function MessageThread({
    */
   const list = useRef<CoachClientMessage[]>(seed?.messages ?? []);
   const olderExists = useRef(seed?.hasOlder ?? false);
-  /** BUG-938: a 403 ended the link: the island keeps nothing (ADR-0033 D33.7). */
-  const denied = useRef(false);
   /** The id bound to the text last attempted, reused on a retry of the same text (AC-A5). */
   const pending = useRef<{ id: string; body: string } | null>(null);
   /** Mark read: the highest seq the api has acknowledged, and whether a post is out. */
@@ -175,7 +193,8 @@ export function MessageThread({
   const stickToEnd = useRef(true);
 
   function linkEnded() {
-    denied.current = true;
+    // BUG-942 / N1: forgets the held entry now, so a 403 after the unmount drops it too.
+    slot.linkEnded();
     router.refresh();
   }
   const linkEndedRef = useRef(linkEnded);
@@ -227,18 +246,18 @@ export function MessageThread({
 
   // BUG-938: what this island holds, kept when it is left; nothing after a 403 (the entry goes).
   useEffect(
-    () => () => {
-      if (denied.current) return forgetThread(sessionSubject, clientId);
-      keepThread(sessionSubject, clientId, {
+    () => () =>
+      slot.leave({
         messages: list.current,
         cursor: cursor.current,
         hasOlder: olderExists.current,
         marked: marked.current,
         lastSendAt: lastSendAt.current,
-      });
-    },
-    [sessionSubject, clientId]
+      }),
+    [slot]
   );
+  // BUG-942: the page read it was mounted with is noted, so a router-cache remount knows it is one.
+  useEffect(() => noteMountedRead(initial), [initial]);
 
   // The page's own read showed unread messages: mark them, if the coach is looking. Once, for
   // the page's read (held in a ref, so it is not a dependency); every later read marks from
@@ -314,7 +333,9 @@ export function MessageThread({
       schedule(POLL_ACTIVE_MS);
     };
 
-    schedule(pollPeriod(Date.now(), lastSendAt.current));
+    // BUG-942: a router-cache replay reads at once (THE RETURN READ). A 0 ms timer, not a call, so
+    // React's dev double effect cancels the first before it leaves: one read, not two.
+    schedule(replayed ? 0 : pollPeriod(Date.now(), lastSendAt.current));
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       stopped = true;
@@ -323,7 +344,7 @@ export function MessageThread({
       hurry.current = () => undefined;
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [clientId]);
+  }, [clientId, replayed]);
 
   // Keep the newest message in view when the coach was already at the end (or just sent).
   useLayoutEffect(() => {
