@@ -6,10 +6,13 @@ import {
   POLL_IDLE_MS,
   asThread,
   codePointCount,
+  adoptKept,
+  applySent,
   draftProblem,
   heldAfterMark,
   heldAfterSend,
   javaStrip,
+  markingAfterRead,
   sameMessage,
   mergeMessages,
   messagesPath,
@@ -397,5 +400,51 @@ test.describe("BUG-943 a send or a mark-read answered after the island unmounted
     expect(heldThread("coachA", "c1"), "nothing written after the 403").toBeUndefined();
     clearHeldThreads();
     expect(heldThreadSlot("coachA", "c9").endedLate(), "no island mounted").toBe(false);
+  });
+});
+
+test.describe("BUG-943 staff SF1 / SF2 / nit 3: the island's join, its cursor, an inherited mark-read", () => {
+  const seqs = (l: readonly { seq: number }[]) => l.map((m) => m.seq);
+  const thread = (messages: ReturnType<typeof msg>[], extra: { hasOlder?: boolean } = {}) => ({
+    threadState: "ACTIVE" as const,
+    canSend: true,
+    lastSeq: messages[messages.length - 1]?.seq ?? 0,
+    unread: 0,
+    hasOlder: extra.hasOlder ?? false,
+    hasMore: false,
+    messages,
+  });
+
+  test("applySent: the cursor moves only to cursor + 1 (THE CURSOR), and not from null", () => {
+    expect(applySent(4, msg(5))).toBe(5);
+    expect(applySent(4, msg(6)), "a gap stays for the poll").toBe(4);
+    expect(applySent(4, msg(3))).toBe(4);
+    expect(applySent(null, msg(1))).toBeNull();
+  });
+
+  test("SF1: an island seeded from the page's read alone (the gap rule) takes no kept message below its first", () => {
+    // Kept 1..3 (cursor 3); the fresh render read 10..12, so seedThread used the page's read alone.
+    const kept = [msg(1), msg(2), msg(3), msg(13, "COACH")]; // + the late send, seq 13
+    const seed = seedThread(thread([msg(10), msg(11), msg(12)], { hasOlder: true }), { messages: kept.slice(0, 3), cursor: 3, hasOlder: false, marked: 0, lastSendAt: null });
+    expect(seqs(seed!.messages), "the gap rule").toEqual([10, 11, 12]);
+    const joined = adoptKept({ messages: seed!.messages, cursor: seed!.cursor! }, kept);
+    expect(seqs(joined.messages), "no 1..3 below the hole; the late send joins").toEqual([10, 11, 12, 13]);
+    expect(joined.cursor).toBe(13);
+  });
+
+  test("SF1: a contiguous join moves the cursor through the kept list; a message past a gap is shown, not skipped to", () => {
+    const own = { messages: [msg(1), msg(2)], cursor: 2 };
+    expect(adoptKept(own, [msg(1), msg(2), msg(3), msg(4, "COACH")])).toEqual({ messages: [msg(1), msg(2), msg(3), msg(4, "COACH")], cursor: 4 });
+    const gap = adoptKept(own, [msg(1), msg(2), msg(5, "COACH")]);
+    expect(seqs(gap.messages)).toEqual([1, 2, 5]);
+    expect(gap.cursor, "the poll still reads 3 and 4").toBe(2);
+    // An empty own list (the page read an empty thread, joined with the kept one): all kept.
+    expect(adoptKept({ messages: [], cursor: 0 }, [msg(1, "COACH")])).toEqual({ messages: [msg(1, "COACH")], cursor: 1 });
+  });
+
+  test("SF2: after the first read an inherited mark-read is let go; the island's own stays out", () => {
+    expect(markingAfterRead(3, true), "inherited: let go, a hung request cannot block marking").toBeNull();
+    expect(markingAfterRead(3, false), "the island's own, still out").toBe(3);
+    expect(markingAfterRead(null, false)).toBeNull();
   });
 });

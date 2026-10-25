@@ -87,7 +87,7 @@ async function holdFirstPost(page: Page, path: string) {
     answered: async () => {
       await answered;
       // The fetch continuation (`res.json()`, then the island's code) runs after the response event.
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(500);
     },
   };
 }
@@ -307,5 +307,30 @@ test.describe("BUG-943: a send or a mark-read in flight when the coach leaves Me
     await page.waitForTimeout(1_500);
     note("mark-read", `back before the answer: POST /read ${req.reads.length} in all`);
     expect(req.reads, "one mark-read in all").toHaveLength(1);
+  });
+
+  test("an inherited mark-read that never answers does not stop marking: the poll after the return read marks", async ({ page }) => {
+    test.setTimeout(90_000);
+    await signInThroughForm(page, { lang: "en" });
+    await traineeWrites(page, "unread one");
+    const req = recordRequests(page);
+    const hold = await holdFirstPost(page, READ);
+    await openThread(page);
+    await expect(rows(page)).toHaveCount(1);
+    await hold.held;
+    await toOverview(page);
+
+    const back = await backToMessages(page);
+    await page.waitForTimeout(1_500);
+    const gets = () => req.gets.filter((t) => t >= back);
+    expect(gets().length, "the return read").toBe(1);
+    expect(req.reads.filter((t) => t >= back), "none while the return read lets the inherited one go").toHaveLength(0);
+    // The held mark-read never answers. The next poll (15 s idle) still sees unread > 0, and marks.
+    await expect.poll(() => req.reads.filter((t) => t >= back).length, { timeout: 20_000, message: "the poll after the return read marks" }).toBe(1);
+    const markedAt = req.reads.filter((t) => t >= back)[0];
+    note("hung-mark-read", `POST /read ${markedAt - gets()[0]} ms after the return read; thread GETs after the return (ms): ${gets().map((t) => t - back).join(", ")}`);
+    expect(gets().length, "it came with the poll after the return read").toBeGreaterThanOrEqual(2);
+    expect(markedAt - gets()[1], "posted from that poll's read").toBeGreaterThanOrEqual(0);
+    hold.release({ status: 504, body: JSON.stringify({ code: "UPSTREAM" }) });
   });
 });

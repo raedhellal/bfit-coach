@@ -14,9 +14,12 @@ import {
   POLL_ACTIVE_MS,
   codePointCount,
   draftProblem,
+  adoptKept,
+  applySent,
   heldAfterMark,
   heldAfterSend,
   javaStrip,
+  markingAfterRead,
   mergeMessages,
   messagesPath,
   messagesReadPath,
@@ -282,10 +285,11 @@ export function MessageThread({
    */
   function adopt(entry: HeldThread) {
     if (cursor.current !== null && entry.cursor !== null) {
-      // The entry is this island's seed plus the late answer: the join covers both cursors.
-      list.current = mergeMessages(list.current, entry.messages);
+      // From the island's first seq on, the cursor only through contiguous seqs (staff SF1).
+      const joined = adoptKept({ messages: list.current, cursor: cursor.current }, entry.messages);
+      list.current = joined.messages;
       setMessages(list.current);
-      cursor.current = Math.max(cursor.current, entry.cursor);
+      cursor.current = joined.cursor;
     }
     marked.current = Math.max(marked.current, entry.marked);
     if (inheritedMark.current && (entry.marking ?? null) !== marking.current) {
@@ -389,6 +393,10 @@ export function MessageThread({
       }
       inFlight = null;
       if (stopped) return;
+      // BUG-943 (staff SF2): an inherited mark-read is let go after the first read (the return
+      // read): a hung one would otherwise stop every mark-read until its fetch gave up.
+      marking.current = markingAfterRead(marking.current, inheritedMark.current);
+      inheritedMark.current = false;
       switch (outcome.kind) {
         case "denied":
           stopped = true;
@@ -508,7 +516,7 @@ export function MessageThread({
         stickToEnd.current = true;
         list.current = mergeMessages(list.current, [message]);
         setMessages(list.current);
-        if (cursor.current !== null && message.seq === cursor.current + 1) cursor.current = message.seq;
+        cursor.current = applySent(cursor.current, message);
         lastSendAt.current = Date.now();
         hurry.current();
         // The button turns disabled with the empty composer: keep the focus where the next message goes.

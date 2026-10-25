@@ -364,7 +364,7 @@ export function heldAfterSend(
     return {
       ...held,
       messages: mergeMessages(held.messages, [message]),
-      cursor: held.cursor !== null && message.seq === held.cursor + 1 ? message.seq : held.cursor,
+      cursor: applySent(held.cursor, message),
       lastSendAt: now,
       outbox: ours ? null : (held.outbox ?? null),
     };
@@ -372,6 +372,42 @@ export function heldAfterSend(
   const failure = sendFailure(outcome);
   if (!failure || !ours) return held;
   return { ...held, outbox: { id: outcome.kind === "idReused" ? freshId : send.id, body: send.body, failure } };
+}
+
+/**
+ * THE CURSOR (`MessageThread.tsx`) for a message that did not come from a page read (the coach's
+ * own send): it moves only when the message is exactly `cursor + 1`, so a gap stays for the poll.
+ */
+export function applySent(cursor: number | null, message: { seq: number }): number | null {
+  return cursor !== null && message.seq === cursor + 1 ? message.seq : cursor;
+}
+
+/**
+ * BUG-943 (staff SF1) — a mounted island joins a kept entry that changed under it (a late answer of
+ * an earlier mount). Only kept messages from the island's own first seq on are taken: when the
+ * island's seed was the page's read ALONE (`seedThread`'s gap rule), the older kept ones would sit
+ * below a hole that « Show older » never fills. The cursor moves through the joined list only while
+ * it stays contiguous (`applySent`), so a kept message past a gap is shown but not skipped to.
+ */
+export function adoptKept(
+  own: { messages: readonly CoachClientMessage[]; cursor: number },
+  kept: readonly CoachClientMessage[]
+): { messages: CoachClientMessage[]; cursor: number } {
+  const first = own.messages[0]?.seq;
+  const messages = mergeMessages(own.messages, first === undefined ? kept : kept.filter((m) => m.seq >= first));
+  let cursor = own.cursor;
+  for (const m of messages) cursor = applySent(cursor, m) ?? cursor;
+  return { messages, cursor };
+}
+
+/**
+ * BUG-943 (staff SF2) — the mark-read an island counts as out once its first read has settled. One
+ * INHERITED from an earlier mount is let go: its answer still lands through `adopt` if it comes,
+ * but a request that hangs must not stop this island marking (nor be kept by every later leave).
+ * The island's own stays out until its own answer.
+ */
+export function markingAfterRead(marking: number | null, inherited: boolean): number | null {
+  return inherited ? null : marking;
 }
 
 /**
