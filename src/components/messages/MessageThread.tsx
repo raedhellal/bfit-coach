@@ -7,6 +7,7 @@ import type { CoachClientMessage, CoachClientThread } from "@/lib/coachApi";
 import { retryMinutes } from "@/lib/addClient";
 import { SESSION_SUBJECT_HEADER } from "@/lib/autosaveTransport";
 import { useCopy } from "@/lib/i18n/client";
+import { forgetThread, heldThread, keepThread } from "@/lib/heldThreads";
 import { MessageTime } from "./MessageTime";
 import {
   MAX_PAGES_PER_POLL,
@@ -20,6 +21,7 @@ import {
   normaliseNewlines,
   pollPeriod,
   sameMessage,
+  seedThread,
   sendOutcome,
   threadOutcome,
   type SendOutcome,
@@ -60,6 +62,17 @@ import {
  * BODIES are drawn with bidi isolation (`dir="auto"` + `unicode-bidi: plaintext`, `.msg-body`):
  * a right-to-left message cannot reorder the author or the time beside it, and each of its lines
  * takes its own direction. No read receipt and no "delivered" is drawn (D38.1).
+ *
+ * BACK TO THE TAB (BUG-938). The island is left and remounted on every tab change, and a return
+ * inside `staleTimes.dynamic` (30 s, next.config.mjs) is drawn from the client router cache with no
+ * render: `initial` is then the FIRST visit's read, without the coach's send or what the poll read
+ * since, and the first poll is 15 s away. So the island keeps what it held when it unmounted
+ * (`src/lib/heldThreads.ts`, per account and client), and its first state is that joined with the
+ * page's read (`seedThread`), with the time of the coach's last send, so AC-B3's 5 s period after
+ * a send holds across the return. No request is added: no read on mount, no `router.refresh()`. It is
+ * the tab's memory only: a reload, a session boundary (a document load, ADR-0033 D33.7) or another
+ * account's page starts from the page's read alone. Nothing is written to it on the server (an
+ * effect's cleanup never runs there), so the server render and hydration read `initial` as before.
  */
 
 type Failure =
@@ -126,23 +139,34 @@ export function MessageThread({
   const composerId = useId();
   const failureId = useId();
 
-  const [messages, setMessages] = useState<CoachClientMessage[]>(() => initial?.messages ?? []);
-  const [loaded, setLoaded] = useState(initial !== null);
+  // BUG-938: read once, on the first render (see BACK TO THE TAB).
+  const [seed] = useState(() => seedThread(initial, heldThread(sessionSubject, clientId)));
+  const [messages, setMessages] = useState<CoachClientMessage[]>(() => seed?.messages ?? []);
+  const [loaded, setLoaded] = useState(seed !== null);
   const [refreshFailed, setRefreshFailed] = useState(false);
-  const [hasOlder, setHasOlder] = useState(initial?.hasOlder ?? false);
+  const [hasOlder, setHasOlder] = useState(seed?.hasOlder ?? false);
   const [older, setOlder] = useState<"idle" | "loading" | "failed">("idle");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
 
   /** The poll's cursor (see THE CURSOR); null until a read has succeeded. */
-  const cursor = useRef<number | null>(initial ? lastSeqOf(initial.messages) ?? initial.lastSeq : null);
-  /** When the coach's last 2xx send landed (AC-B3's 60 s), or null. */
-  const lastSendAt = useRef<number | null>(null);
+  const cursor = useRef<number | null>(seed ? seed.cursor : null);
+  /** When the coach's last 2xx send landed (AC-B3's 60 s), or null. Kept across a return (BUG-938). */
+  const lastSendAt = useRef<number | null>(seed?.lastSendAt ?? null);
+  /**
+   * BUG-938: the list as the island holds it, moved in the SAME statement as the cursor, so the
+   * entry kept on unmount never says "covered up to `cursor`" while missing what moved it (a
+   * state update not yet rendered). `messages` is its rendered copy. Likewise `hasOlder`.
+   */
+  const list = useRef<CoachClientMessage[]>(seed?.messages ?? []);
+  const olderExists = useRef(seed?.hasOlder ?? false);
+  /** BUG-938: a 403 ended the link: the island keeps nothing (ADR-0033 D33.7). */
+  const denied = useRef(false);
   /** The id bound to the text last attempted, reused on a retry of the same text (AC-A5). */
   const pending = useRef<{ id: string; body: string } | null>(null);
   /** Mark read: the highest seq the api has acknowledged, and whether a post is out. */
-  const marked = useRef(0);
+  const marked = useRef(seed?.marked ?? 0);
   const marking = useRef(false);
   /** Set by the poll effect: re-time the next poll to 5 s from now (after a send). */
   const hurry = useRef<() => void>(() => undefined);
@@ -151,6 +175,7 @@ export function MessageThread({
   const stickToEnd = useRef(true);
 
   function linkEnded() {
+    denied.current = true;
     router.refresh();
   }
   const linkEndedRef = useRef(linkEnded);
@@ -182,11 +207,13 @@ export function MessageThread({
 
   /** One page read by a poll: held, the cursor moved, the thread marked read if visible. */
   function applyPage(thread: CoachClientThread) {
-    setMessages((held) => mergeMessages(held, thread.messages));
+    list.current = mergeMessages(list.current, thread.messages);
+    setMessages(list.current);
     const last = lastSeqOf(thread.messages);
     if (cursor.current === null) {
       // The first good read after a failed page read was the latest page, like the page's own.
       cursor.current = last ?? thread.lastSeq;
+      olderExists.current = thread.hasOlder;
       setHasOlder(thread.hasOlder);
     } else if (last !== undefined) {
       cursor.current = Math.max(cursor.current, last);
@@ -197,6 +224,21 @@ export function MessageThread({
   }
   const applyPageRef = useRef(applyPage);
   applyPageRef.current = applyPage;
+
+  // BUG-938: what this island holds, kept when it is left; nothing after a 403 (the entry goes).
+  useEffect(
+    () => () => {
+      if (denied.current) return forgetThread(sessionSubject, clientId);
+      keepThread(sessionSubject, clientId, {
+        messages: list.current,
+        cursor: cursor.current,
+        hasOlder: olderExists.current,
+        marked: marked.current,
+        lastSendAt: lastSendAt.current,
+      });
+    },
+    [sessionSubject, clientId]
+  );
 
   // The page's own read showed unread messages: mark them, if the coach is looking. Once, for
   // the page's read (held in a ref, so it is not a dependency); every later read marks from
@@ -301,7 +343,9 @@ export function MessageThread({
     const outcome = await readThread(clientId, { before: first });
     if (outcome.kind === "thread") {
       stickToEnd.current = false;
-      setMessages((held) => mergeMessages(held, outcome.thread.messages));
+      list.current = mergeMessages(list.current, outcome.thread.messages);
+      setMessages(list.current);
+      olderExists.current = outcome.thread.hasOlder;
       setHasOlder(outcome.thread.hasOlder);
       setOlder("idle");
       return;
@@ -348,7 +392,8 @@ export function MessageThread({
         setDraft("");
         setFailure(null);
         stickToEnd.current = true;
-        setMessages((held) => mergeMessages(held, [message]));
+        list.current = mergeMessages(list.current, [message]);
+        setMessages(list.current);
         if (cursor.current !== null && message.seq === cursor.current + 1) cursor.current = message.seq;
         lastSendAt.current = Date.now();
         hurry.current();

@@ -28,6 +28,9 @@ import { defineConfig, devices } from "@playwright/test";
  *     while the roster is pending; the picker's wait ends at its deadline. Starts its own proxy.
  *   · `routine-ai-panel-chunk-fail.spec.ts` — staff R2-1: an aborted AI-panel chunk costs only the
  *     panel. It finds the chunk by content, which only a production build splits that way.
+ *   · `coach-messages-navback.spec.ts` — BUG-938: back to « Messages » inside `staleTimes.dynamic`
+ *     is a router-cache hit with no render, and past it a full navigation fetch; both as shipped
+ *     only here (`next dev` makes every navigation an AUTO prefetch). It runs in the gate too.
  *   · `client-tab-bar-overflow.spec.ts`, T5 only (project "chromium-first-paint") —
  *     fix/coach-tabbar-mobile: the client tab strip's inline script is a MINIFIED function's
  *     `toString()` here, so this is where a serialization break shows. T1-T4 assume the Intake
@@ -39,7 +42,7 @@ const START = `npx next start -p ${PORT}`;
 
 export default defineConfig({
   testDir: "./qa",
-  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked|library-roster-dropped-load|routine-ai-panel-chunk-fail)\.spec\.ts/,
+  testMatch: /(intent-prefetch|page-read-budget|client-load-reload|no-auto-prefetch|library-roster-unblocked|library-roster-dropped-load|routine-ai-panel-chunk-fail|coach-messages-navback)\.spec\.ts/,
   fullyParallel: false,
   // One worker per fixture server, enforced by the first globalSetup (BUG-249).
   workers: 1,

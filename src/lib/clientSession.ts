@@ -8,6 +8,7 @@
  * Client-only (it touches `window`); import it from client components.
  */
 import { replaceDocument } from "./documentLoad";
+import { clearHeldThreads } from "./heldThreads";
 import { clearRosterReturn } from "./rosterReturn";
 
 export { replaceDocument };
@@ -22,9 +23,13 @@ export { replaceDocument };
  * BUG-691: the roster's per-tab note (its URL with the coach's search, the client followed,
  * the URL-change count) is session state in `sessionStorage`, which a document load keeps;
  * it is dropped here so the next coach in this tab starts with none.
+ *
+ * BUG-938: the « Messages » islands' held threads (`heldThreads.ts`), module memory that the
+ * document load discards too; dropped here as well, so no path keeps them across the boundary.
  */
 export function clearClientSession(): void {
   clearRosterReturn();
+  clearHeldThreads();
 }
 
 /** The document load this tab's own crossSessionBoundary asked for, if it did (BUG-745 R9). */
