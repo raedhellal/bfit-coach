@@ -189,6 +189,30 @@ export interface HeldThread {
   hasOlder: boolean;
   marked: number;
   lastSendAt: number | null;
+  /**
+   * BUG-943 — the seq of a mark-read still out when the island was left (null or absent: none).
+   * The island mounted next posts none while it is out; its answer is folded in (`heldAfterMark`).
+   */
+  marking?: number | null;
+  /**
+   * BUG-943 — the send still out when the island was left (`failure: null`), or that failed after
+   * it (its failure). The island mounted next shows it as the page did: the text, « Envoi… » or the
+   * failure with « Réessayer », and the same `clientMessageId` (AC-B7). Absent or null: none.
+   */
+  outbox?: HeldSend | null;
+}
+
+/** BUG-943 — why a send did not go, as the composer says it (AC-B5). */
+export type SendFailure =
+  | { kind: "sendFailed" | "idReused" | "invisible" | "sessionChanged" }
+  | { kind: "rateLimited"; retryAfterSeconds: number | null }
+  | { kind: "tooLong"; count: number };
+
+/** BUG-943 — one send of the composer: its id, its text, and its failure (null: still out). */
+export interface HeldSend {
+  id: string;
+  body: string;
+  failure: SendFailure | null;
 }
 
 /**
@@ -293,4 +317,72 @@ export function sendOutcome(status: number, type: string, body: unknown): SendOu
     if (message && nonNegativeInt(record.lastSeq)) return { kind: "sent", message, lastSeq: record.lastSeq };
   }
   return { kind: "failed" };
+}
+
+/**
+ * The composer's failure for a send's outcome (AC-B5); null for the outcomes that are not one:
+ * `sent`, and `denied` / `signedOut`, which leave the page.
+ */
+export function sendFailure(outcome: SendOutcome): SendFailure | null {
+  switch (outcome.kind) {
+    case "rateLimited":
+      return { kind: "rateLimited", retryAfterSeconds: outcome.retryAfterSeconds };
+    case "idReused":
+      return { kind: "idReused" };
+    case "refused":
+      return { kind: "invisible" };
+    case "sessionChanged":
+      return { kind: "sessionChanged" };
+    case "failed":
+      // The answer may have been lost after the api stored it: the retry keeps the id (a replay).
+      return { kind: "sendFailed" };
+    default:
+      return null;
+  }
+}
+
+/**
+ * BUG-943 — a send answered AFTER its island unmounted, folded into what the island kept, exactly
+ * as the island would have applied it:
+ *   · sent: the message joins the list, the cursor moves only to `cursor + 1` (THE CURSOR), the
+ *     send's time starts AC-B3's 5 s period, and the outbox is empty;
+ *   · a failure: the outbox keeps the text with its failure, and its id (AC-B7: the retry is a
+ *     replay), or `freshId` after a 409 MESSAGE_ID_REUSED (the retry is a new message, as on the page).
+ * An outbox that is no longer this send's (it was replaced) is left alone. `denied` and `signedOut`
+ * are not folded: they leave the page (the caller forgets the entry or reloads).
+ */
+export function heldAfterSend(
+  held: HeldThread,
+  send: { id: string; body: string },
+  outcome: SendOutcome,
+  now: number,
+  freshId: string
+): HeldThread {
+  const ours = held.outbox?.id === send.id;
+  if (outcome.kind === "sent") {
+    const { message } = outcome;
+    return {
+      ...held,
+      messages: mergeMessages(held.messages, [message]),
+      cursor: held.cursor !== null && message.seq === held.cursor + 1 ? message.seq : held.cursor,
+      lastSendAt: now,
+      outbox: ours ? null : (held.outbox ?? null),
+    };
+  }
+  const failure = sendFailure(outcome);
+  if (!failure || !ours) return held;
+  return { ...held, outbox: { id: outcome.kind === "idReused" ? freshId : send.id, body: send.body, failure } };
+}
+
+/**
+ * BUG-943 — a mark-read answered AFTER its island unmounted: `ok` (a 204) records the seq as
+ * acknowledged, so the return posts none; either way it is no longer out. A 403 is not folded
+ * (the link ended: the caller forgets the entry).
+ */
+export function heldAfterMark(held: HeldThread, seq: number, ok: boolean): HeldThread {
+  return {
+    ...held,
+    marked: ok ? Math.max(held.marked, seq) : held.marked,
+    marking: held.marking === seq ? null : (held.marking ?? null),
+  };
 }

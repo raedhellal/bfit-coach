@@ -7,6 +7,8 @@ import {
   asThread,
   codePointCount,
   draftProblem,
+  heldAfterMark,
+  heldAfterSend,
   javaStrip,
   sameMessage,
   mergeMessages,
@@ -14,8 +16,10 @@ import {
   normaliseNewlines,
   pollPeriod,
   seedThread,
+  sendFailure,
   sendOutcome,
   threadOutcome,
+  type HeldThread,
 } from "../src/lib/messages";
 import {
   clearHeldThreads,
@@ -310,5 +314,88 @@ test.describe("BUG-942 the island's slot: a late 403 drops what the unmount kept
     noteMountedRead(null);
     clearHeldThreads();
     expect(isReplayedRead(first, undefined), "a session boundary forgets the reads").toBe(false);
+  });
+});
+
+test.describe("BUG-943 a send or a mark-read answered after the island unmounted", () => {
+  const ID = "11111111-1111-4111-8111-111111111111";
+  const FRESH = "22222222-2222-4222-8222-222222222222";
+  const out = { id: ID, body: "hi", failure: null };
+  const left = (over: Partial<HeldThread> = {}): HeldThread => ({ messages: [msg(1)], cursor: 1, hasOlder: false, marked: 1, lastSendAt: null, outbox: out, ...over });
+  const sent = (seq: number) => ({ kind: "sent" as const, message: msg(seq, "COACH"), lastSeq: seq });
+
+  test("sent: the message joins, the cursor moves only to cursor + 1, AC-B3's send time is set, the outbox empties", () => {
+    const a = heldAfterSend(left(), out, sent(2), 5_000, FRESH);
+    expect(a).toMatchObject({ cursor: 2, lastSendAt: 5_000, outbox: null });
+    expect(a.messages.map((m) => m.seq)).toEqual([1, 2]);
+    // seq 3 answered while the client wrote 2: kept, but the cursor stays so the poll reads 2.
+    const b = heldAfterSend(left(), out, sent(3), 5_000, FRESH);
+    expect(b.cursor).toBe(1);
+    expect(b.messages.map((m) => m.seq)).toEqual([1, 3]);
+    // Already there (a read brought it): once.
+    expect(heldAfterSend(left({ messages: [msg(1), msg(2, "COACH")], cursor: 2 }), out, sent(2), 1, FRESH).messages.map((m) => m.seq)).toEqual([1, 2]);
+  });
+
+  test("a failure keeps the text and the id (AC-B7); a 409 takes a new id; another send's outbox is left alone", () => {
+    expect(heldAfterSend(left(), out, { kind: "failed" }, 1, FRESH).outbox).toEqual({ id: ID, body: "hi", failure: { kind: "sendFailed" } });
+    expect(heldAfterSend(left(), out, { kind: "rateLimited", retryAfterSeconds: 60 }, 1, FRESH).outbox?.failure).toEqual({ kind: "rateLimited", retryAfterSeconds: 60 });
+    expect(heldAfterSend(left(), out, { kind: "idReused" }, 1, FRESH).outbox).toEqual({ id: FRESH, body: "hi", failure: { kind: "idReused" } });
+    const other = left({ outbox: { id: FRESH, body: "other", failure: null } });
+    expect(heldAfterSend(other, out, { kind: "failed" }, 1, FRESH)).toBe(other);
+    // denied / signedOut leave the page: not folded.
+    expect(heldAfterSend(left(), out, { kind: "denied" }, 1, FRESH)).toEqual(left());
+    expect(sendFailure({ kind: "refused" })).toEqual({ kind: "invisible" });
+    expect(sendFailure({ kind: "sessionChanged" })).toEqual({ kind: "sessionChanged" });
+    expect(sendFailure(sent(2))).toBeNull();
+  });
+
+  test("a mark-read: a 204 records its seq; any answer ends it being out", () => {
+    expect(heldAfterMark(left({ marked: 0, marking: 3 }), 3, true)).toMatchObject({ marked: 3, marking: null });
+    expect(heldAfterMark(left({ marked: 0, marking: 3 }), 3, false)).toMatchObject({ marked: 0, marking: null });
+    expect(heldAfterMark(left({ marked: 5, marking: null }), 3, true)).toMatchObject({ marked: 5, marking: null });
+  });
+
+  test("the slot folds a late answer into its own entry only, and hands it to the island mounted for that thread", () => {
+    clearHeldThreads();
+    const gone = heldThreadSlot("coachA", "c1");
+    keepThread("coachA", "c2", left({ cursor: 9 }));
+    keepThread("coachB", "c1", left({ cursor: 7 }));
+    gone.leave(left());
+    const adopted: HeldThread[] = [];
+    const back = heldThreadSlot("coachA", "c1");
+    const detach = back.attach({ adopt: (e) => adopted.push(e), linkEnded: () => undefined });
+    gone.settled((e) => heldAfterSend(e, out, sent(2), 5, FRESH));
+    expect(heldThread("coachA", "c1")).toMatchObject({ cursor: 2, outbox: null, lastSendAt: 5 });
+    expect(adopted, "the mounted island adopts the folded entry").toEqual([heldThread("coachA", "c1")]);
+    expect(heldThread("coachA", "c2")?.cursor, "another client's entry is untouched").toBe(9);
+    expect(heldThread("coachB", "c1")?.cursor, "another account's entry is untouched").toBe(7);
+    detach();
+    gone.settled((e) => heldAfterMark(e, 2, true));
+    expect(adopted, "a detached island gets nothing").toHaveLength(1);
+    expect(heldThread("coachA", "c1")?.marked).toBe(2);
+    clearHeldThreads();
+  });
+
+  test("nothing late survives a session boundary, a forgotten entry or a late 403", () => {
+    clearHeldThreads();
+    const before = heldThreadSlot("coachA", "c1");
+    before.leave(left());
+    clearHeldThreads(); // sign-out / another account (ADR-0033 D33.7)
+    before.settled((e) => heldAfterSend(e, out, sent(2), 5, FRESH));
+    before.leave(left());
+    expect(heldThread("coachA", "c1"), "a slot from before the boundary writes nothing").toBeUndefined();
+
+    const slot = heldThreadSlot("coachA", "c1");
+    slot.leave(left());
+    let ended = 0;
+    const back = heldThreadSlot("coachA", "c1");
+    back.attach({ adopt: () => undefined, linkEnded: () => (ended += 1) });
+    expect(slot.endedLate(), "the mounted island is told").toBe(true);
+    expect(ended).toBe(1);
+    expect(heldThread("coachA", "c1")).toBeUndefined();
+    slot.settled((e) => heldAfterSend(e, out, sent(2), 5, FRESH));
+    expect(heldThread("coachA", "c1"), "nothing written after the 403").toBeUndefined();
+    clearHeldThreads();
+    expect(heldThreadSlot("coachA", "c9").endedLate(), "no island mounted").toBe(false);
   });
 });
