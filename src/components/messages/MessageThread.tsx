@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/kit";
 import type { CoachClientMessage, CoachClientThread } from "@/lib/coachApi";
 import { retryMinutes } from "@/lib/addClient";
 import { SESSION_SUBJECT_HEADER } from "@/lib/autosaveTransport";
-import { formatExpiryUtc } from "@/lib/format";
 import { useCopy } from "@/lib/i18n/client";
+import { MessageTime } from "./MessageTime";
 import {
   MAX_PAGES_PER_POLL,
   POLL_ACTIVE_MS,
@@ -454,9 +454,8 @@ export function MessageThread({
               <li key={m.seq} className="msg-item" data-message-seq={m.seq} data-author={m.author}>
                 <p className="msg-meta">
                   <span className="msg-author">{m.author === "COACH" ? c.you : firstName}</span>
-                  <time className="msg-time" dateTime={m.sentAt}>
-                    {formatExpiryUtc(m.sentAt, copy.locale)}
-                  </time>
+                  {/* BUG-934: the coach's own zone, filled in by the browser. */}
+                  <MessageTime iso={m.sentAt} />
                 </p>
                 <p className="msg-body" dir="auto">
                   {m.body}

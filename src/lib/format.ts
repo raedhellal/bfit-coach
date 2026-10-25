@@ -350,6 +350,31 @@ export function formatLocalTime(iso: string | null | undefined, locale: Locale):
   return new Intl.DateTimeFormat(intlLocale(locale), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
 }
 
+/**
+ * BUG-934 — a message's instant in the COACH's zone: "24 Oct 2026, 16:50" / « 24 oct. 2026, 16:50 »
+ * for 14:50 UTC in Paris. The shape of `formatExpiryUtc` (date, comma, 24-hour time) with no zone
+ * label, because the zone is the reader's own (Raed, 2026-10-25: « yes switch messages to local
+ * time »). The DATE is the local one too, and keeps `datePrinted`'s « Sep » and « 1er ».
+ *
+ * `timeZone` omitted = the RUNTIME's zone, which is only the coach's in a browser: call it from a
+ * client component after mount (`MessageTime`), never in a render the server also runs. The
+ * parameter exists so a test can name the zone. The EV-283 banner's UTC date (AC5, ruled
+ * 2026-09-28) and every other instant on the portal stay UTC (`formatInstant`, `formatExpiryUtc`).
+ */
+export function formatLocalDateTime(iso: string | null | undefined, locale: Locale, timeZone?: string): string {
+  if (!iso) return DASH;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return DASH;
+  const tag = intlLocale(locale);
+  const date = datePrinted(
+    new Intl.DateTimeFormat(tag, { day: "numeric", month: "short", year: "numeric", timeZone }),
+    d,
+    locale
+  );
+  const time = new Intl.DateTimeFormat(tag, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(d);
+  return `${date}, ${time}`;
+}
+
 /* ── EV-321b: step challenges ──────────────────────────────────────────────── */
 
 /**

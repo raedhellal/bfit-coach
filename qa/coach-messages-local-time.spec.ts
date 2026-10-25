@@ -100,6 +100,20 @@ test.describe("BUG-934 the server render", () => {
     expect(tag![1], "no server-zone time to flash before hydration").not.toMatch(/\d{2}:\d{2}|UTC/);
   });
 
+  test("22:30 UTC, server-rendered, reads « 25 oct. 2026, 00:30 » in Paris: the date and the time are both local", async ({ page }) => {
+    // senior-po, hub dda28f9e: never a UTC date beside a local time (« 24 oct. 2026, 00:30 »).
+    await signInThroughForm(page, { lang: "fr" });
+    await clientWritesAt(page, "Bonne nuit", "2026-10-24T22:30:00Z");
+    const warnings = recordHydrationWarnings(page);
+    await page.goto(THREAD);
+    await expect(page.locator("[data-nav-progress-ready]"), "the page hydrated").toHaveCount(1);
+    const time = page.locator('li[data-author="TRAINEE"] time.msg-time');
+    await expect(time).toHaveAttribute("datetime", "2026-10-24T22:30:00.000Z");
+    await expect.poll(async () => plain(await time.textContent())).toBe("25 oct. 2026, 00:30");
+    await page.waitForTimeout(500);
+    expect(warnings, "no hydration warning").toEqual([]);
+  });
+
   test("a message that arrives by the poll, after hydration, reads local time too", async ({ page }) => {
     await signInThroughForm(page, { lang: "fr" });
     const warnings = recordHydrationWarnings(page);
