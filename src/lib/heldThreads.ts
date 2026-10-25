@@ -9,11 +9,20 @@
  * last. Nothing here is ever written on the server: only an effect's cleanup writes, and effects
  * do not run there. A session boundary drops it (`clearClientSession`, ADR-0033 D33.7), and the
  * document load that follows discards the module anyway.
+ *
+ * BUG-942 — which page reads an island has already been mounted with (`mountedReads`), so a mount
+ * can tell a router-cache replay (the SAME read object, from the cached payload: no server render,
+ * so no layout 403 decision) from a fresh render (a new object, which the server read with the link
+ * checked). A replay reads the thread at once (`MessageThread`'s return read): it is the only way
+ * this tab can learn that the link ended while the coach was on another tab.
  */
 import type { HeldThread } from "./messages";
 
 const HELD_MAX = 20;
 const held = new Map<string, HeldThread>();
+
+/** BUG-942: the page reads islands were mounted with (object identity; never on the server). */
+let mountedReads = new WeakSet<object>();
 
 const keyOf = (sessionSubject: string, clientId: string) => `${sessionSubject}\u0000${clientId}`;
 
@@ -35,4 +44,40 @@ export function forgetThread(sessionSubject: string, clientId: string): void {
 
 export function clearHeldThreads(): void {
   held.clear();
+  mountedReads = new WeakSet<object>();
+}
+
+/**
+ * BUG-942 — is this mount drawn from the client router cache? `initial` is the page's read as the
+ * island receives it. The router cache hands a remounted island the very object its first mount
+ * got; a server render deserialises a new one. A failed page read (`null`) has no identity: it
+ * counts as a replay when something is held for the thread (a return), so it reads at once too.
+ */
+export function isReplayedRead(initial: object | null, held: HeldThread | undefined): boolean {
+  return initial !== null ? mountedReads.has(initial) : held !== undefined;
+}
+
+/** BUG-942 — note the read an island was mounted with (from an effect: never on the server). */
+export function noteMountedRead(initial: object | null): void {
+  if (initial !== null) mountedReads.add(initial);
+}
+
+/**
+ * The island's slot in this store, for one account and client: what it leaves behind on unmount,
+ * and nothing once the link ended (ADR-0033 D33.7). BUG-942 (staff's N1 on BUG-938): `linkEnded`
+ * forgets the entry ITSELF, so a 403 that resolves after the island unmounted (a mark-read or a
+ * send still out when the coach left) drops what the unmount kept, and a later `leave` keeps nothing.
+ */
+export function heldThreadSlot(sessionSubject: string, clientId: string): { leave(thread: HeldThread): void; linkEnded(): void } {
+  let ended = false;
+  return {
+    leave(thread) {
+      if (ended) forgetThread(sessionSubject, clientId);
+      else keepThread(sessionSubject, clientId, thread);
+    },
+    linkEnded() {
+      ended = true;
+      forgetThread(sessionSubject, clientId);
+    },
+  };
 }
