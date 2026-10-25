@@ -7548,7 +7548,9 @@ async function storeMessage(
   id: string,
   author: CoachMessageAuthor,
   clientMessageId: string | null,
-  rawBody: unknown
+  rawBody: unknown,
+  /** BUG-934: a fixed `sentAt` for the CLIENT's gate-only write; the coach's send never passes one. */
+  sentAt?: string
 ): Promise<SentCoachMessage> {
   const body = await messageBody(rawBody);
   const thread = messageThread(id);
@@ -7572,7 +7574,7 @@ async function storeMessage(
     seq: lastSeqOfThread(thread) + 1,
     author,
     body,
-    sentAt: new Date(now).toISOString(),
+    sentAt: sentAt ?? new Date(now).toISOString(),
     clientMessageId,
   };
   thread.messages.push(stored);
@@ -7622,10 +7624,18 @@ async function fixtureListMessageUnread(): Promise<CoachClientUnread[]> {
     .sort((a, b) => (a.clientId < b.clientId ? -1 : a.clientId > b.clientId ? 1 : 0));
 }
 
-/** The CLIENT writes from their phone (`POST /me/my-coach/messages`), for the Playwright gate only. */
-export async function fixtureTraineeSendsMessage(clientId: string, body: string): Promise<CoachClientMessage> {
+/**
+ * The CLIENT writes from their phone (`POST /me/my-coach/messages`), for the Playwright gate only.
+ *
+ * `sentAt` (BUG-934): an ISO instant to store instead of "now", so a spec can read the thread's
+ * time for a KNOWN instant (« 2026-10-24T14:50:00Z » is 16:50 in Paris) in any browser zone. It is
+ * normalised through `Date` (`…T14:50:00.000Z`), the shape the api's `Instant` serialises to.
+ */
+export async function fixtureTraineeSendsMessage(clientId: string, body: string, sentAt?: string): Promise<CoachClientMessage> {
   if (!OVERVIEWS[clientId]) throw new Error(`fixture: no link ${clientId}`);
-  const sent = await storeMessage(clientId, "TRAINEE", crypto.randomUUID(), body);
+  const at = sentAt === undefined ? undefined : new Date(sentAt);
+  if (at && Number.isNaN(at.getTime())) throw new Error(`fixture: sentAt is not an instant: ${sentAt}`);
+  const sent = await storeMessage(clientId, "TRAINEE", crypto.randomUUID(), body, at?.toISOString());
   return sent.message;
 }
 

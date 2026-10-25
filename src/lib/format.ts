@@ -350,6 +350,45 @@ export function formatLocalTime(iso: string | null | undefined, locale: Locale):
   return new Intl.DateTimeFormat(intlLocale(locale), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
 }
 
+/**
+ * `formatLocalDateTime`'s two formatters, built once per (locale, zone) like the `DATE` table
+ * rather than on every message. Key `""` = no zone given = the runtime's zone, read when the
+ * pair is first built (a browser that changes zone mid-session keeps the old one until reload).
+ */
+const LOCAL_DATE_TIME = new Map<string, { date: Intl.DateTimeFormat; time: Intl.DateTimeFormat }>();
+function localDateTimeFormats(locale: Locale, timeZone: string | undefined) {
+  const key = `${locale}|${timeZone ?? ""}`;
+  let formats = LOCAL_DATE_TIME.get(key);
+  if (!formats) {
+    const tag = intlLocale(locale);
+    formats = {
+      date: new Intl.DateTimeFormat(tag, { day: "numeric", month: "short", year: "numeric", timeZone }),
+      time: new Intl.DateTimeFormat(tag, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }),
+    };
+    LOCAL_DATE_TIME.set(key, formats);
+  }
+  return formats;
+}
+
+/**
+ * BUG-934 — a message's instant in the COACH's zone: "24 Oct 2026, 16:50" / « 24 oct. 2026, 16:50 »
+ * for 14:50 UTC in Paris. The shape of `formatExpiryUtc` (date, comma, 24-hour time) with no zone
+ * label, because the zone is the reader's own (Raed, 2026-10-25: « yes switch messages to local
+ * time »). The DATE is the local one too, and keeps `datePrinted`'s « Sep » and « 1er ».
+ *
+ * `timeZone` omitted = the RUNTIME's zone, which is only the coach's in a browser: call it from a
+ * client component after mount (`MessageTime`), never in a render the server also runs. The
+ * parameter exists so a test can name the zone. The EV-283 banner's UTC date (AC5, ruled
+ * 2026-09-28) and every other instant on the portal stay UTC (`formatInstant`, `formatExpiryUtc`).
+ */
+export function formatLocalDateTime(iso: string | null | undefined, locale: Locale, timeZone?: string): string {
+  if (!iso) return DASH;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return DASH;
+  const formats = localDateTimeFormats(locale, timeZone);
+  return `${datePrinted(formats.date, d, locale)}, ${formats.time.format(d)}`;
+}
+
 /* ── EV-321b: step challenges ──────────────────────────────────────────────── */
 
 /**
