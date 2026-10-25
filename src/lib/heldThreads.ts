@@ -52,6 +52,9 @@ export function clearHeldThreads(): void {
  * island receives it. The router cache hands a remounted island the very object its first mount
  * got; a server render deserialises a new one. A failed page read (`null`) has no identity: it
  * counts as a replay when something is held for the thread (a return), so it reads at once too.
+ * A payload the router cached but no island ever MOUNTED (an intent prefetch of the tab, say)
+ * counts as fresh: its object is not in the set, so its first mount makes no return read. Its read
+ * is at most `staleTimes` old and was made with the link checked; the poll covers the rest.
  */
 export function isReplayedRead(initial: object | null, held: HeldThread | undefined): boolean {
   return initial !== null ? mountedReads.has(initial) : held !== undefined;

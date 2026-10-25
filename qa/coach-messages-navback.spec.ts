@@ -89,6 +89,38 @@ async function backToMessages(page: Page): Promise<number> {
   return clicked;
 }
 
+/**
+ * BUG-942 — every frame's rows from the click back on, recorded in the page (a client transition:
+ * the window stays). The return read can add a row ~70 ms after the mount, faster than Playwright
+ * polls, so "the held rows at once, never fewer" is read from these frames, not from one sample.
+ */
+async function watchRows(page: Page): Promise<() => Promise<number[][]>> {
+  await page.evaluate(() => {
+    const frames: number[][] = [];
+    (window as unknown as { __rows: number[][] }).__rows = frames;
+    const frame = () => {
+      if (document.querySelector("section.msg")) {
+        frames.push(Array.from(document.querySelectorAll("li.msg-item"), (e) => Number(e.getAttribute("data-message-seq"))));
+      }
+      if (frames.length < 2_000) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  return () => page.evaluate(() => (window as unknown as { __rows: number[][] }).__rows);
+}
+
+/** The held rows from the first frame of the remounted thread, and never fewer after it. */
+async function heldThenThird(page: Page, frames: () => Promise<number[][]>): Promise<void> {
+  // The unseen message arrives by the return read (BUG-942), not 15 s later by a poll.
+  await expect(rows(page), "the third message by the return read, within 1 s").toHaveCount(3, { timeout: 1_000 });
+  expect(await seqs(page)).toEqual([1, 2, 3]);
+  const seen = await frames();
+  expect(seen.length, "frames of the remounted thread were recorded").toBeGreaterThan(0);
+  expect(seen[0].slice(0, 2), "the held seqs [1, 2] in the remount's first frame").toEqual([1, 2]);
+  expect(Math.min(...seen.map((f) => f.length)), "the row count never drops below 2").toBeGreaterThanOrEqual(2);
+  for (const f of seen) expect([[1, 2], [1, 2, 3]], "only the held list, then the held list and the new one").toContainEqual(f);
+}
+
 async function seqs(page: Page): Promise<number[]> {
   return rows(page).evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-message-seq"))));
 }
@@ -171,7 +203,7 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
     note("polled", `2 rows ${Date.now() - back} ms after the click`);
   });
 
-  test("a message written while the coach is on Overview shows within one poll, and nothing held is lost", async ({ page }) => {
+  test("a message written while the coach is on Overview arrives by the return read, and nothing held is lost", async ({ page }) => {
     test.setTimeout(90_000);
     await signInThroughForm(page, { lang: "en" });
     await traineeWrites(page, "seed one");
@@ -182,15 +214,14 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
     await toOverview(page);
     await traineeWrites(page, "written while on Overview");
 
+    const frames = await watchRows(page);
     const back = await backToMessages(page);
-    // What the coach left is there at once; the unseen one comes with the first poll (15 s).
-    await expect(rows(page), "the 2 held rows within 1 s").toHaveCount(2, { timeout: 1_000 });
-    await expect(rows(page)).toHaveCount(3, { timeout: 17_000 });
-    expect(Date.now() - back, "within one 15 s poll").toBeLessThan(17_000);
-    expect(await seqs(page)).toEqual([1, 2, 3]);
+    // What the coach left is there at once; the unseen one comes with the return read (BUG-942).
+    await heldThenThird(page, frames);
+    note("return-read row", `${Date.now() - back} ms after the click: ${(await seqs(page)).join(", ")}`);
   });
 
-  test("returning after the router cache expired (a fresh page render) shows the thread once, with what arrived", async ({ page }) => {
+  test("returning after the router cache expired shows the thread once, with what arrived, within 1 s", async ({ page }) => {
     test.setTimeout(90_000);
     await signInThroughForm(page, { lang: "en" });
     await traineeWrites(page, "seed one");
@@ -204,6 +235,7 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
     // Past `staleTimes.dynamic` (30 s): the return asks the server for the page.
     await page.waitForTimeout(32_000);
 
+    const frames = await watchRows(page);
     const back = await backToMessages(page);
     if (await isProductionBuild(page)) {
       // `next start`: an expired entry is a full navigation fetch, so the page's own read is fresh.
@@ -217,9 +249,9 @@ test.describe("BUG-938: Messages after navigating away and back", () => {
     } else {
       // `next dev` makes every navigation an AUTO prefetch (prefetch-cache-utils.js), whose partial
       // answer re-uses the router's OLD node for the page, whatever its age: the island's held list
-      // is what keeps the return from going back in time; the unseen message comes by the poll.
-      await expect(rows(page), "the 2 held rows within 1 s").toHaveCount(2, { timeout: 1_000 });
-      await expect(rows(page)).toHaveCount(3, { timeout: 17_000 });
+      // is what keeps the return from going back in time; being the same page-read object, it is a
+      // replay, so the unseen message comes by the return read (BUG-942).
+      await heldThenThird(page, frames);
     }
     expect(await seqs(page), "each message once").toEqual([1, 2, 3]);
   });
