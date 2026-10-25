@@ -351,6 +351,26 @@ export function formatLocalTime(iso: string | null | undefined, locale: Locale):
 }
 
 /**
+ * `formatLocalDateTime`'s two formatters, built once per (locale, zone) like the `DATE` table
+ * rather than on every message. Key `""` = no zone given = the runtime's zone, read when the
+ * pair is first built (a browser that changes zone mid-session keeps the old one until reload).
+ */
+const LOCAL_DATE_TIME = new Map<string, { date: Intl.DateTimeFormat; time: Intl.DateTimeFormat }>();
+function localDateTimeFormats(locale: Locale, timeZone: string | undefined) {
+  const key = `${locale}|${timeZone ?? ""}`;
+  let formats = LOCAL_DATE_TIME.get(key);
+  if (!formats) {
+    const tag = intlLocale(locale);
+    formats = {
+      date: new Intl.DateTimeFormat(tag, { day: "numeric", month: "short", year: "numeric", timeZone }),
+      time: new Intl.DateTimeFormat(tag, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }),
+    };
+    LOCAL_DATE_TIME.set(key, formats);
+  }
+  return formats;
+}
+
+/**
  * BUG-934 — a message's instant in the COACH's zone: "24 Oct 2026, 16:50" / « 24 oct. 2026, 16:50 »
  * for 14:50 UTC in Paris. The shape of `formatExpiryUtc` (date, comma, 24-hour time) with no zone
  * label, because the zone is the reader's own (Raed, 2026-10-25: « yes switch messages to local
@@ -365,14 +385,8 @@ export function formatLocalDateTime(iso: string | null | undefined, locale: Loca
   if (!iso) return DASH;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return DASH;
-  const tag = intlLocale(locale);
-  const date = datePrinted(
-    new Intl.DateTimeFormat(tag, { day: "numeric", month: "short", year: "numeric", timeZone }),
-    d,
-    locale
-  );
-  const time = new Intl.DateTimeFormat(tag, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(d);
-  return `${date}, ${time}`;
+  const formats = localDateTimeFormats(locale, timeZone);
+  return `${datePrinted(formats.date, d, locale)}, ${formats.time.format(d)}`;
 }
 
 /* ── EV-321b: step challenges ──────────────────────────────────────────────── */

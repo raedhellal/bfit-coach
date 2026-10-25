@@ -19,6 +19,9 @@ import { useCopy } from "@/lib/i18n/client";
  *     not hydrating, reads `true` at once, and is never blank.
  * An empty fallback rather than the date alone: a UTC date is the wrong day near midnight in
  * every zone that is not UTC, so it would be a wrong value painted for a frame.
+ * Before hydration the `<time>` is empty, and so it stays for a reader without JavaScript (a
+ * screen reader in that window hears no time). That is accepted because the portal requires
+ * JavaScript anyway: the thread polls and sends from the browser.
  *
  * `dateTime` always carries the api's instant, for assistive tech and for tests.
  */

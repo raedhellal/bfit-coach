@@ -40,6 +40,12 @@ test.describe("BUG-934 formatLocalDateTime", () => {
     expect(formatLocalDateTime("2026-10-01T02:00:00Z", "fr", "America/New_York")).toBe("30 sept. 2026, 22:00");
   });
 
+  test("DST fall-back in Paris (25 Oct 2026, 03:00 CEST → 02:00 CET): 02:30 happens twice", () => {
+    // 00:30 UTC is 02:30 CEST (UTC+2); 01:30 UTC, after the change, is 02:30 CET (UTC+1).
+    expect(formatLocalDateTime("2026-10-25T00:30:00Z", "fr", "Europe/Paris")).toBe("25 oct. 2026, 02:30");
+    expect(formatLocalDateTime("2026-10-25T01:30:00Z", "fr", "Europe/Paris")).toBe("25 oct. 2026, 02:30");
+  });
+
   test("BUG-491's « 1er » and BUG-210's « Sep » survive on the LOCAL day", () => {
     // 23:30 UTC on 30 Sep is 01:30 on 1 Oct in Paris: the French first of the month.
     expect(formatLocalDateTime("2026-09-30T23:30:00Z", "fr", "Europe/Paris")).toBe("1er oct. 2026, 01:30");
