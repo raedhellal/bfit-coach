@@ -28,6 +28,11 @@ export function keepThread(sessionSubject: string, clientId: string, thread: Hel
   while (held.size > HELD_MAX) held.delete(held.keys().next().value as string);
 }
 
+/** A 403 ended the link: the island keeps nothing for that client (ADR-0033 D33.7). */
+export function forgetThread(sessionSubject: string, clientId: string): void {
+  held.delete(keyOf(sessionSubject, clientId));
+}
+
 export function clearHeldThreads(): void {
   held.clear();
 }

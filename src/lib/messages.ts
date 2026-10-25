@@ -180,14 +180,15 @@ export function mergeMessages(held: readonly CoachClientMessage[], incoming: rea
 
 /**
  * BUG-938 — what a thread island held when it was left: its list, its poll cursor (see THE CURSOR
- * in `MessageThread.tsx`), whether older messages exist before its first one, and the highest seq
- * the api acknowledged as read.
+ * in `MessageThread.tsx`), whether older messages exist before its first one, the highest seq
+ * the api acknowledged as read, and when the coach's last 2xx send landed (AC-B3's 60 s), or null.
  */
 export interface HeldThread {
   messages: CoachClientMessage[];
   cursor: number | null;
   hasOlder: boolean;
   marked: number;
+  lastSendAt: number | null;
 }
 
 /**
@@ -206,12 +207,19 @@ export interface HeldThread {
  * leave a gap the cursor could not see. Then the page's read alone, as before this fix.
  *
  * `null` page read (it failed): the page's load notice, as before; the held list is not shown in
- * its place. `marked` is kept in every case: it is the api's own acknowledgement.
+ * its place. `marked` and `lastSendAt` are kept in every case: the api's own acknowledgement, and
+ * the coach's own send (AC-B3's 5 s period runs from it, whatever the page's read says).
  */
 export function seedThread(initial: CoachClientThread | null, held: HeldThread | undefined): HeldThread | null {
   if (initial === null) return null;
   const last = initial.messages.length > 0 ? initial.messages[initial.messages.length - 1].seq : undefined;
-  const own: HeldThread = { messages: initial.messages, cursor: last ?? initial.lastSeq, hasOlder: initial.hasOlder, marked: held?.marked ?? 0 };
+  const own: HeldThread = {
+    messages: initial.messages,
+    cursor: last ?? initial.lastSeq,
+    hasOlder: initial.hasOlder,
+    marked: held?.marked ?? 0,
+    lastSendAt: held?.lastSendAt ?? null,
+  };
   if (!held || held.cursor === null || own.cursor === null) return own;
   const first = initial.messages[0]?.seq;
   if (first !== undefined && first > held.cursor + 1) return own;
@@ -222,6 +230,7 @@ export function seedThread(initial: CoachClientThread | null, held: HeldThread |
     // The flag belongs to whichever list reaches further back.
     hasOlder: heldFirst !== undefined && (first === undefined || heldFirst <= first) ? held.hasOlder : initial.hasOlder,
     marked: own.marked,
+    lastSendAt: own.lastSendAt,
   };
 }
 
