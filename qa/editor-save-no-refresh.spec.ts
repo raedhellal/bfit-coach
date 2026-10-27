@@ -166,10 +166,18 @@ test("recipe editor: a save re-renders the page title through its action, histor
  * EV-095b added one: the « Messages » thread's 403 (`MessageThread` `linkEndedRef`, shared by its
  * poll, send, mark-read and older page), a refused read or write that revalidates nothing, so the
  * refresh is what reaches the layout's denial page (the same precedent). 15.
+ * BUG-943 added two: the same 403 answered AFTER the thread unmounted (`MessageThread` `markRead`'s
+ * `settle`, a mark-read; `sendSettledLate`, a send), each `if (!slot.endedLate()) router.refresh()`. A
+ * refused read or write that revalidates nothing, so the refresh is what reaches the layout's denial
+ * page from the tab the coach moved to (another tab of the same client: without it that tab stays up
+ * on an ended link). Not a second refresh: `endedLate()` is true when an island is mounted for the
+ * thread, which then refreshes through its own `linkEndedRef` (the 15th) and this one does not. Off
+ * the client's pages it re-renders the page the coach is on once, for nothing; client state and
+ * history are kept (BUG-1007). 17.
  * A new call is a decision: if its action revalidates, it renders the page a
  * second time for nothing. Comment lines are not counted.
  */
-test("src holds exactly 15 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry, plus EV-341w's, EV-341j's, EV-341b's, EV-186b's and EV-095b's 403s)", () => {
+test("src holds exactly 17 router.refresh() calls (ADR-0033 2a's inventory, less branch 1's four, plus BUG-689's retry, plus EV-341w's, EV-341j's, EV-341b's, EV-186b's and EV-095b's 403s, plus BUG-943's two late 403s)", () => {
   const src = join(__dirname, "..", "src");
   const calls: string[] = [];
   for (const file of readdirSync(src, { recursive: true, encoding: "utf8" })) {
@@ -182,5 +190,5 @@ test("src holds exactly 15 router.refresh() calls (ADR-0033 2a's inventory, less
         if (code.includes("router.refresh()")) calls.push(`${file}:${i + 1}`);
       });
   }
-  expect(calls.length, calls.sort().join("\n")).toBe(15);
+  expect(calls.length, calls.sort().join("\n")).toBe(17);
 });
