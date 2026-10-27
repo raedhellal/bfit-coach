@@ -59,8 +59,10 @@ function recordRequests(page: Page) {
 
 /**
  * Holds the FIRST POST to `path` in the browser until `release` (then it goes to the server, or is
- * answered with `fail`); every later one goes through at once. `answered` resolves when the page
- * has the held request's answer.
+ * answered with `how`); every later one goes through at once. `answered` resolves when the page
+ * has the held request's answer: the route handler keeps that `Request`, and the waiter matches a
+ * response only if its `request()` IS it (BUG-1012), so a later POST to the same path that went
+ * straight through, such as a poll's second POST /read, cannot resolve it.
  */
 async function holdFirstPost(page: Page, path: string) {
   let release!: (how?: { status: number; body: string }) => void;
@@ -68,16 +70,19 @@ async function holdFirstPost(page: Page, path: string) {
   let seen!: () => void;
   const held = new Promise<void>((r) => (seen = r));
   let first = true;
+  let heldRequest: Request | undefined;
   await page.route(`**${path}`, async (route: Route) => {
     if (route.request().method() !== "POST" || !first) return route.fallback();
     first = false;
+    heldRequest = route.request();
     seen();
     const how = await go;
     if (how) await route.fulfill({ status: how.status, contentType: "application/json", body: how.body });
     else await route.fallback();
   });
   const answered = held.then(() =>
-    page.waitForResponse((res) => res.request().method() === "POST" && new URL(res.url()).pathname === path, { timeout: 30_000 })
+    // `held` resolves only after `heldRequest` is set, so it is defined here.
+    page.waitForResponse((res) => res.request() === heldRequest, { timeout: 30_000 })
   );
   // BUG-1010: the waiter starts eagerly, but two tests never call `answered()`. « an inherited
   // mark-read that never answers does not stop marking… » releases its hold as its LAST line, so it
