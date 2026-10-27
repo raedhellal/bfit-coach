@@ -396,16 +396,49 @@ test.describe("AC-P8 / AC-P14 / AC-P18 and the refusals of « Ajouter un client 
 });
 
 test.describe("AC-P9 — the temporary password is on no coach surface", () => {
-  test("not in any response the portal served during set-up and Resend, nor on the roster or the person's page", async ({ page }) => {
-    const bodies: { url: string; body: string }[] = [];
-    page.on("response", async (res) => {
-      if (res.url().includes("/api/fixture/mail")) return; // the mail sink IS the email
-      try {
-        bodies.push({ url: res.url(), body: await res.text() });
-      } catch {
-        /* a redirect or an aborted prefetch has no body */
+  /**
+   * BUG-827 — every portal response is read on the NODE side, before the page gets it.
+   *
+   * The old capture was an unawaited `page.on("response", async res => await res.text())`.
+   * Chromium drops a server action's POST body within ~20–170 ms (a main-frame navigation
+   * on `/` before `/invited`), so `res.text()` threw `Network.getResponseBody: No data
+   * found`, the empty `catch` swallowed it, and the Resend answer was checked in 2 runs of
+   * 10 (QA, EV-337g2 F3). Now `page.route` fetches each request itself (`route.fetch`),
+   * reads the body, and only then fulfils the page with that same response. A response the
+   * page acted on has therefore already been read: no race left to lose.
+   *
+   * `maxRedirects: 0` hands a 3xx back to the browser unchanged, so the page follows it as
+   * it would have. A fetch that fails is RECORDED and fails the test (`lost`), never
+   * swallowed; a fulfil that fails is only the page having moved on (an aborted prefetch),
+   * and its body was read already.
+   */
+  test("not in any response the portal served during set-up and Resend, nor on the roster or the person's page", async ({ page, baseURL }) => {
+    const origin = new URL(baseURL!).origin;
+    const bodies: { url: string; action: boolean; body: string }[] = [];
+    const lost: string[] = [];
+    let inFlight = 0;
+    await page.route(
+      (url) => url.origin === origin && !url.pathname.startsWith("/api/fixture/mail"), // the mail sink IS the email
+      async (route) => {
+        const req = route.request();
+        const action = req.method() === "POST" && (await req.headerValue("next-action")) !== null;
+        inFlight += 1;
+        try {
+          let response;
+          try {
+            response = await route.fetch({ maxRedirects: 0 });
+            bodies.push({ url: req.url(), action, body: await response.text() });
+          } catch (err) {
+            lost.push(`${req.method()} ${req.url()}${action ? " (server action)" : ""}: ${String(err)}`);
+            await route.abort().catch(() => {});
+            return;
+          }
+          await route.fulfill({ response }).catch(() => {});
+        } finally {
+          inFlight -= 1;
+        }
       }
-    });
+    );
     await signIn(page);
     await addAndClose(page, "Amal Haddad", "amal@example.com");
     const row = invitedRow(page, "Amal Haddad");
@@ -417,15 +450,24 @@ test.describe("AC-P9 — the temporary password is on no coach surface", () => {
     await page.waitForURL(/\/invited\//);
     await expect(page.locator("[data-body-data]")).toBeVisible();
     const pageHtml = await page.content();
+    // Late requests (a prefetch the page fired last) are read to the end before the check.
+    await expect.poll(() => inFlight, "every routed request has been read").toBe(0);
+
+    expect(lost, "a portal response that could not be read is a response not checked").toEqual([]);
+    // Positive controls: BOTH action answers were captured, so both were checked below.
+    const actions = bodies.filter((b) => b.action);
+    expect(
+      // The action's own return value (`addClientActions.ts`), not the revalidated roster beside it.
+      actions.filter((b) => /"ok":true,"added":\{"userId":"[^"]+","fullName":"Amal Haddad","email":"amal@example\.com","expiresAt":"/.test(b.body)),
+      "the add action's answer was captured"
+    ).toHaveLength(1);
+    expect(
+      actions.filter((b) => /"ok":true,"email":"amal@example\.com","expiresAt":"[^"]+","passwordIssuedAt":"/.test(b.body)),
+      "the Resend action's answer was captured"
+    ).toHaveLength(1);
 
     const passwords = (await mails(page)).map((m) => m.temporaryPassword);
     expect(passwords).toHaveLength(2);
-    // The capture works: the server action's answer carrying the address was seen. POLLED: the
-    // `response` handler awaits `res.text()`, so a body can still be in flight here (EV-186b: a
-    // larger copy chunk made the read lose that race; measured on 186b, the "/" body arrives late).
-    await expect
-      .poll(() => bodies.some((b) => b.body.includes("amal@example.com") && b.body.includes("expiresAt")))
-      .toBe(true);
     for (const password of passwords) {
       expect(password.length).toBeGreaterThan(8);
       for (const b of bodies) expect(b.body.includes(password), `password in ${b.url}`).toBe(false);
