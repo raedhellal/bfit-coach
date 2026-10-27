@@ -79,10 +79,13 @@ async function holdFirstPost(page: Page, path: string) {
   const answered = held.then(() =>
     page.waitForResponse((res) => res.request().method() === "POST" && new URL(res.url()).pathname === path, { timeout: 30_000 })
   );
-  // BUG-1010: the waiter starts eagerly, but a test that never calls `answered()` (:199, :312) can
-  // end while it is pending; its "Test ended" rejection was then unhandled and failed the test.
-  // This handler only marks it handled: `answered()` still awaits `answered` itself, so a test
-  // that calls it still fails on a real timeout.
+  // BUG-1010: the waiter starts eagerly, but two tests never call `answered()`. « an inherited
+  // mark-read that never answers does not stop marking… » releases its hold as its LAST line, so it
+  // can end before that answer lands; the pending waiter then rejected with "Test ended", nothing
+  // handled it, and the test failed. « a send still out on the return shows as sending… » releases
+  // and then waits ~7.5 s, so its answer has normally landed by the end; the handler covers it too.
+  // This handler only marks the rejection handled: `answered()` still awaits `answered` itself, so
+  // a test that calls it still fails on a real timeout.
   answered.catch(() => undefined);
   return {
     /** The held request has left the page. */
