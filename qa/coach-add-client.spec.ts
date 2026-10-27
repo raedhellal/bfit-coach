@@ -407,10 +407,12 @@ test.describe("AC-P9 — the temporary password is on no coach surface", () => {
    * reads the body, and only then fulfils the page with that same response. A response the
    * page acted on has therefore already been read: no race left to lose.
    *
-   * `maxRedirects: 0` hands a 3xx back to the browser unchanged, so the page follows it as
-   * it would have. A fetch that fails is RECORDED and fails the test (`lost`), never
-   * swallowed; a fulfil that fails is only the page having moved on (an aborted prefetch),
-   * and its body was read already.
+   * `maxRedirects: 0` hands a 3xx back to the browser unchanged, so the page would follow
+   * it itself (no 3xx occurs in this flow, so that branch is not exercised here). A fetch
+   * that fails is RECORDED (`lost`), logged at once, and fails the test in a `finally`, so
+   * it is reported even when the aborted request makes a later UI wait time out first; a
+   * fulfil that fails is only the page having moved on (an aborted prefetch), and its body
+   * was read already.
    */
   test("not in any response the portal served during set-up and Resend, nor on the roster or the person's page", async ({ page, baseURL }) => {
     const origin = new URL(baseURL!).origin;
@@ -421,15 +423,19 @@ test.describe("AC-P9 — the temporary password is on no coach surface", () => {
       (url) => url.origin === origin && !url.pathname.startsWith("/api/fixture/mail"), // the mail sink IS the email
       async (route) => {
         const req = route.request();
-        const action = req.method() === "POST" && (await req.headerValue("next-action")) !== null;
+        // Counted BEFORE the first await, so the drain poll below cannot read 0 while this
+        // request is still pending (staff N1).
         inFlight += 1;
         try {
+          const action = req.method() === "POST" && (await req.headerValue("next-action")) !== null;
           let response;
           try {
             response = await route.fetch({ maxRedirects: 0 });
             bodies.push({ url: req.url(), action, body: await response.text() });
           } catch (err) {
-            lost.push(`${req.method()} ${req.url()}${action ? " (server action)" : ""}: ${String(err)}`);
+            const entry = `${req.method()} ${req.url()}${action ? " (server action)" : ""}: ${String(err)}`;
+            lost.push(entry);
+            console.error(`BUG-827 AC-P9: response not read: ${entry}`);
             await route.abort().catch(() => {});
             return;
           }
@@ -439,40 +445,44 @@ test.describe("AC-P9 — the temporary password is on no coach surface", () => {
         }
       }
     );
-    await signIn(page);
-    await addAndClose(page, "Amal Haddad", "amal@example.com");
-    const row = invitedRow(page, "Amal Haddad");
-    await row.getByRole("button", { name: "Resend the invitation to Amal Haddad" }).click();
-    await page.getByRole("dialog", { name: "Resend Amal Haddad's invitation?" }).getByRole("button", { name: "Resend", exact: true }).click();
-    await expect(page.locator("[data-invited-section] .invited-notice")).toHaveText(/^Resent to /);
-    const rosterHtml = await page.content();
-    await row.getByRole("link").click();
-    await page.waitForURL(/\/invited\//);
-    await expect(page.locator("[data-body-data]")).toBeVisible();
-    const pageHtml = await page.content();
-    // Late requests (a prefetch the page fired last) are read to the end before the check.
-    await expect.poll(() => inFlight, "every routed request has been read").toBe(0);
+    try {
+      await signIn(page);
+      await addAndClose(page, "Amal Haddad", "amal@example.com");
+      const row = invitedRow(page, "Amal Haddad");
+      await row.getByRole("button", { name: "Resend the invitation to Amal Haddad" }).click();
+      await page.getByRole("dialog", { name: "Resend Amal Haddad's invitation?" }).getByRole("button", { name: "Resend", exact: true }).click();
+      await expect(page.locator("[data-invited-section] .invited-notice")).toHaveText(/^Resent to /);
+      const rosterHtml = await page.content();
+      await row.getByRole("link").click();
+      await page.waitForURL(/\/invited\//);
+      await expect(page.locator("[data-body-data]")).toBeVisible();
+      const pageHtml = await page.content();
+      // Late requests (a prefetch the page fired last) are read to the end before the check.
+      await expect.poll(() => inFlight, "every routed request has been read").toBe(0);
 
-    expect(lost, "a portal response that could not be read is a response not checked").toEqual([]);
-    // Positive controls: BOTH action answers were captured, so both were checked below.
-    const actions = bodies.filter((b) => b.action);
-    expect(
-      // The action's own return value (`addClientActions.ts`), not the revalidated roster beside it.
-      actions.filter((b) => /"ok":true,"added":\{"userId":"[^"]+","fullName":"Amal Haddad","email":"amal@example\.com","expiresAt":"/.test(b.body)),
-      "the add action's answer was captured"
-    ).toHaveLength(1);
-    expect(
-      actions.filter((b) => /"ok":true,"email":"amal@example\.com","expiresAt":"[^"]+","passwordIssuedAt":"/.test(b.body)),
-      "the Resend action's answer was captured"
-    ).toHaveLength(1);
+      // Positive controls: BOTH action answers were captured, so both were checked below.
+      const actions = bodies.filter((b) => b.action);
+      expect(
+        // The action's own return value (`addClientActions.ts`), not the revalidated roster beside it.
+        actions.filter((b) => /"ok":true,"added":\{"userId":"[^"]+","fullName":"Amal Haddad","email":"amal@example\.com","expiresAt":"/.test(b.body)),
+        "the add action's answer was captured"
+      ).toHaveLength(1);
+      expect(
+        actions.filter((b) => /"ok":true,"email":"amal@example\.com","expiresAt":"[^"]+","passwordIssuedAt":"/.test(b.body)),
+        "the Resend action's answer was captured"
+      ).toHaveLength(1);
 
-    const passwords = (await mails(page)).map((m) => m.temporaryPassword);
-    expect(passwords).toHaveLength(2);
-    for (const password of passwords) {
-      expect(password.length).toBeGreaterThan(8);
-      for (const b of bodies) expect(b.body.includes(password), `password in ${b.url}`).toBe(false);
-      expect(rosterHtml.includes(password)).toBe(false);
-      expect(pageHtml.includes(password)).toBe(false);
+      const passwords = (await mails(page)).map((m) => m.temporaryPassword);
+      expect(passwords).toHaveLength(2);
+      for (const password of passwords) {
+        expect(password.length).toBeGreaterThan(8);
+        for (const b of bodies) expect(b.body.includes(password), `password in ${b.url}`).toBe(false);
+        expect(rosterHtml.includes(password)).toBe(false);
+        expect(pageHtml.includes(password)).toBe(false);
+      }
+    } finally {
+      // Always reported, even when an aborted request made a UI wait above time out first (staff N2).
+      expect(lost, "a portal response that could not be read is a response not checked").toEqual([]);
     }
   });
 });
