@@ -350,21 +350,30 @@ test.describe("BUG-943: a send or a mark-read in flight when the coach leaves Me
  * late 403 (one non-prefetch RSC request for the Overview's own path), never a second. Case A guards
  * `sendSettledLate`, case B `markRead`'s `settle`; each is red with its call removed.
  *
- * The full list of non-prefetch RSC requests is asserted exactly, and it differs by server. Under
- * `next dev` it is the refresh alone. On a production build the refresh is answered 200 with the
- * layout's redirect in its payload, and the router then fetches `/clients/denied` as a NAVIGATION
- * (it carries `Next-Url`, the refresh does not; that fetch is answered 403, the denial page). That
- * second request is the redirect being followed, not a second refresh, so it is expected there,
- * once, after the refresh, and nothing else is.
+ * The sequence is the same on both servers (staff recorded every request on each):
+ *   1. the refresh, `/clients/<id>?_rsc` with no `Next-Url`, answered 200 with the layout's redirect
+ *      in its payload;
+ *   2. the router following that redirect, `/clients/denied?_rsc`, answered 403;
+ *   3. an MPA document load of `/clients/denied` (also 403): a 403 is `!res.ok`, so the router falls
+ *      back to `doMpaNavigation` (next 14.2.35 `router-reducer/fetch-server-response.js:91-96`).
+ * The one difference is request 2's headers. Under `next dev` a missing prefetch entry is created as
+ * `PrefetchKind.AUTO` (`prefetch-cache-utils.js:98-99`), and an AUTO fetch carries
+ * `Next-Router-Prefetch: 1` (`fetch-server-response.js:43-44`), so dev marks that navigation as a
+ * prefetch; a production build does not. Every RSC request is therefore asserted exactly on both
+ * servers (the refresh, then `/clients/denied` once), and so is which of them carry the header.
  */
 const DENIED = { status: 403, body: JSON.stringify({ code: "COACH_ACCESS_DENIED" }) };
 
-/** Non-prefetch RSC requests (`router.refresh()`, navigations) from now on, by path. */
+/**
+ * Every RSC request (`RSC: 1`) from now on, by path. `prefetch` is "carries `Next-Router-Prefetch`";
+ * "non-prefetch" below means without it. Under `next dev` that header is also on real navigations
+ * (an AUTO entry, see above), so a non-prefetch filter alone drops them there.
+ */
 function recordRsc(page: Page) {
-  const log: Array<{ at: number; path: string }> = [];
+  const log: Array<{ at: number; path: string; prefetch: boolean }> = [];
   page.on("request", (r: Request) => {
     const h = r.headers();
-    if (h["rsc"] === "1" && !h["next-router-prefetch"]) log.push({ at: Date.now(), path: new URL(r.url()).pathname });
+    if (h["rsc"] === "1") log.push({ at: Date.now(), path: new URL(r.url()).pathname, prefetch: !!h["next-router-prefetch"] });
   });
   return log;
 }
@@ -388,19 +397,17 @@ async function lateDenial(page: Page, hold: Awaited<ReturnType<typeof holdFirstP
   const after = rsc.filter((e) => e.at >= released);
   test.info().annotations.push({
     type: `BUG-1009 ${label}`,
-    description: `${prod ? "prod" : "dev"}: final ${new URL(page.url()).pathname}; non-prefetch RSC after the late 403: [${after.map((e) => `+${e.at - released} ms ${e.path}`).join(", ")}]`,
+    description: `${prod ? "prod" : "dev"}: final ${new URL(page.url()).pathname}; RSC after the late 403: [${after.map((e) => `+${e.at - released} ms ${e.path}${e.prefetch ? " (Next-Router-Prefetch)" : ""}`).join(", ")}]`,
   });
   const refresh = `/clients/${LINA}`;
-  expect(after.filter((e) => e.path === refresh), "exactly one refresh of the Overview after the late 403").toHaveLength(1);
-  expect(
-    after.map((e) => e.path),
-    prod ? "the refresh, then the redirect's navigation to the denial page, and nothing else" : "the refresh, and no other non-prefetch RSC request"
-  ).toEqual(prod ? [refresh, "/clients/denied"] : [refresh]);
+  expect(after.filter((e) => e.path === refresh && !e.prefetch), "exactly one refresh of the Overview after the late 403").toHaveLength(1);
+  expect(after.map((e) => e.path), "the refresh, then the redirect followed to the denial page once, and no other RSC request").toEqual([refresh, "/clients/denied"]);
+  // Only dev marks the followed redirect as an AUTO prefetch; the refresh never carries the header.
+  expect(after.map((e) => e.prefetch), prod ? "no RSC request carries Next-Router-Prefetch" : "only the followed redirect carries Next-Router-Prefetch (dev's AUTO entry)").toEqual([false, !prod]);
 }
 
 test.describe("BUG-1009: a send or a mark-read answered 403 after the coach moved to the same client's Overview", () => {
   test("A: a late send 403 takes the Overview to /clients/denied, with one refresh (sendSettledLate)", async ({ page }) => {
-    test.setTimeout(60_000);
     await signInThroughForm(page, { lang: "en" });
     const hold = await holdFirstPost(page, BFF);
     await openThread(page);
@@ -411,7 +418,6 @@ test.describe("BUG-1009: a send or a mark-read answered 403 after the coach move
   });
 
   test("B: a late mark-read 403 takes the Overview to /clients/denied, with one refresh (markRead's settle)", async ({ page }) => {
-    test.setTimeout(60_000);
     await signInThroughForm(page, { lang: "en" });
     await traineeWrites(page, "unread one");
     const hold = await holdFirstPost(page, READ);
