@@ -79,6 +79,11 @@ async function holdFirstPost(page: Page, path: string) {
   const answered = held.then(() =>
     page.waitForResponse((res) => res.request().method() === "POST" && new URL(res.url()).pathname === path, { timeout: 30_000 })
   );
+  // BUG-1010: the waiter starts eagerly, but a test that never calls `answered()` (:199, :312) can
+  // end while it is pending; its "Test ended" rejection was then unhandled and failed the test.
+  // This handler only marks it handled: `answered()` still awaits `answered` itself, so a test
+  // that calls it still fails on a real timeout.
+  answered.catch(() => undefined);
   return {
     /** The held request has left the page. */
     held,
