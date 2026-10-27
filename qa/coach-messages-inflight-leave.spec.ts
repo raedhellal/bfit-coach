@@ -334,3 +334,91 @@ test.describe("BUG-943: a send or a mark-read in flight when the coach leaves Me
     hold.release({ status: 504, body: JSON.stringify({ code: "UPSTREAM" }) });
   });
 });
+
+/**
+ * BUG-1009 — the witness for BUG-943's two late-denial refreshes in `MessageThread.tsx`
+ * (`markRead`'s `settle` and `sendSettledLate`, each `if (!slot.endedLate()) router.refresh()`).
+ *
+ * A send or a mark-read held when the coach leaves « Messages » for the same client's Overview, the
+ * link ended meanwhile (`evoli_fixture_link=ended`), then answered 403 after the island unmounted:
+ * no island is mounted for the thread, so the late answer's own refresh is the only thing that takes
+ * the Overview tab to `/clients/denied` (BUG-1007 ruled both calls legitimate). Without it the tab
+ * stays up on an ended link with no RSC request at all, which the census count alone cannot tell
+ * from a change that removes both calls and pins the count at 15.
+ *
+ * Each case asserts the page reaches `/clients/denied` and that exactly ONE refresh is made after the
+ * late 403 (one non-prefetch RSC request for the Overview's own path), never a second. Case A guards
+ * `sendSettledLate`, case B `markRead`'s `settle`; each is red with its call removed.
+ *
+ * The full list of non-prefetch RSC requests is asserted exactly, and it differs by server. Under
+ * `next dev` it is the refresh alone. On a production build the refresh is answered 200 with the
+ * layout's redirect in its payload, and the router then fetches `/clients/denied` as a NAVIGATION
+ * (it carries `Next-Url`, the refresh does not; that fetch is answered 403, the denial page). That
+ * second request is the redirect being followed, not a second refresh, so it is expected there,
+ * once, after the refresh, and nothing else is.
+ */
+const DENIED = { status: 403, body: JSON.stringify({ code: "COACH_ACCESS_DENIED" }) };
+
+/** Non-prefetch RSC requests (`router.refresh()`, navigations) from now on, by path. */
+function recordRsc(page: Page) {
+  const log: Array<{ at: number; path: string }> = [];
+  page.on("request", (r: Request) => {
+    const h = r.headers();
+    if (h["rsc"] === "1" && !h["next-router-prefetch"]) log.push({ at: Date.now(), path: new URL(r.url()).pathname });
+  });
+  return log;
+}
+
+async function endLink(page: Page): Promise<void> {
+  await page.context().addCookies([{ name: "evoli_fixture_link", value: "ended", url: new URL("/", page.url()).href }]);
+}
+
+/** Ends the link, answers the held POST 403, and checks where the Overview tab goes. */
+async function lateDenial(page: Page, hold: Awaited<ReturnType<typeof holdFirstPost>>, label: string): Promise<void> {
+  const prod = await isProductionBuild(page);
+  await endLink(page);
+  const rsc = recordRsc(page);
+  const released = Date.now();
+  hold.release(DENIED);
+  await hold.answered();
+  // Soft, so a red run still reports the RSC count below.
+  await expect.soft(page, "the late 403's refresh takes the tab to the denial page").toHaveURL(/\/clients\/denied$/);
+  // A quiet window, so a second refresh after the first would be counted.
+  await page.waitForTimeout(2_000);
+  const after = rsc.filter((e) => e.at >= released);
+  test.info().annotations.push({
+    type: `BUG-1009 ${label}`,
+    description: `${prod ? "prod" : "dev"}: final ${new URL(page.url()).pathname}; non-prefetch RSC after the late 403: [${after.map((e) => `+${e.at - released} ms ${e.path}`).join(", ")}]`,
+  });
+  const refresh = `/clients/${LINA}`;
+  expect(after.filter((e) => e.path === refresh), "exactly one refresh of the Overview after the late 403").toHaveLength(1);
+  expect(
+    after.map((e) => e.path),
+    prod ? "the refresh, then the redirect's navigation to the denial page, and nothing else" : "the refresh, and no other non-prefetch RSC request"
+  ).toEqual(prod ? [refresh, "/clients/denied"] : [refresh]);
+}
+
+test.describe("BUG-1009: a send or a mark-read answered 403 after the coach moved to the same client's Overview", () => {
+  test("A: a late send 403 takes the Overview to /clients/denied, with one refresh (sendSettledLate)", async ({ page }) => {
+    test.setTimeout(60_000);
+    await signInThroughForm(page, { lang: "en" });
+    const hold = await holdFirstPost(page, BFF);
+    await openThread(page);
+    await send(page, "late one");
+    await hold.held;
+    await toOverview(page);
+    await lateDenial(page, hold, "A late send");
+  });
+
+  test("B: a late mark-read 403 takes the Overview to /clients/denied, with one refresh (markRead's settle)", async ({ page }) => {
+    test.setTimeout(60_000);
+    await signInThroughForm(page, { lang: "en" });
+    await traineeWrites(page, "unread one");
+    const hold = await holdFirstPost(page, READ);
+    await openThread(page);
+    await expect(rows(page)).toHaveCount(1);
+    await hold.held;
+    await toOverview(page);
+    await lateDenial(page, hold, "B late mark-read");
+  });
+});
