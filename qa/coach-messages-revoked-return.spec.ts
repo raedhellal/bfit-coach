@@ -32,6 +32,8 @@ import { POLL_ACTIVE_MS } from "../src/lib/messages";
  * could have found the revoke without the return read. A return that waits for a poll is the
  * defect BUG-942 fixed, and it still fails here: with the return read removed, `next dev` read
  * 15710 and 15977 ms, both red. The denial page and the absent composer are asserted as before.
+ * The 1 s is enforced only by `playwright.start.config.ts`; any change to messages, the BFF 403
+ * path or middleware must be gated there.
  */
 const PROD_BUDGET_MS = 1_000;
 const DEV_BUDGET_MS = 3_000;
@@ -140,6 +142,8 @@ test.describe("BUG-942: a router-cached return to Messages after the link ended"
       expect((await page.request.get(BFF, { maxRedirects: 0 })).status()).toBe(200);
       await c.setup(page);
       const prod = await isProductionBuild(page);
+      // BUG-1008: a misdetection must fail, not fall back to the lenient budget (cf. start-build.ts `hydrated`).
+      expect(prod, "the server matches the config (BUG-1008)").toBe(/playwright\.start\.config\.ts$/.test(test.info().config.configFile ?? ""));
       // BUG-1008: the budget for the server under test (THE BUDGET, above).
       const budget = prod ? PROD_BUDGET_MS : DEV_BUDGET_MS;
       expect(DEV_BUDGET_MS, "the dev budget still fails a return that waits for a poll").toBeLessThan(POLL_ACTIVE_MS);
