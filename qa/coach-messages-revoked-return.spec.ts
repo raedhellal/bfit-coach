@@ -2,10 +2,12 @@ import { expect, type Page, type Request } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { isProductionBuild } from "./production-build";
+import { POLL_ACTIVE_MS } from "../src/lib/messages";
 
 /**
  * BUG-942 — after the link ends, a return to « Messages » through the client router cache shows
- * the ended-link state (`/clients/denied`, no composer) within 1 s, whatever the unread count.
+ * the ended-link state (`/clients/denied`, no composer) within 1 s on a production build, whatever
+ * the unread count (`next dev`: see THE BUDGET, BUG-1008).
  *
  * A return inside `staleTimes.dynamic` (30 s, ADR-0033 D33.0) is drawn from the router cache with
  * no server render, so the layout's 403 decision is not made again; since BUG-938 the remounted
@@ -16,7 +18,25 @@ import { isProductionBuild } from "./production-build";
  * Fixture mode; runs in the default (dev) suite AND in `playwright.start.config.ts` (a production
  * build), where the router cache behaves as shipped. `evoli_fixture_link=ended` (this browser
  * context only) is the revoke: every read and write about the trainee is the guard's 403.
+ *
+ * THE BUDGET (BUG-1008). BUG-942's 1 s is a production budget, and it is asserted, unchanged, on a
+ * production build (`playwright.start.config.ts`). Measured there on main 274991b (fixture mode,
+ * 4 CPU container, no Gradle running, Chromium 1243, 2026-10-28): p50 145 / p95 180 / max 227 ms
+ * (n=20) and p50 115 / p95 147 / max 147 ms (n=10); 285-427 ms with the browser's CPU throttled 6x.
+ * One set of 10 taken while the machine stalled (every test 3-9x slower) read up to 1827 ms: the
+ * 1 s is not widened for that. Under `next dev`, the default suite, the same code measured p50
+ * 452-459 / p95 595-689 / max 960 ms (two quiet sets of 20), and 1016-2042 ms on QA's loaded rig
+ * (BUG-1008). The difference is development React and the dev server, on the browser's main thread
+ * and the server, and it grows with the machine's load. So `next dev` asserts `DEV_BUDGET_MS`, 3 s:
+ * about 1.5x the worst loaded dev reading, and below `POLL_ACTIVE_MS` (5 s), the soonest a poll
+ * could have found the revoke without the return read. A return that waits for a poll is the
+ * defect BUG-942 fixed, and it still fails here: with the return read removed, `next dev` read
+ * 15710 and 15977 ms, both red. The denial page and the absent composer are asserted as before.
+ * The 1 s is enforced only by `playwright.start.config.ts`; any change to messages, the BFF 403
+ * path or middleware must be gated there.
  */
+const PROD_BUDGET_MS = 1_000;
+const DEV_BUDGET_MS = 3_000;
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const THREAD = `/clients/${LINA}/messages`;
@@ -111,7 +131,7 @@ const CASES = [
 
 test.describe("BUG-942: a router-cached return to Messages after the link ended", () => {
   for (const c of CASES) {
-    test(`${c.name}: the ended-link state within 1 s, no editable composer`, async ({ page }) => {
+    test(`${c.name}: the ended-link state within budget (1 s on a production build), no editable composer`, async ({ page }) => {
       test.setTimeout(90_000);
       await page.addInitScript(watchForTheDenial);
       await signInThroughForm(page, { lang: "en" });
@@ -122,6 +142,11 @@ test.describe("BUG-942: a router-cached return to Messages after the link ended"
       expect((await page.request.get(BFF, { maxRedirects: 0 })).status()).toBe(200);
       await c.setup(page);
       const prod = await isProductionBuild(page);
+      // BUG-1008: a misdetection must fail, not fall back to the lenient budget (cf. start-build.ts `hydrated`).
+      expect(prod, "the server matches the config (BUG-1008)").toBe(/playwright\.start\.config\.ts$/.test(test.info().config.configFile ?? ""));
+      // BUG-1008: the budget for the server under test (THE BUDGET, above).
+      const budget = prod ? PROD_BUDGET_MS : DEV_BUDGET_MS;
+      expect(DEV_BUDGET_MS, "the dev budget still fails a return that waits for a poll").toBeLessThan(POLL_ACTIVE_MS);
 
       await tabs(page).getByRole("link", { name: "Overview", exact: true }).click();
       // Long: `next dev` may compile the overview on this first visit.
@@ -132,7 +157,7 @@ test.describe("BUG-942: a router-cached return to Messages after the link ended"
       await page.context().addCookies([{ name: "evoli_fixture_link", value: "ended", url: new URL("/", page.url()).href }]);
       const req = count(page);
       // Timed IN the page, every frame, from the click's own event to the first frame on the denial
-      // page with no composer: Playwright's polling (100 / 250 / 500 / 1000 ms) is too coarse for 1 s.
+      // page with no composer: Playwright's polling (100 / 250 / 500 / 1000 ms) is too coarse for the budget.
       // In sessionStorage, because the denial is reached by a DOCUMENT load (the RSC answer for
       // /clients/denied is a 403, and the router turns a non-ok RSC answer into one).
       await page.evaluate(() => {
@@ -144,8 +169,8 @@ test.describe("BUG-942: a router-cached return to Messages after the link ended"
       await tabs(page).getByRole("link", { name: "Messages", exact: true }).click();
 
       // Soft, so a red run still measures how long the stale thread stayed.
-      await expect.soft(page, "on /clients/denied within 1 s of the click").toHaveURL(/\/clients\/denied$/, { timeout: 1_000 });
-      await expect.soft(page.locator("form.msg-composer textarea"), "no composer within 1 s").toHaveCount(0, { timeout: 1 });
+      await expect.soft(page, `on /clients/denied within ${budget} ms of the click`).toHaveURL(/\/clients\/denied$/, { timeout: budget });
+      await expect.soft(page.locator("form.msg-composer textarea"), `no composer within ${budget} ms`).toHaveCount(0, { timeout: 1 });
       await page.waitForURL("**/clients/denied", { timeout: 20_000 });
       const timing = await page.waitForFunction(() =>
         sessionStorage.getItem("bug942.endedAt") && sessionStorage.getItem("bug942.clickAt")
@@ -167,7 +192,7 @@ test.describe("BUG-942: a router-cached return to Messages after the link ended"
         `${prod ? "prod" : "dev"}: /clients/denied, no composer, ${ms} ms after the click (composer ${composerMs}); thread GETs in the first 1 s: ${inFirst(req.gets)}, mark-read POSTs: ${inFirst(req.reads)}`
       );
       note(`${c.name} timeline`, req.timeline.map((e) => `${e.at - clicked} ms ${e.what}`).join("; "));
-      expect(ms, "the ended-link state within 1 s").toBeLessThan(1_000);
+      expect(ms, `the ended-link state within ${budget} ms (${prod ? "production build" : "next dev"}, BUG-1008)`).toBeLessThan(budget);
     });
   }
 });
