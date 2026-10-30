@@ -118,6 +118,7 @@ export function EmphasisControl({
   value,
   facet,
   disabled,
+  readOnly = false,
   describedBy,
   onChange,
   onLeave,
@@ -129,6 +130,8 @@ export function EmphasisControl({
   value: readonly string[];
   facet: readonly string[] | null;
   disabled: boolean;
+  /** BUG-1073: « Recharger » is replacing this section; the change is refused by the interview's `update`. */
+  readOnly?: boolean;
   describedBy?: string;
   onChange: Change;
   onLeave(event: FocusEvent<HTMLElement>): void;
@@ -185,6 +188,7 @@ export function EmphasisControl({
                   checked={checked}
                   // YP1: with 5 chosen (dropped values included, YP6b), the others rest.
                   disabled={disabled || (full && !checked)}
+                  aria-readonly={readOnly || undefined}
                   aria-describedby={[hintId, describedBy].filter(Boolean).join(" ")}
                   onChange={(e) =>
                     onChange(fieldKey, e.target.checked ? [...value, option.value] : value.filter((v) => v !== option.value))

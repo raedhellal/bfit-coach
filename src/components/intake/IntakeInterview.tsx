@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/kit";
 import { EmphasisControl, ExerciseListControl } from "@/components/intake/IntakeCatalogFields";
 import { useCopy } from "@/lib/i18n/client";
 import { useCoachForm, type CoachForm } from "@/lib/useCoachForm";
+import { holdSelection, restoreSelection, type HeldSelection } from "@/lib/reseedSelection";
 import { useAutosave } from "@/lib/useAutosave";
 import type { SectionStatus } from "@/lib/autosave";
 import { intakeReadPath, putIntakeSection } from "@/lib/autosaveTransport";
@@ -120,6 +121,9 @@ function emptyValues(): IntakeFormValues {
   return out;
 }
 
+/** Runs in the commit, before paint (as `useCoachForm`'s), and is a plain effect on the server. */
+const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 function sectionOf(key: string): IntakeFormSection {
   return key.slice(0, key.indexOf(".")) as IntakeFormSection;
 }
@@ -203,7 +207,8 @@ export function IntakeInterview({
   valuesRef.current = form.values;
 
   function update(key: string, value: IntakeFormValue) {
-    if (disabled) return;
+    // BUG-1073: a section « Recharger » is replacing takes no change while its read is out.
+    if (disabled || reloadLock.current?.has(sectionOf(key))) return;
     const next = { ...valuesRef.current, [key]: value };
     valuesRef.current = next;
     form.set(key, value);
@@ -224,9 +229,50 @@ export function IntakeInterview({
   const [reloading, setReloading] = useState(false);
   /** S5: « Recharger » did not get the intake (not a 403, not a session end): the block's load sentence. */
   const [reloadFailed, setReloadFailed] = useState(false);
+  /**
+   * BUG-1073 — the sections « Recharger » is replacing, while its read is out (null otherwise).
+   * Their fields are READ-ONLY for that time, not disabled: the focus and the selection stay where
+   * the coach put them, and no character is taken, so nothing typed after the press is silently
+   * overwritten when the stored values land. The text fields carry `readOnly` (exposed to
+   * assistive tech as read-only), the checkboxes `aria-readonly`, and `update` refuses every
+   * change of these sections: a radio or a checkbox is controlled, so React puts it back
+   * (`qa/intake-reload-lock.spec.ts`, a radio in Chromium). The chips' remove buttons and the
+   * catalogue picker go through `update` too; no test presses them during a read, and no radio
+   * carries an ARIA read-only state (`aria-readonly` is not a radio's attribute). Sections not in
+   * conflict stay editable. The ref is the synchronous half, set before the read is sent; the
+   * state is the render's.
+   */
+  const reloadLock = useRef<ReadonlySet<IntakeFormSection> | null>(null);
+  const [locked, setLocked] = useState<ReadonlySet<IntakeFormSection> | null>(null);
+  /**
+   * BUG-1073 — BUG-1070's selection rule for « Recharger »'s write: the selection in the focused
+   * field, taken just before the stored text is written into it and put back in the commit that
+   * writes it (`reseedSelection.ts`: the whole text selected → the whole new text, a caret at the
+   * end → the end of the new text). Dropped before that commit if the held field sees an `input`,
+   * a `keydown`, a `pointerdown` or a `focusout`, as `useCoachForm`'s `held` is; so a selection the
+   * coach moves in that window is not overwritten (keyboard and mouse; touch selection handles not
+   * covered, not verified).
+   */
+  const reloadHeld = useRef<HeldSelection | null>(null);
+  useCommitEffect(() => {
+    if (reloadHeld.current && restoreSelection(reloadHeld.current) === "done") reloadHeld.current = null;
+  });
+  useEffect(() => {
+    const drop = (event: Event) => {
+      if (reloadHeld.current && event.target === reloadHeld.current.field) reloadHeld.current = null;
+    };
+    const events = ["input", "keydown", "pointerdown", "focusout"] as const;
+    for (const type of events) document.addEventListener(type, drop, true);
+    return () => {
+      for (const type of events) document.removeEventListener(type, drop, true);
+    };
+  }, []);
   /** B5 « Recharger »: the stored values replace the conflicted sections', with no navigation. */
   async function reload() {
     if (reloading) return;
+    const lock = new Set(INTAKE_FORM_SECTIONS.filter((s) => autosave.statuses[s] === "conflict"));
+    reloadLock.current = lock;
+    setLocked(lock);
     setReloading(true);
     setReloadFailed(false);
     let failed = true;
@@ -269,6 +315,9 @@ export function IntakeInterview({
       rawRef.current = { ...rawRef.current, ...raws };
       failed = false;
       const next = { ...valuesRef.current, ...stored };
+      // BUG-1073: the focused field's selection, carried over the write (see `reloadHeld`).
+      const kept = holdSelection(form.scope.current, valuesRef.current, next);
+      if (kept) reloadHeld.current = kept;
       valuesRef.current = next;
       for (const [key, value] of Object.entries(stored)) form.set(key, value);
       setAcked((prev) => ({ ...prev, ...stored }));
@@ -278,6 +327,10 @@ export function IntakeInterview({
     } catch {
       // A lost answer: the conflict stays, and « Recharger » can be pressed again.
     } finally {
+      // Unlocked in the same commit as the write (or as the failure's sentence): a failed read
+      // leaves every field as it was, editable again.
+      reloadLock.current = null;
+      setLocked(null);
       setReloading(false);
       setReloadFailed(failed);
     }
@@ -518,6 +571,7 @@ export function IntakeInterview({
                       firstName={firstName}
                       problem={problems.find((p) => p.field === field.field) ?? null}
                       disabled={disabled}
+                      readOnly={locked?.has(section) ?? false}
                       describedBy={disabledReasonId}
                       onChange={update}
                       onLeave={flushOnLeave(section)}
@@ -551,6 +605,7 @@ function FieldControl({
   firstName,
   problem,
   disabled,
+  readOnly,
   describedBy,
   onChange,
   onLeave,
@@ -565,6 +620,8 @@ function FieldControl({
   firstName: string;
   problem: IntakeFieldProblem | null;
   disabled: boolean;
+  /** BUG-1073: « Recharger » is replacing this section; its read is out. */
+  readOnly: boolean;
   describedBy?: string;
   onChange(key: string, value: IntakeFormValue): void;
   onLeave(event: FocusEvent<HTMLElement>): void;
@@ -591,6 +648,7 @@ function FieldControl({
         // Unknown is not dropped: no catalogue read (no grant) is "unknown", never an empty facet.
         facet={catalogue?.muscles ?? null}
         disabled={disabled}
+        readOnly={readOnly}
         describedBy={describedBy}
         onChange={onChange}
         onLeave={onLeave}
@@ -684,6 +742,7 @@ function FieldControl({
                   checked={checked}
                   // At the api's bound (3 motivations), the unticked boxes rest until one is unticked.
                   disabled={disabled || (full && !checked)}
+                  aria-readonly={readOnly || undefined}
                   aria-describedby={describe(hint && hintId, describedBy)}
                   onChange={(e) =>
                     onChange(
@@ -724,6 +783,7 @@ function FieldControl({
           value={text}
           rows={long ? 10 : 4}
           disabled={disabled}
+          readOnly={readOnly}
           aria-describedby={describe(helper && helperId, counterId, over && errorId, describedBy)}
           aria-invalid={over ? true : undefined}
           onChange={(e) => onChange(key, e.target.value)}
@@ -770,6 +830,7 @@ function FieldControl({
           autoComplete="off"
           value={text}
           disabled={disabled}
+          readOnly={readOnly}
           aria-describedby={describe(error && errorId, describedBy)}
           aria-invalid={error ? true : undefined}
           onChange={(e) => onChange(key, e.target.value)}

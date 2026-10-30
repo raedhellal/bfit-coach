@@ -135,7 +135,8 @@ export function useCoachForm<V extends FormShape<V>>({
    * text changes, and only inside `scope`. Dropped before that commit if the held field sees an
    * `input`, a `keydown` (arrows, Shift+arrows, Home/End move a selection without an `input`), a
    * `pointerdown` (a mouse selection) or a `focusout`; so a selection the coach moves in that
-   * window is not overwritten. A push's re-seed is taken here, from the DOM as last committed,
+   * window is not overwritten (keyboard and mouse; touch selection handles not covered, not
+   * verified). A push's re-seed is taken here, from the DOM as last committed,
    * before this render's values reach it; a save's in `saved`.
    */
   const held = useRef<HeldSelection | null>(null);
