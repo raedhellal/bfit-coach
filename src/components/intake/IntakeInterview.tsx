@@ -702,8 +702,9 @@ function FieldControl({
         </legend>
         {/*
           BUG-1073 (staff r1 S2): the radios' read-only state is the GROUP's (`aria-readonly` is not
-          a radio's attribute). The role is on this inner element, not on the <fieldset>: four
-          existing specs find these fieldsets as `group` by name, and the fieldset keeps that role.
+          a radio's attribute). The role is on this inner element, not on the <fieldset>: three
+          existing specs find these fieldsets as `group` by name (intake-routine-fields,
+          intake-profile-goal, intake-sections-5-8), and the fieldset keeps that role.
         */}
         <div className="intake-choices" role="radiogroup" aria-labelledby={legendId} aria-readonly={locked || undefined}>
           {options.map((option) => (

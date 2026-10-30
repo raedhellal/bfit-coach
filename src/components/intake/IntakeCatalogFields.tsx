@@ -131,8 +131,8 @@ export function EmphasisControl({
   facet: readonly string[] | null;
   disabled: boolean;
   /**
-   * BUG-1073: « Recharger » is replacing this section. A change is refused here, before a chip's
-   * removal arms the focus move (staff r1 S1), and again by the interview's `update`.
+   * BUG-1073: « Recharger » is replacing this section. A chip removal is refused here, before it
+   * arms the focus move (staff r1 S1), and every change again by the interview's `update`.
    */
   locked?: boolean;
   describedBy?: string;
