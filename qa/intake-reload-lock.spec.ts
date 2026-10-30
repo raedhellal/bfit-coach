@@ -21,8 +21,11 @@ import { signInThroughForm, type SignInLang } from "./sign-in";
  * have been taken before the GET's answer reached the page (`answered`), so no assertion about the
  * read-only window can pass vacuously after it.
  *
+ * Round 2 (staff r1 S1, S2): a chip's remove button (HISTORY) and « Clear » (AVAILABILITY) pressed
+ * during the read move no focus and change nothing; a radio group says it is read-only.
+ *
  * Not covered here: WebKit (not installed on the rig), touch selection handles, a partial
- * selection (Out, as in BUG-1070), sections other than GOALS in conflict.
+ * selection (Out, as in BUG-1070), the catalogue picker and the muscle chips during a read.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
@@ -212,6 +215,13 @@ test("CW4. only the conflicted section is locked: a non-conflicted section's tex
   await radio.click();
   await expect(radio, "a radio of the conflicted section takes no choice during the read").not.toBeChecked();
   await expect(panel(page, "GOALS").locator('input[type="checkbox"][value="HEALTH"]')).toHaveAttribute("aria-readonly", "true");
+  // Staff r1 S2: a radio has no read-only state of its own; its group says it.
+  const goalGroup = page.locator('[data-intake-field="GOALS.primaryGoal"] [role="radiogroup"]');
+  await expect(goalGroup).toHaveAttribute("aria-readonly", "true");
+  await expect(page.locator('[data-intake-field="HISTORY.level"] [role="radiogroup"]'), "a section not in conflict is not read-only").not.toHaveAttribute(
+    "aria-readonly",
+    /.*/
+  );
   await page.locator('[data-intake-section="HISTORY"]').click();
   await notes(page, "HISTORY").click();
   await page.keyboard.type("History typed", { delay: 30 });
@@ -229,6 +239,7 @@ test("CW4. only the conflicted section is locked: a non-conflicted section's tex
   expect(after.v, "the non-conflicted section's text is kept after the read").toBe("History typed");
   await page.locator('[data-intake-section="GOALS"]').click();
   await expect(notes(page)).toHaveValue("Theirs");
+  await expect(goalGroup, "unlocked after the read").not.toHaveAttribute("aria-readonly", /.*/);
 });
 
 test("CW4. a failed read (GET 500): locked while out, then editable again with what it held, and the load sentence shows", async ({ page }) => {
@@ -264,4 +275,99 @@ test("CW4. a read answered 403 is access ended, as on main: the denied page", as
   await page.context().addCookies([{ name: "evoli_fixture_link", value: "ended", url: new URL("/", page.url()).href }]);
   await alertOf(page, "conflict").getByRole("button", { name: T.en.reload, exact: true }).click();
   await page.waitForURL("/clients/denied", { timeout: 15_000 });
+});
+
+/**
+ * Staff r1 S1: the same conflict in another section, seeded first (version 1). The coach saves
+ * « Mine » (version 2), another writer stores `theirs` at version 2 (version 3), and the coach's
+ * « Mine again » meets a 409.
+ */
+async function conflictedIn(page: Page, section: string, seed: Record<string, unknown>, theirs: Record<string, unknown>) {
+  await signInThroughForm(page, { lang: "en" });
+  const g = await page.request.post("/api/fixture/intake", { data: { clientId: LINA, answer: "grant" }, maxRedirects: 0 });
+  expect(g.status()).toBe(200);
+  const put = async (version: number, values: Record<string, unknown>) => {
+    const res = await page.request.put(`/api/clients/${LINA}/intake/${section}`, {
+      data: { version, values },
+      headers: { "Content-Type": "application/json", ...(await subjectHeader(page)) },
+      maxRedirects: 0,
+    });
+    expect(res.status(), `PUT ${section} v${version}: ${await res.text()}`).toBe(200);
+  };
+  await put(0, seed);
+  await page.goto(INTAKE);
+  await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
+  await expect(page.locator(`[data-intake-ready="ready"]`)).toHaveCount(1);
+  await page.locator(`[data-intake-section="${section}"]`).click();
+  await notes(page, section).fill("Mine");
+  await notes(page, section).press("Tab");
+  await expect.poll(async () => plain(await status(page).textContent())).toBe(T.en.saved);
+  await put(2, theirs);
+  await notes(page, section).fill("Mine again");
+  await notes(page, section).press("Tab");
+  await expect(alertOf(page, "conflict")).toBeVisible();
+}
+
+/** Which element has the focus, named by the attributes the probe finds it by. */
+const focusName = (page: Page) =>
+  page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el) return "none";
+    const chip = el.closest("[data-intake-chip]")?.getAttribute("data-intake-chip");
+    if (chip && el.hasAttribute("data-intake-chip-remove")) return `remove:${chip}`;
+    if (el.closest("[data-intake-clear]")) return "clear";
+    if (el instanceof HTMLInputElement) return `${el.type}:${el.value}`;
+    return el.tagName.toLowerCase();
+  });
+
+test("S1. a chip's remove button pressed during the read: the chip stays, and the focus stays on that button through the write", async ({ page }) => {
+  test.setTimeout(90_000);
+  await conflictedIn(page, "HISTORY", { likedExercises: ["Plank"] }, { likedExercises: ["Goblet Squat", "Plank"], notes: "Theirs" });
+  const liked = page.locator('[data-intake-field="HISTORY.likedExercises"]');
+  const chips = () => liked.locator("[data-intake-chip]").evaluateAll((els) => els.map((e) => e.getAttribute("data-intake-chip")));
+  const gate = await gateRead(page, "continue");
+  const button = alertOf(page, "conflict").getByRole("button", { name: T.en.reload, exact: true });
+  await button.click();
+  await expect(button).toBeDisabled();
+  await liked.locator('[data-intake-chip="Plank"] [data-intake-chip-remove]').click();
+  await page.waitForTimeout(300);
+  const during = { chips: await chips(), focus: await focusName(page) };
+  const duringBeforeAnswer = !gate.answered();
+  const got = readGet(page);
+  gate.release();
+  await got;
+  await expect(alertOf(page, "conflict")).toHaveCount(0);
+  await expect.poll(chips).toEqual(["Goblet Squat", "Plank"]);
+  await page.waitForTimeout(400);
+  const after = { chips: await chips(), focus: await focusName(page) };
+  process.stdout.write(`BUG1073 S1 chip during=${JSON.stringify(during)} before-answer=${duringBeforeAnswer} after=${JSON.stringify(after)}\n`);
+  expect(duringBeforeAnswer).toBe(true);
+  expect(during, "the removal is refused and the focus stays").toEqual({ chips: ["Plank"], focus: "remove:Plank" });
+  expect(after, "the write shows the stored list and does not move the focus").toEqual({ chips: ["Goblet Squat", "Plank"], focus: "remove:Plank" });
+});
+
+test("S1. « Clear » pressed during the read: the choice stays, and the focus stays on « Clear » through the write", async ({ page }) => {
+  test.setTimeout(90_000);
+  await conflictedIn(page, "AVAILABILITY", { splitPreference: "FULL_BODY" }, { splitPreference: "UPPER_LOWER", notes: "Theirs" });
+  const split = page.locator('[data-intake-field="AVAILABILITY.splitPreference"]');
+  const checked = () => split.locator('input[type="radio"]:checked').evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  const gate = await gateRead(page, "continue");
+  const button = alertOf(page, "conflict").getByRole("button", { name: T.en.reload, exact: true });
+  await button.click();
+  await expect(button).toBeDisabled();
+  await split.locator("[data-intake-clear]").getByRole("button", { name: "Clear", exact: true }).click();
+  await page.waitForTimeout(300);
+  const during = { checked: await checked(), focus: await focusName(page) };
+  const duringBeforeAnswer = !gate.answered();
+  const got = readGet(page);
+  gate.release();
+  await got;
+  await expect(alertOf(page, "conflict")).toHaveCount(0);
+  await expect.poll(checked).toEqual(["UPPER_LOWER"]);
+  await page.waitForTimeout(400);
+  const after = { checked: await checked(), focus: await focusName(page) };
+  process.stdout.write(`BUG1073 S1 clear during=${JSON.stringify(during)} before-answer=${duringBeforeAnswer} after=${JSON.stringify(after)}\n`);
+  expect(duringBeforeAnswer).toBe(true);
+  expect(during, "the clear is refused and the focus stays").toEqual({ checked: ["FULL_BODY"], focus: "clear" });
+  expect(after, "the write shows the stored choice and does not move the focus").toEqual({ checked: ["UPPER_LOWER"], focus: "clear" });
 });

@@ -235,13 +235,18 @@ export function IntakeInterview({
    * the coach put them, and no character is taken, so nothing typed after the press is silently
    * overwritten when the stored values land. The text fields carry `readOnly` (the native
    * read-only state; how a screen reader announces it was not checked), the checkboxes
-   * `aria-readonly`, and `update` refuses every
-   * change of these sections: a radio or a checkbox is controlled, so React puts it back
-   * (`qa/intake-reload-lock.spec.ts`, a radio in Chromium). The chips' remove buttons and the
-   * catalogue picker go through `update` too; no test presses them during a read, and no radio
-   * carries an ARIA read-only state (`aria-readonly` is not a radio's attribute). Sections not in
-   * conflict stay editable. The ref is the synchronous half, set before the read is sent; the
-   * state is the render's.
+   * `aria-readonly`, each radio group's `role="radiogroup"` element `aria-readonly`, and `update`
+   * refuses every change of these sections: a radio or a checkbox is controlled, so React puts
+   * it back. The controls that move the focus after a change return BEFORE doing so when locked
+   * (staff r1 S1): a chip's remove button (`ExerciseListControl`, `EmphasisControl`), the
+   * catalogue picker's `pick`, and « Effacer » / "Clear" (`ClearChoice`). Witnessed in Chromium by
+   * `qa/intake-reload-lock.spec.ts`: a radio, a checkbox's and a radio group's `aria-readonly`, a
+   * liked exercise's remove button and section 3's « Effacer »; not exercised during a read: the
+   * picker, the muscle chips, the integer and date inputs. Sections not in conflict stay editable.
+   *
+   * The lock lasts as long as the read's `fetch`, which has no client-side timeout: it relies on
+   * the BFF route's upstream timeout to end (inferred from the code, not witnessed). The ref is
+   * the synchronous half, set before the read is sent; the state is the render's.
    */
   const reloadLock = useRef<ReadonlySet<IntakeFormSection> | null>(null);
   const [locked, setLocked] = useState<ReadonlySet<IntakeFormSection> | null>(null);
@@ -252,9 +257,10 @@ export function IntakeInterview({
    * end → the end of the new text). Dropped before that commit if the held field sees an `input`,
    * a `keydown`, a `pointerdown` or a `focusout`, as `useCoachForm`'s `held` is; so a selection the
    * coach moves in that window is not overwritten (keyboard and mouse; touch selection handles not
-   * covered, not verified). Witnessed in Chromium for a select-all and an end caret in GOALS'
-   * notes (`qa/intake-reload-lock.spec.ts`); WebKit, and a selection moved inside that window,
-   * not exercised.
+   * covered, not verified). Only the select-all case shows the hold is needed: in Chromium, with
+   * the hold removed, a select-all in GOALS' notes collapses (`TheirsX`, `qa/intake-reload-lock.spec.ts`
+   * R2), while an end caret lands at the end anyway, so R1's end caret is not evidence for it.
+   * WebKit, and a selection moved inside that window, not exercised.
    */
   const reloadHeld = useRef<HeldSelection | null>(null);
   useCommitEffect(() => {
@@ -575,7 +581,7 @@ export function IntakeInterview({
                       firstName={firstName}
                       problem={problems.find((p) => p.field === field.field) ?? null}
                       disabled={disabled}
-                      readOnly={locked?.has(section) ?? false}
+                      locked={locked?.has(section) ?? false}
                       describedBy={disabledReasonId}
                       onChange={update}
                       onLeave={flushOnLeave(section)}
@@ -609,7 +615,7 @@ function FieldControl({
   firstName,
   problem,
   disabled,
-  readOnly,
+  locked,
   describedBy,
   onChange,
   onLeave,
@@ -625,7 +631,7 @@ function FieldControl({
   problem: IntakeFieldProblem | null;
   disabled: boolean;
   /** BUG-1073: « Recharger » is replacing this section; its read is out. */
-  readOnly: boolean;
+  locked: boolean;
   describedBy?: string;
   onChange(key: string, value: IntakeFormValue): void;
   onLeave(event: FocusEvent<HTMLElement>): void;
@@ -652,7 +658,7 @@ function FieldControl({
         // Unknown is not dropped: no catalogue read (no grant) is "unknown", never an empty facet.
         facet={catalogue?.muscles ?? null}
         disabled={disabled}
-        readOnly={readOnly}
+        locked={locked}
         describedBy={describedBy}
         onChange={onChange}
         onLeave={onLeave}
@@ -672,6 +678,7 @@ function FieldControl({
         droppedNames={catalogue?.droppedExercises ?? []}
         helper={field.field === "avoidedExercises" ? c.injuryNotHere(firstName) : undefined}
         disabled={disabled}
+        locked={locked}
         describedBy={describedBy}
         onChange={onChange}
         onLeave={onLeave}
@@ -681,6 +688,7 @@ function FieldControl({
 
   if (field.kind === "single" || field.kind === "singleInt") {
     const options = field.kind === "single" ? field.options : field.options.map(String);
+    const legendId = `${id}-legend`;
     const optionLabel = (option: string) =>
       field.kind === "single"
         ? (c.values[field.field]?.[option] ?? option)
@@ -689,8 +697,15 @@ function FieldControl({
           : option;
     return (
       <fieldset className="intake-field" data-intake-field={key} onBlur={onLeave}>
-        <legend className="intake-label">{label}</legend>
-        <div className="intake-choices">
+        <legend id={legendId} className="intake-label">
+          {label}
+        </legend>
+        {/*
+          BUG-1073 (staff r1 S2): the radios' read-only state is the GROUP's (`aria-readonly` is not
+          a radio's attribute). The role is on this inner element, not on the <fieldset>: four
+          existing specs find these fieldsets as `group` by name, and the fieldset keeps that role.
+        */}
+        <div className="intake-choices" role="radiogroup" aria-labelledby={legendId} aria-readonly={locked || undefined}>
           {options.map((option) => (
             <label key={option} className="intake-choice">
               <input
@@ -710,6 +725,7 @@ function FieldControl({
             <ClearChoice
               label={c.clearChoice}
               disabled={disabled}
+              locked={locked}
               onClear={(group) => {
                 onChange(key, "");
                 // The button goes with the choice: the focus stays in the group, on its first option.
@@ -746,7 +762,7 @@ function FieldControl({
                   checked={checked}
                   // At the api's bound (3 motivations), the unticked boxes rest until one is unticked.
                   disabled={disabled || (full && !checked)}
-                  aria-readonly={readOnly || undefined}
+                  aria-readonly={locked || undefined}
                   aria-describedby={describe(hint && hintId, describedBy)}
                   onChange={(e) =>
                     onChange(
@@ -787,7 +803,7 @@ function FieldControl({
           value={text}
           rows={long ? 10 : 4}
           disabled={disabled}
-          readOnly={readOnly}
+          readOnly={locked}
           aria-describedby={describe(helper && helperId, counterId, over && errorId, describedBy)}
           aria-invalid={over ? true : undefined}
           onChange={(e) => onChange(key, e.target.value)}
@@ -834,7 +850,7 @@ function FieldControl({
           autoComplete="off"
           value={text}
           disabled={disabled}
-          readOnly={readOnly}
+          readOnly={locked}
           aria-describedby={describe(error && errorId, describedBy)}
           aria-invalid={error ? true : undefined}
           onChange={(e) => onChange(key, e.target.value)}
@@ -850,11 +866,29 @@ function FieldControl({
   );
 }
 
-function ClearChoice({ label, disabled, onClear }: { label: string; disabled: boolean; onClear(group: HTMLElement | null): void }) {
+function ClearChoice({
+  label,
+  disabled,
+  locked,
+  onClear,
+}: {
+  label: string;
+  disabled: boolean;
+  /** BUG-1073: refused while « Recharger » reads, BEFORE `onClear` moves the focus (staff r1 S1). */
+  locked: boolean;
+  onClear(group: HTMLElement | null): void;
+}) {
   const ref = useRef<HTMLSpanElement | null>(null);
   return (
     <span ref={ref} className="intake-clear" data-intake-clear="">
-      <Button variant="secondary" disabled={disabled} onClick={() => onClear(ref.current?.closest("fieldset") ?? null)}>
+      <Button
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => {
+          if (locked) return;
+          onClear(ref.current?.closest("fieldset") ?? null);
+        }}
+      >
         {label}
       </Button>
     </span>

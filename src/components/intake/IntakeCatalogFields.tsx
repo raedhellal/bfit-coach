@@ -118,7 +118,7 @@ export function EmphasisControl({
   value,
   facet,
   disabled,
-  readOnly = false,
+  locked = false,
   describedBy,
   onChange,
   onLeave,
@@ -130,8 +130,11 @@ export function EmphasisControl({
   value: readonly string[];
   facet: readonly string[] | null;
   disabled: boolean;
-  /** BUG-1073: « Recharger » is replacing this section; the change is refused by the interview's `update`. */
-  readOnly?: boolean;
+  /**
+   * BUG-1073: « Recharger » is replacing this section. A change is refused here, before a chip's
+   * removal arms the focus move (staff r1 S1), and again by the interview's `update`.
+   */
+  locked?: boolean;
   describedBy?: string;
   onChange: Change;
   onLeave(event: FocusEvent<HTMLElement>): void;
@@ -166,6 +169,7 @@ export function EmphasisControl({
         dropped={dropped}
         disabled={disabled}
         onRemove={(index) => {
+          if (locked) return;
           removing(index);
           onChange(fieldKey, value.filter((_, i) => i !== index));
         }}
@@ -188,7 +192,7 @@ export function EmphasisControl({
                   checked={checked}
                   // YP1: with 5 chosen (dropped values included, YP6b), the others rest.
                   disabled={disabled || (full && !checked)}
-                  aria-readonly={readOnly || undefined}
+                  aria-readonly={locked || undefined}
                   aria-describedby={[hintId, describedBy].filter(Boolean).join(" ")}
                   onChange={(e) =>
                     onChange(fieldKey, e.target.checked ? [...value, option.value] : value.filter((v) => v !== option.value))
@@ -225,6 +229,7 @@ export function ExerciseListControl({
   droppedNames,
   helper,
   disabled,
+  locked = false,
   describedBy,
   onChange,
   onLeave,
@@ -241,6 +246,11 @@ export function ExerciseListControl({
   /** YP3: the injury line, under « Exercices à éviter » only. */
   helper?: string;
   disabled: boolean;
+  /**
+   * BUG-1073: « Recharger » is replacing this section. A removal or a pick is refused here, before
+   * a removal arms the focus move (staff r1 S1), and again by the interview's `update`.
+   */
+  locked?: boolean;
   describedBy?: string;
   onChange: Change;
   onLeave(event: FocusEvent<HTMLElement>): void;
@@ -267,6 +277,7 @@ export function ExerciseListControl({
   }
 
   function pick(exercise: CatalogExercise) {
+    if (locked) return;
     // The rows that would break a rule rest (`rowBlock`, `limitNote`); this is the same rule again.
     if (value.length >= max || value.includes(exercise.name) || other.includes(exercise.name)) return;
     onChange(fieldKey, [...value, exercise.name]);
@@ -295,6 +306,7 @@ export function ExerciseListControl({
           dropped={(name) => droppedNames.includes(name)}
           disabled={disabled}
           onRemove={(index) => {
+            if (locked) return;
             removing(index);
             onChange(fieldKey, value.filter((_, i) => i !== index));
           }}
