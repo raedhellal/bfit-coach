@@ -43,7 +43,8 @@ import { useUnsavedChanges, type AfterStep } from "./useUnsavedChanges";
  * middle of takes the new value; a field typed since the last send keeps the coach's text.
  * A re-seed of the FOCUSED field (a save's answer, or a push) keeps the coach's selection
  * there: the whole text selected stays the whole text, a caret at the end stays at the end
- * (BUG-1070, `reseedSelection.ts`). What counts as unsaved is not touched by that.
+ * (BUG-1070, `reseedSelection.ts`), for a field inside `scope` that renders
+ * `value={form.values[key]}`. What counts as unsaved is not touched by that.
  *
  * ═══ THE SAVE PROTOCOL ═══════════════════════════════════════════════════════════════════
  *
@@ -131,9 +132,11 @@ export function useCoachForm<V extends FormShape<V>>({
   /**
    * BUG-1070 — the selection in the focused field, taken just before a re-seed rewrites its
    * text and put back in the commit that writes it (`reseedSelection.ts`). Taken only where the
-   * text changes; dropped by any keystroke or blur in the meantime, so it never overrides what
-   * the coach did since. A push's re-seed is taken here, from the DOM as last committed, before
-   * this render's values reach it; a save's in `saved`.
+   * text changes, and only inside `scope`. Dropped before that commit if the held field sees an
+   * `input`, a `keydown` (arrows, Shift+arrows, Home/End move a selection without an `input`), a
+   * `pointerdown` (a mouse selection) or a `focusout`; so a selection the coach moves in that
+   * window is not overwritten. A push's re-seed is taken here, from the DOM as last committed,
+   * before this render's values reach it; a save's in `saved`.
    */
   const held = useRef<HeldSelection | null>(null);
   if (current !== state) {
@@ -193,11 +196,10 @@ export function useCoachForm<V extends FormShape<V>>({
     const drop = (event: Event) => {
       if (held.current && event.target === held.current.field) held.current = null;
     };
-    document.addEventListener("input", drop, true);
-    document.addEventListener("focusout", drop, true);
+    const events = ["input", "keydown", "pointerdown", "focusout"] as const;
+    for (const type of events) document.addEventListener(type, drop, true);
     return () => {
-      document.removeEventListener("input", drop, true);
-      document.removeEventListener("focusout", drop, true);
+      for (const type of events) document.removeEventListener(type, drop, true);
     };
   }, []);
 

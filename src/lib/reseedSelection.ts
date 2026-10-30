@@ -4,7 +4,8 @@
  * `useCoachForm` writes the server's text into every field the coach has not typed in since
  * the send: on a successful save (`markSaved`) and on a server push (`reseedFromServer`). That
  * text is canonical (`60.00` comes back `60`, `20,5` comes back `20.5` on an English page), and
- * a browser that is given a different `value` for a focused `<input>` collapses its selection.
+ * a browser that is given a different `value` for a focused `<input>` collapses its selection
+ * to a caret at the end (witnessed in Chromium only; WebKit is not installed on the rig).
  * A coach who had selected the whole field during « Saving… » to replace it then had their next
  * keystroke APPENDED to the server's text: `60.00` → `603`, and `5.0` → `53`, which is in range.
  *
@@ -19,6 +20,13 @@
  *
  * Nothing here reads or changes what counts as unsaved: it is the DOM half of a re-seed that
  * `coachFormState.ts` has already decided.
+ *
+ * It relies on one condition: every consumer renders the field's `value` from `form.values` (as
+ * `value={form.values[key]}`, or through a prop derived from it in the same render), so React
+ * writes the re-seeded text into the input in the same commit as the state change, and the hook's
+ * layout effect runs right after that write. The four consumers that attach `scope`
+ * (ProgressGoalBlock, NutritionTargetsCard, NutritionTemplateEditor, IntakeInterview) do, checked
+ * at this commit; CreateChallengeDialog attaches no `scope`, so it is never held.
  */
 
 import type { FormValue } from "./coachFormState";
@@ -51,9 +59,9 @@ function isTextField(el: Element | null): el is TextField {
 }
 
 /**
- * Before a re-seed from `before` to `after` is committed: if the focused text field (inside
- * `scope`, or anywhere when the form attaches none) shows a field's text that the re-seed
- * changes, hold its selection. Null when nothing focused is rewritten, or the selection has no
+ * Before a re-seed from `before` to `after` is committed: if the focused text field inside
+ * `scope` shows a field's text that the re-seed changes, hold its selection. Null when the form
+ * attaches no `scope`, when nothing focused inside it is rewritten, or when the selection has no
  * defined place in the new text.
  */
 export function holdSelection(
@@ -61,9 +69,9 @@ export function holdSelection(
   before: Record<string, FormValue>,
   after: Record<string, FormValue>
 ): HeldSelection | null {
-  if (typeof document === "undefined") return null;
+  if (scope === null || typeof document === "undefined") return null;
   const field = document.activeElement;
-  if (!isTextField(field) || (scope !== null && !scope.contains(field))) return null;
+  if (!isTextField(field) || !scope.contains(field)) return null;
   const from = field.value;
   let to: string | null = null;
   for (const key of Object.keys(after)) {
@@ -78,7 +86,9 @@ export function holdSelection(
   let start: number | null;
   let end: number | null;
   try {
-    // Throws, or reads null, on an input type with no selection (`number`, `date`).
+    // On an input type with no selection (`number`, `date`) the spec has these getters return
+    // null, so the try is only a guard, not a path any witnessed engine takes. (It is
+    // `setSelectionRange` that throws, an `InvalidStateError`, which `restoreSelection` catches.)
     start = field.selectionStart;
     end = field.selectionEnd;
   } catch {
