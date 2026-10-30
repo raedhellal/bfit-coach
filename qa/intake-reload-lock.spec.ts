@@ -21,11 +21,15 @@ import { signInThroughForm, type SignInLang } from "./sign-in";
  * have been taken before the GET's answer reached the page (`answered`), so no assertion about the
  * read-only window can pass vacuously after it.
  *
+ * Round 3 (ruling ct, closes-when 8): senior-qa's test « P », a catalogue pick in a locked
+ * exercise list: refused, never acknowledged as added, and the picker says why; en and fr for the
+ * liked list, en for the avoided list (8e).
+ *
  * Round 2 (staff r1 S1, S2): a chip's remove button (HISTORY) and « Clear » (AVAILABILITY) pressed
  * during the read move no focus and change nothing; a radio group says it is read-only.
  *
  * Not covered here: WebKit (not installed on the rig), touch selection handles, a partial
- * selection (Out, as in BUG-1070), the catalogue picker and the muscle chips during a read.
+ * selection (Out, as in BUG-1070), the muscle chips during a read.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
@@ -282,8 +286,8 @@ test("CW4. a read answered 403 is access ended, as on main: the denied page", as
  * « Mine » (version 2), another writer stores `theirs` at version 2 (version 3), and the coach's
  * « Mine again » meets a 409.
  */
-async function conflictedIn(page: Page, section: string, seed: Record<string, unknown>, theirs: Record<string, unknown>) {
-  await signInThroughForm(page, { lang: "en" });
+async function conflictedIn(page: Page, section: string, seed: Record<string, unknown>, theirs: Record<string, unknown>, lang: Lang = "en") {
+  await signInThroughForm(page, { lang: lang as SignInLang });
   const g = await page.request.post("/api/fixture/intake", { data: { clientId: LINA, answer: "grant" }, maxRedirects: 0 });
   expect(g.status()).toBe(200);
   const put = async (version: number, values: Record<string, unknown>) => {
@@ -299,12 +303,12 @@ async function conflictedIn(page: Page, section: string, seed: Record<string, un
   await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
   await expect(page.locator(`[data-intake-ready="ready"]`)).toHaveCount(1);
   await page.locator(`[data-intake-section="${section}"]`).click();
-  await notes(page, section).fill("Mine");
-  await notes(page, section).press("Tab");
-  await expect.poll(async () => plain(await status(page).textContent())).toBe(T.en.saved);
+  await notes(page, section, lang).fill("Mine");
+  await notes(page, section, lang).press("Tab");
+  await expect.poll(async () => plain(await status(page).textContent())).toBe(T[lang].saved);
   await put(2, theirs);
-  await notes(page, section).fill("Mine again");
-  await notes(page, section).press("Tab");
+  await notes(page, section, lang).fill("Mine again");
+  await notes(page, section, lang).press("Tab");
   await expect(alertOf(page, "conflict")).toBeVisible();
 }
 
@@ -371,3 +375,133 @@ test("S1. « Clear » pressed during the read: the choice stays, and the focus s
   expect(during, "the clear is refused and the focus stays").toEqual({ checked: ["FULL_BODY"], focus: "clear" });
   expect(after, "the write shows the stored choice and does not move the focus").toEqual({ checked: ["UPPER_LOWER"], focus: "clear" });
 });
+
+// ── closes-when 8 (ruling ct): the catalogue picker during the read ─────────────────────────
+
+const P = {
+  en: {
+    liked: "Liked exercises",
+    avoided: "Exercises to avoid",
+    add: "Add exercise",
+    done: "Done",
+    loading: "Loading the saved version. Nothing can be added until it finishes.",
+    added: "Added Leg Press.",
+  },
+  fr: {
+    liked: "Exercices appréciés",
+    avoided: "Exercices à éviter",
+    add: "Ajouter un exercice",
+    done: "Terminé",
+    loading: "Chargement de la version enregistrée. Rien ne peut être ajouté avant la fin.",
+    added: "Leg Press ajouté.",
+  },
+} as const;
+
+const PICKER_CASES = [
+  { lang: "en", list: "likedExercises", name: "liked" },
+  { lang: "fr", list: "likedExercises", name: "liked" },
+  { lang: "en", list: "avoidedExercises", name: "avoided" },
+] as const;
+
+for (const { lang, list, name } of PICKER_CASES) {
+  test.describe(`P (CW8) ${lang.toUpperCase()} ${list}`, () => {
+    test.use({ locale: T[lang].locale });
+
+    test("a catalogue pick during the read is refused, never announced as added, and the picker says why; after it, a pick adds and saves", async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      const t = P[lang];
+      await conflictedIn(page, "HISTORY", { [list]: ["Plank"] }, { [list]: ["Goblet Squat", "Plank"], notes: "Theirs" }, lang);
+      const field = page.locator(`[data-intake-field="HISTORY.${list}"]`);
+      const chips = () => field.locator("[data-intake-chip]").evaluateAll((els) => els.map((e) => e.getAttribute("data-intake-chip")));
+      const sent: Request[] = [];
+      page.on("request", (r) => {
+        if (r.method() === "PUT" && new URL(r.url()).pathname === `/api/clients/${LINA}/intake/HISTORY`) sent.push(r);
+      });
+      const gate = await gateRead(page, "continue");
+      const button = alertOf(page, "conflict").getByRole("button", { name: T[lang].reload, exact: true });
+      await button.click();
+      await expect(button).toBeDisabled();
+
+      await field.getByRole("button", { name: t.add, exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: t[name], exact: true });
+      await expect(dialog).toBeVisible();
+      // Every text any picker status shows, from here until the refused pick's window ends.
+      await page.evaluate(() => {
+        const w = window as unknown as { __bug1073Statuses: string[]; __bug1073Obs: MutationObserver };
+        w.__bug1073Statuses = [];
+        const take = () =>
+          document.querySelectorAll('[role="dialog"] [role="status"]').forEach((el) => w.__bug1073Statuses.push(el.textContent ?? ""));
+        w.__bug1073Obs = new MutationObserver(take);
+        w.__bug1073Obs.observe(document.body, { subtree: true, childList: true, characterData: true });
+        take();
+      });
+      await dialog.getByRole("textbox").fill("Leg");
+      const row = dialog.locator('[data-catalog-row="Leg Press"]');
+      await expect(row).toBeVisible();
+      // A resting row takes no click; `force` sends the click anyway, as a coach's would land.
+      await row.click({ force: true });
+      await page.waitForTimeout(500);
+      const during = {
+        chips: await chips(),
+        rowDisabled: await row.isDisabled(),
+        // allTextContents never waits: on a tree without the sentence this is "" at once.
+        note: (await dialog.locator("[data-catalog-limit]").allTextContents()).map(plain).join(" | "),
+        focusInDialog: await page.evaluate(() => document.activeElement !== document.body && !!document.activeElement?.closest('[role="dialog"]')),
+        statuses: await dialog.locator('[role="status"]').allTextContents(),
+        puts: sent.length,
+      };
+      const duringBeforeAnswer = !gate.answered();
+      const got = readGet(page);
+      gate.release();
+      const response = await got;
+      const readVersion = ((await response.json()) as { sections: Record<string, { version: number }> }).sections.HISTORY.version;
+      await expect(alertOf(page, "conflict")).toHaveCount(0);
+      await expect.poll(chips).toEqual(["Goblet Squat", "Plank"]);
+      await page.waitForTimeout(400);
+      const afterRead = {
+        note: await dialog.locator("[data-catalog-limit]").count(),
+        statuses: await dialog.locator('[role="status"]').allTextContents(),
+        rowDisabled: await row.isDisabled(),
+      };
+      const seenStatuses = await page.evaluate(() => {
+        const w = window as unknown as { __bug1073Statuses: string[]; __bug1073Obs: MutationObserver };
+        w.__bug1073Obs.disconnect();
+        return w.__bug1073Statuses;
+      });
+      // The rows follow their usual rules again: what is in the list rests.
+      await dialog.getByRole("textbox").fill("Plank");
+      await expect(dialog.locator('[data-catalog-row="Plank"]')).toBeDisabled();
+      await dialog.getByRole("textbox").fill("Goblet");
+      await expect(dialog.locator('[data-catalog-row="Goblet Squat"]')).toBeDisabled();
+      await dialog.getByRole("textbox").fill("Leg");
+      await expect(row).toBeEnabled();
+      const before = sent.length;
+      await row.click();
+      await expect(dialog.locator('[role="status"]')).toHaveText(t.added);
+      await expect.poll(chips).toEqual(["Goblet Squat", "Plank", "Leg Press"]);
+      await dialog.getByRole("button", { name: t.done, exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect.poll(() => sent.length - before, { timeout: 10_000 }).toBe(1);
+      await expect.poll(async () => plain(await status(page).textContent())).toBe(T[lang].saved);
+      await page.waitForTimeout(2_000);
+      const after = sent.slice(before).map((r) => r.postDataJSON() as { version: number; values: Record<string, unknown> });
+      process.stdout.write(
+        `BUG1073 P ${lang} ${list} during=${JSON.stringify(during)} before-answer=${duringBeforeAnswer} afterRead=${JSON.stringify(afterRead)} seenStatuses=${JSON.stringify(seenStatuses)} readVersion=${readVersion} puts=${JSON.stringify(after.map((b) => ({ version: b.version, list: b.values[list] })))}\n`
+      );
+      expect(duringBeforeAnswer, "the 'during' read was taken while the GET was still out").toBe(true);
+      // (a)
+      expect(during.chips, "the pick is refused").toEqual(["Plank"]);
+      expect(during.puts, "no PUT during the read").toBe(0);
+      expect(seenStatuses.some((x) => x.includes(t.added)), "no status ever said the refused pick was added").toBe(false);
+      // (b)
+      expect(during).toMatchObject({ rowDisabled: true, note: t.loading, focusInDialog: true });
+      // (c)
+      expect(afterRead, "after the read: no sentence, no stale status, the row takes picks").toEqual({ note: 0, statuses: [], rowDisabled: false });
+      expect(after, "one PUT, at the read's version, with the new list").toHaveLength(1);
+      expect(after[0].version).toBe(readVersion);
+      expect(after[0].values[list]).toEqual(["Goblet Squat", "Plank", "Leg Press"]);
+    });
+  });
+}

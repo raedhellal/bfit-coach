@@ -3155,6 +3155,11 @@ export const en = {
     removeChip: (name: string) => `Remove ${name}`,
     /** EV-341y2 YP2, verbatim: a list holds 10. */
     exercisesMax: "10 exercises at most.",
+    /**
+     * BUG-1073 (ct) closes-when 8 (b), verbatim: in the catalogue picker of an exercise list whose
+     * section « Reload » is replacing, while its read is out (it replaces `exercisesMax` then).
+     */
+    reloadingNoAdd: "Loading the saved version. Nothing can be added until it finishes.",
     /** EV-341y2 YP2, verbatim: a search row already in the other list. */
     inOtherList: "Already in the other list",
     /** EV-341y2 YP6 / YP6b, verbatim: after a stored value the catalogue no longer has. */

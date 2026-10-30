@@ -1806,6 +1806,7 @@ export const fr = {
     emphasisHint: "Jusqu'à 5.",
     removeChip: (name: string) => `Retirer ${name}`,
     exercisesMax: "10 exercices au maximum.",
+    reloadingNoAdd: "Chargement de la version enregistrée. Rien ne peut être ajouté avant la fin.",
     inOtherList: "Déjà dans l'autre liste",
     droppedFromCatalogue: "(plus dans le catalogue)",
     /** YP3: « du profil de {prénom} », elided before a vowel (« d'Inès »). */
