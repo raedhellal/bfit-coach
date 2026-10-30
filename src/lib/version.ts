@@ -19,7 +19,15 @@
  * | development. Nothing else is read, and nothing is invented: outside Vercel the
  * commit is "unknown", which is a truthful answer and a useful one (it says "this is
  * not a Vercel deployment").
+ *
+ * BUG-1067 — the shapes live in `./version-shape.js`, which `next.config.mjs` also applies
+ * BEFORE it inlines the stamp. Validating only here was not enough: a mis-set build variable was
+ * dropped from this endpoint but still written verbatim into the build output. A mis-shaped
+ * build value now inlines as "", so the runtime variable is consulted next (validated the same
+ * way), then the honest fallback.
  */
+
+import { shapedBuildTime, shapedCommit, shapedEnvironment, shapedRegion } from "./version-shape";
 
 export interface VersionInfo {
   /** Full 40-character git SHA of the deployed commit, or "unknown". */
@@ -45,8 +53,6 @@ export interface VersionInfo {
 
 const UNKNOWN = "unknown";
 
-const ENVIRONMENTS = ["production", "preview", "development"] as const;
-
 function firstNonEmpty(...values: (string | undefined)[]): string {
   for (const value of values) {
     const trimmed = (value || "").trim();
@@ -59,24 +65,20 @@ export function getVersionInfo(): VersionInfo {
   // A SHA, and only a SHA: anything that is not hex is discarded rather than echoed,
   // so a mis-set variable cannot turn this public endpoint into a way to read a value
   // out of the deployment's environment.
-  const rawCommit = firstNonEmpty(
-    process.env.COACH_BUILD_COMMIT,
-    process.env.VERCEL_GIT_COMMIT_SHA
-  );
-  const commit = /^[0-9a-f]{7,40}$/i.test(rawCommit) ? rawCommit.toLowerCase() : UNKNOWN;
+  const commit =
+    shapedCommit(firstNonEmpty(process.env.COACH_BUILD_COMMIT, process.env.VERCEL_GIT_COMMIT_SHA)) ||
+    UNKNOWN;
 
-  const rawTime = firstNonEmpty(process.env.COACH_BUILD_TIME);
-  const buildTime = Number.isNaN(Date.parse(rawTime)) ? UNKNOWN : rawTime;
+  const buildTime = shapedBuildTime(process.env.COACH_BUILD_TIME) || UNKNOWN;
 
   // Whitelisted, for the same reason: only the three values Vercel documents get
   // through; anything else reads as a local run.
-  const rawEnv = firstNonEmpty(process.env.COACH_BUILD_ENV, process.env.VERCEL_ENV);
-  const environment = (ENVIRONMENTS as readonly string[]).includes(rawEnv) ? rawEnv : "local";
+  const environment =
+    shapedEnvironment(firstNonEmpty(process.env.COACH_BUILD_ENV, process.env.VERCEL_ENV)) || "local";
 
   // Shape-checked like the others: a Vercel region id is three letters and a digit
-  // ("cdg1", "iad1"). Anything else is discarded rather than echoed.
-  const rawRegion = firstNonEmpty(process.env.VERCEL_REGION);
-  const region = /^[a-z]{3}\d$/.test(rawRegion) ? rawRegion : UNKNOWN;
+  // ("cdg1", "iad1"). Anything else is discarded rather than echoed. Runtime only.
+  const region = shapedRegion(process.env.VERCEL_REGION) || UNKNOWN;
 
   return {
     commit,

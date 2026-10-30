@@ -1,3 +1,5 @@
+import { shapedBuildTime, shapedCommit, shapedEnvironment } from "./src/lib/version-shape.js";
+
 /** @type {import('next').NextConfig} */
 /**
  * Build stamp for GET /api/version (the portal's answer to the api's
@@ -13,11 +15,18 @@
  * Empty string, never a placeholder: a local `next dev` and a `next build` outside
  * Vercel have no such variables, and version.ts turns the empty value into
  * "unknown". A fabricated or stale SHA here would be worse than no endpoint at all.
+ *
+ * BUG-1067 — every value is shape-checked BEFORE it is inlined, with the same functions
+ * version.ts uses (src/lib/version-shape.js, the port of b-fit-admin's BUG-242 fix). `env`
+ * values are written into every bundle that reads them, and into the build's own files
+ * (`required-server-files.json`, the webpack cache), so validating only at call time was not
+ * enough: a mis-set variable reached the build output verbatim while /api/version correctly said
+ * "unknown". A mis-shaped value now inlines as "", exactly like an unset one.
  */
 const buildStamp = {
-  COACH_BUILD_COMMIT: process.env.VERCEL_GIT_COMMIT_SHA || "",
-  COACH_BUILD_ENV: process.env.VERCEL_ENV || "",
-  COACH_BUILD_TIME: new Date().toISOString(),
+  COACH_BUILD_COMMIT: shapedCommit(process.env.VERCEL_GIT_COMMIT_SHA),
+  COACH_BUILD_ENV: shapedEnvironment(process.env.VERCEL_ENV),
+  COACH_BUILD_TIME: shapedBuildTime(new Date().toISOString()),
 };
 
 /**
