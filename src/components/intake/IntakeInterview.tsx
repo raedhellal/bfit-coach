@@ -233,8 +233,9 @@ export function IntakeInterview({
    * BUG-1073 — the sections « Recharger » is replacing, while its read is out (null otherwise).
    * Their fields are READ-ONLY for that time, not disabled: the focus and the selection stay where
    * the coach put them, and no character is taken, so nothing typed after the press is silently
-   * overwritten when the stored values land. The text fields carry `readOnly` (exposed to
-   * assistive tech as read-only), the checkboxes `aria-readonly`, and `update` refuses every
+   * overwritten when the stored values land. The text fields carry `readOnly` (the native
+   * read-only state; how a screen reader announces it was not checked), the checkboxes
+   * `aria-readonly`, and `update` refuses every
    * change of these sections: a radio or a checkbox is controlled, so React puts it back
    * (`qa/intake-reload-lock.spec.ts`, a radio in Chromium). The chips' remove buttons and the
    * catalogue picker go through `update` too; no test presses them during a read, and no radio
@@ -251,7 +252,9 @@ export function IntakeInterview({
    * end → the end of the new text). Dropped before that commit if the held field sees an `input`,
    * a `keydown`, a `pointerdown` or a `focusout`, as `useCoachForm`'s `held` is; so a selection the
    * coach moves in that window is not overwritten (keyboard and mouse; touch selection handles not
-   * covered, not verified).
+   * covered, not verified). Witnessed in Chromium for a select-all and an end caret in GOALS'
+   * notes (`qa/intake-reload-lock.spec.ts`); WebKit, and a selection moved inside that window,
+   * not exercised.
    */
   const reloadHeld = useRef<HeldSelection | null>(null);
   useCommitEffect(() => {
@@ -327,8 +330,9 @@ export function IntakeInterview({
     } catch {
       // A lost answer: the conflict stays, and « Recharger » can be pressed again.
     } finally {
-      // Unlocked in the same commit as the write (or as the failure's sentence): a failed read
-      // leaves every field as it was, editable again.
+      // Unlocked in the same synchronous step as the write (or as the failure's sentence), so React
+      // batches them into one render; a failed read leaves every field as it held it, editable
+      // again (`qa/intake-reload-lock.spec.ts`, a GET answered 500, Chromium).
       reloadLock.current = null;
       setLocked(null);
       setReloading(false);
