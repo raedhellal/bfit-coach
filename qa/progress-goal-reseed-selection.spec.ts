@@ -216,3 +216,54 @@ test.describe("BUG-1070 (EN), the caret", () => {
     expect(afterAnswer).toEqual({ v: "60", s: 2, e: 2, focused: true });
   });
 });
+
+/**
+ * The OTHER write path, `reseedFromServer`: a server push (a route render) re-seeds an unedited
+ * field. On the overview a push can come with no save of this form at all — `IntakeConsentCard`
+ * calls `router.refresh()` when its poll sees the consent change — so a coach holding a
+ * selection in the body-fat field can have its text rewritten under it. The push is driven here
+ * by the same `router.refresh()`, after a second tab stored a different milestone.
+ */
+test.describe("BUG-1070 (EN), the push path", () => {
+  test.use({ locale: "en-US" });
+
+  test("g. select-all, then a push re-seeds 20 to 25: the next keystroke replaces it", async ({ page, context }) => {
+    const w = W.en;
+    await signInThroughForm(page, { lang: "en" });
+    await page.goto(`/clients/${LINA}`);
+    await field(page, w).fill("20");
+    await saveButton(page, w).click();
+    await expect(block(page, w).getByText(w.saved, { exact: true })).toBeVisible();
+    await expect(saveButton(page, w)).toBeEnabled();
+    await expect(field(page, w)).toHaveValue("20");
+
+    await field(page, w).click();
+    await page.keyboard.press("Control+A");
+    const during = await read(field(page, w));
+    expect(during).toEqual({ v: "20", s: 0, e: 2, focused: true });
+
+    const other = await context.newPage();
+    await other.goto(`/clients/${LINA}`);
+    await field(other, w).fill("25");
+    await saveButton(other, w).click();
+    await expect(block(other, w).getByText(w.saved, { exact: true })).toBeVisible();
+    await other.close();
+
+    await page.evaluate(() => (window as unknown as { next: { router: { refresh(): void } } }).next.router.refresh());
+    await expect(field(page, w)).toHaveValue("25");
+    await page.waitForTimeout(400); // human reaction time
+    const afterPush = await read(field(page, w));
+    await page.keyboard.type("3", { delay: 150 });
+    const final = await read(field(page, w));
+    process.stdout.write(
+      `PROBE1070 case=g during=${JSON.stringify(during)} afterPush=${JSON.stringify(afterPush)} final=${JSON.stringify(final)}\n`
+    );
+    expect(afterPush, "the push's re-seed did not keep the whole-text selection").toEqual({
+      v: "25",
+      s: 0,
+      e: 2,
+      focused: true,
+    });
+    expect(final.v, "the coach's replacement was appended to the pushed text").toBe("3");
+  });
+});
