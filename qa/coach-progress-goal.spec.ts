@@ -995,6 +995,16 @@ test.describe("EV-274b AC1 — the body-fat field refuses what the api refuses, 
       await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
       await expect(block(page).getByText(INVALID_BODY_FAT)).toHaveCount(0);
       expect(sent.at(-1)?.milestoneBodyFatPct, `${typed} did not travel as ${wire}`).toBe(wire);
+      /**
+       * BUG-1070: the answer re-seeds the field with the stored number's canonical text
+       * (`60.00` → `60`), in a commit that can land after `saveAndSettle` returns. Until the
+       * fix that re-seed collapsed the selection the next `fill` had just made, and `3.00` was
+       * appended (`603.00`, refused, no POST, 60 s in `saveAndSettle`). The fix keeps the
+       * selection; this wait — allowed only after it — keeps the next `fill` out of that
+       * window altogether, so the test no longer races the commit.
+       */
+      await expect(block(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(bodyFatField(page)).toHaveValue(String(wire));
     }
     await expect(cell(page, "bodyFat", "milestone")).toHaveText("Milestone 20.5 %");
   });
