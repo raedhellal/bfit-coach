@@ -995,6 +995,18 @@ test.describe("EV-274b AC1 — the body-fat field refuses what the api refuses, 
       await expect(block(page).getByText(SAVED, { exact: true })).toBeVisible();
       await expect(block(page).getByText(INVALID_BODY_FAT)).toHaveCount(0);
       expect(sent.at(-1)?.milestoneBodyFatPct, `${typed} did not travel as ${wire}`).toBe(wire);
+      /**
+       * BUG-1070: the answer re-seeds the field with the stored number's canonical text
+       * (`60.00` → `60`), in a commit that can land after `saveAndSettle` returns. A `fill` whose
+       * select-all ran in the gap between the answer being handled and that commit had its
+       * selection collapsed by the write, and `3.00` was appended (`603.00`, refused, no POST,
+       * 60 s in `saveAndSettle`). The product fix does NOT close that gap: it keeps only a
+       * selection that already exists when `saved()` runs, and `fill`'s select-all can come
+       * after. It is THIS wait — added only after the fix, as closes-when 4 allows — that keeps
+       * the next `fill` out of the gap, by waiting for the re-seeded text before typing.
+       */
+      await expect(block(page).getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(bodyFatField(page)).toHaveValue(String(wire));
     }
     await expect(cell(page, "bodyFat", "milestone")).toHaveText("Milestone 20.5 %");
   });

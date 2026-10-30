@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactElement, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type RefObject } from "react";
 import { UnsavedChangesDialog } from "@/components/ui/UnsavedChangesDialog";
 import {
   editField,
@@ -15,6 +15,7 @@ import {
   type FieldErrors,
   type FormShape,
 } from "./coachFormState";
+import { holdSelection, restoreSelection, type HeldSelection } from "./reseedSelection";
 import { useAdoptPrehydrationInput } from "./useAdoptPrehydrationInput";
 import { useUnsavedChanges, type AfterStep } from "./useUnsavedChanges";
 
@@ -40,6 +41,10 @@ import { useUnsavedChanges, type AfterStep } from "./useUnsavedChanges";
  * And it re-seeds from the server's props by itself (ADR-0033 D33.9): pass the server's
  * values as `server` on every render. When they change, every field the coach is not in the
  * middle of takes the new value; a field typed since the last send keeps the coach's text.
+ * A re-seed of the FOCUSED field (a save's answer, or a push) keeps the coach's selection
+ * there: the whole text selected stays the whole text, a caret at the end stays at the end
+ * (BUG-1070, `reseedSelection.ts`), for a field inside `scope` that renders
+ * `value={form.values[key]}`. What counts as unsaved is not touched by that.
  *
  * ═══ THE SAVE PROTOCOL ═══════════════════════════════════════════════════════════════════
  *
@@ -94,6 +99,9 @@ export interface CoachForm<V extends FormShape<V>> {
   guard: ReactElement;
 }
 
+/** Runs in the commit, before paint, so a re-seeded field never paints a collapsed selection. */
+const useCommitEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 export function useCoachForm<V extends FormShape<V>>({
   server,
   enabled = true,
@@ -121,6 +129,20 @@ export function useCoachForm<V extends FormShape<V>>({
   const dirty = enabled && !current.abandoned && (isDirty(current) || extraDirty);
   const leaving = useUnsavedChanges(dirty);
   const scope = useAdoptPrehydrationInput<HTMLDivElement>();
+  /**
+   * BUG-1070 — the selection in the focused field, taken just before a re-seed rewrites its
+   * text and put back in the commit that writes it (`reseedSelection.ts`). Taken only where the
+   * text changes, and only inside `scope`. Dropped before that commit if the held field sees an
+   * `input`, a `keydown` (arrows, Shift+arrows, Home/End move a selection without an `input`), a
+   * `pointerdown` (a mouse selection) or a `focusout`; so a selection the coach moves in that
+   * window is not overwritten. A push's re-seed is taken here, from the DOM as last committed,
+   * before this render's values reach it; a save's in `saved`.
+   */
+  const held = useRef<HeldSelection | null>(null);
+  if (current !== state) {
+    const kept = holdSelection(scope.current, state.values, current.values);
+    if (kept) held.current = kept;
+  }
   /** The state as last rendered, for `saved` to decide synchronously (see there). */
   const latest = useRef({ state: current, extraDirty });
   latest.current = { state: current, extraDirty };
@@ -148,12 +170,15 @@ export function useCoachForm<V extends FormShape<V>>({
   const saved = useCallback(
     (stored?: V, then?: () => void, after?: AfterStep) => {
       const next = markSaved(latest.current.state, stored);
+      // BUG-1070: the answer may rewrite the field the coach is selecting in.
+      const kept = holdSelection(scope.current, latest.current.state.values, next.values);
+      if (kept) held.current = kept;
       // `after` comes with every `then`: the overload above requires it (BUG-730 N1).
       if (then) release(then, after as AfterStep);
       else if (!isDirty(next) && !latest.current.extraDirty) release();
       setState((s) => markSaved(s, stored));
     },
-    [release]
+    [release, scope]
   );
 
   const endAccess = useCallback(
@@ -163,6 +188,20 @@ export function useCoachForm<V extends FormShape<V>>({
     },
     [release]
   );
+
+  useCommitEffect(() => {
+    if (held.current && restoreSelection(held.current) === "done") held.current = null;
+  });
+  useEffect(() => {
+    const drop = (event: Event) => {
+      if (held.current && event.target === held.current.field) held.current = null;
+    };
+    const events = ["input", "keydown", "pointerdown", "focusout"] as const;
+    for (const type of events) document.addEventListener(type, drop, true);
+    return () => {
+      for (const type of events) document.removeEventListener(type, drop, true);
+    };
+  }, []);
 
   const values = current.values;
   return {
