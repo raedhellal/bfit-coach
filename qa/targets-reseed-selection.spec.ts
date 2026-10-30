@@ -20,6 +20,10 @@ import { openTargetsForm, TARGETS_REGION } from "./targets-card";
  *     a route render carrying other targets (a second tab saved them; the nutrition page's
  *     `NutritionWeekCard` / `SwapSheet` call `router.refresh()`) re-seeds that field under the
  *     coach's selection. Red on `main` (the keystroke is appended), green on the fix.
+ *
+ * ⚠ T2 triggers the push with `window.next.router.refresh()`, a Next.js INTERNAL (Next 14.2,
+ * `app-router.js`), not a public API. If a Next upgrade removes it, T2 fails in `page.evaluate`,
+ * not on the product: replace the trigger, do not drop the case.
  */
 
 const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";

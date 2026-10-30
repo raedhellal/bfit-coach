@@ -223,6 +223,10 @@ test.describe("BUG-1070 (EN), the caret", () => {
  * calls `router.refresh()` when its poll sees the consent change — so a coach holding a
  * selection in the body-fat field can have its text rewritten under it. The push is driven here
  * by the same `router.refresh()`, after a second tab stored a different milestone.
+ *
+ * ⚠ `window.next.router` is a Next.js INTERNAL (Next 14.2 sets it in `app-router.js`; it is not
+ * a public API). If a Next upgrade removes it, this test fails in `page.evaluate`, not on the
+ * product: replace the trigger, do not drop the case.
  */
 test.describe("BUG-1070 (EN), the push path", () => {
   test.use({ locale: "en-US" });
