@@ -13,11 +13,10 @@ import { LINA, grant, openIntake, panel, plain, putSection, sectionTab, seedSect
  * `src/lib/copy.ts`. The accessible description is Playwright's computation
  * (`toHaveAccessibleDescription`); no screen reader is run here (closes-when 5 is Raed's device pass).
  *
- * Closes-when 1 as written (the picker OPENED on a list already at its limit) is not driven here:
- * at the limit the opener is `disabled` (`IntakeCatalogFields.tsx`, `disabled={disabled || full}`),
- * and « W1 » below records that a click on it opens no picker. « F » is the nearest state that is
- * reachable: the list reaches its limit inside the open picker, and the search box then has the
- * full-list sentence as its description. It is NOT a substitute for closes-when 1.
+ * Closes-when 1 as restated (da): (1a) W1, (1b) F. (1a): at the limit the opener is `disabled`
+ * (`IntakeCatalogFields.tsx`, `disabled={disabled || full}`), and « W1 » records that a click on it
+ * opens no picker. (1b): « F » picks the tenth inside the open picker, and the search box then has
+ * the full-list sentence as its description.
  *
  * Not covered here: WebKit (not installed on the rig); `RecipeEditor` (it renders no `CatalogPicker`).
  */
@@ -64,7 +63,7 @@ const liked = (page: Page) => page.locator('[data-intake-field="HISTORY.likedExe
 const alertOf = (page: Page, k: string) => page.locator(`[data-intake-alert="${k}"]`);
 const notes = (page: Page, lang: Lang) => panel(page, "HISTORY").getByRole("textbox", { name: T[lang].notes, exact: true });
 
-/** What a test records about a search box: its description, and the raw attribute behind it. */
+/** What a test records about a search box: the raw `aria-describedby`, and whether it holds focus. */
 const describe = (box: Locator) =>
   box.evaluate((el) => ({
     describedby: el.getAttribute("aria-describedby"),
@@ -167,6 +166,8 @@ for (const lang of ["en", "fr"] as const) {
       await expect(dialog.locator("[data-catalog-limit]")).toHaveText(t.loading);
       const during = await describe(box);
       let describedDuring = "";
+      // A miss is recorded as a fixed string, so the failing `toBe` below does not show the description
+      // received; the raw `aria-describedby` taken just above is in the « BUG1075 CW2 » log line (`during`).
       try {
         await expect(box).toHaveAccessibleDescription(t.loading, { timeout: 3_000 });
         describedDuring = t.loading;
