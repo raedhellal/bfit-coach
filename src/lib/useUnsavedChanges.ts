@@ -119,8 +119,11 @@ export function useUnsavedChanges(dirty: boolean) {
    * (`releasing`), and the guard re-armed in that window (`rearm`).
    *
    * A save hands the sentinel back with `history.back()`; the traversal answers a few
-   * milliseconds later (2–14 ms over 280 saves, measured 2026-10-09). The form is clean by
-   * then, so a keystroke in that window re-arms the guard. Pushing the new sentinel at once put
+   * milliseconds later (2–14 ms over 280 saves, measured 2026-10-09). A keystroke in that
+   * window re-arms the guard: through the arming effect when it lands after the save's clean
+   * render has committed, and through the first commit after the release when it lands before
+   * that render and is batched with it, so `dirty` never changes value (`releasedDirty`,
+   * BUG-736, below). Pushing the new sentinel at once put
    * a `pushState` under a traversal still in flight, and the traversal's `popstate` then
    * reached the re-armed guard's listener AFTER `withCleanHistory`'s listener had cleared
    * `bypass`: it read as the coach pressing Back and opened the question over the form
@@ -164,6 +167,32 @@ export function useUnsavedChanges(dirty: boolean) {
   useCommitEffect(() => {
     live.current = dirty;
   }, [dirty]);
+
+  /**
+   * BUG-736 — a `release` was asked for while the form was committed dirty, and no commit has
+   * happened since: what its `then` does (`"stays"` for a bare release after a save), or null.
+   *
+   * A save calls `release()` in the same task as the state that clears the form. A keystroke
+   * that lands after the release's `history.back()` and before React commits that state is
+   * batched with it, so `dirty` never changes value: the arming effect does not run again, and
+   * nothing put an entry back once the step had taken the sentinel out. Back then left with no
+   * question and the edit was lost (`qa/save-step-keystroke.spec.ts`, red on `315d11cf` on the
+   * six flows of BUG-736). So the first commit after such a release is read here, every commit:
+   * still dirty means work typed in that window is unsaved, and the guard re-arms, deferred to
+   * the step's landing while it is in flight (`push`, as for a re-arm inside the step, BUG-730).
+   * Witnessed: on those six flows Back then asks once, with one `history.back()` per save
+   * (same spec, green). Read from this code, not constructed: which of `push`'s two branches
+   * ran (the spec does not record whether the commit came before the step landed), and the
+   * exception: not after a release whose `then` leaves the page, whose navigation would leave
+   * the entry behind. A clean commit only clears the flag.
+   */
+  const releasedDirty = useRef<AfterStep | null>(null);
+  useCommitEffect(() => {
+    const after = releasedDirty.current;
+    releasedDirty.current = null;
+    if (!dirty || after !== "stays") return;
+    if (releasing.current || !sentinel.current) push();
+  });
 
   /**
    * Take our sentinel entry back out of the history, then do `then`.
@@ -349,7 +378,9 @@ export function useUnsavedChanges(dirty: boolean) {
   /**
    * Stand down, and hand the history back clean, for a navigation the page did not
    * initiate — an access-ended refresh — or after a successful save.
-   * `withCleanHistory` is the whole of it; this name is what the editor reads.
+   * `withCleanHistory` does the stepping; this name is what the editor reads, and it also
+   * marks the release for the commit check that re-arms over a keystroke batched with the
+   * save's clean render (`releasedDirty`, BUG-736).
    *
    * ADR-0033 branch 2a: after a save, `release()` takes NO callback. The write's server
    * action calls `revalidatePath`, and on Next 14.2 that makes the action's own response
@@ -359,7 +390,16 @@ export function useUnsavedChanges(dirty: boolean) {
    * not revalidate, so the refresh is the request that reaches the layout's redirect.
    * A `then` comes with whether it leaves the page (`AfterStep`, BUG-730).
    */
-  const release: Release = withCleanHistory;
+  const release: Release = useCallback(
+    (then?: () => void, after?: AfterStep) => {
+      // BUG-736: the first commit after this release is checked for work typed meanwhile
+      // (`releasedDirty`, above). Only from a dirty commit: from a clean one there is no
+      // sentinel to hand back, and a keystroke after it changes `dirty`, so it arms as usual.
+      if (live.current) releasedDirty.current = then ? (after ?? "leaves") : "stays";
+      withCleanHistory(then, after);
+    },
+    [withCleanHistory]
+  );
 
   /**
    * BUG-735 — the page still holds unsaved work after a `release(then, "stays")`: the coach
@@ -375,8 +415,9 @@ export function useUnsavedChanges(dirty: boolean) {
    *
    * Also after an update whose answer leaves the form dirty: that save does not release at
    * all, so its sentinel is normally still the current entry and this does nothing. It
-   * pushes only when the guard holds no entry while the form is dirty (BUG-736's end state:
-   * a keystroke batched with an earlier save's clean render), so the next late save re-arms.
+   * pushes only when the guard holds no entry while the form is dirty (BUG-736's end state
+   * on `315d11cf`: a keystroke batched with an earlier save's clean render, which
+   * `releasedDirty` now re-arms over at that commit), so the next late save re-arms.
    * That healing is read from this code, not constructed in a test.
    */
   const stillUnsaved = useCallback(() => {
