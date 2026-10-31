@@ -266,11 +266,19 @@ test.describe("EV-341w (EN)", () => {
       requests.filter((r) => r !== `GET /api/bff/clients/${LINA}/intake-consent`),
       "the browser's requests while waiting"
     ).toEqual([]);
-    expect(requests.length).toBe(visibleGets);
 
     await setHidden(page, true);
     await page.waitForTimeout(1_000); // a read already out when the page hid may still land
     const hiddenFrom = await count(page, "getIntakeConsent");
+    // BUG-1076: the browser's list gains a GET when the page sends it and the fixture's journal
+    // when the request arrives, so the two are compared only here, after the hide and its 1 s
+    // settle, and over one window: from `requests.length = 0` to this read. Compared while the
+    // 3 s poll still ran (just after the 30 s), they once read 10 against 9 (QA's BUG-736 gate,
+    // 1 run in 45; the sent-but-not-arrived reading is staff's trace, relayed in BUG-1076, not
+    // re-traced for this change). Exact, no tolerance: an extra or a missing request is what
+    // this line is there to catch.
+    const sentGets = requests.filter((r) => r === `GET /api/bff/clients/${LINA}/intake-consent`).length;
+    expect(sentGets, "the browser's GETs against the fixture's, from the reset to the hide").toBe(hiddenFrom - askedAt);
     await page.waitForTimeout(30_000);
     expect((await count(page, "getIntakeConsent")) - hiddenFrom, "GETs over 30 s hidden").toBe(0);
 
