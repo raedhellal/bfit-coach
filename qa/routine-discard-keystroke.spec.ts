@@ -31,6 +31,14 @@ import { signInThroughForm } from "./sign-in";
  * the published value. When Tempo holds text the server was not sent, Back asks exactly once and
  * the URL does not change. When it does not, the page is clean and Back leaves in one step.
  *
+ * Two probes place the keystroke (senior-po's ruling (df) on closes-when 1):
+ *   · (1a) a MICROTASK queued by the first `history.back()` after the confirm, installed in the page
+ *     just before it (`wrapBackWithMicrotaskKeystroke`). Deterministic: it runs after the task
+ *     that called `back()` has finished its synchronous work and before any later task.
+ *   · (1b) `setTimeout(0)` after that call, QA's original mechanism. Whether it lands before the
+ *     traversal depends on main-thread timing, so its `reached` count is recorded, and since (df)
+ *     a count of 0 does not block. On `cf6cc8f3` 8 of 10 runs reached; on the fix none did in 30.
+ *
  * The human-pace case (closes-when 2) types after the discard has settled: it must end exactly as
  * it did before the fix.
  *
@@ -165,15 +173,126 @@ async function openWithDiscardableEdits(page: Page) {
   return { publishedTempo, publishedSets };
 }
 
-async function confirmDiscard(page: Page) {
+async function confirmDiscard(page: Page, beforeConfirm?: () => Promise<void>) {
   await page.getByRole("button", { name: "Discard draft" }).first().click();
   const modal = page.getByRole("dialog");
   await expect(modal).toBeVisible();
+  await beforeConfirm?.();
   await modal.getByRole("button", { name: "Discard draft" }).click();
   await expect(modal).toHaveCount(0);
 }
 
+/**
+ * BUG-1077 closes-when (1a), senior-po (df) — the keystroke placed at the discard's history step,
+ * with no dependence on timing. Installed in the page right before the confirm: the FIRST
+ * `history.back()` after it queues one microtask, then calls the `back()` it wrapped (the init
+ * script's counting wrapper, then the browser's). The microtask types `x` into the Tempo input in
+ * the DOM at that moment (native value setter + a bubbling `input` event, so React's `onChange`
+ * runs) and records what it found. A microtask rather than a call inside the wrapper, so the
+ * keystroke is never dispatched from inside a React commit (on the fix, the first `back()` comes
+ * from an effect cleanup inside the flush).
+ */
+async function wrapBackWithMicrotaskKeystroke(page: Page) {
+  await page.evaluate((row) => {
+    const ss = window.sessionStorage;
+    const wrapped = window.history.back.bind(window.history);
+    let fired = false;
+    window.history.back = () => {
+      if (!fired) {
+        fired = true;
+        queueMicrotask(() => {
+          const groups = Array.from(document.querySelectorAll(`[role="group"][aria-label="${row}"]`)) as HTMLElement[];
+          const group = groups.find((g) => g.offsetParent !== null);
+          const label = group
+            ? Array.from(group.querySelectorAll("label")).find(
+                (l) => (l.firstElementChild?.textContent || "").trim() === "Tempo"
+              )
+            : undefined;
+          const el = (label?.querySelector("input") ?? null) as HTMLInputElement | null;
+          if (!el) return;
+          ss.setItem("bug1077GuardAtType", String(window.history.state?.evoliUnsavedGuard === true));
+          ss.setItem("bug1077ValueAtType", el.value);
+          ss.setItem("bug1077SameElementAtType", String(el.hasAttribute("data-bug1077-typed-before")));
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+          setter.call(el, el.value + "x");
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          ss.setItem("bug1077Typed", String(Number(ss.getItem("bug1077Typed") || "0") + 1));
+        });
+      }
+      wrapped();
+    };
+  }, ROW);
+}
+
 test.describe("BUG-1077 · routine Discard draft", () => {
+  test("BUG-1077 · (1a) a keystroke in a microtask queued at the discard's history step never brings the discarded edit back", async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(150_000);
+    await instrument(context);
+    const { publishedTempo, publishedSets } = await openWithDiscardableEdits(page);
+    await tempoField(page).evaluate((el) => el.setAttribute("data-bug1077-typed-before", "1"));
+    // Unarmed: the init script's wrapper only counts; the microtask wrapper below types.
+    await resetCounters(page, false);
+
+    await confirmDiscard(page, () => wrapBackWithMicrotaskKeystroke(page));
+    await page.waitForTimeout(2500);
+
+    const c0 = await counters(page);
+    const tempoSettled = await tempoField(page).inputValue();
+    const setsSettled = await setsField(page).inputValue();
+    const unsent = tempoSettled !== publishedTempo;
+    const facts: Record<string, unknown> = {
+      probe: "microtask",
+      publishedTempo,
+      publishedSets,
+      tempoSettled,
+      setsSettled,
+      typed: String(c0.typed === 1),
+      guardAtType: String(c0.guardAtType),
+      valueAtType: String(c0.valueAtType),
+      sameElementAtType: String(c0.sameElementAtType),
+      backsAfterDiscard: c0.backs,
+    };
+
+    await back(page);
+    const c1 = await counters(page);
+    facts.asksOnBack = c1.asks;
+    facts.pathAfterBack = c1.path;
+    let afterLeave: string | null = null;
+    if (c1.asks > 0) {
+      await leaveDialog(page).getByRole("button", { name: "Stay on this page", exact: true }).click({ timeout: 5000 });
+      await page.waitForTimeout(900);
+      facts.tempoAfterStay = await tempoField(page).inputValue();
+      await back(page);
+      await leaveDialog(page).getByRole("button", { name: "Leave without saving", exact: true }).click({ timeout: 5000 });
+      await page.waitForURL((u) => u.pathname === `/clients/${LINA}`, { timeout: 10_000 }).catch(() => null);
+      afterLeave = new URL(page.url()).pathname;
+      facts.pathAfterLeave = afterLeave;
+    }
+    note(testInfo, facts);
+
+    expect(c0.typed, "the keystroke was dispatched").toBe(1);
+    expect(tempoSettled.includes(DISCARDED_TEMPO), "Tempo never holds the discarded value").toBe(false);
+    expect(setsSettled, "Sets never holds the discarded value").not.toBe(DISCARDED_SETS);
+    expect(c0.valueAtType, "the keystroke found the published Tempo in the field").toBe(publishedTempo);
+    expect([publishedTempo, `${publishedTempo}x`], "Tempo reads the published value, or it plus the keystroke").toContain(
+      tempoSettled
+    );
+    expect(setsSettled, "Sets reads the published value").toBe(publishedSets);
+    expect(c0.backs, "one history.back() for the discard").toBe(1);
+    if (unsent) {
+      expect(c1.asks, "Back over unsaved text asks exactly once").toBe(1);
+      expect(c1.path, "and the URL does not change").toBe(`/clients/${YUSUF}/routine`);
+      expect(facts.tempoAfterStay, "Stay keeps the text").toBe(tempoSettled);
+      expect(afterLeave, "Leave lands on the page before, in one step").toBe(`/clients/${LINA}`);
+    } else {
+      expect(c1.asks, "nothing unsaved: Back asks nothing").toBe(0);
+      expect(c1.path, "and leaves in one step").toBe(`/clients/${LINA}`);
+    }
+  });
+
   test("BUG-1077 · a keystroke at setTimeout(0) after the discard's history step never brings the discarded edit back", async ({
     page,
     context,
