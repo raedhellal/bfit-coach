@@ -422,13 +422,14 @@ export function RoutineEditor({
       // `cf6cc8f3`, in every run where it landed while the guard's entry was current (8 of 10),
       // it typed into the pre-discard input as it read « 3-1-1 », and the page settled on Tempo
       // « 3-1-1x » and Sets « 4 » (`qa/routine-discard-keystroke.spec.ts`). Committed first,
-      // the DOM holds the published plan before `release()` runs, so no later task can find
-      // the discarded text in it. Witnessed on this change only OUTSIDE that window: 30 of 30
-      // runs green, but in none did the keystroke land while the guard's entry was current
-      // (the traversal had landed first), so a keystroke inside the step is not witnessed here.
-      // Probed, not asserted: the guard's entry is now taken back out by the arming effect's
-      // cleanup inside this flush (a stack at `history.back()`), and `release()` below finds
-      // that step in flight; one `history.back()` per discard (`backsAfterDiscard`, same spec).
+      // the DOM holds the published plan before the history step. Witnessed inside the step by
+      // the same spec's (1a) probe (a keystroke in a microtask queued at the first
+      // `history.back()`, with the guard's entry still current): on `cf6cc8f3`'s code it found
+      // « 3-1-1 » and the page settled on « 3-1-1x » / « 4 » in 10 of 10 runs; with this flush
+      // it found the published Tempo and the page settled on « x » / « 3 », Back asking once,
+      // in 10 of 10. One `history.back()` per discard in every run (`backsAfterDiscard`).
+      // Probed with a throwaway stack, not asserted: that step now comes from the arming
+      // effect's cleanup inside this flush, and `release()` below finds it in flight.
       flushSync(() => {
         setDiscarding(false);
         setAiDraftedAt(null);
