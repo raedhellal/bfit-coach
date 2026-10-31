@@ -279,11 +279,12 @@ test.describe("EV-341w (EN)", () => {
     // after the 30 s), they once read 10 against 9 (QA's BUG-736 gate, 1 run in 45; the
     // sent-but-not-arrived reading is staff's trace, relayed in BUG-1076, not re-traced for this
     // change). Exact, no tolerance: it catches a request that one observer sees and the other
-    // does not (a fixture GET the page never sent: red on a mutant run against `dfe2838a`; a page
-    // GET that never reaches the fixture: QA's (4b) mutant, not run for this change).
+    // does not. Both halves were red 2/2 on `172ee167` at this equality, in QA's BUG-1076 runs: a
+    // fixture GET the page never sent ((4a), one `page.request.get`, the fixture one higher), and a
+    // page GET that never reaches the fixture ((4b), `page.route` abort once, the browser one higher).
     // A surplus same-path page fetch reaches both and is out of scope (BUG-1076 (cx)).
     const sentGets = requests.filter((r) => r === `GET /api/bff/clients/${LINA}/intake-consent`).length;
-    expect(sentGets, "the browser's GETs against the fixture's, from the reset to the hide").toBe(hiddenFrom - askedAt);
+    expect(sentGets, "the browser's GETs against the fixture's, from the askedAt read to the settled read").toBe(hiddenFrom - askedAt);
     await page.waitForTimeout(30_000);
     expect((await count(page, "getIntakeConsent")) - hiddenFrom, "GETs over 30 s hidden").toBe(0);
 
