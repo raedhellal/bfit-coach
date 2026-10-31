@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Input, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { useCopy } from "@/lib/i18n/client";
@@ -172,6 +172,14 @@ export function CatalogPicker({
   const pickedRow = useRef<string | null>(null);
   const searchAnchor = useRef<HTMLParagraphElement | null>(null);
   const limitLine = useRef<HTMLParagraphElement | null>(null);
+  /**
+   * BUG-1075 — while `limitNote` is set, the search box's `aria-describedby` names the limit line,
+   * so a picker that opens already refusing (the intake list during « Recharger », BUG-1073) gives
+   * the reason with the focused field. It also holds when the list fills inside the open picker and
+   * the coach goes back to the search box (qa/catalog-picker-limit-description.spec.ts « F »). A
+   * picker given no `limitNote` gets no attribute.
+   */
+  const limitId = useId();
   useEffect(() => {
     const name = pickedRow.current;
     if (!open || !optIn || name === null) return;
@@ -246,6 +254,7 @@ export function CatalogPicker({
             placeholder={copy.routine.catalogSearch}
             full
             autoFocus={focusSearch}
+            ariaDescribedBy={limitNote ? limitId : undefined}
             onChange={(e) => setQ(e.target.value)}
           />
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
@@ -281,6 +290,7 @@ export function CatalogPicker({
 
           {limitNote && (
             <p
+              id={limitId}
               data-catalog-limit=""
               ref={limitLine}
               tabIndex={-1}
