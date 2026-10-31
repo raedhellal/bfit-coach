@@ -681,17 +681,15 @@ export function Modal({
             </button>
           </div>
         </div>
-        {/* BUG-668: a Tab scrolls the focused element to this body's edge and no further, but the
-            keyboard ring is drawn OUTSIDE the field's box (BUG-663: 2 px offset + 2 px ring).
-            Flush to the edge, that band was cut, and the box's border with it.
-            `scrollPaddingBlock` makes focus scrolling stop short of the edge. It changes where
-            scrolling stops, not layout. Why 20: in Chromium the element scrolled is not always
-            the box. A text <input> sits 1 px inside it, but a date field's segments and its
-            calendar button are UA parts INSIDE the field, and the one measured sat 14 px in
-            (the box landed 14 px above where 16 px of padding stopped the button). Inset + ring
-            = 18; 20 keeps a margin. Past the body's own 18 px padding the browser only clamps
-            at the first and last field, which already sit 18 px in. Witness:
-            qa/modal-focus-ring-roster.spec.ts, Chromium only (WebKit not measured). */}
+        {/* BUG-668: a Tab scrolls the focused element just inside this body's edge, but BUG-663's
+            ring is drawn 4 px OUTSIDE the field's box (2 px offset + 2 px ring), so flush to the
+            edge it was cut, with the box's border. `scrollPaddingBlock` moves where a focus
+            scroll stops; it adds no layout. Measured in Chromium (qa/modal-focus-ring-roster.spec.ts):
+            a date field's calendar-button part sits 14 px inside its 46 px box, and that part is
+            what gets scrolled. On main that stop did not scroll at all: the part was already in
+            view while the box and ring above it were cut. 14 + 4 = 18, so 20 leaves only 2 px.
+            A taller Input variant or a font change that moves those parts can clip again; the
+            spec is the check. WebKit not measured. */}
         <div data-modal-body="" style={{ padding: "18px 24px", overflowY: "auto", flex: "1 1 auto", minHeight: 0, scrollPaddingBlock: 20 }}>{children}</div>
         {footer && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 10, background: "var(--surface-2)", flexShrink: 0, flexWrap: "wrap" }}>{footer}</div>}
       </div>
