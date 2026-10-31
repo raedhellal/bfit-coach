@@ -272,11 +272,16 @@ test.describe("EV-341w (EN)", () => {
     const hiddenFrom = await count(page, "getIntakeConsent");
     // BUG-1076: the browser's list gains a GET when the page sends it and the fixture's journal
     // when the request arrives, so the two are compared only here, after the hide and its 1 s
-    // settle, and over one window: from `requests.length = 0` to this read. Compared while the
-    // 3 s poll still ran (just after the 30 s), they once read 10 against 9 (QA's BUG-736 gate,
-    // 1 run in 45; the sent-but-not-arrived reading is staff's trace, relayed in BUG-1076, not
-    // re-traced for this change). Exact, no tolerance: an extra or a missing request is what
-    // this line is there to catch.
+    // settle, and over one window, from the `askedAt` read and the reset just after it to this
+    // read. No poll GET is expected between those two: the card schedules its first GET 3 s after
+    // it starts waiting (`IntakeConsentCard.tsx:225`, `INTAKE_POLL_MS`; read from the code, not
+    // timed here), and the two are back to back. Compared while the 3 s poll still ran (just
+    // after the 30 s), they once read 10 against 9 (QA's BUG-736 gate, 1 run in 45; the
+    // sent-but-not-arrived reading is staff's trace, relayed in BUG-1076, not re-traced for this
+    // change). Exact, no tolerance: it catches a request that one observer sees and the other
+    // does not (a fixture GET the page never sent: red on a mutant run against `dfe2838a`; a page
+    // GET that never reaches the fixture: QA's (4b) mutant, not run for this change).
+    // A surplus same-path page fetch reaches both and is out of scope (BUG-1076 (cx)).
     const sentGets = requests.filter((r) => r === `GET /api/bff/clients/${LINA}/intake-consent`).length;
     expect(sentGets, "the browser's GETs against the fixture's, from the reset to the hide").toBe(hiddenFrom - askedAt);
     await page.waitForTimeout(30_000);
