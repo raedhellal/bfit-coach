@@ -167,7 +167,8 @@ export function useCoachForm<V extends FormShape<V>>({
    * before the « Enregistré » render commits) is batched with the `setState` below. The entry
    * has already been handed back by then, and the form commits dirty: `useUnsavedChanges`
    * checks the first commit after a release and re-arms the guard: Back asks
-   * (`qa/save-step-keystroke.spec.ts`, nutrition template update and progress goal save).
+   * (`qa/save-step-keystroke.spec.ts`, nutrition template update and progress goal save;
+   * batching measured on the badge editors, `badgeAtType`).
    * Not when `then` leaves the page; that exception is read from the hook, not constructed.
    *
    * `then` is a navigation the save leads to (a create that opens the list). It runs after

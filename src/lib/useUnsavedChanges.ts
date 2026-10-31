@@ -394,7 +394,8 @@ export function useUnsavedChanges(dirty: boolean) {
     (then?: () => void, after?: AfterStep) => {
       // BUG-736: the first commit after this release is checked for work typed meanwhile
       // (`releasedDirty`, above). Only from a dirty commit: from a clean one there is no
-      // sentinel to hand back, and a keystroke after it changes `dirty`, so it arms as usual.
+      // sentinel to hand back (the arming effect's cleanup took it out), and a keystroke after
+      // it changes `dirty`, so it arms as usual. Read from the code, not constructed.
       if (live.current) releasedDirty.current = then ? (after ?? "leaves") : "stays";
       withCleanHistory(then, after);
     },
