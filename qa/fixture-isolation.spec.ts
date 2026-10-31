@@ -72,6 +72,7 @@ const NOT_ON_THE_FIXTURE_SERVER: Record<string, string> = {
   "api-merge-condition.spec.ts": "reads git and a file from disk; never calls the dev server",
   "stale-times-config.spec.ts": "imports next.config.mjs (ADR-0033 2a); never calls the dev server",
   "invariant-n-lint-bans.spec.ts": "runs ESLint on in-memory files (BUG-743/744); never calls the dev server",
+  "reseed-selection-unit.spec.ts": "pure unit test of src/lib/reseedSelection (BUG-1070): no page or request fixture; never calls the dev server",
 };
 
 test("every spec file on the fixture server uses the resetting test", () => {
