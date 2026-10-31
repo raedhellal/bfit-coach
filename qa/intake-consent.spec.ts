@@ -266,11 +266,25 @@ test.describe("EV-341w (EN)", () => {
       requests.filter((r) => r !== `GET /api/bff/clients/${LINA}/intake-consent`),
       "the browser's requests while waiting"
     ).toEqual([]);
-    expect(requests.length).toBe(visibleGets);
 
     await setHidden(page, true);
     await page.waitForTimeout(1_000); // a read already out when the page hid may still land
     const hiddenFrom = await count(page, "getIntakeConsent");
+    // BUG-1076: the browser's list gains a GET when the page sends it and the fixture's journal
+    // when the request arrives, so the two are compared only here, after the hide and its 1 s
+    // settle, and over one window, from the `askedAt` read and the reset just after it to this
+    // read. No poll GET is expected between those two: the card schedules its first GET 3 s after
+    // it starts waiting (`IntakeConsentCard.tsx:225`, `INTAKE_POLL_MS`; read from the code, not
+    // timed here), and the two are back to back. Compared while the 3 s poll still ran (just
+    // after the 30 s), they once read 10 against 9 (QA's BUG-736 gate, 1 run in 45; the
+    // sent-but-not-arrived reading is staff's trace, relayed in BUG-1076, not re-traced for this
+    // change). Exact, no tolerance: it catches a request that one observer sees and the other
+    // does not. Both halves were red 2/2 on `172ee167` at this equality, in QA's BUG-1076 runs: a
+    // fixture GET the page never sent ((4a), one `page.request.get`, the fixture one higher), and a
+    // page GET that never reaches the fixture ((4b), `page.route` abort once, the browser one higher).
+    // A surplus same-path page fetch reaches both and is out of scope (BUG-1076 (cx)).
+    const sentGets = requests.filter((r) => r === `GET /api/bff/clients/${LINA}/intake-consent`).length;
+    expect(sentGets, "the browser's GETs against the fixture's, from the askedAt read to the settled read").toBe(hiddenFrom - askedAt);
     await page.waitForTimeout(30_000);
     expect((await count(page, "getIntakeConsent")) - hiddenFrom, "GETs over 30 s hidden").toBe(0);
 
