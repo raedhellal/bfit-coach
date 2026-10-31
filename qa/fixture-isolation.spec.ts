@@ -100,16 +100,24 @@ test("every spec file on the fixture server uses the resetting test", () => {
  *
  *  1. any function whose first parameter destructures a fixture that reaches the dev server
  *     or a browser (`DEV_SERVER_FIXTURES`), or destructures `...rest` (it gets every fixture);
- *  2. a function passed straight to a `test…(…)` call (a test, hook or step) whose first
- *     parameter is NOT destructured, so the fixtures it takes cannot be read;
- *  3. a call to a navigating or context-making method (`NAVIGATIONS`), on any receiver, or
- *     to the global `fetch`.
+ *  2. a function passed straight to a `test…(…)` call (a test or hook) whose first parameter is
+ *     NOT destructured, so the fixtures it takes cannot be read. `test.step` is not counted: its
+ *     body gets a `TestStepInfo`, not fixtures (`body: (step: TestStepInfo) => …` in the installed
+ *     @playwright/test 1.63 types);
+ *  3. a call to a navigating or context-making method (`NAVIGATIONS`), on any receiver; a call
+ *     to the global `fetch`; or any read of `globalThis.fetch` / `window.fetch`;
+ *  4. a file that does not parse (its syntactic diagnostics are not empty), so that running this
+ *     spec alone cannot pass an exempt file that would not even load.
  *
- * Known limits, stated, not covered: a computed member (`page["goto"]`), and a fixture object
- * handed to a function defined elsewhere through a wrapper (contract-drift's `known(title,
- * body)` is such a wrapper; rule 1 still reads the function passed to it, as it reads every
- * function in the file). The live/stub-config entries are out of scope: their reasons name a
- * config, which a reading of the file cannot verify.
+ * Known limits. NOT exhaustive; among them:
+ *  - run (BUG-1078 mutant F): a test that takes its fixtures as one object through a wrapper
+ *    that is not itself a `test…` call, like contract-drift's `known(title, body)`, is not caught
+ *    by rule 2; rules 1 and 3 still read the function passed to it;
+ *  - found by reading, not run: a computed member (`page["goto"]`); other HTTP paths
+ *    (`node:http`, `undici`, `execFileSync("curl", …)`); rule 2 keys on the literal name `test`,
+ *    so `import { test as it }` slips past it.
+ * The live/stub-config entries are out of scope: their reasons name a config, which a reading of
+ * the file cannot verify.
  */
 const DEV_SERVER_FIXTURES = new Set(["page", "context", "browser", "request", "baseURL", "playwright"]);
 const NAVIGATIONS = new Set(["goto", "reload", "goBack", "goForward", "waitForURL", "newPage", "newContext"]);
@@ -117,6 +125,11 @@ const NAVIGATIONS = new Set(["goto", "reload", "goBack", "goForward", "waitForUR
 function devServerUses(file: string, text: string): string[] {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const found: string[] = [];
+  const parse = ts.transpileModule(text, { fileName: file, reportDiagnostics: true }).diagnostics ?? [];
+  for (const d of parse) {
+    const line = d.start === undefined ? "?" : sf.getLineAndCharacterOfPosition(d.start).line + 1;
+    found.push(`qa/${file}:${line} does not parse: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`);
+  }
   const at = (node: ts.Node, what: string) =>
     found.push(`qa/${file}:${sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1} ${what}`);
   const rootName = (e: ts.Expression): string | undefined =>
@@ -134,7 +147,9 @@ function devServerUses(file: string, text: string): string[] {
       }
     }
     if (ts.isCallExpression(node)) {
-      if (rootName(node.expression) === "test") {
+      const isStep = (e: ts.Expression): boolean =>
+        ts.isPropertyAccessExpression(e) && (e.name.text === "step" || isStep(e.expression));
+      if (rootName(node.expression) === "test" && !isStep(node.expression)) {
         for (const arg of node.arguments) {
           if ((ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) && arg.parameters.length > 0 && !ts.isObjectBindingPattern(arg.parameters[0].name)) {
             at(arg, "a test callback takes its fixtures as one object, so which ones it uses cannot be read");
@@ -144,6 +159,14 @@ function devServerUses(file: string, text: string): string[] {
       const callee = node.expression;
       if (ts.isPropertyAccessExpression(callee) && NAVIGATIONS.has(callee.name.text)) at(node, `calls .${callee.name.text}()`);
       if (ts.isIdentifier(callee) && callee.text === "fetch") at(node, "calls fetch()");
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === "fetch" &&
+      ts.isIdentifier(node.expression) &&
+      (node.expression.text === "globalThis" || node.expression.text === "window")
+    ) {
+      at(node, `reads ${node.expression.text}.fetch`);
     }
     ts.forEachChild(node, visit);
   };
