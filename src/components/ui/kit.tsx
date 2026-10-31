@@ -323,6 +323,7 @@ export function Input({
   autoComplete,
   ariaLabel,
   hintId,
+  ariaDescribedBy,
   style = {},
 }: {
   label?: string;
@@ -360,6 +361,11 @@ export function Input({
   ariaLabel?: string;
   /** Gives the hint/error line this id and points the input's `aria-describedby` at it. */
   hintId?: string;
+  /**
+   * BUG-1075 — the id of a line OUTSIDE this field that describes it (CatalogPicker's limit line),
+   * added after the hint's id. Absent: the attribute is exactly what `hintId` alone gives.
+   */
+  ariaDescribedBy?: string;
   style?: Sx;
 }) {
   return (
@@ -410,7 +416,7 @@ export function Input({
           autoFocus={autoFocus}
           autoComplete={autoComplete}
           aria-label={ariaLabel}
-          aria-describedby={hintId && (hint || error) ? hintId : undefined}
+          aria-describedby={[hintId && (hint || error) ? hintId : null, ariaDescribedBy].filter(Boolean).join(" ") || undefined}
           aria-invalid={error ? true : undefined}
           className="kit-field-input"
           style={{
