@@ -21,7 +21,7 @@ const VIEWPORT = { width: 1280, height: 720 };
 // ─────────────────────────── the PNG reader (no dependency) ───────────────────────────
 
 /** Decodes Playwright's screenshots: 8-bit RGB or RGBA, not interlaced. */
-function decodePng(buf: Buffer): { width: number; height: number; rgba: Uint8Array } {
+export function decodePng(buf: Buffer): { width: number; height: number; rgba: Uint8Array } {
   let p = 8;
   let width = 0;
   let height = 0;
