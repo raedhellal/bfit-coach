@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { flushSync } from "react-dom";
 import { Button, Card, EmptyState, MIN_TOUCH_TARGET, Modal } from "@/components/ui/kit";
 import { UiIcon } from "@/components/ui/icons";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -414,16 +415,33 @@ export function RoutineEditor({
         return;
       }
       // AC2: "returns the page to the published plan exactly" — from the server's copy.
-      setDiscarding(false);
-      setAiDraftedAt(null);
-      setDocument(activePlan?.document ?? null);
-      replaced();
-      token.current = null;
-      setIsDraft(false);
-      setResolved(true);
-      setDirty(false);
-      setNotice(null);
-      setError(null);
+      //
+      // BUG-1077 — committed with `flushSync`, BEFORE the history step. Without it these
+      // updates were only queued when `release()` called `history.back()`, and a keystroke at
+      // `setTimeout(0)` after that call reached the input still showing the discarded text: on
+      // `cf6cc8f3`, in every run where it landed while the guard's entry was current (8 of 10),
+      // it typed into the pre-discard input as it read « 3-1-1 », and the page settled on Tempo
+      // « 3-1-1x » and Sets « 4 » (`qa/routine-discard-keystroke.spec.ts`). Committed first,
+      // the DOM holds the published plan before the history step. Witnessed inside the step by
+      // the same spec's (1a) probe (a keystroke in a microtask queued at the first
+      // `history.back()`, with the guard's entry still current): on `cf6cc8f3`'s code it found
+      // « 3-1-1 » and the page settled on « 3-1-1x » / « 4 » in 10 of 10 runs; with this flush
+      // it found the published Tempo and the page settled on « x » / « 3 », Back asking once,
+      // in 10 of 10. One `history.back()` per discard in every run (`backsAfterDiscard`).
+      // Probed with a throwaway stack, not asserted: that step now comes from the arming
+      // effect's cleanup inside this flush, and `release()` below finds it in flight.
+      flushSync(() => {
+        setDiscarding(false);
+        setAiDraftedAt(null);
+        setDocument(activePlan?.document ?? null);
+        replaced();
+        token.current = null;
+        setIsDraft(false);
+        setResolved(true);
+        setDirty(false);
+        setNotice(null);
+        setError(null);
+      });
       // No refresh: `discardDraftAction` revalidates, so its response carried the page.
       leaving.release();
     });
