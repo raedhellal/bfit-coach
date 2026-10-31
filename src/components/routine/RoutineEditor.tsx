@@ -556,19 +556,37 @@ export function RoutineEditor({
    * draft; the re-seed is keyed on the published plan id, so it does not run a second time.
    */
   function kept(draft: CoachRoutineDraftResponse) {
-    revision.current += 1;
-    replaced();
-    if (draft.document) setDocument(editableDocument(null, draft.document));
-    token.current = draft.updatedAt ?? token.current;
-    setIsDraft(true);
-    setResolved(true);
-    setDirty(false);
-    // The api always sets it on Keep; if it is ever absent, no line (never a client clock).
-    setAiDraftedAt(draft.aiDraftedAt ?? null);
-    setPreview(null);
-    setConflict(null);
-    setNotice(null);
-    setError(null);
+    // BUG-1080 — committed with `flushSync`, BEFORE the history step, as `discard()` is for
+    // BUG-1077. `kept()` runs after an `await` (`onKept` in `RoutineAiPanel`), so without the
+    // flush these updates were only queued when `release()` called `history.back()`, and a
+    // keystroke in a microtask queued at that call reached Plan name still showing the edit
+    // Keep replaced: on `03302dbb`'s code, in 10 of 10 runs, `qa/routine-keep-keystroke.spec.ts`'s
+    // (1a) probe found « Coach edit » there, and the page settled on « Coach editx » with the
+    // pre-Keep Sets edit (« 7 ») back in its row, the guard armed over both. Committed first, the
+    // DOM holds the kept draft before the history step: in 10 of 10 runs with this flush the same
+    // probe found the kept name, and the page settled on it plus `x`, with Sets at « 4 », Back
+    // asking once. In that fixture « 4 » is both the kept and the published value (the proposal
+    // leaves day 1 unchanged), so the Sets check shows the pre-Keep edit is gone, not which of
+    // the two the value came from.
+    // Not in this flush, by reading (not probed): the panel's own updates in the same
+    // continuation (`setConfirmKeep(false)`, `setView`, `setRequest` in `RoutineAiPanel`'s Keep)
+    // were queued before `onKept` at their default priority and commit in the next render, so
+    // the « Replace your draft? » dialog may still be open when `release()` runs.
+    flushSync(() => {
+      revision.current += 1;
+      replaced();
+      if (draft.document) setDocument(editableDocument(null, draft.document));
+      token.current = draft.updatedAt ?? token.current;
+      setIsDraft(true);
+      setResolved(true);
+      setDirty(false);
+      // The api always sets it on Keep; if it is ever absent, no line (never a client clock).
+      setAiDraftedAt(draft.aiDraftedAt ?? null);
+      setPreview(null);
+      setConflict(null);
+      setNotice(null);
+      setError(null);
+    });
     leaving.release();
   }
 
