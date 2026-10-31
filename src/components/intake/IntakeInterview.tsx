@@ -242,7 +242,7 @@ export function IntakeInterview({
    * catalogue picker's `pick`, and « Effacer » / "Clear" (`ClearChoice`). Witnessed in Chromium by
    * `qa/intake-reload-lock.spec.ts`: a radio, a checkbox's and a radio group's `aria-readonly`, a
    * liked exercise's remove button, section 3's « Effacer », and a catalogue pick in both exercise
-   * lists (the picker's rows rest under « Chargement de la version enregistrée… », its `limitNote`;
+   * lists (the picker's rows rest under its `limitNote`, the copy key `reloadingNoAdd`;
    * `qa/intake-reload-lock.spec.ts` « P »). Not exercised during a read: the muscle chips, the
    * integer and date inputs. Sections not in conflict stay editable.
    *

@@ -335,8 +335,8 @@ export function ExerciseListControl({
         title={label}
         onClose={close}
         onPick={pick}
-        // BUG-1073 (ct): while « Recharger » reads, the picker's own refusal (`limitNote` rests every
-        // row and is shown in the dialog), so a pick is never acknowledged as « … ajouté » and refused.
+        // BUG-1073 (ct): while « Recharger » reads, the picker's own refusal is used: `limitNote` rests every
+        // row and is shown in the dialog, so a pick is never acknowledged as « … ajouté » and then refused.
         limitNote={locked ? c.reloadingNoAdd : full ? c.exercisesMax : null}
         rowBlock={(exercise) =>
           other.includes(exercise.name) ? { note: c.inOtherList } : value.includes(exercise.name) ? { note: null } : null
