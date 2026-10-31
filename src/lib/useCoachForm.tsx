@@ -163,6 +163,13 @@ export function useCoachForm<V extends FormShape<V>>({
    * `net::ERR_ABORTED`). Anything typed during the save keeps the form dirty, and then
    * nothing is released.
    *
+   * BUG-736: a keystroke that lands AFTER this callback (after the release's `history.back()`,
+   * before the « Enregistré » render commits) is batched with the `setState` below. The entry
+   * has already been handed back by then, and the form commits dirty: `useUnsavedChanges`
+   * checks the first commit after a release and re-arms the guard: Back asks
+   * (`qa/save-step-keystroke.spec.ts`, nutrition template update and progress goal save).
+   * Not when `then` leaves the page; that exception is read from the hook, not constructed.
+   *
    * `then` is a navigation the save leads to (a create that opens the list). It runs after
    * the entry is gone, whatever was typed meanwhile: `release` must be called ONCE per
    * save, since a second call before the first's popstate would step back twice.
