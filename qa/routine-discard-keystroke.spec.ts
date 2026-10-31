@@ -33,11 +33,16 @@ import { signInThroughForm } from "./sign-in";
  *
  * Two probes place the keystroke (senior-po's ruling (df) on closes-when 1):
  *   · (1a) a MICROTASK queued by the first `history.back()` after the confirm, installed in the page
- *     just before it (`wrapBackWithMicrotaskKeystroke`). Deterministic: it runs after the task
- *     that called `back()` has finished its synchronous work and before any later task.
+ *     just before it (`wrapBackWithMicrotaskKeystroke`). Deterministic: it runs after the
+ *     synchronous work that called `back()` (the whole continuation, including `release()`), and
+ *     before any later task, including React's scheduled render. Stricter than (1b): every run
+ *     must be inside the step (`guardAtType` true), find the re-mounted input
+ *     (`sameElementAtType` false), keep the keystroke (Tempo = published + `x`) and re-arm the
+ *     guard over it (Back asks once, Stay keeps, Leave goes in one step).
  *   · (1b) `setTimeout(0)` after that call, QA's original mechanism. Whether it lands before the
  *     traversal depends on main-thread timing, so its `reached` count is recorded, and since (df)
- *     a count of 0 does not block. On `cf6cc8f3` 8 of 10 runs reached; on the fix none did in 30.
+ *     a count of 0 does not block. On `cf6cc8f3` 8 of 10 runs reached; on the fix none did in 50
+ *     (30 at `3294305`, 10 at `e285671`, 10 at `ac33e03`).
  *
  * The human-pace case (closes-when 2) types after the discard has settled: it must end exactly as
  * it did before the fix.
@@ -242,7 +247,6 @@ test.describe("BUG-1077 · routine Discard draft", () => {
     const c0 = await counters(page);
     const tempoSettled = await tempoField(page).inputValue();
     const setsSettled = await setsField(page).inputValue();
-    const unsent = tempoSettled !== publishedTempo;
     const facts: Record<string, unknown> = {
       probe: "microtask",
       publishedTempo,
@@ -274,23 +278,21 @@ test.describe("BUG-1077 · routine Discard draft", () => {
     note(testInfo, facts);
 
     expect(c0.typed, "the keystroke was dispatched").toBe(1);
+    // Staff should-fix 2: the probe must stay in the window, or a green run proves nothing.
+    expect(c0.guardAtType, "the keystroke landed inside the step (the guard's entry was current)").toBe("true");
     expect(tempoSettled.includes(DISCARDED_TEMPO), "Tempo never holds the discarded value").toBe(false);
     expect(setsSettled, "Sets never holds the discarded value").not.toBe(DISCARDED_SETS);
     expect(c0.valueAtType, "the keystroke found the published Tempo in the field").toBe(publishedTempo);
-    expect([publishedTempo, `${publishedTempo}x`], "Tempo reads the published value, or it plus the keystroke").toContain(
-      tempoSettled
-    );
+    expect(c0.sameElementAtType, "the keystroke reached the re-mounted input, not the pre-discard one").toBe("false");
+    // Staff should-fix 1: the keystroke is kept (a dropped one would read the bare published value).
+    expect(tempoSettled, "Tempo reads the published value plus the keystroke").toBe(`${publishedTempo}x`);
     expect(setsSettled, "Sets reads the published value").toBe(publishedSets);
     expect(c0.backs, "one history.back() for the discard").toBe(1);
-    if (unsent) {
-      expect(c1.asks, "Back over unsaved text asks exactly once").toBe(1);
-      expect(c1.path, "and the URL does not change").toBe(`/clients/${YUSUF}/routine`);
-      expect(facts.tempoAfterStay, "Stay keeps the text").toBe(tempoSettled);
-      expect(afterLeave, "Leave lands on the page before, in one step").toBe(`/clients/${LINA}`);
-    } else {
-      expect(c1.asks, "nothing unsaved: Back asks nothing").toBe(0);
-      expect(c1.path, "and leaves in one step").toBe(`/clients/${LINA}`);
-    }
+    // ... and the guard re-armed over it after the flush: every (1a) run, no clean branch.
+    expect(c1.asks, "Back over unsaved text asks exactly once").toBe(1);
+    expect(c1.path, "and the URL does not change").toBe(`/clients/${YUSUF}/routine`);
+    expect(facts.tempoAfterStay, "Stay keeps the text").toBe(tempoSettled);
+    expect(afterLeave, "Leave lands on the page before, in one step").toBe(`/clients/${LINA}`);
   });
 
   test("BUG-1077 · a keystroke at setTimeout(0) after the discard's history step never brings the discarded edit back", async ({
