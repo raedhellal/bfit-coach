@@ -1001,6 +1001,59 @@ a.inbox-item:hover { background: var(--hover); }
 .inbox-list:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 4px; border-radius: var(--r-16); }
 .inbox-more { margin-top: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 
+/* EV-455k — /settings/notifications. One card per switch. The switch is b-fit-admin's `Toggle`
+   look (a 38 × 28 pill, a 22 px white knob) inside a 48 × 44 button (BUG-146's floor), with one
+   change, stated: the OFF track is --ink-3, not the admin's --surface-3, because --surface-3 on
+   white is 1.2:1 and a switch's position must read at 3:1 (WCAG 1.4.11). ON is --blue-500
+   (3.7:1 on white). The knob's side carries the state too, never the colour alone. */
+.prefs { display: flex; flex-direction: column; gap: 8px; }
+.prefs:focus { outline: none; }
+.prefs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.prefs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--r-16);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.prefs-label { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 500; color: var(--ink); overflow-wrap: anywhere; cursor: pointer; }
+.prefs-switch {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  cursor: pointer;
+}
+.prefs-switch-track { position: relative; width: 38px; height: 28px; border-radius: var(--r-pill); background: var(--ink-3); transition: background .2s; }
+.prefs-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: left .2s;
+}
+.prefs-switch[aria-checked="true"] .prefs-switch-track { background: var(--blue-500); }
+.prefs-switch[aria-checked="true"] .prefs-switch-knob { left: 13px; }
+@media (prefers-reduced-motion: reduce) { .prefs-switch-track, .prefs-switch-knob { transition: none; } }
+.prefs-saved { margin: 0 0 0 16px; min-height: 0; font-size: var(--fs-label); color: var(--ink-2); }
+.prefs-failed { margin: 0 0 0 16px; font-size: var(--fs-body); color: var(--err-ink); }
+.prefs-skeleton { min-height: 64px; border-radius: var(--r-16); background: var(--hover); }
+.prefs-state { margin-top: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; color: var(--ink-2); }
+
 /* The « Clients » count in the navigation (D3, restated): clients to review, the roster page
    only. The alert pair (--err-bg/--err-ink, 5.92:1), like the « À traiter » chip. */
 .shell-nav-label { min-width: 0; }

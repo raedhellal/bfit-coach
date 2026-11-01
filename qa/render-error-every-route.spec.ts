@@ -79,6 +79,7 @@ const ROUTE_FILES: Record<string, string> = {
   "nutrition-templates/new/page.tsx": "/nutrition-templates/new",
   "nutrition-templates/[id]/page.tsx": `/nutrition-templates/${NUTRITION_TEMPLATE}`,
   "notifications/page.tsx": "/notifications", // EV-455f
+  "settings/notifications/page.tsx": "/settings/notifications", // EV-455k
 };
 
 /** The pages that draw no `CoachShell`, so the switch cannot reach them: one reason each. */

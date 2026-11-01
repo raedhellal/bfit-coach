@@ -1,5 +1,6 @@
 import { CoachShell } from "@/components/shell/CoachShell";
 import { Inbox } from "@/components/notifications/Inbox";
+import Link from "@/components/ui/Link";
 import { PageHead } from "@/components/ui/kit";
 import { readCoachMe } from "@/lib/clientOverview";
 import { getCopy } from "@/lib/i18n/server";
@@ -16,6 +17,8 @@ import { sessionSubjectTag } from "@/lib/sessionSubject";
  * states (loading, error with « Réessayer », empty) in one place, and a failed read is retried
  * there without a reload (AC-9).
  *
+ * EV-455k: the header carries « Réglages », a link to /settings/notifications (the email switches).
+ *
  * `readCoachMe` is the identity cookie (EV-342k): no api call. The session subject is handed to
  * the island for its two writes (ADR-0033 D33.14 point 4). Nothing is cached (`force-dynamic`).
  */
@@ -26,7 +29,14 @@ export default async function NotificationsPage() {
   const me = await readCoachMe();
   return (
     <CoachShell coachName={me?.displayName}>
-      <PageHead title={copy.notifications.title} />
+      <PageHead
+        title={copy.notifications.title}
+        actions={
+          <Link href="/settings/notifications" className="link-button" data-variant="secondary">
+            {copy.notifications.settingsLink}
+          </Link>
+        }
+      />
       <Inbox sessionSubject={sessionSubjectTag() ?? ""} />
     </CoachShell>
   );
