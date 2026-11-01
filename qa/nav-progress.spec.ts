@@ -98,6 +98,10 @@ test("a held response: the bar appears after 400 ms, says what it is, and leaves
   await signIn(page);
   await page.goto(`/clients/${LINA}`);
   await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  // The bar's click listener is attached on hydration; a click before it is a navigation the bar
+  // cannot see (the component's own readiness rule). The server-rendered section is visible before
+  // that, so this test raced hydration; EV-455f's shell island made the race lose under next dev.
+  await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
 
   const clicked = page.evaluate(() => performance.now());
@@ -363,6 +367,7 @@ test("Back while a slow click is pending clears the bar", async ({ page, baseURL
   await signIn(page);
   await page.goto(`/clients/${LINA}`);
   await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1); // the click must reach the bar (see the held-response test)
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "4000", url: baseURL! }]);
   await page.locator(`a[href="/clients/${LINA}/nutrition"]`).first().click();
   await expect(page.locator(BAR)).toBeVisible();
@@ -378,6 +383,7 @@ test("Back to an entry with the same URL abandons a slow navigation, and the bar
   await signIn(page);
   await page.goto(`/clients/${LINA}`);
   await expect(page.locator("section[aria-label]").first()).toBeVisible();
+  await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1); // the click must reach the bar (see the held-response test)
   // A second entry for the same URL: the shape of the unsaved-changes guard's sentinel.
   await page.evaluate(() => window.history.pushState(window.history.state, "", location.href));
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "3000", url: baseURL! }]);
