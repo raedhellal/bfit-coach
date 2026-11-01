@@ -12,8 +12,10 @@ import { devices, type Project } from "@playwright/test";
  *
  * Now every config that holds such a leg declares the two projects below:
  *
- * - `chromium` runs every test that is NOT tagged `@webkit`. Its exit code is the Chromium
- *   verdict alone. Nothing in it reads, asserts or launches WebKit.
+ * - `chromium` runs every test that is NOT tagged `@webkit`. Nothing tagged runs in
+ *   `chromium`; specs not yet tagged (README « WebKit legs ») still launch WebKit inside
+ *   `chromium` and fail there where it is missing. Its exit code is therefore the Chromium
+ *   verdict alone only for runs restricted to the tagged specs.
  * - `webkit` runs ONLY the tests tagged `@webkit`. The leg still launches WebKit itself and
  *   still ASSERTS that it is installed: without it, every leg FAILS with « WebKit is not
  *   installed: npx playwright install webkit ». A missing WebKit is never a pass and never a
@@ -22,12 +24,16 @@ import { devices, type Project } from "@playwright/test";
  *   BUG-1089 moves them, it does not rewrite them.
  *
  * A plain `npx playwright test` still runs both projects: it is the full run, and on a
- * machine without WebKit it is red, as it always was. The gate's Chromium command is
- * `--project=chromium` (README « WebKit legs »).
+ * machine without WebKit it is red, as it always was. The gate's Chromium command, with
+ * the tagged files spelled out, is in README « WebKit legs ».
  *
  * To add a WebKit leg: pass `{ tag: WEBKIT_LEG }` (or `engineTag(engine)`) to the `test` or
  * `test.describe` that holds it. An untagged WebKit leg lands in `chromium` and makes that
  * project fail on a machine without WebKit — the defect this file exists to stop.
+ *
+ * Note: this `webkit` project is Desktop Chrome whose legs launch WebKit themselves. It is
+ * not the real Desktop Safari `webkit` project of playwright.start.config.ts and
+ * playwright.session.config.ts.
  */
 export const WEBKIT_LEG = "@webkit";
 

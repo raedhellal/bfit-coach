@@ -41,7 +41,8 @@ import { engineTag } from "./webkit-leg";
  * Engines: Chromium, and a WebKit leg (repo pattern: `qa/focus-ring-sweep.ts`'s `pageFor`).
  * WebKit is ASSERTED installed, so where it is missing those tests fail on that assertion; they
  * are not skipped. They are tagged @webkit and run in the `webkit` project only (BUG-1089,
- * qa/webkit-leg.ts), so `--project=chromium` is the Chromium verdict alone. On macOS, WebKit's plain Tab skips buttons, so its walk uses Alt+Tab.
+ * qa/webkit-leg.ts), so this file's `--project=chromium` run is its Chromium verdict alone.
+ * On macOS, WebKit's plain Tab skips buttons, so its walk uses Alt+Tab.
  */
 
 type Lang = "en" | "fr";

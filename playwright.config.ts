@@ -118,8 +118,9 @@ export default defineConfig({
    */
   use: { baseURL: BASE_URL, trace: "on-first-retry", locale: "en-US" },
   // BUG-1089: `chromium` runs every test not tagged @webkit, `webkit` only the tagged WebKit
-  // legs — so `--project=chromium` is the Chromium verdict alone on a machine without WebKit.
-  // See qa/webkit-leg.ts.
+  // legs. On a machine without WebKit, `--project=chromium` is the Chromium verdict alone for
+  // the TAGGED specs only; untagged WebKit legs still fail inside `chromium` (README « WebKit
+  // legs », qa/webkit-leg.ts).
   projects: engineProjects(),
   webServer: {
     command: `npx next dev -p ${PORT}`,

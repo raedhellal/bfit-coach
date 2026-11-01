@@ -36,6 +36,8 @@ const TAB = process.platform === "darwin" ? "Alt+Tab" : "Tab";
  * `beforeAll`. That hook ran for every test in the file, so where WebKit was missing it
  * failed and the Chromium B2 test below never ran. The assertion is unchanged and still
  * FAILS each WebKit leg (tagged @webkit, `webkit` project only) when the browser is absent.
+ * Cost, stated: WebKit's launch time now falls inside the first WebKit leg's test timeout
+ * (60 s), not inside a hook.
  */
 let browser: Browser | undefined;
 async function webkitBrowser(): Promise<Browser> {
