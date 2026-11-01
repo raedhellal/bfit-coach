@@ -1,5 +1,7 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixture-test";
+import { en } from "../src/lib/copy";
+import { fr } from "../src/lib/copy.fr";
 import {
   asEmailSwitches,
   channelsBody,
@@ -43,6 +45,60 @@ function manualSend() {
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const view = (views: SwitchView[], type: CoachEmailType) => views.find((v) => v.type === type)!;
+
+/**
+ * Gate 2 (story (ed), ruling 2): every row of the story's « Copy (verbatim) » table, as LITERALS,
+ * against both dictionaries. The live spec asserts the same strings on the page.
+ */
+test("the story's copy table, verbatim, EN and FR (gate 2)", () => {
+  const table = {
+    en: {
+      CLIENT_MESSAGE: "Email when a client writes to you",
+      CLIENT_JOINED: "Email when a client accepts your invitation",
+      CLIENT_RED_FLAG: "Email when something needs a look",
+      CLIENT_SESSION_COMPLETED: "Daily session summary (7 am)",
+      intro: "Notifications always stay in Evoli Pro. These settings only change emails.",
+      saveFailed: "The setting wasn't saved. Try again.",
+      title: "Notification settings",
+      saved: "Saved",
+      loading: "Loading your settings…",
+      loadError: "Couldn't load your settings.",
+      retry: "Try again",
+      settingsLink: "Settings",
+    },
+    fr: {
+      CLIENT_MESSAGE: "E-mail quand un client vous écrit",
+      CLIENT_JOINED: "E-mail quand un client accepte votre invitation",
+      CLIENT_RED_FLAG: "E-mail quand un point est à vérifier",
+      CLIENT_SESSION_COMPLETED: "Résumé quotidien des séances (7 h)",
+      intro: "Les notifications restent toujours visibles dans Evoli Pro. Ces réglages ne concernent que les e-mails.",
+      saveFailed: "Le réglage n'a pas été enregistré. Réessayez.",
+      title: "Réglages des notifications",
+      saved: "Enregistré",
+      loading: "Chargement de vos réglages…",
+      loadError: "Impossible de charger vos réglages.",
+      retry: "Réessayer",
+      settingsLink: "Réglages",
+    },
+  };
+  for (const [lang, dict] of [["en", en], ["fr", fr]] as const) {
+    const c = dict.notificationSettings;
+    expect(
+      {
+        ...c.switch,
+        intro: c.intro,
+        saveFailed: c.saveFailed,
+        title: c.title,
+        saved: c.saved,
+        loading: c.loading,
+        loadError: c.loadError,
+        retry: c.retry,
+        settingsLink: dict.notifications.settingsLink,
+      },
+      lang
+    ).toEqual(table[lang]);
+  }
+});
 
 test("the four coach email pairs, in the story's table order (AC-1)", () => {
   expect(COACH_EMAIL_TYPES).toEqual(["CLIENT_MESSAGE", "CLIENT_JOINED", "CLIENT_RED_FLAG", "CLIENT_SESSION_COMPLETED"]);

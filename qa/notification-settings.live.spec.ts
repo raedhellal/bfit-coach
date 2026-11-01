@@ -19,8 +19,12 @@ import { apiPreferences, apiPutPreferences, coachWhoTrains, emailValues } from "
  * from `src/lib/copy.ts`.
  *
  * RED ON BASE (`main` 27b27b39): /settings/notifications is the portal's 404 there and the inbox
- * header has no « Réglages », so every test below fails at its first page assertion, except
- * AC-4's first step (signed out → /login), which the middleware's guard gives every path.
+ * header has no « Réglages », so every test below fails at its first page assertion. AC-4's
+ * signed-out step (→ /login) holds on base too, by the middleware's guard on every path; its
+ * test is red there on the AC-1 half that follows the sign-in.
+ *
+ * Out of this row (story (ed), ruling 1): returning to the page after sign-in, `EV-469`. This
+ * file carries no test of it, neither an expected-failure test nor a skipped one.
  */
 
 const T = {
@@ -38,6 +42,7 @@ const T = {
     },
     saveFailed: "The setting wasn't saved. Try again.",
     saved: "Saved",
+    loading: "Loading your settings…",
     loadError: "Couldn't load your settings.",
     retry: "Try again",
   },
@@ -55,6 +60,7 @@ const T = {
     },
     saveFailed: "Le réglage n'a pas été enregistré. Réessayez.",
     saved: "Enregistré",
+    loading: "Chargement de vos réglages…",
     loadError: "Impossible de charger vos réglages.",
     retry: "Réessayer",
   },
@@ -99,6 +105,22 @@ async function drawn(page: Page, lang: Lang): Promise<Record<Type, boolean>> {
 
 const allOn = { CLIENT_MESSAGE: true, CLIENT_JOINED: true, CLIENT_RED_FLAG: true, CLIENT_SESSION_COMPLETED: true };
 
+/** The two track colours of ruling 3 (gate 5): `--ink-3` off, `--blue-500` on. */
+const OFF_TRACK = "rgb(100, 108, 130)";
+const ON_TRACK = "rgb(79, 124, 255)";
+const track = (switchLocator: Locator): Locator => switchLocator.locator(".prefs-switch-track");
+
+/** AC-1 on the page as it is: the h1, the intro, four switches in order, named by their labels, all on. */
+async function expectAc1(page: Page, lang: Lang): Promise<void> {
+  const L = T[lang];
+  await expect(page.getByRole("heading", { level: 1, name: L.title, exact: true })).toBeVisible();
+  await expect(page.getByText(L.intro, { exact: true })).toBeVisible();
+  await expect(switches(page)).toHaveCount(4);
+  const names = await switches(page).evaluateAll((els) => els.map((e) => document.getElementById(e.getAttribute("aria-labelledby") ?? "")?.textContent));
+  expect(names).toEqual(TYPES.map((t) => L.switch[t]));
+  for (const type of TYPES) await expect(sw(page, lang, type)).toHaveAttribute("aria-checked", "true");
+}
+
 for (const lang of ["en", "fr"] as const) {
   const L = T[lang];
 
@@ -116,13 +138,7 @@ for (const lang of ["en", "fr"] as const) {
       await expect(page).toHaveURL(/\/settings\/notifications$/);
       await expect(page.locator('[data-prefs-state="loading"]')).toHaveCount(0, { timeout: 15_000 });
 
-      await expect(page.getByRole("heading", { level: 1, name: L.title, exact: true })).toBeVisible();
-      await expect(page.getByText(L.intro, { exact: true })).toBeVisible();
-      await expect(switches(page)).toHaveCount(4);
-      // In the story's order, each named by its label, each on.
-      const names = await switches(page).evaluateAll((els) => els.map((e) => document.getElementById(e.getAttribute("aria-labelledby") ?? "")?.textContent));
-      expect(names).toEqual(TYPES.map((t) => L.switch[t]));
-      for (const type of TYPES) await expect(sw(page, lang, type)).toHaveAttribute("aria-checked", "true");
+      await expectAc1(page, lang);
       // Nothing about time zones or quiet hours on the page (ruling 2026-10-27 (ar)).
       await expect(page.locator(".prefs input, .prefs select, .prefs textarea")).toHaveCount(0);
       // And the way back.
@@ -191,12 +207,20 @@ for (const lang of ["en", "fr"] as const) {
     test(`AC-3 [${lang}], the read: a GET failing (503) → the load-error alert and « ${L.retry} », never four switches; the retry reads in place`, async ({ page, request }) => {
       const coach = await freshCoach(request);
       await signIn(page, lang, coach);
-      await page.route(`**${BFF}`, (route) =>
-        route.request().method() === "GET"
-          ? route.fulfill({ status: 503, contentType: "application/json", body: '{"code":"UNAVAILABLE"}' })
-          : route.continue()
-      );
+      // The first GET is held until the loading state has been read, then answers 503.
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((r) => (release = r));
+      await page.route(`**${BFF}`, async (route) => {
+        if (route.request().method() !== "GET") return route.continue();
+        await held;
+        await route.fulfill({ status: 503, contentType: "application/json", body: '{"code":"UNAVAILABLE"}' });
+      });
       await page.goto(PAGE);
+      const loading = page.locator('.prefs[data-prefs-state="loading"]');
+      await expect(loading).toHaveAttribute("aria-busy", "true");
+      await expect(loading.getByRole("status")).toHaveText(L.loading);
+      await expect(switches(page)).toHaveCount(0);
+      release();
       const error = page.locator('[data-prefs-state="error"]');
       await expect(error).toHaveAttribute("role", "alert");
       await expect(error.getByText(L.loadError, { exact: true })).toBeVisible();
@@ -222,12 +246,17 @@ for (const lang of ["en", "fr"] as const) {
       }
       await runAxe(page, "the switches");
 
-      // The keyboard: Space on the focused switch saves it, as a click does.
+      // Gate 5 (ruling 3): the on track is --blue-500 (toHaveCSS retries past the 0.2 s transition).
       const digest = sw(page, lang, "CLIENT_SESSION_COMPLETED");
+      await expect(track(digest)).toHaveCSS("background-color", ON_TRACK);
+
+      // The keyboard: Space on the focused switch saves it, as a click does.
       await digest.focus();
       await page.keyboard.press("Space");
       await expect(digest).toHaveAttribute("aria-checked", "false");
       await expect(item(page, "CLIENT_SESSION_COMPLETED").getByRole("status")).toHaveText(L.saved);
+      // Gate 5: the off track is --ink-3, 5.24:1 on white (WCAG 1.4.11), not the admin's --surface-3.
+      await expect(track(digest)).toHaveCSS("background-color", OFF_TRACK);
       // The label is a <label for>: a click on the words toggles the switch too.
       await page.locator("#pref-CLIENT_RED_FLAG-label").click();
       await expect(sw(page, lang, "CLIENT_RED_FLAG")).toHaveAttribute("aria-checked", "false");
@@ -235,10 +264,81 @@ for (const lang of ["en", "fr"] as const) {
       await runAxe(page, "two saved");
       expect(emailValues(await apiPreferences(request, coach))).toEqual({ ...allOn, CLIENT_SESSION_COMPLETED: false, CLIENT_RED_FLAG: false });
     });
+
+    /**
+     * Gate 6 (ruling 4, known limit L-k1). The PUT is held 15 s by route interception, then sent on
+     * to the real api, whose 200 comes back after the page gave up on it. The page's bound is
+     * `PREFERENCES_WAIT_MS` (10 s): at about 10 s the switch is back and the alert shows, and the
+     * late answer moves nothing and shows no « saved ». The api did store the change: that is L-k1
+     * (a reload shows the truth), read here so the limit is witnessed rather than assumed.
+     */
+    test(`G6 [${lang}]: a PUT held 15 s → at ~10 s the switch is back and the alert shows; the late 200 moves nothing`, async ({ page, request }) => {
+      const coach = await freshCoach(request);
+      await signIn(page, lang, coach);
+      await openSettings(page);
+      let lateAnswer: Promise<number> = Promise.resolve(0);
+      await page.route(`**${BFF}`, (route) => {
+        if (route.request().method() !== "PUT") return route.continue();
+        lateAnswer = (async () => {
+          await new Promise((r) => setTimeout(r, 15_000));
+          const response = await route.fetch();
+          // The page has aborted its request by now; fulfilling it may be refused, which is the point.
+          await route.fulfill({ response }).catch(() => undefined);
+          return response.status();
+        })();
+      });
+
+      const target = sw(page, lang, "CLIENT_RED_FLAG");
+      const clicked = Date.now();
+      await target.click();
+      await expect(target).toHaveAttribute("aria-checked", "false");
+      const alert = item(page, "CLIENT_RED_FLAG").getByRole("alert");
+      await expect(alert).toHaveText(L.saveFailed, { timeout: 14_000 });
+      const failedAfter = Date.now() - clicked;
+      expect(failedAfter, "the alert comes at the 10 s bound, not before it and not at the 15 s answer").toBeGreaterThanOrEqual(9_500);
+      expect(failedAfter).toBeLessThan(13_000);
+      await expect(target).toHaveAttribute("aria-checked", "true");
+
+      expect(await lateAnswer, "the held PUT did answer, late").toBe(200);
+      // A beat for anything the late answer could have caused to render.
+      await page.waitForTimeout(1_000);
+      await expect(target).toHaveAttribute("aria-checked", "true");
+      await expect(item(page, "CLIENT_RED_FLAG")).toHaveAttribute("data-save-state", "failed");
+      await expect(alert).toHaveText(L.saveFailed);
+      await expect(item(page, "CLIENT_RED_FLAG").getByRole("status")).toHaveText("");
+      await expect(page.getByText(L.saved, { exact: true })).toHaveCount(0);
+      // L-k1, witnessed: the api stored the late change; a reload shows it.
+      expect(emailValues(await apiPreferences(request, coach)).CLIENT_RED_FLAG).toBe(false);
+      await page.unrouteAll();
+      await page.reload();
+      await expect(page.locator('.prefs[data-prefs-state="ready"]')).toBeVisible({ timeout: 15_000 });
+      await expect(target).toHaveAttribute("aria-checked", "false");
+    });
+
+    test(`AC-4 [${lang}]: signed out → /login with nothing rendered; after signing in, AC-1 holds on /settings/notifications`, async ({ page, request }) => {
+      const coach = await freshCoach(request);
+      const reads: string[] = [];
+      page.on("request", (r) => {
+        if (new URL(r.url()).pathname === BFF) reads.push(r.method());
+      });
+      const landed = await page.goto(PAGE);
+      await expect(page).toHaveURL(/\/login$/);
+      // The page itself was never served: its request was answered with the middleware's 307.
+      const first = landed?.request().redirectedFrom();
+      expect(first?.url()).toMatch(/\/settings\/notifications$/);
+      expect((await first!.response())?.status()).toBe(307);
+      await expect(page.locator(".prefs")).toHaveCount(0);
+      await expect(switches(page)).toHaveCount(0);
+      expect(reads, "no preference was read while signed out").toEqual([]);
+
+      await signIn(page, lang, coach);
+      await openSettings(page);
+      await expectAc1(page, lang);
+    });
   });
 }
 
-test.describe("EV-455k edge cases and AC-4, live api", () => {
+test.describe("EV-455k edge cases, live api", () => {
   test.use({ locale: "en-US" });
   test.describe.configure({ timeout: 120_000 });
 
@@ -286,33 +386,6 @@ test.describe("EV-455k edge cases and AC-4, live api", () => {
     await expect(item(page, "CLIENT_RED_FLAG").getByRole("status")).toHaveText(T.en.saved);
     const after = await apiPreferences(request, coach);
     expect(after.channels).toEqual({ ...doc.channels, CLIENT_RED_FLAG: { email: false } });
-  });
-
-  test("AC-4: signed out, /settings/notifications redirects to sign-in; signed in, the page is there", async ({ page, request }) => {
-    const coach = await freshCoach(request);
-    await page.goto(PAGE);
-    await expect(page).toHaveURL(/\/login$/);
-    await signIn(page, "en", coach);
-    await openSettings(page);
-    await expect(switches(page)).toHaveCount(4);
-  });
-
-  /**
-   * AC-4's second half, « and back after it (the existing redirect) », does not hold on any
-   * `main`: no such redirect exists. `toLogin` (`src/middleware.ts`) sets no return path, and the
-   * sign-in handler lands on a closed set (`type Landing = "/" | "/activate"`,
-   * `src/app/api/auth/login/route.ts`, "never a value taken from the request"). Adding one is a
-   * change to the sign-in redirect, an auth change, so it is not built here; the question is with
-   * the PO. `test.fail`: the day a return path lands, this goes red and must be turned into a
-   * plain test.
-   */
-  test("AC-4, second half: after signing in from the redirect, the coach is back on /settings/notifications", async ({ page, request }) => {
-    test.fail(true, "EV-455k AC-4: no return-after-sign-in redirect exists; building one is an auth change (owed a PO/Raed ruling)");
-    const coach = await freshCoach(request);
-    await page.goto(PAGE);
-    await expect(page).toHaveURL(/\/login/);
-    await signInThroughForm(page, { email: coach.email, password: PASSWORD, lang: "en", landing: null });
-    await expect(page).toHaveURL(/\/settings\/notifications$/, { timeout: 15_000 });
   });
 });
 
