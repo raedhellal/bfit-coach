@@ -9,6 +9,7 @@ import {
   isShown,
   itemText,
   lastKnownCount,
+  MARK_WAIT_MS,
   marksSettled,
   rememberCount,
   trackMark,
@@ -161,4 +162,18 @@ test("the last known count: the previous real read, cleared by a failure (AC-9)"
   expect(lastKnownCount()).toBe(4);
   rememberCount(null);
   expect(lastKnownCount()).toBeNull();
+});
+
+test("staff round 2: a mark that never settles releases the wait after the bound", async () => {
+  expect(MARK_WAIT_MS, "the bound the bell and the inbox use").toBe(10_000);
+  void trackMark(new Promise<never>(() => undefined)); // hung forever
+  const t0 = Date.now();
+  await marksSettled(200); // the same code path with a short bound (the runner has no fake timers)
+  const waited = Date.now() - t0;
+  expect(waited, "released by the bound").toBeGreaterThanOrEqual(190);
+  expect(waited, "and not much later").toBeLessThan(2_000);
+  // The hung mark is still tracked, and every later wait is bounded too: nothing freezes.
+  const t1 = Date.now();
+  await marksSettled(100);
+  expect(Date.now() - t1).toBeLessThan(2_000);
 });

@@ -103,7 +103,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       inFlight = new AbortController();
       const signal = inFlight.signal;
       await marksSettled();
-      const outcome = stopped ? ({ kind: "failed" } as CountOutcome) : await readCount(signal);
+      // The tab may have been hidden, or the shell left, during the wait: no read then (AC-8).
+      if (stopped) return;
+      if (!visible()) {
+        inFlight = null;
+        again = false;
+        return; // `onVisibility` reads once the tab is shown again
+      }
+      const outcome = await readCount(signal);
       inFlight = null;
       if (stopped) return;
       if (outcome.kind === "signedOut") {

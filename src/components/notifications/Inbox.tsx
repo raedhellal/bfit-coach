@@ -8,6 +8,7 @@ import type { NotificationPage } from "@/lib/coachApi";
 import { useCopy, useLocale } from "@/lib/i18n/client";
 import {
   itemText,
+  MARK_WAIT_MS,
   marksSettled,
   pageBff,
   pageOutcome,
@@ -58,6 +59,13 @@ import { useNotifications } from "./NotificationsProvider";
 /** How many pages one read may chain while every page it read shows nothing (edge case). */
 const MAX_EMPTY_CHAIN = 10;
 
+/** The page's h1, focusable from script: where focus lands when there is no list (no shown row). */
+function headingOf(): HTMLElement | null {
+  const h1 = document.querySelector<HTMLElement>("main h1");
+  if (h1 && !h1.hasAttribute("tabindex")) h1.setAttribute("tabindex", "-1");
+  return h1;
+}
+
 async function readPage(cursor: string | null, signal?: AbortSignal): Promise<PageOutcome> {
   try {
     const res = await fetch(pageBff(cursor), {
@@ -103,6 +111,8 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
         credentials: "same-origin",
         redirect: "manual",
         keepalive: true,
+        // Bounded (staff round 2): a hung request must not hold `marksSettled` or the button.
+        signal: AbortSignal.timeout(MARK_WAIT_MS),
         headers: { "Content-Type": "application/json", Accept: "application/json", [SESSION_SUBJECT_HEADER]: sessionSubject },
         body: "{}",
       }),
@@ -180,7 +190,8 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
     pendingFocus.current = null;
     const rows = listRef.current?.querySelectorAll<HTMLElement>("[data-notification-id]");
     const row = typeof target === "number" && rows && target < rows.length ? rows[target] : null;
-    (row ?? listRef.current)?.focus();
+    const landing = row ?? listRef.current ?? headingOf();
+    landing?.focus();
   });
   const shownUnread = items.some((item) => item.readAt === null);
   const showMarkAll = first === "ready" && (shownUnread || (unread.kind === "known" && unread.count > 0));
@@ -200,7 +211,7 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
       if (item.readAt !== null) return;
       markReadInList((id) => id === item.id);
       settle((count) => count - 1);
-        void trackMark(post(readOneBff(item.id)).catch(() => undefined)).finally(refresh);
+      void trackMark(post(readOneBff(item.id)).catch(() => undefined)).finally(refresh);
     },
     [markReadInList, post, refresh, settle]
   );

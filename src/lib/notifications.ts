@@ -191,9 +191,20 @@ export function trackMark<T>(mark: Promise<T>): Promise<T> {
   return held;
 }
 
-/** Resolves once every mark tracked so far has settled (whatever its answer). */
-export async function marksSettled(): Promise<void> {
-  if (pendingMarks.size > 0) await Promise.allSettled([...pendingMarks]);
+/**
+ * How long a read waits for marks still out (staff round 2, merge condition). The mark's own
+ * request is aborted at the same bound (`AbortSignal.timeout(MARK_WAIT_MS)` in the inbox), so a hung mark costs at
+ * most one possibly stale read, never a frozen bell or inbox for the life of the document.
+ */
+export const MARK_WAIT_MS = 10_000;
+
+/** Resolves once every mark tracked so far has settled (whatever its answer), or after `boundMs`. */
+export async function marksSettled(boundMs: number = MARK_WAIT_MS): Promise<void> {
+  if (pendingMarks.size === 0) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const bound = new Promise<void>((resolve) => (timer = setTimeout(resolve, boundMs)));
+  await Promise.race([Promise.allSettled([...pendingMarks]).then(() => undefined), bound]);
+  clearTimeout(timer);
 }
 
 /**

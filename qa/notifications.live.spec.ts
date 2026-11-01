@@ -241,12 +241,25 @@ for (const lang of ["en", "fr"] as const) {
       await signIn(page, lang, coach);
       await expectBell(page, lang, 2);
       // Straight to the thread, not through the inbox: the page marks the thread read when shown.
-      const marked = page.waitForResponse(
-        (r) => r.request().method() === "POST" && r.url().endsWith(`/api/bff/clients/${link.coachClientId}/messages/read`)
-      );
+      // One ordered log of protocol events: the mark's response, and each count request after it.
+      const events: string[] = [];
+      const markPath = `/api/bff/clients/${link.coachClientId}/messages/read`;
+      page.on("response", (r) => {
+        if (r.request().method() === "POST" && new URL(r.url()).pathname === markPath) events.push(`mark ${r.status()}`);
+      });
+      page.on("request", (r) => {
+        if (r.method() === "GET" && new URL(r.url()).pathname === "/api/bff/notifications/unread-count") events.push("count");
+      });
       await page.goto(`/clients/${link.coachClientId}/messages`);
-      expect((await marked).status()).toBe(204);
-      // Staff S2: the thread page's own bell re-reads after the mark, not 60 s later.
+      await expect.poll(() => events.includes("mark 204"), { timeout: 10_000, message: "the thread's mark-read answered 204" }).toBe(true);
+      // Staff S2: the thread page's own bell re-reads AFTER the mark's 204 (not 60 s later). The page
+      // load's own first read can race the mark, so only a read sent after the 204 counts here.
+      await expect
+        .poll(() => events.slice(events.indexOf("mark 204") + 1).filter((e) => e === "count").length, {
+          timeout: 5_000,
+          message: "a count read sent after the mark's 204",
+        })
+        .toBeGreaterThan(0);
       await expectBell(page, lang, 1);
 
       await page.goto("/");
