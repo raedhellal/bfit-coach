@@ -44,12 +44,32 @@ npm run dev                    # http://localhost:3300
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:e2e` | Playwright smoke specs (fixture mode, boots its own server) |
 | `npm run test:e2e:roster` | the roster specs, on the **populated** fixture scenario (its own server, :3301) |
+| `npm run test:e2e:chromium` / `test:e2e:roster:chromium` | the same two suites, **Chromium verdict only**: every test not tagged `@webkit` (BUG-1089, see « WebKit legs » below) |
+| `npm run test:e2e:webkit` / `test:e2e:roster:webkit` | the same two suites, **WebKit legs only** (tagged `@webkit`); red where WebKit is not installed |
 
 `test:e2e` and `test:e2e:roster` are **two suites, not one with a flag**:
 `COACH_FIXTURE_SCENARIO` is read once per dev-server process, the main suite needs
 `empty` (EV-183 AC1's empty state and the invite happy path) and the roster's
 scope-filtered nulls need rows. Both are gates — there is no CI here, so this table is
 the checklist.
+
+**WebKit legs (BUG-1089).** A spec that launches WebKit itself tags that test or describe
+`@webkit` (`WEBKIT_LEG` / `engineTag(engine)` in `qa/webkit-leg.ts`). Both fixture configs
+declare two projects: `chromium` runs every untagged test, `webkit` runs only the tagged legs.
+A plain `npm run test:e2e` runs both, as before. On a machine without WebKit (QA's container),
+the **coach gate's Chromium command** is
+
+```sh
+npx playwright test --project=chromium [files…]                                       # default config
+npx playwright test --config playwright.roster.config.ts --project=chromium [files…]  # roster config
+npm run test:e2e:alone -- --project=chromium                                          # each file alone
+```
+
+Its exit code is the Chromium verdict alone. The WebKit legs run only under `--project=webkit`,
+and there a missing WebKit **fails** every leg with « WebKit is not installed: npx playwright
+install webkit » — never a pass, never a skip. Tagged so far: `field-focus-ring`,
+`focus-clear-of-bars`, `field-focus-ring-roster`, `modal-focus-ring-roster`. Other specs that
+still launch WebKit untagged fail inside `chromium` where WebKit is missing, as they did before.
 
 **One worker per fixture server, enforced.** Every fixture test resets the server's whole
 in-memory store first (EV-223), so both fixture suites refuse `--workers` above 1 before any

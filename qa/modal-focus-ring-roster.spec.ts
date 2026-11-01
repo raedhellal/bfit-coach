@@ -4,6 +4,7 @@ import { expect, webkit, type Browser, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { decodePng } from "./focus-ring-sweep";
 import { signInThroughForm } from "./sign-in";
+import { engineTag } from "./webkit-leg";
 
 /**
  * BUG-668 — the kit `Modal`'s body (`[data-modal-body]`, `overflow-y: auto`) cut the keyboard
@@ -39,7 +40,8 @@ import { signInThroughForm } from "./sign-in";
  *
  * Engines: Chromium, and a WebKit leg (repo pattern: `qa/focus-ring-sweep.ts`'s `pageFor`).
  * WebKit is ASSERTED installed, so where it is missing those tests fail on that assertion; they
- * are not skipped. On macOS, WebKit's plain Tab skips buttons, so its walk uses Alt+Tab.
+ * are not skipped. They are tagged @webkit and run in the `webkit` project only (BUG-1089,
+ * qa/webkit-leg.ts), so `--project=chromium` is the Chromium verdict alone. On macOS, WebKit's plain Tab skips buttons, so its walk uses Alt+Tab.
  */
 
 type Lang = "en" | "fr";
@@ -240,7 +242,7 @@ const frames = (page: Page) => page.evaluate(() => new Promise((r) => requestAni
 for (const engine of ["chromium", "webkit"] as const) {
   for (const lang of ["fr", "en"] as const) {
     for (const vp of VIEWPORTS) {
-      test.describe(`BUG-668 ${engine} ${lang} ${vp.width}×${vp.height}`, () => {
+      test.describe(`BUG-668 ${engine} ${lang} ${vp.width}×${vp.height}`, engineTag(engine), () => {
         test.use({ viewport: vp, locale: LOCALES[lang] });
 
         for (const dir of ["forward", "backward"] as const) {
@@ -360,7 +362,7 @@ for (const engine of ["chromium", "webkit"] as const) {
  * Records the body's scrollTop before and after the click.
  */
 for (const engine of ["chromium", "webkit"] as const) {
-  test.describe(`BUG-668 ${engine} pointer focus in the scroll-padding band`, () => {
+  test.describe(`BUG-668 ${engine} pointer focus in the scroll-padding band`, engineTag(engine), () => {
     const vp = { width: 390, height: 600 };
     test.use({ viewport: vp, locale: LOCALES.en });
 

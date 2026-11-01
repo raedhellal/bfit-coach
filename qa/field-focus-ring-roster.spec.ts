@@ -1,4 +1,5 @@
 import { test } from "./fixture-test";
+import { engineTag } from "./webkit-leg";
 import {
   closeSweepBrowser,
   pointerFocusRoute,
@@ -45,12 +46,12 @@ const POINTER_SEARCHES: PointerSearch[] = [
 test.afterAll(closeSweepBrowser);
 
 for (const engine of ["chromium", "webkit"] as const) {
-  test.describe(`BUG-663 — keyboard focus ring on every text field (${engine})`, () => {
+  test.describe(`BUG-663 — keyboard focus ring on every text field (${engine})`, engineTag(engine), () => {
     for (const route of ROUTES) {
       test(`${route.name}`, async ({ page, baseURL }) => sweepRoute(engine, route, page, baseURL));
     }
   });
-  test.describe(`BUG-724 — a click into a search turns its border blue and moves nothing (${engine})`, () => {
+  test.describe(`BUG-724 — a click into a search turns its border blue and moves nothing (${engine})`, engineTag(engine), () => {
     for (const search of POINTER_SEARCHES) {
       test(`${search.name}`, async ({ page, baseURL }) => pointerFocusRoute(engine, search, page, baseURL));
     }
