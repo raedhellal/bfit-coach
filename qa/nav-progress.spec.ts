@@ -100,7 +100,7 @@ test("a held response: the bar appears after 400 ms, says what it is, and leaves
   await expect(page.locator("section[aria-label]").first()).toBeVisible();
   // The bar's click listener is attached on hydration; a click before it is a navigation the bar
   // cannot see (the component's own readiness rule). The server-rendered section is visible before
-  // that, so this test raced hydration; EV-455f's shell island made the race lose under next dev.
+  // that, so this test raced hydration: flaky on base too (regress-base-nav-progress.log).
   await expect(page.locator("[data-nav-progress-ready]")).toHaveCount(1);
   await page.context().addCookies([{ name: "evoli_fixture_api_latency", value: "1200", url: baseURL! }]);
 
