@@ -108,6 +108,8 @@ import type {
   MarkMessagesReadRequest,
   SendMessageRequest,
   SentCoachMessage,
+  NotificationPage,
+  NotificationUnreadCount,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
 // demo's lines are identical to the ones the structured shape produced. See
@@ -7809,6 +7811,24 @@ export const fixtureCoachApi: CoachApi = {
 
   async revokeClient(): Promise<void> {
     state().revoked = true;
+  },
+
+  // ── EV-455f the notification inbox ──
+  // The fixture holds NO notification: the inbox is the api's record (EV-455 X8), and the bell's
+  // states are witnessed against the real api (`qa/notifications.live.spec.ts`), never against
+  // invented items. So fixture mode draws the empty inbox and no badge, and every id is unknown.
+  async listNotifications(): Promise<NotificationPage> {
+    return { items: [], nextCursor: null };
+  },
+  async getNotificationsUnreadCount(): Promise<NotificationUnreadCount> {
+    return { count: 0 };
+  },
+  async markNotificationRead(): Promise<void> {
+    const { ApiError } = await import("./apiFetch");
+    throw new ApiError(404, "No notification with this id", "NOTIFICATION_NOT_FOUND");
+  },
+  async markAllNotificationsRead(): Promise<void> {
+    /* nothing to mark */
   },
 
   // ── EV-095b « Messages » (see its block above `fixtureCoachApi`) ──

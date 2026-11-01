@@ -176,6 +176,10 @@ const SAME_IN_BOTH: Record<string, string> = {
   "intakePage.values.activities.HIIT": "French 'CrossFit / HIIT' (the catalogue table)",
   "intakePage.sectionLabel": "French 'Section' (staff r1 N4)",
   "intakePage.minutes": "a number and 'min', the French abbreviation too (EV-341r R4's unit)",
+  "notifications.title": "French 'Notifications' (EV-455f's copy table: « Notifications »)",
+  "notifications.listLabel": "French 'Notifications' (the page title, as the list's name)",
+  "notifications.bellLabel":
+    "called here with a string, so it takes its n = 0 branch: « Notifications » in both (EV-455f's copy table); the n ≥ 1 sentences differ and are pinned by notifications-unit.spec.ts",
 };
 
 test("no French string or template output is left identical to English, outside the allowlist", () => {

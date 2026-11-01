@@ -3430,6 +3430,100 @@ export interface CoachClientUnread {
   count: number;
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-455f — the coach's notification inbox (b-fit-api EV-455b/d, ADR-0039). The api serves
+ * every caller's own items under `/me/**` (rule X5): no `/coach-portal` route, no new rule.
+ *
+ *   GET  /me/notifications?cursor=&limit=  → NotificationPage (newest first, opaque nextCursor)
+ *   GET  /me/notifications/unread-count    → NotificationUnreadCount
+ *   POST /me/notifications/{id}/read       → 204 (idempotent; 404 for any id not the caller's.
+ *        A CLIENT_MESSAGE item on an ACTIVE link of a COACH also marks that thread read, X4)
+ *   POST /me/notifications/read-all        → 204 (message items follow their threads, EV-455d)
+ *
+ * An item carries NO text (X1): the portal builds the line from `type` and `actor.displayName`
+ * (`src/lib/notifications.ts`). Every answer is `Cache-Control: no-store`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/** The catalogue's type codes (EV-455). The portal shows the `CLIENT_*` rows only. */
+export type NotificationType =
+  | "COACH_PLAN_PUBLISHED"
+  | "COACH_MEALS_UPDATED"
+  | "COACH_MESSAGE"
+  | "CLIENT_MESSAGE"
+  | "CLIENT_JOINED"
+  | "CLIENT_SESSION_COMPLETED"
+  | "CLIENT_RED_FLAG";
+
+/**
+ * The counterpart an item is about, by name only, resolved when the inbox is read.
+ *
+ * @wire NotificationActor
+ */
+export interface NotificationActor {
+  /** The client's name as it is now; null when the account has no name. */
+  displayName: string | null;
+}
+
+/**
+ * Ids the portal needs to open an item; each null when the type does not use it.
+ *
+ * @wire NotificationTarget
+ */
+export interface NotificationTarget {
+  /** The coach_clients id: the portal's /clients/{id}. */
+  coachClientId: string | null;
+  /** Trainee items only (COACH_PLAN_PUBLISHED); never read by the portal. */
+  planId: string | null;
+  /** Trainee items only (COACH_MEALS_UPDATED); never read by the portal. */
+  weekStart: string | null;
+}
+
+/**
+ * One inbox item.
+ *
+ * @wire Notification
+ */
+export interface CoachNotification {
+  id: string;
+  /** A string, not `NotificationType`: an api ahead of the portal can send a type it does not know. */
+  type: string;
+  /** When its latest event happened; a collapsed item (X3) moves up on each new event. */
+  createdAt: string;
+  /** null while unread. */
+  readAt: string | null;
+  /** Events folded into this item (X3), at least 1. Not drawn: the catalogue text is the line. */
+  count: number;
+  actor: NotificationActor;
+  target: NotificationTarget;
+}
+
+/**
+ * One page of the caller's inbox, newest first.
+ *
+ * @wire NotificationPage
+ */
+export interface NotificationPage {
+  items: CoachNotification[];
+  nextCursor: string | null;
+}
+
+/**
+ * The bell's number: the caller's unread items, whatever their type.
+ *
+ * @wire NotificationUnreadCount
+ */
+export interface NotificationUnreadCount {
+  count: number;
+}
+
+/** The page size the portal asks for: the api's default, sent so it is not a server whim. */
+export const NOTIFICATIONS_PAGE_SIZE = 20;
+
+/** 404 NOTIFICATION_NOT_FOUND — no item of the caller's has this id. */
+export function isNotificationNotFound(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404;
+}
+
 /** Which page of the thread a read asks for (`after` and `before` are never sent together). */
 export type CoachMessagesCursor = { after: number } | { before: number } | null;
 
@@ -3632,6 +3726,26 @@ const liveCoachApi = {
   /** The roster's unread dots: read once per roster load, never on an interval (D38.1). */
   listMessageUnread(): Promise<CoachClientUnread[]> {
     return apiFetch<CoachClientUnread[]>("/coach-portal/messages/unread");
+  },
+
+  // ── EV-455f the notification inbox (b-fit-api EV-455b/d, see the block above `// ── the live client`) ──
+
+  /** One page, newest first. `bearer`: the BFF route handler's token (`handlerAccessToken`). */
+  listNotifications(cursor: string | null, bearer?: string): Promise<NotificationPage> {
+    const query = new URLSearchParams({ limit: String(NOTIFICATIONS_PAGE_SIZE) });
+    if (cursor) query.set("cursor", cursor);
+    return apiFetch<NotificationPage>(`/me/notifications?${query.toString()}`, {}, { bearer });
+  },
+  getNotificationsUnreadCount(bearer?: string): Promise<NotificationUnreadCount> {
+    return apiFetch<NotificationUnreadCount>("/me/notifications/unread-count", {}, { bearer });
+  },
+  async markNotificationRead(id: string, bearer?: string): Promise<void> {
+    // 204 No Content; idempotent.
+    await apiFetch<void>(`/me/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }, { bearer });
+  },
+  async markAllNotificationsRead(bearer?: string): Promise<void> {
+    // 204 No Content.
+    await apiFetch<void>("/me/notifications/read-all", { method: "POST" }, { bearer });
   },
 
   // ── EV-184b routine (PROVISIONAL paths — see the block at the top) ─────────

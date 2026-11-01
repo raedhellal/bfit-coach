@@ -47,6 +47,8 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
 
   ActivateAccountRequest: {
     missingInPortal: {
+      healthDataConsentAccepted:
+        "OPTIONAL on the wire (EV-402b, api 29a6e6c6): absent changes nothing, so the portal's activation keeps recording the privacy/terms pair only, as before. Vendored with EV-455f's spec sync, which needed the /me/notifications schemas; whether a COACH activation should ask for Art. 9 consent is EV-402b's question, not this row's. → OWNER: senior-po (EV-402b).",
       fullName:
         "OPTIONAL on the wire (`nullable`, not `required`): omitted = the name the admin typed stays. ADR-0022 D22.10e wants the activation screen to SHOW that name and let the person correct it, but the portal cannot read it — `GET /me` is behind the ACCOUNT floor a PENDING token lacks, and `ActivationStatusResponse` carries no name. A blank 'correct your name' field with nothing to correct would be a control about a value the person cannot see. → OWNER: java-engineer (a `fullName` on `ActivationStatusResponse`), then web-engineer adds the field.",
     },

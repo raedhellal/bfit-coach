@@ -8,6 +8,7 @@ import { retryMinutes } from "@/lib/addClient";
 import { SESSION_SUBJECT_HEADER } from "@/lib/autosaveTransport";
 import { useCopy } from "@/lib/i18n/client";
 import { heldThread, heldThreadSlot, isReplayedRead, noteMountedRead, type ThreadIsland } from "@/lib/heldThreads";
+import { useNotifications } from "@/components/notifications/NotificationsProvider";
 import { MessageTime } from "./MessageTime";
 import {
   MAX_PAGES_PER_POLL,
@@ -227,6 +228,9 @@ export function MessageThread({
   const linkEndedRef = useRef(linkEnded);
   linkEndedRef.current = linkEnded;
 
+  /** EV-455f (X4): the thread read moves its CLIENT_MESSAGE item to read; the bell re-reads at once. */
+  const { refresh: refreshBell } = useNotifications();
+
   function markRead(lastSeq: number, unread: number) {
     if (unread <= 0 || lastSeq <= marked.current || marking.current !== null || !visible()) return;
     marking.current = lastSeq;
@@ -240,7 +244,10 @@ export function MessageThread({
         return slot.settled((entry) => heldAfterMark(entry, lastSeq, status === 204));
       }
       if (marking.current === lastSeq) marking.current = null;
-      if (status === 204) marked.current = Math.max(marked.current, lastSeq);
+      if (status === 204) {
+        marked.current = Math.max(marked.current, lastSeq);
+        refreshBell();
+      }
       else if (status === 403) linkEndedRef.current();
       // Anything else: the next read still says `unread > 0`, and marks again.
     };

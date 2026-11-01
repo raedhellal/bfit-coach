@@ -486,10 +486,15 @@ test.describe("sign-out is a hard navigation (staff 2026-10-02)", () => {
 test.describe("the account menu lets keyboard focus go (staff S2, WCAG 2.4.11)", () => {
   test.use({ locale: "en-GB", viewport: { width: 390, height: 844 } });
 
-  /** From the top bar's logo link, one Tab: the Account button is the next stop. */
+  /**
+   * From the top bar's logo link: one Tab is the notifications bell (EV-455f, a link to
+   * /notifications between the logo and the menu), the next is the Account button.
+   */
   async function focusTrigger(page: Page) {
     const trigger = page.getByRole("button", { name: "Account" });
     await page.getByRole("banner").getByRole("link", { name: "Evoli Pro, back to roster" }).focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("banner").getByRole("link", { name: /^Notifications/ })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(trigger).toBeFocused();
     return trigger;

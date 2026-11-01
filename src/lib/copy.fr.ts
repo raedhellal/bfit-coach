@@ -1936,4 +1936,28 @@ export const fr = {
     } as Record<string, Record<string, string>>,
     minutes: (value: number) => `${value}\u00a0min`,
   },
+  /**
+   * EV-455f — the story's « Copy » table, verbatim, « vous » (EV-455 X9). One deviation, stated:
+   * the bell says « 1 non lue » at n = 1 (house rule: 0 and 1 take the singular); the table writes
+   * « {n} non lues » for every n ≥ 1. Raised with senior-po.
+   */
+  notifications: {
+    title: "Notifications",
+    bellLabel: (n: number) => (n >= 1 ? `Notifications, ${n} non lue${s(n)}` : "Notifications"),
+    empty: "Aucune notification pour le moment.",
+    loadError: "Impossible de charger les notifications.",
+    retry: "Réessayer",
+    markAll: "Tout marquer comme lu",
+    allRead: "Toutes vos notifications sont marquées comme lues.",
+    more: "Charger plus",
+    loading: "Chargement des notifications…",
+    unread: "non lue",
+    listLabel: "Notifications",
+    item: {
+      CLIENT_MESSAGE: (client: string) => `Nouveau message de ${client}`,
+      CLIENT_JOINED: (client: string) => `${client} a accepté votre invitation`,
+      CLIENT_SESSION_COMPLETED: (client: string) => `${client} a terminé une séance`,
+      CLIENT_RED_FLAG: (client: string) => `Un point à vérifier pour ${client}`,
+    },
+  },
 } satisfies Copy;

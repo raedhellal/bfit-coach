@@ -341,6 +341,11 @@ paths:
         Records the user's acceptance of the privacy policy and the terms of service as two
         append-only rows in user_consents (GDPR Art. 7(1)). Consent is required: a request without
         consentAccepted=true is refused with 400 CONSENT_REQUIRED and creates no account.
+        EV-402b (ADR-0022 D22.11): with healthDataConsentAccepted=true the same transaction also
+        records a third row, HEALTH_DATA_ART9 with source REGISTRATION at the pair's instant, and
+        marks the account onboarded (GET /me/onboarding then answers completed=true).
+        healthDataConsentAccepted=false is 400 CONSENT_REQUIRED and creates no account; absent
+        changes nothing.
       requestBody:
         required: true
         content:
@@ -358,7 +363,7 @@ paths:
           description: >-
             Invalid request (VALIDATION_ERROR, naming the field; e.g. a control character in
             fullName, BUG-313, or a password over 72 bytes in UTF-8, BUG-415), or consent absent or
-            refused (CONSENT_REQUIRED)
+            refused (CONSENT_REQUIRED), or healthDataConsentAccepted false (CONSENT_REQUIRED)
           content:
             application/json:
               schema:
@@ -617,6 +622,11 @@ paths:
         returns fresh tokens. The role is a JWT claim, so the client must switch to these tokens
         before its next authenticated read: the old ones still carry PENDING and are refused
         everywhere else. Any refusal persists nothing.
+        EV-402b (ADR-0022 D22.11): with healthDataConsentAccepted=true the same transaction also
+        records a third row, HEALTH_DATA_ART9 with source ACTIVATION at the pair's instant, and,
+        as its last write, marks the account onboarded (GET /me/onboarding then answers
+        completed=true). The consent checks still come after the temporary-password and expiry
+        checks.
       security:
         - bearerAuth: []
       requestBody:
@@ -640,7 +650,7 @@ paths:
             TEMPORARY_PASSWORD_INVALID (the temporary password is not the latest one issued; a 400,
             not a 401, so clients do not refresh-and-retry and spend two attempts per typo),
             TEMPORARY_PASSWORD_REUSED (the new password equals the temporary one), or
-            CONSENT_REQUIRED (consentAccepted absent or false)
+            CONSENT_REQUIRED (consentAccepted absent or false, or healthDataConsentAccepted false)
           content:
             application/json:
               schema:
@@ -1042,6 +1052,9 @@ paths:
   /me/onboarding:
     get:
       summary: Onboarding status
+      description: >-
+        completed is true once POST /me/onboarding/complete has succeeded; also true after an
+        activation or a registration that carried healthDataConsentAccepted: true (EV-402b).
       security:
         - bearerAuth: []
       responses:
@@ -1870,6 +1883,112 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /me/workouts/{sessionId}/summary:
+    get:
+      summary: Post-workout coach summary
+      description: >-
+        Also served at `/me/workout/{sessionId}/summary`. EV-404b: the English strings
+        (`prs[].label`, `prs[].value`, `highlights[]`, `nextTimeRecommendations[].note`) are kept for
+        store builds that render them; new clients render from the codes and numbers (`prs[].kind`
+        and its numbers, `highlightItems[]`, `exerciseName`) and write the sentence in the
+        trainee's language. An exercise claims a record (a `prs[]` item and a `BEST_WEIGHT_UP` /
+        `E1RM_UP` highlight) only against a previous performance of it: the latest earlier
+        completed session of the same workout must have logged it, so a first session has an empty
+        `prs[]`. A best weight of 0 kg or none (body weight, a timed hold) is never a `BEST_WEIGHT`
+        record and has no next-time item.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutCoachSummaryResponse"
+              example:
+                sessionId: "6f1c2b9e-1d2a-4c3b-9e8f-0a1b2c3d4e5f"
+                date: "2026-01-12"
+                workoutTitle: "Strength A"
+                durationSeconds: 3600
+                totalVolume: 1660.0
+                volumeDeltaPct: 62.7
+                prs:
+                  - exerciseSlug: "bench_press"
+                    label: "New best weight"
+                    value: "45.0kg x 8"
+                    kind: BEST_WEIGHT
+                    exerciseName: "Bench Press"
+                    weightKg: 45.0
+                    reps: 8
+                    e1rmKg: null
+                    volume: null
+                  - exerciseSlug: "squat"
+                    label: "New best e1RM"
+                    value: "116.7kg"
+                    kind: BEST_E1RM
+                    exerciseName: "Back Squat"
+                    weightKg: null
+                    reps: null
+                    e1rmKg: 116.7
+                    volume: null
+                  - exerciseSlug: "row"
+                    label: "Best volume"
+                    value: "800 total volume"
+                    kind: BEST_VOLUME
+                    exerciseName: "Row"
+                    weightKg: null
+                    reps: null
+                    e1rmKg: null
+                    volume: 800.0
+                highlights:
+                  - "You lifted +63% volume vs last time."
+                  - "bench_press: +5.0kg best weight."
+                  - "squat: estimated 1RM up to 116.7kg."
+                highlightItems:
+                  - kind: VOLUME_UP
+                    exerciseSlug: null
+                    exerciseName: null
+                    percent: 62.7
+                    deltaKg: null
+                    e1rmKg: null
+                  - kind: BEST_WEIGHT_UP
+                    exerciseSlug: "bench_press"
+                    exerciseName: "Bench Press"
+                    percent: null
+                    deltaKg: 5.0
+                    e1rmKg: null
+                  - kind: E1RM_UP
+                    exerciseSlug: "squat"
+                    exerciseName: "Back Squat"
+                    percent: null
+                    deltaKg: null
+                    e1rmKg: 116.7
+                nextTimeRecommendations:
+                  - exerciseSlug: "bench_press"
+                    exerciseName: "Bench Press"
+                    suggestedNextWeight: 47.5
+                    note: "Add 2.5kg next time if you hit all sets."
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >-
+            Session not found, or a session of another account (identical answer), or its workout
+            no longer exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /me/workouts/{workoutId}/exercises:
     post:
       summary: Add exercise to workout
@@ -2632,9 +2751,11 @@ paths:
         Replaces the account's routine and makes it the active plan (the safety guardrail repairs it
         first; the response is the repaired routine). Optional staleness guard: send `If-Match` with
         the `version` GET returned. If the routine has changed since (a coach published, another
-        device saved), the save is refused with 409 ROUTINE_STALE and nothing is written. Without
-        `If-Match` the save replaces whatever is current, as it always has, so older app builds keep
-        working.
+        device saved), the save is refused with 409 ROUTINE_STALE and nothing is written. On a first
+        save (GET answered 404) send `If-None-Match: *` instead: if a routine exists by then (another
+        device saved, a coach published, a sync or async generation finished), the save is refused
+        with the same 409 and nothing is written. Without either header the save replaces whatever is
+        current, as it always has, so older app builds keep working.
       security:
         - bearerAuth: []
       parameters:
@@ -2646,9 +2767,22 @@ paths:
             comma-separated list matches if any entry is current. `*` means "a routine exists" (it
             refuses only a first save). Compared strongly: a weak tag (`W/"…"`) never matches. A
             header that is present but blank or unreadable never matches either; it is not treated
-            as absent.
+            as absent. Not together with `If-None-Match` (400 ROUTINE_PRECONDITION_INVALID).
           schema:
             type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          description: >-
+            Only `*`, meaning "save only if there is no routine yet": the assertion a first save makes
+            after GET /me/coach/routine answered 404. If a routine exists, 409 ROUTINE_STALE and
+            nothing is written; checked under the same per-account writer lock as `If-Match`, so of
+            two concurrent first saves exactly one lands. Any other value (an entity tag, a quoted
+            `"*"`, blank), or sending it together with `If-Match`, is 400
+            ROUTINE_PRECONDITION_INVALID.
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AppBuildHeader"
       requestBody:
         required: true
         content:
@@ -2668,7 +2802,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Routine"
         "400":
-          description: VALIDATION_ERROR — invalid routine (checked before If-Match)
+          description: >-
+            VALIDATION_ERROR — invalid routine (checked before If-Match / If-None-Match).
+            ROUTINE_PRECONDITION_INVALID — `If-None-Match` with a value other than `*`, or both
+            `If-Match` and `If-None-Match`. Nothing was written.
           content:
             application/json:
               schema:
@@ -2687,8 +2824,8 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "409":
           description: >-
-            ROUTINE_STALE — `If-Match` did not name the current routine; nothing was written. Re-read
-            with GET and decide. `details.currentVersion` and `details.currentUpdatedAt` name the
+            ROUTINE_STALE — `If-Match` did not name the current routine, or `If-None-Match: *` was sent
+            and a routine exists; nothing was written. Re-read with GET and decide. `details.currentVersion` and `details.currentUpdatedAt` name the
             current routine; both are present and null when the account has none. 409 rather than
             RFC 9110's 412, to match the product's other stale-write refusal (COACH_DRAFT_EXISTS).
           content:
@@ -4704,7 +4841,8 @@ paths:
   # (pre-existing; documenting the missing /me routes is EV-066's story, not a bug fix's):
   #   - GET /me/nutrition/plan/meal/{mealId}/swap-options (and ?refresh=true) now answers
   #     422 NO_SAFE_MEAL_PLAN, the body below, when no candidate is safe under the account's rules
-  #     (it answered 500 INTERNAL_ERROR). Nothing is cached, and a refresh's CHAT credit is refunded.
+  #     (it answered 500 INTERNAL_ERROR). Nothing is cached. Since EV-433 a refresh is never
+  #     charged (every list comes from the catalogue), so there is no CHAT credit to refund.
   #   - POST /me/coach/routine: documented since EV-304, with its 409 ROUTINE_GENERATION_IN_PROGRESS.
   #
   # NOTE (EV-071a): POST /me/nutrition/plan/day/{dayId}/regenerate was absent from this spec; EV-304
@@ -8377,9 +8515,9 @@ paths:
     get:
       summary: Cached swap candidates for one meal
       description: >-
-        EV-185 AC3. The CACHED reader, never the refreshing one: `refreshSwapOptions` charges the
-        TRAINEE a CHAT credit and is the one path a caller could otherwise spam into unbounded model
-        calls, so it has no mapping on this prefix at all.
+        EV-185 AC3. The CACHED reader, never the refreshing one, which has no mapping on this
+        prefix. Every list comes from the catalogue, with no model call and no credit charged
+        (EV-433).
         The candidates respect the trainee's stored exclusions for the same reason the week does —
         the engine reads `nutrition_preferences`, and nothing in this request could override them.
         A meal id belonging to somebody else answers 404: ownership is resolved through the
@@ -9262,6 +9400,240 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /me/notifications:
+    get:
+      summary: My notifications, a page at a time
+      description: >-
+        EV-455b / ADR-0039. The caller's own items, newest first by (createdAt, id). limit is 1 to
+        50, default 20. nextCursor is opaque: pass it back as cursor for the next page; it is null on
+        the last page. A collapsed item moves up when a new event joins it, so a client that already
+        holds page 1 sees it on refresh. Cache-Control: no-store.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque, from a previous page's nextCursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-50, default 20
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: One page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPage"
+        "400":
+          description: "INVALID_REQUEST: limit outside 1-50, or a cursor this server did not issue"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: "Unauthorized: no valid access token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: "AUTH_FORBIDDEN: the account is not active yet (PENDING)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /me/notifications/unread-count:
+    get:
+      summary: How many of my notifications are unread
+      description: >-
+        EV-455b / ADR-0039. The bell's badge: the caller's unread items. Cache-Control: no-store.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationUnreadCount"
+        "401":
+          description: "Unauthorized: no valid access token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: "AUTH_FORBIDDEN: the account is not active yet (PENDING)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /me/notifications/{id}/read:
+    post:
+      summary: Mark one of my notifications read
+      description: >-
+        EV-455b / ADR-0039. Marks one of the caller's own items read. Idempotent: an item already
+        read keeps its readAt. Any id that is not the caller's answers 404, the same as an id that
+        does not exist. EV-455c / D39.3: an unread COACH_MESSAGE item on the caller's current coach
+        thread (the one GET /me/my-coach/messages reads) also marks that thread read up to its newest
+        message; any other COACH_MESSAGE item, such as a previous coach's, is marked read alone and
+        moves no thread. EV-455d: an unread CLIENT_MESSAGE item on one of the caller's ACTIVE coach
+        links, while the caller holds the COACH role, also marks that client's thread read up to its
+        newest message; any other CLIENT_MESSAGE item (a revoked link's, or a coach whose role was
+        revoked) is marked read alone. A message item that moved to another thread meanwhile stays
+        unread with that thread. Cache-Control: no-store.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Read
+        "400":
+          description: "INVALID_REQUEST: the id is not a UUID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: "Unauthorized: no valid access token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: "AUTH_FORBIDDEN: the account is not active yet (PENDING). COACH_ACCESS_DENIED: a coach link or the COACH role was revoked between the routing decision and the thread write; nothing was written, and a retry marks the item read alone"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: "NOTIFICATION_NOT_FOUND: no item of the caller's has this id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /me/notifications/read-all:
+    post:
+      summary: Mark all my notifications read
+      description: >-
+        EV-455b / ADR-0039 D39.3. Marks read every one of the caller's items whose latest event is at
+        or before the request; message items follow their thread. EV-455c: COACH_MESSAGE items, the
+        one on the caller's current coach thread by marking that thread read up to its newest message,
+        any other alone. EV-455d: CLIENT_MESSAGE items, for a caller holding the COACH role by marking
+        every thread of the caller's ACTIVE coach links read up to its newest message, any other alone;
+        for a caller without the role, all alone. An item created after the request stays unread.
+        Cache-Control: no-store.
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Read
+        "401":
+          description: "Unauthorized: no valid access token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: "AUTH_FORBIDDEN: the account is not active yet (PENDING). COACH_ACCESS_DENIED: a coach link or the COACH role was revoked between the routing decision and the thread write; nothing was written, and a retry marks the item read alone"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /me/notification-preferences:
+    get:
+      summary: My notification preferences
+      description: >-
+        EV-455h / ADR-0039. The caller's notification preferences: an IANA time zone, quiet hours in
+        that zone (null = none) and one boolean per (type, channel) pair that applies to the caller. A
+        coach (the COACH role) gets email for CLIENT_MESSAGE, CLIENT_JOINED, CLIENT_RED_FLAG and
+        CLIENT_SESSION_COMPLETED (the daily digest); a trainee (no COACH role, or the trainee on an
+        ACTIVE coach link) gets push for COACH_PLAN_PUBLISHED, COACH_MEALS_UPDATED, COACH_MESSAGE and
+        WORKOUT_DAY_REMINDER; someone who is both gets both. Never stored yet: every pair true,
+        Europe/Paris, 22:00 to 08:00; reading writes nothing. Quiet hours hold push only.
+        Cache-Control: no-store.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+        "401":
+          description: "Unauthorized: no valid access token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: "AUTH_FORBIDDEN: the account is not active yet (PENDING)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      summary: Change my notification preferences
+      description: >-
+        EV-455h / ADR-0039. Merges into the caller's preferences and answers the stored document, as
+        GET would. Every field is optional: an absent field keeps its value, quietHours null sets
+        none, and each pair named in channels is set while the others keep theirs. Quiet hours are
+        HH:mm, start inclusive and end exclusive; start after end crosses midnight; start equal to end
+        is refused. The whole document is checked before anything is stored. Cache-Control: no-store.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationPreferencesUpdate"
+      responses:
+        "200":
+          description: The stored document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+        "400":
+          description: "INVALID_REQUEST: an unknown time zone, a time that is not HH:mm, start equal to end, an unknown type or channel, a pair that does not apply to the caller, a value that is not true or false, or a field the document does not have. Nothing was stored"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: "Unauthorized: no valid access token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: "AUTH_FORBIDDEN: the account is not active yet (PENDING)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /me/progress-goal:
     get:
       summary: The milestones (weight and body fat) the trainee's coach set for them
@@ -9834,6 +10206,24 @@ components:
       schema:
         type: string
         example: Europe/Paris
+    AppBuildHeader:
+      name: X-App-Build
+      in: header
+      required: false
+      description: >-
+        Platform and native build of the Evoli app that sent the request: `ios-<n>` or
+        `android-<n>`, matching `^(ios|android)-[1-9][0-9]{0,9}$`. The iOS and Android apps send it
+        on every request (EV-449); the web build and the admin never do. Only the operations that
+        reference this parameter read it, and none of them refuses or changes a request because it
+        is absent or does not match: on `PUT /me/coach/routine` it is written to an operational log
+        line only (EV-439/EV-448). A value holding a byte the HTTP firewall refuses (UTF-8 0x80-0x9F,
+        e.g. an emoji or `€`) is answered `400 INVALID_REQUEST` and nothing is written (BUG-962). No
+        device, OS version, install or account data is ever part of it.
+      schema:
+        type: string
+        pattern: '^(ios|android)-[1-9][0-9]{0,9}$'
+        maxLength: 18
+      example: ios-7
     MessagesAfter:
       name: after
       in: query
@@ -10077,6 +10467,193 @@ components:
           type: integer
           minimum: 1
       required: [clientId, count]
+    NotificationType:
+      type: string
+      description: >-
+        EV-455 event catalogue (ADR-0039 D39.2). COACH_* items are received by a trainee and are about
+        their coach; CLIENT_* items are received by a coach and are about a client.
+      enum: [COACH_PLAN_PUBLISHED, COACH_MEALS_UPDATED, COACH_MESSAGE, CLIENT_MESSAGE, CLIENT_JOINED,
+        CLIENT_SESSION_COMPLETED, CLIENT_RED_FLAG]
+    NotificationActor:
+      type: object
+      additionalProperties: false
+      description: EV-455b. The counterpart the item is about, by name only, resolved when the inbox is read.
+      properties:
+        displayName:
+          type: string
+          nullable: true
+          description: >-
+            The coach's display name (coach items) or the client's name (client items), as it is now.
+            null when the account has no name; the client then shows the catalogue's fallback
+            (« ton coach »).
+      required: [displayName]
+    NotificationTarget:
+      type: object
+      additionalProperties: false
+      description: EV-455b. Ids the client needs to open the item; each null when the type does not use it.
+      properties:
+        coachClientId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "The coach-client link: the portal's /clients/{id}"
+        planId:
+          type: string
+          format: uuid
+          nullable: true
+          description: The plan the item opens (COACH_PLAN_PUBLISHED)
+        weekStart:
+          type: string
+          format: date
+          nullable: true
+          description: The meal week the item opens (COACH_MEALS_UPDATED), ISO date of its first day
+      required: [coachClientId, planId, weekStart]
+    Notification:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-455b. One inbox item. No text: the client builds the line from type and actor (X1).
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/NotificationType"
+        createdAt:
+          type: string
+          format: date-time
+          description: When its latest event happened; a collapsed item moves up on each new event
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: null while unread
+        count:
+          type: integer
+          minimum: 1
+          description: Events folded into this item (X3), at least 1
+        actor:
+          $ref: "#/components/schemas/NotificationActor"
+        target:
+          $ref: "#/components/schemas/NotificationTarget"
+      required: [id, type, createdAt, readAt, count, actor, target]
+    NotificationPage:
+      type: object
+      additionalProperties: false
+      description: EV-455b. One page of the caller's inbox, newest first.
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/Notification"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Opaque; pass it back as cursor for the next page. null at the end.
+      required: [items, nextCursor]
+    NotificationUnreadCount:
+      type: object
+      additionalProperties: false
+      description: EV-455b. The caller's unread items.
+      properties:
+        count:
+          type: integer
+          minimum: 0
+      required: [count]
+    NotificationPreferences:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-455h. The caller's notification preferences. channels lists exactly the pairs that apply
+        to the caller.
+      properties:
+        timezone:
+          type: string
+          maxLength: 64
+          description: An IANA time zone id, such as Europe/Paris. Quiet hours are read in it.
+          example: Europe/Paris
+        quietHours:
+          allOf:
+            - $ref: "#/components/schemas/NotificationQuietHours"
+          nullable: true
+          description: null = no quiet hours.
+        channels:
+          $ref: "#/components/schemas/NotificationPreferenceChannels"
+      required: [timezone, quietHours, channels]
+    NotificationPreferencesUpdate:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-455h. A merge: every field is optional and an absent one keeps its value. quietHours null
+        sets none; timezone and channels may not be null.
+      properties:
+        timezone:
+          type: string
+          maxLength: 64
+          description: An IANA time zone id, such as Europe/Paris. An offset literal such as +01:00 is refused; Etc/GMT±N ids are accepted.
+          example: Europe/Paris
+        quietHours:
+          allOf:
+            - $ref: "#/components/schemas/NotificationQuietHours"
+          nullable: true
+          description: null = no quiet hours.
+        channels:
+          $ref: "#/components/schemas/NotificationPreferenceChannels"
+    NotificationQuietHours:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-455h. A daily window in the caller's time zone during which a push is held. start is
+        inclusive, end exclusive; start after end crosses midnight; start equal to end is refused.
+      properties:
+        start:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          example: "22:00"
+        end:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          example: "08:00"
+      required: [start, end]
+    NotificationPreferenceChannels:
+      type: object
+      additionalProperties: false
+      description: >-
+        EV-455h. One entry per (type, channel) pair. The four coach types are email only, the four
+        trainee types push only. In a response, exactly the pairs that apply to the caller; in a PUT,
+        a pair that does not apply to the caller is refused with 400.
+      properties:
+        CLIENT_MESSAGE:
+          $ref: "#/components/schemas/NotificationEmailChannel"
+        CLIENT_JOINED:
+          $ref: "#/components/schemas/NotificationEmailChannel"
+        CLIENT_RED_FLAG:
+          $ref: "#/components/schemas/NotificationEmailChannel"
+        CLIENT_SESSION_COMPLETED:
+          $ref: "#/components/schemas/NotificationEmailChannel"
+        COACH_PLAN_PUBLISHED:
+          $ref: "#/components/schemas/NotificationPushChannel"
+        COACH_MEALS_UPDATED:
+          $ref: "#/components/schemas/NotificationPushChannel"
+        COACH_MESSAGE:
+          $ref: "#/components/schemas/NotificationPushChannel"
+        WORKOUT_DAY_REMINDER:
+          $ref: "#/components/schemas/NotificationPushChannel"
+    NotificationEmailChannel:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: boolean
+      required: [email]
+    NotificationPushChannel:
+      type: object
+      additionalProperties: false
+      properties:
+        push:
+          type: boolean
+      required: [push]
     CoachProfileResponse:
       type: object
       description: The signed-in coach's profile and capacity (EV-183 AC1).
@@ -12712,10 +13289,10 @@ components:
           description: >-
             EV-368. READY only, and always present then: the goal the client gave in the app (their
             profile's PrimaryGoal, read at the time of the read), or `null` when they have no profile
-            or no goal. This read never substitutes a default; but a profile row created without a
+            or gave no goal. This read never substitutes a default; a profile row created without a
             goal (a consent-only PUT /me/profile, or POST /me/onboarding/complete for a trainee with
-            no row) stores UserProfileDefaults' GET_STRONGER, which is indistinguishable here from a
-            chosen one. Absent on GRANT_MISSING. Read-only: the intake never writes
+            no row) stores UserProfileDefaults' GET_STRONGER marked not asked, and reads `null` here,
+            as no profile does (EV-402j). Absent on GRANT_MISSING. Read-only: the intake never writes
             it (EV-341 Ruling 1); a coach's different goal goes in sections.GOALS.primaryGoal.
       required: [state]
     MyCoachIntake:
@@ -13168,6 +13745,155 @@ components:
             consent to a document the app never rendered is the defect BUG-023 exists to prevent.
           example: v1.0
       required: [token, privacyPolicyVersion]
+    WorkoutCoachSummaryResponse:
+      type: object
+      description: GET /me/workouts/{sessionId}/summary. Lists are capped at 4 items each.
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          description: The day the session is filed under (ADR-0025 D25.4).
+        workoutTitle:
+          type: string
+        durationSeconds:
+          type: integer
+          nullable: true
+        totalVolume:
+          type: number
+          format: double
+          description: Sum of weight x reps over the session's logged sets.
+        volumeDeltaPct:
+          type: number
+          format: double
+          nullable: true
+          description: Percent change vs the previous completed session of this workout, 0.1 precision. Null when there is none, or it had no volume.
+        prs:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutSummaryPersonalRecord"
+        highlights:
+          type: array
+          description: Legacy English sentences. New clients render `highlightItems` instead.
+          items:
+            type: string
+        highlightItems:
+          type: array
+          description: EV-404b. `highlights` as codes and numbers, index-for-index, same order.
+          items:
+            $ref: "#/components/schemas/WorkoutSummaryHighlightItem"
+        nextTimeRecommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutSummaryRecommendation"
+      required:
+        - sessionId
+        - date
+        - workoutTitle
+        - totalVolume
+        - prs
+        - highlights
+        - highlightItems
+        - nextTimeRecommendations
+    WorkoutSummaryPersonalRecord:
+      type: object
+      description: >-
+        One record of the session. The numbers that do not apply to `kind` are null:
+        BEST_WEIGHT carries `weightKg` and `reps`; BEST_E1RM carries `e1rmKg`; BEST_VOLUME carries
+        `volume`.
+      properties:
+        exerciseSlug:
+          type: string
+        label:
+          type: string
+          description: Legacy English label ("New best weight" | "New best e1RM" | "Best volume").
+        value:
+          type: string
+          description: Legacy English value ("45.0kg x 8" | "116.7kg" | "800 total volume").
+        kind:
+          type: string
+          enum: [BEST_WEIGHT, BEST_E1RM, BEST_VOLUME]
+        exerciseName:
+          type: string
+          description: The name the workout showed for this exercise; the prettified slug when it has none.
+        weightKg:
+          type: number
+          format: double
+          nullable: true
+          description: BEST_WEIGHT only. Always > 0.
+        reps:
+          type: integer
+          nullable: true
+          description: BEST_WEIGHT only, the reps of the heaviest set.
+        e1rmKg:
+          type: number
+          format: double
+          nullable: true
+          description: BEST_E1RM only. Epley estimate, 0.1 kg precision.
+        volume:
+          type: number
+          format: double
+          nullable: true
+          description: BEST_VOLUME only. Sum of weight x reps for this exercise, 0.1 precision.
+      required:
+        - exerciseSlug
+        - label
+        - value
+        - kind
+        - exerciseName
+    WorkoutSummaryHighlightItem:
+      type: object
+      description: >-
+        EV-404b. VOLUME_UP carries `percent` (the session's `volumeDeltaPct`, > 0) and no exercise;
+        BEST_WEIGHT_UP carries `deltaKg` (> 0, 0.01 precision); E1RM_UP carries `e1rmKg` (the new
+        estimate, 0.1 precision). The fields that do not apply are null.
+      properties:
+        kind:
+          type: string
+          enum: [VOLUME_UP, BEST_WEIGHT_UP, E1RM_UP]
+        exerciseSlug:
+          type: string
+          nullable: true
+        exerciseName:
+          type: string
+          nullable: true
+        percent:
+          type: number
+          format: double
+          nullable: true
+        deltaKg:
+          type: number
+          format: double
+          nullable: true
+        e1rmKg:
+          type: number
+          format: double
+          nullable: true
+      required:
+        - kind
+    WorkoutSummaryRecommendation:
+      type: object
+      description: Emitted only for an exercise whose best weight this session is > 0.
+      properties:
+        exerciseSlug:
+          type: string
+        exerciseName:
+          type: string
+          description: EV-404b. As `WorkoutSummaryPersonalRecord.exerciseName`.
+        suggestedNextWeight:
+          type: number
+          format: double
+          description: The session's best weight + 2.5 kg.
+        note:
+          type: string
+          description: Legacy English sentence. New clients write it from `suggestedNextWeight`.
+      required:
+        - exerciseSlug
+        - exerciseName
+        - suggestedNextWeight
+        - note
     ApiError:
       type: object
       properties:
@@ -13864,6 +14590,15 @@ components:
             The terms of service version the client displayed. A separate field because the two
             documents are versioned and revised independently; one shared string cannot express a
             privacy-only revision.
+        healthDataConsentAccepted:
+          type: boolean
+          example: true
+          description: >-
+            GDPR Art. 9(2)(a) explicit consent to processing health data, separate from
+            consentAccepted. true: recorded as HEALTH_DATA_ART9 under privacyPolicyVersion, with
+            source REGISTRATION, and the account is marked onboarded, in the same transaction. false:
+            400 CONSENT_REQUIRED and nothing is written. Absent: unchanged; GET /me/onboarding stays
+            false.
       required:
         - email
         - password
@@ -14021,6 +14756,15 @@ components:
           type: string
           maxLength: 32
           example: "v1.0"
+        healthDataConsentAccepted:
+          type: boolean
+          example: true
+          description: >-
+            GDPR Art. 9(2)(a) explicit consent to processing health data, separate from
+            consentAccepted. true: recorded as HEALTH_DATA_ART9 under privacyPolicyVersion, with
+            source ACTIVATION, and the account is marked onboarded, in the same transaction. false: 400
+            CONSENT_REQUIRED and nothing is written. Absent: unchanged; GET /me/onboarding stays
+            false.
         fullName:
           type: string
           maxLength: 120
@@ -14251,9 +14995,11 @@ components:
           maxLength: 254
     AdminGymResponse:
       type: object
-      description: A gym as the list shows it (EV-277a), with its active-coach count (EV-277c).
+      description: >-
+        A gym as the list shows it (EV-277a), with its active-coach count (EV-277c) and its active
+        clients (EV-418a), both read for the whole page in one grouped query.
       required: [id, name, legalName, billingAddress, contactEmail, status, createdAt, updatedAt,
-                 activeCoachCount]
+                 activeCoachCount, activeClients]
       properties:
         id:
           type: string
@@ -14283,6 +15029,13 @@ components:
           type: integer
           format: int64
           description: Coaches currently in the gym (a membership with no leftAt)
+        activeClients:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            EV-418a. ACTIVE coach-client links held now by the gym's current coaches; the same
+            total as the detail's activeClients. A count only, never a trainee.
     AdminGymDetailResponse:
       type: object
       description: >-
@@ -14290,7 +15043,7 @@ components:
         currentCoaches are oldest join first; pastCoaches most recent departure first. A coach who
         left and rejoined appears once per period.
       required: [id, name, legalName, billingAddress, contactEmail, status, createdAt, updatedAt,
-                 activeCoachCount, currentCoaches, pastCoaches]
+                 activeCoachCount, activeClients, currentCoaches, pastCoaches]
       properties:
         id:
           type: string
@@ -14320,6 +15073,14 @@ components:
           type: integer
           format: int64
           description: Coaches currently in the gym (a membership with no leftAt)
+        activeClients:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            EV-418a. The sum of currentCoaches[].activeClients: clients with an active coach in this
+            gym today. No trainee is counted twice (a trainee has at most one ACTIVE link). A count
+            only, never a trainee.
         currentCoaches:
           type: array
           items:
@@ -14330,8 +15091,10 @@ components:
             $ref: "#/components/schemas/AdminGymCoachResponse"
     AdminGymCoachResponse:
       type: object
-      description: One membership period of a coach in a gym (EV-277c).
-      required: [membershipId, coachUserId, displayName, email, joinedAt]
+      description: >-
+        One membership period of a coach in a gym (EV-277c). EV-418a adds activeClients, a count;
+        no field of this schema names a trainee.
+      required: [membershipId, coachUserId, displayName, email, joinedAt, activeClients]
       properties:
         membershipId:
           type: string
@@ -14353,6 +15116,16 @@ components:
           format: date-time
           nullable: true
           description: Null while the coach is current
+        activeClients:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          example: 3
+          description: >-
+            EV-418a. A current coach's ACTIVE client links, read now, by the same rule as
+            /admin/coaches activeClients. Always present; null on a past period (pastCoaches[]): a
+            coach who left is no longer the gym's, even though they keep their clients (ADR-0019 T2).
     AdminCoachGrantRequest:
       type: object
       required: [userId, displayName]
@@ -14830,6 +15603,10 @@ components:
         primaryGoal:
           type: string
           enum: [LOSE_WEIGHT, BUILD_MUSCLE, GET_STRONGER, ENDURANCE, MOBILITY]
+          nullable: true
+          description: >-
+            Any value, including GET_STRONGER, records the goal as given (EV-402j). Omitting it, or
+            sending null, keeps the stored goal and whether it was given.
         weeklyDays:
           type: integer
         sessionMinutes:
@@ -14901,6 +15678,11 @@ components:
           type: string
         primaryGoal:
           type: string
+          nullable: true
+          description: >-
+            null when the trainee has not given a goal: the account's profile holds the default, and
+            nutrition reads it as maintenance (EV-402j). Sending null, or omitting the field, in
+            PUT /me/profile keeps it so.
         weeklyDays:
           type: integer
         sessionMinutes:
@@ -14954,6 +15736,10 @@ components:
           type: string
         primaryGoal:
           type: string
+          nullable: true
+          description: >-
+            null when the trainee has not given a goal, exactly as GET /me/profile answers it
+            (EV-402j).
         weeklyDays:
           type: integer
         sessionMinutes:
@@ -15013,8 +15799,9 @@ components:
             NULL). **Never render this alone as attribution**: COACH with a null `authoredByName`
             means "programmed by a coach who has since left Evoli", and showing that as an Evoli plan
             silently reassigns a human professional's programming to us.
-            AI on a hand-edited plan is a known wrong label, kept because fixing it would change this
-            response for every existing user.
+            SELF is a plan the trainee saved from the app's own editor (`PUT /me/coach/routine`,
+            BUG-939), including an edit of a generated or coach-published plan; plans saved there
+            before that fix still read AI (no data migration).
         authoredByName:
           type: string
           nullable: true

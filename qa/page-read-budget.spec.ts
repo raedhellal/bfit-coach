@@ -443,7 +443,11 @@ test.describe("prefetching a client page", () => {
 
     const entries = (await journal(page)).slice(before);
     expect(ops(entries.filter((e) => e.document))).toEqual(["getMe", "listClients", "listInvited", "listMessageUnread"]);
-    expect(ops(entries.filter((e) => !e.document)), "no background read").toEqual([]);
+    // EV-455f: ONE background read is the product's, the bell's unread count (story In scope 5:
+    // read on page load, through its BFF route, so not a document render). Nothing else.
+    expect(ops(entries.filter((e) => !e.document)), "no background read but the bell's count").toEqual([
+      "getNotificationsUnreadCount",
+    ]);
     expect(clientRequests, `production build: ${await isProductionBuild(page)}`).toEqual([]);
   });
 
