@@ -3,6 +3,8 @@ import { Logo } from "@/components/ui/brand";
 import { UiIcon } from "@/components/ui/icons";
 import type { Copy } from "@/lib/copy";
 import type { Locale } from "@/lib/i18n/locale";
+import { NotificationsBell } from "@/components/notifications/NotificationsBell";
+import { NotificationsProvider } from "@/components/notifications/NotificationsProvider";
 import { AccountMenu } from "./AccountMenu";
 import { FocusClearOfBars } from "./FocusClearOfBars";
 import { LanguageSwitch } from "./LanguageSwitch";
@@ -58,6 +60,8 @@ export function ShellFrame({
       </>
     );
   return (
+    // EV-455f: ONE unread-count reader for both bells (the sidebar's and the top bar's).
+    <NotificationsProvider>
     <div className="app-shell">
       {/* EV-342g: the first Tab stop of every signed-in page. */}
       <SkipLink label={copy.shell.skipToContent} />
@@ -65,9 +69,13 @@ export function ShellFrame({
       <FocusClearOfBars />
       <header className="shell-sidebar">
         {/* EV-183 AC1: the app header reads exactly "Evoli Pro" (the wordmark). */}
-        <Link href="/" className="shell-home" aria-label={copy.shell.home}>
-          <Logo size={34} label={copy.brand} />
-        </Link>
+        <div className="shell-side-top">
+          <Link href="/" className="shell-home" aria-label={copy.shell.home}>
+            <Logo size={34} label={copy.brand} />
+          </Link>
+          {/* EV-455f: the bell, on every signed-in page. */}
+          <NotificationsBell />
+        </div>
         <nav aria-label={copy.shell.nav} className="shell-side-nav">
           {items.map((item) => (
             <Link
@@ -105,6 +113,7 @@ export function ShellFrame({
             <Logo size={30} label={copy.brand} />
           </Link>
           <span style={{ flex: 1 }} />
+          <NotificationsBell />
           <AccountMenu coachName={coachName} locale={locale} />
         </header>
 
@@ -132,6 +141,7 @@ export function ShellFrame({
         </nav>
       </div>
     </div>
+    </NotificationsProvider>
   );
 }
 

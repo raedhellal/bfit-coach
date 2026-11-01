@@ -3313,6 +3313,34 @@ export const en = {
     /** EV-341r R4's unit: a session length option (U+00A0 keeps the number with its unit). */
     minutes: (value: number) => `${value}\u00a0min`,
   },
+  /**
+   * EV-455f — the bell and the inbox. Every sentence is the story's « Copy » table, verbatim
+   * (`b-fit-mobile/docs/product/stories/EV-455f-portal-bell-and-inbox.md`); the item texts are
+   * the EV-455 catalogue's coach rows, the client as the roster names them (`fullNameOf`).
+   */
+  notifications: {
+    /** The page's `h1`, and the bell's name at 0 or while the count is unknown. */
+    title: "Notifications",
+    /** The bell's accessible name: the api's count, never the number of shown items. */
+    bellLabel: (n: number) => (n >= 1 ? `Notifications, ${n} unread` : "Notifications"),
+    empty: "No notifications yet.",
+    loadError: "Couldn't load notifications.",
+    retry: "Try again",
+    markAll: "Mark all as read",
+    more: "Load more",
+    /** Not in the story's table: the screen-reader text of the first read's skeleton rows. */
+    loading: "Loading notifications…",
+    /** Not in the story's table: an unread row's spoken marker (the row's look is the visual one). */
+    unread: "unread",
+    /** The list's landmark name. */
+    listLabel: "Notifications",
+    item: {
+      CLIENT_MESSAGE: (client: string) => `New message from ${client}`,
+      CLIENT_JOINED: (client: string) => `${client} accepted your invitation`,
+      CLIENT_SESSION_COMPLETED: (client: string) => `${client} completed a session`,
+      CLIENT_RED_FLAG: (client: string) => `Something to check for ${client}`,
+    },
+  },
 } as const;
 
 /**
