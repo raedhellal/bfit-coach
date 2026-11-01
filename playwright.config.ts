@@ -1,4 +1,5 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig } from "@playwright/test";
+import { engineProjects } from "./qa/webkit-leg";
 
 /**
  * Smoke specs for Evoli Pro. They run against the Next dev server on :3300 in
@@ -116,7 +117,11 @@ export default defineConfig({
    * says so here; a spec about French sets `test.use({ locale: "fr-FR" })` as before.
    */
   use: { baseURL: BASE_URL, trace: "on-first-retry", locale: "en-US" },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // BUG-1089: `chromium` runs every test not tagged @webkit, `webkit` only the tagged WebKit
+  // legs. On a machine without WebKit, `--project=chromium` is the Chromium verdict alone for
+  // the TAGGED specs only; untagged WebKit legs still fail inside `chromium` (README « WebKit
+  // legs », qa/webkit-leg.ts).
+  projects: engineProjects(),
   webServer: {
     command: `npx next dev -p ${PORT}`,
     url: BASE_URL,

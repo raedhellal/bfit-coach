@@ -11,6 +11,7 @@ import {
   type Route,
 } from "./focus-ring-sweep";
 import { openTargetsForm } from "./targets-card";
+import { engineTag } from "./webkit-leg";
 
 /**
  * BUG-663 (P2, WCAG 2.2 SC 2.4.7 Focus Visible) — every text field in the portal, reached
@@ -22,8 +23,9 @@ import { openTargetsForm } from "./targets-card";
  * shadow on Tab. The other kit call sites (activation, challenge create, progress goal,
  * swap-sheet recipe search, exercise catalogue search) shared it by construction.
  *
- * What this file does, per route and in Chromium AND WebKit (WebKit is launched here: the
- * configs' project is Chromium; a missing WebKit FAILS rather than skips):
+ * What this file does, per route and in Chromium AND WebKit (WebKit is launched here; its legs
+ * are tagged @webkit and run in the `webkit` project only, BUG-1089 / qa/webkit-leg.ts; a
+ * missing WebKit FAILS that project rather than skips):
  *
  *  1. Tabs through the page (or through an opened dialog's focus trap) until focus comes
  *     back round, and for every TEXT FIELD focus lands on (input of a text-like type,
@@ -330,7 +332,7 @@ const ROUTES: Route[] = [
 test.afterAll(closeSweepBrowser);
 
 for (const engine of ["chromium", "webkit"] as const) {
-  test.describe(`BUG-663 — keyboard focus ring on every text field (${engine})`, () => {
+  test.describe(`BUG-663 — keyboard focus ring on every text field (${engine})`, engineTag(engine), () => {
     for (const route of ROUTES) {
       test(`${route.name}`, async ({ page, baseURL }) => sweepRoute(engine, route, page, baseURL));
     }
@@ -358,7 +360,7 @@ const POINTER_SEARCHES: PointerSearch[] = [
 ];
 
 for (const engine of ["chromium", "webkit"] as const) {
-  test.describe(`BUG-724 — a click into a search turns its border blue and moves nothing (${engine})`, () => {
+  test.describe(`BUG-724 — a click into a search turns its border blue and moves nothing (${engine})`, engineTag(engine), () => {
     for (const search of POINTER_SEARCHES) {
       test(`${search.name}`, async ({ page, baseURL }) => pointerFocusRoute(engine, search, page, baseURL));
     }

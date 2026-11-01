@@ -1,4 +1,5 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig } from "@playwright/test";
+import { engineProjects } from "./qa/webkit-leg";
 
 /**
  * The POPULATED roster, which the main config cannot serve.
@@ -14,6 +15,8 @@ import { defineConfig, devices } from "@playwright/test";
  * `coach-library-apply.spec.ts` MUTATES the fixture's draft store for two trainees. It
  * sorts before `coach-roster-scopes.spec.ts`, which is read-only — that is the safe
  * order and it is an accident of the names, so a rename needs re-checking.
+ * Since BUG-1089 that order holds WITHIN the `chromium` project (both are untagged); the
+ * `webkit` project runs after it and holds only the tagged WebKit legs.
  */
 const PORT = process.env.COACH_ROSTER_PORT || "3301";
 const BASE_URL = `http://localhost:${PORT}`;
@@ -65,7 +68,11 @@ export default defineConfig({
    * says so here; a spec about French sets `test.use({ locale: "fr-FR" })` as before.
    */
   use: { baseURL: BASE_URL, trace: "on-first-retry", locale: "en-US" },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // BUG-1089: `chromium` runs every test not tagged @webkit, `webkit` only the tagged WebKit
+  // legs. On a machine without WebKit, `--project=chromium` is the Chromium verdict alone for
+  // the TAGGED specs only; untagged WebKit legs still fail inside `chromium` (README « WebKit
+  // legs », qa/webkit-leg.ts).
+  projects: engineProjects(),
   webServer: {
     command: `npx next dev -p ${PORT}`,
     url: BASE_URL,

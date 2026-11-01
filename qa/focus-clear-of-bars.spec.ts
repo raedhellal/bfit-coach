@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { expect, webkit, type Browser, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
+import { WEBKIT_LEG } from "./webkit-leg";
 
 /**
  * QA NB-1 (branch 1, 2026-10-02) — WCAG 2.4.11 in WebKIT: keyboard focus must not land
@@ -14,9 +15,11 @@ import { signInThroughForm } from "./sign-in";
  * drives REAL WebKit, because the defect does not exist in Chromium — a Chromium-only test
  * of it passes with the fix deleted.
  *
- * It launches WebKit itself (the configs' project is Chromium). The browser must be
- * installed (`npx playwright install webkit`); a missing browser FAILS here rather than
- * skipping, so the gate cannot turn green by not running.
+ * It launches WebKit itself (the configs' project browser is Chromium). Its WebKit tests are
+ * tagged @webkit and run in the `webkit` project only (BUG-1089, qa/webkit-leg.ts); the one
+ * Chromium test runs in `chromium`. The browser must be installed (`npx playwright install
+ * webkit`); a missing browser FAILS each WebKit test rather than skipping, so the gate cannot
+ * turn green by not running.
  *
  * The measure is the QA harness's (`qapro1-evidence/harness/focusobscured.cjs`): after each
  * Tab (Alt+Tab: WebKit on macOS skips links on a plain Tab) and a settle, the share of the
@@ -28,17 +31,27 @@ const LINA = "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001";
 const UPPER_LOWER = "7c2d0a11-0000-4000-8000-0000000000b1";
 const TAB = process.platform === "darwin" ? "Alt+Tab" : "Tab";
 
-let browser: Browser;
-test.beforeAll(async () => {
+/**
+ * BUG-1089: WebKit is launched by the first WebKit test that needs it, not by a file-level
+ * `beforeAll`. That hook ran for every test in the file, so where WebKit was missing it
+ * failed and the Chromium B2 test below never ran. The assertion is unchanged and still
+ * FAILS each WebKit leg (tagged @webkit, `webkit` project only) when the browser is absent.
+ * Cost, stated: WebKit's launch time now falls inside the first WebKit leg's test timeout
+ * (60 s), not inside a hook.
+ */
+let browser: Browser | undefined;
+async function webkitBrowser(): Promise<Browser> {
   expect(existsSync(webkit.executablePath()), `WebKit is not installed: npx playwright install webkit`).toBe(true);
-  browser = await webkit.launch();
-});
+  browser ??= await webkit.launch();
+  return browser;
+}
 test.afterAll(async () => {
   await browser?.close();
+  browser = undefined;
 });
 
 async function signedIn(baseURL: string): Promise<Page> {
-  const context = await browser.newContext({ baseURL, locale: "en-US" });
+  const context = await (await webkitBrowser()).newContext({ baseURL, locale: "en-US" });
   const page = await context.newPage();
   // WebKit types before hydration under load: the helper waits for the form to take it.
   await signInThroughForm(page, { landing: `${baseURL}/` });
@@ -88,7 +101,7 @@ for (const [width, height] of [
   [1023, 700],
   [1440, 850],
 ] as const) {
-  test(`WebKit ${width}×${height}: no keyboard focus stop on the routine editor is under a bar`, async ({ baseURL }) => {
+  test(`WebKit ${width}×${height}: no keyboard focus stop on the routine editor is under a bar`, { tag: WEBKIT_LEG }, async ({ baseURL }) => {
     const page = await signedIn(baseURL!);
     await page.setViewportSize({ width, height });
     await page.goto(`/clients/${LINA}/routine`);
@@ -113,7 +126,7 @@ for (const [width, height] of [
   [390, 700],
   [1023, 700],
 ] as const) {
-  test(`WebKit ${width}×${height}: no keyboard focus stop on the template editor is under a bar`, async ({ baseURL }) => {
+  test(`WebKit ${width}×${height}: no keyboard focus stop on the template editor is under a bar`, { tag: WEBKIT_LEG }, async ({ baseURL }) => {
     const page = await signedIn(baseURL!);
     await page.setViewportSize({ width, height });
     await page.goto(`/templates/${UPPER_LOWER}`);
@@ -128,7 +141,7 @@ for (const [width, height] of [
   });
 }
 
-test("WebKit 390: a field on /recipes/new is clear of the tab bar when reached by keyboard", async ({ baseURL }) => {
+test("WebKit 390: a field on /recipes/new is clear of the tab bar when reached by keyboard", { tag: WEBKIT_LEG }, async ({ baseURL }) => {
   const page = await signedIn(baseURL!);
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto("/recipes/new");
@@ -185,7 +198,7 @@ async function clickPeekingField(page: Page) {
   expect(Math.abs(after.scrollY - before!.scrollY), "a pointer focus does not scroll the page").toBeLessThanOrEqual(1);
 }
 
-test("WebKit 390: a mouse click into a field above the tab bar does not scroll the page (B2)", async ({ baseURL }) => {
+test("WebKit 390: a mouse click into a field above the tab bar does not scroll the page (B2)", { tag: WEBKIT_LEG }, async ({ baseURL }) => {
   const page = await signedIn(baseURL!);
   await page.setViewportSize({ width: 390, height: 700 });
   await page.goto(`/clients/${LINA}/routine`);

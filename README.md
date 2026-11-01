@@ -44,12 +44,48 @@ npm run dev                    # http://localhost:3300
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:e2e` | Playwright smoke specs (fixture mode, boots its own server) |
 | `npm run test:e2e:roster` | the roster specs, on the **populated** fixture scenario (its own server, :3301) |
+| `npm run test:e2e:chromium` / `test:e2e:roster:chromium` | the same two suites, every test not tagged `@webkit` (BUG-1089). A Chromium-only verdict **for the four tagged specs only**: untagged WebKit legs in 28 other files still run here and fail without WebKit (« WebKit legs » below) |
+| `npm run test:e2e:webkit` / `test:e2e:roster:webkit` | the same two suites, **the tagged WebKit legs** only (41 tests in the four tagged specs; the untagged legs are not in it); red where WebKit is not installed |
 
 `test:e2e` and `test:e2e:roster` are **two suites, not one with a flag**:
 `COACH_FIXTURE_SCENARIO` is read once per dev-server process, the main suite needs
 `empty` (EV-183 AC1's empty state and the invite happy path) and the roster's
 scope-filtered nulls need rows. Both are gates — there is no CI here, so this table is
 the checklist.
+
+**WebKit legs (BUG-1089).** A spec that launches WebKit itself tags that test or describe
+`@webkit` (`WEBKIT_LEG` / `engineTag(engine)` in `qa/webkit-leg.ts`). Both fixture configs
+declare two projects: `chromium` runs every untagged test, `webkit` runs only the tagged legs.
+A plain `npm run test:e2e` runs both, as before. The `webkit` project here is Desktop Chrome
+whose legs launch WebKit themselves — unlike the real Desktop Safari `webkit` project of
+`playwright.start.config.ts` and `playwright.session.config.ts`.
+
+Tagged so far: **only** `field-focus-ring`, `focus-clear-of-bars` (default config),
+`field-focus-ring-roster` and `modal-focus-ring-roster` (roster config). On a machine without
+WebKit (QA's container), the **coach gate's Chromium command for those four specs** is
+
+```sh
+npx playwright test qa/field-focus-ring.spec.ts qa/focus-clear-of-bars.spec.ts --project=chromium
+npx playwright test qa/field-focus-ring-roster.spec.ts qa/modal-focus-ring-roster.spec.ts \
+  --config playwright.roster.config.ts --project=chromium
+```
+
+For those four files only, its exit code is the Chromium verdict alone. The tagged WebKit legs
+run only under `--project=webkit`, and there a missing WebKit **fails** every leg with « WebKit
+is not installed: npx playwright install webkit » — never a pass, never a skip.
+`npm run test:e2e:alone -- --project=chromium` accepts options only (a positional file is
+refused; use `ONLY=<substring>`).
+
+**Not yet tagged (follow-up to BUG-1089):** 211 WebKit legs in 28 other files — 22 under the
+default config, 6 under the roster config — still launch WebKit inside `chromium`. Where WebKit
+is missing they fail there, as they did before, so a `--project=chromium` run of a whole suite,
+or of any of those files, is **not** a Chromium-only verdict. (Counted at BUG-1089 from a full
+`--project=chromium` run of both suites without WebKit: tests failing on the WebKit-installed
+assertion, plus WebKit-named tests not run after one.)
+
+Evidence note (BUG-1089): the engineer's runs used Chromium 141 (`/opt/pw-browsers`
+`chromium-1194`), symlinked into the `chromium-1243` folder that Playwright 1.63 expects. A gate
+run should use the pinned browser (`npx playwright install chromium`) where it is available.
 
 **One worker per fixture server, enforced.** Every fixture test resets the server's whole
 in-memory store first (EV-223), so both fixture suites refuse `--workers` above 1 before any
