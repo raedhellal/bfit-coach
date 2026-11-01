@@ -8,6 +8,7 @@ import type { NotificationPage } from "@/lib/coachApi";
 import { useCopy, useLocale } from "@/lib/i18n/client";
 import {
   itemText,
+  marksSettled,
   pageBff,
   pageOutcome,
   READ_ALL_BFF,
@@ -15,6 +16,7 @@ import {
   relativeTime,
   shownItems,
   targetOf,
+  trackMark,
   type PageOutcome,
   type ShownNotification,
 } from "@/lib/notifications";
@@ -36,21 +38,22 @@ import { useNotifications } from "./NotificationsProvider";
  *
  * OPENING AN ITEM (AC-4). Each item is a LINK to its target (`targetOf`). A click on an unread one
  * marks it read in the list and drops the bell by one at once, posts `…/{id}/read`, and lets the
- * link navigate; the post is not awaited by the click, so it is held in `pendingMarks`, and the
- * next inbox to mount waits for it before its first read: back on /notifications the item is
- * read. When the post settles, the bell reads the count again (the server's truth).
+ * link navigate; the post is not awaited by the click, so it is tracked (`trackMark`), and both the
+ * next inbox and the next page's bell wait for it before their first read (`marksSettled`): back on
+ * /notifications the item is read, and the bell on the page the link opened counts it read.
  *
  * « TOUT MARQUER COMME LU » (AC-7) is offered while a SHOWN item is unread, and also while the
  * api's count (when it is known) says something is unread that is not shown: an item on a page not
  * read yet, or a type the portal does not show. A failed count read therefore never hides it while
  * the list shows unread items. On its 204 every shown item turns read and the badge goes, then the
- * bell re-reads. No reload.
+ * bell re-reads. No reload. The button then leaves the page, so focus moves to the list (it never
+ * falls to `<body>`, WCAG 2.4.3) and the status line says everything is read. A failed request
+ * (502, 403, no answer) keeps the button and says so beside it, in the load-error sentence.
+ *
+ * « CHARGER PLUS » leaves the page with the last page read; focus moves to the first row it added.
  *
  * A 307 / 401 (the session ended) reloads the page: the middleware's sign-in redirect.
  */
-
-/** Marks posted by a click whose page may have navigated away before the answer. */
-const pendingMarks = new Set<Promise<unknown>>();
 
 /** How many pages one read may chain while every page it read shows nothing (edge case). */
 const MAX_EMPTY_CHAIN = 10;
@@ -84,6 +87,11 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
   const [first, setFirst] = useState<Load>("loading");
   const [more, setMore] = useState<"idle" | "loading" | "failed">("idle");
   const [markingAll, setMarkingAll] = useState(false);
+  const [markAllFailed, setMarkAllFailed] = useState(false);
+  const [allRead, setAllRead] = useState(false);
+  const listRef = useRef<HTMLUListElement | null>(null);
+  /** Where focus goes after the next render: the list, or the row at this index (S3). */
+  const pendingFocus = useRef<"list" | number | null>(null);
   const [now, setNow] = useState(0);
   const alive = useRef(true);
 
@@ -124,7 +132,7 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
       setFirst("loading");
       setMore("idle");
       // A click on the inbox that navigated away posted a mark: this read must see it (AC-4).
-      if (pendingMarks.size > 0) await Promise.allSettled([...pendingMarks]);
+      await marksSettled();
       const result = await readFrom(null, signal);
       if (!alive.current || signal?.aborted) return;
       if (result === "signedOut") return window.location.reload();
@@ -148,6 +156,7 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
 
   const nextCursor = pages.length > 0 ? pages[pages.length - 1].nextCursor : null;
 
+  const shownBefore = useRef(0);
   const loadMore = useCallback(async () => {
     if (!nextCursor) return;
     setMore("loading");
@@ -155,12 +164,24 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
     if (!alive.current) return;
     if (result === "signedOut") return window.location.reload();
     if (result === "failed") return setMore("failed");
+    // The last page: « Charger plus » is about to leave the page; focus goes to the first new row.
+    if (!result[result.length - 1].nextCursor) pendingFocus.current = shownBefore.current;
     setPages((held) => [...held, ...result]);
     setNow(Date.now());
     setMore("idle");
   }, [nextCursor, readFrom]);
 
   const items = useMemo(() => shownItems(pages), [pages]);
+  shownBefore.current = items.length;
+
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (target === null || first !== "ready") return;
+    pendingFocus.current = null;
+    const rows = listRef.current?.querySelectorAll<HTMLElement>("[data-notification-id]");
+    const row = typeof target === "number" && rows && target < rows.length ? rows[target] : null;
+    (row ?? listRef.current)?.focus();
+  });
   const shownUnread = items.some((item) => item.readAt === null);
   const showMarkAll = first === "ready" && (shownUnread || (unread.kind === "known" && unread.count > 0));
 
@@ -179,19 +200,14 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
       if (item.readAt !== null) return;
       markReadInList((id) => id === item.id);
       settle((count) => count - 1);
-      const sent = post(readOneBff(item.id))
-        .catch(() => undefined)
-        .finally(() => {
-          pendingMarks.delete(sent);
-          refresh();
-        });
-      pendingMarks.add(sent);
+        void trackMark(post(readOneBff(item.id)).catch(() => undefined)).finally(refresh);
     },
     [markReadInList, post, refresh, settle]
   );
 
   const markAll = useCallback(async () => {
     setMarkingAll(true);
+    setMarkAllFailed(false);
     let res: Response | null = null;
     try {
       res = await post(READ_ALL_BFF);
@@ -204,6 +220,10 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
     if (res && res.status === 204) {
       markReadInList(() => true);
       settle(() => 0);
+      setAllRead(true);
+      pendingFocus.current = "list";
+    } else {
+      setMarkAllFailed(true);
     }
     refresh();
   }, [markReadInList, post, refresh, settle]);
@@ -212,12 +232,22 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
     <div>
       {showMarkAll && (
         <div className="inbox-head">
-          <span />
+          {markAllFailed ? (
+            <p role="alert" style={{ margin: 0 }} data-inbox-state="mark-all-error">
+              {c.loadError}
+            </p>
+          ) : (
+            <span />
+          )}
           <Button variant="secondary" onClick={() => void markAll()} disabled={markingAll}>
             {c.markAll}
           </Button>
         </div>
       )}
+      {/* Always in the page, so its change is announced (S3). */}
+      <p role="status" className={allRead ? "inbox-status" : "sr-only"} data-inbox-state="all-read-status">
+        {allRead ? c.allRead : ""}
+      </p>
 
       {first === "loading" && (
         <div className="inbox-list" aria-busy="true" data-inbox-state="loading">
@@ -253,7 +283,7 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
       )}
 
       {first === "ready" && items.length > 0 && (
-        <ul className="inbox-list" aria-label={c.listLabel} data-inbox-state="list">
+        <ul ref={listRef} tabIndex={-1} className="inbox-list" aria-label={c.listLabel} data-inbox-state="list">
           {items.map((item) => {
             const href = targetOf(item);
             const isUnread = item.readAt === null;

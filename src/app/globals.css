@@ -997,6 +997,8 @@ a.inbox-item:hover { background: var(--hover); }
 .inbox-item-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--blue-500); flex: none; }
 .inbox-skeleton { min-height: 64px; border-radius: var(--r-16); background: var(--hover); }
 .inbox-state { margin-top: 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; color: var(--ink-2); }
+.inbox-status { margin: 12px 0 0; color: var(--ink-2); font-size: var(--fs-body); }
+.inbox-list:focus-visible { outline: 2px solid var(--blue-500); outline-offset: 4px; border-radius: var(--r-16); }
 .inbox-more { margin-top: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 
 /* The « Clients » count in the navigation (D3, restated): clients to review, the roster page

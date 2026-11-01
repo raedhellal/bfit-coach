@@ -3327,6 +3327,8 @@ export const en = {
     loadError: "Couldn't load notifications.",
     retry: "Try again",
     markAll: "Mark all as read",
+    /** Staff S3: the status line after « Mark all as read » succeeds. */
+    allRead: "All your notifications are marked as read.",
     more: "Load more",
     /** Not in the story's table: the screen-reader text of the first read's skeleton rows. */
     loading: "Loading notifications…",

@@ -1,7 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { countOutcome, UNREAD_COUNT_BFF, UNREAD_POLL_MS, type CountOutcome } from "@/lib/notifications";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  countOutcome,
+  lastKnownCount,
+  marksSettled,
+  rememberCount,
+  UNREAD_COUNT_BFF,
+  UNREAD_POLL_MS,
+  type CountOutcome,
+} from "@/lib/notifications";
 
 /**
  * EV-455f — the bell's unread count, ONE reader for the whole shell.
@@ -17,6 +25,16 @@ import { countOutcome, UNREAD_COUNT_BFF, UNREAD_POLL_MS, type CountOutcome } fro
  *   · one at once on becoming visible again, then every 60 s from it;
  *   · none after the shell unmounts (the read in flight is aborted, the timer cleared).
  * `refresh()` (the inbox, after a mark) reads now, or once more after the read in flight.
+ *
+ * MARKS IN FLIGHT (staff S1). An inbox click posts its mark and navigates without waiting, so the
+ * NEW page's shell mounts while the post is out. Every read here first waits for the marks this
+ * document still has out (`marksSettled`), so the new bell never reads the count from before the
+ * mark.
+ *
+ * NO FLICKER ON NAVIGATION. A new page's shell starts from the last count this document read
+ * (`lastKnownCount`, kept in module state), seeded before the first paint, then reads its own.
+ * That is a previous REAL read, never a guessed 0. A failed read clears it: after a failure the
+ * next page starts unknown and draws no badge until a read succeeds (AC-9).
  *
  * WHAT A FAILURE SHOWS (AC-9). A failed read, a 502 or a body without a non-negative integer, is
  * `failed`: the bell draws NO badge and its name claims no number. It is never 0 and never the
@@ -59,6 +77,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [unread, setUnread] = useState<UnreadState>({ kind: "loading" });
   const refreshRef = useRef<() => void>(() => undefined);
 
+  // The seed (see NO FLICKER): before the first paint, client only. The server render and the
+  // hydration both draw `loading`, so the markup agrees; module state on the server is never read.
+  useLayoutEffect(() => {
+    const seed = lastKnownCount();
+    if (seed !== null) setUnread((state) => (state.kind === "loading" ? { kind: "known", count: seed } : state));
+  }, []);
+
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -76,7 +101,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       timer = undefined;
       if (stopped) return;
       inFlight = new AbortController();
-      const outcome = await readCount(inFlight.signal);
+      const signal = inFlight.signal;
+      await marksSettled();
+      const outcome = stopped ? ({ kind: "failed" } as CountOutcome) : await readCount(signal);
       inFlight = null;
       if (stopped) return;
       if (outcome.kind === "signedOut") {
@@ -84,6 +111,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         window.location.reload();
         return;
       }
+      rememberCount(outcome.kind === "count" ? outcome.count : null);
       setUnread(outcome.kind === "count" ? { kind: "known", count: outcome.count } : { kind: "failed" });
       if (again) {
         again = false;
@@ -132,7 +160,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const refresh = useCallback(() => refreshRef.current(), []);
   const settle = useCallback(
     (next: (count: number) => number) =>
-      setUnread((state) => (state.kind === "known" ? { kind: "known", count: Math.max(0, next(state.count)) } : state)),
+      setUnread((state) => {
+        if (state.kind !== "known") return state;
+        const count = Math.max(0, next(state.count));
+        rememberCount(count);
+        return { kind: "known", count };
+      }),
     []
   );
   const value = useMemo(() => ({ unread, refresh, settle }), [unread, refresh, settle]);

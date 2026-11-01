@@ -1948,6 +1948,7 @@ export const fr = {
     loadError: "Impossible de charger les notifications.",
     retry: "Réessayer",
     markAll: "Tout marquer comme lu",
+    allRead: "Toutes vos notifications sont marquées comme lues.",
     more: "Charger plus",
     loading: "Chargement des notifications…",
     unread: "non lue",

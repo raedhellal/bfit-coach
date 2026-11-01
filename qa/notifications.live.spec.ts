@@ -42,6 +42,7 @@ const T = {
     loadError: "Couldn't load notifications.",
     retry: "Try again",
     markAll: "Mark all as read",
+    allRead: "All your notifications are marked as read.",
     more: "Load more",
     denied: "This trainee is not on your roster. They may have revoked access.",
     item: {
@@ -59,6 +60,7 @@ const T = {
     loadError: "Impossible de charger les notifications.",
     retry: "Réessayer",
     markAll: "Tout marquer comme lu",
+    allRead: "Toutes vos notifications sont marquées comme lues.",
     more: "Charger plus",
     denied: "Ce client ne fait pas partie de votre liste. Il a peut-être révoqué l'accès.",
     item: {
@@ -180,6 +182,8 @@ for (const lang of ["en", "fr"] as const) {
       await expect(rows(page)).toHaveCount(25);
       await check(25);
       await expect(more).toHaveCount(0);
+      // Staff S3: the button left the page; focus is on the first row it added, never on <body>.
+      await expect(rows(page).nth(20)).toBeFocused();
       // The newest first, by time as well as by the api's order.
       const times = await page.locator("[data-notification-id] time").evaluateAll((els) => els.map((e) => Date.parse(e.getAttribute("datetime") ?? "")));
       for (let i = 1; i < times.length; i++) expect(times[i], `row ${i} is not newer than row ${i - 1}`).toBeLessThanOrEqual(times[i - 1]);
@@ -242,6 +246,8 @@ for (const lang of ["en", "fr"] as const) {
       );
       await page.goto(`/clients/${link.coachClientId}/messages`);
       expect((await marked).status()).toBe(204);
+      // Staff S2: the thread page's own bell re-reads after the mark, not 60 s later.
+      await expectBell(page, lang, 1);
 
       await page.goto("/");
       await expectBell(page, lang, 1);
@@ -282,8 +288,74 @@ for (const lang of ["en", "fr"] as const) {
       for (const r of await rows(page).all()) await expect(r).toHaveAttribute("data-unread", "false");
       await expectBell(page, lang, 0);
       await expect(page.getByRole("button", { name: L.markAll })).toHaveCount(0);
+      // Staff S3: focus moved to the list (not <body>), and the status line says so.
+      await expect(page.getByRole("list", { name: L.title })).toBeFocused();
+      await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
       expect(await page.evaluate(() => (window as unknown as { __ev455fNoReload?: number }).__ev455fNoReload), "the page was not reloaded").toBe(1);
       expect(await apiUnread(request, coach), "the server agrees").toBe(0);
+    });
+
+    test(`AC-4b [${lang}] (staff S1): the page an item opens counts that item read, even when the mark answers late`, async ({ page, request }) => {
+      const coach = await freshCoach(request);
+      const link = await linkClient(request, coach, `Ana ${lang} S1`);
+      await clientCompletes(request, link.trainee, 2);
+      const joined = (await apiInbox(request, coach)).find((i) => i.type === "CLIENT_JOINED")!;
+      await signIn(page, lang, coach);
+      await openInbox(page);
+      await expectBell(page, lang, 3);
+
+      // The mark is held 2 s at the browser, so the new page's shell mounts while it is out.
+      let markAnsweredAt = 0;
+      await page.route("**/api/bff/notifications/*/read", async (route) => {
+        await new Promise((r) => setTimeout(r, 2_000));
+        await route.continue();
+        markAnsweredAt = Date.now();
+      });
+      const countReads = recordCountReads(page);
+      const clickedAt = Date.now();
+      await row(page, joined.id).click();
+      await expect(page).toHaveURL(new RegExp(`/clients/${link.coachClientId}$`));
+      await expect.poll(() => markAnsweredAt, { timeout: 10_000, message: "the held mark answered" }).toBeGreaterThan(0);
+      await expect
+        .poll(() => countReads.filter((t) => t > clickedAt).length, { timeout: 10_000, message: "the new page read the count" })
+        .toBeGreaterThan(0);
+      expect(
+        countReads.filter((t) => t > clickedAt && t < markAnsweredAt),
+        "no count read on the new page while the mark was out (a read then would be stale)"
+      ).toEqual([]);
+      await page.waitForTimeout(1_500);
+      await expectBell(page, lang, 2);
+      expect(await apiUnread(request, coach)).toBe(2);
+    });
+
+    test(`AC-7b [${lang}] (staff S4): a failed « ${L.markAll} » says so beside the button and changes nothing`, async ({ page, request }) => {
+      const coach = await freshCoach(request);
+      const link = await linkClient(request, coach, `Eli ${lang} S4`);
+      await clientWrites(request, link.trainee);
+      await signIn(page, lang, coach);
+      await openInbox(page);
+      await expectBell(page, lang, 2);
+      const button = page.getByRole("button", { name: L.markAll, exact: true });
+
+      for (const failure of ["502", "403", "network"] as const) {
+        await page.route("**/api/bff/notifications/read-all", (route) =>
+          failure === "network"
+            ? route.abort("failed")
+            : route.fulfill({ status: Number(failure), contentType: "application/json", body: '{"code":"X"}' })
+        );
+        await button.click();
+        await expect(page.getByRole("alert").filter({ hasText: L.loadError }), `${failure}: the sentence`).toBeVisible();
+        await expect(button, `${failure}: the button stays`).toBeVisible();
+        for (const r of await rows(page).all()) await expect(r).toHaveAttribute("data-unread", "true");
+        await expectBell(page, lang, 2);
+        await page.unrouteAll();
+      }
+      expect(await apiUnread(request, coach), "nothing was marked").toBe(2);
+
+      // The same button works once the request does, and the sentence goes.
+      await button.click();
+      await expectBell(page, lang, 0);
+      await expect(page.getByRole("alert").filter({ hasText: L.loadError })).toHaveCount(0);
     });
 
     test(`AC-9 [${lang}]: a failing count (503 in front of the BFF) → no badge, no false 0; the page's error and « ${L.retry} »`, async ({ page, request }) => {

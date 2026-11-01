@@ -8,6 +8,10 @@ import {
   countOutcome,
   isShown,
   itemText,
+  lastKnownCount,
+  marksSettled,
+  rememberCount,
+  trackMark,
   pageOutcome,
   relativeTime,
   shownItems,
@@ -134,4 +138,27 @@ test("relative time: now, minutes, hours, days, then the date; a future time is 
   expect(relativeTime("2026-11-01T12:05:00Z", now, "en")).toBe("now");
   expect(relativeTime("2026-10-01T12:00:00Z", now, "en")).toBe("1 Oct");
   expect(relativeTime("not a date", now, "en")).toBe("");
+});
+
+test("staff S1: a count read waits for the marks still out (marksSettled), whatever their answer", async () => {
+  const order: string[] = [];
+  let release!: () => void;
+  const slow = new Promise<void>((resolve) => (release = resolve)).then(() => order.push("mark answered"));
+  void trackMark(slow);
+  void trackMark(Promise.reject(new Error("502")).catch(() => order.push("failed mark settled")));
+  const read = marksSettled().then(() => order.push("count read"));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(order, "no read while a mark is out").toEqual(["failed mark settled"]);
+  release();
+  await read;
+  expect(order).toEqual(["failed mark settled", "mark answered", "count read"]);
+  // Nothing out: it resolves at once.
+  await marksSettled();
+});
+
+test("the last known count: the previous real read, cleared by a failure (AC-9)", () => {
+  rememberCount(4);
+  expect(lastKnownCount()).toBe(4);
+  rememberCount(null);
+  expect(lastKnownCount()).toBeNull();
 });

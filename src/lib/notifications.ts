@@ -173,3 +173,40 @@ export const pageBff = (cursor: string | null) =>
 
 /** The bell's poll (story In scope 5, as EV-095b): every 60 s, only while the tab is visible. */
 export const UNREAD_POLL_MS = 60_000;
+
+/* ── marks in flight, and the last count read (module state: one per document) ───────────── */
+
+/**
+ * The inbox's item clicks post `…/{id}/read` and let the link navigate without waiting, so the
+ * answer can land after the shell that sent it has unmounted. Every count read and every inbox
+ * first read waits for these first (`marksSettled`): the new page's bell never reads a count from
+ * before the mark (staff S1). Module state lives as long as the document, and a session boundary
+ * is a document load (ADR-0033 D33.7), so nothing crosses accounts.
+ */
+const pendingMarks = new Set<Promise<unknown>>();
+
+export function trackMark<T>(mark: Promise<T>): Promise<T> {
+  const held = mark.finally(() => pendingMarks.delete(held));
+  pendingMarks.add(held);
+  return held;
+}
+
+/** Resolves once every mark tracked so far has settled (whatever its answer). */
+export async function marksSettled(): Promise<void> {
+  if (pendingMarks.size > 0) await Promise.allSettled([...pendingMarks]);
+}
+
+/**
+ * The last count this document READ (or that a mark it made moved), so a new page's bell starts
+ * from it instead of drawing nothing until its own read: the previous real read, never a guessed
+ * 0. A failed read clears it, so after a failure the next page starts unknown, as AC-9 requires.
+ */
+let lastKnown: number | null = null;
+
+export function lastKnownCount(): number | null {
+  return lastKnown;
+}
+
+export function rememberCount(count: number | null): void {
+  lastKnown = count;
+}
