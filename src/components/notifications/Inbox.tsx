@@ -97,6 +97,8 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
   const [markingAll, setMarkingAll] = useState(false);
   const [markAllFailed, setMarkAllFailed] = useState(false);
   const [allRead, setAllRead] = useState(false);
+  /** The last count a read KNEW (BUG-1094); `null` before any. Written during render, see below. */
+  const lastKnown = useRef<number | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   /** Where focus goes after the next render: the list, or the row at this index (S3). */
   const pendingFocus = useRef<"list" | number | null>(null);
@@ -196,12 +198,16 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
   const shownUnread = items.some((item) => item.readAt === null);
   const countSaysUnread = unread.kind === "known" && unread.count > 0;
   const showMarkAll = first === "ready" && (shownUnread || countSaysUnread);
-  // BUG-1094: the status line is only true while no count read says something is unread. A new
-  // item after the mark (the 60 s poll reads 1) hides it in the same render as the bell's 1 and
-  // the button's return; a read of 0, or a failed one, proves nothing new and leaves it. Derived,
-  // not reset: a read still out from before the mark cannot clear it for good, the re-read after
-  // the 204 shows it again.
-  const allReadShown = allRead && !countSaysUnread;
+  // BUG-1094: the status line says "everything is read", so it is shown only while the LAST KNOWN
+  // count is 0. `lastKnown` follows every known count, in the render that receives it, so a new
+  // item read by the 60 s poll (1) hides the line in the same render as the bell's 1. A failed or
+  // loading read is no evidence and changes nothing: after a 1, a 502 keeps the line hidden (it
+  // never reads as a 0, AC-9); after a 0, it keeps it shown. `null` is no evidence yet.
+  // A mark-all 204 is evidence of 0 (`markAll` sets it), so the line shows even when the count was
+  // failing at the time. A read sent before the mark that answers after it (a stale 3) hides the
+  // line until the re-read the 204 asked for (`refresh`) answers 0 and shows it again.
+  if (unread.kind === "known") lastKnown.current = unread.count;
+  const allReadShown = allRead && lastKnown.current === 0;
 
   const markReadInList = useCallback((isTarget: (id: string) => boolean) => {
     const at = new Date().toISOString();
@@ -238,6 +244,7 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
     if (res && res.status === 204) {
       markReadInList(() => true);
       settle(() => 0);
+      lastKnown.current = 0;
       setAllRead(true);
       pendingFocus.current = "list";
     } else {
@@ -324,6 +331,9 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
                 {isUnread && (
                   <>
                     <span className="inbox-item-dot" aria-hidden="true" />
+                    {/* Kept: a link's stated `aria-label` overrides it, but a row with no target (the
+                        `div` below, a generic that may not carry `aria-label`) is read from content,
+                        and this is the only place it says "unread" to a screen reader. */}
                     <span className="sr-only">, {c.unread}</span>
                   </>
                 )}
