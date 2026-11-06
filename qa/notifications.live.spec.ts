@@ -367,16 +367,28 @@ for (const lang of ["en", "fr"] as const) {
       await signIn(page, lang, coach);
       await openInbox(page);
       await expectBell(page, lang, 1);
-      const reads = recordCountReads(page);
-      const marked = Date.now();
+      // Every count read the PAGE gets back after the mark, with the count it answered.
+      const zeros: number[] = [];
+      const others: string[] = [];
+      let marked = Number.POSITIVE_INFINITY;
+      page.on("response", async (r) => {
+        if (r.request().method() !== "GET" || new URL(r.url()).pathname !== "/api/bff/notifications/unread-count") return;
+        const at = Date.now();
+        if (at < marked) return;
+        const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
+        if (r.status() === 200 && body?.count === 0) zeros.push(at);
+        else others.push(`${r.status()} ${JSON.stringify(body)}`);
+      });
+      marked = Date.now();
       await page.getByRole("button", { name: L.markAll, exact: true }).click();
       await expectBell(page, lang, 0);
       const status = page.locator('[data-inbox-state="all-read-status"]');
       await expect(status).toHaveText(L.allRead);
-      // The re-read after the 204, then the poll's read 60 s after it: both answer 0.
+      // The re-read after the 204, then the poll's read 60 s after it: at least 2 reads, both 0.
       await expect
-        .poll(() => reads.filter((t) => t >= marked).length, { timeout: 75_000, message: "the 60 s poll read the count after the mark" })
+        .poll(() => zeros.length, { timeout: 75_000, message: "at least 2 count reads returning 0 after the mark (the 60 s poll among them)" })
         .toBeGreaterThanOrEqual(2);
+      expect(others, "no count read after the mark answered anything but 0").toEqual([]);
       expect(Date.now() - marked, "60 s passed with the tab visible").toBeGreaterThanOrEqual(60_000);
       await expectBell(page, lang, 0);
       await expect(status).toHaveText(L.allRead);
