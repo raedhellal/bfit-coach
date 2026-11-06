@@ -1959,5 +1959,21 @@ export const fr = {
       CLIENT_SESSION_COMPLETED: (client: string) => `${client} a terminé une séance`,
       CLIENT_RED_FLAG: (client: string) => `Un point à vérifier pour ${client}`,
     },
+    settingsLink: "Réglages",
+  },
+  notificationSettings: {
+    title: "Réglages des notifications",
+    intro: "Les notifications restent toujours visibles dans Evoli Pro. Ces réglages ne concernent que les e-mails.",
+    switch: {
+      CLIENT_MESSAGE: "E-mail quand un client vous écrit",
+      CLIENT_JOINED: "E-mail quand un client accepte votre invitation",
+      CLIENT_RED_FLAG: "E-mail quand un point est à vérifier",
+      CLIENT_SESSION_COMPLETED: "Résumé quotidien des séances (7 h)",
+    },
+    saveFailed: "Le réglage n'a pas été enregistré. Réessayez.",
+    saved: "Enregistré",
+    loading: "Chargement de vos réglages…",
+    loadError: "Impossible de charger vos réglages.",
+    retry: "Réessayer",
   },
 } satisfies Copy;

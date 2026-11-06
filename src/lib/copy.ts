@@ -3342,6 +3342,29 @@ export const en = {
       CLIENT_SESSION_COMPLETED: (client: string) => `${client} completed a session`,
       CLIENT_RED_FLAG: (client: string) => `Something to check for ${client}`,
     },
+    /** EV-455k: the inbox header's link to /settings/notifications (story In scope). */
+    settingsLink: "Settings",
+  },
+  /** EV-455k — /settings/notifications. The story's « Copy » table, verbatim, unless marked. */
+  notificationSettings: {
+    /** Not in the story's table: the page's `h1`. */
+    title: "Notification settings",
+    intro: "Notifications always stay in Evoli Pro. These settings only change emails.",
+    /** One switch per coach email pair; each label is its switch's accessible name (AC-5). */
+    switch: {
+      CLIENT_MESSAGE: "Email when a client writes to you",
+      CLIENT_JOINED: "Email when a client accepts your invitation",
+      CLIENT_RED_FLAG: "Email when something needs a look",
+      CLIENT_SESSION_COMPLETED: "Daily session summary (7 am)",
+    },
+    saveFailed: "The setting wasn't saved. Try again.",
+    /** Not in the story's table: the « saved » state of a switch (story In scope). */
+    saved: "Saved",
+    /** Not in the story's table: the screen-reader text of the first read's skeleton. */
+    loading: "Loading your settings…",
+    /** Not in the story's table: a failed read (the page never draws switches it could not read). */
+    loadError: "Couldn't load your settings.",
+    retry: "Try again",
   },
 } as const;
 

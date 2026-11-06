@@ -109,6 +109,8 @@ import type {
   SendMessageRequest,
   SentCoachMessage,
   NotificationPage,
+  NotificationPreferences,
+  NotificationPreferencesUpdate,
   NotificationUnreadCount,
 } from "./coachApi";
 // The fixture composes its repair sentences with the portal's own composer, so the
@@ -4823,6 +4825,12 @@ async function assertChallengeRequest(body: CoachChallengeCreateRequest): Promis
 interface FixtureState {
   /** AC6: revoking takes the whole roster away for the rest of the process. */
   revoked: boolean;
+  /**
+   * EV-455k — the coach's four email pairs (EV-455h's defaults: all on). Only the pairs: the
+   * fixture's `timezone` and `quietHours` are the api's defaults, constant, as the page never
+   * sends them.
+   */
+  notificationEmail: Record<"CLIENT_MESSAGE" | "CLIENT_JOINED" | "CLIENT_RED_FLAG" | "CLIENT_SESSION_COMPLETED", boolean>;
   /** BUG-689 — how many forced render errors `evoli_fixture_render_error=once` has served. */
   renderErrorsServed: number;
   /** BUG-869/870 — `evoli_fixture_ai_keep_lost` has lost one Keep's answer since the last reset. */
@@ -5160,10 +5168,21 @@ export function fixtureTrialComplete(id: string): boolean {
 const FIXTURE_STATE_KEY = Symbol.for("evoli.coach.fixture.state");
 type GlobalWithFixture = typeof globalThis & Record<symbol, FixtureState | undefined>;
 
+/** EV-455k — the fixture coach's preferences document, as EV-455h serves a coach's. */
+function fixturePreferences(): NotificationPreferences {
+  const email = state().notificationEmail;
+  return {
+    timezone: "Europe/Paris",
+    quietHours: { start: "22:00", end: "08:00" },
+    channels: Object.fromEntries(Object.entries(email).map(([type, on]) => [type, { email: on }])),
+  };
+}
+
 function freshState(): FixtureState {
   return {
     revoked: false,
     renderErrorsServed: 0,
+    notificationEmail: { CLIENT_MESSAGE: true, CLIENT_JOINED: true, CLIENT_RED_FLAG: true, CLIENT_SESSION_COMPLETED: true },
     aiKeepLostServed: false,
     aiStartLostServed: false,
     lastRoutineClient: null,
@@ -7829,6 +7848,26 @@ export const fixtureCoachApi: CoachApi = {
   },
   async markAllNotificationsRead(): Promise<void> {
     /* nothing to mark */
+  },
+
+  // ── EV-455k notification settings ──
+  // The four coach email pairs, kept in the store (reset before every test) and merged as the
+  // api merges. The behaviour against the real api is `qa/notification-settings.live.spec.ts`.
+  async getNotificationPreferences(): Promise<NotificationPreferences> {
+    return fixturePreferences();
+  },
+  async putNotificationPreferences(body: NotificationPreferencesUpdate): Promise<NotificationPreferences> {
+    const held = state().notificationEmail;
+    const next = { ...held };
+    for (const [type, pair] of Object.entries(body.channels ?? {})) {
+      if (!(type in held) || typeof pair?.email !== "boolean") {
+        const { ApiError } = await import("./apiFetch");
+        throw new ApiError(400, "A pair that does not apply to the caller", "INVALID_REQUEST");
+      }
+      next[type as keyof typeof held] = pair.email;
+    }
+    state().notificationEmail = next;
+    return fixturePreferences();
   },
 
   // ── EV-095b « Messages » (see its block above `fixtureCoachApi`) ──

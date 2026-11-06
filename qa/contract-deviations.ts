@@ -34,6 +34,17 @@ export const DEVIATIONS: Record<string, SchemaDeviation> = {
    * (AC3.8). Its absence here is the forced deletion, not an omission.
    * ────────────────────────────────────────────────────────────────────────── */
 
+  /* ── EV-455k: the coach's notification settings send ONE pair ─────────────── */
+
+  NotificationPreferencesUpdate: {
+    missingInPortal: {
+      timezone:
+        "EV-455k Out of scope: the settings page edits no time zone (the coach's defaults to Europe/Paris; trigger for a row: a coach outside it asks). EV-455h's PUT is a merge, so an absent `timezone` keeps the stored one. OPTIONAL on the wire (the update schema requires nothing).",
+      quietHours:
+        "EV-455k ruling 2026-10-27 (ar): quiet hours hold push only (EV-055) and a coach's channels are email, so the page draws no quiet-hours control and never sends the field. EV-455h's PUT is a merge, so an absent `quietHours` keeps the stored window; sending it would be the one way a toggle could change it. OPTIONAL on the wire.",
+    },
+  },
+
   /* ── EV-316, arrived with the BUG-195c re-vendor ────────────────────────────── */
 
   AuthTokens: {

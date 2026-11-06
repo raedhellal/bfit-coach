@@ -3524,6 +3524,47 @@ export function isNotificationNotFound(err: unknown): boolean {
   return err instanceof ApiError && err.status === 404;
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-455k — the coach's notification settings (b-fit-api EV-455h, ADR-0039). The caller's own
+ * document under `/me/**` (X5): no `/coach-portal` route, no new rule.
+ *
+ *   GET /me/notification-preferences → NotificationPreferences (never stored yet: the defaults,
+ *       every pair true, Europe/Paris, 22:00–08:00; reading writes nothing)
+ *   PUT /me/notification-preferences → NotificationPreferences, the STORED document. A MERGE:
+ *       an absent field keeps its value, and each pair named in `channels` is set while the
+ *       others keep theirs. 400 INVALID_REQUEST for a pair that does not apply to the caller.
+ *
+ * The portal reads `channels` only and sends one pair per request
+ * (`src/lib/notificationPreferences.ts`). Every answer is `Cache-Control: no-store`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The caller's preferences. `channels` lists exactly the (type, channel) pairs that apply to the
+ * caller: for a coach, `email` on the four `CLIENT_*` types (`CLIENT_SESSION_COMPLETED` is the
+ * daily digest). Typed loosely on purpose: an api ahead of the portal can list a pair it does not
+ * know, which the page does not draw.
+ *
+ * @wire NotificationPreferences
+ */
+export interface NotificationPreferences {
+  /** An IANA zone. Not drawn and never sent by the portal (EV-455k Out of scope). */
+  timezone: string;
+  /** Push only (EV-055); not drawn and never sent (EV-455k, ruling 2026-10-27 (ar)). */
+  quietHours: { start: string; end: string } | null;
+  channels: Partial<Record<string, { email?: boolean; push?: boolean }>>;
+}
+
+/**
+ * What the portal sends: ONE pair, `{ channels: { <TYPE>: { email } } }`. `timezone` and
+ * `quietHours` are never sent, so the api's merge keeps them (registered in
+ * `qa/contract-deviations.ts`).
+ *
+ * @wire NotificationPreferencesUpdate
+ */
+export interface NotificationPreferencesUpdate {
+  channels: Partial<Record<string, { email: boolean }>>;
+}
+
 /** Which page of the thread a read asks for (`after` and `before` are never sent together). */
 export type CoachMessagesCursor = { after: number } | { before: number } | null;
 
@@ -3746,6 +3787,21 @@ const liveCoachApi = {
   async markAllNotificationsRead(bearer?: string): Promise<void> {
     // 204 No Content.
     await apiFetch<void>("/me/notifications/read-all", { method: "POST" }, { bearer });
+  },
+
+  // ── EV-455k notification settings (b-fit-api EV-455h, see its block above `// ── the live client`) ──
+
+  /** The coach's preferences. `bearer`: the BFF route handler's token (`handlerAccessToken`). */
+  getNotificationPreferences(bearer?: string): Promise<NotificationPreferences> {
+    return apiFetch<NotificationPreferences>("/me/notification-preferences", {}, { bearer });
+  },
+  /** A merge: only the pairs in `body.channels` change. Answers the stored document. */
+  putNotificationPreferences(body: NotificationPreferencesUpdate, bearer?: string): Promise<NotificationPreferences> {
+    return apiFetch<NotificationPreferences>(
+      "/me/notification-preferences",
+      { method: "PUT", body: JSON.stringify({ channels: body.channels }) },
+      { bearer }
+    );
   },
 
   // ── EV-184b routine (PROVISIONAL paths — see the block at the top) ─────────
