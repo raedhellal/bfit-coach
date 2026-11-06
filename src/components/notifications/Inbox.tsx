@@ -194,7 +194,14 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
     landing?.focus();
   });
   const shownUnread = items.some((item) => item.readAt === null);
-  const showMarkAll = first === "ready" && (shownUnread || (unread.kind === "known" && unread.count > 0));
+  const countSaysUnread = unread.kind === "known" && unread.count > 0;
+  const showMarkAll = first === "ready" && (shownUnread || countSaysUnread);
+  // BUG-1094: the status line is only true while no count read says something is unread. A new
+  // item after the mark (the 60 s poll reads 1) hides it in the same render as the bell's 1 and
+  // the button's return; a read of 0, or a failed one, proves nothing new and leaves it. Derived,
+  // not reset: a read still out from before the mark cannot clear it for good, the re-read after
+  // the 204 shows it again.
+  const allReadShown = allRead && !countSaysUnread;
 
   const markReadInList = useCallback((isTarget: (id: string) => boolean) => {
     const at = new Date().toISOString();
@@ -256,8 +263,8 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
         </div>
       )}
       {/* Always in the page, so its change is announced (S3). */}
-      <p role="status" className={allRead ? "inbox-status" : "sr-only"} data-inbox-state="all-read-status">
-        {allRead ? c.allRead : ""}
+      <p role="status" className={allReadShown ? "inbox-status" : "sr-only"} data-inbox-state="all-read-status">
+        {allReadShown ? c.allRead : ""}
       </p>
 
       {first === "loading" && (
@@ -299,10 +306,15 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
             const href = targetOf(item);
             const isUnread = item.readAt === null;
             const time = relativeTime(item.createdAt, now, locale);
+            const line = itemText(item, copy);
+            // BUG-1094 rider: the link's name is stated, so the unread marker joins the time with
+            // no space before its comma ("now, unread"). From content, the .sr-only span is out of
+            // flow and the name computation put a space before it ("now , unread").
+            const name = `${line}${time ? ` ${time}` : ""}${isUnread ? `, ${c.unread}` : ""}`;
             const body = (
               <>
                 <span className="inbox-item-text">
-                  <span className="inbox-item-line">{itemText(item, copy)}</span>
+                  <span className="inbox-item-line">{line}</span>
                   {time && (
                     <time className="inbox-item-time" dateTime={item.createdAt}>
                       {time}
@@ -322,6 +334,7 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
                 {href ? (
                   <Link
                     href={href}
+                    aria-label={name}
                     className="inbox-item"
                     data-unread={isUnread ? "true" : "false"}
                     data-type={item.type}
