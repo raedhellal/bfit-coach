@@ -4,6 +4,7 @@ import {
   fixtureAiPosts,
   fixtureCalls,
   fixtureDraftPuts,
+  fixtureInboxCalls,
   fixtureIntakePuts,
   fixtureReads,
 } from "@/lib/coachApi.fixture";
@@ -34,6 +35,9 @@ import { apiJournal } from "@/lib/fixtureApiJournal";
  *   and `{ intakePuts }` (EV-341b): every intake section PUT the fixture received, with its
  *         body — B5a's witness (the first save after « Recharger »).
  *
+ *   and `{ inboxCalls }` (EV-475): every inbox list / unread-count / read-all request with the
+ *         query it carried, e.g. `"GET /me/notifications/unread-count?audience=COACH"`.
+ *
  * It exists because the browser sees server actions, never api paths, so "no swap
  * request until Show suggestions is pressed" has no other witness in fixture mode.
  *
@@ -50,7 +54,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 export async function GET() {
   if (COACH_API_MODE !== "fixture") return new NextResponse(null, { status: 404, headers: NO_STORE });
   return NextResponse.json(
-    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), intakePuts: fixtureIntakePuts(), aiPosts: fixtureAiPosts(), aiDiscards: fixtureAiDiscards(), api: apiJournal() },
+    { calls: fixtureCalls(), reads: fixtureReads(), draftPuts: fixtureDraftPuts(), intakePuts: fixtureIntakePuts(), inboxCalls: fixtureInboxCalls(), aiPosts: fixtureAiPosts(), aiDiscards: fixtureAiDiscards(), api: apiJournal() },
     { headers: NO_STORE }
   );
 }

@@ -19,8 +19,8 @@ import type {
   CatalogPaging,
   CatalogPage,
   ClientOverview,
-  CoachApi,
   CoachMe,
+  CoachNotification,
   CoachNutritionResponse,
   CoachFoodLogDay,
   CoachFoodLogEatenMeal,
@@ -108,6 +108,8 @@ import type {
   MarkMessagesReadRequest,
   SendMessageRequest,
   SentCoachMessage,
+  FixtureCoachApi,
+  NotificationAudience,
   NotificationPage,
   NotificationPreferences,
   NotificationPreferencesUpdate,
@@ -4932,6 +4934,11 @@ interface FixtureState {
   aiDraftedAt: Map<string, string>;
   /** EV-095b — the coach↔client thread per link (`coach_message_threads` + `coach_messages`). */
   messageThreads: Map<string, FixtureMessageThread>;
+  /**
+   * EV-475 — when each inbox item of the `evoli_fixture_inbox` affordance was read, by id. Empty
+   * at the seed: the items themselves are not stored (see `FIXTURE_INBOX`), only their reads.
+   */
+  inboxReadAt: Record<string, string>;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -5270,6 +5277,7 @@ function freshState(): FixtureState {
     aiProposals: new Map(),
     aiDraftedAt: new Map(),
     messageThreads: seedMessageThreads(),
+    inboxReadAt: {},
   };
 }
 
@@ -5440,6 +5448,7 @@ export function resetFixtureState(): void {
   resetIntakePuts();
   (globalThis as GlobalWithSwapCache)[SWAP_CACHE_KEY] = new Map();
   resetAiPosts();
+  (globalThis as GlobalWithCalls)[INBOX_CALLS_KEY] = [];
 }
 
 /** True when nothing has been written (or read-with-side-effect) since the last reset. */
@@ -7674,7 +7683,143 @@ export function fixtureMessageThreadRecord(clientId: string): {
   };
 }
 
-export const fixtureCoachApi: CoachApi = {
+/* ════════════════════════════════════════════════════════════════════════════
+ * EV-475 — THE INBOX, AS b-fit-api SERVES IT AT `4963d486` (EV-467's `audience`).
+ *
+ * The fixture holds NO notification by default: the inbox is the api's record (EV-455 X8), and
+ * the bell's states are witnessed against the real api (`qa/notifications.live.spec.ts`). So a
+ * context with no cookie still draws the empty inbox and no badge, as it did before EV-475.
+ *
+ * ⚠ Fixture affordance (cookie, one browser context): `evoli_fixture_inbox=dual-role` is the
+ * inbox of a coach who is also someone's trainee — one unread `CLIENT_MESSAGE` (a client wrote;
+ * audience COACH) and one unread `COACH_PLAN_PUBLISHED` (the coach's own coach published a plan;
+ * audience TRAINEE). It is what tells a portal that sends `audience=COACH` from one that does not.
+ *
+ * Unlike every other method here, the three audience-filtered routes are answered at the PATH
+ * level (`fixtureInboxFetch`): fixture mode runs the live client's own functions, which build the
+ * query string and hand it here (`inboxFetch` in `coachApi.ts`). The parameter is judged as the
+ * api judges it (`NotificationAudience`): absent is every type, `TRAINEE` the COACH_* types,
+ * `COACH` the CLIENT_* types, anything else (empty or repeated included) 400 INVALID_REQUEST.
+ * read-all marks only the audience's items; with `COACH`, the `COACH_PLAN_PUBLISHED` stays
+ * unread. Not ported: read-all also marking the client's message thread (EV-455d) — no thread
+ * of the empty scenario's roster is behind the fixture's item.
+ *
+ * Reads are kept in `FixtureState.inboxReadAt` (reset before every test); each wire request is
+ * journalled outside it (`fixtureInboxCalls`, emptied by every reset, read through
+ * `GET /api/fixture/calls` as `inboxCalls`) so a spec can see the exact query that was sent.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+const INBOX_COOKIE = "evoli_fixture_inbox";
+const INBOX_CALLS_KEY = Symbol.for("evoli.coach.fixture.inboxCalls");
+
+/** The dual-role inbox: ids are fixed so a spec can name them. Newest first, as the api orders. */
+const FIXTURE_INBOX: readonly Omit<CoachNotification, "createdAt" | "readAt">[] = [
+  {
+    id: "e4750000-0000-4000-8000-000000000001",
+    type: "CLIENT_MESSAGE",
+    count: 1,
+    actor: { displayName: "Lina M." },
+    target: { coachClientId: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001", planId: null, weekStart: null },
+  },
+  {
+    id: "e4750000-0000-4000-8000-000000000002",
+    type: "COACH_PLAN_PUBLISHED",
+    count: 1,
+    actor: { displayName: "Alex R." },
+    target: { coachClientId: null, planId: "e4750000-0000-4000-8000-0000000000aa", weekStart: null },
+  },
+];
+
+/** TRAINEE is the COACH_* types, COACH the CLIENT_* types (the api reads it from the type alone). */
+function audienceOf(type: string): NotificationAudience | null {
+  if (type.startsWith("COACH_")) return "TRAINEE";
+  if (type.startsWith("CLIENT_")) return "COACH";
+  return null;
+}
+
+/** The context's inbox, newest first, with the reads this process has recorded. */
+async function fixtureInbox(): Promise<CoachNotification[]> {
+  if ((await fixtureSwitch(INBOX_COOKIE)) !== "dual-role") return [];
+  const read = state().inboxReadAt;
+  return FIXTURE_INBOX.map((item, i) => ({
+    ...item,
+    target: { ...item.target },
+    actor: { ...item.actor },
+    createdAt: new Date(Date.now() - (i + 1) * 10 * 60_000).toISOString(),
+    readAt: read[item.id] ?? null,
+  }));
+}
+
+function inAudience(item: CoachNotification, audience: NotificationAudience | null): boolean {
+  return audience === null || audienceOf(item.type) === audience;
+}
+
+/** `audience` as the api parses it: absent → null; exactly TRAINEE or COACH; else 400. */
+async function parseAudience(query: URLSearchParams): Promise<NotificationAudience | null> {
+  const values = query.getAll("audience");
+  if (values.length === 0) return null;
+  const [only] = values;
+  if (values.length === 1 && (only === "TRAINEE" || only === "COACH")) return only;
+  return fail(400, "INVALID_REQUEST", "audience is not TRAINEE or COACH");
+}
+
+/**
+ * The api's three audience-filtered inbox routes, answered from the path and method `coachApi.ts`
+ * built (fixture mode only). Any other path is a 404: nothing else is routed here.
+ */
+export async function fixtureInboxFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const url = new URL(path, "http://fixture.invalid");
+  const g = globalThis as GlobalWithCalls;
+  (g[INBOX_CALLS_KEY] ??= []).push(`${method} ${url.pathname}${url.search}`);
+
+  const audience = await parseAudience(url.searchParams);
+  const items = (await fixtureInbox()).filter((item) => inAudience(item, audience));
+
+  if (method === "GET" && url.pathname === "/me/notifications") {
+    const limit = url.searchParams.get("limit");
+    if (limit !== null && !(/^\d+$/.test(limit) && Number(limit) >= 1 && Number(limit) <= 50)) {
+      return fail(400, "INVALID_REQUEST", "limit outside 1-50");
+    }
+    // The fixture never issues a cursor (one page at most), so any cursor is one it did not issue.
+    if (url.searchParams.has("cursor")) return fail(400, "INVALID_REQUEST", "a cursor this server did not issue");
+    const page: NotificationPage = { items, nextCursor: null };
+    return page as T;
+  }
+  if (method === "GET" && url.pathname === "/me/notifications/unread-count") {
+    const count: NotificationUnreadCount = { count: items.filter((item) => item.readAt === null).length };
+    return count as T;
+  }
+  if (method === "POST" && url.pathname === "/me/notifications/read-all") {
+    const now = new Date().toISOString();
+    const read = state().inboxReadAt;
+    for (const item of items) if (item.readAt === null) read[item.id] = now;
+    return undefined as T; // 204
+  }
+  return fail(404, "NOT_FOUND", `No fixture inbox route for ${method} ${url.pathname}`);
+}
+
+/** Every inbox request the fixture answered since the last reset, e.g. `GET /me/notifications/unread-count?audience=COACH`. */
+export function fixtureInboxCalls(): string[] {
+  return [...((globalThis as GlobalWithCalls)[INBOX_CALLS_KEY] ?? [])];
+}
+
+/**
+ * The context's inbox as the store holds it, read WITHOUT an audience and without journalling —
+ * the gate's witness for EV-475 AC-3 (`GET /api/fixture/inbox`), never a portal read.
+ */
+export async function fixtureInboxState(): Promise<{
+  items: { id: string; type: string; readAt: string | null }[];
+  unreadWithoutAudience: number;
+}> {
+  const items = await fixtureInbox();
+  return {
+    items: items.map(({ id, type, readAt }) => ({ id, type, readAt })),
+    unreadWithoutAudience: items.filter((item) => item.readAt === null).length,
+  };
+}
+
+export const fixtureCoachApi: FixtureCoachApi = {
   // ── EV-278c activation ────────────────────────────────────────────────────
   getActivation: fixtureGetActivation,
   activate: fixtureActivate,
@@ -7833,21 +7978,16 @@ export const fixtureCoachApi: CoachApi = {
   },
 
   // ── EV-455f the notification inbox ──
-  // The fixture holds NO notification: the inbox is the api's record (EV-455 X8), and the bell's
-  // states are witnessed against the real api (`qa/notifications.live.spec.ts`), never against
-  // invented items. So fixture mode draws the empty inbox and no badge, and every id is unknown.
-  async listNotifications(): Promise<NotificationPage> {
-    return { items: [], nextCursor: null };
-  },
-  async getNotificationsUnreadCount(): Promise<NotificationUnreadCount> {
-    return { count: 0 };
-  },
-  async markNotificationRead(): Promise<void> {
-    const { ApiError } = await import("./apiFetch");
-    throw new ApiError(404, "No notification with this id", "NOTIFICATION_NOT_FOUND");
-  },
-  async markAllNotificationsRead(): Promise<void> {
-    /* nothing to mark */
+  // The list, the count and read-all are not here: fixture mode runs the live functions, which
+  // reach `fixtureInboxFetch` with the query they built (EV-475, see its block above). With no
+  // `evoli_fixture_inbox` cookie the inbox is empty, so every id is unknown, as before.
+  async markNotificationRead(id: string): Promise<void> {
+    const item = (await fixtureInbox()).find((candidate) => candidate.id === id);
+    if (!item) {
+      const { ApiError } = await import("./apiFetch");
+      throw new ApiError(404, "No notification with this id", "NOTIFICATION_NOT_FOUND");
+    }
+    if (item.readAt === null) state().inboxReadAt[id] = new Date().toISOString(); // idempotent
   },
 
   // ── EV-455k notification settings ──
