@@ -97,6 +97,8 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
   const [markingAll, setMarkingAll] = useState(false);
   const [markAllFailed, setMarkAllFailed] = useState(false);
   const [allRead, setAllRead] = useState(false);
+  /** The last count a read KNEW (BUG-1094); `null` before any. Written during render, see below. */
+  const lastKnown = useRef<number | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   /** Where focus goes after the next render: the list, or the row at this index (S3). */
   const pendingFocus = useRef<"list" | number | null>(null);
@@ -194,7 +196,20 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
     landing?.focus();
   });
   const shownUnread = items.some((item) => item.readAt === null);
-  const showMarkAll = first === "ready" && (shownUnread || (unread.kind === "known" && unread.count > 0));
+  const countSaysUnread = unread.kind === "known" && unread.count > 0;
+  const showMarkAll = first === "ready" && (shownUnread || countSaysUnread);
+  // BUG-1094: the status line says "everything is read", so it is shown only while the LAST KNOWN
+  // count is 0. `lastKnown` follows every known count, in the render that receives it, so a new
+  // item read by the 60 s poll (1) hides the line in the same render as the bell's 1. A failed or
+  // loading read is no evidence and changes nothing: after a 1, a 502 keeps the line hidden (it
+  // never reads as a 0, AC-9); after a 0, it keeps it shown. `null` is no evidence yet.
+  // A mark-all 204 is evidence of 0 (`markAll` sets it), so the line shows even when the count was
+  // failing at the time (by trace: `settle` leaves a non-known state alone, NotificationsProvider
+  // :171, so only `markAll`'s write gives 0 here; no spec). A read sent before the mark that answers
+  // after it (a stale 3) hides the line until the re-read the 204 asked for (`refresh`) answers 0
+  // and shows it again (by trace: `again`, NotificationsProvider :91 and :123-126; no spec).
+  if (unread.kind === "known") lastKnown.current = unread.count;
+  const allReadShown = allRead && lastKnown.current === 0;
 
   const markReadInList = useCallback((isTarget: (id: string) => boolean) => {
     const at = new Date().toISOString();
@@ -231,6 +246,7 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
     if (res && res.status === 204) {
       markReadInList(() => true);
       settle(() => 0);
+      lastKnown.current = 0;
       setAllRead(true);
       pendingFocus.current = "list";
     } else {
@@ -256,8 +272,8 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
         </div>
       )}
       {/* Always in the page, so its change is announced (S3). */}
-      <p role="status" className={allRead ? "inbox-status" : "sr-only"} data-inbox-state="all-read-status">
-        {allRead ? c.allRead : ""}
+      <p role="status" className={allReadShown ? "inbox-status" : "sr-only"} data-inbox-state="all-read-status">
+        {allReadShown ? c.allRead : ""}
       </p>
 
       {first === "loading" && (
@@ -299,10 +315,15 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
             const href = targetOf(item);
             const isUnread = item.readAt === null;
             const time = relativeTime(item.createdAt, now, locale);
+            const line = itemText(item, copy);
+            // BUG-1094 rider: the link's name is stated, so the unread marker joins the time with
+            // no space before its comma ("now, unread"). From content, the .sr-only span is out of
+            // flow and the name computation put a space before it ("now , unread").
+            const name = `${line}${time ? ` ${time}` : ""}${isUnread ? `, ${c.unread}` : ""}`;
             const body = (
               <>
                 <span className="inbox-item-text">
-                  <span className="inbox-item-line">{itemText(item, copy)}</span>
+                  <span className="inbox-item-line">{line}</span>
                   {time && (
                     <time className="inbox-item-time" dateTime={item.createdAt}>
                       {time}
@@ -312,6 +333,9 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
                 {isUnread && (
                   <>
                     <span className="inbox-item-dot" aria-hidden="true" />
+                    {/* Kept: a link's stated `aria-label` overrides it, but a row with no target (the
+                        `div` below, a generic that may not carry `aria-label`) is read from content,
+                        and this is the only place it says "unread" to a screen reader. */}
                     <span className="sr-only">, {c.unread}</span>
                   </>
                 )}
@@ -322,6 +346,7 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
                 {href ? (
                   <Link
                     href={href}
+                    aria-label={name}
                     className="inbox-item"
                     data-unread={isUnread ? "true" : "false"}
                     data-type={item.type}

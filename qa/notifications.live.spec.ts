@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
 import { signInThroughForm } from "./sign-in";
 import {
   apiInbox,
@@ -43,6 +43,7 @@ const T = {
     retry: "Try again",
     markAll: "Mark all as read",
     allRead: "All your notifications are marked as read.",
+    unread: "unread",
     more: "Load more",
     denied: "This trainee is not on your roster. They may have revoked access.",
     item: {
@@ -61,6 +62,7 @@ const T = {
     retry: "Réessayer",
     markAll: "Tout marquer comme lu",
     allRead: "Toutes vos notifications sont marquées comme lues.",
+    unread: "non lue",
     more: "Charger plus",
     denied: "Ce client ne fait pas partie de votre liste. Il a peut-être révoqué l'accès.",
     item: {
@@ -306,6 +308,163 @@ for (const lang of ["en", "fr"] as const) {
       await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
       expect(await page.evaluate(() => (window as unknown as { __ev455fNoReload?: number }).__ev455fNoReload), "the page was not reloaded").toBe(1);
       expect(await apiUnread(request, coach), "the server agrees").toBe(0);
+    });
+
+    test(`BUG-1094 (1, 2) [${lang}]: a new item after « ${L.markAll} » empties the status line in the render that shows the bell's 1; a second mark-all shows it again`, async ({ page, request }) => {
+      test.setTimeout(240_000);
+      const coach = await freshCoach(request);
+      const link = await linkClient(request, coach, `Ines ${lang} B1094`);
+      await signIn(page, lang, coach);
+      await openInbox(page);
+      await expectBell(page, lang, 1);
+      await page.getByRole("button", { name: L.markAll, exact: true }).click();
+      await expectBell(page, lang, 0);
+      const status = page.locator('[data-inbox-state="all-read-status"]');
+      await expect(status).toHaveText(L.allRead);
+      await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
+
+      // Every DOM commit from here on: no moment where a bell says unread while the line says read.
+      await page.evaluate(() => {
+        const w = window as unknown as { __bug1094: string[]; __bug1094Seen: string[] };
+        w.__bug1094 = [];
+        w.__bug1094Seen = [];
+        const check = () => {
+          const line = document.querySelector('[data-inbox-state="all-read-status"]')?.textContent ?? "";
+          const counts = Array.from(document.querySelectorAll("[data-unread-count]")).map((b) => b.getAttribute("data-unread-count") ?? "");
+          w.__bug1094Seen.push(counts.join("/"));
+          if (line !== "" && counts.some((n) => n !== "0")) w.__bug1094.push(`bell ${counts.join("/")} with « ${line} »`);
+        };
+        new MutationObserver(check).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+      });
+
+      // A new item for this coach, written by the api's own producer, read by the 60 s poll (no remount).
+      await clientWrites(request, link.trainee);
+      expect(await apiUnread(request, coach), "the server counts the new item").toBe(1);
+      await expect(bell(page)).toHaveAttribute("data-unread-count", "1", { timeout: 75_000 });
+      await expectBell(page, lang, 1);
+      // Closes-when 1: the line is gone and its role="status" element is empty.
+      await expect(page.getByRole("status").filter({ hasText: L.allRead })).toHaveCount(0);
+      await expect(status).toHaveText("");
+      await expect(status).toHaveClass(/sr-only/);
+      await expect(page.getByRole("button", { name: L.markAll, exact: true })).toBeVisible();
+      const seen = await page.evaluate(() => (window as unknown as { __bug1094Seen: string[] }).__bug1094Seen);
+      expect(seen.some((c) => c.split("/").includes("1")), "the observer saw the bell's 1 commit").toBe(true);
+      expect(await page.evaluate(() => (window as unknown as { __bug1094: string[] }).__bug1094), "no commit shows the bell's 1 beside the all-read line").toEqual([]);
+
+      // Closes-when 2: mark-all again succeeds → the same verbatim line again (AC-7 of EV-455f).
+      await page.getByRole("button", { name: L.markAll, exact: true }).click();
+      await expectBell(page, lang, 0);
+      await expect(status).toHaveText(L.allRead);
+      await expect(status).toHaveClass(/inbox-status/);
+      await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
+      expect(await apiUnread(request, coach), "the server agrees").toBe(0);
+    });
+
+    test(`BUG-1094 (B1) [${lang}]: after the bell's 1, a failing count (503) keeps the all-read line empty: a failure is no 0`, async ({ page, request }) => {
+      test.setTimeout(240_000);
+      const coach = await freshCoach(request);
+      const link = await linkClient(request, coach, `Ivo ${lang} B1094`);
+      await signIn(page, lang, coach);
+      await openInbox(page);
+      await expectBell(page, lang, 1);
+      await page.getByRole("button", { name: L.markAll, exact: true }).click();
+      await expectBell(page, lang, 0);
+      const status = page.locator('[data-inbox-state="all-read-status"]');
+      await expect(status).toHaveText(L.allRead);
+
+      // Item 1's steps: a new item, read by the 60 s poll, hides the line.
+      await clientWrites(request, link.trainee);
+      await expect(bell(page)).toHaveAttribute("data-unread-count", "1", { timeout: 75_000 });
+      await expectBell(page, lang, 1);
+      await expect(status).toHaveText("");
+
+      // Then the count fails (AC-9's 503 in front of the BFF), read by the next poll (no remount).
+      const fail = (route: { fulfill: (r: { status: number; body: string; contentType: string }) => Promise<void> }) =>
+        route.fulfill({ status: 503, body: '{"code":"UNAVAILABLE"}', contentType: "application/json" });
+      await page.route("**/api/bff/notifications/unread-count", fail);
+      await expect(bell(page)).toHaveAttribute("data-count-state", "failed", { timeout: 75_000 });
+      await expect(bell(page)).not.toHaveAttribute("data-unread-count", /.*/);
+      // The server still holds 1 unread: the line must not come back on a failure.
+      expect(await apiUnread(request, coach), "the server still counts the new item").toBe(1);
+      await expect(page.getByRole("status").filter({ hasText: L.allRead })).toHaveCount(0);
+      await expect(status).toHaveText("");
+      await expect(status).toHaveClass(/sr-only/);
+      await page.unrouteAll();
+    });
+
+    test(`BUG-1094 (3) [${lang}]: after « ${L.markAll} » with no new item, 60 s visible and a count read of 0 leave the status line shown`, async ({ page, request }) => {
+      test.setTimeout(180_000);
+      const coach = await freshCoach(request);
+      await linkClient(request, coach, `Noa ${lang} B1094`);
+      await signIn(page, lang, coach);
+      await openInbox(page);
+      await expectBell(page, lang, 1);
+      // Every count read the PAGE gets back after the mark, with the count it answered.
+      // Only reads SENT after the click count: a poll sent before it may answer after it, with the
+      // old 1, and says nothing about the line (staff S1).
+      const zeros: number[] = [];
+      const others: string[] = [];
+      const sentAfterMark = new Set<Request>();
+      const isCountRead = (r: Request) => r.method() === "GET" && new URL(r.url()).pathname === "/api/bff/notifications/unread-count";
+      let marked = Number.POSITIVE_INFINITY;
+      page.on("request", (r) => {
+        if (isCountRead(r) && Date.now() >= marked) sentAfterMark.add(r);
+      });
+      page.on("response", async (r) => {
+        if (!sentAfterMark.has(r.request())) return;
+        const at = Date.now();
+        const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
+        if (r.status() === 200 && body?.count === 0) zeros.push(at);
+        else others.push(`${r.status()} ${JSON.stringify(body)}`);
+      });
+      marked = Date.now();
+      await page.getByRole("button", { name: L.markAll, exact: true }).click();
+      await expectBell(page, lang, 0);
+      const status = page.locator('[data-inbox-state="all-read-status"]');
+      await expect(status).toHaveText(L.allRead);
+      // The re-read after the 204, then the poll's read 60 s after it: at least 2 reads, both 0.
+      await expect
+        .poll(() => zeros.length, { timeout: 75_000, message: "at least 2 count reads returning 0 after the mark (the 60 s poll among them)" })
+        .toBeGreaterThanOrEqual(2);
+      expect(others, "no count read after the mark answered anything but 0").toEqual([]);
+      expect(Date.now() - marked, "60 s passed with the tab visible").toBeGreaterThanOrEqual(60_000);
+      await expectBell(page, lang, 0);
+      await expect(status).toHaveText(L.allRead);
+      await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
+    });
+
+    test(`BUG-1094 (4) [${lang}]: an unread item's link is named "{time}, ${L.unread}", no space before the comma; a read one "{line} {time}"`, async ({ page, request }) => {
+      const coach = await freshCoach(request);
+      const link = await linkClient(request, coach, `Eva ${lang} B1094`);
+      await clientWrites(request, link.trainee);
+      await clientCompletes(request, link.trainee, 1);
+      const completed = (await apiInbox(request, coach)).find((i) => i.type === "CLIENT_SESSION_COMPLETED")!;
+      await apiMarkRead(request, coach, completed.id);
+      const inbox = await apiInbox(request, coach);
+      const unreadItems = inbox.filter((i) => i.readAt === null);
+      const readItems = inbox.filter((i) => i.readAt !== null);
+      expect(readItems.map((i) => i.id), "exactly the completed session is read").toEqual([completed.id]);
+      await signIn(page, lang, coach);
+      await openInbox(page);
+      await expectBell(page, lang, unreadItems.length);
+      await expect(page.locator('a[data-notification-id][data-unread="true"]')).toHaveCount(unreadItems.length);
+      const timeOf = async (a: Locator) => {
+        const time = ((await a.locator("time").textContent()) ?? "").trim();
+        expect(time, "the row shows a time").not.toBe("");
+        return time;
+      };
+      for (const item of unreadItems) {
+        const a = page.locator(`a[data-notification-id="${item.id}"]`);
+        const time = await timeOf(a);
+        const esc = time.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        await expect(a).toHaveAccessibleName(new RegExp(`${esc}, ${L.unread}$`));
+        await expect(a).not.toHaveAccessibleName(/ ,/);
+        await expect(a).toHaveAccessibleName(`${lineOf(lang, item)} ${time}, ${L.unread}`);
+      }
+      // N4: a READ link says no "unread" at all: its line and its time.
+      const read = page.locator(`a[data-notification-id="${completed.id}"]`);
+      await expect(read).toHaveAttribute("data-unread", "false");
+      await expect(read).toHaveAccessibleName(`${lineOf(lang, completed)} ${await timeOf(read)}`);
     });
 
     test(`AC-4b [${lang}] (staff S1): the page an item opens counts that item read, even when the mark answers late`, async ({ page, request }) => {
