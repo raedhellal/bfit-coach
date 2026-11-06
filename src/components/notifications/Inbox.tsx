@@ -204,8 +204,10 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
   // loading read is no evidence and changes nothing: after a 1, a 502 keeps the line hidden (it
   // never reads as a 0, AC-9); after a 0, it keeps it shown. `null` is no evidence yet.
   // A mark-all 204 is evidence of 0 (`markAll` sets it), so the line shows even when the count was
-  // failing at the time. A read sent before the mark that answers after it (a stale 3) hides the
-  // line until the re-read the 204 asked for (`refresh`) answers 0 and shows it again.
+  // failing at the time (by trace: `settle` leaves a non-known state alone, NotificationsProvider
+  // :171, so only `markAll`'s write gives 0 here; no spec). A read sent before the mark that answers
+  // after it (a stale 3) hides the line until the re-read the 204 asked for (`refresh`) answers 0
+  // and shows it again (by trace: `again`, NotificationsProvider :91 and :123-126; no spec).
   if (unread.kind === "known") lastKnown.current = unread.count;
   const allReadShown = allRead && lastKnown.current === 0;
 
