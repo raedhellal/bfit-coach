@@ -7701,8 +7701,10 @@ export function fixtureMessageThreadRecord(clientId: string): {
  * api judges it (`NotificationAudience`): absent is every type, `TRAINEE` the COACH_* types,
  * `COACH` the CLIENT_* types, anything else (empty or repeated included) 400 INVALID_REQUEST.
  * read-all marks only the audience's items; with `COACH`, the `COACH_PLAN_PUBLISHED` stays
- * unread. Not ported: read-all also marking the client's message thread (EV-455d) — no thread
- * of the empty scenario's roster is behind the fixture's item.
+ * unread. Not ported: read-all also marking the client's message thread (EV-455d). It cannot
+ * apply here in any scenario: the `CLIENT_MESSAGE` points at `FIXTURE_INBOX_LINK`, a link on no
+ * roster (empty or populated) and with no seeded thread, so there is no thread for it to mark.
+ * Its target is therefore no real client page (unwitnessed what it draws); no spec opens it.
  *
  * Reads are kept in `FixtureState.inboxReadAt` (reset before every test); each wire request is
  * journalled outside it (`fixtureInboxCalls`, emptied by every reset, read through
@@ -7711,6 +7713,8 @@ export function fixtureMessageThreadRecord(clientId: string): {
 
 const INBOX_COOKIE = "evoli_fixture_inbox";
 const INBOX_CALLS_KEY = Symbol.for("evoli.coach.fixture.inboxCalls");
+/** The dual-role `CLIENT_MESSAGE`'s link: deliberately on NO roster and behind no thread (see above). */
+const FIXTURE_INBOX_LINK = "e4750000-0000-4000-8000-0000000000c1";
 
 /** The dual-role inbox: ids are fixed so a spec can name them. Newest first, as the api orders. */
 const FIXTURE_INBOX: readonly Omit<CoachNotification, "createdAt" | "readAt">[] = [
@@ -7719,7 +7723,7 @@ const FIXTURE_INBOX: readonly Omit<CoachNotification, "createdAt" | "readAt">[] 
     type: "CLIENT_MESSAGE",
     count: 1,
     actor: { displayName: "Lina M." },
-    target: { coachClientId: "6f1b0f7e-1f2a-4c3d-9a11-0d5b7c9e0001", planId: null, weekStart: null },
+    target: { coachClientId: FIXTURE_INBOX_LINK, planId: null, weekStart: null },
   },
   {
     id: "e4750000-0000-4000-8000-000000000002",
@@ -7773,10 +7777,21 @@ export async function fixtureInboxFetch<T>(path: string, init: RequestInit = {})
   const g = globalThis as GlobalWithCalls;
   (g[INBOX_CALLS_KEY] ??= []).push(`${method} ${url.pathname}${url.search}`);
 
+  const route =
+    method === "GET" && url.pathname === "/me/notifications"
+      ? "list"
+      : method === "GET" && url.pathname === "/me/notifications/unread-count"
+        ? "count"
+        : method === "POST" && url.pathname === "/me/notifications/read-all"
+          ? "readAll"
+          : null;
+  // The route first: an unknown path is a 404 whatever its query, never an audience 400.
+  if (route === null) return fail(404, "NOT_FOUND", `No fixture inbox route for ${method} ${url.pathname}`);
+
   const audience = await parseAudience(url.searchParams);
   const items = (await fixtureInbox()).filter((item) => inAudience(item, audience));
 
-  if (method === "GET" && url.pathname === "/me/notifications") {
+  if (route === "list") {
     const limit = url.searchParams.get("limit");
     if (limit !== null && !(/^\d+$/.test(limit) && Number(limit) >= 1 && Number(limit) <= 50)) {
       return fail(400, "INVALID_REQUEST", "limit outside 1-50");
@@ -7786,17 +7801,15 @@ export async function fixtureInboxFetch<T>(path: string, init: RequestInit = {})
     const page: NotificationPage = { items, nextCursor: null };
     return page as T;
   }
-  if (method === "GET" && url.pathname === "/me/notifications/unread-count") {
+  if (route === "count") {
     const count: NotificationUnreadCount = { count: items.filter((item) => item.readAt === null).length };
     return count as T;
   }
-  if (method === "POST" && url.pathname === "/me/notifications/read-all") {
-    const now = new Date().toISOString();
-    const read = state().inboxReadAt;
-    for (const item of items) if (item.readAt === null) read[item.id] = now;
-    return undefined as T; // 204
-  }
-  return fail(404, "NOT_FOUND", `No fixture inbox route for ${method} ${url.pathname}`);
+  // route === "readAll"
+  const now = new Date().toISOString();
+  const read = state().inboxReadAt;
+  for (const item of items) if (item.readAt === null) read[item.id] = now;
+  return undefined as T; // 204
 }
 
 /** Every inbox request the fixture answered since the last reset, e.g. `GET /me/notifications/unread-count?audience=COACH`. */
