@@ -75,6 +75,12 @@ const PAGE = "/settings/notifications";
 const switches = (page: Page): Locator => page.getByRole("switch");
 const sw = (page: Page, lang: Lang, type: Type): Locator => page.getByRole("switch", { name: T[lang].switch[type], exact: true });
 const item = (page: Page, type: Type): Locator => page.locator(`.prefs-item[data-type="${type}"]`);
+/**
+ * Every alert the PAGE shows, scoped to its `main`. Next's route announcer is also `role="alert"`
+ * (an empty `#__next-route-announcer__`, outside `main`), so a page-wide `getByRole("alert")` is
+ * always one more than the page's own and proves nothing (as `qa/coach-activation.spec.ts` notes).
+ */
+const pageAlerts = (page: Page): Locator => page.getByRole("main").getByRole("alert");
 
 async function signIn(page: Page, lang: Lang, coach: Account): Promise<void> {
   await signInThroughForm(page, { email: coach.email, password: PASSWORD, lang });
@@ -192,7 +198,7 @@ for (const lang of ["en", "fr"] as const) {
       await expect(item(page, "CLIENT_JOINED").getByRole("status")).toHaveText("");
       expect(emailValues(await apiPreferences(request, coach))).toEqual(allOn);
       // The other switches are untouched and show no failure.
-      await expect(page.getByRole("alert")).toHaveCount(1);
+      await expect(pageAlerts(page)).toHaveCount(1);
       await expect(target).toBeFocused();
       await runAxe(page, "a failed save");
 
@@ -200,7 +206,7 @@ for (const lang of ["en", "fr"] as const) {
       await page.unrouteAll();
       await target.click();
       await expect(item(page, "CLIENT_JOINED").getByRole("status")).toHaveText(L.saved);
-      await expect(page.getByRole("alert")).toHaveCount(0);
+      await expect(pageAlerts(page)).toHaveCount(0);
       expect(emailValues(await apiPreferences(request, coach))).toEqual({ ...allOn, CLIENT_JOINED: false });
     });
 
