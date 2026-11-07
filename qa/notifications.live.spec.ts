@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { expect, test, type Locator, type Page, type Request, type Response as PwResponse } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Request, type Response as PwResponse, type Route } from "@playwright/test";
 import { signInThroughForm } from "./sign-in";
 import {
   apiInbox,
@@ -79,19 +79,53 @@ type Lang = keyof typeof T;
 const bell = (page: Page): Locator => page.getByRole("link", { name: /^Notifications/ });
 const rows = (page: Page): Locator => page.locator("[data-notification-id]");
 const row = (page: Page, id: string): Locator => page.locator(`[data-notification-id="${id}"]`);
-const isCountRead = (r: Request) => r.method() === "GET" && new URL(r.url()).pathname === "/api/bff/notifications/unread-count";
-const isMarkAll = (r: Request) => r.method() === "POST" && new URL(r.url()).pathname === "/api/bff/notifications/read-all";
+/** The parts of a Playwright request / response the helpers below read (structural: BUG-1109 S1's test feeds fakes). */
+type SeenRequest = { method(): string; url(): string; timing(): { startTime: number; responseStart: number } };
+type SeenResponse = { status(): number; request(): SeenRequest };
+const isCountRead = (r: Pick<SeenRequest, "method" | "url">) =>
+  r.method() === "GET" && new URL(r.url()).pathname === "/api/bff/notifications/unread-count";
+const isMarkAll = (r: Pick<SeenRequest, "method" | "url">) =>
+  r.method() === "POST" && new URL(r.url()).pathname === "/api/bff/notifications/read-all";
 /** When the browser sent `r` (browser clock, ms since the epoch). */
-const sentAt = (r: Request) => r.timing().startTime;
+const sentAt = (r: Pick<SeenRequest, "timing">) => r.timing().startTime;
 /**
  * BUG-1108: when the browser got the mark-all's 204 (browser clock), or 0 for any other response.
- * Read from the browser's own timing, so a count read is placed before or after it by when the
- * browser sent it, whatever order Playwright delivers the two events in.
+ * When the browser's timing has no `responseStart` (-1), the time Node receives the event stands in.
  */
-function markAllAnsweredAt(r: PwResponse): number {
+function markAllAnsweredAt(r: SeenResponse): number {
   if (!isMarkAll(r.request()) || r.status() !== 204) return 0;
   const t = r.request().timing();
   return t.responseStart >= 0 ? t.startTime + t.responseStart : Date.now();
+}
+
+/**
+ * BUG-1109 S1: hands `onRead` every count-read response whose request the browser SENT at or after
+ * the mark-all's 204 (both on the browser clock: `sentAt` against `markAllAnsweredAt`), in either
+ * order of delivery. A count-read response delivered BEFORE the mark-all's own 204 event is
+ * buffered, not dropped: when the 204 arrives, each buffered read sent at or after it is handed on
+ * and the rest are discarded. A read delivered after the 204 is handed on at once if it was sent at
+ * or after it. Returns a reader of the 204's time (0 until it is seen). Witness: the test
+ * "BUG-1109 S1 (no browser)" below delivers a read before the 204 that was sent after it.
+ */
+function countReadsAfterMarkAll<R extends SeenResponse>(subscribe: (fn: (r: R) => void) => void, onRead: (r: R) => unknown): () => number {
+  let marked = 0;
+  let early: R[] = [];
+  subscribe((r) => {
+    if (marked === 0) {
+      const at = markAllAnsweredAt(r);
+      if (at === 0) {
+        if (isCountRead(r.request())) early.push(r);
+        return;
+      }
+      marked = at;
+      const held = early;
+      early = [];
+      for (const e of held) if (sentAt(e.request()) >= marked) void onRead(e);
+      return;
+    }
+    if (isCountRead(r.request()) && sentAt(r.request()) >= marked) void onRead(r);
+  });
+  return () => marked;
 }
 
 /** The api item `match` picks, asserted present by name first (BUG-1108 N-d: no find-then-bang). */
@@ -119,6 +153,35 @@ async function signIn(page: Page, lang: Lang, coach: Account): Promise<void> {
 async function openInbox(page: Page): Promise<void> {
   await page.goto("/notifications");
   await expect(page.locator('[data-inbox-state="loading"]')).toHaveCount(0, { timeout: 15_000 });
+}
+
+/** AC-9's failing count: a 503 in front of the BFF. */
+const fail503 = (route: Route) => route.fulfill({ status: 503, body: '{"code":"UNAVAILABLE"}', contentType: "application/json" });
+
+/**
+ * BUG-1109: a count read NOW rather than at the next 60 s poll. Hiding then showing the tab makes
+ * the provider read at once when no read is out (`onVisibility`, NotificationsProvider.tsx:138-141).
+ * Same page, no reload and no navigation.
+ */
+async function readCountNow(page: Page): Promise<void> {
+  await setHidden(page, true);
+  await setHidden(page, false);
+}
+
+/**
+ * BUG-1109: the BUG-1108 B1 guard, armed from here on: a `window` marker (gone after a reload) and a
+ * main-frame `framenavigated` log. The returned check fails on either.
+ */
+async function armNoReloadGuard(page: Page): Promise<() => Promise<void>> {
+  await page.evaluate(() => ((window as unknown as { __bug1109NoReload: number }).__bug1109NoReload = 1));
+  const navigations: string[] = [];
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame()) navigations.push(f.url());
+  });
+  return async () => {
+    expect(await page.evaluate(() => (window as unknown as { __bug1109NoReload?: number }).__bug1109NoReload), "the page was not reloaded").toBe(1);
+    expect(navigations, "no navigation").toEqual([]);
+  };
 }
 
 /** What the row for `item` must say, from the api's own fields (type + actor name). */
@@ -341,23 +404,21 @@ for (const lang of ["en", "fr"] as const) {
       // BUG-1108 N-c (option b): the first mark-all's 204, then the re-read it asks for answering 0.
       // `clientWrites` waits for that re-read, which restarts the 60 s timer, so the 1 can only come
       // from the 60 s poll, and the test asserts the 60 s.
-      let markedAt = 0;
       let reReadAt = 0;
-      page.on("response", async (r) => {
-        if (markedAt === 0) {
-          markedAt = markAllAnsweredAt(r);
-          return;
+      const markedAt = countReadsAfterMarkAll<PwResponse>(
+        (fn) => page.on("response", fn),
+        async (r) => {
+          if (reReadAt > 0 || r.status() !== 200) return;
+          const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
+          if (body?.count === 0 && reReadAt === 0) reReadAt = Date.now();
         }
-        if (reReadAt > 0 || !isCountRead(r.request()) || sentAt(r.request()) < markedAt || r.status() !== 200) return;
-        const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
-        if (body?.count === 0 && reReadAt === 0) reReadAt = Date.now();
-      });
+      );
       await page.getByRole("button", { name: L.markAll, exact: true }).click();
       await expectBell(page, lang, 0);
       const status = page.locator('[data-inbox-state="all-read-status"]');
       await expect(status).toHaveText(L.allRead);
       await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
-      await expect.poll(() => markedAt, { timeout: 10_000, message: "the mark-all answered 204" }).toBeGreaterThan(0);
+      await expect.poll(markedAt, { timeout: 10_000, message: "the mark-all answered 204" }).toBeGreaterThan(0);
       await expect.poll(() => reReadAt, { timeout: 10_000, message: "a count read sent after the mark-all 204 answered 0" }).toBeGreaterThan(0);
 
       // Every DOM commit from here on: no moment where a bell says unread while the line says read.
@@ -378,7 +439,10 @@ for (const lang of ["en", "fr"] as const) {
       await clientWrites(request, link.trainee);
       expect(await apiUnread(request, coach), "the server counts the new item").toBe(1);
       await expect(bell(page)).toHaveAttribute("data-unread-count", "1", { timeout: 75_000 });
-      const oneAfter = Date.now() - markedAt;
+      // BUG-1108 N2: Node's clock minus the browser's (`markedAt` is Chromium's request timing, or Node's
+      // own clock when that has no responseStart); both are this host's wall clock, as the config launches
+      // a local Chromium (no connectOptions). Measured margin over 60 s at 4a41a3e0: +419 ms EN, +328 ms FR (ad5c029d).
+      const oneAfter = Date.now() - markedAt();
       test.info().annotations.push({ type: "BUG-1108 N-c", description: `the bell's 1 at +${oneAfter} ms after the mark-all 204 (the 60 s poll)` });
       expect(oneAfter, "the bell's 1 came from the 60 s poll: at least 60 s after the mark-all 204").toBeGreaterThanOrEqual(60_000);
       await expectBell(page, lang, 1);
@@ -441,6 +505,117 @@ for (const lang of ["en", "fr"] as const) {
       await page.unrouteAll();
     });
 
+    // BUG-1109 closes-when 1. Witness (closes-when 2): deleting `lastKnown.current = 0;` in
+    // Inbox.tsx `markAll` turns the "line shows" assertion red.
+    test(`BUG-1109 (a) [${lang}]: a mark-all 204 while the count read is failing shows the all-read line`, async ({ page, request }) => {
+      const coach = await freshCoach(request);
+      await linkClient(request, coach, `Uma ${lang} B1109a`);
+      await signIn(page, lang, coach);
+      await openInbox(page);
+      // Given: a KNOWN count of 1, so the inbox's last known count is 1 (neither null nor 0).
+      await expectBell(page, lang, 1);
+      const status = page.locator('[data-inbox-state="all-read-status"]');
+      await expect(status).toHaveText("");
+      const noReload = await armNoReloadGuard(page);
+
+      // When: the count read fails (503), and the bell says so.
+      await page.route("**/api/bff/notifications/unread-count", fail503);
+      await readCountNow(page);
+      await expect(bell(page)).toHaveAttribute("data-count-state", "failed", { timeout: 10_000 });
+      await expect(bell(page)).not.toHaveAttribute("data-unread-count", /.*/);
+      // Then mark-all, against the REAL read-all.
+      const markAll = page.waitForResponse((r) => isMarkAll(r.request()), { timeout: 10_000 });
+      await page.getByRole("button", { name: L.markAll, exact: true }).click();
+      expect((await markAll).status(), "the real read-all answered 204").toBe(204);
+
+      // Then: the verbatim all-read line, while the count is still failing.
+      await expect(status).toHaveText(L.allRead);
+      // Both read in one task, so they are the same commit: the line beside a failed count, every bell.
+      const snapshot = await page.evaluate(() => ({
+        line: document.querySelector('[data-inbox-state="all-read-status"]')?.textContent ?? "",
+        states: Array.from(document.querySelectorAll("[data-count-state]")).map((b) => b.getAttribute("data-count-state")),
+      }));
+      expect(snapshot.line).toBe(L.allRead);
+      expect(snapshot.states.length, "the shell draws its bells").toBeGreaterThan(0);
+      expect(snapshot.states.every((s) => s === "failed"), `every bell still failed: ${snapshot.states.join("/")}`).toBe(true);
+      await expect(status).toHaveClass(/inbox-status/);
+      await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
+      await noReload();
+      await page.unrouteAll();
+      expect(await apiUnread(request, coach), "the server agrees").toBe(0);
+    });
+
+    // BUG-1109 closes-when 3. Witness (closes-when 4): `if (again)` in NotificationsProvider.tsx
+    // `tick` made `if (false)` turns the final "line shows again within 15 s" assertion red.
+    test(`BUG-1109 (b) [${lang}]: a count read sent before the mark that answers a stale 3 hides the line; the re-read the 204 asked for shows it again`, async ({ page, request }) => {
+      const coach = await freshCoach(request);
+      const link = await linkClient(request, coach, `Teo ${lang} B1109b`);
+      await clientWrites(request, link.trainee);
+      await signIn(page, lang, coach);
+      await openInbox(page);
+      // Given: the inbox with unread items, and a known count of 2.
+      await expectBell(page, lang, 2);
+      const status = page.locator('[data-inbox-state="all-read-status"]');
+      await expect(status).toHaveText("");
+      const noReload = await armNoReloadGuard(page);
+
+      // The FIRST count read from here on is held at the browser. Every later one waits for `letLater`
+      // (so the stale 3 stays on screen long enough to be asserted), then goes to the real api.
+      const hold: { route?: Route } = {};
+      let releasedAt = 0;
+      let letLater: () => void = () => undefined;
+      const later = new Promise<void>((resolve) => (letLater = resolve));
+      const sentAfterRelease = new Set<Request>();
+      await page.route("**/api/bff/notifications/unread-count", async (route) => {
+        if (hold.route === undefined) {
+          hold.route = route;
+          return;
+        }
+        if (releasedAt > 0) sentAfterRelease.add(route.request());
+        await later;
+        await route.continue();
+      });
+      let zeroAfterRelease = 0;
+      page.on("response", async (r) => {
+        if (!sentAfterRelease.has(r.request()) || r.status() !== 200) return;
+        const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
+        if (body?.count === 0 && zeroAfterRelease === 0) zeroAfterRelease = Date.now();
+      });
+
+      // When: a count read is sent, and is still out, BEFORE the mark-all click.
+      await readCountNow(page);
+      await expect.poll(() => hold.route !== undefined, { timeout: 10_000, message: "a count read is held before the click" }).toBe(true);
+      const stale = hold.route;
+      expect(stale, "the held count read").toBeDefined();
+      const markAll = page.waitForResponse((r) => isMarkAll(r.request()), { timeout: 10_000 });
+      await page.getByRole("button", { name: L.markAll, exact: true }).click();
+      expect((await markAll).status(), "the real read-all answered 204").toBe(204);
+      // The 204's own 0 (settle) shows the line.
+      await expectBell(page, lang, 0);
+      await expect(status).toHaveText(L.allRead);
+
+      // The held read answers after the mark, with a stale 3: the line is hidden once the 3 is applied.
+      releasedAt = Date.now();
+      await (stale as Route).fulfill({ status: 200, contentType: "application/json", body: '{"count":3}' });
+      await expectBell(page, lang, 3);
+      await expect(status).toHaveText("");
+      await expect(status).toHaveClass(/sr-only/);
+
+      // Then: the re-read the 204 asked for answers 0 (the real api), and the line shows again within
+      // 15 s of the release. The poll is 60 s, so only the re-read can satisfy this.
+      letLater();
+      await expect(status, "the line shows again within 15 s of releasing the held read").toHaveText(L.allRead, {
+        timeout: Math.max(1, releasedAt + 15_000 - Date.now()),
+      });
+      await expect.poll(() => zeroAfterRelease, { timeout: 5_000, message: "a count read sent after the release answered 0" }).toBeGreaterThan(0);
+      expect(zeroAfterRelease - releasedAt, "that 0 came within 15 s of the release").toBeLessThanOrEqual(15_000);
+      await expectBell(page, lang, 0);
+      await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
+      await noReload();
+      await page.unrouteAll();
+      expect(await apiUnread(request, coach), "the server agrees").toBe(0);
+    });
+
     test(`BUG-1094 (3) [${lang}]: after « ${L.markAll} » with no new item, 60 s visible and a count read of 0 leave the status line shown`, async ({ page, request }) => {
       test.setTimeout(180_000);
       const coach = await freshCoach(request);
@@ -453,29 +628,26 @@ for (const lang of ["en", "fr"] as const) {
       // sent before it may answer after it, with the old 1, and says nothing about the line (staff S1).
       const zeros: number[] = [];
       const others: string[] = [];
-      let marked = Number.POSITIVE_INFINITY;
-      page.on("response", async (r) => {
-        if (marked === Number.POSITIVE_INFINITY) {
-          const at = markAllAnsweredAt(r);
-          if (at > 0) marked = at;
+      const marked = countReadsAfterMarkAll<PwResponse>(
+        (fn) => page.on("response", fn),
+        async (r) => {
+          const at = Date.now();
+          const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
+          if (r.status() === 200 && body?.count === 0) zeros.push(at);
+          else others.push(`${r.status()} ${JSON.stringify(body)}`);
         }
-        if (!isCountRead(r.request()) || sentAt(r.request()) < marked) return;
-        const at = Date.now();
-        const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
-        if (r.status() === 200 && body?.count === 0) zeros.push(at);
-        else others.push(`${r.status()} ${JSON.stringify(body)}`);
-      });
+      );
       await page.getByRole("button", { name: L.markAll, exact: true }).click();
       await expectBell(page, lang, 0);
       const status = page.locator('[data-inbox-state="all-read-status"]');
       await expect(status).toHaveText(L.allRead);
-      await expect.poll(() => marked, { timeout: 10_000, message: "the mark-all answered 204" }).toBeLessThan(Number.POSITIVE_INFINITY);
+      await expect.poll(marked, { timeout: 10_000, message: "the mark-all answered 204" }).toBeGreaterThan(0);
       // The re-read after the 204, then the poll's read 60 s after it: at least 2 reads, both 0.
       await expect
         .poll(() => zeros.length, { timeout: 75_000, message: "at least 2 count reads returning 0 after the mark (the 60 s poll among them)" })
         .toBeGreaterThanOrEqual(2);
       expect(others, "no count read after the mark answered anything but 0").toEqual([]);
-      expect(Date.now() - marked, "60 s passed with the tab visible").toBeGreaterThanOrEqual(60_000);
+      expect(Date.now() - marked(), "60 s passed with the tab visible").toBeGreaterThanOrEqual(60_000);
       await expectBell(page, lang, 0);
       await expect(status).toHaveText(L.allRead);
       await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
@@ -679,6 +851,46 @@ test.describe("EV-455f the poll, live api", () => {
     }
     expect(first - shown).toBeLessThan(2_000);
   });
+});
+
+/**
+ * BUG-1109 S1: `countReadsAfterMarkAll` places each count read by when the browser SENT it, not by
+ * the order Playwright delivers the events in. Language-free, no page: synthetic responses, one of
+ * them a read sent after the 204 but delivered before it. Witnesses (phase 2 mutants): deleting the
+ * flush loop drops that read (red); flushing without the `sentAt` check lets a pre-204 read in (red).
+ */
+test("BUG-1109 S1 (no browser): a count read delivered before the mark-all's 204 event is kept if sent after the 204, dropped if sent before", () => {
+  type Fake = SeenResponse & { name: string };
+  const COUNT = "/api/bff/notifications/unread-count";
+  const fake = (name: string, method: string, path: string, status: number, startTime: number, responseStart: number): Fake => ({
+    name,
+    status: () => status,
+    request: () => ({ method: () => method, url: () => `http://localhost:3301${path}`, timing: () => ({ startTime, responseStart }) }),
+  });
+  let emit: (r: Fake) => void = () => undefined;
+  const handed: string[] = [];
+  const marked = countReadsAfterMarkAll<Fake>(
+    (fn) => {
+      emit = fn;
+    },
+    (r) => handed.push(r.name)
+  );
+  expect(marked(), "no 204 seen yet").toBe(0);
+  // The mark-all is sent at t = 1000 and its 204 starts 50 ms later: the 204 is at 1050 (browser clock).
+  for (const e of [
+    fake("sent 1040, delivered before the 204", "GET", COUNT, 200, 1_040, 30),
+    fake("sent 1060, delivered before the 204", "GET", COUNT, 200, 1_060, 5),
+    fake("a list read, delivered before the 204", "GET", "/api/bff/notifications", 200, 1_070, 5),
+    fake("the mark-all's 204", "POST", "/api/bff/notifications/read-all", 204, 1_000, 50),
+    fake("sent 1045, delivered after the 204", "GET", COUNT, 200, 1_045, 40),
+    fake("sent 1080, delivered after the 204", "GET", COUNT, 200, 1_080, 5),
+  ])
+    emit(e);
+  expect(marked(), "the 204's browser time").toBe(1_050);
+  expect(handed, "exactly the count reads sent at or after the 204, in either delivery order").toEqual([
+    "sent 1060, delivered before the 204",
+    "sent 1080, delivered after the 204",
+  ]);
 });
 
 /** axe-core, the package this repo pins, injected into the page; every rule axe runs by default. */
