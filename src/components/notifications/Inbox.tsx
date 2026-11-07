@@ -205,9 +205,12 @@ export function Inbox({ sessionSubject }: { sessionSubject: string }) {
   // never reads as a 0, AC-9); after a 0, it keeps it shown. `null` is no evidence yet.
   // A mark-all 204 is evidence of 0 (`markAll` sets it), so the line shows even when the count was
   // failing at the time (by trace: `settle` leaves a non-known state alone, NotificationsProvider
-  // :171, so only `markAll`'s write gives 0 here; no spec). A read sent before the mark that answers
+  // :171, so only `markAll`'s write gives 0 here; spec: "BUG-1109 (a) … a mark-all 204 while the
+  // count read is failing shows the all-read line"). A read sent before the mark that answers
   // after it (a stale 3) hides the line until the re-read the 204 asked for (`refresh`) answers 0
-  // and shows it again (by trace: `again`, NotificationsProvider :91 and :123-126; no spec).
+  // and shows it again (by trace: `again`, NotificationsProvider :91 and :123-126; spec: "BUG-1109
+  // (b) … a count read sent before the mark that answers a stale 3 hides the line; the re-read the
+  // 204 asked for shows it again"). Both specs are in qa/notifications.live.spec.ts.
   if (unread.kind === "known") lastKnown.current = unread.count;
   const allReadShown = allRead && lastKnown.current === 0;
 
