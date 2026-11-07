@@ -1,7 +1,7 @@
 import "server-only";
 import { apiFetch, apiGet, apiGetAs, ApiError } from "./apiFetch";
 import { COACH_API_MODE, INVITE_BASE_URL } from "./env";
-import { fixtureCoachApi } from "./coachApi.fixture";
+import { fixtureCoachApi, fixtureInboxFetch } from "./coachApi.fixture";
 import { routineAiProposalPath } from "./routineAiDiscard";
 import { journalled } from "./fixtureApiJournal";
 import { sanitiseCoachName } from "./inviteName";
@@ -3434,11 +3434,18 @@ export interface CoachClientUnread {
  * EV-455f — the coach's notification inbox (b-fit-api EV-455b/d, ADR-0039). The api serves
  * every caller's own items under `/me/**` (rule X5): no `/coach-portal` route, no new rule.
  *
- *   GET  /me/notifications?cursor=&limit=  → NotificationPage (newest first, opaque nextCursor)
- *   GET  /me/notifications/unread-count    → NotificationUnreadCount
+ *   GET  /me/notifications?cursor=&limit=&audience=  → NotificationPage (newest first, opaque nextCursor)
+ *   GET  /me/notifications/unread-count?audience=    → NotificationUnreadCount
  *   POST /me/notifications/{id}/read       → 204 (idempotent; 404 for any id not the caller's.
  *        A CLIENT_MESSAGE item on an ACTIVE link of a COACH also marks that thread read, X4)
- *   POST /me/notifications/read-all        → 204 (message items follow their threads, EV-455d)
+ *   POST /me/notifications/read-all?audience=        → 204 (message items follow their threads, EV-455d)
+ *
+ * EV-475 — `audience` (b-fit-api EV-467 @ 4963d486, ADR-0039 D39.11): absent means every type;
+ * `TRAINEE` the COACH_* types; `COACH` the CLIENT_* types, and read-all with `COACH` moves no
+ * trainee thread. Any other value, empty or repeated, is 400 INVALID_REQUEST. The portal shows
+ * the CLIENT_* types only, so its list, its bell and its « Tout marquer comme lu » all send
+ * `audience=COACH`: a coach who is also someone's trainee keeps their own coach's updates unread
+ * for the app. `markNotificationRead` is unchanged: the api's single-item route has no such parameter.
  *
  * An item carries NO text (X1): the portal builds the line from `type` and `actor.displayName`
  * (`src/lib/notifications.ts`). Every answer is `Cache-Control: no-store`.
@@ -3518,6 +3525,23 @@ export interface NotificationUnreadCount {
 
 /** The page size the portal asks for: the api's default, sent so it is not a server whim. */
 export const NOTIFICATIONS_PAGE_SIZE = 20;
+
+/**
+ * Whose items an inbox route answers (EV-467, the api's `NotificationAudience` enum): TRAINEE is the
+ * COACH_* types, COACH the CLIENT_* types. The portal itself only ever sends COACH (EV-475).
+ */
+export type NotificationAudience = "TRAINEE" | "COACH";
+
+/**
+ * EV-475 — the wire for the three audience-filtered inbox routes. Live: `apiFetch`, as before.
+ * Fixture: `fixtureInboxFetch`, the fixture standing in for the api at the PATH level, so the
+ * query string the three functions below build is what the fixture-mode specs judge
+ * (`qa/notifications-audience.spec.ts`): an `audience` dropped from one of them is a red bell
+ * there, not only a live-only difference.
+ */
+function inboxFetch<T>(path: string, init: RequestInit, options: { bearer?: string }): Promise<T> {
+  return COACH_API_MODE === "fixture" ? fixtureInboxFetch<T>(path, init) : apiFetch<T>(path, init, options);
+}
 
 /** 404 NOTIFICATION_NOT_FOUND — no item of the caller's has this id. */
 export function isNotificationNotFound(err: unknown): boolean {
@@ -3773,20 +3797,23 @@ const liveCoachApi = {
 
   /** One page, newest first. `bearer`: the BFF route handler's token (`handlerAccessToken`). */
   listNotifications(cursor: string | null, bearer?: string): Promise<NotificationPage> {
-    const query = new URLSearchParams({ limit: String(NOTIFICATIONS_PAGE_SIZE) });
+    const query = new URLSearchParams({ audience: "COACH", limit: String(NOTIFICATIONS_PAGE_SIZE) });
     if (cursor) query.set("cursor", cursor);
-    return apiFetch<NotificationPage>(`/me/notifications?${query.toString()}`, {}, { bearer });
+    return inboxFetch<NotificationPage>(`/me/notifications?${query.toString()}`, {}, { bearer });
   },
+  /** The bell's number: the CLIENT_* items only (EV-475), never the coach's own COACH_* ones. */
   getNotificationsUnreadCount(bearer?: string): Promise<NotificationUnreadCount> {
-    return apiFetch<NotificationUnreadCount>("/me/notifications/unread-count", {}, { bearer });
+    const query = new URLSearchParams({ audience: "COACH" });
+    return inboxFetch<NotificationUnreadCount>(`/me/notifications/unread-count?${query.toString()}`, {}, { bearer });
   },
   async markNotificationRead(id: string, bearer?: string): Promise<void> {
     // 204 No Content; idempotent.
     await apiFetch<void>(`/me/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }, { bearer });
   },
   async markAllNotificationsRead(bearer?: string): Promise<void> {
-    // 204 No Content.
-    await apiFetch<void>("/me/notifications/read-all", { method: "POST" }, { bearer });
+    // 204 No Content. COACH: the CLIENT_* items only, so no trainee thread moves (EV-475).
+    const query = new URLSearchParams({ audience: "COACH" });
+    await inboxFetch<void>(`/me/notifications/read-all?${query.toString()}`, { method: "POST" }, { bearer });
   },
 
   // ── EV-455k notification settings (b-fit-api EV-455h, see its block above `// ── the live client`) ──
@@ -4130,10 +4157,26 @@ const liveCoachApi = {
 
 export type CoachApi = typeof liveCoachApi;
 
+/**
+ * EV-475 — the three inbox operations whose request carries `audience`. The fixture does not
+ * implement them as methods: fixture mode runs the live functions above, whose `inboxFetch`
+ * hands the built path to `fixtureInboxFetch`. One place builds the query in both modes.
+ */
+type InboxWireOp = "listNotifications" | "getNotificationsUnreadCount" | "markAllNotificationsRead";
+export type FixtureCoachApi = Omit<CoachApi, InboxWireOp>;
+
 // Fixture mode only: every call is journalled (and can be held by a latency cookie) so
 // `qa/page-read-budget.spec.ts` can count and time a page's api reads. The live client
 // is not wrapped.
-const impl: CoachApi = COACH_API_MODE === "fixture" ? journalled(fixtureCoachApi) : liveCoachApi;
+const impl: CoachApi =
+  COACH_API_MODE === "fixture"
+    ? journalled<CoachApi>({
+        ...fixtureCoachApi,
+        listNotifications: liveCoachApi.listNotifications,
+        getNotificationsUnreadCount: liveCoachApi.getNotificationsUnreadCount,
+        markAllNotificationsRead: liveCoachApi.markAllNotificationsRead,
+      })
+    : liveCoachApi;
 
 export const coachApi = {
   ...impl,

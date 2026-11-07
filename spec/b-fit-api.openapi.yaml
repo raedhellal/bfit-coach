@@ -9426,6 +9426,7 @@ paths:
             format: int32
             minimum: 1
             maximum: 50
+        - $ref: "#/components/parameters/NotificationAudience"
       responses:
         "200":
           description: One page
@@ -9434,7 +9435,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/NotificationPage"
         "400":
-          description: "INVALID_REQUEST: limit outside 1-50, or a cursor this server did not issue"
+          description: "INVALID_REQUEST: limit outside 1-50, a cursor this server did not issue, or audience is not TRAINEE or COACH"
           content:
             application/json:
               schema:
@@ -9459,6 +9460,8 @@ paths:
         EV-455b / ADR-0039. The bell's badge: the caller's unread items. Cache-Control: no-store.
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NotificationAudience"
       responses:
         "200":
           description: The count
@@ -9466,6 +9469,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotificationUnreadCount"
+        "400":
+          description: "INVALID_REQUEST: audience is not TRAINEE or COACH"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "401":
           description: "Unauthorized: no valid access token"
           content:
@@ -9543,9 +9552,17 @@ paths:
         Cache-Control: no-store.
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/NotificationAudience"
       responses:
         "204":
           description: Read
+        "400":
+          description: "INVALID_REQUEST: audience is not TRAINEE or COACH"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "401":
           description: "Unauthorized: no valid access token"
           content:
@@ -10170,6 +10187,17 @@ paths:
                 $ref: "#/components/schemas/ApiError"
 components:
   parameters:
+    NotificationAudience:
+      name: audience
+      in: query
+      required: false
+      description: >-
+        EV-467 / ADR-0039 D39.11. Whose items: absent means every type, as before EV-467; TRAINEE means
+        the COACH_* types; COACH means the CLIENT_* types. read-all with TRAINEE moves no client thread,
+        and with COACH moves no trainee thread. Exactly TRAINEE or COACH: any other value, including an
+        empty or repeated one, answers 400 INVALID_REQUEST.
+      schema:
+        $ref: "#/components/schemas/NotificationAudience"
     TimeZoneHeader:
       name: X-Timezone
       in: header
@@ -10467,6 +10495,13 @@ components:
           type: integer
           minimum: 1
       required: [clientId, count]
+    NotificationAudience:
+      type: string
+      description: >-
+        EV-467 / ADR-0039 D39.11. Who an item is addressed to, from its type alone: TRAINEE is the
+        COACH_* types, COACH is the CLIENT_* types. No default: an absent audience parameter means every
+        type, which no value of this enum names.
+      enum: [TRAINEE, COACH]
     NotificationType:
       type: string
       description: >-
@@ -10485,7 +10520,7 @@ components:
           description: >-
             The coach's display name (coach items) or the client's name (client items), as it is now.
             null when the account has no name; the client then shows the catalogue's fallback
-            (« ton coach »).
+            (« votre coach »).
       required: [displayName]
     NotificationTarget:
       type: object
