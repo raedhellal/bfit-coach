@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Request, type Response as PwResponse } from "@playwright/test";
 import { signInThroughForm } from "./sign-in";
 import {
   apiInbox,
@@ -79,6 +79,27 @@ type Lang = keyof typeof T;
 const bell = (page: Page): Locator => page.getByRole("link", { name: /^Notifications/ });
 const rows = (page: Page): Locator => page.locator("[data-notification-id]");
 const row = (page: Page, id: string): Locator => page.locator(`[data-notification-id="${id}"]`);
+const isCountRead = (r: Request) => r.method() === "GET" && new URL(r.url()).pathname === "/api/bff/notifications/unread-count";
+const isMarkAll = (r: Request) => r.method() === "POST" && new URL(r.url()).pathname === "/api/bff/notifications/read-all";
+/** When the browser sent `r` (browser clock, ms since the epoch). */
+const sentAt = (r: Request) => r.timing().startTime;
+/**
+ * BUG-1108: when the browser got the mark-all's 204 (browser clock), or 0 for any other response.
+ * Read from the browser's own timing, so a count read is placed before or after it by when the
+ * browser sent it, whatever order Playwright delivers the two events in.
+ */
+function markAllAnsweredAt(r: PwResponse): number {
+  if (!isMarkAll(r.request()) || r.status() !== 204) return 0;
+  const t = r.request().timing();
+  return t.responseStart >= 0 ? t.startTime + t.responseStart : Date.now();
+}
+
+/** The api item `match` picks, asserted present by name first (BUG-1108 N-d: no find-then-bang). */
+function itemIn(items: ApiItem[], what: string, match: (i: ApiItem) => boolean): ApiItem {
+  const item = items.find(match);
+  expect(item, `the api inbox holds ${what}`).toBeDefined();
+  return item as ApiItem;
+}
 
 /** The count is KNOWN and equals `n`: the name, the badge, and the state attribute all agree. */
 async function expectBell(page: Page, lang: Lang, n: number): Promise<void> {
@@ -201,7 +222,7 @@ for (const lang of ["en", "fr"] as const) {
       insertRedFlagItem(coach, link);
       const inbox = await apiInbox(request, coach);
       expect(inbox.map((i) => i.type).sort()).toEqual(["CLIENT_JOINED", "CLIENT_MESSAGE", "CLIENT_RED_FLAG", "CLIENT_SESSION_COMPLETED"]);
-      const byType = (t: string) => inbox.find((i) => i.type === t)!;
+      const byType = (t: string) => itemIn(inbox, `a ${t} item`, (i) => i.type === t);
 
       await signIn(page, lang, coach);
       await openInbox(page);
@@ -218,7 +239,7 @@ for (const lang of ["en", "fr"] as const) {
       await expect(rows(page)).toHaveCount(4);
       await expect(row(page, message.id)).toHaveAttribute("data-unread", "false");
       await expectBell(page, lang, 3);
-      expect((await apiInbox(request, coach)).find((i) => i.id === message.id)!.readAt).not.toBeNull();
+      expect(itemIn(await apiInbox(request, coach), "the CLIENT_MESSAGE item just opened", (i) => i.id === message.id).readAt).not.toBeNull();
 
       let left = 3;
       for (const type of ["CLIENT_JOINED", "CLIENT_SESSION_COMPLETED", "CLIENT_RED_FLAG"]) {
@@ -238,7 +259,7 @@ for (const lang of ["en", "fr"] as const) {
       const coach = await freshCoach(request);
       const link = await linkClient(request, coach, `Ines ${lang} Ac5`);
       await clientWrites(request, link.trainee);
-      const message = (await apiInbox(request, coach)).find((i) => i.type === "CLIENT_MESSAGE")!;
+      const message = itemIn(await apiInbox(request, coach), "a CLIENT_MESSAGE item", (i) => i.type === "CLIENT_MESSAGE");
 
       await signIn(page, lang, coach);
       await expectBell(page, lang, 2);
@@ -317,11 +338,27 @@ for (const lang of ["en", "fr"] as const) {
       await signIn(page, lang, coach);
       await openInbox(page);
       await expectBell(page, lang, 1);
+      // BUG-1108 N-c (option b): the first mark-all's 204, then the re-read it asks for answering 0.
+      // `clientWrites` waits for that re-read, which restarts the 60 s timer, so the 1 can only come
+      // from the 60 s poll, and the test asserts the 60 s.
+      let markedAt = 0;
+      let reReadAt = 0;
+      page.on("response", async (r) => {
+        if (markedAt === 0) {
+          markedAt = markAllAnsweredAt(r);
+          return;
+        }
+        if (reReadAt > 0 || !isCountRead(r.request()) || sentAt(r.request()) < markedAt || r.status() !== 200) return;
+        const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
+        if (body?.count === 0 && reReadAt === 0) reReadAt = Date.now();
+      });
       await page.getByRole("button", { name: L.markAll, exact: true }).click();
       await expectBell(page, lang, 0);
       const status = page.locator('[data-inbox-state="all-read-status"]');
       await expect(status).toHaveText(L.allRead);
       await expect(page.getByRole("status").filter({ hasText: L.allRead })).toBeVisible();
+      await expect.poll(() => markedAt, { timeout: 10_000, message: "the mark-all answered 204" }).toBeGreaterThan(0);
+      await expect.poll(() => reReadAt, { timeout: 10_000, message: "a count read sent after the mark-all 204 answered 0" }).toBeGreaterThan(0);
 
       // Every DOM commit from here on: no moment where a bell says unread while the line says read.
       await page.evaluate(() => {
@@ -341,6 +378,9 @@ for (const lang of ["en", "fr"] as const) {
       await clientWrites(request, link.trainee);
       expect(await apiUnread(request, coach), "the server counts the new item").toBe(1);
       await expect(bell(page)).toHaveAttribute("data-unread-count", "1", { timeout: 75_000 });
+      const oneAfter = Date.now() - markedAt;
+      test.info().annotations.push({ type: "BUG-1108 N-c", description: `the bell's 1 at +${oneAfter} ms after the mark-all 204 (the 60 s poll)` });
+      expect(oneAfter, "the bell's 1 came from the 60 s poll: at least 60 s after the mark-all 204").toBeGreaterThanOrEqual(60_000);
       await expectBell(page, lang, 1);
       // Closes-when 1: the line is gone and its role="status" element is empty.
       await expect(page.getByRole("status").filter({ hasText: L.allRead })).toHaveCount(0);
@@ -371,6 +411,13 @@ for (const lang of ["en", "fr"] as const) {
       await expectBell(page, lang, 0);
       const status = page.locator('[data-inbox-state="all-read-status"]');
       await expect(status).toHaveText(L.allRead);
+      // BUG-1108 B1 guard: a reload or a navigation from here on would reset the inbox's all-read
+      // state and pass this test falsely. The marker dies with a reload; the listener sees the rest.
+      await page.evaluate(() => ((window as unknown as { __bug1108NoReload: number }).__bug1108NoReload = 1));
+      const navigations: string[] = [];
+      page.on("framenavigated", (f) => {
+        if (f === page.mainFrame()) navigations.push(f.url());
+      });
 
       // Item 1's steps: a new item, read by the 60 s poll, hides the line.
       await clientWrites(request, link.trainee);
@@ -389,6 +436,8 @@ for (const lang of ["en", "fr"] as const) {
       await expect(page.getByRole("status").filter({ hasText: L.allRead })).toHaveCount(0);
       await expect(status).toHaveText("");
       await expect(status).toHaveClass(/sr-only/);
+      expect(await page.evaluate(() => (window as unknown as { __bug1108NoReload?: number }).__bug1108NoReload), "the page was not reloaded since the mark-all").toBe(1);
+      expect(navigations, "no navigation since the mark-all").toEqual([]);
       await page.unrouteAll();
     });
 
@@ -400,28 +449,27 @@ for (const lang of ["en", "fr"] as const) {
       await openInbox(page);
       await expectBell(page, lang, 1);
       // Every count read the PAGE gets back after the mark, with the count it answered.
-      // Only reads SENT after the click count: a poll sent before it may answer after it, with the
-      // old 1, and says nothing about the line (staff S1).
+      // Only reads SENT after the mark-all's 204 count (BUG-1108 N-a: not after the click): a read
+      // sent before it may answer after it, with the old 1, and says nothing about the line (staff S1).
       const zeros: number[] = [];
       const others: string[] = [];
-      const sentAfterMark = new Set<Request>();
-      const isCountRead = (r: Request) => r.method() === "GET" && new URL(r.url()).pathname === "/api/bff/notifications/unread-count";
       let marked = Number.POSITIVE_INFINITY;
-      page.on("request", (r) => {
-        if (isCountRead(r) && Date.now() >= marked) sentAfterMark.add(r);
-      });
       page.on("response", async (r) => {
-        if (!sentAfterMark.has(r.request())) return;
+        if (marked === Number.POSITIVE_INFINITY) {
+          const at = markAllAnsweredAt(r);
+          if (at > 0) marked = at;
+        }
+        if (!isCountRead(r.request()) || sentAt(r.request()) < marked) return;
         const at = Date.now();
         const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
         if (r.status() === 200 && body?.count === 0) zeros.push(at);
         else others.push(`${r.status()} ${JSON.stringify(body)}`);
       });
-      marked = Date.now();
       await page.getByRole("button", { name: L.markAll, exact: true }).click();
       await expectBell(page, lang, 0);
       const status = page.locator('[data-inbox-state="all-read-status"]');
       await expect(status).toHaveText(L.allRead);
+      await expect.poll(() => marked, { timeout: 10_000, message: "the mark-all answered 204" }).toBeLessThan(Number.POSITIVE_INFINITY);
       // The re-read after the 204, then the poll's read 60 s after it: at least 2 reads, both 0.
       await expect
         .poll(() => zeros.length, { timeout: 75_000, message: "at least 2 count reads returning 0 after the mark (the 60 s poll among them)" })
@@ -438,7 +486,7 @@ for (const lang of ["en", "fr"] as const) {
       const link = await linkClient(request, coach, `Eva ${lang} B1094`);
       await clientWrites(request, link.trainee);
       await clientCompletes(request, link.trainee, 1);
-      const completed = (await apiInbox(request, coach)).find((i) => i.type === "CLIENT_SESSION_COMPLETED")!;
+      const completed = itemIn(await apiInbox(request, coach), "a CLIENT_SESSION_COMPLETED item", (i) => i.type === "CLIENT_SESSION_COMPLETED");
       await apiMarkRead(request, coach, completed.id);
       const inbox = await apiInbox(request, coach);
       const unreadItems = inbox.filter((i) => i.readAt === null);
@@ -471,7 +519,7 @@ for (const lang of ["en", "fr"] as const) {
       const coach = await freshCoach(request);
       const link = await linkClient(request, coach, `Ana ${lang} S1`);
       await clientCompletes(request, link.trainee, 2);
-      const joined = (await apiInbox(request, coach)).find((i) => i.type === "CLIENT_JOINED")!;
+      const joined = itemIn(await apiInbox(request, coach), "a CLIENT_JOINED item", (i) => i.type === "CLIENT_JOINED");
       await signIn(page, lang, coach);
       await openInbox(page);
       await expectBell(page, lang, 3);
