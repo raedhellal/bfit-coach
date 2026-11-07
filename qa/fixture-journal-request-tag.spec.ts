@@ -32,9 +32,12 @@ import { test } from "./fixture-test";
  *
  * And (c) the FIRST occurrence of each tag number strictly increases in journal order. The tag is
  * assigned and the entry pushed in one synchronous step (`journalled()` in the journal file), so
- * one process-wide counter can only produce increasing first occurrences. Per-instance counters
- * that have drifted apart (a warm server) put a lower number after a higher one, which (a) and
- * (b) can miss when the counters no longer overlap in this test's window.
+ * one process-wide counter can only produce increasing first occurrences. Witness that (c) catches
+ * per-instance counters (hub `chore/po-demo-final-1021`, `evidence/BUG-1103-6913f7c8/logs/35`): the
+ * module-scoped counter restored (`harness/mutant-c.sh`), 10 document renders in an earlier test,
+ * then this test with (a) and (b) soft: (c) red, `startRoutineAiProposal@r1 first appears after
+ * getNotificationsUnreadCount@r5`. (a) and (b) were red in that run too. A run where (c) is red
+ * and (a) and (b) pass was NOT constructed, so this file does not claim (c) catches more than they do.
  *
  * (a) is red on the old counter when the server is fresh: each instance's counter starts near 1,
  * so the server actions' tags overlap those of the instance the unread-count route runs in (logs/02
