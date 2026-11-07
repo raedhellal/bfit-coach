@@ -67,10 +67,30 @@ export function resetApiJournal(): void {
   (globalThis as GlobalWithJournal)[JOURNAL_KEY] = [];
 }
 
-let nextRequestTag = 0;
-/** One value per request inside a React server render. Outside a render (a route handler
- *  or a server action) React has no request scope, so every call gets a new tag. */
-const requestTag = cache((): string => `r${++nextRequestTag}`);
+/**
+ * BUG-1103 — the tag COUNTER is kept on `globalThis` under `Symbol.for`, like the journal.
+ * It was a module-scoped `let`, so each of Next's module instances (the RSC layer, a route
+ * handler, a server action) counted `r1, r2, …` on its own, and tags from different layers
+ * collided in the one shared journal: a server action's proposal read could carry the same
+ * tag as an unread-count poll or a page render, and a spec counting by tag miscounted it.
+ * One counter for the whole process makes every tag unique. NOT emptied by
+ * `resetApiJournal()`: a tag issued before a reset is never reused after it.
+ * Witness: `qa/fixture-journal-request-tag.spec.ts`.
+ */
+const TAG_COUNTER_KEY = Symbol.for("evoli.coach.fixture.apiJournal.requestTag");
+type GlobalWithTagCounter = typeof globalThis & Record<symbol, number | undefined>;
+
+function nextRequestTag(): string {
+  const g = globalThis as GlobalWithTagCounter;
+  const next = (g[TAG_COUNTER_KEY] ?? 0) + 1;
+  g[TAG_COUNTER_KEY] = next;
+  return `r${next}`;
+}
+
+/** One value per request inside a React server render: `cache` keeps the entries of one
+ *  render on one tag. Outside a render (a route handler or a server action) React has no
+ *  request scope, so every call gets a new tag. */
+const requestTag = cache((): string => nextRequestTag());
 
 async function requestFacts(): Promise<{ document: boolean; latencyMs: number }> {
   try {
