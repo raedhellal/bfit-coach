@@ -8,11 +8,19 @@ import { guardWrite, json, noContent, upstreamFailure } from "@/lib/notification
  * (AC-7, `coachApi.markAllNotificationsRead`). Since EV-475 the api marks only the coach's
  * `CLIENT_*` items whose latest event is at or before the request; the coach's own `COACH_*`
  * items, and the coach's own trainee thread, do not move. `CLIENT_MESSAGE` items follow their
- * threads (EV-455d), so the coach's unread client messages are read too, and an item that
- * arrives after the request stays unread (EV-455b AC-6c).
+ * threads (EV-455d), so the coach's unread client messages are read too. An item that arrives
+ * after the request stays unread (EV-455b AC-6c) where the api bounds it by its request time:
+ * the non-message `CLIENT_*` items, and `CLIENT_MESSAGE` items on no ACTIVE link. A
+ * `CLIENT_MESSAGE` item on an ACTIVE link has no time bound: its thread is read to `last_seq`
+ * under the link lock, and its item with it, so nothing holds unread a message that lands after
+ * the api reads its request time and before it takes that lock (BUG-1113: by trace at api
+ * `349c9297`, `CoachMessagingUseCase.java:126`; no run has constructed that window).
  *
  * Answers: 204; 403 `COACH_ACCESS_DENIED` (the api's: a link or the role ended mid-call; a retry
- * marks the item alone); and the shared ones (`src/lib/notificationsBff.ts`).
+ * runs read-all again, and if the coach role is still gone the api's de-roled branch marks the
+ * `CLIENT_MESSAGE` items up to the retry's request time read without moving their threads: by
+ * trace, `MyNotificationsUseCase.java:275` at the same api SHA); and the shared ones
+ * (`src/lib/notificationsBff.ts`).
  */
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
