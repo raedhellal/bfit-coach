@@ -3,7 +3,9 @@ import { handlerAccessToken, withTokenSource } from "@/lib/handlerSession";
 import { json, refuseCrossSiteRead, upstreamFailure } from "@/lib/notificationsBff";
 
 /**
- * EV-455f — the bell's count: `GET` → `GET /me/notifications/unread-count`. Read by the shell on
+ * EV-455f — the bell's count: `GET` → `GET /me/notifications/unread-count?audience=COACH`
+ * (`coachApi.getNotificationsUnreadCount`): since EV-475, the unread `CLIENT_*` items only, never
+ * the coach's own `COACH_*` ones. Read by the shell on
  * every signed-in page and every 60 s while the tab is visible (`NotificationsProvider`).
  *
  * Answers: 200 `{ count }`, a non-negative integer, or 502 `UPSTREAM` — a body without one is a
