@@ -322,8 +322,9 @@ test.describe("EV-356d D.1 — pointer and keyboard intent", () => {
  * D.2 — with latency 40, rest ≥ 500 ms then click: the median click-to-paint is at most
  * half the median of the same click without a hover. Both arms on THIS build, interleaved;
  * the no-hover arm is the parent's path: its click makes the full render. That premise is
- * ASSERTED per no-hover sample, not assumed (BUG-1118): a FULL render of Lina's page at or
- * after the click, and none between the sample's `page.goto("/")` and the click. It used to
+ * ASSERTED per no-hover sample, not assumed (BUG-1118): a FULL request for Lina's page (a
+ * render, per the header) at or after the click, and none between the sample's
+ * `page.goto("/")` and the click. It used to
  * be assumed, and it did not hold: the previous click left the pointer over Lina's row, the
  * row laid out under it on the next roster load received a trusted `pointerover`, and
  * IntentLink prefetched it before `openRoster` parked the pointer (Chromium, start config,
@@ -359,7 +360,10 @@ test("D.2: after a 500 ms rest the click paints in at most half the no-hover tim
         "click",
         () => {
           w.__t0 = performance.now();
-          w.__clickAt = Date.now(); // the wall clock `track()` stamps requests with (same host)
+          // The wall clock `track()` stamps requests with (same host). `track()` stamps on report,
+          // so `at` >= send time; a request sent within a few ms before the click counts as after
+          // it — (b) can miss only such a request, and neither check can false-fail.
+          w.__clickAt = Date.now();
         },
         { capture: true, once: true }
       );
