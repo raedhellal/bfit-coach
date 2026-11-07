@@ -35,8 +35,10 @@ import { cache } from "react";
  *
  * Outside `FixtureState`, like the other journals in `coachApi.fixture.ts`, so the seed
  * check is not affected by a read. Emptied by `DELETE /api/fixture/state`. Kept on
- * `globalThis` under `Symbol.for` because Next gives the RSC layer and the route-handler
- * layer separate module instances.
+ * `globalThis` under `Symbol.for` because Next can give this module more than one instance
+ * in one server process (BUG-1103, witnessed under `next dev` in hub `d4bc8eed`
+ * `evidence/BUG-1103-f00d9107/logs/22`: server actions in an instance of their own; the
+ * unread-count route in the same instance as the page render; the login route in a third).
  */
 export interface ApiJournalEntry {
   /** The `CoachApi` method name, e.g. `getMe`, `listClients`. */
@@ -67,10 +69,34 @@ export function resetApiJournal(): void {
   (globalThis as GlobalWithJournal)[JOURNAL_KEY] = [];
 }
 
-let nextRequestTag = 0;
-/** One value per request inside a React server render. Outside a render (a route handler
- *  or a server action) React has no request scope, so every call gets a new tag. */
-const requestTag = cache((): string => `r${++nextRequestTag}`);
+/**
+ * BUG-1103 — the tag COUNTER is kept on `globalThis` under `Symbol.for`, like the journal.
+ * It was a module-scoped `let`, so each instance of this module counted `r1, r2, …` on its
+ * own, and tags from different instances collided in the one shared journal. Witnessed in hub
+ * `d4bc8eed` `evidence/BUG-1103-f00d9107/logs/22` (`next dev`, old counter): the server
+ * actions' instance issued r1–r7 while the instance shared by the page render and the
+ * unread-count route issued r1–r6, so a server action's proposal read carried the same tag as
+ * an unread-count poll, and a spec counting by tag miscounted it (keep-reconcile `:196`).
+ * One counter for the whole process makes every tag unique. NOT emptied by
+ * `resetApiJournal()`: a tag issued before a reset is never reused after it.
+ * Witness: `qa/fixture-journal-request-tag.spec.ts`.
+ */
+const TAG_COUNTER_KEY = Symbol.for("evoli.coach.fixture.apiJournal.requestTag");
+type GlobalWithTagCounter = typeof globalThis & Record<symbol, number | undefined>;
+
+function nextRequestTag(): string {
+  const g = globalThis as GlobalWithTagCounter;
+  const next = (g[TAG_COUNTER_KEY] ?? 0) + 1;
+  g[TAG_COUNTER_KEY] = next;
+  return `r${next}`;
+}
+
+/** Witnessed scope (hub `d4bc8eed` `evidence/BUG-1103-f00d9107/logs/22`, `next dev`): in a server
+ *  action `cache` gave NO request scope, since the Keep and its cleanup delete, two calls in ONE
+ *  action request, got two tags (r6, r7); route handlers were seen making one call per request, each
+ *  request with a tag of its own (a route handler making two calls in one request was not observed).
+ *  Inside a React server render `cache` keeps every entry of the render on one tag. */
+const requestTag = cache((): string => nextRequestTag());
 
 async function requestFacts(): Promise<{ document: boolean; latencyMs: number }> {
   try {
