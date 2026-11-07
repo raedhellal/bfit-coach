@@ -321,9 +321,15 @@ test.describe("EV-356d D.1 — pointer and keyboard intent", () => {
 /**
  * D.2 — with latency 40, rest ≥ 500 ms then click: the median click-to-paint is at most
  * half the median of the same click without a hover. Both arms on THIS build, interleaved;
- * the no-hover arm is the parent's path (its AUTO prefetch rendered nothing for this
- * route, so its click always made the full render). Times are the page's own clock, from
- * the click event to the frame after Lina's h1 is in the DOM.
+ * the no-hover arm is the parent's path: its click makes the full render. That premise is
+ * ASSERTED per no-hover sample, not assumed (BUG-1118): a FULL render of Lina's page at or
+ * after the click, and none between the sample's `page.goto("/")` and the click. It used to
+ * be assumed, and it did not hold: the previous click left the pointer over Lina's row, the
+ * row laid out under it on the next roster load received a trusted `pointerover`, and
+ * IntentLink prefetched it before `openRoster` parked the pointer (Chromium, start config,
+ * hub `a6878072` `evidence/BUG-1118-7cb70cd4/logs/06`). So the no-hover arm now parks the
+ * pointer BEFORE its load. Times are the page's own clock, from the click event to the frame
+ * after Lina's h1 is in the DOM.
  */
 test("D.2: after a 500 ms rest the click paints in at most half the no-hover time (latency 40, 5 runs each)", async ({
   page,
@@ -332,8 +338,12 @@ test("D.2: after a 500 ms rest the click paints in at most half the no-hover tim
   await signIn(page.context());
   await page.goto("/login");
   await setCookie(page, "evoli_fixture_api_latency", "40");
+  const seen = track(page);
 
-  async function clickToPaint(rest: boolean): Promise<number> {
+  async function clickToPaint(rest: boolean, sample: number): Promise<number> {
+    // BUG-1118: off every roster row BEFORE the load, so no row is laid out under the pointer.
+    if (!rest) await page.mouse.move(1, 1);
+    const fromGoto = seen.length;
     await openRoster(page);
     const row = page.locator(LINA_ROW);
     if (rest) {
@@ -341,10 +351,18 @@ test("D.2: after a 500 ms rest the click paints in at most half the no-hover tim
       await page.waitForTimeout(500);
     }
     await page.evaluate((name) => {
-      const w = window as unknown as { __t0: number; __t1: number };
+      const w = window as unknown as { __t0: number; __t1: number; __clickAt: number };
       w.__t0 = 0;
       w.__t1 = 0;
-      addEventListener("click", () => (w.__t0 = performance.now()), { capture: true, once: true });
+      w.__clickAt = 0;
+      addEventListener(
+        "click",
+        () => {
+          w.__t0 = performance.now();
+          w.__clickAt = Date.now(); // the wall clock `track()` stamps requests with (same host)
+        },
+        { capture: true, once: true }
+      );
       const mo = new MutationObserver(() => {
         if (!w.__t0) return;
         if ([...document.querySelectorAll("h1")].some((h) => h.textContent?.trim() === name)) {
@@ -357,6 +375,20 @@ test("D.2: after a 500 ms rest the click paints in at most half the no-hover tim
     await row.click();
     await expectLinaOverview(page);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __t1: number }).__t1)).toBeGreaterThan(0);
+    if (!rest) {
+      // The premise, before any timing is read (BUG-1118). FULL = `track()`'s definition.
+      const clickAt = await page.evaluate(() => (window as unknown as { __clickAt: number }).__clickAt);
+      const sinceGoto = seen.slice(fromGoto);
+      const lina = (paths: string[]) => paths.filter((p) => p === LINA_PATH);
+      expect(
+        lina(fullRenders(sinceGoto.filter((s) => s.at < clickAt))),
+        `no-hover sample ${sample}: no FULL request for ${LINA_PATH} between its page.goto("/") and the click`
+      ).toEqual([]);
+      expect(
+        lina(fullRenders(sinceGoto.filter((s) => s.at >= clickAt))).length,
+        `no-hover sample ${sample}: at least one FULL request for ${LINA_PATH} at or after the click`
+      ).toBeGreaterThanOrEqual(1);
+    }
     return page.evaluate(() => {
       const w = window as unknown as { __t0: number; __t1: number };
       return Math.round(w.__t1 - w.__t0);
@@ -366,8 +398,8 @@ test("D.2: after a 500 ms rest the click paints in at most half the no-hover tim
   const cold: number[] = [];
   const warm: number[] = [];
   for (let i = 0; i < 5; i += 1) {
-    cold.push(await clickToPaint(false));
-    warm.push(await clickToPaint(true));
+    cold.push(await clickToPaint(false, i));
+    warm.push(await clickToPaint(true, i));
   }
   const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
   const record = `no hover ${JSON.stringify(cold)} median ${median(cold)} ms; hover ${JSON.stringify(warm)} median ${median(warm)} ms`;
