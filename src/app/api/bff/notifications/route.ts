@@ -5,7 +5,9 @@ import { asNotificationPage } from "@/lib/notifications";
 import { json, refuseCrossSiteRead, upstreamFailure } from "@/lib/notificationsBff";
 
 /**
- * EV-455f — the inbox's page read: `GET ?cursor=` → `GET /me/notifications?limit=20&cursor=`.
+ * EV-455f — the inbox's page read: `GET ?cursor=` →
+ * `GET /me/notifications?audience=COACH&limit=20&cursor=` (`coachApi.listNotifications`). Since
+ * EV-475 the api pages the coach's `CLIENT_*` items only, never the coach's own `COACH_*` ones.
  * The cursor is the api's opaque `nextCursor`, forwarded as given; the api is its one judge (a
  * cursor it did not issue is its 400, answered here as 400 `INVALID_REQUEST`).
  *

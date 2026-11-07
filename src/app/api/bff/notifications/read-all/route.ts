@@ -4,9 +4,11 @@ import { withTokenSource } from "@/lib/handlerSession";
 import { guardWrite, json, noContent, upstreamFailure } from "@/lib/notificationsBff";
 
 /**
- * EV-455f — « Tout marquer comme lu »: `POST {}` → `POST /me/notifications/read-all` (AC-7). The
- * api marks every item whose latest event is at or before the request; message items follow
- * their threads (EV-455d), so the coach's unread messages are read too, and an item that
+ * EV-455f — « Tout marquer comme lu »: `POST {}` → `POST /me/notifications/read-all?audience=COACH`
+ * (AC-7, `coachApi.markAllNotificationsRead`). Since EV-475 the api marks only the coach's
+ * `CLIENT_*` items whose latest event is at or before the request; the coach's own `COACH_*`
+ * items, and the coach's own trainee thread, do not move. `CLIENT_MESSAGE` items follow their
+ * threads (EV-455d), so the coach's unread client messages are read too, and an item that
  * arrives after the request stays unread (EV-455b AC-6c).
  *
  * Answers: 204; 403 `COACH_ACCESS_DENIED` (the api's: a link or the role ended mid-call; a retry
