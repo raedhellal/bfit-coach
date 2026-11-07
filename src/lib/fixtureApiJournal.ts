@@ -91,11 +91,11 @@ function nextRequestTag(): string {
   return `r${next}`;
 }
 
-/** One value per React server render: `cache` keeps the entries of one render on one tag.
- *  Outside a render, `cache` gives no request scope. Witnessed in the same log (logs/22): each
- *  unread-count route REQUEST got a tag of its own (one call per request, so a route handler
- *  making two calls in one request was not observed), and within ONE server-action request
- *  the Keep and its cleanup delete got two different tags. */
+/** Witnessed scope (hub `d4bc8eed` `evidence/BUG-1103-f00d9107/logs/22`, `next dev`): in a server
+ *  action `cache` gave NO request scope, since the Keep and its cleanup delete, two calls in ONE
+ *  action request, got two tags (r6, r7); route handlers were seen making one call per request, each
+ *  request with a tag of its own (a route handler making two calls in one request was not observed).
+ *  Inside a React server render `cache` keeps every entry of the render on one tag. */
 const requestTag = cache((): string => nextRequestTag());
 
 async function requestFacts(): Promise<{ document: boolean; latencyMs: number }> {

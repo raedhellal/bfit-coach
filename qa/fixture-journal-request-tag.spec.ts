@@ -30,18 +30,26 @@ import { test } from "./fixture-test";
  * journal; (b) the page render's entries still share ONE tag, and no entry outside that render
  * carries it — the property `qa/page-read-budget.spec.ts:121` counts renders by.
  *
- * And (c) the FIRST occurrence of each tag number strictly increases in journal order. The tag is
- * assigned and the entry pushed in one synchronous step (`journalled()` in the journal file), so
- * one process-wide counter can only produce increasing first occurrences. Witness that (c) catches
- * per-instance counters (hub `chore/po-demo-final-1021`, `evidence/BUG-1103-6913f7c8/logs/35`): the
- * module-scoped counter restored (`harness/mutant-c.sh`), 10 document renders in an earlier test,
- * then this test with (a) and (b) soft: (c) red, `startRoutineAiProposal@r1 first appears after
- * getNotificationsUnreadCount@r5`. (a) and (b) were red in that run too. A run where (c) is red
- * and (a) and (b) pass was NOT constructed, so this file does not claim (c) catches more than they do.
+ * And (c) the FIRST occurrence of each tag number strictly increases in journal order, counted
+ * from this test's own lowest tag. The tag is assigned and the entry pushed in one synchronous step
+ * (`journalled()` in the journal file), so for tags assigned after the journal's last reset one
+ * process-wide counter can only produce increasing first occurrences. A render that straddles the
+ * reset can carry an older tag (`cache` keeps its tag; `resetApiJournal()` empties the journal, not
+ * the counter): constructed from the code, not observed. That is why (c) skips tags below the lowest
+ * tag among this test's own entries (its render, the Generate window, its unread-count reads).
+ * Witness that this check catches per-instance counters, run BEFORE the floor was added (hub
+ * `chore/po-demo-final-1021`, `evidence/BUG-1103-6913f7c8/logs/35`): the module-scoped counter restored
+ * (`harness/mutant-c.sh`), 10 document renders in an earlier test, then this test with (a) and (b)
+ * soft: (c) red, `startRoutineAiProposal@r1 first appears after getNotificationsUnreadCount@r5`
+ * (r1 is one of the test's own entries, so the floor keeps it in range). (a) and (b) were red in that
+ * run too. A run where (c) is red and (a) and (b) pass was NOT constructed, so this file does not
+ * claim (c) catches more than they do.
  *
  * (a) is red on the old counter when the server is fresh: each instance's counter starts near 1,
- * so the server actions' tags overlap those of the instance the unread-count route runs in (logs/02
- * and logs/22 in the same evidence). Green on the global counter at any server age.
+ * so the server actions' tags overlap those of the instance the unread-count route runs in (hub
+ * `d4bc8eed` `evidence/BUG-1103-f00d9107/logs/02` and `logs/22`). Green on the global counter on a
+ * fresh server (hub `chore/po-demo-final-1021`, `evidence/BUG-1103-6913f7c8/logs/33`); at other
+ * server ages it rests on the construction: one monotonic counter on `globalThis`, never reset.
  *
  * Failure messages print `op` and `request` only, never `arg`: an unread-count entry's `arg` is
  * the session's bearer token.
@@ -136,7 +144,7 @@ test("BUG-1103: unread-count and server-action tags are each unique; one page re
     .map(({ e }) => `${e.op}@${e.request}`);
   expect(outside, `(b) no entry outside the page render carries its tag ${renderTags[0]}`).toEqual([]);
 
-  // (c) the first occurrence of each tag number strictly increases in journal order.
+  // (c) the first occurrence of each tag number strictly increases in journal order, from the floor below.
   const malformed = all.filter((e) => !/^r\d+$/.test(e.request)).map((e) => `${e.op}@${e.request}`);
   expect(malformed, "(c) every tag is r<number>").toEqual([]);
   const firsts: Entry[] = [];
@@ -147,9 +155,14 @@ test("BUG-1103: unread-count and server-action tags are each unique; one page re
     firsts.push(e);
   }
   const num = (e: Entry) => Number(e.request.slice(1));
-  const backwards = firsts
+  // The floor: this test's own lowest tag. Its unread-count reads are those made after the `goto`
+  // (an earlier one in the journal could be another test's leftover, with an older tag).
+  const ownUnread = all.filter((e, i) => i >= beforeRender && e.op === "getNotificationsUnreadCount");
+  const floor = Math.min(...[...render, ...generated, ...ownUnread].map(num));
+  const inRange = firsts.filter((e) => num(e) >= floor);
+  const backwards = inRange
     .slice(1)
-    .map((e, i) => ({ before: firsts[i], e }))
+    .map((e, i) => ({ before: inRange[i], e }))
     .filter(({ before, e }) => num(e) <= num(before))
     .map(({ before, e }) => `${e.op}@${e.request} first appears after ${before.op}@${before.request}`);
   expect(backwards, "(c) a tag's first occurrence is not above the previous new tag's").toEqual([]);
