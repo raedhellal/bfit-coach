@@ -37,12 +37,16 @@ import { test } from "./fixture-test";
  * reset can carry an older tag (`cache` keeps its tag; `resetApiJournal()` empties the journal, not
  * the counter): constructed from the code, not observed. That is why (c) skips tags below the lowest
  * tag among this test's own entries (its render, the Generate window, its unread-count reads).
+ * The Generate window is every entry after the click: a straddling render still issuing calls then
+ * would be counted in it and lower the floor, which can only give a false red, never a false green
+ * (constructed from the code, not observed).
  * Witness that this check catches per-instance counters, run BEFORE the floor was added (hub
  * `chore/po-demo-final-1021`, `evidence/BUG-1103-6913f7c8/logs/35`): the module-scoped counter restored
  * (`harness/mutant-c.sh`), 10 document renders in an earlier test, then this test with (a) and (b)
  * soft: (c) red, `startRoutineAiProposal@r1 first appears after getNotificationsUnreadCount@r5`
- * (r1 is one of the test's own entries, so the floor keeps it in range). (a) and (b) were red in that
- * run too. A run where (c) is red and (a) and (b) pass was NOT constructed, so this file does not
+ * (r1 is one of the test's own entries, so the floor keeps it in range). The same (c) red WITH the
+ * floor: hub `chore/po-demo-final-1021`, `evidence/BUG-1103-1be64b69/logs/57`. (a) and (b) were red in both
+ * runs too. A run where (c) is red and (a) and (b) pass was NOT constructed, so this file does not
  * claim (c) catches more than they do.
  *
  * (a) is red on the old counter when the server is fresh: each instance's counter starts near 1,
@@ -155,8 +159,9 @@ test("BUG-1103: unread-count and server-action tags are each unique; one page re
     firsts.push(e);
   }
   const num = (e: Entry) => Number(e.request.slice(1));
-  // The floor: this test's own lowest tag. Its unread-count reads are those made after the `goto`
-  // (an earlier one in the journal could be another test's leftover, with an older tag).
+  // The floor: this test's own lowest tag. Its unread-count reads are those made after the `goto`,
+  // kept to the test's own window for symmetry; a route-handler entry's tag is assigned at its push,
+  // so it cannot be older than the reset.
   const ownUnread = all.filter((e, i) => i >= beforeRender && e.op === "getNotificationsUnreadCount");
   const floor = Math.min(...[...render, ...generated, ...ownUnread].map(num));
   const inRange = firsts.filter((e) => num(e) >= floor);
