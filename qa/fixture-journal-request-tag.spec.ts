@@ -7,8 +7,10 @@ import { test } from "./fixture-test";
  *
  * The journal (`src/lib/fixtureApiJournal.ts`) is one list on `globalThis`, read through
  * `GET /api/fixture/calls` as `api`. Its `request` tag came from a MODULE-scoped counter, and
- * Next gives the RSC layer, a route handler and a server action separate module instances, so
- * each counted `r1, r2, …` on its own and their tags collided in the one journal. That made
+ * Next can give that module more than one instance in one server (hub `d4bc8eed`
+ * `evidence/BUG-1103-f00d9107/logs/22`, `next dev`: server actions in an instance of their own;
+ * the unread-count route sharing the page render's instance; the login route in a third), so
+ * each instance counted `r1, r2, …` on its own and their tags collided in the one journal. That made
  * `qa/coach-routine-ai-keep-reconcile.spec.ts:196` read 0 panel reads (it counts a read only
  * when its tag appears once) whenever the bell's unread-count poll or a page render happened to
  * carry the same number as the panel's proposal read.
@@ -28,8 +30,15 @@ import { test } from "./fixture-test";
  * journal; (b) the page render's entries still share ONE tag, and no entry outside that render
  * carries it — the property `qa/page-read-budget.spec.ts:121` counts renders by.
  *
- * Red on the old counter when the server is fresh (each instance's counter starts near 1, so the
- * route's and the action's tags overlap); green on the global counter at any server age.
+ * And (c) the FIRST occurrence of each tag number strictly increases in journal order. The tag is
+ * assigned and the entry pushed in one synchronous step (`journalled()` in the journal file), so
+ * one process-wide counter can only produce increasing first occurrences. Per-instance counters
+ * that have drifted apart (a warm server) put a lower number after a higher one, which (a) and
+ * (b) can miss when the counters no longer overlap in this test's window.
+ *
+ * (a) is red on the old counter when the server is fresh: each instance's counter starts near 1,
+ * so the server actions' tags overlap those of the instance the unread-count route runs in (logs/02
+ * and logs/22 in the same evidence). Green on the global counter at any server age.
  *
  * Failure messages print `op` and `request` only, never `arg`: an unread-count entry's `arg` is
  * the session's bearer token.
@@ -123,4 +132,22 @@ test("BUG-1103: unread-count and server-action tags are each unique; one page re
     .filter(({ e, i }) => e.request === renderTags[0] && !renderAt.includes(i))
     .map(({ e }) => `${e.op}@${e.request}`);
   expect(outside, `(b) no entry outside the page render carries its tag ${renderTags[0]}`).toEqual([]);
+
+  // (c) the first occurrence of each tag number strictly increases in journal order.
+  const malformed = all.filter((e) => !/^r\d+$/.test(e.request)).map((e) => `${e.op}@${e.request}`);
+  expect(malformed, "(c) every tag is r<number>").toEqual([]);
+  const firsts: Entry[] = [];
+  const seen = new Set<string>();
+  for (const e of all) {
+    if (seen.has(e.request)) continue;
+    seen.add(e.request);
+    firsts.push(e);
+  }
+  const num = (e: Entry) => Number(e.request.slice(1));
+  const backwards = firsts
+    .slice(1)
+    .map((e, i) => ({ before: firsts[i], e }))
+    .filter(({ before, e }) => num(e) <= num(before))
+    .map(({ before, e }) => `${e.op}@${e.request} first appears after ${before.op}@${before.request}`);
+  expect(backwards, "(c) a tag's first occurrence is not above the previous new tag's").toEqual([]);
 });
