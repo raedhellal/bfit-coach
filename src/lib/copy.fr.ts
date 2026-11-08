@@ -1954,7 +1954,7 @@ export const fr = {
     unread: "non lue",
     listLabel: "Notifications",
     item: {
-      CLIENT_MESSAGE: (client: string) => `Nouveau message de ${client}`,
+      CLIENT_MESSAGE: (client: string) => `Nouveau message ${de(client)}`,
       CLIENT_JOINED: (client: string) => `${client} a accepté votre invitation`,
       CLIENT_SESSION_COMPLETED: (client: string) => `${client} a terminé une séance`,
       CLIENT_RED_FLAG: (client: string) => `Un point à vérifier pour ${client}`,
