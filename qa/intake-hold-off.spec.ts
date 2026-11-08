@@ -4,6 +4,7 @@ import { expect, type Page } from "@playwright/test";
 import { test } from "./fixture-test";
 import { signInThroughForm } from "./sign-in";
 import { callIntakeAction } from "./intake-actions-direct";
+import { UNREAD_COUNT_BFF } from "../src/lib/notifications";
 
 /**
  * EV-341w (staff r1 N3) — the release hold OFF, on the fixture server that leaves
@@ -151,6 +152,13 @@ test("G3 the page is a 404 and reads no intake, intake-consent or routine", asyn
 test("G4 the save handler is 404 for every method, Origin and Content-Type, before B13, with no upstream call; G5 the reload handler too", async ({
   page,
 }) => {
+  // BUG-1125: the shell's bell reads the unread count on mount (NotificationsProvider's `schedule(0)`).
+  // At 6d2c20e6 that read left the browser before `before` and was journalled after it, so this test
+  // saw `getNotificationsUnreadCount` 6/6; with only it aborted, 3/3 green (hub 0d61424b,
+  // evidence/BUG-1125-6d2c20e6/). The glob matches only the bell's path, and the check below stays
+  // unfiltered: with a save handler mutated to call the api before its 404, this test still went red
+  // on `getIntake` (same folder, 50-control-plus-mutant-run1.log; one run).
+  await page.route("**" + UNREAD_COUNT_BFF, (route) => route.abort());
   await signInThroughForm(page);
   const before = (await apiOps(page)).length;
   const path = `/api/clients/${LINA}/intake/GOALS`;
