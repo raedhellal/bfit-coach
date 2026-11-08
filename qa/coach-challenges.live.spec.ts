@@ -37,6 +37,38 @@ async function signIn(page: Page) {
   await page.waitForURL("/");
 }
 
+/** Revokes every link the coach holds: what "the coach holds no ACTIVE link" means to the next spec. */
+async function revokeEveryLink(request: APIRequestContext, asCoach: Record<string, string>) {
+  const roster = await request.get(`${API_ORIGIN}/coach-portal/clients?page=0&size=100&sort=needs_attention`, { headers: asCoach });
+  expect(roster.status()).toBe(200);
+  for (const item of ((await roster.json()) as { items: { id: string }[] }).items) {
+    await request.post(`${API_ORIGIN}/coach-portal/clients/${item.id}/revoke`, { headers: asCoach });
+  }
+}
+
+/** Deletes every challenge this spec titled, so no run leaves one behind for the next. */
+async function deleteOwnChallenges(request: APIRequestContext, asCoach: Record<string, string>) {
+  const list = await request.get(`${API_ORIGIN}/coach-portal/challenges?page=0&size=50`, { headers: asCoach });
+  expect(list.status()).toBe(200);
+  for (const c of ((await list.json()) as { items: { id: string; title: string }[] }).items) {
+    if (c.title === TITLE) await request.delete(`${API_ORIGIN}/coach-portal/challenges/${c.id}`, { headers: asCoach });
+  }
+}
+
+/*
+ * BUG-1095 item 5 (a): the cleanup runs in an afterEach, which Playwright also runs after a
+ * FAILED test. It used to sit inline at the end of the test body, so a red anywhere above
+ * it (the `:97` drift, for one) left an ACTIVE link behind, and `coach-live` then started
+ * on a roster that was not empty. Witness: hub chore/po-demo-final-1021
+ * evidence/BUG-1095-*, a forced-red run of this spec followed by `coach-live`, and the
+ * roster read after it.
+ */
+test.afterEach(async ({ request }) => {
+  const asCoach = { Authorization: `Bearer ${await bearer(request, COACH)}` };
+  await deleteOwnChallenges(request, asCoach);
+  await revokeEveryLink(request, asCoach);
+});
+
 function utcDay(offset: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offset);
@@ -56,17 +88,9 @@ test("create in the portal → trainee accepts and syncs → the ranked row show
   const asTrainee = { Authorization: `Bearer ${trainee}`, "X-Timezone": "UTC" };
 
   // ── a clean slate: no link, then one fresh ACTIVE link to the seeded trainee ──
-  const roster = await request.get(`${API_ORIGIN}/coach-portal/clients?page=0&size=100&sort=needs_attention`, { headers: asCoach });
-  expect(roster.status()).toBe(200);
-  for (const item of ((await roster.json()) as { items: { id: string }[] }).items) {
-    await request.post(`${API_ORIGIN}/coach-portal/clients/${item.id}/revoke`, { headers: asCoach });
-  }
-  // …and no challenge left over from an earlier, failed run of this spec.
-  const leftovers = await request.get(`${API_ORIGIN}/coach-portal/challenges?page=0&size=50`, { headers: asCoach });
-  expect(leftovers.status()).toBe(200);
-  for (const c of ((await leftovers.json()) as { items: { id: string; title: string }[] }).items) {
-    if (c.title === TITLE) await request.delete(`${API_ORIGIN}/coach-portal/challenges/${c.id}`, { headers: asCoach });
-  }
+  await revokeEveryLink(request, asCoach);
+  // …and no challenge left over from a run that predates the afterEach above.
+  await deleteOwnChallenges(request, asCoach);
   const invite = await request.post(`${API_ORIGIN}/coach-portal/invites`, { headers: asCoach });
   expect(invite.status(), await invite.text()).toBe(201);
   const { token } = (await invite.json()) as { token: string };
@@ -94,7 +118,11 @@ test("create in the portal → trainee accepts and syncs → the ranked row show
 
   // The api's 201 body, rendered: one INVITED participant, no number.
   await expect(page.getByRole("heading", { level: 1 })).toContainText(TITLE);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Active");
+  // BUG-1095 (a): the phase left the h1 in coach 1f30ff4a (EV-337h, merged at 56e024b9;
+  // BUG-676, the h1 is the name alone) and now sits on the pill beside it. The pill has
+  // no role and no test id; `[data-phase]` is the hook the fixture specs already use
+  // (coach-challenges.spec.ts, pro-challenges.spec.ts), so this reads it the same way.
+  await expect(page.locator('.challenge-head [data-phase="ACTIVE"]')).toHaveText("Active");
   await expect(page.getByText("1 invited · 0 joined")).toBeVisible();
   const row = page.locator("tbody tr").filter({ hasText: TRAINEE_NAME });
   await expect(row).toContainText("Invitation sent");
@@ -161,10 +189,5 @@ test("create in the portal → trainee accepts and syncs → the ranked row show
   await expect(page.getByRole("listitem").filter({ hasText: TITLE })).toHaveCount(0);
   const gone = await request.get(`${API_ORIGIN}/coach-portal/challenges/${id}`, { headers: asCoach });
   expect(gone.status()).toBe(403);
-
-  // Leave the coach with no link, so the other live specs start where they expect.
-  const after = await request.get(`${API_ORIGIN}/coach-portal/clients?page=0&size=100&sort=needs_attention`, { headers: asCoach });
-  for (const item of ((await after.json()) as { items: { id: string }[] }).items) {
-    await request.post(`${API_ORIGIN}/coach-portal/clients/${item.id}/revoke`, { headers: asCoach });
-  }
+  // Leaving the coach with no link is the afterEach's job, pass or fail.
 });
