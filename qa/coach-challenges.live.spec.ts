@@ -124,7 +124,9 @@ test("create in the portal → trainee accepts and syncs → the ranked row show
   // (coach-challenges.spec.ts, pro-challenges.spec.ts), so this reads it the same way.
   await expect(page.locator('.challenge-head [data-phase="ACTIVE"]')).toHaveText("Active");
   await expect(page.getByText("1 invited · 0 joined")).toBeVisible();
-  const row = page.locator("tbody tr").filter({ hasText: TRAINEE_NAME });
+  // BUG-1095 item 7: 1f30ff4a (EV-337h) turned the participants table into
+  // <ul class="participant-list"> / <li class="participant"> (ProgressTable.tsx).
+  const row = page.locator("li.participant").filter({ hasText: TRAINEE_NAME });
   await expect(row).toContainText("Invitation sent");
   expect(await row.innerText()).not.toMatch(/\d/);
 
@@ -150,8 +152,12 @@ test("create in the portal → trainee accepts and syncs → the ranked row show
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByText("1 invited · 1 joined")).toBeVisible();
   await expect(row).toContainText("Joined");
-  await expect(row.locator("td").first()).toHaveText("#1");
-  await expect(row.locator("[data-today]")).toHaveText("4,200 / 10,000 steps");
+  await expect(row.locator("[data-rank-label]")).toHaveText("#1");
+  // Today's source label now sits inside [data-today], so the exact number is pinned on
+  // .participant-value and the label on [data-source] (BUG-1095 item 7, as ruled in (fp)).
+  await expect(row.locator("[data-today]")).toHaveAttribute("data-today", "4200");
+  await expect(row.locator("[data-today] .participant-value")).toHaveText("4,200 / 10,000 steps");
+  await expect(row.locator('[data-today] [data-source="HEALTH_CONNECT"]')).toHaveText("Health Connect");
   await expect(row.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "4200");
   await expect(row).toContainText("1 / 3"); // days met / days elapsed
   await expect(row).toContainText("16,200 steps");
