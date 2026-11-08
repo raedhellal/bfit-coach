@@ -100,11 +100,16 @@ function markAllAnsweredAt(r: SeenResponse): number {
 
 /**
  * BUG-1109 S1: hands `onRead` every count-read response whose request the browser SENT at or after
- * the mark-all's 204 (both on the browser clock: `sentAt` against `markAllAnsweredAt`), in either
- * order of delivery. A count-read response delivered BEFORE the mark-all's own 204 event is
- * buffered, not dropped: when the 204 arrives, each buffered read sent at or after it is handed on
- * and the rest are discarded. A read delivered after the 204 is handed on at once if it was sent at
- * or after it. Returns a reader of the 204's time (0 until it is seen). Witness: the test
+ * the mark-all's 204 (`sentAt` against `markAllAnsweredAt`), in either order of delivery.
+ * Two clocks (BUG-1113 F1): `sentAt` is always the browser's. `markAllAnsweredAt` is the browser's
+ * when the 204 has a `responseStart`, and Node's `Date.now()` when that is -1. In that fallback the
+ * mark is when Node got the event, after the browser's 204, so a read sent between the two counts
+ * as sent before it and is not handed on: a missed 0 (a false red) or a missed non-zero (a false
+ * green in BUG-1094 (3)), by trace. No run has shown a -1 here.
+ * A count-read response delivered BEFORE the mark-all's own 204 event is buffered, not dropped:
+ * when the 204 arrives, each buffered read sent at or after it is handed on and the rest are
+ * discarded. A read delivered after the 204 is handed on at once if it was sent at or after it.
+ * Returns a reader of the 204's time (0 until it is seen). Witness: the test
  * "BUG-1109 S1 (no browser)" below delivers a read before the 204 that was sent after it.
  */
 function countReadsAfterMarkAll<R extends SeenResponse>(subscribe: (fn: (r: R) => void) => void, onRead: (r: R) => unknown): () => number {
@@ -439,9 +444,7 @@ for (const lang of ["en", "fr"] as const) {
       await clientWrites(request, link.trainee);
       expect(await apiUnread(request, coach), "the server counts the new item").toBe(1);
       await expect(bell(page)).toHaveAttribute("data-unread-count", "1", { timeout: 75_000 });
-      // BUG-1108 N2: Node's clock minus the browser's (`markedAt` is Chromium's request timing, or Node's
-      // own clock when that has no responseStart); both are this host's wall clock, as the config launches
-      // a local Chromium (no connectOptions). Measured margin over 60 s at 4a41a3e0: +419 ms EN, +328 ms FR (ad5c029d).
+      // BUG-1108 N2: Node's clock minus the browser's, both this host's wall clock (local Chromium); margin over 60 s +419 ms EN, +328 ms FR at ad5c029d.
       const oneAfter = Date.now() - markedAt();
       test.info().annotations.push({ type: "BUG-1108 N-c", description: `the bell's 1 at +${oneAfter} ms after the mark-all 204 (the 60 s poll)` });
       expect(oneAfter, "the bell's 1 came from the 60 s poll: at least 60 s after the mark-all 204").toBeGreaterThanOrEqual(60_000);
@@ -477,11 +480,8 @@ for (const lang of ["en", "fr"] as const) {
       await expect(status).toHaveText(L.allRead);
       // BUG-1108 B1 guard: a reload or a navigation from here on would reset the inbox's all-read
       // state and pass this test falsely. The marker dies with a reload; the listener sees the rest.
-      await page.evaluate(() => ((window as unknown as { __bug1108NoReload: number }).__bug1108NoReload = 1));
-      const navigations: string[] = [];
-      page.on("framenavigated", (f) => {
-        if (f === page.mainFrame()) navigations.push(f.url());
-      });
+      // BUG-1113 F4: the shared `armNoReloadGuard`, so the BUG-1109 N1 mutant witnesses it here.
+      const noReload = await armNoReloadGuard(page);
 
       // Item 1's steps: a new item, read by the 60 s poll, hides the line.
       await clientWrites(request, link.trainee);
@@ -500,8 +500,7 @@ for (const lang of ["en", "fr"] as const) {
       await expect(page.getByRole("status").filter({ hasText: L.allRead })).toHaveCount(0);
       await expect(status).toHaveText("");
       await expect(status).toHaveClass(/sr-only/);
-      expect(await page.evaluate(() => (window as unknown as { __bug1108NoReload?: number }).__bug1108NoReload), "the page was not reloaded since the mark-all").toBe(1);
-      expect(navigations, "no navigation since the mark-all").toEqual([]);
+      await noReload();
       await page.unrouteAll();
     });
 
@@ -546,7 +545,8 @@ for (const lang of ["en", "fr"] as const) {
     });
 
     // BUG-1109 closes-when 3. Witness (closes-when 4): `if (again)` in NotificationsProvider.tsx
-    // `tick` made `if (false)` turns the final "line shows again within 15 s" assertion red.
+    // `tick` made `if (false)` turns the "line shows again" assertion red: the one that checks the
+    // re-read the 204 asked for, sent after the held read's release.
     test(`BUG-1109 (b) [${lang}]: a count read sent before the mark that answers a stale 3 hides the line; the re-read the 204 asked for shows it again`, async ({ page, request }) => {
       const coach = await freshCoach(request);
       const link = await linkClient(request, coach, `Teo ${lang} B1109b`);
@@ -604,7 +604,7 @@ for (const lang of ["en", "fr"] as const) {
       // Then: the re-read the 204 asked for answers 0 (the real api), and the line shows again within
       // 15 s of the release. The poll is 60 s, so only the re-read can satisfy this.
       letLater();
-      await expect(status, "the line shows again within 15 s of releasing the held read").toHaveText(L.allRead, {
+      await expect(status, "the re-read the 204 asked for (sent after the held read's release) answers 0: the line shows again within 15 s of that release").toHaveText(L.allRead, {
         timeout: Math.max(1, releasedAt + 15_000 - Date.now()),
       });
       await expect.poll(() => zeroAfterRelease, { timeout: 5_000, message: "a count read sent after the release answered 0" }).toBeGreaterThan(0);
@@ -890,6 +890,41 @@ test("BUG-1109 S1 (no browser): a count read delivered before the mark-all's 204
   expect(handed, "exactly the count reads sent at or after the 204, in either delivery order").toEqual([
     "sent 1060, delivered before the 204",
     "sent 1080, delivered after the 204",
+  ]);
+});
+
+/**
+ * BUG-1113 F5: S1's boundary, a count read sent at exactly the 204's browser time (1050). The rule
+ * is "sent at or after", so both are kept: one delivered before the 204 (the flush loop's `>=`) and
+ * one delivered after it (the later `>=`). Witness owed by the gate: each `>=` made `>` should drop
+ * its read and turn this test red.
+ */
+test("BUG-1113 F5 (no browser): a count read sent at exactly the 204's time (1050) is kept, delivered before or after the 204", () => {
+  type Fake = SeenResponse & { name: string };
+  const COUNT = "/api/bff/notifications/unread-count";
+  const fake = (name: string, method: string, path: string, status: number, startTime: number, responseStart: number): Fake => ({
+    name,
+    status: () => status,
+    request: () => ({ method: () => method, url: () => `http://localhost:3301${path}`, timing: () => ({ startTime, responseStart }) }),
+  });
+  let emit: (r: Fake) => void = () => undefined;
+  const handed: string[] = [];
+  const marked = countReadsAfterMarkAll<Fake>(
+    (fn) => {
+      emit = fn;
+    },
+    (r) => handed.push(r.name)
+  );
+  for (const e of [
+    fake("sent 1050, delivered before the 204", "GET", COUNT, 200, 1_050, 5),
+    fake("the mark-all's 204", "POST", "/api/bff/notifications/read-all", 204, 1_000, 50),
+    fake("sent 1050, delivered after the 204", "GET", COUNT, 200, 1_050, 5),
+  ])
+    emit(e);
+  expect(marked(), "the 204's browser time").toBe(1_050);
+  expect(handed, "both reads sent at exactly the 204's time are kept").toEqual([
+    "sent 1050, delivered before the 204",
+    "sent 1050, delivered after the 204",
   ]);
 });
 
