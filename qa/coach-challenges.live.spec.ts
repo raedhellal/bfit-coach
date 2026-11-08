@@ -42,7 +42,9 @@ async function revokeEveryLink(request: APIRequestContext, asCoach: Record<strin
   const roster = await request.get(`${API_ORIGIN}/coach-portal/clients?page=0&size=100&sort=needs_attention`, { headers: asCoach });
   expect(roster.status()).toBe(200);
   for (const item of ((await roster.json()) as { items: { id: string }[] }).items) {
-    await request.post(`${API_ORIGIN}/coach-portal/clients/${item.id}/revoke`, { headers: asCoach });
+    // A revoke that silently fails here brings the leak back, and it shows up later, in coach-live.
+    const revoked = await request.post(`${API_ORIGIN}/coach-portal/clients/${item.id}/revoke`, { headers: asCoach });
+    expect([200, 204], await revoked.text()).toContain(revoked.status());
   }
 }
 
@@ -51,7 +53,9 @@ async function deleteOwnChallenges(request: APIRequestContext, asCoach: Record<s
   const list = await request.get(`${API_ORIGIN}/coach-portal/challenges?page=0&size=50`, { headers: asCoach });
   expect(list.status()).toBe(200);
   for (const c of ((await list.json()) as { items: { id: string; title: string }[] }).items) {
-    if (c.title === TITLE) await request.delete(`${API_ORIGIN}/coach-portal/challenges/${c.id}`, { headers: asCoach });
+    if (c.title !== TITLE) continue;
+    const deleted = await request.delete(`${API_ORIGIN}/coach-portal/challenges/${c.id}`, { headers: asCoach });
+    expect([200, 204], await deleted.text()).toContain(deleted.status());
   }
 }
 
@@ -59,9 +63,9 @@ async function deleteOwnChallenges(request: APIRequestContext, asCoach: Record<s
  * BUG-1095 item 5 (a): the cleanup runs in an afterEach, which Playwright also runs after a
  * FAILED test. It used to sit inline at the end of the test body, so a red anywhere above
  * it (the `:97` drift, for one) left an ACTIVE link behind, and `coach-live` then started
- * on a roster that was not empty. Witness: hub chore/po-demo-final-1021
- * evidence/BUG-1095-*, a forced-red run of this spec followed by `coach-live`, and the
- * roster read after it.
+ * on a roster that was not empty. Witness: hub raedhellal/b-fit-mobile evidence commit
+ * 774e2dec, evidence/BUG-1095-11aba360/33-witness5-forcedred-pair-tip-11aba360.log (a
+ * forced-red run of this spec followed by `coach-live`) and 40-roster-reads.txt.
  */
 test.afterEach(async ({ request }) => {
   const asCoach = { Authorization: `Bearer ${await bearer(request, COACH)}` };

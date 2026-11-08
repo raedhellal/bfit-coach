@@ -63,7 +63,9 @@ test("the full coach arc against a real api: me → invite → accept → overvi
   const roster = await request.get(`${API_ORIGIN}/coach-portal/clients?page=0&size=100&sort=needs_attention`, { headers: asCoach });
   expect(roster.status()).toBe(200);
   for (const item of ((await roster.json()) as { items: { id: string }[] }).items) {
-    await request.post(`${API_ORIGIN}/coach-portal/clients/${item.id}/revoke`, { headers: asCoach });
+    // A revoke that silently fails would leave AC1 reading a roster that is not empty.
+    const revoked = await request.post(`${API_ORIGIN}/coach-portal/clients/${item.id}/revoke`, { headers: asCoach });
+    expect([200, 204], await revoked.text()).toContain(revoked.status());
   }
 
   // ── AC1: sign in, and the roster reads the api's real capacity ──────────────
