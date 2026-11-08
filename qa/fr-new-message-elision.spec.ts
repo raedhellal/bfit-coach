@@ -25,7 +25,7 @@ test.describe("BUG-1102 — « Nouveau message de/d' {client} »", () => {
 
   test("item 2: an accented capital, a lower-case vowel and Y before a consonant are elided", () => {
     expect(frMessage("Émilie")).toBe("Nouveau message d'Émilie");
-    // The same É, decomposed (E + combining acute), as some keyboards and APIs send it.
+    // The same É, decomposed (E + U+0301).
     expect(frMessage("Émilie")).toBe("Nouveau message d'Émilie");
     expect(frMessage("olivier")).toBe("Nouveau message d'olivier");
     expect(frMessage("Yves")).toBe("Nouveau message d'Yves");

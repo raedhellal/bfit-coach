@@ -66,7 +66,9 @@ const T = {
     more: "Charger plus",
     denied: "Ce client ne fait pas partie de votre liste. Il a peut-être révoqué l'accès.",
     item: {
-      CLIENT_MESSAGE: (c: string) => `Nouveau message de ${c}`,
+      // BUG-1102: « de » elides before a vowel (« d'Eva »), as copy.fr.ts's de() does. A literal rule sized
+      // to the ASCII names this file uses (Eva, Sami, Yara…); it does not model accents, Y before a consonant or H.
+      CLIENT_MESSAGE: (c: string) => (/^[aeiou]/i.test(c) ? `Nouveau message d'${c}` : `Nouveau message de ${c}`),
       CLIENT_JOINED: (c: string) => `${c} a accepté votre invitation`,
       CLIENT_SESSION_COMPLETED: (c: string) => `${c} a terminé une séance`,
       CLIENT_RED_FLAG: (c: string) => `Un point à vérifier pour ${c}`,
