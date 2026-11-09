@@ -227,7 +227,18 @@ export function RoutineEditor({
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [working, startTransition] = useTransition();
+  /**
+   * BUG-1111 — the publish confirm has its OWN transition, and the publish dialog's controls
+   * follow it alone. `openPublish` opens the dialog from its continuation (`setPreview`, after
+   * the preview action has answered), and the shared transition was still pending when that
+   * rendered: on `e54017ba` an instrumented run (the BUG-710 gate evidence on hub
+   * `chore/po-demo-final-1021`, `probe/`) saw the dialog's « Publish » render disabled on open
+   * in 10 of 10 EN runs, enabled 75 to 122 ms later. Every other control still reads `pending`,
+   * which covers both transitions.
+   */
+  const [confirming, startConfirm] = useTransition();
+  const pending = working || confirming;
   const leaving = useUnsavedChanges(dirty);
   /**
    * EV-186n — when the current draft was kept from an AI proposal. Set by Keep, survives the
@@ -457,7 +468,7 @@ export function RoutineEditor({
     if (!preview || !document) return;
     const digest = preview.digest;
     const current = document;
-    startTransition(async () => {
+    startConfirm(async () => {
       const result = await settled(publishAction(clientId, digest), FAILED);
       if (!result.ok) {
         if (result.failure.code === "REPAIRS_UNACKNOWLEDGED") {
@@ -955,7 +966,7 @@ export function RoutineEditor({
 
       <PublishModal
         preview={preview}
-        pending={pending}
+        pending={confirming}
         onCancel={() => setPreview(null)}
         onConfirm={confirmPublish}
       />
