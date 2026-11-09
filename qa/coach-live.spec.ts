@@ -15,8 +15,9 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
  * Prerequisites (the live config does NOT provision these — see the runbook):
  *   - b-fit-api on API_ORIGIN with the `local` profile seed (coach@evoli.fit ROLE_COACH
  *     with a coach_profiles row, user@evoli.fit as the trainee)
- *   - the coach holding no ACTIVE link when the run starts; the spec revokes what it
- *     creates, so it is re-runnable.
+ *   - the coach holding no ACTIVE link when the run starts. Since BUG-1095 the first test
+ *     revokes every link the coach holds before AC1 (as coach-challenges.live does), so a
+ *     link another spec left behind no longer changes what AC1 reads.
  */
 
 const API_ORIGIN = process.env.COACH_LIVE_API_ORIGIN || "http://localhost:8099";
@@ -25,6 +26,14 @@ const TRAINEE = { email: "user@evoli.fit", password: "Password123!" };
 /** The seeded names, which are what the screens must actually render. */
 const COACH_NAME = "Coach User";
 const TRAINEE_NAME = "Test User";
+/**
+ * The api's STARTER capacity. It went 2 → 10 at Raed's request (b-fit-api 969e139,
+ * recorded on EV-232; `CoachProfile.CapacityTier.STARTER(10)`), and this spec kept the 2
+ * until BUG-1095. A literal, not a read of /coach-portal/me, so that a run against an api
+ * still serving 2 fails here instead of agreeing with it. The fixture still serves 2, so
+ * the fixture specs keep their own literal.
+ */
+const STARTER_CAPACITY = 10;
 
 async function bearer(request: APIRequestContext, who: { email: string; password: string }) {
   const res = await request.post(`${API_ORIGIN}/auth/login`, { data: who });
@@ -49,12 +58,22 @@ test("the full coach arc against a real api: me → invite → accept → overvi
 }) => {
   test.slow();
 
+  // ── a clean slate (BUG-1095 item 5 (b)): revoke every link the coach holds ────
+  const asCoach = { Authorization: `Bearer ${await bearer(request, COACH)}` };
+  const roster = await request.get(`${API_ORIGIN}/coach-portal/clients?page=0&size=100&sort=needs_attention`, { headers: asCoach });
+  expect(roster.status()).toBe(200);
+  for (const item of ((await roster.json()) as { items: { id: string }[] }).items) {
+    // A revoke that silently fails would leave AC1 reading a roster that is not empty.
+    const revoked = await request.post(`${API_ORIGIN}/coach-portal/clients/${item.id}/revoke`, { headers: asCoach });
+    expect([200, 204], await revoked.text()).toContain(revoked.status());
+  }
+
   // ── AC1: sign in, and the roster reads the api's real capacity ──────────────
   await signIn(page);
   await expect(page.getByRole("banner").getByText("Evoli Pro", { exact: true })).toBeVisible();
   // GET /coach-portal/me is flat {coachId, displayName, tier, active, capacity}. If the
   // client still read `me.capacity.active` this line would render "undefined".
-  await expect(page.getByText("0 / 2 profiles · Starter", { exact: true })).toBeVisible();
+  await expect(page.getByText(`0 / ${STARTER_CAPACITY} profiles · Starter`, { exact: true })).toBeVisible();
   await expect(page.getByText("No trainees yet", { exact: true })).toBeVisible();
 
   // ── AC2: mint a real invite; the token comes from POST /coach-portal/invites ─
@@ -82,7 +101,7 @@ test("the full coach arc against a real api: me → invite → accept → overvi
 
   // ── AC4: a plain reload shows the trainee. No refetch button, no logout. ─────
   await page.goto("/");
-  await expect(page.getByText("1 / 2 profiles · Starter", { exact: true })).toBeVisible();
+  await expect(page.getByText(`1 / ${STARTER_CAPACITY} profiles · Starter`, { exact: true })).toBeVisible();
   const row = page.getByRole("link", { name: TRAINEE_NAME }).first();
   await expect(row).toBeVisible();
   // The seeded trainee has never trained: the null-carrying fields must degrade to the
@@ -191,7 +210,7 @@ test("the full coach arc against a real api: me → invite → accept → overvi
   await page.getByRole("button", { name: "Revoke access", exact: true }).last().click();
   await page.waitForURL("/");
   await expect(page.getByText("No trainees yet", { exact: true })).toBeVisible();
-  await expect(page.getByText("0 / 2 profiles · Starter", { exact: true })).toBeVisible();
+  await expect(page.getByText(`0 / ${STARTER_CAPACITY} profiles · Starter`, { exact: true })).toBeVisible();
 
   // A revoked link answers 403 — the same 403 a foreign or nonexistent id answers, so
   // the coach sees one sentence and the prefix is not an existence oracle.
