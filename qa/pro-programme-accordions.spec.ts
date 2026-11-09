@@ -336,11 +336,21 @@ for (const lang of ["en", "fr"] as const) {
       const sets = dayGroup(page, lang, 6).getByRole("group", { name: "Goblet Squat", exact: true }).getByLabel(L[lang].sets, { exact: true });
       await sets.fill("5");
       await expect(page.getByText(L[lang].unsaved, { exact: true })).toBeVisible();
+      const day1Before = await (await controlled(page, header(page, lang, 1))).elementHandle();
       const bar = page.getByRole("region", { name: L[lang].region, exact: true });
       await bar.getByRole("button", { name: L[lang].publish, exact: true }).click();
       await page.getByRole("dialog").getByRole("button", { name: L[lang].publish, exact: true }).click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(page.getByText(L[lang].published)).toBeVisible();
+      // BUG-710: « Published. » commits BEFORE the re-seed's remount (on e54017ba, 84 to 129 ms
+      // before it in 20 of 20 instrumented runs), so day 1's region read here could be the one
+      // the remount then removes. Wait for the remount itself: the node shown before the publish
+      // leaves the document. A publish that does not re-seed fails here.
+      await expect
+        .poll(() => day1Before!.evaluate((el) => el.isConnected), {
+          message: "the publish re-seeded the document: day 1's region from before it is gone",
+        })
+        .toBe(false);
       // The re-seed remounted the editor (BUG-490's `loads`); the open days are the parent's.
       await expectStates(page, lang, [true, false, false, false, false, true], "after the publish");
       await expect(sets).toHaveValue("5");
