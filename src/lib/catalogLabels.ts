@@ -36,24 +36,34 @@ function fallback(raw: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+/**
+ * BUG-836 — an OWN-KEY lookup. The tables are plain objects, so `table[key]` would find
+ * `Object.prototype`'s members ("constructor" a function, "__proto__" an object); only the
+ * table's own keys resolve, and every other value takes the fallback.
+ */
+function lookup(table: Readonly<Record<string, string>>, raw: string): string {
+  const key = normalise(raw);
+  return Object.hasOwn(table, key) ? table[key] : fallback(raw);
+}
+
 export function muscleLabel(raw: string, copy: Copy): string {
-  return copy.catalog.muscles[normalise(raw)] ?? fallback(raw);
+  return lookup(copy.catalog.muscles, raw);
 }
 
 export function equipmentLabel(raw: string, copy: Copy): string {
-  return copy.catalog.equipment[normalise(raw)] ?? fallback(raw);
+  return lookup(copy.catalog.equipment, raw);
 }
 
 /**
  * A row's `primaryMuscles`, which is a comma-joined list on the wire ("quads,glutes"):
- * "Quadriceps, Fessiers". Blanks and repeats are dropped.
+ * "Quadriceps, Fessiers". Blanks, parts that label to "" ("_", BUG-836) and repeats are dropped.
  */
 export function musclesLabel(raw: string, copy: Copy): string {
   const out: string[] = [];
   for (const part of raw.split(",")) {
     if (part.trim() === "") continue;
     const label = muscleLabel(part, copy);
-    if (!out.includes(label)) out.push(label);
+    if (label !== "" && !out.includes(label)) out.push(label);
   }
   return out.join(", ");
 }
